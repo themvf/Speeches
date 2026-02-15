@@ -216,14 +216,7 @@ elif page == "Topic Analysis":
         heatmap_rows.append(row)
 
     heatmap_df = pd.DataFrame(heatmap_rows)
-    st.dataframe(
-        heatmap_df.style.background_gradient(
-            cmap="YlOrRd",
-            subset=[c for c in heatmap_df.columns if c not in ["Speech", "Speaker"]],
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
+    st.dataframe(heatmap_df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
