@@ -1,0 +1,38 @@
+# Environment
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pkl
+*.sqlite
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+
+# Analysis outputs (regenerable)
+sec_analysis/
+
+# Old sample output directories
+by_commissioner/
+by_topic/
+by_date/
+full_text/
+structured_data/
+summaries/
+analysis/
