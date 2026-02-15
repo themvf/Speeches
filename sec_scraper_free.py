@@ -113,9 +113,10 @@ class SECScraper:
         Discover speech URLs from the SEC speeches listing page.
 
         Returns:
-            List of dicts with 'url', 'title' keys.
+            List of dicts with 'url', 'title', 'date', 'speaker', 'type' keys.
         """
         speeches = []
+        seen_urls = set()
 
         for page in range(max_pages):
             self._rate_limit()
@@ -126,17 +127,39 @@ class SECScraper:
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, "html.parser")
 
-                # SEC speech listing items
-                items = soup.find_all("a", href=True)
-                for item in items:
-                    href = item.get("href", "")
-                    if "/newsroom/speeches-statements/" in href and href != base_url:
-                        full_url = urljoin("https://www.sec.gov", href)
-                        if full_url not in [s["url"] for s in speeches]:
-                            speeches.append({
-                                "url": full_url,
-                                "title": item.get_text(strip=True),
-                            })
+                # The SEC listing page uses a table with rows for each speech
+                rows = soup.find_all("tr")
+                for row in rows:
+                    cells = row.find_all("td")
+                    if len(cells) < 3:
+                        continue
+
+                    # Find the link in this row
+                    link = row.find("a", href=True)
+                    if not link:
+                        continue
+                    href = link.get("href", "")
+                    if "/newsroom/speeches-statements/" not in href:
+                        continue
+
+                    full_url = urljoin("https://www.sec.gov", href)
+                    if full_url in seen_urls:
+                        continue
+                    seen_urls.add(full_url)
+
+                    # Extract date, title, speaker, type from table cells
+                    date_text = cells[0].get_text(strip=True) if len(cells) > 0 else ""
+                    title_text = link.get_text(strip=True)
+                    speaker_text = cells[2].get_text(strip=True) if len(cells) > 2 else ""
+                    type_text = cells[3].get_text(strip=True) if len(cells) > 3 else ""
+
+                    speeches.append({
+                        "url": full_url,
+                        "title": title_text,
+                        "date": date_text,
+                        "speaker": speaker_text,
+                        "type": type_text,
+                    })
 
                 print(f"  Page {page + 1}: found {len(speeches)} speeches so far")
 

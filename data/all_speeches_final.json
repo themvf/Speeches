@@ -5,7 +5,7 @@
     "failed_extractions": 0,
     "total_credits_used": 7,
     "extraction_date": "2025-08-05T07:50:33.727400",
-    "notes": "Updated with free scraper extraction"
+    "notes": "Updated with corrected dates from listing metadata"
   },
   "speeches": [
     {
@@ -1212,11 +1212,11 @@
     },
     {
       "metadata": {
-        "extraction_date": "2026-02-15T16:46:34.097363",
+        "extraction_date": "2026-02-15T17:05:51.126641",
         "url": "https://www.sec.gov/newsroom/speeches-statements/moloney-statement-coming-attractions-021326-coming-attractions-division-corporation-finance",
         "title": "Coming Attractions From the Division of Corporation Finance",
-        "speaker": "Paul S. Atkins",
-        "date": "March",
+        "speaker": "Erik Gerding",
+        "date": "Feb. 13, 2026",
         "word_count": 2433,
         "char_count": 17555
       },
@@ -1377,11 +1377,11 @@
     },
     {
       "metadata": {
-        "extraction_date": "2026-02-15T16:46:34.982945",
+        "extraction_date": "2026-02-15T17:05:51.888238",
         "url": "https://www.sec.gov/newsroom/speeches-statements/ryan-statement-ismael-sanchez-021226",
         "title": "Statement on Jury’s Verdict in Trial of Ismael Sanchez",
-        "speaker": "",
-        "date": "Feb",
+        "speaker": "Margaret Ryan",
+        "date": "Feb. 12, 2026",
         "word_count": 212,
         "char_count": 1432
       },
@@ -1423,11 +1423,11 @@
     },
     {
       "metadata": {
-        "extraction_date": "2026-02-15T16:46:35.993763",
+        "extraction_date": "2026-02-15T17:05:52.953513",
         "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-testimony-sbhuac-021226",
         "title": "Testimony Before the U.S. Senate Committee on Banking, Housing, and Urban Affairs",
         "speaker": "Paul S. Atkins",
-        "date": "September",
+        "date": "Feb. 12, 2026",
         "word_count": 1381,
         "char_count": 8862
       },
@@ -1511,11 +1511,11 @@
     },
     {
       "metadata": {
-        "extraction_date": "2026-02-15T16:46:37.123333",
+        "extraction_date": "2026-02-15T17:05:54.716504",
         "url": "https://www.sec.gov/newsroom/speeches-statements/margaret-ryan-02-11-26-remarks-los-angeles-county-bar-association",
         "title": "Remarks to the Los Angeles County Bar Association",
-        "speaker": "",
-        "date": "Feb",
+        "speaker": "Margaret Ryan",
+        "date": "Feb. 11, 2026",
         "word_count": 1920,
         "char_count": 11799
       },
@@ -1626,11 +1626,11 @@
     },
     {
       "metadata": {
-        "extraction_date": "2026-02-15T16:46:38.009992",
+        "extraction_date": "2026-02-15T17:05:55.690009",
         "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-testimony-hfsc-021126",
         "title": "Testimony Before the U.S. House Financial Services Committee",
         "speaker": "Paul S. Atkins",
-        "date": "September",
+        "date": "Feb. 11, 2026",
         "word_count": 1381,
         "char_count": 8861
       },

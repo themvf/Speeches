@@ -111,11 +111,15 @@ class SECSpeechAnalyzer:
             },
         }
 
-    def extract_speech_for_analysis(self, url: str) -> Dict[str, Any]:
+    def extract_speech_for_analysis(self, url: str, listing_metadata: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Extract speech in analysis-optimized format.
 
-        Returns structured data perfect for GenAI and Python analysis.
+        Args:
+            url: The speech URL to extract.
+            listing_metadata: Optional dict with 'date', 'speaker', 'type' from the
+                              SEC listing page, used as fallbacks when content parsing
+                              cannot find these fields.
         """
         print(f"Extracting speech for analysis: {url}")
 
@@ -123,7 +127,7 @@ class SECSpeechAnalyzer:
 
         if result["success"]:
             raw_content = result["data"]["data"]["content"]
-            analysis_data = self.parse_speech_content(raw_content, url)
+            analysis_data = self.parse_speech_content(raw_content, url, listing_metadata)
 
             return {
                 "success": True,
@@ -133,7 +137,7 @@ class SECSpeechAnalyzer:
         else:
             return result
 
-    def parse_speech_content(self, raw_content: str, url: str) -> Dict[str, Any]:
+    def parse_speech_content(self, raw_content: str, url: str, listing_metadata: Optional[Dict] = None) -> Dict[str, Any]:
         """Parse raw scraped content into analysis-ready format"""
 
         # Extract title - look for main heading
@@ -177,48 +181,49 @@ class SECSpeechAnalyzer:
                 speaker = name
                 break
 
-        # Extract date
+        # Extract date - use re.search to get the full match (not just groups)
         date = ""
         date_patterns = [
-            r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}",
-            r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{1,2},\s+\d{4}",
+            r"(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}",
+            r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{1,2},\s+\d{4}",
             r"\d{1,2}/\d{1,2}/\d{4}",
             r"\d{4}-\d{2}-\d{2}",
         ]
 
         for pattern in date_patterns:
-            matches = re.findall(pattern, raw_content)
-            if matches:
-                date = matches[0] if isinstance(matches[0], str) else matches[0]
+            match = re.search(pattern, raw_content)
+            if match:
+                date = match.group(0)
                 break
 
         # If no complete date found, try to extract from URL
-        if not date or len(date) < 10:
-            url_date_match = re.search(r"-(\d{8})", url)
+        if not date or len(date) < 8:
+            url_date_match = re.search(r"-(\d{6})(?:\d{2})?(?:-|$)", url)
             if url_date_match:
                 date_str = url_date_match.group(1)
                 try:
                     month = int(date_str[:2])
                     day = int(date_str[2:4])
-                    year = int(date_str[4:8])
-                    months = [
+                    year_part = date_str[4:6]
+                    year = int("20" + year_part)
+                    month_names = [
                         "", "January", "February", "March", "April", "May", "June",
                         "July", "August", "September", "October", "November", "December",
                     ]
                     if 1 <= month <= 12:
-                        date = f"{months[month]} {day}, {year}"
+                        date = f"{month_names[month]} {day}, {year}"
                 except Exception:
-                    url_date_match = re.search(r"-(\d{6})", url)
-                    if url_date_match:
-                        date_str = url_date_match.group(1)
-                        try:
-                            month = int(date_str[:2])
-                            day = int(date_str[2:4])
-                            year = int("20" + date_str[4:6])
-                            if 1 <= month <= 12:
-                                date = f"{months[month]} {day}, {year}"
-                        except Exception:
-                            pass
+                    pass
+
+        # Use listing_metadata as primary source for date and speaker when available,
+        # since the SEC listing page is more authoritative than parsing content text
+        if listing_metadata:
+            if listing_metadata.get("date"):
+                date = listing_metadata["date"]
+            if listing_metadata.get("speaker"):
+                speaker = listing_metadata["speaker"]
+            if not title and listing_metadata.get("title"):
+                title = listing_metadata["title"]
 
         full_text = self.extract_speech_content_improved(raw_content)
 
@@ -413,23 +418,31 @@ class SECSpeechAnalyzer:
 
         return is_valid
 
-    def batch_extract_all_speeches(self, speech_urls: List[str], max_speeches: int = 50) -> Dict[str, Any]:
+    def batch_extract_all_speeches(self, speech_entries: list, max_speeches: int = 50) -> Dict[str, Any]:
         """
         Extract all speeches in batch for comprehensive analysis.
 
         Args:
-            speech_urls: List of speech URLs to extract
+            speech_entries: List of speech URLs (str) or dicts with 'url' and
+                           optional 'date', 'speaker', 'title', 'type' keys.
             max_speeches: Maximum number of speeches to extract
         """
-        print(f"Batch extracting {len(speech_urls)} speeches for analysis")
+        print(f"Batch extracting {len(speech_entries)} speeches for analysis")
 
         extracted_speeches = []
         failed_extractions = []
 
-        for i, url in enumerate(speech_urls[:max_speeches], 1):
-            print(f"\nExtracting speech {i}/{min(len(speech_urls), max_speeches)}")
+        for i, entry in enumerate(speech_entries[:max_speeches], 1):
+            if isinstance(entry, str):
+                url = entry
+                listing_metadata = None
+            else:
+                url = entry["url"]
+                listing_metadata = entry
 
-            result = self.extract_speech_for_analysis(url)
+            print(f"\nExtracting speech {i}/{min(len(speech_entries), max_speeches)}")
+
+            result = self.extract_speech_for_analysis(url, listing_metadata=listing_metadata)
 
             if result["success"]:
                 if self.validate_full_text_extraction(result["data"]):
@@ -445,7 +458,7 @@ class SECSpeechAnalyzer:
 
         batch_results = {
             "extraction_summary": {
-                "total_speeches_attempted": min(len(speech_urls), max_speeches),
+                "total_speeches_attempted": min(len(speech_entries), max_speeches),
                 "successful_extractions": len(extracted_speeches),
                 "failed_extractions": len(failed_extractions),
                 "extraction_date": datetime.now().isoformat(),

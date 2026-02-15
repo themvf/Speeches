@@ -10,13 +10,13 @@ from speech_analyzer import SECSpeechAnalyzer
 from sec_scraper_free import SECScraper
 
 
-def discover_speech_urls(max_pages=5):
-    """Discover speech URLs from the SEC website"""
+def discover_speech_entries(max_pages=5):
+    """Discover speech entries (with metadata) from the SEC website"""
     scraper = SECScraper()
     print(f"Discovering speech URLs from SEC.gov (up to {max_pages} pages)...")
     speeches = scraper.discover_speech_urls(max_pages=max_pages)
-    print(f"Found {len(speeches)} speech URLs")
-    return [s["url"] for s in speeches]
+    print(f"Found {len(speeches)} speech entries")
+    return speeches
 
 
 def check_existing_extractions():
@@ -50,28 +50,28 @@ def extract_all_speeches_for_analysis(max_pages=5, max_speeches=50):
 
     analyzer = SECSpeechAnalyzer()
 
-    # Discover speech URLs
-    speech_urls = discover_speech_urls(max_pages=max_pages)
+    # Discover speech entries (with date/speaker metadata from listing page)
+    speech_entries = discover_speech_entries(max_pages=max_pages)
 
-    if not speech_urls:
-        print("No speech URLs found. Cannot proceed.")
+    if not speech_entries:
+        print("No speech entries found. Cannot proceed.")
         return
 
     # Check for existing extractions to avoid duplicates
     existing_urls = check_existing_extractions()
 
     # Filter out already-extracted speeches
-    new_urls = [url for url in speech_urls if url not in existing_urls]
-    print(f"\nNew speeches to extract: {len(new_urls)}")
+    new_entries = [e for e in speech_entries if e["url"] not in existing_urls]
+    print(f"\nNew speeches to extract: {len(new_entries)}")
     print(f"Already extracted: {len(existing_urls)}")
 
-    if not new_urls:
+    if not new_entries:
         print("No new speeches to extract.")
         return
 
-    # Perform batch extraction
+    # Perform batch extraction (entries include listing metadata for date/speaker fallback)
     print(f"\nStarting batch extraction of up to {max_speeches} speeches...")
-    results = analyzer.batch_extract_all_speeches(new_urls, max_speeches=max_speeches)
+    results = analyzer.batch_extract_all_speeches(new_entries, max_speeches=max_speeches)
 
     # Show results
     print(f"\n{'=' * 70}")
