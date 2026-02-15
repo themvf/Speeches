@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 SEC Speech Scraper - Free replacement for Firecrawl API
-Uses requests + BeautifulSoup + markdownify to scrape SEC.gov public pages.
+Uses curl_cffi + BeautifulSoup + markdownify to scrape SEC.gov public pages.
+curl_cffi is needed because SEC.gov blocks standard requests (TLS fingerprinting).
 """
 
-import requests
 import time
 import re
+from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
 from typing import Dict, List, Any, Optional
@@ -17,11 +18,7 @@ class SECScraper:
     """Free SEC.gov scraper that maintains the same interface as FirecrawlHelper."""
 
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "SEC-Speech-Research/1.0 (academic research; Python/requests)",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        })
+        self.session = cffi_requests.Session(impersonate="chrome")
         self._last_request_time = 0
         self._min_delay = 1.0  # seconds between requests
 
@@ -104,16 +101,10 @@ class SECScraper:
                 "credits_used": 0,
             }
 
-        except requests.RequestException as e:
-            return {
-                "success": False,
-                "error": f"Request failed: {str(e)}",
-                "credits_used": 0,
-            }
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Scraping failed: {str(e)}",
+                "error": f"Request failed: {str(e)}",
                 "credits_used": 0,
             }
 
@@ -122,7 +113,7 @@ class SECScraper:
         Discover speech URLs from the SEC speeches listing page.
 
         Returns:
-            List of dicts with 'url', 'title', 'date', 'speaker' keys.
+            List of dicts with 'url', 'title' keys.
         """
         speeches = []
 
@@ -149,7 +140,7 @@ class SECScraper:
 
                 print(f"  Page {page + 1}: found {len(speeches)} speeches so far")
 
-            except requests.RequestException as e:
+            except Exception as e:
                 print(f"  Error on page {page + 1}: {e}")
                 break
 
