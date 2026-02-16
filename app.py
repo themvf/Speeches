@@ -66,24 +66,40 @@ def _get_openai_client():
         return None
 
 
-def _build_dataset_signature(raw_data_obj):
-    """Build a stable signature for current speech corpus."""
-    pieces = []
+def _utc_now_iso():
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def _normalize_org_label(value):
+    label = str(value).strip() if value is not None else ""
+    return label or "SEC"
+
+
+def _org_key_from_label(label):
+    cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in str(label))
+    cleaned = cleaned.strip("_")
+    return cleaned or "sec"
+
+
+def _speech_org_label(speech):
+    m = speech.get("metadata", {})
+    return _normalize_org_label(m.get("organization") or m.get("org") or "SEC")
+
+
+def _speech_org_key(speech):
+    return _org_key_from_label(_speech_org_label(speech))
+
+
+def _list_org_options(raw_data_obj):
+    by_key = {}
     for speech in raw_data_obj.get("speeches", []):
-        m = speech.get("metadata", {})
-        pieces.append(
-            "|".join(
-                [
-                    str(m.get("url", "")),
-                    str(m.get("title", "")),
-                    str(m.get("speaker", "")),
-                    str(m.get("date", "")),
-                    str(m.get("word_count", "")),
-                ]
-            )
-        )
-    payload = "\n".join(sorted(pieces))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        label = _speech_org_label(speech)
+        key = _org_key_from_label(label)
+        if key not in by_key:
+            by_key[key] = label
+    if not by_key:
+        by_key["sec"] = "SEC"
+    return [{"key": k, "label": by_key[k]} for k in sorted(by_key, key=lambda x: by_key[x].lower())]
 
 
 def _vector_state_path():
@@ -94,18 +110,43 @@ def _vector_state_blob_name():
     return "openai_vector_store_state.json"
 
 
+def _normalize_vector_state(state):
+    if not isinstance(state, dict):
+        state = {}
+
+    stores = state.get("stores")
+    if isinstance(stores, dict):
+        state.setdefault("version", 2)
+        return state
+
+    # Legacy single-store schema migration.
+    migrated = {"version": 2, "stores": {}}
+    legacy_id = str(state.get("vector_store_id", "")).strip()
+    if legacy_id:
+        migrated["stores"]["sec"] = {
+            "org_label": "SEC",
+            "vector_store_id": legacy_id,
+            "docs": state.get("docs", {}),
+            "doc_count_indexed": int(state.get("indexed_speeches", 0) or 0),
+            "updated_at": state.get("updated_at", ""),
+        }
+    migrated["updated_at"] = state.get("updated_at", "")
+    return migrated
+
+
 def _load_vector_state_local():
     path = _vector_state_path()
     if not path.exists():
-        return {}
+        return {"version": 2, "stores": {}}
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return _normalize_vector_state(json.load(f))
     except Exception:
-        return {}
+        return {"version": 2, "stores": {}}
 
 
 def _save_vector_state_local(state):
+    state = _normalize_vector_state(state)
     path = _vector_state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -113,21 +154,24 @@ def _save_vector_state_local(state):
 
 
 def _load_vector_state():
+    state = None
     storage = _get_gcs_storage()
     if storage is not None:
         try:
             blob = storage.bucket.blob(_vector_state_blob_name())
             if blob.exists():
-                state = json.loads(blob.download_as_text(encoding="utf-8"))
+                state = _normalize_vector_state(json.loads(blob.download_as_text(encoding="utf-8")))
                 _save_vector_state_local(state)
                 return state
         except Exception as e:
             st.session_state["_vector_state_error"] = f"GCS vector-state load failed: {e}"
 
-    return _load_vector_state_local()
+    state = _load_vector_state_local()
+    return _normalize_vector_state(state)
 
 
 def _save_vector_state(state):
+    state = _normalize_vector_state(state)
     _save_vector_state_local(state)
 
     storage = _get_gcs_storage()
@@ -144,80 +188,343 @@ def _save_vector_state(state):
         st.session_state["_vector_state_error"] = f"GCS vector-state save failed: {e}"
 
 
-def _render_corpus_file(raw_data_obj):
-    """Create a plain-text corpus file for vector-store indexing."""
-    out_path = Path("data/speeches_corpus_for_chat.txt")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+def _build_org_documents(raw_data_obj, org_key, org_label):
+    """Build doc records keyed by deterministic doc_id for one organization."""
+    docs = {}
+    for speech in raw_data_obj.get("speeches", []):
+        if _speech_org_key(speech) != org_key:
+            continue
 
-    chunks = []
-    for i, speech in enumerate(raw_data_obj.get("speeches", []), 1):
         m = speech.get("metadata", {})
         c = speech.get("content", {})
-        text = c.get("full_text", "").strip()
+        text = str(c.get("full_text", "") or "").strip()
         if not text:
             continue
 
-        entry = (
-            f"Speech ID: {i}\n"
-            f"Title: {m.get('title', '')}\n"
-            f"Speaker: {m.get('speaker', '')}\n"
-            f"Date: {m.get('date', '')}\n"
-            f"URL: {m.get('url', '')}\n"
-            f"Word Count: {m.get('word_count', 0)}\n\n"
-            f"{text}\n\n"
-            "==============================\n\n"
+        title = str(m.get("title", "") or "").strip()
+        speaker = str(m.get("speaker", "") or "").strip()
+        speech_date = str(m.get("date", "") or "").strip()
+        url = str(m.get("url", "") or "").strip()
+        word_count = m.get("word_count", 0)
+
+        stable_seed = url or "|".join([title, speaker, speech_date])
+        if not stable_seed.strip("|"):
+            stable_seed = text[:500]
+        doc_id = hashlib.sha256(f"{org_key}|{stable_seed}".encode("utf-8")).hexdigest()[:24]
+
+        rendered = (
+            f"Organization: {org_label}\n"
+            f"Doc ID: {doc_id}\n"
+            f"Title: {title}\n"
+            f"Speaker: {speaker}\n"
+            f"Date: {speech_date}\n"
+            f"URL: {url}\n"
+            f"Word Count: {word_count}\n\n"
+            f"{text}\n"
         )
-        chunks.append(entry)
+        content_hash = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
 
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write("SEC SPEECH CORPUS\n\n")
-        f.write("".join(chunks))
+        docs[doc_id] = {
+            "doc_id": doc_id,
+            "title": title,
+            "speaker": speaker,
+            "date": speech_date,
+            "url": url,
+            "word_count": word_count,
+            "filename": f"{org_key}_{doc_id}.txt",
+            "rendered_text": rendered,
+            "content_hash": content_hash,
+        }
 
-    return out_path
+    return docs
 
 
-def _ensure_vector_store(client, raw_data_obj, force_rebuild=False):
-    """Return (vector_store_id, rebuilt_flag) for the current dataset."""
-    signature = _build_dataset_signature(raw_data_obj)
-    state = _load_vector_state()
-    existing_id = state.get("vector_store_id")
+def _plan_doc_sync(indexed_docs, current_docs):
+    indexed_ids = set(indexed_docs.keys())
+    current_ids = set(current_docs.keys())
 
-    if existing_id and state.get("dataset_signature") == signature and not force_rebuild:
+    add_ids = sorted(current_ids - indexed_ids)
+    remove_ids = sorted(indexed_ids - current_ids)
+    update_ids = sorted(
+        doc_id
+        for doc_id in (current_ids & indexed_ids)
+        if (indexed_docs.get(doc_id, {}).get("content_hash") or "") != (current_docs.get(doc_id, {}).get("content_hash") or "")
+    )
+    unchanged_ids = sorted((current_ids & indexed_ids) - set(update_ids))
+
+    return add_ids, update_ids, remove_ids, unchanged_ids
+
+
+def _chat_doc_path(org_key, doc_id):
+    base = Path("data/chat_docs") / org_key
+    base.mkdir(parents=True, exist_ok=True)
+    return base / f"{doc_id}.txt"
+
+
+def _write_chat_doc_file(org_key, doc):
+    path = _chat_doc_path(org_key, doc["doc_id"])
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(doc["rendered_text"])
+    return path
+
+
+def _extract_file_ref(upload_obj):
+    data = _normalize_obj(upload_obj)
+    vector_store_file_id = data.get("id") or ""
+    file_id = data.get("file_id") or ""
+    if not file_id and isinstance(vector_store_file_id, str) and not vector_store_file_id.startswith("vsf_"):
+        file_id = vector_store_file_id
+    return {
+        "file_id": file_id,
+        "vector_store_file_id": vector_store_file_id,
+    }
+
+
+def _upload_doc_to_vector_store(client, vector_store_id, org_key, doc):
+    file_path = _write_chat_doc_file(org_key, doc)
+    with open(file_path, "rb") as f:
+        uploaded = client.vector_stores.files.upload_and_poll(
+            vector_store_id=vector_store_id,
+            file=f,
+        )
+    file_ref = _extract_file_ref(uploaded)
+    if not file_ref.get("file_id"):
+        raise RuntimeError("Vector-store upload did not return a file ID.")
+    return file_ref
+
+
+def _delete_indexed_file(client, vector_store_id, indexed_entry):
+    file_id = str(indexed_entry.get("file_id", "") or "").strip()
+    vs_file_id = str(indexed_entry.get("vector_store_file_id", "") or "").strip()
+
+    if file_id:
+        client.vector_stores.files.delete(file_id, vector_store_id=vector_store_id)
+        return
+    if vs_file_id:
+        client.vector_stores.files.delete(vs_file_id, vector_store_id=vector_store_id)
+
+
+def _get_org_vector_state(state, org_key, org_label):
+    stores = state.setdefault("stores", {})
+    org_state = stores.get(org_key, {})
+    if not isinstance(org_state, dict):
+        org_state = {}
+    org_state.setdefault("org_label", org_label)
+    org_state.setdefault("vector_store_id", "")
+    org_state.setdefault("docs", {})
+    return org_state
+
+
+def _ensure_org_vector_store(client, org_state, org_label, force_rebuild=False):
+    existing_id = str(org_state.get("vector_store_id", "") or "").strip()
+
+    if existing_id and not force_rebuild:
         try:
             client.vector_stores.retrieve(existing_id)
-            return existing_id, False
+            return existing_id, False, ""
         except Exception:
             pass
 
-    corpus_file = _render_corpus_file(raw_data_obj)
     vector_store = client.vector_stores.create(
-        name=f"SEC Speeches ({datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC)"
+        name=f"{org_label} Speeches ({datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC)"
+    )
+    return vector_store.id, True, existing_id
+
+
+def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebuild=False):
+    """Incrementally sync an org-specific vector store and return a sync report."""
+    state = _load_vector_state()
+    stores = state.setdefault("stores", {})
+    org_state = _get_org_vector_state(state, org_key, org_label)
+
+    current_docs = _build_org_documents(raw_data_obj, org_key, org_label)
+    indexed_docs = org_state.get("docs", {})
+    if not isinstance(indexed_docs, dict):
+        indexed_docs = {}
+
+    # If we only have legacy aggregate counts (no per-doc manifest), rebuild once
+    # so future syncs are truly incremental without duplicate legacy corpus files.
+    legacy_without_manifest = (
+        not force_rebuild
+        and bool(str(org_state.get("vector_store_id", "") or "").strip())
+        and not indexed_docs
+        and int(org_state.get("doc_count_indexed", 0) or 0) > 0
+    )
+    if legacy_without_manifest:
+        force_rebuild = True
+
+    add_ids, update_ids, remove_ids, unchanged_ids = _plan_doc_sync(indexed_docs, current_docs)
+    vector_store_id, created_new_store, replaced_store_id = _ensure_org_vector_store(
+        client,
+        org_state,
+        org_label,
+        force_rebuild=force_rebuild,
     )
 
-    with open(corpus_file, "rb") as f:
-        # SDK helper to upload and block until indexing is complete.
+    if force_rebuild or created_new_store:
+        add_ids = sorted(current_docs.keys())
+        update_ids = []
+        remove_ids = []
+        unchanged_ids = []
+        indexed_docs = {}
+
+    if not add_ids and not update_ids and not remove_ids and not force_rebuild and not created_new_store:
+        org_state.update(
+            {
+                "org_label": org_label,
+                "vector_store_id": vector_store_id,
+                "docs": indexed_docs,
+                "doc_count_indexed": len(indexed_docs),
+                "updated_at": _utc_now_iso(),
+                "last_sync": {
+                    "planned_add": 0,
+                    "planned_update": 0,
+                    "planned_remove": 0,
+                    "uploaded": 0,
+                    "deleted": 0,
+                    "failed": [],
+                    "sync_mode": "noop",
+                },
+            }
+        )
+        stores[org_key] = org_state
+        state["version"] = 2
+        state["updated_at"] = _utc_now_iso()
+        _save_vector_state(state)
+        return {
+            "vector_store_id": vector_store_id,
+            "rebuilt": False,
+            "created_new_store": False,
+            "up_to_date": True,
+            "stats": {"add": 0, "update": 0, "remove": 0, "uploaded": 0, "deleted": 0},
+            "failed": [],
+            "doc_count": len(indexed_docs),
+        }
+
+    failed = []
+    deleted_count = 0
+    uploaded_count = 0
+
+    # Remove stale files before uploading updates when reusing the same store.
+    if not (force_rebuild or created_new_store):
+        for doc_id in remove_ids + update_ids:
+            entry = indexed_docs.get(doc_id, {})
+            try:
+                _delete_indexed_file(client, vector_store_id, entry)
+                deleted_count += 1
+            except Exception as e:
+                failed.append(
+                    {
+                        "doc_id": doc_id,
+                        "title": entry.get("title", ""),
+                        "stage": "delete",
+                        "error": str(e),
+                    }
+                )
+
+    next_docs = {}
+    for doc_id in unchanged_ids:
+        entry = indexed_docs.get(doc_id, {})
+        if entry:
+            next_docs[doc_id] = entry
+
+    for doc_id in add_ids + update_ids:
+        doc = current_docs.get(doc_id)
+        if not doc:
+            continue
         try:
-            client.vector_stores.file_batches.upload_and_poll(
-                vector_store_id=vector_store.id,
-                files=[f],
-            )
-        except Exception:
-            # Fallback for SDK variants that expose files.upload_and_poll.
-            client.vector_stores.files.upload_and_poll(
-                vector_store_id=vector_store.id,
-                file=f,
+            file_ref = _upload_doc_to_vector_store(client, vector_store_id, org_key, doc)
+            next_docs[doc_id] = {
+                "doc_id": doc_id,
+                "title": doc.get("title", ""),
+                "speaker": doc.get("speaker", ""),
+                "date": doc.get("date", ""),
+                "url": doc.get("url", ""),
+                "word_count": doc.get("word_count", 0),
+                "filename": doc.get("filename", ""),
+                "content_hash": doc.get("content_hash", ""),
+                "file_id": file_ref.get("file_id", ""),
+                "vector_store_file_id": file_ref.get("vector_store_file_id", ""),
+                "indexed_at": _utc_now_iso(),
+            }
+            uploaded_count += 1
+        except Exception as e:
+            failed.append(
+                {
+                    "doc_id": doc_id,
+                    "title": doc.get("title", ""),
+                    "stage": "upload",
+                    "error": str(e),
+                }
             )
 
-    _save_vector_state(
+    org_state.update(
         {
-            "vector_store_id": vector_store.id,
-            "dataset_signature": signature,
-            "source_file": str(corpus_file),
-            "indexed_speeches": len(raw_data_obj.get("speeches", [])),
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "org_label": org_label,
+            "vector_store_id": vector_store_id,
+            "docs": next_docs,
+            "doc_count_indexed": len(next_docs),
+            "updated_at": _utc_now_iso(),
+            "last_sync": {
+                "planned_add": len(add_ids),
+                "planned_update": len(update_ids),
+                "planned_remove": len(remove_ids),
+                "uploaded": uploaded_count,
+                "deleted": deleted_count,
+                "failed": failed,
+                "sync_mode": "rebuild" if (force_rebuild or created_new_store) else "incremental",
+            },
         }
     )
-    return vector_store.id, True
+    stores[org_key] = org_state
+    state["version"] = 2
+    state["updated_at"] = _utc_now_iso()
+    _save_vector_state(state)
+
+    old_store_deleted = False
+    old_store_delete_error = ""
+    if force_rebuild and replaced_store_id and replaced_store_id != vector_store_id:
+        try:
+            client.vector_stores.delete(replaced_store_id)
+            old_store_deleted = True
+        except Exception as e:
+            old_store_delete_error = str(e)
+
+    return {
+        "vector_store_id": vector_store_id,
+        "rebuilt": bool(force_rebuild or created_new_store),
+        "created_new_store": created_new_store,
+        "up_to_date": False,
+        "stats": {
+            "add": len(add_ids),
+            "update": len(update_ids),
+            "remove": len(remove_ids),
+            "uploaded": uploaded_count,
+            "deleted": deleted_count,
+        },
+        "failed": failed,
+        "doc_count": len(next_docs),
+        "old_store_deleted": old_store_deleted,
+        "old_store_delete_error": old_store_delete_error,
+    }
+
+
+def _get_org_index_status(raw_data_obj, org_key, org_label):
+    state = _load_vector_state()
+    org_state = _get_org_vector_state(state, org_key, org_label)
+    indexed_docs = org_state.get("docs", {})
+    if not isinstance(indexed_docs, dict):
+        indexed_docs = {}
+    current_docs = _build_org_documents(raw_data_obj, org_key, org_label)
+    add_ids, update_ids, remove_ids, _ = _plan_doc_sync(indexed_docs, current_docs)
+    return {
+        "vector_store_id": str(org_state.get("vector_store_id", "") or "").strip(),
+        "indexed_docs": len(indexed_docs),
+        "current_docs": len(current_docs),
+        "pending_add": len(add_ids),
+        "pending_update": len(update_ids),
+        "pending_remove": len(remove_ids),
+    }
 
 
 def _normalize_obj(obj):
@@ -795,43 +1102,107 @@ elif page == "Agent Chat":
         index=available_models.index(default_model),
     )
 
-    vector_state = _load_vector_state()
-    active_vector_store_id = st.session_state.get("vector_store_id") or vector_state.get("vector_store_id")
+    org_options = _list_org_options(raw_data)
+    org_labels = [o["label"] for o in org_options]
+    if "agent_org_key" not in st.session_state:
+        st.session_state["agent_org_key"] = org_options[0]["key"]
+
+    default_org_idx = 0
+    for idx, o in enumerate(org_options):
+        if o["key"] == st.session_state.get("agent_org_key"):
+            default_org_idx = idx
+            break
+    selected_org_label = st.selectbox("Organization", org_labels, index=default_org_idx)
+    selected_org = next((o for o in org_options if o["label"] == selected_org_label), org_options[0])
+    org_key = selected_org["key"]
+    org_label = selected_org["label"]
+    st.session_state["agent_org_key"] = org_key
+
+    index_status = _get_org_index_status(raw_data, org_key, org_label)
+    if "vector_store_ids_by_org" not in st.session_state:
+        st.session_state["vector_store_ids_by_org"] = {}
+
+    active_vector_store_id = (
+        st.session_state["vector_store_ids_by_org"].get(org_key) or index_status.get("vector_store_id")
+    )
     if active_vector_store_id:
-        st.session_state["vector_store_id"] = active_vector_store_id
+        st.session_state["vector_store_ids_by_org"][org_key] = active_vector_store_id
 
     if active_vector_store_id:
-        st.caption(f"Current vector store: `{active_vector_store_id}`")
+        st.caption(f"Current vector store for {org_label}: `{active_vector_store_id}`")
     else:
-        st.caption("No vector store indexed yet.")
+        st.caption(f"No vector store indexed yet for {org_label}.")
+
+    idx_col1, idx_col2, idx_col3, idx_col4 = st.columns(4)
+    idx_col1.metric("Corpus Docs", index_status.get("current_docs", 0))
+    idx_col2.metric("Indexed Docs", index_status.get("indexed_docs", 0))
+    idx_col3.metric(
+        "Pending Add/Update",
+        index_status.get("pending_add", 0) + index_status.get("pending_update", 0),
+    )
+    idx_col4.metric("Pending Remove", index_status.get("pending_remove", 0))
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Build/Sync Knowledge Index", type="primary"):
-            with st.spinner("Building vector index from speeches..."):
+            with st.spinner(f"Syncing {org_label} knowledge index..."):
                 try:
-                    vector_store_id, rebuilt = _ensure_vector_store(client, raw_data, force_rebuild=False)
-                    st.session_state["vector_store_id"] = vector_store_id
-                    if rebuilt:
-                        st.success("Knowledge index rebuilt.")
-                    else:
+                    report = _sync_org_vector_store(
+                        client=client,
+                        raw_data_obj=raw_data,
+                        org_key=org_key,
+                        org_label=org_label,
+                        force_rebuild=False,
+                    )
+                    vector_store_id = report.get("vector_store_id", "")
+                    if vector_store_id:
+                        st.session_state["vector_store_ids_by_org"][org_key] = vector_store_id
+
+                    if report.get("up_to_date"):
                         st.success("Knowledge index is up to date.")
+                    else:
+                        stats = report.get("stats", {})
+                        st.success(
+                            "Knowledge index sync complete: "
+                            f"+{stats.get('add', 0)} add, "
+                            f"~{stats.get('update', 0)} update, "
+                            f"-{stats.get('remove', 0)} remove."
+                        )
+                        if report.get("failed"):
+                            st.warning(f"{len(report['failed'])} document operations failed.")
+                            for item in report["failed"][:5]:
+                                st.write(f"- {item.get('stage', 'unknown')}: {item.get('title', item.get('doc_id', ''))}")
                 except Exception as e:
                     st.error(f"Indexing failed: {e}")
     with col2:
         if st.button("Force Rebuild Index"):
-            with st.spinner("Rebuilding vector index..."):
+            with st.spinner(f"Rebuilding {org_label} knowledge index..."):
                 try:
-                    vector_store_id, _ = _ensure_vector_store(client, raw_data, force_rebuild=True)
-                    st.session_state["vector_store_id"] = vector_store_id
+                    report = _sync_org_vector_store(
+                        client=client,
+                        raw_data_obj=raw_data,
+                        org_key=org_key,
+                        org_label=org_label,
+                        force_rebuild=True,
+                    )
+                    vector_store_id = report.get("vector_store_id", "")
+                    if vector_store_id:
+                        st.session_state["vector_store_ids_by_org"][org_key] = vector_store_id
                     st.success("Knowledge index rebuilt from scratch.")
+                    if report.get("failed"):
+                        st.warning(f"{len(report['failed'])} document operations failed during rebuild.")
+                    if report.get("old_store_delete_error"):
+                        st.info(f"Previous vector store cleanup skipped: {report['old_store_delete_error']}")
                 except Exception as e:
                     st.error(f"Rebuild failed: {e}")
 
-    if "chat_messages" not in st.session_state:
-        st.session_state["chat_messages"] = []
+    if "chat_messages_by_org" not in st.session_state:
+        st.session_state["chat_messages_by_org"] = {}
+    if org_key not in st.session_state["chat_messages_by_org"]:
+        st.session_state["chat_messages_by_org"][org_key] = []
+    chat_messages = st.session_state["chat_messages_by_org"][org_key]
 
-    for msg in st.session_state["chat_messages"]:
+    for msg in chat_messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             if msg.get("results"):
@@ -843,16 +1214,16 @@ elif page == "Agent Chat":
                         if r.get("snippet"):
                             st.caption(r["snippet"])
 
-    user_prompt = st.chat_input("Ask a question about SEC speeches...")
+    user_prompt = st.chat_input(f"Ask a question about {org_label} speeches...")
     if user_prompt:
-        st.session_state["chat_messages"].append({"role": "user", "content": user_prompt})
+        chat_messages.append({"role": "user", "content": user_prompt})
         with st.chat_message("user"):
             st.markdown(user_prompt)
 
-        vector_store_id = st.session_state.get("vector_store_id")
+        vector_store_id = st.session_state.get("vector_store_ids_by_org", {}).get(org_key)
         if not vector_store_id:
             err_msg = "Please click **Build/Sync Knowledge Index** before chatting."
-            st.session_state["chat_messages"].append({"role": "assistant", "content": err_msg})
+            chat_messages.append({"role": "assistant", "content": err_msg})
             with st.chat_message("assistant"):
                 st.error(err_msg)
         else:
@@ -892,7 +1263,7 @@ elif page == "Agent Chat":
                             if r.get("snippet"):
                                 st.caption(r["snippet"])
 
-            st.session_state["chat_messages"].append(
+            chat_messages.append(
                 {
                     "role": "assistant",
                     "content": answer,
