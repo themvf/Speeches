@@ -254,6 +254,55 @@ def _ask_agent(client, vector_store_id, question, model_name):
     }
 
 
+def _candidate_chat_models():
+    return ["gpt-5.1", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini"]
+
+
+def _get_accessible_chat_models(client):
+    """Return preferred chat models that are available to this project."""
+    candidates = _candidate_chat_models()
+    try:
+        listed = client.models.list()
+        ids = {getattr(m, "id", "") for m in getattr(listed, "data", [])}
+        available = [m for m in candidates if m in ids]
+        if available:
+            return available
+    except Exception:
+        pass
+    return candidates
+
+
+def _is_model_access_error(exc):
+    msg = str(exc).lower()
+    return (
+        "model_not_found" in msg
+        or "does not have access to model" in msg
+        or "access to model" in msg
+    )
+
+
+def _ask_agent_with_fallback(client, vector_store_id, question, preferred_model, model_pool):
+    """Try preferred model first, then fallback models on access errors."""
+    ordered = [preferred_model] + [m for m in model_pool if m != preferred_model]
+    last_error = None
+    for idx, model_name in enumerate(ordered):
+        try:
+            result = _ask_agent(client, vector_store_id, question, model_name)
+            return {
+                "result": result,
+                "used_model": model_name,
+                "fallback_used": idx > 0,
+            }
+        except Exception as e:
+            last_error = e
+            if not _is_model_access_error(e):
+                raise
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("No model available for chat request.")
+
+
 def _load_raw_data():
     """Load dataset from GCS (preferred) or local file (fallback)."""
     storage = _get_gcs_storage()
@@ -655,10 +704,15 @@ elif page == "Agent Chat":
         st.error(st.session_state.get("_openai_error", "Failed to initialize OpenAI client."))
         st.stop()
 
+    available_models = _get_accessible_chat_models(client)
+    if not available_models:
+        available_models = _candidate_chat_models()
+
+    default_model = "gpt-5.1" if "gpt-5.1" in available_models else available_models[0]
     model_name = st.selectbox(
         "Model",
-        ["gpt-5-mini", "gpt-5.1"],
-        index=0,
+        available_models,
+        index=available_models.index(default_model),
     )
 
     vector_state = _load_vector_state()
@@ -725,14 +779,30 @@ elif page == "Agent Chat":
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
                     try:
-                        result = _ask_agent(client, vector_store_id, user_prompt, model_name)
+                        agent_out = _ask_agent_with_fallback(
+                            client=client,
+                            vector_store_id=vector_store_id,
+                            question=user_prompt,
+                            preferred_model=model_name,
+                            model_pool=available_models,
+                        )
+                        result = agent_out.get("result", {})
                         answer = result.get("answer", "No answer returned.")
                         sources = result.get("results", [])
+                        used_model = agent_out.get("used_model", model_name)
+                        fallback_used = agent_out.get("fallback_used", False)
                     except Exception as e:
                         answer = f"Chat request failed: {e}"
                         sources = []
+                        used_model = model_name
+                        fallback_used = False
 
                 st.markdown(answer)
+                if fallback_used and used_model != model_name:
+                    st.info(
+                        f"Selected model `{model_name}` was unavailable for this project. "
+                        f"Used fallback model `{used_model}`."
+                    )
                 if sources:
                     with st.expander("Retrieved Sources"):
                         for r in sources[:8]:
