@@ -177,7 +177,20 @@ class SECScraper:
                     # Extract date, title, speaker, type from table cells
                     date_text = cells[0].get_text(strip=True) if len(cells) > 0 else ""
                     title_text = link.get_text(strip=True)
-                    speaker_text = cells[2].get_text(strip=True) if len(cells) > 2 else ""
+                    speaker_text = ""
+                    if len(cells) > 2:
+                        speaker_cell = cells[2]
+                        speaker_links = [
+                            a.get_text(" ", strip=True)
+                            for a in speaker_cell.find_all("a")
+                            if a.get_text(" ", strip=True)
+                        ]
+                        # Prefer individual linked names when available.
+                        if speaker_links:
+                            speaker_text = "; ".join(speaker_links)
+                        else:
+                            # Fallback: preserve spaces for plain text cells.
+                            speaker_text = speaker_cell.get_text(" ", strip=True)
                     type_text = cells[3].get_text(strip=True) if len(cells) > 3 else ""
 
                     # Apply date filtering (listing is reverse-chronological)

@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from collections import Counter
+from speaker_utils import format_speakers
 
 
 class SpeechAnalysisPipeline:
@@ -54,7 +55,7 @@ class SpeechAnalysisPipeline:
 
             row = {
                 "title": metadata.get("title", ""),
-                "speaker": metadata.get("speaker", ""),
+                "speaker": format_speakers(metadata.get("speaker", "")),
                 "date": metadata.get("date", ""),
                 "url": metadata.get("url", ""),
                 "word_count": metadata.get("word_count", 0),

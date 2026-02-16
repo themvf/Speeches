@@ -10,6 +10,7 @@ import pandas as pd
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from analysis_pipeline import SpeechAnalysisPipeline
+from speaker_utils import extract_speakers, format_speakers, primary_speaker
 
 
 # --- Page Config ---
@@ -109,6 +110,20 @@ def _sort_table_by_date(df: pd.DataFrame, date_col: str = "date") -> pd.DataFram
     return out
 
 
+def _explode_speakers(df: pd.DataFrame) -> pd.DataFrame:
+    """Expand each speech row into one row per individual speaker."""
+    if df.empty or "speaker_list" not in df.columns:
+        return pd.DataFrame(columns=["speaker_individual"])
+
+    exploded = df.explode("speaker_list").copy()
+    exploded = exploded.rename(columns={"speaker_list": "speaker_individual"})
+    exploded["speaker_individual"] = (
+        exploded["speaker_individual"].fillna("").astype(str).str.strip()
+    )
+    exploded = exploded[exploded["speaker_individual"] != ""]
+    return exploded
+
+
 @st.cache_data(ttl=300)
 def load_data(_cache_buster=None):
     """Load and cache the speech dataset."""
@@ -119,9 +134,15 @@ def load_data(_cache_buster=None):
         m = speech.get("metadata", {})
         c = speech.get("content", {})
         v = speech.get("validation", {})
+        raw_speaker = m.get("speaker", "Unknown")
+        speaker_list = extract_speakers(raw_speaker)
+        speaker_display = "; ".join(speaker_list) if speaker_list else format_speakers(raw_speaker)
+        speaker_primary = primary_speaker(raw_speaker) or speaker_display or "Unknown"
         rows.append({
             "title": m.get("title", ""),
-            "speaker": m.get("speaker", "Unknown"),
+            "speaker": speaker_display or "Unknown",
+            "speaker_primary": speaker_primary,
+            "speaker_list": speaker_list,
             "date": m.get("date", ""),
             "url": m.get("url", ""),
             "word_count": m.get("word_count", 0),
@@ -162,6 +183,7 @@ def run_analysis(raw_data_json):
 
 # --- Load Data ---
 raw_data, df = load_data()
+speaker_df = _explode_speakers(df)
 
 raw_data_json = json.dumps(raw_data)
 sentiment_data, topic_data, commissioner_data = run_analysis(raw_data_json)
@@ -176,7 +198,7 @@ page = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"**{len(df)} speeches loaded**")
-st.sidebar.markdown(f"**{df['speaker'].nunique()} commissioners**")
+st.sidebar.markdown(f"**{speaker_df['speaker_individual'].nunique()} unique speakers**")
 st.sidebar.markdown(f"**{df['word_count'].sum():,} total words**")
 
 # GCS status indicator — with debug info
@@ -214,7 +236,7 @@ if page == "Overview":
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Speeches", len(df))
-    col2.metric("Commissioners", df["speaker"].nunique())
+    col2.metric("Unique Speakers", speaker_df["speaker_individual"].nunique())
     col3.metric("Total Words", f"{df['word_count'].sum():,}")
     col4.metric("Avg Words/Speech", f"{df['word_count'].mean():,.0f}")
 
@@ -222,11 +244,11 @@ if page == "Overview":
 
     left, right = st.columns(2)
     with left:
-        st.subheader("Speeches by Commissioner")
-        st.bar_chart(df["speaker"].value_counts())
+        st.subheader("Speeches by Speaker")
+        st.bar_chart(speaker_df["speaker_individual"].value_counts())
     with right:
-        st.subheader("Word Count by Commissioner")
-        st.bar_chart(df.groupby("speaker")["word_count"].sum().sort_values(ascending=False))
+        st.subheader("Word Count by Speaker")
+        st.bar_chart(speaker_df.groupby("speaker_individual")["word_count"].sum().sort_values(ascending=False))
 
     st.markdown("---")
 
@@ -329,14 +351,14 @@ elif page == "Speech Explorer":
 
     col1, col2 = st.columns(2)
     with col1:
-        speakers = ["All"] + sorted(df["speaker"].unique().tolist())
-        selected_speaker = st.selectbox("Filter by Commissioner", speakers)
+        speakers = ["All"] + sorted(speaker_df["speaker_individual"].unique().tolist())
+        selected_speaker = st.selectbox("Filter by Speaker", speakers)
     with col2:
         search_term = st.text_input("Search in titles")
 
     filtered = df.copy()
     if selected_speaker != "All":
-        filtered = filtered[filtered["speaker"] == selected_speaker]
+        filtered = filtered[filtered["speaker_list"].apply(lambda s: selected_speaker in s if isinstance(s, list) else False)]
     if search_term:
         filtered = filtered[filtered["title"].str.contains(search_term, case=False, na=False)]
     filtered = _sort_table_by_date(filtered, date_col="date")
@@ -417,6 +439,8 @@ elif page == "Extract Speeches":
     discovered = st.session_state.discovered
     if discovered:
         disc_df = _sort_table_by_date(pd.DataFrame(discovered), date_col="date")
+        if "speaker" in disc_df.columns:
+            disc_df["speaker"] = disc_df["speaker"].apply(format_speakers)
         discovered_sorted = disc_df.to_dict(orient="records")
 
         st.subheader(f"{len(discovered_sorted)} new speeches available")

@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from sec_scraper_free import SECScraper
+from speaker_utils import format_speakers
 
 
 class SECSpeechAnalyzer:
@@ -221,9 +222,12 @@ class SECSpeechAnalyzer:
             if listing_metadata.get("date"):
                 date = listing_metadata["date"]
             if listing_metadata.get("speaker"):
-                speaker = listing_metadata["speaker"]
+                speaker = format_speakers(listing_metadata["speaker"])
             if not title and listing_metadata.get("title"):
                 title = listing_metadata["title"]
+
+        if speaker:
+            speaker = format_speakers(speaker)
 
         full_text = self.extract_speech_content_improved(raw_content)
 
