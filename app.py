@@ -7,7 +7,7 @@ Streamlit app for exploring and analyzing SEC Commissioner speeches.
 import json
 import streamlit as st
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from analysis_pipeline import SpeechAnalysisPipeline
 
@@ -57,6 +57,58 @@ def _load_raw_data():
         return json.load(f), None
 
 
+def _parse_single_date(value):
+    """Parse one SEC date string into a Timestamp (or NaT)."""
+    if pd.isna(value):
+        return pd.NaT
+
+    text = str(value).strip()
+    if not text:
+        return pd.NaT
+
+    # Normalize month abbreviations like "Jan. 30, 2026".
+    text = (
+        text.replace("Jan.", "Jan")
+        .replace("Feb.", "Feb")
+        .replace("Mar.", "Mar")
+        .replace("Apr.", "Apr")
+        .replace("Jun.", "Jun")
+        .replace("Jul.", "Jul")
+        .replace("Aug.", "Aug")
+        .replace("Sep.", "Sep")
+        .replace("Sept.", "Sep")
+        .replace("Oct.", "Oct")
+        .replace("Nov.", "Nov")
+        .replace("Dec.", "Dec")
+    )
+
+    for fmt in ("%B %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            return pd.Timestamp(datetime.strptime(text, fmt))
+        except ValueError:
+            continue
+
+    return pd.to_datetime(text, errors="coerce")
+
+
+def _parse_date_series(series: pd.Series) -> pd.Series:
+    """Parse mixed SEC date strings into datetimes for reliable sorting."""
+    return series.apply(_parse_single_date)
+
+
+def _sort_table_by_date(df: pd.DataFrame, date_col: str = "date") -> pd.DataFrame:
+    """Sort a table by date descending when a date column is present."""
+    if df.empty or date_col not in df.columns:
+        return df
+
+    out = df.copy()
+    sort_col = "__date_sort"
+    out[sort_col] = _parse_date_series(out[date_col])
+    out = out.sort_values(by=[sort_col], ascending=False, na_position="last")
+    out = out.drop(columns=[sort_col])
+    return out
+
+
 @st.cache_data(ttl=300)
 def load_data(_cache_buster=None):
     """Load and cache the speech dataset."""
@@ -80,9 +132,15 @@ def load_data(_cache_buster=None):
         })
 
     df = pd.DataFrame(rows)
-    try:
-        df["date_parsed"] = pd.to_datetime(df["date"], errors="coerce")
-    except Exception:
+    if not df.empty and "date" in df.columns:
+        df["date_parsed"] = _parse_date_series(df["date"])
+        sort_cols = ["date_parsed"]
+        sort_asc = [False]
+        if "title" in df.columns:
+            sort_cols.append("title")
+            sort_asc.append(True)
+        df = df.sort_values(by=sort_cols, ascending=sort_asc, na_position="last").reset_index(drop=True)
+    else:
         df["date_parsed"] = pd.NaT
 
     return raw_data, df
@@ -281,6 +339,7 @@ elif page == "Speech Explorer":
         filtered = filtered[filtered["speaker"] == selected_speaker]
     if search_term:
         filtered = filtered[filtered["title"].str.contains(search_term, case=False, na=False)]
+    filtered = _sort_table_by_date(filtered, date_col="date")
 
     st.markdown(f"**Showing {len(filtered)} of {len(df)} speeches**")
     st.markdown("---")
@@ -351,23 +410,25 @@ elif page == "Extract Speeches":
     # --- Show discovered speeches ---
     discovered = st.session_state.discovered
     if discovered:
-        st.subheader(f"{len(discovered)} new speeches available")
-        disc_df = pd.DataFrame(discovered)
+        disc_df = _sort_table_by_date(pd.DataFrame(discovered), date_col="date")
+        discovered_sorted = disc_df.to_dict(orient="records")
+
+        st.subheader(f"{len(discovered_sorted)} new speeches available")
         st.dataframe(
             disc_df[["date", "title", "speaker", "type"]],
             use_container_width=True,
             hide_index=True,
         )
 
-        if len(discovered) == 1:
+        if len(discovered_sorted) == 1:
             max_extract = 1
             st.caption("1 speech found. It will be extracted.")
         else:
             max_extract = st.slider(
                 "Speeches to extract",
                 min_value=1,
-                max_value=len(discovered),
-                value=len(discovered),
+                max_value=len(discovered_sorted),
+                value=len(discovered_sorted),
             )
 
         if st.button("Extract Speeches"):
@@ -378,7 +439,7 @@ elif page == "Extract Speeches":
             extracted = []
             failed = []
 
-            for i, entry in enumerate(discovered[:max_extract]):
+            for i, entry in enumerate(discovered_sorted[:max_extract]):
                 progress.progress(
                     (i + 1) / max_extract,
                     text=f"Extracting {i + 1}/{max_extract}: {entry['title'][:50]}...",
