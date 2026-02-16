@@ -6,10 +6,12 @@ Streamlit app for exploring and analyzing SEC Commissioner speeches.
 
 import json
 import hashlib
+import time
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from analysis_pipeline import SpeechAnalysisPipeline
 from speaker_utils import extract_speakers, format_speakers, primary_speaker
 
@@ -281,16 +283,38 @@ def _extract_file_ref(upload_obj):
 
 
 def _upload_doc_to_vector_store(client, vector_store_id, org_key, doc):
+    def _is_retryable_upload_error(exc):
+        msg = str(exc).lower()
+        retry_signals = [
+            "rate limit",
+            "timeout",
+            "timed out",
+            "temporar",
+            "try again",
+            "connection",
+            "502",
+            "503",
+            "504",
+        ]
+        return any(token in msg for token in retry_signals)
+
     file_path = _write_chat_doc_file(org_key, doc)
-    with open(file_path, "rb") as f:
-        uploaded = client.vector_stores.files.upload_and_poll(
-            vector_store_id=vector_store_id,
-            file=f,
-        )
-    file_ref = _extract_file_ref(uploaded)
-    if not file_ref.get("file_id"):
-        raise RuntimeError("Vector-store upload did not return a file ID.")
-    return file_ref
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with open(file_path, "rb") as f:
+                uploaded = client.vector_stores.files.upload_and_poll(
+                    vector_store_id=vector_store_id,
+                    file=f,
+                )
+            file_ref = _extract_file_ref(uploaded)
+            if not file_ref.get("file_id"):
+                raise RuntimeError("Vector-store upload did not return a file ID.")
+            return file_ref
+        except Exception as e:
+            if attempt >= max_attempts or not _is_retryable_upload_error(e):
+                raise
+            time.sleep(min(8, 2 ** attempt))
 
 
 def _delete_indexed_file(client, vector_store_id, indexed_entry):
@@ -451,41 +475,95 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
         if entry:
             next_docs[doc_id] = entry
 
+    upload_items = []
     for doc_id in upload_targets:
         doc = current_docs.get(doc_id)
         if not doc:
             completed_ops += 1
             _emit_progress(completed_ops, total_ops, f"Skipped missing doc {doc_id}")
             continue
-        display = _display_name(doc.get("title", ""), doc_id)
-        _emit_progress(completed_ops, total_ops, f"Uploading {display}")
-        try:
-            file_ref = _upload_doc_to_vector_store(client, vector_store_id, org_key, doc)
-            next_docs[doc_id] = {
-                "doc_id": doc_id,
-                "title": doc.get("title", ""),
-                "speaker": doc.get("speaker", ""),
-                "date": doc.get("date", ""),
-                "url": doc.get("url", ""),
-                "word_count": doc.get("word_count", 0),
-                "filename": doc.get("filename", ""),
-                "content_hash": doc.get("content_hash", ""),
-                "file_id": file_ref.get("file_id", ""),
-                "vector_store_file_id": file_ref.get("vector_store_file_id", ""),
-                "indexed_at": _utc_now_iso(),
-            }
-            uploaded_count += 1
-        except Exception as e:
-            failed.append(
-                {
-                    "doc_id": doc_id,
-                    "title": doc.get("title", ""),
-                    "stage": "upload",
-                    "error": str(e),
-                }
+        upload_items.append((doc_id, doc))
+
+    if upload_items:
+        max_workers = min(6, len(upload_items))
+        if max_workers == 1:
+            for doc_id, doc in upload_items:
+                display = _display_name(doc.get("title", ""), doc_id)
+                _emit_progress(completed_ops, total_ops, f"Uploading {display}")
+                try:
+                    file_ref = _upload_doc_to_vector_store(client, vector_store_id, org_key, doc)
+                    next_docs[doc_id] = {
+                        "doc_id": doc_id,
+                        "title": doc.get("title", ""),
+                        "speaker": doc.get("speaker", ""),
+                        "date": doc.get("date", ""),
+                        "url": doc.get("url", ""),
+                        "word_count": doc.get("word_count", 0),
+                        "filename": doc.get("filename", ""),
+                        "content_hash": doc.get("content_hash", ""),
+                        "file_id": file_ref.get("file_id", ""),
+                        "vector_store_file_id": file_ref.get("vector_store_file_id", ""),
+                        "indexed_at": _utc_now_iso(),
+                    }
+                    uploaded_count += 1
+                except Exception as e:
+                    failed.append(
+                        {
+                            "doc_id": doc_id,
+                            "title": doc.get("title", ""),
+                            "stage": "upload",
+                            "error": str(e),
+                        }
+                    )
+                completed_ops += 1
+                _emit_progress(completed_ops, total_ops, f"Processed upload for {display}")
+        else:
+            _emit_progress(
+                completed_ops,
+                total_ops,
+                f"Uploading {len(upload_items)} documents with {max_workers} workers",
             )
-        completed_ops += 1
-        _emit_progress(completed_ops, total_ops, f"Processed upload for {display}")
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                future_map = {
+                    pool.submit(
+                        _upload_doc_to_vector_store,
+                        client,
+                        vector_store_id,
+                        org_key,
+                        doc,
+                    ): (doc_id, doc)
+                    for doc_id, doc in upload_items
+                }
+                for future in as_completed(future_map):
+                    doc_id, doc = future_map[future]
+                    display = _display_name(doc.get("title", ""), doc_id)
+                    try:
+                        file_ref = future.result()
+                        next_docs[doc_id] = {
+                            "doc_id": doc_id,
+                            "title": doc.get("title", ""),
+                            "speaker": doc.get("speaker", ""),
+                            "date": doc.get("date", ""),
+                            "url": doc.get("url", ""),
+                            "word_count": doc.get("word_count", 0),
+                            "filename": doc.get("filename", ""),
+                            "content_hash": doc.get("content_hash", ""),
+                            "file_id": file_ref.get("file_id", ""),
+                            "vector_store_file_id": file_ref.get("vector_store_file_id", ""),
+                            "indexed_at": _utc_now_iso(),
+                        }
+                        uploaded_count += 1
+                    except Exception as e:
+                        failed.append(
+                            {
+                                "doc_id": doc_id,
+                                "title": doc.get("title", ""),
+                                "stage": "upload",
+                                "error": str(e),
+                            }
+                        )
+                    completed_ops += 1
+                    _emit_progress(completed_ops, total_ops, f"Processed upload for {display}")
 
     org_state.update(
         {
