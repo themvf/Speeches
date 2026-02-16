@@ -385,11 +385,17 @@ elif page == "Extract Speeches":
         with st.status("Discovering speeches from SEC.gov...", expanded=True) as status:
             from sec_scraper_free import SECScraper
             scraper = SECScraper()
-            # Calculate max pages needed (~25 speeches per page)
-            days_span = (end_date - start_date).days
-            max_pages = max(1, min(20, days_span // 20 + 1))
+            # Estimate pages by how far back we need to scan from "today" to
+            # the start of the requested range (not by range width). The scraper
+            # will stop early once it reaches rows older than start_date.
+            days_back_to_start = max(0, (date.today() - start_date).days)
+            estimated_pages = max(3, days_back_to_start // 14 + 2)
+            max_pages = min(80, estimated_pages)
 
-            st.write(f"Scanning up to {max_pages} listing pages...")
+            st.write(
+                f"Scanning up to {max_pages} listing pages "
+                "(will stop early when start date is reached)..."
+            )
             entries = scraper.discover_speech_urls(
                 max_pages=max_pages,
                 start_date=start_date,
