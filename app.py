@@ -331,8 +331,20 @@ def _ensure_org_vector_store(client, org_state, org_label, force_rebuild=False):
     return vector_store.id, True, existing_id
 
 
-def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebuild=False):
+def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebuild=False, progress_callback=None):
     """Incrementally sync an org-specific vector store and return a sync report."""
+    def _emit_progress(done, total, message):
+        if progress_callback is None:
+            return
+        try:
+            progress_callback(done, total, message)
+        except Exception:
+            pass
+
+    def _display_name(title, doc_id):
+        text = str(title or doc_id or "document").strip()
+        return text[:80] + ("..." if len(text) > 80 else "")
+
     state = _load_vector_state()
     stores = state.setdefault("stores", {})
     org_state = _get_org_vector_state(state, org_key, org_label)
@@ -368,7 +380,14 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
         unchanged_ids = []
         indexed_docs = {}
 
+    delete_targets = [] if (force_rebuild or created_new_store) else (remove_ids + update_ids)
+    upload_targets = add_ids + update_ids
+    total_ops = len(delete_targets) + len(upload_targets)
+    completed_ops = 0
+    _emit_progress(completed_ops, total_ops, "Preparing index sync")
+
     if not add_ids and not update_ids and not remove_ids and not force_rebuild and not created_new_store:
+        _emit_progress(0, 0, "Knowledge index already up to date")
         org_state.update(
             {
                 "org_label": org_label,
@@ -407,8 +426,10 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
 
     # Remove stale files before uploading updates when reusing the same store.
     if not (force_rebuild or created_new_store):
-        for doc_id in remove_ids + update_ids:
+        for doc_id in delete_targets:
             entry = indexed_docs.get(doc_id, {})
+            display = _display_name(entry.get("title", ""), doc_id)
+            _emit_progress(completed_ops, total_ops, f"Deleting {display}")
             try:
                 _delete_indexed_file(client, vector_store_id, entry)
                 deleted_count += 1
@@ -421,6 +442,8 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
                         "error": str(e),
                     }
                 )
+            completed_ops += 1
+            _emit_progress(completed_ops, total_ops, f"Processed delete for {display}")
 
     next_docs = {}
     for doc_id in unchanged_ids:
@@ -428,10 +451,14 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
         if entry:
             next_docs[doc_id] = entry
 
-    for doc_id in add_ids + update_ids:
+    for doc_id in upload_targets:
         doc = current_docs.get(doc_id)
         if not doc:
+            completed_ops += 1
+            _emit_progress(completed_ops, total_ops, f"Skipped missing doc {doc_id}")
             continue
+        display = _display_name(doc.get("title", ""), doc_id)
+        _emit_progress(completed_ops, total_ops, f"Uploading {display}")
         try:
             file_ref = _upload_doc_to_vector_store(client, vector_store_id, org_key, doc)
             next_docs[doc_id] = {
@@ -457,6 +484,8 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
                     "error": str(e),
                 }
             )
+        completed_ops += 1
+        _emit_progress(completed_ops, total_ops, f"Processed upload for {display}")
 
     org_state.update(
         {
@@ -489,6 +518,8 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
             old_store_deleted = True
         except Exception as e:
             old_store_delete_error = str(e)
+
+    _emit_progress(total_ops, total_ops, "Index sync complete")
 
     return {
         "vector_store_id": vector_store_id,
@@ -1145,6 +1176,19 @@ elif page == "Agent Chat":
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Build/Sync Knowledge Index", type="primary"):
+            sync_progress = st.progress(0)
+            sync_status = st.empty()
+
+            def _sync_progress_cb(done, total, message):
+                if total <= 0:
+                    sync_progress.progress(100)
+                    sync_status.caption(message)
+                    return
+                safe_done = max(0, min(done, total))
+                pct = int((safe_done * 100) / total)
+                sync_progress.progress(max(0, min(pct, 100)))
+                sync_status.caption(f"{message} ({safe_done}/{total})")
+
             with st.spinner(f"Syncing {org_label} knowledge index..."):
                 try:
                     report = _sync_org_vector_store(
@@ -1153,6 +1197,7 @@ elif page == "Agent Chat":
                         org_key=org_key,
                         org_label=org_label,
                         force_rebuild=False,
+                        progress_callback=_sync_progress_cb,
                     )
                     vector_store_id = report.get("vector_store_id", "")
                     if vector_store_id:
@@ -1176,6 +1221,19 @@ elif page == "Agent Chat":
                     st.error(f"Indexing failed: {e}")
     with col2:
         if st.button("Force Rebuild Index"):
+            rebuild_progress = st.progress(0)
+            rebuild_status = st.empty()
+
+            def _rebuild_progress_cb(done, total, message):
+                if total <= 0:
+                    rebuild_progress.progress(100)
+                    rebuild_status.caption(message)
+                    return
+                safe_done = max(0, min(done, total))
+                pct = int((safe_done * 100) / total)
+                rebuild_progress.progress(max(0, min(pct, 100)))
+                rebuild_status.caption(f"{message} ({safe_done}/{total})")
+
             with st.spinner(f"Rebuilding {org_label} knowledge index..."):
                 try:
                     report = _sync_org_vector_store(
@@ -1184,6 +1242,7 @@ elif page == "Agent Chat":
                         org_key=org_key,
                         org_label=org_label,
                         force_rebuild=True,
+                        progress_callback=_rebuild_progress_cb,
                     )
                     vector_store_id = report.get("vector_store_id", "")
                     if vector_store_id:
