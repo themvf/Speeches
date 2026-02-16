@@ -255,7 +255,14 @@ def _ask_agent(client, vector_store_id, question, model_name):
 
 
 def _candidate_chat_models():
-    return ["gpt-5.1", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini"]
+    return [
+        "gpt-5.1",
+        "gpt-5-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4o",
+        "gpt-4o-mini",
+    ]
 
 
 def _list_project_models(client):
