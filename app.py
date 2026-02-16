@@ -119,6 +119,17 @@ st.sidebar.markdown(f"**{len(df)} speeches loaded**")
 st.sidebar.markdown(f"**{df['speaker'].nunique()} commissioners**")
 st.sidebar.markdown(f"**{df['word_count'].sum():,} total words**")
 
+# GCS status indicator
+_gcs = _get_gcs_storage()
+if _gcs is not None:
+    try:
+        _gcs.bucket.blob("all_speeches.json").exists()
+        st.sidebar.success("GCS: Connected", icon="\u2705")
+    except Exception as e:
+        st.sidebar.error(f"GCS: Error \u2014 {e}", icon="\u274c")
+else:
+    st.sidebar.warning("GCS: Not configured (using local data)", icon="\u26a0\ufe0f")
+
 
 # =====================================================
 # PAGE: Overview
