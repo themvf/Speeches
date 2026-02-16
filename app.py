@@ -7,6 +7,7 @@ Streamlit app for exploring and analyzing SEC Commissioner speeches.
 import json
 import hashlib
 import time
+import re
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
@@ -646,6 +647,114 @@ def _normalize_obj(obj):
     return {}
 
 
+def _has_explicit_timeframe(question):
+    text = str(question or "").strip().lower()
+    if not text:
+        return False
+
+    if re.search(r"\b(19|20)\d{2}\b", text):
+        return True
+    if re.search(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", text):
+        return True
+
+    month_names = [
+        "january", "february", "march", "april", "may", "june",
+        "july", "august", "september", "october", "november", "december",
+        "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+    ]
+    if any(m in text for m in month_names):
+        return True
+
+    if re.search(r"\blast\s+\d+\s+(day|days|week|weeks|month|months|year|years)\b", text):
+        return True
+    if re.search(r"\bpast\s+\d+\s+(day|days|week|weeks|month|months|year|years)\b", text):
+        return True
+
+    explicit_markers = [
+        "since ",
+        "between ",
+        "from ",
+        "as of ",
+        "before ",
+        "after ",
+        "during ",
+        "in 20",
+        "in 19",
+        "q1 ",
+        "q2 ",
+        "q3 ",
+        "q4 ",
+    ]
+    return any(m in text for m in explicit_markers)
+
+
+def _needs_temporal_clarification(question):
+    text = str(question or "").strip().lower()
+    if not text:
+        return False
+
+    ambiguous_terms = [
+        "recent",
+        "latest",
+        "current",
+        "currently",
+        "now",
+        "today",
+        "at present",
+        "these days",
+    ]
+    if not any(term in text for term in ambiguous_terms):
+        return False
+
+    return not _has_explicit_timeframe(text)
+
+
+def _latest_date_for_org(df, org_key):
+    if df.empty or "date_parsed" not in df.columns:
+        return None
+
+    if "organization" in df.columns:
+        org_mask = df["organization"].fillna("").apply(lambda x: _org_key_from_label(x) == org_key)
+        org_df = df[org_mask]
+        if not org_df.empty:
+            latest = org_df["date_parsed"].max()
+            if pd.notna(latest):
+                return latest
+
+    latest = df["date_parsed"].max()
+    return latest if pd.notna(latest) else None
+
+
+def _build_temporal_clarification_message(df, org_key, org_label):
+    latest = _latest_date_for_org(df, org_key)
+    latest_txt = latest.strftime("%B %d, %Y") if latest is not None else "the latest indexed date"
+
+    return (
+        "Your question uses a time term like `recent/current`, but no date window was provided.\n\n"
+        f"Please specify a timeframe so I can answer accurately for {org_label}. "
+        f"Current indexed coverage appears to run through {latest_txt}.\n\n"
+        "Examples:\n"
+        "- last 90 days\n"
+        "- last 12 months\n"
+        "- since January 1, 2025\n"
+        "- between January 1, 2025 and November 30, 2025"
+    )
+
+
+def _build_agent_instructions(df, org_key, org_label):
+    latest = _latest_date_for_org(df, org_key)
+    latest_txt = latest.strftime("%B %d, %Y") if latest is not None else "unknown"
+    today_txt = date.today().strftime("%B %d, %Y")
+    return (
+        "You are a retrieval-grounded assistant for speech analysis. "
+        "Use only the retrieved speech content. "
+        "If the user uses ambiguous temporal terms (such as recent, latest, current, now, today) "
+        "without a concrete date range, ask one concise clarification question first and do not assume a window. "
+        f"Today's date is {today_txt}. "
+        f"Latest indexed speech date for {org_label} is {latest_txt}."
+    )
+
+
 def _extract_response_text(response):
     txt = getattr(response, "output_text", None)
     if txt:
@@ -681,7 +790,7 @@ def _extract_file_search_results(response):
     return results
 
 
-def _ask_agent(client, vector_store_id, question, model_name):
+def _ask_agent(client, vector_store_id, question, model_name, instructions_text=None):
     request_payload = {
         "model": model_name,
         "input": question,
@@ -693,6 +802,8 @@ def _ask_agent(client, vector_store_id, question, model_name):
             }
         ],
     }
+    if instructions_text:
+        request_payload["instructions"] = instructions_text
     try:
         response = client.responses.create(
             **request_payload,
@@ -746,13 +857,19 @@ def _is_model_access_error(exc):
     )
 
 
-def _ask_agent_with_fallback(client, vector_store_id, question, preferred_model, model_pool):
+def _ask_agent_with_fallback(client, vector_store_id, question, preferred_model, model_pool, instructions_text=None):
     """Try preferred model first, then fallback models on access errors."""
     ordered = [preferred_model] + [m for m in model_pool if m != preferred_model]
     last_error = None
     for idx, model_name in enumerate(ordered):
         try:
-            result = _ask_agent(client, vector_store_id, question, model_name)
+            result = _ask_agent(
+                client,
+                vector_store_id,
+                question,
+                model_name,
+                instructions_text=instructions_text,
+            )
             return {
                 "result": result,
                 "used_model": model_name,
@@ -873,6 +990,7 @@ def load_data(_cache_buster=None):
             "speaker": speaker_display or "Unknown",
             "speaker_primary": speaker_primary,
             "speaker_list": speaker_list,
+            "organization": _speech_org_label(speech),
             "date": m.get("date", ""),
             "url": m.get("url", ""),
             "word_count": m.get("word_count", 0),
@@ -1250,6 +1368,16 @@ elif page == "Agent Chat":
         index_status.get("pending_add", 0) + index_status.get("pending_update", 0),
     )
     idx_col4.metric("Pending Remove", index_status.get("pending_remove", 0))
+    pending_total = (
+        index_status.get("pending_add", 0)
+        + index_status.get("pending_update", 0)
+        + index_status.get("pending_remove", 0)
+    )
+    if pending_total > 0:
+        st.warning(
+            f"Knowledge index is out of sync for {org_label} "
+            f"({pending_total} pending changes). Answers may reflect older positions until sync completes."
+        )
 
     col1, col2 = st.columns(2)
     with col1:
@@ -1363,6 +1491,11 @@ elif page == "Agent Chat":
             chat_messages.append({"role": "assistant", "content": err_msg})
             with st.chat_message("assistant"):
                 st.error(err_msg)
+        elif _needs_temporal_clarification(user_prompt):
+            clarify_msg = _build_temporal_clarification_message(df, org_key, org_label)
+            chat_messages.append({"role": "assistant", "content": clarify_msg})
+            with st.chat_message("assistant"):
+                st.info(clarify_msg)
         else:
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
@@ -1373,6 +1506,7 @@ elif page == "Agent Chat":
                             question=user_prompt,
                             preferred_model=model_name,
                             model_pool=available_models,
+                            instructions_text=_build_agent_instructions(df, org_key, org_label),
                         )
                         result = agent_out.get("result", {})
                         answer = result.get("answer", "No answer returned.")
