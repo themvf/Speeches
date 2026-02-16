@@ -359,12 +359,16 @@ elif page == "Extract Speeches":
             hide_index=True,
         )
 
-        max_extract = st.slider(
-            "Speeches to extract",
-            min_value=1,
-            max_value=min(len(discovered), 25),
-            value=min(len(discovered), 10),
-        )
+        if len(discovered) == 1:
+            max_extract = 1
+            st.caption("1 speech found. It will be extracted.")
+        else:
+            max_extract = st.slider(
+                "Speeches to extract",
+                min_value=1,
+                max_value=len(discovered),
+                value=len(discovered),
+            )
 
         if st.button("Extract Speeches"):
             from speech_analyzer import SECSpeechAnalyzer

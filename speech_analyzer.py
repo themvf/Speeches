@@ -396,27 +396,39 @@ class SECSpeechAnalyzer:
         return has_intro and has_conclusion
 
     def validate_full_text_extraction(self, analysis_data: Dict[str, Any]) -> bool:
-        """Validate that extraction contains meaningful content"""
+        """Validate that extraction produced usable text.
+
+        Keep validation permissive so shorter SEC statements/remarks are not
+        dropped. Only reject empty or nearly-empty outputs that indicate a
+        broken scrape/parse.
+        """
         content = analysis_data.get("content", {})
         full_text = content.get("full_text", "")
         word_count = analysis_data.get("metadata", {}).get("word_count", 0)
         completeness_score = analysis_data.get("validation", {}).get("completeness_score", 0)
+        stripped = full_text.strip()
 
-        criteria = {
-            "min_word_count": word_count >= 300,
-            "completeness_score": completeness_score >= 40,
-            "has_content": len(full_text.strip()) > 100,
-            "not_empty": bool(full_text.strip()),
+        # Hard requirements: content must exist and be more than boilerplate.
+        hard_criteria = {
+            "not_empty": bool(stripped),
+            "min_chars": len(stripped) >= 80,
         }
-
-        is_valid = all(criteria.values())
+        is_valid = all(hard_criteria.values())
 
         if not is_valid:
             print(f"  Validation failed - Word count: {word_count}, Completeness: {completeness_score}%")
-            failed_criteria = [k for k, v in criteria.items() if not v]
+            failed_criteria = [k for k, v in hard_criteria.items() if not v]
             print(f"  Failed criteria: {', '.join(failed_criteria)}")
+            return False
 
-        return is_valid
+        # Soft quality signal only (non-blocking).
+        if word_count < 300 or completeness_score < 40:
+            print(
+                "  Validation warning - low quality score accepted "
+                f"(Word count: {word_count}, Completeness: {completeness_score}%)"
+            )
+
+        return True
 
     def batch_extract_all_speeches(self, speech_entries: list, max_speeches: int = 50) -> Dict[str, Any]:
         """
