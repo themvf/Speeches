@@ -204,6 +204,7 @@ class SpeechAnalysisPipeline:
             topic_results.append({
                 "title": row["title"],
                 "speaker": row["speaker"],
+                "url": row.get("url", ""),
                 "all_topics": speech_topics,
                 "top_topics": [{"topic": t[0], "score": t[1]["relevance_score"]} for t in top_topics],
             })

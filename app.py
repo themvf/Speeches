@@ -347,31 +347,63 @@ elif page == "Topic Analysis":
 # =====================================================
 elif page == "Speech Explorer":
     st.title("Speech Explorer")
-    st.markdown("Browse and read the full text of extracted speeches.")
+    st.markdown("Browse speeches with topic context from topic analysis.")
 
-    col1, col2 = st.columns(2)
+    topic_results = topic_data.get("results", [])
+    topic_by_url = {r.get("url", ""): r for r in topic_results if r.get("url")}
+    topic_by_title_speaker = {(r.get("title", ""), r.get("speaker", "")): r for r in topic_results}
+    topic_names = sorted(topic_data.get("summary", {}).get("topic_distribution", {}).keys())
+
+    col1, col2, col3 = st.columns(3)
     with col1:
         speakers = ["All"] + sorted(speaker_df["speaker_individual"].unique().tolist())
         selected_speaker = st.selectbox("Filter by Speaker", speakers)
     with col2:
         search_term = st.text_input("Search in titles")
+    with col3:
+        selected_topic = st.selectbox("Filter by Primary Topic", ["All"] + topic_names)
 
     filtered = df.copy()
     if selected_speaker != "All":
         filtered = filtered[filtered["speaker_list"].apply(lambda s: selected_speaker in s if isinstance(s, list) else False)]
     if search_term:
         filtered = filtered[filtered["title"].str.contains(search_term, case=False, na=False)]
+    if selected_topic != "All":
+        def _row_has_primary_topic(r):
+            entry = topic_by_url.get(r.get("url", ""))
+            if not entry:
+                entry = topic_by_title_speaker.get((r.get("title", ""), r.get("speaker", "")))
+            return bool(
+                entry
+                and entry.get("top_topics")
+                and entry["top_topics"][0].get("topic") == selected_topic
+            )
+
+        filtered = filtered[filtered.apply(_row_has_primary_topic, axis=1)]
     filtered = _sort_table_by_date(filtered, date_col="date")
 
     st.markdown(f"**Showing {len(filtered)} of {len(df)} speeches**")
     st.markdown("---")
 
     for idx, row in filtered.iterrows():
+        topic_entry = topic_by_url.get(row.get("url", ""))
+        if not topic_entry:
+            topic_entry = topic_by_title_speaker.get((row.get("title", ""), row.get("speaker", "")))
+        top_topics = topic_entry.get("top_topics", []) if topic_entry else []
+        primary_topic = top_topics[0]["topic"] if top_topics else "N/A"
+        primary_score = top_topics[0]["score"] if top_topics else 0.0
+        top_topics_text = ", ".join(
+            [f"{t['topic']} ({t['score']:.2f})" for t in top_topics]
+        ) if top_topics else "N/A"
+
         with st.expander(f"{row['title']} \u2014 {row['speaker']} ({row['date']})"):
             col1, col2, col3 = st.columns(3)
             col1.metric("Words", f"{row['word_count']:,}")
             col2.metric("Paragraphs", row["paragraph_count"])
             col3.metric("Completeness", f"{row['completeness_score']}%")
+
+            st.markdown(f"**Primary Topic:** {primary_topic} ({primary_score:.2f})")
+            st.markdown(f"**Top Topics:** {top_topics_text}")
 
             if row["url"]:
                 st.markdown(f"[View on SEC.gov]({row['url']})")
