@@ -5,6 +5,7 @@ Streamlit app for exploring and analyzing SEC Commissioner speeches.
 """
 
 import json
+import hashlib
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
@@ -49,6 +50,208 @@ def _get_openai_api_key():
     except Exception as e:
         st.session_state["_openai_error"] = str(e)
         return None
+
+
+def _get_openai_client():
+    """Create an OpenAI client using secrets-based API key."""
+    api_key = _get_openai_api_key()
+    if not api_key:
+        return None
+
+    try:
+        from openai import OpenAI
+        return OpenAI(api_key=api_key)
+    except Exception as e:
+        st.session_state["_openai_error"] = f"Failed to initialize OpenAI client: {e}"
+        return None
+
+
+def _build_dataset_signature(raw_data_obj):
+    """Build a stable signature for current speech corpus."""
+    pieces = []
+    for speech in raw_data_obj.get("speeches", []):
+        m = speech.get("metadata", {})
+        pieces.append(
+            "|".join(
+                [
+                    str(m.get("url", "")),
+                    str(m.get("title", "")),
+                    str(m.get("speaker", "")),
+                    str(m.get("date", "")),
+                    str(m.get("word_count", "")),
+                ]
+            )
+        )
+    payload = "\n".join(sorted(pieces))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _vector_state_path():
+    return Path("data/openai_vector_store_state.json")
+
+
+def _load_vector_state():
+    path = _vector_state_path()
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_vector_state(state):
+    path = _vector_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2, ensure_ascii=False)
+
+
+def _render_corpus_file(raw_data_obj):
+    """Create a plain-text corpus file for vector-store indexing."""
+    out_path = Path("data/speeches_corpus_for_chat.txt")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    chunks = []
+    for i, speech in enumerate(raw_data_obj.get("speeches", []), 1):
+        m = speech.get("metadata", {})
+        c = speech.get("content", {})
+        text = c.get("full_text", "").strip()
+        if not text:
+            continue
+
+        entry = (
+            f"Speech ID: {i}\n"
+            f"Title: {m.get('title', '')}\n"
+            f"Speaker: {m.get('speaker', '')}\n"
+            f"Date: {m.get('date', '')}\n"
+            f"URL: {m.get('url', '')}\n"
+            f"Word Count: {m.get('word_count', 0)}\n\n"
+            f"{text}\n\n"
+            "==============================\n\n"
+        )
+        chunks.append(entry)
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("SEC SPEECH CORPUS\n\n")
+        f.write("".join(chunks))
+
+    return out_path
+
+
+def _ensure_vector_store(client, raw_data_obj, force_rebuild=False):
+    """Return (vector_store_id, rebuilt_flag) for the current dataset."""
+    signature = _build_dataset_signature(raw_data_obj)
+    state = _load_vector_state()
+    existing_id = state.get("vector_store_id")
+
+    if existing_id and state.get("dataset_signature") == signature and not force_rebuild:
+        try:
+            client.vector_stores.retrieve(existing_id)
+            return existing_id, False
+        except Exception:
+            pass
+
+    corpus_file = _render_corpus_file(raw_data_obj)
+    vector_store = client.vector_stores.create(
+        name=f"SEC Speeches ({datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC)"
+    )
+
+    with open(corpus_file, "rb") as f:
+        # SDK helper to upload and block until indexing is complete.
+        try:
+            client.vector_stores.file_batches.upload_and_poll(
+                vector_store_id=vector_store.id,
+                files=[f],
+            )
+        except Exception:
+            # Fallback for SDK variants that expose files.upload_and_poll.
+            client.vector_stores.files.upload_and_poll(
+                vector_store_id=vector_store.id,
+                file=f,
+            )
+
+    _save_vector_state(
+        {
+            "vector_store_id": vector_store.id,
+            "dataset_signature": signature,
+            "source_file": str(corpus_file),
+            "indexed_speeches": len(raw_data_obj.get("speeches", [])),
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        }
+    )
+    return vector_store.id, True
+
+
+def _normalize_obj(obj):
+    if obj is None:
+        return {}
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, dict):
+        return obj
+    return {}
+
+
+def _extract_response_text(response):
+    txt = getattr(response, "output_text", None)
+    if txt:
+        return txt
+    resp_dict = _normalize_obj(response)
+    output_items = resp_dict.get("output", [])
+    for item in output_items:
+        if item.get("type") == "message":
+            for content_item in item.get("content", []):
+                if content_item.get("type") in ("output_text", "text"):
+                    if content_item.get("text"):
+                        return content_item.get("text")
+    return "No response text returned."
+
+
+def _extract_file_search_results(response):
+    resp_dict = _normalize_obj(response)
+    results = []
+    for item in resp_dict.get("output", []):
+        if item.get("type") == "file_search_call":
+            for r in item.get("results", []):
+                snippet = r.get("text", "")
+                if isinstance(snippet, str):
+                    snippet = snippet.strip()
+                results.append(
+                    {
+                        "filename": r.get("filename", ""),
+                        "score": r.get("score"),
+                        "file_id": r.get("file_id", ""),
+                        "snippet": snippet[:300] if snippet else "",
+                    }
+                )
+    return results
+
+
+def _ask_agent(client, vector_store_id, question, model_name):
+    request_payload = {
+        "model": model_name,
+        "input": question,
+        "tools": [
+            {
+                "type": "file_search",
+                "vector_store_ids": [vector_store_id],
+                "max_num_results": 8,
+            }
+        ],
+    }
+    try:
+        response = client.responses.create(
+            **request_payload,
+            include=["file_search_call.results"],
+        )
+    except Exception:
+        response = client.responses.create(**request_payload)
+    return {
+        "answer": _extract_response_text(response),
+        "results": _extract_file_search_results(response),
+    }
 
 
 def _load_raw_data():
@@ -206,7 +409,7 @@ sentiment_data, topic_data, commissioner_data = run_analysis(raw_data_json)
 st.sidebar.title("SEC Speeches")
 page = st.sidebar.radio(
     "Navigate",
-    ["Overview", "Sentiment Analysis", "Topic Analysis", "Speech Explorer", "Extract Speeches"],
+    ["Overview", "Sentiment Analysis", "Topic Analysis", "Speech Explorer", "Agent Chat", "Extract Speeches"],
 )
 
 st.sidebar.markdown("---")
@@ -434,6 +637,118 @@ elif page == "Speech Explorer":
             if len(row["full_text"]) > 5000:
                 if st.button("Show full text", key=f"full_{idx}"):
                     st.markdown(row["full_text"])
+
+
+# =====================================================
+# PAGE: Agent Chat
+# =====================================================
+elif page == "Agent Chat":
+    st.title("Agent Chat")
+    st.markdown("Ask questions about the speech corpus using retrieval + reasoning.")
+
+    if _openai_key is None:
+        st.error("OpenAI API key is not configured. Add `[openai].api_key` in Streamlit secrets.")
+        st.stop()
+
+    client = _get_openai_client()
+    if client is None:
+        st.error(st.session_state.get("_openai_error", "Failed to initialize OpenAI client."))
+        st.stop()
+
+    model_name = st.selectbox(
+        "Model",
+        ["gpt-5-mini", "gpt-5.1"],
+        index=0,
+    )
+
+    vector_state = _load_vector_state()
+    active_vector_store_id = st.session_state.get("vector_store_id") or vector_state.get("vector_store_id")
+    if active_vector_store_id:
+        st.session_state["vector_store_id"] = active_vector_store_id
+
+    if active_vector_store_id:
+        st.caption(f"Current vector store: `{active_vector_store_id}`")
+    else:
+        st.caption("No vector store indexed yet.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Build/Sync Knowledge Index", type="primary"):
+            with st.spinner("Building vector index from speeches..."):
+                try:
+                    vector_store_id, rebuilt = _ensure_vector_store(client, raw_data, force_rebuild=False)
+                    st.session_state["vector_store_id"] = vector_store_id
+                    if rebuilt:
+                        st.success("Knowledge index rebuilt.")
+                    else:
+                        st.success("Knowledge index is up to date.")
+                except Exception as e:
+                    st.error(f"Indexing failed: {e}")
+    with col2:
+        if st.button("Force Rebuild Index"):
+            with st.spinner("Rebuilding vector index..."):
+                try:
+                    vector_store_id, _ = _ensure_vector_store(client, raw_data, force_rebuild=True)
+                    st.session_state["vector_store_id"] = vector_store_id
+                    st.success("Knowledge index rebuilt from scratch.")
+                except Exception as e:
+                    st.error(f"Rebuild failed: {e}")
+
+    if "chat_messages" not in st.session_state:
+        st.session_state["chat_messages"] = []
+
+    for msg in st.session_state["chat_messages"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg.get("results"):
+                with st.expander("Retrieved Sources"):
+                    for r in msg["results"][:8]:
+                        score = r.get("score")
+                        score_txt = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
+                        st.markdown(f"- `{r.get('filename', 'unknown')}`{score_txt}")
+                        if r.get("snippet"):
+                            st.caption(r["snippet"])
+
+    user_prompt = st.chat_input("Ask a question about SEC speeches...")
+    if user_prompt:
+        st.session_state["chat_messages"].append({"role": "user", "content": user_prompt})
+        with st.chat_message("user"):
+            st.markdown(user_prompt)
+
+        vector_store_id = st.session_state.get("vector_store_id")
+        if not vector_store_id:
+            err_msg = "Please click **Build/Sync Knowledge Index** before chatting."
+            st.session_state["chat_messages"].append({"role": "assistant", "content": err_msg})
+            with st.chat_message("assistant"):
+                st.error(err_msg)
+        else:
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    try:
+                        result = _ask_agent(client, vector_store_id, user_prompt, model_name)
+                        answer = result.get("answer", "No answer returned.")
+                        sources = result.get("results", [])
+                    except Exception as e:
+                        answer = f"Chat request failed: {e}"
+                        sources = []
+
+                st.markdown(answer)
+                if sources:
+                    with st.expander("Retrieved Sources"):
+                        for r in sources[:8]:
+                            score = r.get("score")
+                            score_txt = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
+                            st.markdown(f"- `{r.get('filename', 'unknown')}`{score_txt}")
+                            if r.get("snippet"):
+                                st.caption(r["snippet"])
+
+            st.session_state["chat_messages"].append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                    "results": sources,
+                }
+            )
 
 
 # =====================================================
