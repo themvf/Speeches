@@ -258,12 +258,18 @@ def _candidate_chat_models():
     return ["gpt-5.1", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini"]
 
 
+def _list_project_models(client):
+    """Return visible model IDs for the current API key/project."""
+    listed = client.models.list()
+    ids = sorted({getattr(m, "id", "") for m in getattr(listed, "data", []) if getattr(m, "id", "")})
+    return ids
+
+
 def _get_accessible_chat_models(client):
     """Return preferred chat models that are available to this project."""
     candidates = _candidate_chat_models()
     try:
-        listed = client.models.list()
-        ids = {getattr(m, "id", "") for m in getattr(listed, "data", [])}
+        ids = set(_list_project_models(client))
         available = [m for m in candidates if m in ids]
         if available:
             return available
@@ -703,6 +709,37 @@ elif page == "Agent Chat":
     if client is None:
         st.error(st.session_state.get("_openai_error", "Failed to initialize OpenAI client."))
         st.stop()
+
+    if "project_model_ids" not in st.session_state:
+        try:
+            st.session_state["project_model_ids"] = _list_project_models(client)
+            st.session_state["project_model_error"] = ""
+        except Exception as e:
+            st.session_state["project_model_ids"] = []
+            st.session_state["project_model_error"] = str(e)
+
+    with st.expander("Model Access (This Project)"):
+        if st.button("Refresh Model List"):
+            try:
+                st.session_state["project_model_ids"] = _list_project_models(client)
+                st.session_state["project_model_error"] = ""
+            except Exception as e:
+                st.session_state["project_model_ids"] = []
+                st.session_state["project_model_error"] = str(e)
+
+        model_ids = st.session_state.get("project_model_ids", [])
+        model_err = st.session_state.get("project_model_error", "")
+        if model_err:
+            st.error(f"Could not list models: {model_err}")
+        else:
+            st.caption(f"Visible models: {len(model_ids)}")
+            chat_like = [m for m in model_ids if m.startswith("gpt-") or m.startswith("o")]
+            if chat_like:
+                st.markdown("**Likely chat-capable models:**")
+                for mid in chat_like:
+                    st.write(f"- {mid}")
+            else:
+                st.info("No `gpt-*` or `o*` models were returned for this project key.")
 
     available_models = _get_accessible_chat_models(client)
     if not available_models:
