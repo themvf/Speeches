@@ -38,6 +38,19 @@ def _get_gcs_storage():
         return None
 
 
+def _get_openai_api_key():
+    """Return OpenAI API key from Streamlit secrets, else None."""
+    try:
+        api_key = st.secrets["openai"]["api_key"]
+        api_key = str(api_key).strip()
+        if not api_key:
+            raise ValueError("openai.api_key is empty")
+        return api_key
+    except Exception as e:
+        st.session_state["_openai_error"] = str(e)
+        return None
+
+
 def _load_raw_data():
     """Load dataset from GCS (preferred) or local file (fallback)."""
     storage = _get_gcs_storage()
@@ -225,6 +238,13 @@ else:
     with st.sidebar.expander("Debug"):
         for line in _gcs_debug:
             st.write(line)
+
+_openai_key = _get_openai_api_key()
+if _openai_key is not None:
+    st.sidebar.success("OpenAI: Configured", icon="\u2705")
+else:
+    openai_err = st.session_state.get("_openai_error", "no error captured")
+    st.sidebar.error(f"OpenAI: {openai_err}", icon="\u274c")
 
 
 # =====================================================
