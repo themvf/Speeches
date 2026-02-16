@@ -7,6 +7,7 @@ curl_cffi is needed because SEC.gov blocks standard requests (TLS fingerprinting
 
 import time
 import re
+from datetime import datetime, date
 from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
@@ -108,17 +109,43 @@ class SECScraper:
                 "credits_used": 0,
             }
 
-    def discover_speech_urls(self, base_url: str = "https://www.sec.gov/newsroom/speeches-statements", max_pages: int = 5) -> List[Dict[str, str]]:
+    @staticmethod
+    def _parse_listing_date(date_text: str) -> Optional[date]:
+        """Parse a date string from the SEC listing page into a date object."""
+        for fmt in ("%b. %d, %Y", "%b %d, %Y", "%B %d, %Y", "%m/%d/%Y"):
+            try:
+                return datetime.strptime(date_text.strip(), fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    def discover_speech_urls(
+        self,
+        base_url: str = "https://www.sec.gov/newsroom/speeches-statements",
+        max_pages: int = 5,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> List[Dict[str, str]]:
         """
         Discover speech URLs from the SEC speeches listing page.
+
+        Args:
+            base_url: SEC listing page URL.
+            max_pages: Maximum pagination pages to scrape.
+            start_date: Only include speeches on or after this date.
+            end_date: Only include speeches on or before this date.
 
         Returns:
             List of dicts with 'url', 'title', 'date', 'speaker', 'type' keys.
         """
         speeches = []
         seen_urls = set()
+        stop_paginating = False
 
         for page in range(max_pages):
+            if stop_paginating:
+                break
+
             self._rate_limit()
             page_url = f"{base_url}?page={page}" if page > 0 else base_url
 
@@ -152,6 +179,16 @@ class SECScraper:
                     title_text = link.get_text(strip=True)
                     speaker_text = cells[2].get_text(strip=True) if len(cells) > 2 else ""
                     type_text = cells[3].get_text(strip=True) if len(cells) > 3 else ""
+
+                    # Apply date filtering (listing is reverse-chronological)
+                    if start_date or end_date:
+                        parsed = self._parse_listing_date(date_text)
+                        if parsed:
+                            if end_date and parsed > end_date:
+                                continue
+                            if start_date and parsed < start_date:
+                                stop_paginating = True
+                                break
 
                     speeches.append({
                         "url": full_url,

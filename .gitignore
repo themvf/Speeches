@@ -22,6 +22,10 @@ build/
 .DS_Store
 Thumbs.db
 
+# Secrets (never commit real credentials)
+.streamlit/secrets.toml
+key.json
+
 # Claude
 .claude/
 

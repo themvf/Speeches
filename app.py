@@ -7,6 +7,7 @@ Streamlit app for exploring and analyzing SEC Commissioner speeches.
 import json
 import streamlit as st
 import pandas as pd
+from datetime import date, timedelta
 from pathlib import Path
 from analysis_pipeline import SpeechAnalysisPipeline
 
@@ -14,25 +15,53 @@ from analysis_pipeline import SpeechAnalysisPipeline
 # --- Page Config ---
 st.set_page_config(
     page_title="SEC Speeches Dashboard",
-    page_icon="📜",
+    page_icon="\U0001f4dc",
     layout="wide",
 )
 
 
-@st.cache_data
-def load_data():
-    """Load and cache the speech dataset."""
+# --- GCS helpers ---
+
+def _get_gcs_storage():
+    """Return a GCSStorage instance if secrets are configured, else None."""
+    try:
+        gcs_info = st.secrets["gcs"]
+        bucket_name = gcs_info["bucket_name"]
+        # Build credentials dict from secrets (exclude bucket_name)
+        creds = {k: v for k, v in gcs_info.items() if k != "bucket_name"}
+        from gcs_storage import GCSStorage
+        return GCSStorage(bucket_name, creds)
+    except Exception:
+        return None
+
+
+def _load_raw_data():
+    """Load dataset from GCS (preferred) or local file (fallback)."""
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            data = storage.load_speeches()
+            if data.get("speeches"):
+                return data, storage
+        except Exception:
+            pass
+
+    # Fallback to local file
     data_file = Path("data/all_speeches_final.json")
     if not data_file.exists():
-        st.error("Dataset not found at data/all_speeches_final.json")
+        st.error("Dataset not found. Configure GCS secrets or place data/all_speeches_final.json.")
         st.stop()
-
     with open(data_file, "r", encoding="utf-8") as f:
-        raw_data = json.load(f)
+        return json.load(f), None
 
-    # Build DataFrame
+
+@st.cache_data(ttl=300)
+def load_data(_cache_buster=None):
+    """Load and cache the speech dataset."""
+    raw_data, _ = _load_raw_data()
+
     rows = []
-    for speech in raw_data["speeches"]:
+    for speech in raw_data.get("speeches", []):
         m = speech.get("metadata", {})
         c = speech.get("content", {})
         v = speech.get("validation", {})
@@ -74,7 +103,6 @@ def run_analysis(raw_data_json):
 # --- Load Data ---
 raw_data, df = load_data()
 
-# Serialize for caching (cache_data needs hashable input)
 raw_data_json = json.dumps(raw_data)
 sentiment_data, topic_data, commissioner_data = run_analysis(raw_data_json)
 
@@ -83,7 +111,7 @@ sentiment_data, topic_data, commissioner_data = run_analysis(raw_data_json)
 st.sidebar.title("SEC Speeches")
 page = st.sidebar.radio(
     "Navigate",
-    ["Overview", "Sentiment Analysis", "Topic Analysis", "Speech Explorer"],
+    ["Overview", "Sentiment Analysis", "Topic Analysis", "Speech Explorer", "Extract Speeches"],
 )
 
 st.sidebar.markdown("---")
@@ -97,9 +125,8 @@ st.sidebar.markdown(f"**{df['word_count'].sum():,} total words**")
 # =====================================================
 if page == "Overview":
     st.title("SEC Commissioner Speeches Dashboard")
-    st.markdown("Analysis of SEC Commissioner speeches — sentiment, topics, and trends.")
+    st.markdown("Analysis of SEC Commissioner speeches \u2014 sentiment, topics, and trends.")
 
-    # Key metrics
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Speeches", len(df))
     col2.metric("Commissioners", df["speaker"].nunique())
@@ -108,22 +135,16 @@ if page == "Overview":
 
     st.markdown("---")
 
-    # Two column layout
     left, right = st.columns(2)
-
     with left:
         st.subheader("Speeches by Commissioner")
-        speaker_counts = df["speaker"].value_counts()
-        st.bar_chart(speaker_counts)
-
+        st.bar_chart(df["speaker"].value_counts())
     with right:
         st.subheader("Word Count by Commissioner")
-        word_counts = df.groupby("speaker")["word_count"].sum().sort_values(ascending=False)
-        st.bar_chart(word_counts)
+        st.bar_chart(df.groupby("speaker")["word_count"].sum().sort_values(ascending=False))
 
     st.markdown("---")
 
-    # Speech listing
     st.subheader("All Speeches")
     display_df = df[["title", "speaker", "date", "word_count", "completeness_score"]].copy()
     display_df.columns = ["Title", "Speaker", "Date", "Words", "Completeness"]
@@ -140,7 +161,6 @@ elif page == "Sentiment Analysis":
     results = sentiment_data["results"]
     summary = sentiment_data["summary"]
 
-    # Summary metrics
     col1, col2, col3 = st.columns(3)
     dist = summary["sentiment_distribution"]
     col1.metric("Positive Speeches", dist["positive"])
@@ -149,26 +169,20 @@ elif page == "Sentiment Analysis":
 
     st.markdown("---")
 
-    # Sentiment scores chart
     st.subheader("Sentiment Score by Speech")
     sent_df = pd.DataFrame(results)
     sent_df["short_title"] = sent_df["title"].str[:50] + "..."
-
-    chart_data = sent_df.set_index("short_title")["sentiment_score"]
-    st.bar_chart(chart_data)
+    st.bar_chart(sent_df.set_index("short_title")["sentiment_score"])
 
     st.markdown("---")
 
-    # Detailed table
     st.subheader("Detailed Sentiment Breakdown")
     detail_df = sent_df[["title", "speaker", "sentiment_score", "positive_words", "negative_words", "regulatory_words"]].copy()
     detail_df.columns = ["Title", "Speaker", "Sentiment Score", "Positive Keywords", "Negative Keywords", "Regulatory Keywords"]
     st.dataframe(detail_df, use_container_width=True, hide_index=True)
 
-    # Highlights
     st.markdown("---")
     left, right = st.columns(2)
-
     with left:
         st.subheader("Most Positive Speech")
         if summary["most_positive"]:
@@ -176,7 +190,6 @@ elif page == "Sentiment Analysis":
             st.markdown(f"**{mp['title'][:80]}...**")
             st.markdown(f"Speaker: {mp['speaker']}")
             st.markdown(f"Score: {mp['sentiment_score']:.3f}")
-
     with right:
         st.subheader("Most Negative Speech")
         if summary["most_negative"]:
@@ -196,31 +209,24 @@ elif page == "Topic Analysis":
     results = topic_data["results"]
     summary = topic_data["summary"]
 
-    # Top topics
     st.subheader("Most Discussed Topics")
     topic_df = pd.DataFrame(summary["most_discussed_topics"])
     if not topic_df.empty:
-        chart_data = topic_df.set_index("topic")["total_mentions"]
-        st.bar_chart(chart_data)
+        st.bar_chart(topic_df.set_index("topic")["total_mentions"])
 
     st.markdown("---")
 
-    # Topic heatmap (as a table with color)
     st.subheader("Topic Relevance by Speech")
-
     heatmap_rows = []
     for r in results:
         row = {"Speech": r["title"][:50] + "...", "Speaker": r["speaker"]}
         for topic, data in r["all_topics"].items():
             row[topic] = round(data["relevance_score"], 2)
         heatmap_rows.append(row)
-
-    heatmap_df = pd.DataFrame(heatmap_rows)
-    st.dataframe(heatmap_df, use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(heatmap_rows), use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
-    # Speeches grouped by primary topic
     st.subheader("Speeches by Primary Topic")
     groups = summary.get("speeches_by_primary_topic", {})
     for topic, titles in groups.items():
@@ -236,7 +242,6 @@ elif page == "Speech Explorer":
     st.title("Speech Explorer")
     st.markdown("Browse and read the full text of extracted speeches.")
 
-    # Filters
     col1, col2 = st.columns(2)
     with col1:
         speakers = ["All"] + sorted(df["speaker"].unique().tolist())
@@ -244,7 +249,6 @@ elif page == "Speech Explorer":
     with col2:
         search_term = st.text_input("Search in titles")
 
-    # Apply filters
     filtered = df.copy()
     if selected_speaker != "All":
         filtered = filtered[filtered["speaker"] == selected_speaker]
@@ -254,9 +258,8 @@ elif page == "Speech Explorer":
     st.markdown(f"**Showing {len(filtered)} of {len(df)} speeches**")
     st.markdown("---")
 
-    # Display speeches
     for idx, row in filtered.iterrows():
-        with st.expander(f"{row['title']} — {row['speaker']} ({row['date']})"):
+        with st.expander(f"{row['title']} \u2014 {row['speaker']} ({row['date']})"):
             col1, col2, col3 = st.columns(3)
             col1.metric("Words", f"{row['word_count']:,}")
             col2.metric("Paragraphs", row["paragraph_count"])
@@ -266,9 +269,125 @@ elif page == "Speech Explorer":
                 st.markdown(f"[View on SEC.gov]({row['url']})")
 
             st.markdown("---")
-            # Show full text in a scrollable container
             st.markdown(row["full_text"][:5000] + ("..." if len(row["full_text"]) > 5000 else ""))
 
             if len(row["full_text"]) > 5000:
-                if st.button(f"Show full text", key=f"full_{idx}"):
+                if st.button("Show full text", key=f"full_{idx}"):
                     st.markdown(row["full_text"])
+
+
+# =====================================================
+# PAGE: Extract Speeches
+# =====================================================
+elif page == "Extract Speeches":
+    st.title("Extract Speeches")
+    st.markdown("Discover and extract SEC speeches by date range.")
+
+    # Date range picker
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Start date", value=date.today() - timedelta(days=30))
+    with col2:
+        end_date = st.date_input("End date", value=date.today())
+
+    # Track discovered speeches in session state
+    if "discovered" not in st.session_state:
+        st.session_state.discovered = []
+
+    # --- Discover ---
+    if st.button("Discover Speeches"):
+        with st.status("Discovering speeches from SEC.gov...", expanded=True) as status:
+            from sec_scraper_free import SECScraper
+            scraper = SECScraper()
+            # Calculate max pages needed (~25 speeches per page)
+            days_span = (end_date - start_date).days
+            max_pages = max(1, min(20, days_span // 20 + 1))
+
+            st.write(f"Scanning up to {max_pages} listing pages...")
+            entries = scraper.discover_speech_urls(
+                max_pages=max_pages,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+            # Deduplicate against existing dataset
+            existing_urls = {s.get("metadata", {}).get("url", "") for s in raw_data.get("speeches", [])}
+            new_entries = [e for e in entries if e["url"] not in existing_urls]
+            already = len(entries) - len(new_entries)
+
+            st.session_state.discovered = new_entries
+            status.update(
+                label=f"Found {len(new_entries)} new speeches ({already} already extracted)",
+                state="complete",
+            )
+
+    # --- Show discovered speeches ---
+    discovered = st.session_state.discovered
+    if discovered:
+        st.subheader(f"{len(discovered)} new speeches available")
+        disc_df = pd.DataFrame(discovered)
+        st.dataframe(
+            disc_df[["date", "title", "speaker", "type"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        max_extract = st.slider(
+            "Speeches to extract",
+            min_value=1,
+            max_value=min(len(discovered), 25),
+            value=min(len(discovered), 10),
+        )
+
+        if st.button("Extract Speeches"):
+            from speech_analyzer import SECSpeechAnalyzer
+            analyzer = SECSpeechAnalyzer()
+
+            progress = st.progress(0, text="Starting extraction...")
+            extracted = []
+            failed = []
+
+            for i, entry in enumerate(discovered[:max_extract]):
+                progress.progress(
+                    (i + 1) / max_extract,
+                    text=f"Extracting {i + 1}/{max_extract}: {entry['title'][:50]}...",
+                )
+                result = analyzer.extract_speech_for_analysis(entry["url"], listing_metadata=entry)
+                if result["success"] and analyzer.validate_full_text_extraction(result["data"]):
+                    extracted.append(result["data"])
+                else:
+                    failed.append(entry["title"])
+
+            progress.progress(1.0, text="Extraction complete!")
+
+            if extracted:
+                # Merge into dataset
+                updated_data, _ = _load_raw_data()
+                updated_data["speeches"].extend(extracted)
+                updated_data["extraction_summary"]["successful_extractions"] = len(updated_data["speeches"])
+
+                # Save to GCS
+                storage = _get_gcs_storage()
+                if storage is not None:
+                    storage.save_speeches(updated_data)
+                    st.success(f"Saved {len(extracted)} new speeches to Google Cloud Storage.")
+                else:
+                    # Fallback: save locally
+                    with open("data/all_speeches_final.json", "w", encoding="utf-8") as f:
+                        json.dump(updated_data, f, indent=2, ensure_ascii=False)
+                    st.success(f"Saved {len(extracted)} new speeches locally.")
+
+                # Clear caches so dashboard reflects new data
+                load_data.clear()
+                run_analysis.clear()
+                st.session_state.discovered = []
+
+                st.info("Refresh the page to see the new speeches in the dashboard.")
+
+            if failed:
+                st.warning(f"{len(failed)} speeches failed extraction:")
+                for title in failed:
+                    st.write(f"- {title}")
+
+    elif st.session_state.get("discovered") is not None and not discovered:
+        st.info("Use the date range picker above and click **Discover Speeches** to find speeches to extract.")
