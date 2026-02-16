@@ -31,7 +31,9 @@ def _get_gcs_storage():
         creds = {k: v for k, v in gcs_info.items() if k != "bucket_name"}
         from gcs_storage import GCSStorage
         return GCSStorage(bucket_name, creds)
-    except Exception:
+    except Exception as e:
+        # Store the error so we can display it in the sidebar
+        st.session_state["_gcs_error"] = str(e)
         return None
 
 
@@ -119,7 +121,17 @@ st.sidebar.markdown(f"**{len(df)} speeches loaded**")
 st.sidebar.markdown(f"**{df['speaker'].nunique()} commissioners**")
 st.sidebar.markdown(f"**{df['word_count'].sum():,} total words**")
 
-# GCS status indicator
+# GCS status indicator — with debug info
+_gcs_debug = []
+try:
+    _gcs_debug.append(f"secrets keys: {list(st.secrets.keys())}")
+    _gcs_section = st.secrets.get("gcs", None)
+    _gcs_debug.append(f"gcs section: {'found' if _gcs_section else 'missing'}")
+    if _gcs_section:
+        _gcs_debug.append(f"gcs keys: {list(_gcs_section.keys())}")
+except Exception as e:
+    _gcs_debug.append(f"secrets error: {e}")
+
 _gcs = _get_gcs_storage()
 if _gcs is not None:
     try:
@@ -128,7 +140,11 @@ if _gcs is not None:
     except Exception as e:
         st.sidebar.error(f"GCS: Error \u2014 {e}", icon="\u274c")
 else:
-    st.sidebar.warning("GCS: Not configured (using local data)", icon="\u26a0\ufe0f")
+    gcs_err = st.session_state.get("_gcs_error", "no error captured")
+    st.sidebar.error(f"GCS: {gcs_err}", icon="\u274c")
+    with st.sidebar.expander("Debug"):
+        for line in _gcs_debug:
+            st.write(line)
 
 
 # =====================================================
