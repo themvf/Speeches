@@ -90,7 +90,11 @@ def _vector_state_path():
     return Path("data/openai_vector_store_state.json")
 
 
-def _load_vector_state():
+def _vector_state_blob_name():
+    return "openai_vector_store_state.json"
+
+
+def _load_vector_state_local():
     path = _vector_state_path()
     if not path.exists():
         return {}
@@ -101,11 +105,43 @@ def _load_vector_state():
         return {}
 
 
-def _save_vector_state(state):
+def _save_vector_state_local(state):
     path = _vector_state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2, ensure_ascii=False)
+
+
+def _load_vector_state():
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            blob = storage.bucket.blob(_vector_state_blob_name())
+            if blob.exists():
+                state = json.loads(blob.download_as_text(encoding="utf-8"))
+                _save_vector_state_local(state)
+                return state
+        except Exception as e:
+            st.session_state["_vector_state_error"] = f"GCS vector-state load failed: {e}"
+
+    return _load_vector_state_local()
+
+
+def _save_vector_state(state):
+    _save_vector_state_local(state)
+
+    storage = _get_gcs_storage()
+    if storage is None:
+        return
+
+    try:
+        blob = storage.bucket.blob(_vector_state_blob_name())
+        blob.upload_from_string(
+            json.dumps(state, indent=2, ensure_ascii=False),
+            content_type="application/json",
+        )
+    except Exception as e:
+        st.session_state["_vector_state_error"] = f"GCS vector-state save failed: {e}"
 
 
 def _render_corpus_file(raw_data_obj):
