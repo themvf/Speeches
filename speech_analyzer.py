@@ -267,18 +267,65 @@ class SECSpeechAnalyzer:
 
         content_lines = raw_content.split("\n")
 
+        # SEC pages commonly begin with heading/byline/location/date metadata.
+        # Find the first substantive paragraph after that block.
         speech_start_markers = [
             "Good morning", "Good afternoon", "Good evening", "Thank you",
             "Ladies and gentlemen", "I am pleased", "It is my pleasure",
             "I want to thank", "Today I", "I'm delighted", "I'm honored",
         ]
 
-        speech_start_idx = 0
-        for i, line in enumerate(content_lines):
-            line_clean = line.strip()
-            if any(marker in line_clean for marker in speech_start_markers) and len(line_clean) > 20:
+        def is_date_line(text: str) -> bool:
+            return bool(re.match(
+                r"^(?:"
+                r"(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}"
+                r"|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{1,2},\s+\d{4}"
+                r"|\d{1,2}/\d{1,2}/\d{4}"
+                r"|\d{4}-\d{2}-\d{2}"
+                r")$",
+                text,
+            ))
+
+        def is_metadata_line(text: str) -> bool:
+            if not text:
+                return True
+            if text.startswith("#"):
+                return True
+            if text in {"Speech", "Statement", "Remarks"}:
+                return True
+            if "More in this Section" in text:
+                return True
+            if is_date_line(text):
+                return True
+            if text.startswith("[") and "](" in text:
+                return True
+            if text.startswith("Washington") or text.startswith("New York"):
+                return True
+            return False
+
+        title_idx = next((i for i, line in enumerate(content_lines) if line.strip().startswith("# ")), -1)
+        search_start = title_idx + 1 if title_idx >= 0 else 0
+
+        speech_start_idx = -1
+        for i in range(search_start, len(content_lines)):
+            line_clean = content_lines[i].strip()
+            if is_metadata_line(line_clean):
+                continue
+            if len(line_clean) >= 40:
                 speech_start_idx = i
                 break
+
+        # Fallback to greeting/opening markers, but only near the top section.
+        if speech_start_idx == -1:
+            marker_search_end = min(len(content_lines), search_start + 120)
+            for i in range(search_start, marker_search_end):
+                line_clean = content_lines[i].strip()
+                if any(marker in line_clean for marker in speech_start_markers) and len(line_clean) > 20:
+                    speech_start_idx = i
+                    break
+
+        if speech_start_idx == -1:
+            speech_start_idx = max(search_start, 0)
 
         speech_end_idx = len(content_lines)
         for i, line in enumerate(content_lines):
@@ -294,7 +341,7 @@ class SECSpeechAnalyzer:
                 line = line.strip()
                 if not line or len(line) < 3:
                     continue
-                if line.startswith("[") and line.endswith("]") and ("http" in line or "www." in line):
+                if line.startswith("[") and "](" in line:
                     continue
                 if len(line) == 1 or line in ["-", "\u2022", "*", "|"]:
                     continue
