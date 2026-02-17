@@ -447,6 +447,7 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
         org_label,
         force_rebuild=force_rebuild,
     )
+    sync_mode = "rebuild" if (force_rebuild or created_new_store) else "incremental"
 
     if force_rebuild or created_new_store:
         add_ids = sorted(current_docs.keys())
@@ -476,8 +477,10 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
                     "planned_remove": 0,
                     "uploaded": 0,
                     "deleted": 0,
+                    "failed_count": 0,
                     "failed": [],
                     "sync_mode": "noop",
+                    "status": "completed",
                 },
             }
         )
@@ -495,9 +498,77 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
             "doc_count": len(indexed_docs),
         }
 
+    # Persist the active target store before long-running operations start.
+    # This prevents reboots/interruption from pointing back to an old store.
+    if created_new_store or force_rebuild or vector_store_id != existing_store_id:
+        org_state.update(
+            {
+                "org_label": org_label,
+                "vector_store_id": vector_store_id,
+                "docs": indexed_docs,
+                "doc_count_indexed": len(indexed_docs),
+                "updated_at": _utc_now_iso(),
+                "last_sync": {
+                    "planned_add": len(add_ids),
+                    "planned_update": len(update_ids),
+                    "planned_remove": len(remove_ids),
+                    "uploaded": 0,
+                    "deleted": 0,
+                    "failed_count": 0,
+                    "failed": [],
+                    "sync_mode": sync_mode,
+                    "status": "in_progress",
+                },
+            }
+        )
+        stores[org_key] = org_state
+        state["version"] = 2
+        state["updated_at"] = _utc_now_iso()
+        _save_vector_state(state)
+
     failed = []
     deleted_count = 0
     uploaded_count = 0
+
+    next_docs = {}
+    for doc_id in unchanged_ids:
+        entry = indexed_docs.get(doc_id, {})
+        if entry:
+            next_docs[doc_id] = entry
+
+    checkpoint_interval = 100
+
+    def _checkpoint_state(force=False):
+        if not force:
+            if completed_ops == 0:
+                return
+            if completed_ops % checkpoint_interval != 0:
+                return
+
+        org_state.update(
+            {
+                "org_label": org_label,
+                "vector_store_id": vector_store_id,
+                "docs": next_docs,
+                "doc_count_indexed": len(next_docs),
+                "updated_at": _utc_now_iso(),
+                "last_sync": {
+                    "planned_add": len(add_ids),
+                    "planned_update": len(update_ids),
+                    "planned_remove": len(remove_ids),
+                    "uploaded": uploaded_count,
+                    "deleted": deleted_count,
+                    "failed_count": len(failed),
+                    "failed": failed[:10],
+                    "sync_mode": sync_mode,
+                    "status": "in_progress",
+                },
+            }
+        )
+        stores[org_key] = org_state
+        state["version"] = 2
+        state["updated_at"] = _utc_now_iso()
+        _save_vector_state(state)
 
     # Remove stale files before uploading updates when reusing the same store.
     if not (force_rebuild or created_new_store):
@@ -519,12 +590,7 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
                 )
             completed_ops += 1
             _emit_progress(completed_ops, total_ops, f"Processed delete for {display}")
-
-    next_docs = {}
-    for doc_id in unchanged_ids:
-        entry = indexed_docs.get(doc_id, {})
-        if entry:
-            next_docs[doc_id] = entry
+            _checkpoint_state()
 
     upload_items = []
     for doc_id in upload_targets:
@@ -568,6 +634,7 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
                     )
                 completed_ops += 1
                 _emit_progress(completed_ops, total_ops, f"Processed upload for {display}")
+                _checkpoint_state()
         else:
             _emit_progress(
                 completed_ops,
@@ -615,6 +682,7 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
                         )
                     completed_ops += 1
                     _emit_progress(completed_ops, total_ops, f"Processed upload for {display}")
+                    _checkpoint_state()
 
     org_state.update(
         {
@@ -629,8 +697,10 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
                 "planned_remove": len(remove_ids),
                 "uploaded": uploaded_count,
                 "deleted": deleted_count,
+                "failed_count": len(failed),
                 "failed": failed,
-                "sync_mode": "rebuild" if (force_rebuild or created_new_store) else "incremental",
+                "sync_mode": sync_mode,
+                "status": "completed",
             },
         }
     )
@@ -655,6 +725,7 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
         "rebuilt": bool(force_rebuild or created_new_store),
         "created_new_store": created_new_store,
         "up_to_date": False,
+        "all_uploads_failed": bool(upload_targets) and uploaded_count == 0,
         "stats": {
             "add": len(add_ids),
             "update": len(update_ids),
@@ -684,6 +755,7 @@ def _get_org_index_status(raw_data_obj, org_key, org_label):
         "pending_add": len(add_ids),
         "pending_update": len(update_ids),
         "pending_remove": len(remove_ids),
+        "last_sync": org_state.get("last_sync", {}),
     }
 
 
@@ -1479,6 +1551,18 @@ elif page == "Agent Chat":
             f"({pending_total} pending changes). Answers may reflect older positions until sync completes."
         )
 
+    last_sync = index_status.get("last_sync", {})
+    if isinstance(last_sync, dict) and last_sync:
+        ls_status = str(last_sync.get("status", "unknown") or "unknown")
+        ls_mode = str(last_sync.get("sync_mode", "unknown") or "unknown")
+        ls_uploaded = int(last_sync.get("uploaded", 0) or 0)
+        ls_deleted = int(last_sync.get("deleted", 0) or 0)
+        ls_failed = int(last_sync.get("failed_count", len(last_sync.get("failed", []) or [])) or 0)
+        st.caption(
+            f"Last sync: status={ls_status}, mode={ls_mode}, "
+            f"uploaded={ls_uploaded}, deleted={ls_deleted}, failed={ls_failed}"
+        )
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Build/Sync Knowledge Index", type="primary"):
@@ -1513,14 +1597,25 @@ elif page == "Agent Chat":
                         st.success("Knowledge index is up to date.")
                     else:
                         stats = report.get("stats", {})
+                        planned_add = stats.get("add", 0)
+                        planned_update = stats.get("update", 0)
+                        planned_remove = stats.get("remove", 0)
+                        uploaded = stats.get("uploaded", 0)
+                        deleted = stats.get("deleted", 0)
+                        failed_count = len(report.get("failed", []))
+
                         st.success(
-                            "Knowledge index sync complete: "
-                            f"+{stats.get('add', 0)} add, "
-                            f"~{stats.get('update', 0)} update, "
-                            f"-{stats.get('remove', 0)} remove."
+                            "Knowledge index sync finished: "
+                            f"planned +{planned_add}/~{planned_update}/-{planned_remove}, "
+                            f"completed uploads={uploaded}, deletes={deleted}."
                         )
+                        if report.get("all_uploads_failed"):
+                            st.error(
+                                "No uploads were recorded in this run. "
+                                "Use Vector Store Diagnostics and check operation failures below."
+                            )
                         if report.get("failed"):
-                            st.warning(f"{len(report['failed'])} document operations failed.")
+                            st.warning(f"{failed_count} document operations failed.")
                             for item in report["failed"][:5]:
                                 st.write(f"- {item.get('stage', 'unknown')}: {item.get('title', item.get('doc_id', ''))}")
                 except Exception as e:
@@ -1553,7 +1648,17 @@ elif page == "Agent Chat":
                     vector_store_id = report.get("vector_store_id", "")
                     if vector_store_id:
                         st.session_state["vector_store_ids_by_org"][org_key] = vector_store_id
-                    st.success("Knowledge index rebuilt from scratch.")
+                    stats = report.get("stats", {})
+                    st.success(
+                        "Knowledge index rebuild finished: "
+                        f"planned +{stats.get('add', 0)}/~{stats.get('update', 0)}/-{stats.get('remove', 0)}, "
+                        f"completed uploads={stats.get('uploaded', 0)}, deletes={stats.get('deleted', 0)}."
+                    )
+                    if report.get("all_uploads_failed"):
+                        st.error(
+                            "No uploads were recorded in this rebuild. "
+                            "Use Vector Store Diagnostics and check failures below."
+                        )
                     if report.get("failed"):
                         st.warning(f"{len(report['failed'])} document operations failed during rebuild.")
                     if report.get("old_store_delete_error"):
