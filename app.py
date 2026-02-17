@@ -29,6 +29,9 @@ st.set_page_config(
 CUSTOM_DOCS_BLOB_NAME = "custom_documents.json"
 CUSTOM_DOCS_LOCAL_PATH = Path("data/custom_documents.json")
 CUSTOM_DOCS_RAW_DIR = Path("data/raw_documents")
+ENRICHMENT_STATE_BLOB_NAME = "document_enrichment_state.json"
+ENRICHMENT_STATE_LOCAL_PATH = Path("data/document_enrichment_state.json")
+ENRICHMENT_PIPELINE_VERSION = "v1"
 
 
 # --- GCS helpers ---
@@ -445,6 +448,472 @@ def _build_knowledge_df(knowledge_data):
         return out
     out["date_parsed"] = _parse_date_series(out["date"])
     return out
+
+
+def _empty_enrichment_state():
+    return {
+        "version": 1,
+        "pipeline_version": ENRICHMENT_PIPELINE_VERSION,
+        "updated_at": "",
+        "entries": {},
+    }
+
+
+def _normalize_enrichment_state(state):
+    if not isinstance(state, dict):
+        return _empty_enrichment_state()
+    entries = state.get("entries", {})
+    if not isinstance(entries, dict):
+        entries = {}
+    out = {
+        "version": int(state.get("version", 1) or 1),
+        "pipeline_version": str(state.get("pipeline_version", ENRICHMENT_PIPELINE_VERSION) or ENRICHMENT_PIPELINE_VERSION),
+        "updated_at": str(state.get("updated_at", "") or ""),
+        "entries": entries,
+    }
+    return out
+
+
+def _load_enrichment_state_local():
+    if not ENRICHMENT_STATE_LOCAL_PATH.exists():
+        return _empty_enrichment_state()
+    try:
+        with open(ENRICHMENT_STATE_LOCAL_PATH, "r", encoding="utf-8") as f:
+            return _normalize_enrichment_state(json.load(f))
+    except Exception:
+        return _empty_enrichment_state()
+
+
+def _save_enrichment_state_local(state):
+    state = _normalize_enrichment_state(state)
+    ENRICHMENT_STATE_LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(ENRICHMENT_STATE_LOCAL_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2, ensure_ascii=False)
+
+
+def _load_enrichment_state():
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            blob = storage.bucket.blob(ENRICHMENT_STATE_BLOB_NAME)
+            if blob.exists():
+                state = _normalize_enrichment_state(json.loads(blob.download_as_text(encoding="utf-8")))
+                _save_enrichment_state_local(state)
+                return state
+        except Exception as e:
+            st.session_state["_enrichment_error"] = f"GCS enrichment-state load failed: {e}"
+    return _load_enrichment_state_local()
+
+
+def _save_enrichment_state(state):
+    state = _normalize_enrichment_state(state)
+    state["updated_at"] = _utc_now_iso()
+    _save_enrichment_state_local(state)
+
+    storage = _get_gcs_storage()
+    if storage is None:
+        return
+    try:
+        blob = storage.bucket.blob(ENRICHMENT_STATE_BLOB_NAME)
+        blob.upload_from_string(
+            json.dumps(state, indent=2, ensure_ascii=False),
+            content_type="application/json",
+        )
+    except Exception as e:
+        st.session_state["_enrichment_error"] = f"GCS enrichment-state save failed: {e}"
+
+
+def _corpus_doc_id(speech):
+    m = speech.get("metadata", {})
+    existing = str(m.get("document_id", "") or "").strip()
+    if existing:
+        return existing
+    stable = "|".join(
+        [
+            _speech_org_key(speech),
+            str(m.get("url", "") or ""),
+            str(m.get("title", "") or ""),
+            str(m.get("speaker", "") or ""),
+            str(m.get("date", "") or ""),
+        ]
+    )
+    if not stable.strip("|"):
+        text = str(speech.get("content", {}).get("full_text", "") or "")
+        stable = text[:1000]
+    return hashlib.sha256(stable.encode("utf-8")).hexdigest()[:24]
+
+
+def _build_enrichment_candidates(knowledge_data, org_key=None):
+    dedup = {}
+    for speech in knowledge_data.get("speeches", []):
+        key = _speech_org_key(speech)
+        if org_key and org_key != "__all__" and key != org_key:
+            continue
+        text = str(speech.get("content", {}).get("full_text", "") or "").strip()
+        if not text:
+            continue
+        m = speech.get("metadata", {})
+        doc_id = _corpus_doc_id(speech)
+        dedup[doc_id] = {
+            "doc_id": doc_id,
+            "organization": _speech_org_label(speech),
+            "org_key": key,
+            "title": str(m.get("title", "") or "").strip(),
+            "speaker": str(m.get("speaker", "") or "").strip(),
+            "date": str(m.get("date", "") or "").strip(),
+            "url": str(m.get("url", "") or "").strip(),
+            "doc_type": str(m.get("doc_type", "Speech") or "Speech").strip(),
+            "full_text": text,
+            "word_count": int(m.get("word_count", 0) or 0),
+        }
+    return list(dedup.values())
+
+
+def _extract_first_json_object(text):
+    raw = str(text or "").strip()
+    if not raw:
+        return {}
+
+    # Direct parse.
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    # Strip fenced markdown.
+    fenced = raw
+    if fenced.startswith("```"):
+        fenced = fenced.strip("`")
+        fenced = fenced.replace("json", "", 1).strip()
+    try:
+        parsed = json.loads(fenced)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        candidate = raw[start : end + 1]
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return {}
+    return {}
+
+
+def _normalize_enrichment_payload(payload):
+    if not isinstance(payload, dict):
+        payload = {}
+
+    tags = payload.get("tags", [])
+    if not isinstance(tags, list):
+        tags = []
+    tags = [str(t).strip() for t in tags if str(t).strip()][:12]
+
+    keywords = payload.get("keywords", [])
+    if not isinstance(keywords, list):
+        keywords = []
+    keywords = [str(k).strip() for k in keywords if str(k).strip()][:20]
+
+    entities = payload.get("entities", [])
+    normalized_entities = []
+    if isinstance(entities, list):
+        for item in entities[:30]:
+            if isinstance(item, dict):
+                name = str(item.get("name", "") or "").strip()
+                etype = str(item.get("type", "") or "").strip().upper()
+                mentions = int(item.get("mentions", 1) or 1)
+                if name:
+                    normalized_entities.append(
+                        {
+                            "name": name,
+                            "type": etype or "OTHER",
+                            "mentions": max(1, mentions),
+                        }
+                    )
+
+    stance = payload.get("stance", {})
+    if not isinstance(stance, dict):
+        stance = {"label": str(stance)}
+    stance_label = str(stance.get("label", "unclear") or "unclear").strip().lower()
+    allowed_stance = {"supportive", "cautious", "critical", "neutral", "unclear"}
+    if stance_label not in allowed_stance:
+        stance_label = "unclear"
+    stance_target = str(stance.get("target", "") or "").strip()
+
+    evidence_spans = payload.get("evidence_spans", [])
+    normalized_evidence = []
+    if isinstance(evidence_spans, list):
+        for item in evidence_spans[:8]:
+            if isinstance(item, dict):
+                claim = str(item.get("claim", "") or "").strip()
+                snippet = str(item.get("snippet", "") or "").strip()
+                if claim and snippet:
+                    normalized_evidence.append(
+                        {
+                            "claim": claim,
+                            "snippet": snippet[:600],
+                        }
+                    )
+
+    try:
+        confidence = float(payload.get("confidence", 0.0) or 0.0)
+    except Exception:
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    summary = str(payload.get("summary", "") or "").strip()[:1200]
+
+    return {
+        "summary": summary,
+        "tags": tags,
+        "keywords": keywords,
+        "entities": normalized_entities,
+        "stance": {"label": stance_label, "target": stance_target},
+        "evidence_spans": normalized_evidence,
+        "confidence": confidence,
+    }
+
+
+def _heuristic_enrichment(doc):
+    text = str(doc.get("full_text", "") or "")
+    lower = text.lower()
+
+    topic_rules = {
+        "crypto_assets": ["crypto", "token", "digital asset", "blockchain", "stablecoin", "bitcoin", "ether"],
+        "enforcement": ["enforcement", "violation", "charges", "penalty", "compliance", "investigation"],
+        "disclosure_reporting": ["disclosure", "reporting", "10-k", "8-k", "transparency", "materiality"],
+        "market_structure": ["market structure", "exchange", "liquidity", "trading", "order", "broker-dealer"],
+        "investor_protection": ["investor", "retail", "protection", "fraud", "harm"],
+        "funds_asset_mgmt": ["fund", "asset management", "adviser", "etf", "mutual fund"],
+        "ai_technology": ["artificial intelligence", "ai", "machine learning", "automation", "algorithm"],
+        "cybersecurity": ["cyber", "security breach", "incident response", "ransomware", "cybersecurity"],
+    }
+    tags = [tag for tag, needles in topic_rules.items() if any(n in lower for n in needles)]
+    if not tags:
+        tags = ["general_policy"]
+
+    words = re.findall(r"[A-Za-z][A-Za-z\\-]{3,}", text.lower())
+    stop = {
+        "that", "this", "with", "from", "have", "will", "their", "there", "which", "about", "would", "should",
+        "could", "while", "these", "those", "into", "through", "across", "under", "over", "because", "where",
+        "what", "when", "your", "than", "then", "them", "they", "been", "being", "also", "such", "must",
+        "commission", "securities", "exchange", "speech", "statement", "sec",
+    }
+    freq = {}
+    for w in words:
+        if w in stop:
+            continue
+        freq[w] = freq.get(w, 0) + 1
+    keywords = [w for w, _ in sorted(freq.items(), key=lambda kv: kv[1], reverse=True)[:12]]
+
+    stance_label = "neutral"
+    if any(t in lower for t in ["support", "welcome", "encourage", "approve"]):
+        stance_label = "supportive"
+    if any(t in lower for t in ["risk", "concern", "caution", "guardrail"]):
+        stance_label = "cautious"
+    if any(t in lower for t in ["oppose", "reject", "critic", "harmful"]):
+        stance_label = "critical"
+
+    evidence = []
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    for line in lines[:80]:
+        low = line.lower()
+        if any(t in low for t in ["investor", "risk", "disclosure", "crypto", "enforcement"]):
+            evidence.append({"claim": "Potentially relevant policy statement", "snippet": line[:500]})
+            if len(evidence) >= 3:
+                break
+
+    return _normalize_enrichment_payload(
+        {
+            "summary": (lines[0] if lines else str(doc.get("title", "")))[:300],
+            "tags": tags,
+            "keywords": keywords,
+            "entities": [],
+            "stance": {"label": stance_label, "target": ""},
+            "evidence_spans": evidence,
+            "confidence": 0.35,
+        }
+    )
+
+
+def _run_enrichment_agent(client, doc, model_name):
+    text = str(doc.get("full_text", "") or "").strip()
+    if len(text) > 90000:
+        text = text[:45000] + "\n\n[...TRUNCATED FOR ENRICHMENT...]\n\n" + text[-30000:]
+
+    instruction = (
+        "You are an enrichment agent for policy documents. "
+        "Return ONLY valid JSON with keys: "
+        "summary, tags, keywords, entities, stance, evidence_spans, confidence. "
+        "Use concise tags and keywords. "
+        "entities must be list of {name,type,mentions}. "
+        "stance must be {label,target} where label in [supportive,cautious,critical,neutral,unclear]. "
+        "evidence_spans must include verbatim snippets from the document."
+    )
+    prompt = (
+        f"Organization: {doc.get('organization', '')}\n"
+        f"Title: {doc.get('title', '')}\n"
+        f"Speaker: {doc.get('speaker', '')}\n"
+        f"Date: {doc.get('date', '')}\n"
+        f"Type: {doc.get('doc_type', '')}\n\n"
+        f"Document Text:\n{text}"
+    )
+
+    response = client.responses.create(
+        model=model_name,
+        instructions=instruction,
+        input=prompt,
+    )
+    raw_text = _extract_response_text(response)
+    parsed = _extract_first_json_object(raw_text)
+    if not parsed:
+        raise RuntimeError("Model did not return parseable JSON.")
+    return _normalize_enrichment_payload(parsed)
+
+
+def _compute_reward(enrichment, review_decision):
+    schema_validity = 1.0 if enrichment.get("tags") and enrichment.get("keywords") else 0.6
+    evidence_quality = min(1.0, len(enrichment.get("evidence_spans", [])) / 3.0)
+    confidence = float(enrichment.get("confidence", 0.0) or 0.0)
+    confidence = max(0.0, min(1.0, confidence))
+
+    review_map = {
+        "accepted": 1.0,
+        "edited": 0.8,
+        "pending": 0.6,
+        "rejected": 0.2,
+    }
+    review_component = review_map.get(str(review_decision or "pending"), 0.6)
+
+    score = (
+        0.35 * schema_validity
+        + 0.30 * evidence_quality
+        + 0.20 * confidence
+        + 0.15 * review_component
+    )
+
+    return {
+        "score": round(float(score), 4),
+        "components": {
+            "schema_validity": round(schema_validity, 4),
+            "evidence_quality": round(evidence_quality, 4),
+            "confidence": round(confidence, 4),
+            "review_component": round(review_component, 4),
+        },
+    }
+
+
+def _select_enrichment_targets(candidates, enrichment_state, mode):
+    entries = enrichment_state.get("entries", {})
+    selected = []
+    for doc in candidates:
+        existing = entries.get(doc["doc_id"], {})
+        status = str(existing.get("status", "") or "")
+        if mode == "only_missing_or_failed":
+            if status in ("enriched", "fallback_enriched", "reviewed"):
+                continue
+        elif mode == "only_pending_review":
+            review = existing.get("review", {})
+            decision = str(review.get("decision", "pending") or "pending")
+            if decision != "pending":
+                continue
+        selected.append(doc)
+    return selected
+
+
+def _run_enrichment_batch(client, candidates, enrichment_state, model_name, mode, limit, progress_callback=None):
+    entries = enrichment_state.setdefault("entries", {})
+    targets = _select_enrichment_targets(candidates, enrichment_state, mode)
+    if limit and limit > 0:
+        targets = targets[:limit]
+
+    total = len(targets)
+    processed = 0
+
+    for doc in targets:
+        if progress_callback is not None:
+            progress_callback(processed, total, f"Enriching {doc.get('title', doc['doc_id'])}")
+
+        doc_id = doc["doc_id"]
+        review = entries.get(doc_id, {}).get("review", {})
+        decision = str(review.get("decision", "pending") or "pending")
+        notes = str(review.get("notes", "") or "")
+
+        status = "enriched"
+        error_msg = ""
+        try:
+            enrichment = _run_enrichment_agent(client, doc, model_name)
+        except Exception as e:
+            enrichment = _heuristic_enrichment(doc)
+            status = "fallback_enriched"
+            error_msg = str(e)
+
+        reward = _compute_reward(enrichment, decision)
+        entries[doc_id] = {
+            "doc_id": doc_id,
+            "organization": doc.get("organization", ""),
+            "org_key": doc.get("org_key", ""),
+            "title": doc.get("title", ""),
+            "speaker": doc.get("speaker", ""),
+            "date": doc.get("date", ""),
+            "url": doc.get("url", ""),
+            "doc_type": doc.get("doc_type", ""),
+            "word_count": int(doc.get("word_count", 0) or 0),
+            "status": status,
+            "error": error_msg,
+            "model": model_name,
+            "pipeline_version": ENRICHMENT_PIPELINE_VERSION,
+            "updated_at": _utc_now_iso(),
+            "enrichment": enrichment,
+            "review": {
+                "decision": decision,
+                "notes": notes,
+                "reviewed_at": str(review.get("reviewed_at", "") or ""),
+            },
+            "reward": reward,
+        }
+        processed += 1
+
+        # checkpoint every 10 docs
+        if processed % 10 == 0:
+            _save_enrichment_state(enrichment_state)
+
+    if progress_callback is not None:
+        progress_callback(total, total, "Enrichment run complete")
+
+    _save_enrichment_state(enrichment_state)
+    return {
+        "processed": processed,
+        "total_selected": total,
+    }
+
+
+def _update_review_decision(enrichment_state, doc_id, decision, notes):
+    entries = enrichment_state.setdefault("entries", {})
+    item = entries.get(doc_id)
+    if not item:
+        return False
+    decision = str(decision or "pending").strip().lower()
+    if decision not in {"pending", "accepted", "rejected", "edited"}:
+        decision = "pending"
+    item["review"] = {
+        "decision": decision,
+        "notes": str(notes or ""),
+        "reviewed_at": _utc_now_iso(),
+    }
+    item["reward"] = _compute_reward(item.get("enrichment", {}), decision)
+    if decision in {"accepted", "edited"} and item.get("status") == "enriched":
+        item["status"] = "reviewed"
+    entries[doc_id] = item
+    _save_enrichment_state(enrichment_state)
+    return True
 
 
 def _build_org_documents(raw_data_obj, org_key, org_label):
@@ -1495,7 +1964,7 @@ if section == "SEC Speeches":
 else:
     page = st.sidebar.radio(
         "Navigate",
-        ["Agent Chat", "Document Library"],
+        ["Agent Chat", "Document Library", "Enrichment Pipeline"],
     )
 
 st.sidebar.markdown("---")
@@ -2343,6 +2812,230 @@ elif page == "Document Library":
         )
     else:
         st.info("No uploaded documents yet. Add a PDF/text/HTML file or paste transcript text above.")
+
+
+# =====================================================
+# PAGE: Enrichment Pipeline
+# =====================================================
+elif page == "Enrichment Pipeline":
+    st.title("Enrichment Pipeline")
+    st.markdown(
+        "Run the enrichment agent to assign tags, keywords, entities, stance, evidence, and reward scores."
+    )
+
+    enrichment_state = _load_enrichment_state()
+
+    def _scoped_entries_from_state(state_obj):
+        scoped = []
+        for entry in state_obj.get("entries", {}).values():
+            if not isinstance(entry, dict):
+                continue
+            if scope_key != "__all__" and str(entry.get("org_key", "") or "") != scope_key:
+                continue
+            scoped.append(entry)
+        return scoped
+
+    org_options = _list_org_options(knowledge_data)
+    org_scope_labels = ["All Organizations"] + [o["label"] for o in org_options]
+    selected_scope = st.selectbox("Organization Scope", org_scope_labels, index=0)
+    scope_key = "__all__"
+    scope_label = "All Organizations"
+    if selected_scope != "All Organizations":
+        selected_org = next((o for o in org_options if o["label"] == selected_scope), org_options[0])
+        scope_key = selected_org["key"]
+        scope_label = selected_org["label"]
+
+    scoped_candidates = _build_enrichment_candidates(
+        knowledge_data,
+        org_key=None if scope_key == "__all__" else scope_key,
+    )
+
+    scoped_entries = _scoped_entries_from_state(enrichment_state)
+
+    total_scope_docs = len(scoped_candidates)
+    enriched_count = sum(1 for e in scoped_entries if str(e.get("status", "")) in {"enriched", "reviewed", "fallback_enriched"})
+    failed_count = sum(1 for e in scoped_entries if str(e.get("status", "")) == "failed")
+    pending_review = sum(
+        1
+        for e in scoped_entries
+        if str(e.get("review", {}).get("decision", "pending") or "pending") == "pending"
+        and str(e.get("status", "")) in {"enriched", "fallback_enriched", "reviewed"}
+    )
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Docs In Scope", total_scope_docs)
+    m2.metric("Enriched", enriched_count)
+    m3.metric("Pending Review", pending_review)
+    m4.metric("Failed", failed_count)
+
+    mode_label = st.selectbox(
+        "Run Mode",
+        [
+            "Only Missing/Failed",
+            "Only Pending Review",
+            "Re-enrich All In Scope",
+        ],
+    )
+    mode_map = {
+        "Only Missing/Failed": "only_missing_or_failed",
+        "Only Pending Review": "only_pending_review",
+        "Re-enrich All In Scope": "re_enrich_all",
+    }
+    mode_key = mode_map[mode_label]
+
+    targets = _select_enrichment_targets(scoped_candidates, enrichment_state, mode_key)
+    target_count = len(targets)
+    if target_count <= 0:
+        batch_limit = 0
+        st.caption("No documents match the selected run mode.")
+    elif target_count == 1:
+        batch_limit = 1
+    else:
+        batch_limit = st.slider(
+            "Docs To Process This Run",
+            min_value=1,
+            max_value=target_count,
+            value=min(25, target_count),
+        )
+    st.caption(f"{target_count} documents currently match this run mode.")
+
+    available_models = []
+    client = None
+    if _openai_key is not None:
+        client = _get_openai_client()
+        if client is not None:
+            available_models = _get_accessible_chat_models(client)
+    if not available_models:
+        available_models = _candidate_chat_models()
+    if not available_models:
+        available_models = ["gpt-4o-mini"]
+
+    default_enrich_model = "gpt-4o-mini" if "gpt-4o-mini" in available_models else available_models[0]
+    enrich_model = st.selectbox(
+        "Enrichment Model",
+        available_models,
+        index=available_models.index(default_enrich_model),
+    )
+
+    if st.button("Run Enrichment Batch", type="primary", disabled=(batch_limit <= 0)):
+        if client is None:
+            st.error("OpenAI client is not configured. Check API key and model access.")
+        else:
+            run_progress = st.progress(0)
+            run_status = st.empty()
+
+            def _run_progress_cb(done, total, message):
+                if total <= 0:
+                    run_progress.progress(100)
+                    run_status.caption(message)
+                    return
+                safe_done = max(0, min(done, total))
+                pct = int((safe_done * 100) / total)
+                run_progress.progress(max(0, min(pct, 100)))
+                run_status.caption(f"{message} ({safe_done}/{total})")
+
+            with st.spinner(f"Running enrichment over {batch_limit} docs in {scope_label}..."):
+                result = _run_enrichment_batch(
+                    client=client,
+                    candidates=scoped_candidates,
+                    enrichment_state=enrichment_state,
+                    model_name=enrich_model,
+                    mode=mode_key,
+                    limit=batch_limit,
+                    progress_callback=_run_progress_cb,
+                )
+            st.success(
+                f"Enrichment run complete. Processed {result.get('processed', 0)} "
+                f"of {result.get('total_selected', 0)} matching docs."
+            )
+            enrichment_state = _load_enrichment_state()
+            scoped_entries = _scoped_entries_from_state(enrichment_state)
+
+    st.markdown("---")
+    st.subheader("Enrichment Results")
+    rows = []
+    for entry in scoped_entries:
+        enrich = entry.get("enrichment", {})
+        review = entry.get("review", {})
+        reward = entry.get("reward", {})
+        rows.append(
+            {
+                "doc_id": entry.get("doc_id", ""),
+                "date": entry.get("date", ""),
+                "title": entry.get("title", ""),
+                "organization": entry.get("organization", ""),
+                "status": entry.get("status", ""),
+                "review": review.get("decision", "pending"),
+                "reward": reward.get("score", 0.0),
+                "tags": ", ".join(enrich.get("tags", [])[:6]),
+                "keywords": ", ".join(enrich.get("keywords", [])[:8]),
+                "updated_at": entry.get("updated_at", ""),
+            }
+        )
+
+    if rows:
+        result_df = pd.DataFrame(rows)
+        if "date" in result_df.columns:
+            result_df = _sort_table_by_date(result_df, date_col="date")
+        st.dataframe(
+            result_df[["date", "title", "organization", "status", "review", "reward", "tags", "keywords"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        id_to_entry = {str(e.get("doc_id", "")): e for e in scoped_entries}
+        review_ids = [r["doc_id"] for r in rows if r["doc_id"] in id_to_entry]
+        if review_ids:
+            selected_doc_id = st.selectbox("Review Document", review_ids, format_func=lambda d: id_to_entry[d].get("title", d))
+            selected_entry = id_to_entry.get(selected_doc_id, {})
+            selected_enrichment = selected_entry.get("enrichment", {})
+            selected_review = selected_entry.get("review", {})
+            selected_reward = selected_entry.get("reward", {})
+
+            st.markdown(f"**Title:** {selected_entry.get('title', '')}")
+            st.markdown(
+                f"**Status:** {selected_entry.get('status', '')} | "
+                f"**Review:** {selected_review.get('decision', 'pending')} | "
+                f"**Reward:** {selected_reward.get('score', 0.0)}"
+            )
+            st.markdown(f"**Summary:** {selected_enrichment.get('summary', '')}")
+            st.markdown(f"**Tags:** {', '.join(selected_enrichment.get('tags', []))}")
+            st.markdown(f"**Keywords:** {', '.join(selected_enrichment.get('keywords', []))}")
+            stance = selected_enrichment.get("stance", {})
+            st.markdown(
+                f"**Stance:** {stance.get('label', 'unclear')} "
+                f"{'(' + stance.get('target', '') + ')' if stance.get('target') else ''}"
+            )
+
+            evidence_rows = selected_enrichment.get("evidence_spans", [])
+            if evidence_rows:
+                with st.expander("Evidence Spans"):
+                    for ev in evidence_rows:
+                        st.markdown(f"- **{ev.get('claim', '')}**")
+                        st.caption(ev.get("snippet", ""))
+
+            review_notes_key = f"review_notes_{selected_doc_id}"
+            current_notes = str(selected_review.get("notes", "") or "")
+            review_notes = st.text_area(
+                "Review Notes",
+                value=current_notes,
+                key=review_notes_key,
+            )
+            r1, r2, r3, r4 = st.columns(4)
+            if r1.button("Mark Accepted", key=f"accept_{selected_doc_id}"):
+                if _update_review_decision(enrichment_state, selected_doc_id, "accepted", review_notes):
+                    st.success("Marked accepted.")
+            if r2.button("Mark Edited", key=f"edited_{selected_doc_id}"):
+                if _update_review_decision(enrichment_state, selected_doc_id, "edited", review_notes):
+                    st.success("Marked edited.")
+            if r3.button("Mark Rejected", key=f"reject_{selected_doc_id}"):
+                if _update_review_decision(enrichment_state, selected_doc_id, "rejected", review_notes):
+                    st.success("Marked rejected.")
+            if r4.button("Reset Pending", key=f"pending_{selected_doc_id}"):
+                if _update_review_decision(enrichment_state, selected_doc_id, "pending", review_notes):
+                    st.success("Reset to pending.")
+    else:
+        st.info("No enrichment entries yet in this scope. Run a batch to generate them.")
 
 
 # =====================================================
