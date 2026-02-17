@@ -477,10 +477,15 @@ def _build_org_documents(raw_data_obj, org_key, org_label):
             overlap_chars=3000,
         )
         total_parts = len(text_chunks)
+        legacy_doc_id = hashlib.sha256(f"{org_key}|{stable_seed}".encode("utf-8")).hexdigest()[:24]
         for part_idx, chunk_text in enumerate(text_chunks, 1):
-            chunk_suffix = f"-part-{part_idx}" if total_parts > 1 else ""
-            chunk_seed = f"{stable_seed}|{part_idx}|{total_parts}"
-            doc_id = hashlib.sha256(f"{org_key}|{chunk_seed}".encode("utf-8")).hexdigest()[:24]
+            if total_parts == 1:
+                chunk_suffix = ""
+                doc_id = legacy_doc_id
+            else:
+                chunk_suffix = f"-part-{part_idx}"
+                chunk_seed = f"{stable_seed}|part|{part_idx}|{total_parts}"
+                doc_id = hashlib.sha256(f"{org_key}|{chunk_seed}".encode("utf-8")).hexdigest()[:24]
             chunk_header = f"{part_idx}/{total_parts}" if total_parts > 1 else "1/1"
             rendered = (
                 f"Organization: {org_label}\n"
@@ -1222,14 +1227,20 @@ def _extract_file_search_results(response):
     return results
 
 
-def _ask_agent(client, vector_store_id, question, model_name, instructions_text=None):
+def _ask_agent(client, vector_store_ids, question, model_name, instructions_text=None):
+    if isinstance(vector_store_ids, str):
+        vector_store_ids = [vector_store_ids]
+    vector_store_ids = [str(v).strip() for v in (vector_store_ids or []) if str(v).strip()]
+    if not vector_store_ids:
+        raise RuntimeError("No vector stores provided for retrieval.")
+
     request_payload = {
         "model": model_name,
         "input": question,
         "tools": [
             {
                 "type": "file_search",
-                "vector_store_ids": [vector_store_id],
+                "vector_store_ids": vector_store_ids,
                 "max_num_results": 8,
             }
         ],
@@ -1289,7 +1300,7 @@ def _is_model_access_error(exc):
     )
 
 
-def _ask_agent_with_fallback(client, vector_store_id, question, preferred_model, model_pool, instructions_text=None):
+def _ask_agent_with_fallback(client, vector_store_ids, question, preferred_model, model_pool, instructions_text=None):
     """Try preferred model first, then fallback models on access errors."""
     ordered = [preferred_model] + [m for m in model_pool if m != preferred_model]
     last_error = None
@@ -1297,7 +1308,7 @@ def _ask_agent_with_fallback(client, vector_store_id, question, preferred_model,
         try:
             result = _ask_agent(
                 client,
-                vector_store_id,
+                vector_store_ids,
                 question,
                 model_name,
                 instructions_text=instructions_text,
@@ -1796,6 +1807,13 @@ elif page == "Agent Chat":
     org_label = selected_org["label"]
     st.session_state["agent_org_key"] = org_key
 
+    chat_scope = st.radio(
+        "Chat Scope",
+        ["Selected Organization", "All Organizations"],
+        horizontal=True,
+        help="Selected Organization queries one org store. All Organizations queries every indexed org store.",
+    )
+
     index_status = _get_org_index_status(knowledge_data, org_key, org_label)
     if "vector_store_ids_by_org" not in st.session_state:
         st.session_state["vector_store_ids_by_org"] = {}
@@ -1810,6 +1828,42 @@ elif page == "Agent Chat":
         st.caption(f"Current vector store for {org_label}: `{active_vector_store_id}`")
     else:
         st.caption(f"No vector store indexed yet for {org_label}.")
+
+    state_all = _load_vector_state()
+    stores_all = state_all.get("stores", {}) if isinstance(state_all, dict) else {}
+    org_label_by_key = {o["key"]: o["label"] for o in org_options}
+    all_store_rows = []
+    for k, v in stores_all.items():
+        if not isinstance(v, dict):
+            continue
+        vsid = str(v.get("vector_store_id", "") or "").strip()
+        if not vsid:
+            continue
+        label = str(v.get("org_label", "") or org_label_by_key.get(k, k.upper()))
+        all_store_rows.append({"key": k, "label": label, "vector_store_id": vsid})
+
+    # Include in-memory mapped IDs from this session.
+    for k, vsid in st.session_state["vector_store_ids_by_org"].items():
+        vsid = str(vsid or "").strip()
+        if not vsid:
+            continue
+        if not any(r["key"] == k for r in all_store_rows):
+            all_store_rows.append(
+                {
+                    "key": k,
+                    "label": org_label_by_key.get(k, k.upper()),
+                    "vector_store_id": vsid,
+                }
+            )
+
+    all_store_rows = sorted(all_store_rows, key=lambda r: r["label"].lower())
+    all_vector_store_ids = [r["vector_store_id"] for r in all_store_rows]
+
+    if chat_scope == "All Organizations":
+        if all_store_rows:
+            st.caption(f"All-organizations chat enabled across {len(all_store_rows)} indexed organization stores.")
+        else:
+            st.caption("All-organizations chat has no indexed stores yet.")
 
     if active_vector_store_id:
         with st.expander("Vector Store Diagnostics"):
@@ -2041,11 +2095,19 @@ elif page == "Agent Chat":
                 except Exception as e:
                     st.error(f"Rebuild failed: {e}")
 
+    chat_scope_key = org_key
+    chat_scope_label = org_label
+    chat_vector_store_ids = [active_vector_store_id] if active_vector_store_id else []
+    if chat_scope == "All Organizations":
+        chat_scope_key = "__all_organizations__"
+        chat_scope_label = "All Organizations"
+        chat_vector_store_ids = all_vector_store_ids
+
     if "chat_messages_by_org" not in st.session_state:
         st.session_state["chat_messages_by_org"] = {}
-    if org_key not in st.session_state["chat_messages_by_org"]:
-        st.session_state["chat_messages_by_org"][org_key] = []
-    chat_messages = st.session_state["chat_messages_by_org"][org_key]
+    if chat_scope_key not in st.session_state["chat_messages_by_org"]:
+        st.session_state["chat_messages_by_org"][chat_scope_key] = []
+    chat_messages = st.session_state["chat_messages_by_org"][chat_scope_key]
 
     for msg in chat_messages:
         with st.chat_message(msg["role"]):
@@ -2059,20 +2121,19 @@ elif page == "Agent Chat":
                         if r.get("snippet"):
                             st.caption(r["snippet"])
 
-    user_prompt = st.chat_input(f"Ask a question about {org_label} documents...")
+    user_prompt = st.chat_input(f"Ask a question about {chat_scope_label} documents...")
     if user_prompt:
         chat_messages.append({"role": "user", "content": user_prompt})
         with st.chat_message("user"):
             st.markdown(user_prompt)
 
-        vector_store_id = st.session_state.get("vector_store_ids_by_org", {}).get(org_key)
-        if not vector_store_id:
+        if not chat_vector_store_ids:
             err_msg = "Please click **Build/Sync Knowledge Index** before chatting."
             chat_messages.append({"role": "assistant", "content": err_msg})
             with st.chat_message("assistant"):
                 st.error(err_msg)
         elif _needs_temporal_clarification(user_prompt):
-            clarify_msg = _build_temporal_clarification_message(knowledge_df, org_key, org_label)
+            clarify_msg = _build_temporal_clarification_message(knowledge_df, chat_scope_key, chat_scope_label)
             chat_messages.append({"role": "assistant", "content": clarify_msg})
             with st.chat_message("assistant"):
                 st.info(clarify_msg)
@@ -2082,11 +2143,15 @@ elif page == "Agent Chat":
                     try:
                         agent_out = _ask_agent_with_fallback(
                             client=client,
-                            vector_store_id=vector_store_id,
+                            vector_store_ids=chat_vector_store_ids,
                             question=user_prompt,
                             preferred_model=model_name,
                             model_pool=available_models,
-                            instructions_text=_build_agent_instructions(knowledge_df, org_key, org_label),
+                            instructions_text=_build_agent_instructions(
+                                knowledge_df,
+                                chat_scope_key,
+                                chat_scope_label,
+                            ),
                         )
                         result = agent_out.get("result", {})
                         answer = result.get("answer", "No answer returned.")
