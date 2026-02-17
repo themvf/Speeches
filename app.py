@@ -274,9 +274,7 @@ def _write_chat_doc_file(org_key, doc):
 def _extract_file_ref(upload_obj):
     data = _normalize_obj(upload_obj)
     vector_store_file_id = data.get("id") or ""
-    file_id = data.get("file_id") or ""
-    if not file_id and isinstance(vector_store_file_id, str) and not vector_store_file_id.startswith("vsf_"):
-        file_id = vector_store_file_id
+    file_id = data.get("file_id") or vector_store_file_id or ""
     return {
         "file_id": file_id,
         "vector_store_file_id": vector_store_file_id,
@@ -309,7 +307,7 @@ def _upload_doc_to_vector_store(client, vector_store_id, org_key, doc):
                     file=f,
                 )
             file_ref = _extract_file_ref(uploaded)
-            if not file_ref.get("file_id"):
+            if not (file_ref.get("file_id") or file_ref.get("vector_store_file_id")):
                 raise RuntimeError("Vector-store upload did not return a file ID.")
             return file_ref
         except Exception as e:
@@ -338,6 +336,50 @@ def _get_org_vector_state(state, org_key, org_label):
     org_state.setdefault("vector_store_id", "")
     org_state.setdefault("docs", {})
     return org_state
+
+
+def _get_vector_store_file_counts(client, vector_store_id):
+    """Return normalized vector-store file counts from OpenAI."""
+    try:
+        store = client.vector_stores.retrieve(vector_store_id)
+        data = _normalize_obj(store)
+        counts = data.get("file_counts", {}) if isinstance(data, dict) else {}
+        if not isinstance(counts, dict):
+            counts = {}
+        return {
+            "total": int(counts.get("total", 0) or 0),
+            "completed": int(counts.get("completed", 0) or 0),
+            "in_progress": int(counts.get("in_progress", 0) or 0),
+            "failed": int(counts.get("failed", 0) or 0),
+            "cancelled": int(counts.get("cancelled", 0) or 0),
+        }
+    except Exception:
+        return {
+            "total": 0,
+            "completed": 0,
+            "in_progress": 0,
+            "failed": 0,
+            "cancelled": 0,
+        }
+
+
+def _count_vector_store_files_deep(client, vector_store_id):
+    """Deep count by paginating vector_store.files.list (slower but authoritative)."""
+    status_counts = {
+        "total": 0,
+        "completed": 0,
+        "in_progress": 0,
+        "failed": 0,
+        "cancelled": 0,
+    }
+    first_page = client.vector_stores.files.list(vector_store_id=vector_store_id, limit=100, order="asc")
+    for page in first_page.iter_pages():
+        for item in getattr(page, "data", []):
+            status_counts["total"] += 1
+            status = str(getattr(item, "status", "") or "").strip().lower()
+            if status in status_counts:
+                status_counts[status] += 1
+    return status_counts
 
 
 def _ensure_org_vector_store(client, org_state, org_label, force_rebuild=False):
@@ -379,13 +421,21 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
     if not isinstance(indexed_docs, dict):
         indexed_docs = {}
 
+    existing_store_id = str(org_state.get("vector_store_id", "") or "").strip()
+    remote_counts = {}
+    if existing_store_id:
+        remote_counts = _get_vector_store_file_counts(client, existing_store_id)
+
     # If we only have legacy aggregate counts (no per-doc manifest), rebuild once
     # so future syncs are truly incremental without duplicate legacy corpus files.
     legacy_without_manifest = (
         not force_rebuild
-        and bool(str(org_state.get("vector_store_id", "") or "").strip())
+        and bool(existing_store_id)
         and not indexed_docs
-        and int(org_state.get("doc_count_indexed", 0) or 0) > 0
+        and (
+            int(org_state.get("doc_count_indexed", 0) or 0) > 0
+            or int(remote_counts.get("total", 0) or 0) > 0
+        )
     )
     if legacy_without_manifest:
         force_rebuild = True
@@ -1359,6 +1409,56 @@ elif page == "Agent Chat":
         st.caption(f"Current vector store for {org_label}: `{active_vector_store_id}`")
     else:
         st.caption(f"No vector store indexed yet for {org_label}.")
+
+    if active_vector_store_id:
+        with st.expander("Vector Store Diagnostics"):
+            diag_state_key = f"vector_diag_{org_key}"
+            deep_diag_key = f"vector_diag_deep_{org_key}"
+
+            if st.button("Refresh Store Counts", key=f"refresh_store_counts_{org_key}"):
+                try:
+                    st.session_state[diag_state_key] = _get_vector_store_file_counts(
+                        client,
+                        active_vector_store_id,
+                    )
+                except Exception as e:
+                    st.session_state[diag_state_key] = {"error": str(e)}
+
+            if st.button("Run Deep Count (List All Files)", key=f"deep_store_counts_{org_key}"):
+                with st.spinner("Counting files in vector store..."):
+                    try:
+                        st.session_state[deep_diag_key] = _count_vector_store_files_deep(
+                            client,
+                            active_vector_store_id,
+                        )
+                    except Exception as e:
+                        st.session_state[deep_diag_key] = {"error": str(e)}
+
+            diag_counts = st.session_state.get(diag_state_key)
+            if isinstance(diag_counts, dict):
+                if diag_counts.get("error"):
+                    st.error(f"Store count check failed: {diag_counts['error']}")
+                else:
+                    st.markdown(
+                        f"API counts: total={diag_counts.get('total', 0)}, "
+                        f"completed={diag_counts.get('completed', 0)}, "
+                        f"in_progress={diag_counts.get('in_progress', 0)}, "
+                        f"failed={diag_counts.get('failed', 0)}, "
+                        f"cancelled={diag_counts.get('cancelled', 0)}"
+                    )
+
+            deep_counts = st.session_state.get(deep_diag_key)
+            if isinstance(deep_counts, dict):
+                if deep_counts.get("error"):
+                    st.error(f"Deep count failed: {deep_counts['error']}")
+                else:
+                    st.markdown(
+                        f"Deep counts: total={deep_counts.get('total', 0)}, "
+                        f"completed={deep_counts.get('completed', 0)}, "
+                        f"in_progress={deep_counts.get('in_progress', 0)}, "
+                        f"failed={deep_counts.get('failed', 0)}, "
+                        f"cancelled={deep_counts.get('cancelled', 0)}"
+                    )
 
     idx_col1, idx_col2, idx_col3, idx_col4 = st.columns(4)
     idx_col1.metric("Corpus Docs", index_status.get("current_docs", 0))
