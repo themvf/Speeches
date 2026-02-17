@@ -8,6 +8,7 @@ import json
 import hashlib
 import time
 import re
+import io
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
@@ -23,6 +24,11 @@ st.set_page_config(
     page_icon="\U0001f4dc",
     layout="wide",
 )
+
+
+CUSTOM_DOCS_BLOB_NAME = "custom_documents.json"
+CUSTOM_DOCS_LOCAL_PATH = Path("data/custom_documents.json")
+CUSTOM_DOCS_RAW_DIR = Path("data/raw_documents")
 
 
 # --- GCS helpers ---
@@ -191,6 +197,256 @@ def _save_vector_state(state):
         st.session_state["_vector_state_error"] = f"GCS vector-state save failed: {e}"
 
 
+def _empty_custom_docs_payload():
+    return {
+        "updated_at": "",
+        "documents": [],
+    }
+
+
+def _normalize_custom_docs_payload(payload):
+    if not isinstance(payload, dict):
+        payload = {}
+    docs = payload.get("documents", [])
+    if not isinstance(docs, list):
+        docs = []
+    return {
+        "updated_at": str(payload.get("updated_at", "") or ""),
+        "documents": docs,
+    }
+
+
+def _load_custom_documents_local():
+    if not CUSTOM_DOCS_LOCAL_PATH.exists():
+        return _empty_custom_docs_payload()
+    try:
+        with open(CUSTOM_DOCS_LOCAL_PATH, "r", encoding="utf-8") as f:
+            return _normalize_custom_docs_payload(json.load(f))
+    except Exception:
+        return _empty_custom_docs_payload()
+
+
+def _save_custom_documents_local(payload):
+    payload = _normalize_custom_docs_payload(payload)
+    CUSTOM_DOCS_LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(CUSTOM_DOCS_LOCAL_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+def _load_custom_documents():
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            blob = storage.bucket.blob(CUSTOM_DOCS_BLOB_NAME)
+            if blob.exists():
+                payload = _normalize_custom_docs_payload(
+                    json.loads(blob.download_as_text(encoding="utf-8"))
+                )
+                _save_custom_documents_local(payload)
+                return payload
+        except Exception as e:
+            st.session_state["_custom_docs_error"] = f"GCS custom-doc load failed: {e}"
+
+    return _load_custom_documents_local()
+
+
+def _save_custom_documents(payload):
+    payload = _normalize_custom_docs_payload(payload)
+    payload["updated_at"] = _utc_now_iso()
+    _save_custom_documents_local(payload)
+
+    storage = _get_gcs_storage()
+    if storage is None:
+        return
+    try:
+        blob = storage.bucket.blob(CUSTOM_DOCS_BLOB_NAME)
+        blob.upload_from_string(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            content_type="application/json",
+        )
+    except Exception as e:
+        st.session_state["_custom_docs_error"] = f"GCS custom-doc save failed: {e}"
+
+
+def _safe_filename(name):
+    raw = str(name or "document").strip()
+    raw = raw.replace("\\", "_").replace("/", "_")
+    cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_", ".", " ") else "_" for ch in raw).strip()
+    return cleaned or "document"
+
+
+def _store_uploaded_source_file(file_bytes, original_filename, doc_id):
+    safe_name = _safe_filename(original_filename)
+    local_dir = CUSTOM_DOCS_RAW_DIR / doc_id
+    local_dir.mkdir(parents=True, exist_ok=True)
+    local_path = local_dir / safe_name
+    with open(local_path, "wb") as f:
+        f.write(file_bytes)
+
+    gcs_path = ""
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            gcs_path = f"documents/raw/{doc_id}/{safe_name}"
+            blob = storage.bucket.blob(gcs_path)
+            blob.upload_from_string(file_bytes, content_type="application/octet-stream")
+        except Exception as e:
+            st.session_state["_custom_docs_error"] = f"GCS source-file save failed: {e}"
+            gcs_path = ""
+
+    return str(local_path), gcs_path
+
+
+def _extract_text_from_uploaded_file(uploaded_file):
+    file_name = _safe_filename(getattr(uploaded_file, "name", "document"))
+    file_ext = Path(file_name).suffix.lower()
+    file_bytes = uploaded_file.getvalue()
+    warnings = []
+
+    if file_ext == ".pdf":
+        try:
+            from pypdf import PdfReader
+        except Exception as e:
+            raise RuntimeError(f"PDF parsing requires `pypdf` dependency: {e}")
+
+        reader = PdfReader(io.BytesIO(file_bytes))
+        pages = []
+        for idx, page in enumerate(reader.pages, 1):
+            page_text = (page.extract_text() or "").strip()
+            if page_text:
+                pages.append(f"[Page {idx}]\n{page_text}")
+        text = "\n\n".join(pages).strip()
+        if not text:
+            warnings.append("No text extracted from PDF. It may be scanned; OCR support is not enabled yet.")
+        return text, file_ext, warnings, file_bytes
+
+    if file_ext in (".html", ".htm"):
+        decoded = file_bytes.decode("utf-8", errors="replace")
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(decoded, "html.parser")
+            for tag in soup(["script", "style", "noscript"]):
+                tag.decompose()
+            text = soup.get_text("\n")
+            text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+        except Exception:
+            text = decoded
+            warnings.append("HTML sanitizer failed; using raw HTML text fallback.")
+        return text.strip(), file_ext, warnings, file_bytes
+
+    decoded = file_bytes.decode("utf-8", errors="replace")
+    return decoded.strip(), file_ext, warnings, file_bytes
+
+
+def _split_text_for_indexing(text, max_chars=40000, overlap_chars=3000):
+    text = str(text or "").strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + max_chars)
+        chunk = text[start:end]
+        chunks.append(chunk)
+        if end >= len(text):
+            break
+        start = max(0, end - overlap_chars)
+    return chunks
+
+
+def _create_uploaded_document_record(
+    text,
+    organization,
+    title,
+    speaker,
+    doc_date,
+    doc_type,
+    source_url,
+    source_filename,
+    source_ext,
+    source_local_path,
+    source_gcs_path,
+    tags_csv,
+):
+    org_label = _normalize_org_label(organization)
+    date_str = doc_date.strftime("%B %d, %Y") if isinstance(doc_date, date) else str(doc_date or "")
+    title = str(title or "").strip()
+    speaker = str(speaker or "").strip() or "Unknown"
+    source_url = str(source_url or "").strip()
+    tags = [t.strip() for t in str(tags_csv or "").split(",") if t.strip()]
+
+    stable_seed = "|".join([org_label, title, speaker, date_str, source_filename, str(len(text))])
+    doc_id = hashlib.sha256(stable_seed.encode("utf-8")).hexdigest()[:24]
+    canonical_url = source_url or f"uploaded://{_org_key_from_label(org_label)}/{doc_id}/{_safe_filename(source_filename)}"
+
+    paragraphs = [p.strip() for p in str(text).splitlines() if p.strip()]
+    word_count = len(str(text).split())
+
+    return {
+        "metadata": {
+            "document_id": doc_id,
+            "title": title,
+            "speaker": speaker,
+            "date": date_str,
+            "url": canonical_url,
+            "word_count": word_count,
+            "organization": org_label,
+            "doc_type": str(doc_type or "Document"),
+            "source_filename": _safe_filename(source_filename),
+            "source_format": str(source_ext or "").lstrip(".").lower(),
+            "source_local_path": source_local_path,
+            "source_gcs_path": source_gcs_path,
+            "tags": tags,
+            "source_kind": "uploaded",
+        },
+        "content": {
+            "full_text": str(text),
+            "paragraphs": paragraphs,
+            "sentences": [],
+        },
+        "validation": {
+            "completeness_score": 100 if word_count > 0 else 0,
+        },
+    }
+
+
+def _custom_docs_as_speeches(payload):
+    payload = _normalize_custom_docs_payload(payload)
+    docs = []
+    for item in payload.get("documents", []):
+        if isinstance(item, dict):
+            docs.append(item)
+    return docs
+
+
+def _build_knowledge_data(sec_raw_data, custom_docs_payload):
+    sec_speeches = sec_raw_data.get("speeches", []) if isinstance(sec_raw_data, dict) else []
+    custom_speeches = _custom_docs_as_speeches(custom_docs_payload)
+    return {"speeches": list(sec_speeches) + list(custom_speeches)}
+
+
+def _build_knowledge_df(knowledge_data):
+    rows = []
+    for speech in knowledge_data.get("speeches", []):
+        m = speech.get("metadata", {})
+        rows.append(
+            {
+                "organization": _speech_org_label(speech),
+                "date": m.get("date", ""),
+                "title": m.get("title", ""),
+            }
+        )
+    out = pd.DataFrame(rows)
+    if out.empty:
+        out["date_parsed"] = pd.NaT
+        return out
+    out["date_parsed"] = _parse_date_series(out["date"])
+    return out
+
+
 def _build_org_documents(raw_data_obj, org_key, org_label):
     """Build doc records keyed by deterministic doc_id for one organization."""
     docs = {}
@@ -209,35 +465,49 @@ def _build_org_documents(raw_data_obj, org_key, org_label):
         speech_date = str(m.get("date", "") or "").strip()
         url = str(m.get("url", "") or "").strip()
         word_count = m.get("word_count", 0)
+        doc_type = str(m.get("doc_type", "Speech") or "Speech").strip()
+        source_filename = str(m.get("source_filename", "") or "").strip()
 
         stable_seed = url or "|".join([title, speaker, speech_date])
         if not stable_seed.strip("|"):
             stable_seed = text[:500]
-        doc_id = hashlib.sha256(f"{org_key}|{stable_seed}".encode("utf-8")).hexdigest()[:24]
-
-        rendered = (
-            f"Organization: {org_label}\n"
-            f"Doc ID: {doc_id}\n"
-            f"Title: {title}\n"
-            f"Speaker: {speaker}\n"
-            f"Date: {speech_date}\n"
-            f"URL: {url}\n"
-            f"Word Count: {word_count}\n\n"
-            f"{text}\n"
+        text_chunks = _split_text_for_indexing(
+            text,
+            max_chars=40000,
+            overlap_chars=3000,
         )
-        content_hash = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+        total_parts = len(text_chunks)
+        for part_idx, chunk_text in enumerate(text_chunks, 1):
+            chunk_suffix = f"-part-{part_idx}" if total_parts > 1 else ""
+            chunk_seed = f"{stable_seed}|{part_idx}|{total_parts}"
+            doc_id = hashlib.sha256(f"{org_key}|{chunk_seed}".encode("utf-8")).hexdigest()[:24]
+            chunk_header = f"{part_idx}/{total_parts}" if total_parts > 1 else "1/1"
+            rendered = (
+                f"Organization: {org_label}\n"
+                f"Doc ID: {doc_id}\n"
+                f"Title: {title}\n"
+                f"Speaker: {speaker}\n"
+                f"Date: {speech_date}\n"
+                f"Document Type: {doc_type}\n"
+                f"URL: {url}\n"
+                f"Source File: {source_filename}\n"
+                f"Word Count: {word_count}\n"
+                f"Chunk: {chunk_header}\n\n"
+                f"{chunk_text}\n"
+            )
+            content_hash = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
 
-        docs[doc_id] = {
-            "doc_id": doc_id,
-            "title": title,
-            "speaker": speaker,
-            "date": speech_date,
-            "url": url,
-            "word_count": word_count,
-            "filename": f"{org_key}_{doc_id}.txt",
-            "rendered_text": rendered,
-            "content_hash": content_hash,
-        }
+            docs[doc_id] = {
+                "doc_id": doc_id,
+                "title": title,
+                "speaker": speaker,
+                "date": speech_date,
+                "url": url,
+                "word_count": word_count,
+                "filename": f"{org_key}_{doc_id}{chunk_suffix}.txt",
+                "rendered_text": rendered,
+                "content_hash": content_hash,
+            }
 
     return docs
 
@@ -380,6 +650,46 @@ def _count_vector_store_files_deep(client, vector_store_id):
             if status in status_counts:
                 status_counts[status] += 1
     return status_counts
+
+
+def _list_project_vector_stores(client, limit=50):
+    rows = []
+    response = client.vector_stores.list(limit=limit, order="desc")
+    for item in getattr(response, "data", []):
+        item_dict = _normalize_obj(item)
+        file_counts = item_dict.get("file_counts", {}) if isinstance(item_dict, dict) else {}
+        if not isinstance(file_counts, dict):
+            file_counts = {}
+        rows.append(
+            {
+                "id": item_dict.get("id", ""),
+                "name": item_dict.get("name", ""),
+                "status": item_dict.get("status", ""),
+                "total": int(file_counts.get("total", 0) or 0),
+                "completed": int(file_counts.get("completed", 0) or 0),
+                "in_progress": int(file_counts.get("in_progress", 0) or 0),
+                "failed": int(file_counts.get("failed", 0) or 0),
+            }
+        )
+    return rows
+
+
+def _verify_active_vector_store(client, vector_store_id):
+    if not vector_store_id:
+        return {"ok": False, "message": "No active vector store ID selected."}
+    try:
+        item = client.vector_stores.retrieve(vector_store_id)
+        item_dict = _normalize_obj(item)
+        file_counts = item_dict.get("file_counts", {}) if isinstance(item_dict, dict) else {}
+        return {
+            "ok": True,
+            "id": item_dict.get("id", ""),
+            "name": item_dict.get("name", ""),
+            "status": item_dict.get("status", ""),
+            "file_counts": file_counts if isinstance(file_counts, dict) else {},
+        }
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
 
 
 def _ensure_org_vector_store(client, org_state, org_label, force_rebuild=False):
@@ -1154,22 +1464,41 @@ def run_analysis(raw_data_json):
 # --- Load Data ---
 raw_data, df = load_data()
 speaker_df = _explode_speakers(df)
+custom_docs_payload = _load_custom_documents()
+custom_documents = _custom_docs_as_speeches(custom_docs_payload)
+knowledge_data = _build_knowledge_data(raw_data, custom_docs_payload)
+knowledge_df = _build_knowledge_df(knowledge_data)
 
 raw_data_json = json.dumps(raw_data)
 sentiment_data, topic_data, commissioner_data = run_analysis(raw_data_json)
 
 
 # --- Sidebar Navigation ---
-st.sidebar.title("SEC Speeches")
-page = st.sidebar.radio(
-    "Navigate",
-    ["Overview", "Sentiment Analysis", "Topic Analysis", "Speech Explorer", "Agent Chat", "Extract Speeches"],
-)
+st.sidebar.title("Policy Research Hub")
+section = st.sidebar.radio("Section", ["SEC Speeches", "Knowledge Base"])
+if section == "SEC Speeches":
+    page = st.sidebar.radio(
+        "Navigate",
+        ["Overview", "Sentiment Analysis", "Topic Analysis", "Speech Explorer", "Extract Speeches"],
+    )
+else:
+    page = st.sidebar.radio(
+        "Navigate",
+        ["Agent Chat", "Document Library"],
+    )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"**{len(df)} speeches loaded**")
-st.sidebar.markdown(f"**{speaker_df['speaker_individual'].nunique()} unique speakers**")
-st.sidebar.markdown(f"**{df['word_count'].sum():,} total words**")
+if section == "SEC Speeches":
+    st.sidebar.markdown(f"**{len(df)} speeches loaded**")
+    st.sidebar.markdown(f"**{speaker_df['speaker_individual'].nunique()} unique speakers**")
+    st.sidebar.markdown(f"**{df['word_count'].sum():,} total words**")
+else:
+    kb_words = 0
+    for s in knowledge_data.get("speeches", []):
+        kb_words += int(s.get("metadata", {}).get("word_count", 0) or 0)
+    st.sidebar.markdown(f"**{len(custom_documents)} uploaded docs**")
+    st.sidebar.markdown(f"**{len(knowledge_data.get('speeches', []))} total corpus docs**")
+    st.sidebar.markdown(f"**{kb_words:,} corpus words**")
 
 # GCS status indicator — with debug info
 _gcs_debug = []
@@ -1398,7 +1727,7 @@ elif page == "Speech Explorer":
 # =====================================================
 elif page == "Agent Chat":
     st.title("Agent Chat")
-    st.markdown("Ask questions about the speech corpus using retrieval + reasoning.")
+    st.markdown("Ask questions about the indexed corpus (SEC speeches + uploaded documents).")
 
     if _openai_key is None:
         st.error("OpenAI API key is not configured. Add `[openai].api_key` in Streamlit secrets.")
@@ -1451,7 +1780,7 @@ elif page == "Agent Chat":
         index=available_models.index(default_model),
     )
 
-    org_options = _list_org_options(raw_data)
+    org_options = _list_org_options(knowledge_data)
     org_labels = [o["label"] for o in org_options]
     if "agent_org_key" not in st.session_state:
         st.session_state["agent_org_key"] = org_options[0]["key"]
@@ -1467,7 +1796,7 @@ elif page == "Agent Chat":
     org_label = selected_org["label"]
     st.session_state["agent_org_key"] = org_key
 
-    index_status = _get_org_index_status(raw_data, org_key, org_label)
+    index_status = _get_org_index_status(knowledge_data, org_key, org_label)
     if "vector_store_ids_by_org" not in st.session_state:
         st.session_state["vector_store_ids_by_org"] = {}
 
@@ -1486,6 +1815,8 @@ elif page == "Agent Chat":
         with st.expander("Vector Store Diagnostics"):
             diag_state_key = f"vector_diag_{org_key}"
             deep_diag_key = f"vector_diag_deep_{org_key}"
+            verify_state_key = f"vector_verify_{org_key}"
+            listing_state_key = f"vector_listing_{org_key}"
 
             if st.button("Refresh Store Counts", key=f"refresh_store_counts_{org_key}"):
                 try:
@@ -1505,6 +1836,20 @@ elif page == "Agent Chat":
                         )
                     except Exception as e:
                         st.session_state[deep_diag_key] = {"error": str(e)}
+
+            left_diag, right_diag = st.columns(2)
+            with left_diag:
+                if st.button("Verify Active Store ID", key=f"verify_store_{org_key}"):
+                    st.session_state[verify_state_key] = _verify_active_vector_store(
+                        client,
+                        active_vector_store_id,
+                    )
+            with right_diag:
+                if st.button("List Project Vector Stores", key=f"list_project_stores_{org_key}"):
+                    try:
+                        st.session_state[listing_state_key] = _list_project_vector_stores(client, limit=100)
+                    except Exception as e:
+                        st.session_state[listing_state_key] = [{"error": str(e)}]
 
             diag_counts = st.session_state.get(diag_state_key)
             if isinstance(diag_counts, dict):
@@ -1531,6 +1876,36 @@ elif page == "Agent Chat":
                         f"failed={deep_counts.get('failed', 0)}, "
                         f"cancelled={deep_counts.get('cancelled', 0)}"
                     )
+
+            verify_result = st.session_state.get(verify_state_key)
+            if isinstance(verify_result, dict):
+                if verify_result.get("ok"):
+                    fc = verify_result.get("file_counts", {})
+                    st.success(
+                        f"Active store verified: {verify_result.get('id', '')} "
+                        f"(status={verify_result.get('status', '')}, "
+                        f"completed={int(fc.get('completed', 0) or 0)}, total={int(fc.get('total', 0) or 0)})"
+                    )
+                elif verify_result.get("message"):
+                    st.error(f"Active store verification failed: {verify_result['message']}")
+
+            listing_rows = st.session_state.get(listing_state_key)
+            if isinstance(listing_rows, list) and listing_rows:
+                if "error" in listing_rows[0]:
+                    st.error(f"Project vector-store listing failed: {listing_rows[0].get('error', '')}")
+                else:
+                    listing_df = pd.DataFrame(listing_rows)
+                    if not listing_df.empty:
+                        if "id" in listing_df.columns:
+                            listing_df["active"] = listing_df["id"].apply(
+                                lambda x: "yes" if str(x) == str(active_vector_store_id) else ""
+                            )
+                        show_cols = [
+                            c
+                            for c in ["active", "id", "name", "status", "total", "completed", "in_progress", "failed"]
+                            if c in listing_df.columns
+                        ]
+                        st.dataframe(listing_df[show_cols], use_container_width=True, hide_index=True)
 
     idx_col1, idx_col2, idx_col3, idx_col4 = st.columns(4)
     idx_col1.metric("Corpus Docs", index_status.get("current_docs", 0))
@@ -1583,7 +1958,7 @@ elif page == "Agent Chat":
                 try:
                     report = _sync_org_vector_store(
                         client=client,
-                        raw_data_obj=raw_data,
+                        raw_data_obj=knowledge_data,
                         org_key=org_key,
                         org_label=org_label,
                         force_rebuild=False,
@@ -1639,7 +2014,7 @@ elif page == "Agent Chat":
                 try:
                     report = _sync_org_vector_store(
                         client=client,
-                        raw_data_obj=raw_data,
+                        raw_data_obj=knowledge_data,
                         org_key=org_key,
                         org_label=org_label,
                         force_rebuild=True,
@@ -1684,7 +2059,7 @@ elif page == "Agent Chat":
                         if r.get("snippet"):
                             st.caption(r["snippet"])
 
-    user_prompt = st.chat_input(f"Ask a question about {org_label} speeches...")
+    user_prompt = st.chat_input(f"Ask a question about {org_label} documents...")
     if user_prompt:
         chat_messages.append({"role": "user", "content": user_prompt})
         with st.chat_message("user"):
@@ -1697,7 +2072,7 @@ elif page == "Agent Chat":
             with st.chat_message("assistant"):
                 st.error(err_msg)
         elif _needs_temporal_clarification(user_prompt):
-            clarify_msg = _build_temporal_clarification_message(df, org_key, org_label)
+            clarify_msg = _build_temporal_clarification_message(knowledge_df, org_key, org_label)
             chat_messages.append({"role": "assistant", "content": clarify_msg})
             with st.chat_message("assistant"):
                 st.info(clarify_msg)
@@ -1711,7 +2086,7 @@ elif page == "Agent Chat":
                             question=user_prompt,
                             preferred_model=model_name,
                             model_pool=available_models,
-                            instructions_text=_build_agent_instructions(df, org_key, org_label),
+                            instructions_text=_build_agent_instructions(knowledge_df, org_key, org_label),
                         )
                         result = agent_out.get("result", {})
                         answer = result.get("answer", "No answer returned.")
@@ -1746,6 +2121,163 @@ elif page == "Agent Chat":
                     "results": sources,
                 }
             )
+
+
+# =====================================================
+# PAGE: Document Library
+# =====================================================
+elif page == "Document Library":
+    st.title("Document Library")
+    st.markdown("Upload PDF, text, or HTML documents with manual metadata for indexing and chat.")
+    st.caption(
+        "Use this for long transcripts (including SEC roundtables) and internal documents. "
+        "Very long text is chunked automatically during indexing."
+    )
+
+    custom_payload = _load_custom_documents()
+    custom_docs = _custom_docs_as_speeches(custom_payload)
+
+    with st.form("upload_custom_document", clear_on_submit=True):
+        uploaded_file = st.file_uploader(
+            "Upload document",
+            type=["pdf", "txt", "md", "html", "htm"],
+            help="Accepted formats: PDF, plain text, markdown, or HTML.",
+        )
+        pasted_text = st.text_area(
+            "Or paste transcript/document text (optional)",
+            height=180,
+            placeholder="Paste long transcript text here if you are not uploading a file.",
+        )
+
+        meta_col1, meta_col2 = st.columns(2)
+        with meta_col1:
+            org_name = st.text_input("Organization", value="Custom Documents")
+            title = st.text_input("Title")
+            speaker = st.text_input("Speaker/Author", value="Unknown")
+            doc_type = st.selectbox(
+                "Document Type",
+                ["Transcript", "Statement", "News Article", "Report", "Memo", "Letter", "Other"],
+            )
+        with meta_col2:
+            doc_date = st.date_input("Document Date", value=date.today())
+            source_url = st.text_input("Source URL (optional)")
+            tags_csv = st.text_input("Tags (comma-separated, optional)")
+
+        submit_doc = st.form_submit_button("Save Document")
+
+    if submit_doc:
+        if not title.strip():
+            st.error("Title is required.")
+        else:
+            text = ""
+            source_ext = ".txt"
+            source_name = "pasted_text.txt"
+            file_bytes = b""
+            warnings = []
+
+            if uploaded_file is not None:
+                try:
+                    text, source_ext, warnings, file_bytes = _extract_text_from_uploaded_file(uploaded_file)
+                    source_name = _safe_filename(uploaded_file.name)
+                except Exception as e:
+                    st.error(f"Could not parse uploaded file: {e}")
+                    text = ""
+            elif pasted_text.strip():
+                text = pasted_text.strip()
+                source_ext = ".txt"
+                source_name = "pasted_text.txt"
+                file_bytes = text.encode("utf-8")
+            else:
+                st.error("Upload a file or paste text before saving.")
+
+            if text:
+                draft_record = _create_uploaded_document_record(
+                    text=text,
+                    organization=org_name,
+                    title=title,
+                    speaker=speaker,
+                    doc_date=doc_date,
+                    doc_type=doc_type,
+                    source_url=source_url,
+                    source_filename=source_name,
+                    source_ext=source_ext,
+                    source_local_path="",
+                    source_gcs_path="",
+                    tags_csv=tags_csv,
+                )
+                doc_id = draft_record.get("metadata", {}).get("document_id", "")
+                local_path, gcs_path = _store_uploaded_source_file(file_bytes, source_name, doc_id)
+
+                final_record = _create_uploaded_document_record(
+                    text=text,
+                    organization=org_name,
+                    title=title,
+                    speaker=speaker,
+                    doc_date=doc_date,
+                    doc_type=doc_type,
+                    source_url=source_url,
+                    source_filename=source_name,
+                    source_ext=source_ext,
+                    source_local_path=local_path,
+                    source_gcs_path=gcs_path,
+                    tags_csv=tags_csv,
+                )
+                final_doc_id = final_record.get("metadata", {}).get("document_id", "")
+                final_url = final_record.get("metadata", {}).get("url", "")
+
+                docs_list = custom_payload.get("documents", [])
+                replaced = False
+                for idx, existing in enumerate(docs_list):
+                    em = existing.get("metadata", {})
+                    if em.get("document_id") == final_doc_id or em.get("url") == final_url:
+                        docs_list[idx] = final_record
+                        replaced = True
+                        break
+                if not replaced:
+                    docs_list.append(final_record)
+
+                custom_payload["documents"] = docs_list
+                _save_custom_documents(custom_payload)
+
+                word_count = int(final_record.get("metadata", {}).get("word_count", 0) or 0)
+                action = "Updated" if replaced else "Saved"
+                st.success(f"{action} document `{title}` ({word_count:,} words).")
+                if gcs_path:
+                    st.caption(f"Source file stored in GCS at `{gcs_path}`")
+                for warn in warnings:
+                    st.warning(warn)
+
+                # Refresh in-memory view for this run.
+                custom_payload = _load_custom_documents()
+                custom_docs = _custom_docs_as_speeches(custom_payload)
+
+    if custom_docs:
+        st.markdown("---")
+        st.subheader("Uploaded Documents")
+        rows = []
+        for item in custom_docs:
+            m = item.get("metadata", {})
+            rows.append(
+                {
+                    "date": m.get("date", ""),
+                    "title": m.get("title", ""),
+                    "organization": m.get("organization", ""),
+                    "speaker": m.get("speaker", ""),
+                    "type": m.get("doc_type", ""),
+                    "words": m.get("word_count", 0),
+                    "source_file": m.get("source_filename", ""),
+                    "url": m.get("url", ""),
+                }
+            )
+        docs_df = pd.DataFrame(rows)
+        docs_df = _sort_table_by_date(docs_df, date_col="date")
+        st.dataframe(
+            docs_df[["date", "title", "organization", "speaker", "type", "words", "source_file"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No uploaded documents yet. Add a PDF/text/HTML file or paste transcript text above.")
 
 
 # =====================================================
