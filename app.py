@@ -699,16 +699,24 @@ def _heuristic_enrichment(doc):
     if not tags:
         tags = ["general_policy"]
 
-    words = re.findall(r"[A-Za-z][A-Za-z\\-]{3,}", text.lower())
+    cleaned = re.sub(r"https?://\S+|www\.\S+", " ", lower)
+    cleaned = re.sub(r"[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+){2,}", " ", cleaned)
+    words = re.findall(r"[a-z][a-z\-]{3,}", cleaned)
     stop = {
         "that", "this", "with", "from", "have", "will", "their", "there", "which", "about", "would", "should",
         "could", "while", "these", "those", "into", "through", "across", "under", "over", "because", "where",
         "what", "when", "your", "than", "then", "them", "they", "been", "being", "also", "such", "must",
         "commission", "securities", "exchange", "speech", "statement", "sec",
+        "https", "http", "www", "newsroom", "speeches", "statements", "ednref", "html", "gov", "us",
     }
     freq = {}
     for w in words:
-        if w in stop:
+        if (
+            w in stop
+            or len(w) > 28
+            or any(ch.isdigit() for ch in w)
+            or w.count("-") > 1
+        ):
             continue
         freq[w] = freq.get(w, 0) + 1
     keywords = [w for w, _ in sorted(freq.items(), key=lambda kv: kv[1], reverse=True)[:12]]
@@ -748,7 +756,7 @@ def _run_enrichment_agent(client, doc, model_name):
     if len(text) > 90000:
         text = text[:45000] + "\n\n[...TRUNCATED FOR ENRICHMENT...]\n\n" + text[-30000:]
 
-    instruction = (
+    base_instruction = (
         "You are an enrichment agent for policy documents. "
         "Return ONLY valid JSON with keys: "
         "summary, tags, keywords, entities, stance, evidence_spans, confidence. "
@@ -766,19 +774,28 @@ def _run_enrichment_agent(client, doc, model_name):
         f"Document Text:\n{text}"
     )
 
-    response = client.responses.create(
-        model=model_name,
-        instructions=instruction,
-        input=prompt,
-    )
-    raw_text = _extract_response_text(response)
-    parsed = _extract_first_json_object(raw_text)
-    if not parsed:
-        raise RuntimeError("Model did not return parseable JSON.")
-    return _normalize_enrichment_payload(parsed)
+    last_raw = ""
+    for attempt in range(1, 3):
+        instruction = base_instruction
+        if attempt > 1:
+            instruction += " Respond with raw JSON only. No markdown, no commentary, no code fences."
+
+        response = client.responses.create(
+            model=model_name,
+            instructions=instruction,
+            input=prompt,
+        )
+        raw_text = _extract_response_text(response)
+        last_raw = raw_text
+        parsed = _extract_first_json_object(raw_text)
+        if parsed:
+            return _normalize_enrichment_payload(parsed)
+
+    preview = (last_raw or "").replace("\n", " ").strip()[:300]
+    raise RuntimeError(f"Model did not return parseable JSON after 2 attempts. Last output: {preview}")
 
 
-def _compute_reward(enrichment, review_decision):
+def _compute_reward(enrichment, review_decision, status="enriched"):
     schema_validity = 1.0 if enrichment.get("tags") and enrichment.get("keywords") else 0.6
     evidence_quality = min(1.0, len(enrichment.get("evidence_spans", [])) / 3.0)
     confidence = float(enrichment.get("confidence", 0.0) or 0.0)
@@ -792,12 +809,20 @@ def _compute_reward(enrichment, review_decision):
     }
     review_component = review_map.get(str(review_decision or "pending"), 0.6)
 
-    score = (
+    base_score = (
         0.35 * schema_validity
         + 0.30 * evidence_quality
         + 0.20 * confidence
         + 0.15 * review_component
     )
+    status_multipliers = {
+        "enriched": 1.0,
+        "reviewed": 1.0,
+        "fallback_enriched": 0.6,
+        "failed": 0.2,
+    }
+    status_multiplier = status_multipliers.get(str(status or "").strip().lower(), 0.8)
+    score = base_score * status_multiplier
 
     return {
         "score": round(float(score), 4),
@@ -806,6 +831,7 @@ def _compute_reward(enrichment, review_decision):
             "evidence_quality": round(evidence_quality, 4),
             "confidence": round(confidence, 4),
             "review_component": round(review_component, 4),
+            "status_multiplier": round(status_multiplier, 4),
         },
     }
 
@@ -855,7 +881,7 @@ def _run_enrichment_batch(client, candidates, enrichment_state, model_name, mode
             status = "fallback_enriched"
             error_msg = str(e)
 
-        reward = _compute_reward(enrichment, decision)
+        reward = _compute_reward(enrichment, decision, status=status)
         entries[doc_id] = {
             "doc_id": doc_id,
             "organization": doc.get("organization", ""),
@@ -908,7 +934,11 @@ def _update_review_decision(enrichment_state, doc_id, decision, notes):
         "notes": str(notes or ""),
         "reviewed_at": _utc_now_iso(),
     }
-    item["reward"] = _compute_reward(item.get("enrichment", {}), decision)
+    item["reward"] = _compute_reward(
+        item.get("enrichment", {}),
+        decision,
+        status=item.get("status", ""),
+    )
     if decision in {"accepted", "edited"} and item.get("status") == "enriched":
         item["status"] = "reviewed"
     entries[doc_id] = item
@@ -2969,6 +2999,7 @@ elif page == "Enrichment Pipeline":
                 "reward": reward.get("score", 0.0),
                 "tags": ", ".join(enrich.get("tags", [])[:6]),
                 "keywords": ", ".join(enrich.get("keywords", [])[:8]),
+                "error": str(entry.get("error", "") or ""),
                 "updated_at": entry.get("updated_at", ""),
             }
         )
@@ -2998,6 +3029,10 @@ elif page == "Enrichment Pipeline":
                 f"**Review:** {selected_review.get('decision', 'pending')} | "
                 f"**Reward:** {selected_reward.get('score', 0.0)}"
             )
+            selected_error = str(selected_entry.get("error", "") or "").strip()
+            if selected_error:
+                with st.expander("Stored LLM/Fallback Error", expanded=False):
+                    st.code(selected_error)
             st.markdown(f"**Summary:** {selected_enrichment.get('summary', '')}")
             st.markdown(f"**Tags:** {', '.join(selected_enrichment.get('tags', []))}")
             st.markdown(f"**Keywords:** {', '.join(selected_enrichment.get('keywords', []))}")
