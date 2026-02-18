@@ -951,6 +951,225 @@ def _run_enrichment_batch(client, candidates, enrichment_state, model_name, mode
     }
 
 
+def _normalize_auto_review_payload(payload):
+    if not isinstance(payload, dict):
+        payload = {}
+
+    verdict = str(payload.get("verdict", "human_followup") or "human_followup").strip().lower()
+    if verdict not in {"approved", "human_followup"}:
+        verdict = "human_followup"
+
+    rationale = str(payload.get("rationale", "") or "").strip()[:900]
+
+    issues = payload.get("issues", [])
+    if not isinstance(issues, list):
+        issues = []
+    issues = [str(x).strip() for x in issues if str(x).strip()][:12]
+
+    try:
+        confidence = float(payload.get("confidence", 0.0) or 0.0)
+    except Exception:
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    return {
+        "verdict": verdict,
+        "rationale": rationale,
+        "issues": issues,
+        "confidence": confidence,
+    }
+
+
+def _heuristic_auto_review(entry):
+    enrichment = entry.get("enrichment", {}) if isinstance(entry, dict) else {}
+    status = str((entry or {}).get("status", "") or "").strip().lower()
+    summary = str(enrichment.get("summary", "") or "").strip().lower()
+    tags = enrichment.get("tags", []) if isinstance(enrichment, dict) else []
+    keywords = enrichment.get("keywords", []) if isinstance(enrichment, dict) else []
+    evidence = enrichment.get("evidence_spans", []) if isinstance(enrichment, dict) else []
+
+    issues = []
+    if status == "fallback_enriched":
+        issues.append("Used fallback enrichment due to prior LLM failure.")
+    if not summary:
+        issues.append("Summary is empty.")
+    if summary.startswith("## more in this section"):
+        issues.append("Summary appears to be page boilerplate.")
+    if len(tags) < 2:
+        issues.append("Too few tags.")
+    if len(keywords) < 4:
+        issues.append("Too few keywords.")
+    if len(evidence) < 1:
+        issues.append("No evidence spans.")
+
+    noisy_terms = {"https", "http", "www", "newsroom", "speeches", "statements", "ednref", "secgov", "html"}
+    if any(str(k).strip().lower() in noisy_terms for k in keywords[:12]):
+        issues.append("Keywords include URL/navigation noise.")
+
+    verdict = "approved" if not issues else "human_followup"
+    confidence = 0.78 if verdict == "approved" else 0.35
+    rationale = (
+        "Enrichment appears complete and consistent."
+        if verdict == "approved"
+        else "Enrichment needs human review due to quality/risk signals."
+    )
+    return _normalize_auto_review_payload(
+        {
+            "verdict": verdict,
+            "rationale": rationale,
+            "issues": issues,
+            "confidence": confidence,
+        }
+    )
+
+
+def _run_auto_review_agent(client, entry, model_name, source_text):
+    enrichment_obj = entry.get("enrichment", {}) if isinstance(entry, dict) else {}
+    source_text = str(source_text or "").strip()
+    if len(source_text) > 22000:
+        source_text = source_text[:14000] + "\n\n[...TRUNCATED...]\n\n" + source_text[-6000:]
+
+    instructions = (
+        "You are a quality-control reviewer for policy-document enrichment output. "
+        "Decide if the enrichment can be auto-approved or should be flagged for human follow-up. "
+        "Return ONLY valid JSON with keys: verdict, rationale, issues, confidence. "
+        "verdict must be one of: approved, human_followup. "
+        "Use human_followup whenever output quality is doubtful or contains boilerplate/noise."
+    )
+    prompt = (
+        f"Document metadata:\n"
+        f"- Title: {entry.get('title', '')}\n"
+        f"- Organization: {entry.get('organization', '')}\n"
+        f"- Date: {entry.get('date', '')}\n"
+        f"- Speaker: {entry.get('speaker', '')}\n"
+        f"- Status: {entry.get('status', '')}\n"
+        f"- Prior Error: {entry.get('error', '')}\n\n"
+        f"Enrichment JSON:\n{json.dumps(enrichment_obj, ensure_ascii=False)}\n\n"
+        f"Source text sample:\n{source_text}"
+    )
+    response = client.responses.create(
+        model=model_name,
+        instructions=instructions,
+        input=prompt,
+    )
+    parsed = _extract_first_json_object(_extract_response_text(response))
+    if not parsed:
+        raise RuntimeError("Auto-review model did not return parseable JSON.")
+    return _normalize_auto_review_payload(parsed)
+
+
+def _select_auto_review_targets(scoped_entries, mode):
+    selected = []
+    eligible_status = {"enriched", "fallback_enriched", "reviewed"}
+    for entry in scoped_entries:
+        status = str(entry.get("status", "") or "").strip().lower()
+        if status not in eligible_status:
+            continue
+        decision = str(entry.get("review", {}).get("decision", "pending") or "pending").strip().lower()
+        if mode == "only_pending" and decision != "pending":
+            continue
+        selected.append(entry)
+    return selected
+
+
+def _run_auto_review_batch(
+    client,
+    scoped_entries,
+    candidate_map,
+    enrichment_state,
+    model_name,
+    mode,
+    limit,
+    progress_callback=None,
+):
+    entries = enrichment_state.setdefault("entries", {})
+    targets = _select_auto_review_targets(scoped_entries, mode)
+    if limit and limit > 0:
+        targets = targets[:limit]
+
+    total = len(targets)
+    processed = 0
+    approved = 0
+    flagged = 0
+    heuristic_fallbacks = 0
+
+    for item in targets:
+        if progress_callback is not None:
+            progress_callback(processed, total, f"Reviewing {item.get('title', item.get('doc_id', 'document'))}")
+
+        doc_id = str(item.get("doc_id", "") or "").strip()
+        if not doc_id:
+            continue
+        current = entries.get(doc_id, item)
+        source_text = str((candidate_map.get(doc_id, {}) or {}).get("full_text", "") or "")
+
+        auto_engine = "llm"
+        try:
+            auto_review = _run_auto_review_agent(client, current, model_name, source_text)
+        except Exception as e:
+            auto_review = _heuristic_auto_review(current)
+            auto_review["issues"] = [f"LLM review failed: {e}"] + list(auto_review.get("issues", []))
+            auto_engine = "heuristic"
+            heuristic_fallbacks += 1
+
+        verdict = auto_review.get("verdict", "human_followup")
+        decision = "accepted" if verdict == "approved" else "pending"
+        if decision == "accepted":
+            approved += 1
+        else:
+            flagged += 1
+
+        issue_text = "; ".join(auto_review.get("issues", [])[:6])
+        confidence = float(auto_review.get("confidence", 0.0) or 0.0)
+        review_notes = (
+            f"[AUTO_REVIEW] verdict={verdict}; confidence={confidence:.2f}; engine={auto_engine}\n"
+            f"rationale: {auto_review.get('rationale', '')}"
+        )
+        if issue_text:
+            review_notes += f"\nissues: {issue_text}"
+
+        reviewed_at = _utc_now_iso()
+        current["review"] = {
+            "decision": decision,
+            "notes": review_notes,
+            "reviewed_at": reviewed_at,
+        }
+        current["auto_review"] = {
+            "verdict": verdict,
+            "confidence": round(confidence, 4),
+            "rationale": auto_review.get("rationale", ""),
+            "issues": list(auto_review.get("issues", [])),
+            "engine": auto_engine,
+            "model": model_name,
+            "reviewed_at": reviewed_at,
+        }
+        if decision == "accepted" and str(current.get("status", "") or "") in {"enriched", "fallback_enriched", "reviewed"}:
+            current["status"] = "reviewed"
+        current["reward"] = _compute_reward(
+            current.get("enrichment", {}),
+            decision,
+            status=current.get("status", ""),
+        )
+        current["updated_at"] = reviewed_at
+        entries[doc_id] = current
+
+        processed += 1
+        if processed % 10 == 0:
+            _save_enrichment_state(enrichment_state)
+
+    if progress_callback is not None:
+        progress_callback(total, total, "Auto review run complete")
+
+    _save_enrichment_state(enrichment_state)
+    return {
+        "processed": processed,
+        "total_selected": total,
+        "approved": approved,
+        "flagged": flagged,
+        "heuristic_fallbacks": heuristic_fallbacks,
+    }
+
+
 def _update_review_decision(enrichment_state, doc_id, decision, notes):
     entries = enrichment_state.setdefault("entries", {})
     item = entries.get(doc_id)
@@ -969,7 +1188,7 @@ def _update_review_decision(enrichment_state, doc_id, decision, notes):
         decision,
         status=item.get("status", ""),
     )
-    if decision in {"accepted", "edited"} and item.get("status") == "enriched":
+    if decision in {"accepted", "edited"} and item.get("status") in {"enriched", "fallback_enriched"}:
         item["status"] = "reviewed"
     entries[doc_id] = item
     _save_enrichment_state(enrichment_state)
@@ -2909,6 +3128,7 @@ elif page == "Enrichment Pipeline":
         knowledge_data,
         org_key=None if scope_key == "__all__" else scope_key,
     )
+    candidate_map = {str(d.get("doc_id", "") or ""): d for d in scoped_candidates}
 
     scoped_entries = _scoped_entries_from_state(enrichment_state)
 
@@ -3012,12 +3232,91 @@ elif page == "Enrichment Pipeline":
             scoped_entries = _scoped_entries_from_state(enrichment_state)
 
     st.markdown("---")
+    st.subheader("Auto Review Agent")
+    st.caption("Automatically mark enriched docs as approved or flagged for human follow-up.")
+
+    auto_mode_label = st.selectbox(
+        "Auto Review Mode",
+        [
+            "Only Pending Review",
+            "All Enriched In Scope",
+        ],
+    )
+    auto_mode_map = {
+        "Only Pending Review": "only_pending",
+        "All Enriched In Scope": "all_eligible",
+    }
+    auto_mode_key = auto_mode_map[auto_mode_label]
+    auto_targets = _select_auto_review_targets(scoped_entries, auto_mode_key)
+    auto_target_count = len(auto_targets)
+    if auto_target_count <= 0:
+        auto_limit = 0
+        st.caption("No documents match the selected auto-review mode.")
+    elif auto_target_count == 1:
+        auto_limit = 1
+    else:
+        auto_limit = st.slider(
+            "Docs To Auto Review This Run",
+            min_value=1,
+            max_value=auto_target_count,
+            value=min(50, auto_target_count),
+        )
+    st.caption(f"{auto_target_count} documents currently match auto-review mode.")
+
+    default_auto_model = enrich_model if enrich_model in available_models else available_models[0]
+    auto_review_model = st.selectbox(
+        "Auto Review Model",
+        available_models,
+        index=available_models.index(default_auto_model),
+        key="auto_review_model",
+    )
+
+    if st.button("Run Auto Review Agent", disabled=(auto_limit <= 0)):
+        if client is None:
+            st.error("OpenAI client is not configured. Check API key and model access.")
+        else:
+            review_progress = st.progress(0)
+            review_status = st.empty()
+
+            def _review_progress_cb(done, total, message):
+                if total <= 0:
+                    review_progress.progress(100)
+                    review_status.caption(message)
+                    return
+                safe_done = max(0, min(done, total))
+                pct = int((safe_done * 100) / total)
+                review_progress.progress(max(0, min(pct, 100)))
+                review_status.caption(f"{message} ({safe_done}/{total})")
+
+            with st.spinner(f"Running auto review over {auto_limit} docs in {scope_label}..."):
+                review_result = _run_auto_review_batch(
+                    client=client,
+                    scoped_entries=scoped_entries,
+                    candidate_map=candidate_map,
+                    enrichment_state=enrichment_state,
+                    model_name=auto_review_model,
+                    mode=auto_mode_key,
+                    limit=auto_limit,
+                    progress_callback=_review_progress_cb,
+                )
+            st.success(
+                f"Auto review complete. Processed {review_result.get('processed', 0)} "
+                f"of {review_result.get('total_selected', 0)} docs; "
+                f"approved={review_result.get('approved', 0)}, "
+                f"flagged={review_result.get('flagged', 0)}, "
+                f"heuristic_fallbacks={review_result.get('heuristic_fallbacks', 0)}."
+            )
+            enrichment_state = _load_enrichment_state()
+            scoped_entries = _scoped_entries_from_state(enrichment_state)
+
+    st.markdown("---")
     st.subheader("Enrichment Results")
     rows = []
     for entry in scoped_entries:
         enrich = entry.get("enrichment", {})
         review = entry.get("review", {})
         reward = entry.get("reward", {})
+        auto_review = entry.get("auto_review", {})
         rows.append(
             {
                 "doc_id": entry.get("doc_id", ""),
@@ -3026,6 +3325,8 @@ elif page == "Enrichment Pipeline":
                 "organization": entry.get("organization", ""),
                 "status": entry.get("status", ""),
                 "review": review.get("decision", "pending"),
+                "auto_verdict": auto_review.get("verdict", ""),
+                "auto_conf": auto_review.get("confidence", ""),
                 "reward": reward.get("score", 0.0),
                 "tags": ", ".join(enrich.get("tags", [])[:6]),
                 "keywords": ", ".join(enrich.get("keywords", [])[:8]),
@@ -3039,7 +3340,7 @@ elif page == "Enrichment Pipeline":
         if "date" in result_df.columns:
             result_df = _sort_table_by_date(result_df, date_col="date")
         st.dataframe(
-            result_df[["date", "title", "organization", "status", "review", "reward", "tags", "keywords"]],
+            result_df[["date", "title", "organization", "status", "review", "auto_verdict", "auto_conf", "reward", "tags", "keywords"]],
             use_container_width=True,
             hide_index=True,
         )
@@ -3052,6 +3353,7 @@ elif page == "Enrichment Pipeline":
             selected_enrichment = selected_entry.get("enrichment", {})
             selected_review = selected_entry.get("review", {})
             selected_reward = selected_entry.get("reward", {})
+            selected_auto_review = selected_entry.get("auto_review", {})
 
             st.markdown(f"**Title:** {selected_entry.get('title', '')}")
             st.markdown(
@@ -3063,6 +3365,24 @@ elif page == "Enrichment Pipeline":
             if selected_error:
                 with st.expander("Stored LLM/Fallback Error", expanded=False):
                     st.code(selected_error)
+            if selected_auto_review:
+                try:
+                    auto_conf = float(selected_auto_review.get("confidence", 0.0) or 0.0)
+                except Exception:
+                    auto_conf = 0.0
+                st.markdown(
+                    f"**Auto Review:** {selected_auto_review.get('verdict', '')} | "
+                    f"**Confidence:** {auto_conf:.2f} | "
+                    f"**Engine:** {selected_auto_review.get('engine', '')}"
+                )
+                auto_rationale = str(selected_auto_review.get("rationale", "") or "").strip()
+                if auto_rationale:
+                    st.caption(auto_rationale)
+                auto_issues = selected_auto_review.get("issues", [])
+                if isinstance(auto_issues, list) and auto_issues:
+                    with st.expander("Auto Review Issues"):
+                        for issue in auto_issues:
+                            st.markdown(f"- {issue}")
             st.markdown(f"**Summary:** {selected_enrichment.get('summary', '')}")
             st.markdown(f"**Tags:** {', '.join(selected_enrichment.get('tags', []))}")
             st.markdown(f"**Keywords:** {', '.join(selected_enrichment.get('keywords', []))}")
