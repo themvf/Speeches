@@ -278,6 +278,35 @@ def _safe_filename(name):
     return cleaned or "document"
 
 
+def _coerce_int(value, default=0, min_value=0):
+    """Best-effort integer coercion for noisy data/model outputs."""
+    try:
+        if isinstance(value, bool):
+            num = int(value)
+        elif isinstance(value, (int, float)):
+            num = int(value)
+        elif isinstance(value, str):
+            text = value.strip()
+            if not text:
+                num = int(default)
+            else:
+                match = re.search(r"-?\d+", text.replace(",", ""))
+                num = int(match.group(0)) if match else int(default)
+        elif isinstance(value, (list, tuple, set)):
+            num = len(value)
+        else:
+            num = int(default)
+    except Exception:
+        num = int(default)
+
+    if min_value is not None:
+        try:
+            num = max(int(min_value), num)
+        except Exception:
+            pass
+    return num
+
+
 def _store_uploaded_source_file(file_bytes, original_filename, doc_id):
     safe_name = _safe_filename(original_filename)
     local_dir = CUSTOM_DOCS_RAW_DIR / doc_id
@@ -564,7 +593,7 @@ def _build_enrichment_candidates(knowledge_data, org_key=None):
             "url": str(m.get("url", "") or "").strip(),
             "doc_type": str(m.get("doc_type", "Speech") or "Speech").strip(),
             "full_text": text,
-            "word_count": int(m.get("word_count", 0) or 0),
+            "word_count": _coerce_int(m.get("word_count", 0), default=0, min_value=0),
         }
     return list(dedup.values())
 
@@ -628,7 +657,7 @@ def _normalize_enrichment_payload(payload):
             if isinstance(item, dict):
                 name = str(item.get("name", "") or "").strip()
                 etype = str(item.get("type", "") or "").strip().upper()
-                mentions = int(item.get("mentions", 1) or 1)
+                mentions = _coerce_int(item.get("mentions", 1), default=1, min_value=1)
                 if name:
                     normalized_entities.append(
                         {
@@ -843,7 +872,8 @@ def _select_enrichment_targets(candidates, enrichment_state, mode):
         existing = entries.get(doc["doc_id"], {})
         status = str(existing.get("status", "") or "")
         if mode == "only_missing_or_failed":
-            if status in ("enriched", "fallback_enriched", "reviewed"):
+            # Retry items that are missing, failed, or fallback_enriched.
+            if status in ("enriched", "reviewed"):
                 continue
         elif mode == "only_pending_review":
             review = existing.get("review", {})
@@ -891,7 +921,7 @@ def _run_enrichment_batch(client, candidates, enrichment_state, model_name, mode
             "date": doc.get("date", ""),
             "url": doc.get("url", ""),
             "doc_type": doc.get("doc_type", ""),
-            "word_count": int(doc.get("word_count", 0) or 0),
+            "word_count": _coerce_int(doc.get("word_count", 0), default=0, min_value=0),
             "status": status,
             "error": error_msg,
             "model": model_name,
