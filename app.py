@@ -9,6 +9,7 @@ import hashlib
 import time
 import re
 import io
+from urllib.parse import urlparse
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
@@ -402,6 +403,7 @@ def _create_uploaded_document_record(
     source_local_path,
     source_gcs_path,
     tags_csv,
+    source_kind="uploaded",
 ):
     org_label = _normalize_org_label(organization)
     date_str = doc_date.strftime("%B %d, %Y") if isinstance(doc_date, date) else str(doc_date or "")
@@ -432,7 +434,7 @@ def _create_uploaded_document_record(
             "source_local_path": source_local_path,
             "source_gcs_path": source_gcs_path,
             "tags": tags,
-            "source_kind": "uploaded",
+            "source_kind": str(source_kind or "uploaded"),
         },
         "content": {
             "full_text": str(text),
@@ -452,6 +454,47 @@ def _custom_docs_as_speeches(payload):
         if isinstance(item, dict):
             docs.append(item)
     return docs
+
+
+def _url_match_key(url):
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlparse(raw)
+        scheme = (parsed.scheme or "https").lower()
+        netloc = parsed.netloc.lower()
+        path = parsed.path.rstrip("/")
+        if not path:
+            path = "/"
+        return f"{scheme}://{netloc}{path}"
+    except Exception:
+        return raw.rstrip("/")
+
+
+def _upsert_custom_document_record(custom_payload, record):
+    docs_list = custom_payload.get("documents", [])
+    record_meta = record.get("metadata", {})
+    record_doc_id = str(record_meta.get("document_id", "") or "").strip()
+    record_url_key = _url_match_key(record_meta.get("url", ""))
+
+    replaced = False
+    for idx, existing in enumerate(docs_list):
+        em = existing.get("metadata", {})
+        existing_doc_id = str(em.get("document_id", "") or "").strip()
+        existing_url_key = _url_match_key(em.get("url", ""))
+        if (
+            (record_doc_id and existing_doc_id == record_doc_id)
+            or (record_url_key and existing_url_key and existing_url_key == record_url_key)
+        ):
+            docs_list[idx] = record
+            replaced = True
+            break
+    if not replaced:
+        docs_list.append(record)
+
+    custom_payload["documents"] = docs_list
+    return replaced
 
 
 def _build_knowledge_data(sec_raw_data, custom_docs_payload):
@@ -3035,21 +3078,7 @@ elif page == "Document Library":
                     source_gcs_path=gcs_path,
                     tags_csv=tags_csv,
                 )
-                final_doc_id = final_record.get("metadata", {}).get("document_id", "")
-                final_url = final_record.get("metadata", {}).get("url", "")
-
-                docs_list = custom_payload.get("documents", [])
-                replaced = False
-                for idx, existing in enumerate(docs_list):
-                    em = existing.get("metadata", {})
-                    if em.get("document_id") == final_doc_id or em.get("url") == final_url:
-                        docs_list[idx] = final_record
-                        replaced = True
-                        break
-                if not replaced:
-                    docs_list.append(final_record)
-
-                custom_payload["documents"] = docs_list
+                replaced = _upsert_custom_document_record(custom_payload, final_record)
                 _save_custom_documents(custom_payload)
 
                 word_count = int(final_record.get("metadata", {}).get("word_count", 0) or 0)
@@ -3063,6 +3092,217 @@ elif page == "Document Library":
                 # Refresh in-memory view for this run.
                 custom_payload = _load_custom_documents()
                 custom_docs = _custom_docs_as_speeches(custom_payload)
+
+    st.markdown("---")
+    st.subheader("SEC Connector: Trading & Markets FAQ")
+    st.caption(
+        "Discover and ingest SEC Division of Trading and Markets FAQ pages directly into the knowledge base."
+    )
+
+    tm_index_default = "https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions"
+    tm_index_url = st.text_input(
+        "Trading & Markets FAQ Index URL",
+        value=tm_index_default,
+        key="tm_faq_index_url",
+    ).strip() or tm_index_default
+    tm_include_pdfs = st.checkbox("Include linked PDF FAQs", value=True, key="tm_faq_include_pdfs")
+
+    discover_col1, discover_col2 = st.columns(2)
+    with discover_col1:
+        discover_tm = st.button("Discover FAQ Links", key="discover_tm_faq")
+    with discover_col2:
+        clear_tm = st.button("Clear Discovered Links", key="clear_tm_faq")
+
+    tm_state_key = "tm_faq_discovered"
+    if tm_state_key not in st.session_state:
+        st.session_state[tm_state_key] = []
+    if clear_tm:
+        st.session_state[tm_state_key] = []
+
+    if discover_tm:
+        try:
+            from sec_tm_faq_scraper import TradingMarketsFAQScraper
+
+            with st.spinner("Discovering Trading & Markets FAQ links..."):
+                tm_scraper = TradingMarketsFAQScraper()
+                discovered = tm_scraper.discover_documents(
+                    index_url=tm_index_url,
+                    include_pdfs=tm_include_pdfs,
+                )
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_updated = str(
+                        existing_meta.get("last_reviewed_or_updated")
+                        or existing_meta.get("updated_date")
+                        or ""
+                    ).strip()
+                    incoming_updated = str(entry.get("updated_date", "") or "").strip()
+                    if incoming_updated and existing_updated and incoming_updated != existing_updated:
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+                entry["date"] = entry.get("updated_date") or entry.get("published_date") or ""
+
+            st.session_state[tm_state_key] = discovered
+            new_count = sum(1 for d in discovered if d.get("ingest_status") in {"new", "update_available"})
+            st.success(
+                f"Discovered {len(discovered)} Trading & Markets FAQ links "
+                f"({new_count} new/update candidates)."
+            )
+        except Exception as e:
+            st.error(f"FAQ discovery failed: {e}")
+
+    tm_discovered = st.session_state.get(tm_state_key, [])
+    if tm_discovered:
+        tm_df = pd.DataFrame(tm_discovered)
+        if "date" not in tm_df.columns:
+            tm_df["date"] = tm_df.get("updated_date", "")
+        tm_df = _sort_table_by_date(tm_df, date_col="date")
+        st.dataframe(
+            tm_df[["date", "title", "source_format", "ingest_status", "url"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        ingest_filter = st.selectbox(
+            "Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="tm_faq_ingest_filter",
+        )
+        if ingest_filter == "New/Updates Only":
+            ingest_candidates = [
+                d for d in tm_discovered if d.get("ingest_status") in {"new", "update_available"}
+            ]
+        else:
+            ingest_candidates = list(tm_discovered)
+
+        ingest_count = len(ingest_candidates)
+        if ingest_count <= 0:
+            st.caption("No FAQ links match the selected ingest filter.")
+            ingest_limit = 0
+        elif ingest_count == 1:
+            ingest_limit = 1
+            st.caption("1 FAQ document selected for ingest.")
+        else:
+            ingest_limit = st.slider(
+                "FAQ Documents To Ingest",
+                min_value=1,
+                max_value=ingest_count,
+                value=min(10, ingest_count),
+                key="tm_faq_ingest_limit",
+            )
+        st.caption(f"{ingest_count} FAQ documents currently match this ingest selection.")
+
+        if st.button("Ingest Trading & Markets FAQs", disabled=(ingest_limit <= 0), key="ingest_tm_faq"):
+            try:
+                from sec_tm_faq_scraper import TradingMarketsFAQScraper
+
+                tm_scraper = TradingMarketsFAQScraper()
+                progress = st.progress(0, text="Starting FAQ ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = ingest_candidates[:ingest_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / ingest_limit,
+                        text=f"Ingesting {idx}/{ingest_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        fallback_date = entry.get("updated_date") or entry.get("published_date") or ""
+                        extracted = tm_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=fallback_date,
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 80:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        src_format = str(data.get("source_format", "") or entry.get("source_format", "html")).lower()
+                        source_ext = ".pdf" if src_format == "pdf" else ".html"
+                        source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip()
+                        if not source_name:
+                            source_name = f"tm-faq-{idx}{source_ext}"
+                        elif "." not in source_name:
+                            source_name += source_ext
+
+                        date_text = str(data.get("date", "") or fallback_date).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="SEC",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                            speaker="Division of Trading and Markets",
+                            doc_date=doc_date_value,
+                            doc_type="FAQ",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=source_ext,
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv="sec,trading-markets,faq,staff-guidance",
+                            source_kind="sec_tm_faq",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "sec_tm_faq"
+                        rm["source_index_url"] = tm_index_url
+                        rm["published_date"] = str(entry.get("published_date", "") or "")
+                        rm["updated_date"] = str(entry.get("updated_date", "") or "")
+                        rm["last_reviewed_or_updated"] = str(
+                            data.get("last_reviewed_or_updated", "") or entry.get("updated_date", "") or ""
+                        )
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="FAQ ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new FAQ docs and updated {saved_updates} existing FAQ docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} FAQ docs failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"FAQ ingest failed: {e}")
 
     if custom_docs:
         st.markdown("---")
