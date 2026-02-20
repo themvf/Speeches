@@ -279,6 +279,19 @@ def _safe_filename(name):
     return cleaned or "document"
 
 
+def _vector_filename_from_title(org_key, title, doc_id, part_idx=1, total_parts=1):
+    base = _safe_filename(title or "")
+    if "." in base:
+        base = base.rsplit(".", 1)[0]
+    base = re.sub(r"\s+", " ", base).strip(" ._-")
+    if not base:
+        base = f"{org_key}_{doc_id}"
+    base = base[:120].strip(" ._-") or f"{org_key}_{doc_id}"
+    if total_parts > 1:
+        base = f"{base} - part {part_idx} of {total_parts}"
+    return f"{base} [{doc_id}].txt"
+
+
 def _coerce_int(value, default=0, min_value=0):
     """Best-effort integer coercion for noisy data/model outputs."""
     try:
@@ -1213,6 +1226,51 @@ def _run_auto_review_batch(
     }
 
 
+def _bulk_accept_reviews(enrichment_state, scoped_entries, only_pending=False):
+    entries = enrichment_state.setdefault("entries", {})
+    accepted = 0
+    for item in scoped_entries:
+        doc_id = str(item.get("doc_id", "") or "").strip()
+        if not doc_id:
+            continue
+
+        current = entries.get(doc_id, item)
+        status = str(current.get("status", "") or "").strip().lower()
+        if status not in {"enriched", "fallback_enriched", "reviewed"}:
+            continue
+
+        current_decision = str(current.get("review", {}).get("decision", "pending") or "pending").strip().lower()
+        if only_pending and current_decision != "pending":
+            continue
+
+        prior_notes = str(current.get("review", {}).get("notes", "") or "").strip()
+        marker = "[BULK_AUTO_ACCEPT]"
+        if marker not in prior_notes:
+            notes = f"{marker} Accepted from bulk action.\n{prior_notes}".strip()
+        else:
+            notes = prior_notes
+
+        reviewed_at = _utc_now_iso()
+        current["review"] = {
+            "decision": "accepted",
+            "notes": notes,
+            "reviewed_at": reviewed_at,
+        }
+        if status in {"enriched", "fallback_enriched"}:
+            current["status"] = "reviewed"
+        current["reward"] = _compute_reward(
+            current.get("enrichment", {}),
+            "accepted",
+            status=current.get("status", ""),
+        )
+        current["updated_at"] = reviewed_at
+        entries[doc_id] = current
+        accepted += 1
+
+    _save_enrichment_state(enrichment_state)
+    return accepted
+
+
 def _update_review_decision(enrichment_state, doc_id, decision, notes):
     entries = enrichment_state.setdefault("entries", {})
     item = entries.get(doc_id)
@@ -1238,8 +1296,11 @@ def _update_review_decision(enrichment_state, doc_id, decision, notes):
     return True
 
 
-def _build_org_documents(raw_data_obj, org_key, org_label):
+def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=None):
     """Build doc records keyed by deterministic doc_id for one organization."""
+    if not isinstance(enrichment_entries, dict):
+        enrichment_entries = {}
+
     docs = {}
     for speech in raw_data_obj.get("speeches", []):
         if _speech_org_key(speech) != org_key:
@@ -1269,28 +1330,67 @@ def _build_org_documents(raw_data_obj, org_key, org_label):
         )
         total_parts = len(text_chunks)
         legacy_doc_id = hashlib.sha256(f"{org_key}|{stable_seed}".encode("utf-8")).hexdigest()[:24]
+        enrich_entry = enrichment_entries.get(legacy_doc_id, {})
+        if not isinstance(enrich_entry, dict):
+            enrich_entry = {}
+        enrich_obj = enrich_entry.get("enrichment", {})
+        if not isinstance(enrich_obj, dict):
+            enrich_obj = {}
+        enrich_tags = enrich_obj.get("tags", [])
+        if not isinstance(enrich_tags, list):
+            enrich_tags = []
+        enrich_keywords = enrich_obj.get("keywords", [])
+        if not isinstance(enrich_keywords, list):
+            enrich_keywords = []
+        enrich_tags_text = ", ".join(str(t).strip() for t in enrich_tags if str(t).strip())
+        enrich_keywords_text = ", ".join(str(k).strip() for k in enrich_keywords if str(k).strip())
+        enrich_stance = enrich_obj.get("stance", {})
+        if not isinstance(enrich_stance, dict):
+            enrich_stance = {"label": str(enrich_stance or "").strip(), "target": ""}
+        stance_label = str(enrich_stance.get("label", "") or "").strip()
+        stance_target = str(enrich_stance.get("target", "") or "").strip()
+        stance_text = stance_label
+        if stance_label and stance_target:
+            stance_text = f"{stance_label} ({stance_target})"
+        enrich_review = str(enrich_entry.get("review", {}).get("decision", "") or "").strip().lower()
+
         for part_idx, chunk_text in enumerate(text_chunks, 1):
             if total_parts == 1:
-                chunk_suffix = ""
                 doc_id = legacy_doc_id
             else:
-                chunk_suffix = f"-part-{part_idx}"
                 chunk_seed = f"{stable_seed}|part|{part_idx}|{total_parts}"
                 doc_id = hashlib.sha256(f"{org_key}|{chunk_seed}".encode("utf-8")).hexdigest()[:24]
-            chunk_header = f"{part_idx}/{total_parts}" if total_parts > 1 else "1/1"
-            rendered = (
-                f"Organization: {org_label}\n"
-                f"Doc ID: {doc_id}\n"
-                f"Title: {title}\n"
-                f"Speaker: {speaker}\n"
-                f"Date: {speech_date}\n"
-                f"Document Type: {doc_type}\n"
-                f"URL: {url}\n"
-                f"Source File: {source_filename}\n"
-                f"Word Count: {word_count}\n"
-                f"Chunk: {chunk_header}\n\n"
-                f"{chunk_text}\n"
+            vector_filename = _vector_filename_from_title(
+                org_key,
+                title,
+                doc_id,
+                part_idx=part_idx,
+                total_parts=total_parts,
             )
+            chunk_header = f"{part_idx}/{total_parts}" if total_parts > 1 else "1/1"
+            header_lines = [
+                f"Organization: {org_label}",
+                f"Doc ID: {doc_id}",
+                f"Title: {title}",
+                f"Speaker: {speaker}",
+                f"Date: {speech_date}",
+                f"Document Type: {doc_type}",
+                f"URL: {url}",
+                f"Source File: {source_filename}",
+                f"Word Count: {word_count}",
+                f"Chunk: {chunk_header}",
+                f"Vector File Name: {vector_filename}",
+            ]
+            if enrich_tags_text:
+                header_lines.append(f"Enrichment Tags: {enrich_tags_text}")
+            if enrich_keywords_text:
+                header_lines.append(f"Enrichment Keywords: {enrich_keywords_text}")
+            if stance_text:
+                header_lines.append(f"Enrichment Stance: {stance_text}")
+            if enrich_review:
+                header_lines.append(f"Enrichment Review: {enrich_review}")
+
+            rendered = "\n".join(header_lines) + f"\n\n{chunk_text}\n"
             content_hash = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
 
             docs[doc_id] = {
@@ -1300,7 +1400,7 @@ def _build_org_documents(raw_data_obj, org_key, org_label):
                 "date": speech_date,
                 "url": url,
                 "word_count": word_count,
-                "filename": f"{org_key}_{doc_id}{chunk_suffix}.txt",
+                "filename": vector_filename,
                 "rendered_text": rendered,
                 "content_hash": content_hash,
             }
@@ -1324,14 +1424,23 @@ def _plan_doc_sync(indexed_docs, current_docs):
     return add_ids, update_ids, remove_ids, unchanged_ids
 
 
-def _chat_doc_path(org_key, doc_id):
+def _chat_doc_path(org_key, doc_id, filename=""):
     base = Path("data/chat_docs") / org_key
     base.mkdir(parents=True, exist_ok=True)
+    safe_name = _safe_filename(filename)
+    if safe_name:
+        if not safe_name.lower().endswith(".txt"):
+            safe_name = f"{safe_name}.txt"
+        return base / safe_name
     return base / f"{doc_id}.txt"
 
 
 def _write_chat_doc_file(org_key, doc):
-    path = _chat_doc_path(org_key, doc["doc_id"])
+    path = _chat_doc_path(
+        org_key,
+        doc["doc_id"],
+        filename=doc.get("filename", ""),
+    )
     with open(path, "w", encoding="utf-8") as f:
         f.write(doc["rendered_text"])
     return path
@@ -1521,8 +1630,17 @@ def _sync_org_vector_store(client, raw_data_obj, org_key, org_label, force_rebui
     state = _load_vector_state()
     stores = state.setdefault("stores", {})
     org_state = _get_org_vector_state(state, org_key, org_label)
+    enrichment_state = _load_enrichment_state()
+    enrichment_entries = enrichment_state.get("entries", {}) if isinstance(enrichment_state, dict) else {}
+    if not isinstance(enrichment_entries, dict):
+        enrichment_entries = {}
 
-    current_docs = _build_org_documents(raw_data_obj, org_key, org_label)
+    current_docs = _build_org_documents(
+        raw_data_obj,
+        org_key,
+        org_label,
+        enrichment_entries=enrichment_entries,
+    )
     indexed_docs = org_state.get("docs", {})
     if not isinstance(indexed_docs, dict):
         indexed_docs = {}
@@ -1852,7 +1970,16 @@ def _get_org_index_status(raw_data_obj, org_key, org_label):
     indexed_docs = org_state.get("docs", {})
     if not isinstance(indexed_docs, dict):
         indexed_docs = {}
-    current_docs = _build_org_documents(raw_data_obj, org_key, org_label)
+    enrichment_state = _load_enrichment_state()
+    enrichment_entries = enrichment_state.get("entries", {}) if isinstance(enrichment_state, dict) else {}
+    if not isinstance(enrichment_entries, dict):
+        enrichment_entries = {}
+    current_docs = _build_org_documents(
+        raw_data_obj,
+        org_key,
+        org_label,
+        enrichment_entries=enrichment_entries,
+    )
     add_ids, update_ids, remove_ids, _ = _plan_doc_sync(indexed_docs, current_docs)
     return {
         "vector_store_id": str(org_state.get("vector_store_id", "") or "").strip(),
@@ -3472,6 +3599,71 @@ elif page == "Enrichment Pipeline":
             scoped_entries = _scoped_entries_from_state(enrichment_state)
 
     st.markdown("---")
+    st.subheader("Targeted Re-Enrichment")
+    if scoped_candidates:
+        def _candidate_sort_key(doc_obj):
+            parsed = _parse_single_date(doc_obj.get("date", ""))
+            if pd.notna(parsed):
+                return parsed
+            return pd.Timestamp.min
+
+        target_candidates = sorted(scoped_candidates, key=_candidate_sort_key, reverse=True)
+        target_ids = [str(d.get("doc_id", "") or "") for d in target_candidates if str(d.get("doc_id", "") or "").strip()]
+        if not target_ids:
+            st.caption("No valid document IDs found in scope.")
+        else:
+            target_doc_id = st.selectbox(
+                "Select Document",
+                target_ids,
+                format_func=lambda d: (
+                    f"{candidate_map.get(d, {}).get('date', '')} | "
+                    f"{candidate_map.get(d, {}).get('title', d)}"
+                ),
+                key="target_reenrich_doc_id",
+            )
+            target_doc = candidate_map.get(target_doc_id, {})
+            current_entry = enrichment_state.get("entries", {}).get(target_doc_id, {})
+            if target_doc:
+                current_status = str(current_entry.get("status", "not_enriched") or "not_enriched")
+                current_review = str(current_entry.get("review", {}).get("decision", "pending") or "pending")
+                st.caption(f"Current status: {current_status} | review: {current_review}")
+
+            if st.button("Re-Enrich Selected Document", key="reenrich_selected_doc"):
+                if client is None:
+                    st.error("OpenAI client is not configured. Check API key and model access.")
+                elif not target_doc:
+                    st.error("Select a document first.")
+                else:
+                    re_progress = st.progress(0)
+                    re_status = st.empty()
+
+                    def _re_progress_cb(done, total, message):
+                        if total <= 0:
+                            re_progress.progress(100)
+                            re_status.caption(message)
+                            return
+                        safe_done = max(0, min(done, total))
+                        pct = int((safe_done * 100) / total)
+                        re_progress.progress(max(0, min(pct, 100)))
+                        re_status.caption(f"{message} ({safe_done}/{total})")
+
+                    with st.spinner("Re-enriching selected document..."):
+                        _run_enrichment_batch(
+                            client=client,
+                            candidates=[target_doc],
+                            enrichment_state=enrichment_state,
+                            model_name=enrich_model,
+                            mode="re_enrich_all",
+                            limit=1,
+                            progress_callback=_re_progress_cb,
+                        )
+                    st.success("Selected document re-enriched.")
+                    enrichment_state = _load_enrichment_state()
+                    scoped_entries = _scoped_entries_from_state(enrichment_state)
+    else:
+        st.caption("No documents in scope for targeted re-enrichment.")
+
+    st.markdown("---")
     st.subheader("Auto Review Agent")
     st.caption("Automatically mark enriched docs as approved or flagged for human follow-up.")
 
@@ -3548,6 +3740,26 @@ elif page == "Enrichment Pipeline":
             )
             enrichment_state = _load_enrichment_state()
             scoped_entries = _scoped_entries_from_state(enrichment_state)
+
+    eligible_for_bulk_accept = sum(
+        1
+        for e in scoped_entries
+        if str(e.get("status", "") or "").strip().lower() in {"enriched", "fallback_enriched", "reviewed"}
+    )
+    st.caption(f"{eligible_for_bulk_accept} docs in scope are eligible for bulk acceptance.")
+    if st.button(
+        "Auto Accept All In Scope",
+        disabled=(eligible_for_bulk_accept <= 0),
+        key="bulk_accept_all_scope",
+    ):
+        accepted_count = _bulk_accept_reviews(
+            enrichment_state,
+            scoped_entries,
+            only_pending=False,
+        )
+        st.success(f"Auto-accepted {accepted_count} documents in {scope_label}.")
+        enrichment_state = _load_enrichment_state()
+        scoped_entries = _scoped_entries_from_state(enrichment_state)
 
     st.markdown("---")
     st.subheader("Enrichment Results")
