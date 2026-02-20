@@ -546,6 +546,8 @@ def _infer_source_kind(metadata):
         return "sec_speech"
     if "/trading-markets-frequently-asked-questions/" in url or source_kind == "sec_tm_faq":
         return "sec_tm_faq"
+    if "/enforcement-litigation/litigation-releases/" in url or source_kind == "sec_enforcement_litigation":
+        return "sec_enforcement_litigation"
     doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
     if doc_type in {"speech", "statement", "remarks"}:
         return "sec_speech"
@@ -3585,6 +3587,201 @@ elif page == "Document Library":
                         st.write(f"- {msg}")
             except Exception as e:
                 st.error(f"FAQ ingest failed: {e}")
+
+    st.markdown("---")
+    st.subheader("SEC Connector: Enforcement Litigation Releases")
+    st.caption("Discover and ingest SEC Litigation Releases directly into the knowledge base.")
+
+    lit_index_default = "https://www.sec.gov/enforcement-litigation/litigation-releases"
+    lit_index_url = st.text_input(
+        "Litigation Releases Index URL",
+        value=lit_index_default,
+        key="sec_lit_index_url",
+    ).strip() or lit_index_default
+    lit_pages = st.slider(
+        "Listing Pages To Scan",
+        min_value=1,
+        max_value=20,
+        value=3,
+        key="sec_lit_pages",
+    )
+
+    lit_col1, lit_col2 = st.columns(2)
+    with lit_col1:
+        discover_lit = st.button("Discover Litigation Releases", key="discover_sec_lit")
+    with lit_col2:
+        clear_lit = st.button("Clear Litigation Results", key="clear_sec_lit")
+
+    lit_state_key = "sec_lit_discovered"
+    if lit_state_key not in st.session_state:
+        st.session_state[lit_state_key] = []
+    if clear_lit:
+        st.session_state[lit_state_key] = []
+
+    if discover_lit:
+        try:
+            from sec_enforcement_litigation_scraper import SECEnforcementLitigationScraper
+
+            with st.spinner("Discovering SEC litigation releases..."):
+                lit_scraper = SECEnforcementLitigationScraper()
+                lit_discovered = lit_scraper.discover_documents(
+                    base_url=lit_index_url,
+                    max_pages=lit_pages,
+                )
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in lit_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                if key in existing_custom:
+                    status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+
+            st.session_state[lit_state_key] = lit_discovered
+            new_count = sum(1 for d in lit_discovered if d.get("ingest_status") == "new")
+            st.success(
+                f"Discovered {len(lit_discovered)} litigation releases "
+                f"({new_count} new candidates)."
+            )
+        except Exception as e:
+            st.error(f"Litigation release discovery failed: {e}")
+
+    lit_discovered = st.session_state.get(lit_state_key, [])
+    if lit_discovered:
+        lit_df = pd.DataFrame(lit_discovered)
+        lit_df = _sort_table_by_date(lit_df, date_col="date")
+        show_cols = [c for c in ["date", "release_no", "title", "ingest_status", "url"] if c in lit_df.columns]
+        st.dataframe(
+            lit_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        lit_filter = st.selectbox(
+            "Litigation Ingest Selection",
+            ["New Only", "All Discovered"],
+            key="sec_lit_ingest_filter",
+        )
+        if lit_filter == "New Only":
+            lit_candidates = [d for d in lit_discovered if d.get("ingest_status") == "new"]
+        else:
+            lit_candidates = list(lit_discovered)
+
+        lit_count = len(lit_candidates)
+        if lit_count <= 0:
+            lit_limit = 0
+            st.caption("No litigation releases match the selected ingest filter.")
+        elif lit_count == 1:
+            lit_limit = 1
+            st.caption("1 litigation release selected for ingest.")
+        else:
+            lit_limit = st.slider(
+                "Litigation Releases To Ingest",
+                min_value=1,
+                max_value=lit_count,
+                value=min(10, lit_count),
+                key="sec_lit_ingest_limit",
+            )
+        st.caption(f"{lit_count} litigation releases currently match this ingest selection.")
+
+        if st.button("Ingest Litigation Releases", disabled=(lit_limit <= 0), key="ingest_sec_lit"):
+            try:
+                from sec_enforcement_litigation_scraper import SECEnforcementLitigationScraper
+
+                lit_scraper = SECEnforcementLitigationScraper()
+                progress = st.progress(0, text="Starting litigation ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = lit_candidates[:lit_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / lit_limit,
+                        text=f"Ingesting {idx}/{lit_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = lit_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_release_no=entry.get("release_no", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 80:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_name = str(data.get("release_no", "") or entry.get("release_no", "")).strip()
+                        if not source_name:
+                            source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"litigation-release-{idx}"
+                        source_name = f"{source_name}.html" if "." not in source_name else source_name
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="SEC",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                            speaker="SEC Division of Enforcement",
+                            doc_date=doc_date_value,
+                            doc_type="Litigation Release",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=".html",
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv="sec,enforcement,litigation-release",
+                            source_kind="sec_enforcement_litigation",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "sec_enforcement_litigation"
+                        rm["source_index_url"] = lit_index_url
+                        rm["release_no"] = str(data.get("release_no", "") or entry.get("release_no", "")).strip()
+                        rm["published_date"] = str(entry.get("date", "") or "")
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="Litigation ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new litigation docs and updated {saved_updates} existing litigation docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} litigation releases failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"Litigation ingest failed: {e}")
 
     if custom_docs:
         st.markdown("---")
