@@ -535,6 +535,95 @@ def _build_knowledge_df(knowledge_data):
     return out
 
 
+def _infer_source_kind(metadata):
+    if not isinstance(metadata, dict):
+        return "document"
+    source_kind = str(metadata.get("source_kind", "") or "").strip().lower()
+    if source_kind:
+        return source_kind
+    url = str(metadata.get("url", "") or "").lower()
+    if "/newsroom/speeches-statements/" in url:
+        return "sec_speech"
+    if "/trading-markets-frequently-asked-questions/" in url or source_kind == "sec_tm_faq":
+        return "sec_tm_faq"
+    doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
+    if doc_type in {"speech", "statement", "remarks"}:
+        return "sec_speech"
+    return "document"
+
+
+def _build_corpus_explorer_df(knowledge_data, enrichment_state):
+    entries = enrichment_state.get("entries", {}) if isinstance(enrichment_state, dict) else {}
+    if not isinstance(entries, dict):
+        entries = {}
+
+    rows = []
+    for speech in knowledge_data.get("speeches", []):
+        if not isinstance(speech, dict):
+            continue
+        m = speech.get("metadata", {})
+        c = speech.get("content", {})
+        doc_id = _corpus_doc_id(speech)
+
+        enrich_entry = entries.get(doc_id, {})
+        if not isinstance(enrich_entry, dict):
+            enrich_entry = {}
+        enrich = enrich_entry.get("enrichment", {})
+        if not isinstance(enrich, dict):
+            enrich = {}
+        review = enrich_entry.get("review", {}) if isinstance(enrich_entry.get("review", {}), dict) else {}
+        auto_review = enrich_entry.get("auto_review", {}) if isinstance(enrich_entry.get("auto_review", {}), dict) else {}
+
+        tags = enrich.get("tags", [])
+        if not isinstance(tags, list):
+            tags = []
+        tags = [str(t).strip() for t in tags if str(t).strip()]
+
+        keywords = enrich.get("keywords", [])
+        if not isinstance(keywords, list):
+            keywords = []
+        keywords = [str(k).strip() for k in keywords if str(k).strip()]
+
+        stance = enrich.get("stance", {})
+        if not isinstance(stance, dict):
+            stance = {"label": str(stance or ""), "target": ""}
+        stance_label = str(stance.get("label", "") or "").strip()
+        stance_target = str(stance.get("target", "") or "").strip()
+        stance_text = stance_label
+        if stance_label and stance_target:
+            stance_text = f"{stance_label} ({stance_target})"
+
+        rows.append(
+            {
+                "doc_id": doc_id,
+                "date": str(m.get("date", "") or ""),
+                "organization": _speech_org_label(speech),
+                "source_kind": _infer_source_kind(m),
+                "doc_type": str(m.get("doc_type", "Document") or "Document"),
+                "title": str(m.get("title", "") or ""),
+                "speaker": str(m.get("speaker", "") or "Unknown"),
+                "word_count": _coerce_int(m.get("word_count", 0), default=0, min_value=0),
+                "url": str(m.get("url", "") or ""),
+                "tags_list": tags,
+                "keywords_list": keywords,
+                "tags_text": ", ".join(tags),
+                "keywords_text": ", ".join(keywords),
+                "stance": stance_text,
+                "review": str(review.get("decision", "pending") or "pending"),
+                "auto_verdict": str(auto_review.get("verdict", "") or ""),
+                "status": str(enrich_entry.get("status", "") or ""),
+                "full_text": str(c.get("full_text", "") or ""),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        out["date_parsed"] = pd.NaT
+        return out
+    out["date_parsed"] = _parse_date_series(out["date"])
+    return out
+
+
 def _empty_enrichment_state():
     return {
         "version": 1,
@@ -2404,30 +2493,35 @@ sentiment_data, topic_data, commissioner_data = run_analysis(raw_data_json)
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Policy Research Hub")
-section = st.sidebar.radio("Section", ["SEC Speeches", "Knowledge Base"])
-if section == "SEC Speeches":
+section = st.sidebar.radio(
+    "Section",
+    ["Agent Chat", "Corpus Explorer", "Analytics", "Admin"],
+)
+
+if section == "Agent Chat":
+    page = "Agent Chat"
+elif section == "Corpus Explorer":
+    page = "Corpus Explorer"
+elif section == "Analytics":
     page = st.sidebar.radio(
         "Navigate",
-        ["Overview", "Sentiment Analysis", "Topic Analysis", "Speech Explorer", "Extract Speeches"],
+        ["Overview", "Sentiment Analysis", "Topic Analysis"],
     )
 else:
     page = st.sidebar.radio(
-        "Navigate",
-        ["Agent Chat", "Document Library", "Enrichment Pipeline"],
+        "Admin",
+        ["Document Library", "Enrichment Pipeline", "Extract Speeches"],
     )
 
 st.sidebar.markdown("---")
-if section == "SEC Speeches":
-    st.sidebar.markdown(f"**{len(df)} speeches loaded**")
-    st.sidebar.markdown(f"**{speaker_df['speaker_individual'].nunique()} unique speakers**")
-    st.sidebar.markdown(f"**{df['word_count'].sum():,} total words**")
-else:
-    kb_words = 0
-    for s in knowledge_data.get("speeches", []):
-        kb_words += int(s.get("metadata", {}).get("word_count", 0) or 0)
-    st.sidebar.markdown(f"**{len(custom_documents)} uploaded docs**")
-    st.sidebar.markdown(f"**{len(knowledge_data.get('speeches', []))} total corpus docs**")
-    st.sidebar.markdown(f"**{kb_words:,} corpus words**")
+kb_words = 0
+for s in knowledge_data.get("speeches", []):
+    kb_words += int(s.get("metadata", {}).get("word_count", 0) or 0)
+st.sidebar.markdown(f"**{len(df)} SEC speeches**")
+st.sidebar.markdown(f"**{speaker_df['speaker_individual'].nunique()} SEC speakers**")
+st.sidebar.markdown(f"**{len(custom_documents)} uploaded docs**")
+st.sidebar.markdown(f"**{len(knowledge_data.get('speeches', []))} total corpus docs**")
+st.sidebar.markdown(f"**{kb_words:,} corpus words**")
 
 # GCS status indicator — with debug info
 _gcs_debug = []
@@ -2578,77 +2672,138 @@ elif page == "Topic Analysis":
 
 
 # =====================================================
-# PAGE: Speech Explorer
+# PAGE: Corpus Explorer
 # =====================================================
-elif page == "Speech Explorer":
-    st.title("Speech Explorer")
-    st.markdown("Browse speeches with topic context from topic analysis.")
+elif page in {"Speech Explorer", "Corpus Explorer"}:
+    st.title("Corpus Explorer")
+    st.markdown("Explore SEC speeches and uploaded documents with metadata and enrichment filters.")
 
-    topic_results = topic_data.get("results", [])
-    topic_by_url = {r.get("url", ""): r for r in topic_results if r.get("url")}
-    topic_by_title_speaker = {(r.get("title", ""), r.get("speaker", "")): r for r in topic_results}
-    topic_names = sorted(topic_data.get("summary", {}).get("topic_distribution", {}).keys())
+    enrichment_state = _load_enrichment_state()
+    corpus_df = _build_corpus_explorer_df(knowledge_data, enrichment_state)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        speakers = ["All"] + sorted(speaker_df["speaker_individual"].unique().tolist())
-        selected_speaker = st.selectbox("Filter by Speaker", speakers)
-    with col2:
-        search_term = st.text_input("Search in titles")
-    with col3:
-        selected_topic = st.selectbox("Filter by Primary Topic", ["All"] + topic_names)
+    if corpus_df.empty:
+        st.info("No corpus documents available.")
+    else:
+        source_options = sorted(corpus_df["source_kind"].fillna("unknown").astype(str).unique().tolist())
+        org_options = sorted(corpus_df["organization"].fillna("Unknown").astype(str).unique().tolist())
+        type_options = sorted(corpus_df["doc_type"].fillna("Unknown").astype(str).unique().tolist())
+        stance_options = sorted([x for x in corpus_df["stance"].fillna("").astype(str).unique().tolist() if x.strip()])
+        review_options = sorted(corpus_df["review"].fillna("pending").astype(str).unique().tolist())
+        all_tags = sorted(
+            {
+                tag
+                for tags in corpus_df["tags_list"].tolist()
+                if isinstance(tags, list)
+                for tag in tags
+            }
+        )
 
-    filtered = df.copy()
-    if selected_speaker != "All":
-        filtered = filtered[filtered["speaker_list"].apply(lambda s: selected_speaker in s if isinstance(s, list) else False)]
-    if search_term:
-        filtered = filtered[filtered["title"].str.contains(search_term, case=False, na=False)]
-    if selected_topic != "All":
-        def _row_has_primary_topic(r):
-            entry = topic_by_url.get(r.get("url", ""))
-            if not entry:
-                entry = topic_by_title_speaker.get((r.get("title", ""), r.get("speaker", "")))
-            return bool(
-                entry
-                and entry.get("top_topics")
-                and entry["top_topics"][0].get("topic") == selected_topic
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            selected_sources = st.multiselect("Corpus Source", source_options, default=source_options)
+        with f2:
+            selected_orgs = st.multiselect("Organization", org_options, default=org_options)
+        with f3:
+            selected_types = st.multiselect("Document Type", type_options, default=type_options)
+
+        f4, f5, f6 = st.columns(3)
+        with f4:
+            selected_stances = st.multiselect("Stance", stance_options)
+        with f5:
+            selected_reviews = st.multiselect("Review Status", review_options, default=review_options)
+        with f6:
+            selected_tags = st.multiselect("Must Include Tags", all_tags)
+
+        q1, q2 = st.columns(2)
+        with q1:
+            title_query = st.text_input("Search Title")
+        with q2:
+            tag_keyword_query = st.text_input("Search Tags/Keywords")
+
+        filtered = corpus_df.copy()
+        if selected_sources:
+            filtered = filtered[filtered["source_kind"].isin(selected_sources)]
+        if selected_orgs:
+            filtered = filtered[filtered["organization"].isin(selected_orgs)]
+        if selected_types:
+            filtered = filtered[filtered["doc_type"].isin(selected_types)]
+        if selected_stances:
+            filtered = filtered[filtered["stance"].isin(selected_stances)]
+        if selected_reviews:
+            filtered = filtered[filtered["review"].isin(selected_reviews)]
+        if selected_tags:
+            filtered = filtered[
+                filtered["tags_list"].apply(
+                    lambda items: isinstance(items, list) and all(tag in items for tag in selected_tags)
+                )
+            ]
+        if title_query.strip():
+            filtered = filtered[filtered["title"].str.contains(title_query.strip(), case=False, na=False)]
+        if tag_keyword_query.strip():
+            q = tag_keyword_query.strip()
+            filtered = filtered[
+                filtered["tags_text"].str.contains(q, case=False, na=False)
+                | filtered["keywords_text"].str.contains(q, case=False, na=False)
+            ]
+
+        filtered = _sort_table_by_date(filtered, date_col="date")
+        st.markdown(f"**Showing {len(filtered)} of {len(corpus_df)} corpus documents**")
+
+        st.dataframe(
+            filtered[
+                [
+                    "date",
+                    "organization",
+                    "source_kind",
+                    "doc_type",
+                    "title",
+                    "speaker",
+                    "stance",
+                    "review",
+                    "auto_verdict",
+                    "status",
+                    "tags_text",
+                    "keywords_text",
+                    "word_count",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if not filtered.empty:
+            detail_ids = filtered["doc_id"].astype(str).tolist()
+            detail_map = {str(r["doc_id"]): r for _, r in filtered.iterrows()}
+            selected_doc_id = st.selectbox(
+                "Inspect Document",
+                detail_ids,
+                format_func=lambda d: f"{detail_map[d]['date']} | {detail_map[d]['title']}",
             )
+            detail = detail_map[selected_doc_id]
 
-        filtered = filtered[filtered.apply(_row_has_primary_topic, axis=1)]
-    filtered = _sort_table_by_date(filtered, date_col="date")
+            st.markdown(
+                f"**{detail['title']}**\n\n"
+                f"Type: `{detail['doc_type']}` | Source: `{detail['source_kind']}` | "
+                f"Organization: `{detail['organization']}` | Date: `{detail['date']}`"
+            )
+            st.caption(
+                f"Speaker: {detail['speaker']} | "
+                f"Stance: {detail['stance'] or 'n/a'} | "
+                f"Review: {detail['review']} | Auto Verdict: {detail['auto_verdict'] or 'n/a'}"
+            )
+            if detail["url"]:
+                st.markdown(f"[Open Source]({detail['url']})")
+            if detail["tags_text"]:
+                st.markdown(f"**Tags:** {detail['tags_text']}")
+            if detail["keywords_text"]:
+                st.markdown(f"**Keywords:** {detail['keywords_text']}")
 
-    st.markdown(f"**Showing {len(filtered)} of {len(df)} speeches**")
-    st.markdown("---")
-
-    for idx, row in filtered.iterrows():
-        topic_entry = topic_by_url.get(row.get("url", ""))
-        if not topic_entry:
-            topic_entry = topic_by_title_speaker.get((row.get("title", ""), row.get("speaker", "")))
-        top_topics = topic_entry.get("top_topics", []) if topic_entry else []
-        primary_topic = top_topics[0]["topic"] if top_topics else "N/A"
-        primary_score = top_topics[0]["score"] if top_topics else 0.0
-        top_topics_text = ", ".join(
-            [f"{t['topic']} ({t['score']:.2f})" for t in top_topics]
-        ) if top_topics else "N/A"
-
-        with st.expander(f"{row['title']} \u2014 {row['speaker']} ({row['date']})"):
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Words", f"{row['word_count']:,}")
-            col2.metric("Paragraphs", row["paragraph_count"])
-            col3.metric("Completeness", f"{row['completeness_score']}%")
-
-            st.markdown(f"**Primary Topic:** {primary_topic} ({primary_score:.2f})")
-            st.markdown(f"**Top Topics:** {top_topics_text}")
-
-            if row["url"]:
-                st.markdown(f"[View on SEC.gov]({row['url']})")
-
+            full_text = str(detail["full_text"] or "")
             st.markdown("---")
-            st.markdown(row["full_text"][:5000] + ("..." if len(row["full_text"]) > 5000 else ""))
-
-            if len(row["full_text"]) > 5000:
-                if st.button("Show full text", key=f"full_{idx}"):
-                    st.markdown(row["full_text"])
+            st.markdown(full_text[:5000] + ("..." if len(full_text) > 5000 else ""))
+            if len(full_text) > 5000:
+                with st.expander("Show full text"):
+                    st.markdown(full_text)
 
 
 # =====================================================
