@@ -4949,10 +4949,14 @@ elif page == "Extraction":
         clear_doj = st.button("Clear DOJ Results", key="clear_doj_usao")
 
     doj_state_key = "doj_usao_discovered"
+    doj_debug_key = "doj_usao_discovery_debug"
     if doj_state_key not in st.session_state:
         st.session_state[doj_state_key] = []
+    if doj_debug_key not in st.session_state:
+        st.session_state[doj_debug_key] = {}
     if clear_doj:
         st.session_state[doj_state_key] = []
+        st.session_state[doj_debug_key] = {}
 
     if discover_doj:
         try:
@@ -4964,6 +4968,9 @@ elif page == "Extraction":
                     base_url=doj_index_url,
                     max_pages=doj_pages,
                 )
+                debug_payload = getattr(doj_scraper, "last_discovery_debug", {})
+                if isinstance(debug_payload, dict):
+                    st.session_state[doj_debug_key] = debug_payload
 
             existing_custom = {}
             for item in custom_docs:
@@ -4996,10 +5003,57 @@ elif page == "Extraction":
                 f"Discovered {len(doj_discovered)} DOJ USAO press releases "
                 f"({new_count} new/update candidates)."
             )
+            try:
+                dbg = st.session_state.get(doj_debug_key, {})
+                if isinstance(dbg, dict):
+                    dbg["ingest_status_counts"] = {
+                        "new": sum(1 for d in doj_discovered if d.get("ingest_status") == "new"),
+                        "update_available": sum(1 for d in doj_discovered if d.get("ingest_status") == "update_available"),
+                        "existing": sum(1 for d in doj_discovered if d.get("ingest_status") == "existing"),
+                        "existing_in_speeches": sum(1 for d in doj_discovered if d.get("ingest_status") == "existing_in_speeches"),
+                    }
+                    st.session_state[doj_debug_key] = dbg
+            except Exception:
+                pass
         except Exception as e:
+            st.session_state[doj_debug_key] = {"error": str(e)}
             st.error(f"DOJ press-release discovery failed: {e}")
 
     doj_discovered = st.session_state.get(doj_state_key, [])
+    doj_debug = st.session_state.get(doj_debug_key, {})
+    if isinstance(doj_debug, dict) and doj_debug:
+        with st.expander("DOJ Discovery Debug", expanded=False):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Requested Pages", int(doj_debug.get("max_pages_requested", 0) or 0))
+            c2.metric("Pages Logged", len(doj_debug.get("pages", []) if isinstance(doj_debug.get("pages", []), list) else []))
+            c3.metric("Listing Added", int(doj_debug.get("listing_added", 0) or 0))
+            c4.metric("RSS Added", int(doj_debug.get("rss_added", 0) or 0))
+            st.caption(
+                f"Stop reason: `{doj_debug.get('stop_reason', '')}` | "
+                f"Pagination blocked: `{doj_debug.get('pagination_blocked', False)}` | "
+                f"RSS page0 used: `{doj_debug.get('rss_page0_used', False)}` | "
+                f"RSS supplement used: `{doj_debug.get('rss_supplement_used', False)}`"
+            )
+            page_logs = doj_debug.get("pages", [])
+            if isinstance(page_logs, list) and page_logs:
+                page_df = pd.DataFrame(page_logs)
+                show_cols = [
+                    c
+                    for c in [
+                        "page",
+                        "attempts",
+                        "returned_items",
+                        "unique_added",
+                        "error_status",
+                        "error_type",
+                        "error_message",
+                        "page_url",
+                    ]
+                    if c in page_df.columns
+                ]
+                st.dataframe(page_df[show_cols], use_container_width=True, hide_index=True)
+            st.json(doj_debug)
+
     if doj_discovered:
         doj_df = pd.DataFrame(doj_discovered)
         doj_df = _sort_table_by_date(doj_df, date_col="date")

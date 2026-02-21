@@ -144,6 +144,7 @@ class DOJUSAOPressReleaseScraper:
         )
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
         self._last_request_ts = 0.0
+        self.last_discovery_debug: Dict[str, Any] = {}
 
     def _rate_limit(self):
         elapsed = time.time() - self._last_request_ts
@@ -261,20 +262,52 @@ class DOJUSAOPressReleaseScraper:
         out = []
         seen = set()
         pagination_blocked = False
+        listing_added = 0
+        rss_added = 0
+
+        debug: Dict[str, Any] = {
+            "base_url": str(base_url or DOJ_USAO_PRESS_RELEASES_URL),
+            "max_pages_requested": max_pages,
+            "fallback_to_rss": bool(fallback_to_rss),
+            "pages": [],
+            "pagination_blocked": False,
+            "rss_page0_used": False,
+            "rss_supplement_used": False,
+            "rss_supplement_error": "",
+            "stop_reason": "",
+            "listing_added": 0,
+            "rss_added": 0,
+            "total_unique": 0,
+        }
 
         for page in range(max_pages):
             page_url = self._build_page_url(base_url, page)
             discovered = []
             page_attempts = 0
+            page_debug: Dict[str, Any] = {
+                "page": page,
+                "page_url": page_url,
+                "attempts": 0,
+                "error_type": "",
+                "error_status": 0,
+                "error_message": "",
+                "returned_items": 0,
+                "unique_added": 0,
+            }
             while page_attempts < 2:
                 page_attempts += 1
+                page_debug["attempts"] = page_attempts
                 try:
                     discovered = self._discover_from_listing_page(page_url)
                     break
                 except requests.HTTPError as e:
                     status_code = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
+                    page_debug["error_type"] = "HTTPError"
+                    page_debug["error_status"] = status_code
+                    page_debug["error_message"] = str(e)
                     if page == 0 and fallback_to_rss:
                         discovered = self._discover_from_rss()
+                        debug["rss_page0_used"] = True
                         break
                     if status_code in {401, 403, 404, 429, 503}:
                         if page > 0 and page_attempts == 1:
@@ -285,23 +318,38 @@ class DOJUSAOPressReleaseScraper:
                                 pass
                             continue
                         pagination_blocked = pagination_blocked or page > 0
+                        debug["pagination_blocked"] = bool(pagination_blocked)
                         discovered = []
+                        if page > 0:
+                            debug["stop_reason"] = f"blocked_page_{page}_status_{status_code}"
                         break
                     if page > 0:
                         discovered = []
+                        debug["stop_reason"] = f"page_{page}_http_error_{status_code}"
                         break
+                    self.last_discovery_debug = debug
                     raise
-                except Exception:
+                except Exception as e:
+                    page_debug["error_type"] = type(e).__name__
+                    page_debug["error_message"] = str(e)
                     if page == 0 and fallback_to_rss:
                         discovered = self._discover_from_rss()
+                        debug["rss_page0_used"] = True
                         break
                     if page > 0:
                         discovered = []
+                        debug["stop_reason"] = f"page_{page}_error"
                         break
+                    self.last_discovery_debug = debug
                     raise
+            page_debug["returned_items"] = len(discovered)
             if not discovered and page == 0 and fallback_to_rss:
                 discovered = self._discover_from_rss()
+                debug["rss_page0_used"] = True
             if not discovered and page > 0:
+                if not debug.get("stop_reason", ""):
+                    debug["stop_reason"] = f"no_results_page_{page}"
+                debug["pages"].append(page_debug)
                 break
 
             for item in discovered:
@@ -310,22 +358,43 @@ class DOJUSAOPressReleaseScraper:
                     continue
                 seen.add(key)
                 out.append(item)
+                page_debug["unique_added"] += 1
+                if page_debug.get("error_type") == "HTTPError" and page == 0 and debug["rss_page0_used"]:
+                    rss_added += 1
+                elif page == 0 and debug["rss_page0_used"] and str(item.get("listing_page", "")).startswith("https://www.justice.gov/news/rss"):
+                    rss_added += 1
+                else:
+                    listing_added += 1
+            debug["pages"].append(page_debug)
 
         # If paginated listing is blocked, supplement from RSS so discovery exceeds page 0.
         if fallback_to_rss and (pagination_blocked or (max_pages > 1 and len(out) <= 12)):
             try:
                 rss_items = self._discover_from_rss()
+                debug["rss_supplement_used"] = True
                 for item in rss_items:
                     key = _url_key(item.get("url", ""))
                     if not key or key in seen:
                         continue
                     seen.add(key)
                     out.append(item)
+                    rss_added += 1
             except Exception:
-                pass
+                debug["rss_supplement_error"] = "supplement_failed"
+                debug["rss_supplement_used"] = True
 
         def _sort_key(item: Dict[str, str]):
             return _parse_date_text(item.get("date", "")) or datetime.min
+
+        debug["pagination_blocked"] = bool(pagination_blocked)
+        debug["listing_added"] = int(listing_added)
+        debug["rss_added"] = int(rss_added)
+        debug["total_unique"] = int(len(out))
+        if not debug.get("stop_reason", "") and max_pages > 1 and len(out) <= 12:
+            debug["stop_reason"] = "low_yield"
+        if not debug.get("stop_reason", ""):
+            debug["stop_reason"] = "completed"
+        self.last_discovery_debug = debug
 
         out.sort(key=_sort_key, reverse=True)
         return out
