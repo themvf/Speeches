@@ -570,6 +570,8 @@ def _infer_source_kind(metadata):
         return "sec_tm_faq"
     if "/enforcement-litigation/litigation-releases/" in url or source_kind == "sec_enforcement_litigation":
         return "sec_enforcement_litigation"
+    if ("/usao-" in url or "/usao/" in url) and "/pr/" in url:
+        return "doj_usao_press_release"
     doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
     if doc_type in {"speech", "statement", "remarks"}:
         return "sec_speech"
@@ -3370,7 +3372,7 @@ elif section == "Analytics":
 else:
     page = st.sidebar.radio(
         "Admin",
-        ["Document Library", "Enrichment Pipeline", "Extract Speeches"],
+        ["Extraction", "Document Library", "Enrichment Pipeline"],
     )
 
 st.sidebar.markdown("---")
@@ -4276,11 +4278,11 @@ elif page == "Agent Chat":
 
 
 # =====================================================
-# PAGE: Document Library
+# PAGE: Extraction
 # =====================================================
-elif page == "Document Library":
-    st.title("Document Library")
-    st.markdown("Upload PDF, text, or HTML documents with manual metadata for indexing and chat.")
+elif page == "Extraction":
+    st.title("Extraction")
+    st.markdown("Run all extraction and ingestion pipelines, including manual document upload.")
     st.caption(
         "Use this for long transcripts (including SEC roundtables) and internal documents. "
         "Very long text is chunked automatically during indexing."
@@ -4288,6 +4290,131 @@ elif page == "Document Library":
 
     custom_payload = _load_custom_documents()
     custom_docs = _custom_docs_as_speeches(custom_payload)
+
+    st.subheader("SEC Connector: Speeches")
+    st.markdown("Discover and extract SEC speeches by date range.")
+
+    sec_col1, sec_col2 = st.columns(2)
+    with sec_col1:
+        sec_start_date = st.date_input(
+            "SEC Speech Start Date",
+            value=date.today() - timedelta(days=30),
+            key="ext_sec_speech_start_date",
+        )
+    with sec_col2:
+        sec_end_date = st.date_input(
+            "SEC Speech End Date",
+            value=date.today(),
+            key="ext_sec_speech_end_date",
+        )
+
+    sec_discovered_key = "ext_sec_speeches_discovered"
+    if sec_discovered_key not in st.session_state:
+        st.session_state[sec_discovered_key] = []
+
+    if st.button("Discover SEC Speeches", key="ext_discover_sec_speeches"):
+        with st.status("Discovering speeches from SEC.gov...", expanded=True) as status:
+            from sec_scraper_free import SECScraper
+
+            scraper = SECScraper()
+            days_back_to_start = max(0, (date.today() - sec_start_date).days)
+            estimated_pages = max(3, days_back_to_start // 14 + 2)
+            max_pages = min(80, estimated_pages)
+
+            st.write(
+                f"Scanning up to {max_pages} listing pages "
+                "(will stop early when start date is reached)..."
+            )
+            entries = scraper.discover_speech_urls(
+                max_pages=max_pages,
+                start_date=sec_start_date,
+                end_date=sec_end_date,
+            )
+
+            existing_urls = {s.get("metadata", {}).get("url", "") for s in raw_data.get("speeches", [])}
+            new_entries = [e for e in entries if e["url"] not in existing_urls]
+            already = len(entries) - len(new_entries)
+
+            st.session_state[sec_discovered_key] = new_entries
+            status.update(
+                label=f"Found {len(new_entries)} new speeches ({already} already extracted)",
+                state="complete",
+            )
+
+    sec_discovered = st.session_state.get(sec_discovered_key, [])
+    if sec_discovered:
+        sec_disc_df = _sort_table_by_date(pd.DataFrame(sec_discovered), date_col="date")
+        if "speaker" in sec_disc_df.columns:
+            sec_disc_df["speaker"] = sec_disc_df["speaker"].apply(format_speakers)
+        sec_discovered_sorted = sec_disc_df.to_dict(orient="records")
+
+        st.dataframe(
+            sec_disc_df[["date", "title", "speaker", "type"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if len(sec_discovered_sorted) == 1:
+            sec_extract_limit = 1
+            st.caption("1 speech found. It will be extracted.")
+        else:
+            sec_extract_limit = st.slider(
+                "SEC Speeches To Extract",
+                min_value=1,
+                max_value=len(sec_discovered_sorted),
+                value=len(sec_discovered_sorted),
+                key="ext_sec_extract_limit",
+            )
+
+        if st.button("Run SEC Speech Extraction", key="ext_extract_sec_speeches"):
+            from speech_analyzer import SECSpeechAnalyzer
+
+            analyzer = SECSpeechAnalyzer()
+            progress = st.progress(0, text="Starting SEC speech extraction...")
+            extracted = []
+            failed = []
+
+            for i, entry in enumerate(sec_discovered_sorted[:sec_extract_limit]):
+                progress.progress(
+                    (i + 1) / sec_extract_limit,
+                    text=f"Extracting {i + 1}/{sec_extract_limit}: {entry['title'][:50]}...",
+                )
+                result = analyzer.extract_speech_for_analysis(entry["url"], listing_metadata=entry)
+                if result["success"] and analyzer.validate_full_text_extraction(result["data"]):
+                    extracted.append(result["data"])
+                else:
+                    failed.append(entry["title"])
+
+            progress.progress(1.0, text="SEC speech extraction complete.")
+
+            if extracted:
+                updated_data, _ = _load_raw_data()
+                updated_data["speeches"].extend(extracted)
+                updated_data["extraction_summary"]["successful_extractions"] = len(updated_data["speeches"])
+
+                storage = _get_gcs_storage()
+                if storage is not None:
+                    storage.save_speeches(updated_data)
+                    st.success(f"Saved {len(extracted)} new speeches to Google Cloud Storage.")
+                else:
+                    with open("data/all_speeches_final.json", "w", encoding="utf-8") as f:
+                        json.dump(updated_data, f, indent=2, ensure_ascii=False)
+                    st.success(f"Saved {len(extracted)} new speeches locally.")
+
+                load_data.clear()
+                run_analysis.clear()
+                st.session_state[sec_discovered_key] = []
+                st.info("Refresh the page to see the new speeches in the dashboard.")
+
+            if failed:
+                st.warning(f"{len(failed)} speeches failed extraction:")
+                for title in failed:
+                    st.write(f"- {title}")
+    else:
+        st.info("Use the SEC speech date range above and click **Discover SEC Speeches**.")
+
+    st.markdown("---")
+    st.subheader("Manual Upload")
 
     with st.form("upload_custom_document", clear_on_submit=True):
         uploaded_file = st.file_uploader(
@@ -4506,7 +4633,7 @@ elif page == "Document Library":
             )
         st.caption(f"{ingest_count} FAQ documents currently match this ingest selection.")
 
-        if st.button("Ingest Trading & Markets FAQs", disabled=(ingest_limit <= 0), key="ingest_tm_faq"):
+        if st.button("Run Trading & Markets FAQ Extraction", disabled=(ingest_limit <= 0), key="ingest_tm_faq"):
             try:
                 from sec_tm_faq_scraper import TradingMarketsFAQScraper
 
@@ -4707,7 +4834,7 @@ elif page == "Document Library":
             )
         st.caption(f"{lit_count} litigation releases currently match this ingest selection.")
 
-        if st.button("Ingest Litigation Releases", disabled=(lit_limit <= 0), key="ingest_sec_lit"):
+        if st.button("Run Litigation Release Extraction", disabled=(lit_limit <= 0), key="ingest_sec_lit"):
             try:
                 from sec_enforcement_litigation_scraper import SECEnforcementLitigationScraper
 
@@ -4794,6 +4921,213 @@ elif page == "Document Library":
                         st.write(f"- {msg}")
             except Exception as e:
                 st.error(f"Litigation ingest failed: {e}")
+
+    st.markdown("---")
+    st.subheader("DOJ Connector: USAO Press Releases")
+    st.caption(
+        "Discover and ingest Department of Justice U.S. Attorneys' Office press releases into the knowledge base."
+    )
+
+    doj_index_default = "https://www.justice.gov/usao/pressreleases"
+    doj_index_url = st.text_input(
+        "DOJ USAO Press Releases URL",
+        value=doj_index_default,
+        key="doj_usao_index_url",
+    ).strip() or doj_index_default
+    doj_pages = st.slider(
+        "DOJ Listing Pages To Scan",
+        min_value=1,
+        max_value=20,
+        value=3,
+        key="doj_usao_pages",
+    )
+
+    doj_col1, doj_col2 = st.columns(2)
+    with doj_col1:
+        discover_doj = st.button("Discover DOJ Press Releases", key="discover_doj_usao")
+    with doj_col2:
+        clear_doj = st.button("Clear DOJ Results", key="clear_doj_usao")
+
+    doj_state_key = "doj_usao_discovered"
+    if doj_state_key not in st.session_state:
+        st.session_state[doj_state_key] = []
+    if clear_doj:
+        st.session_state[doj_state_key] = []
+
+    if discover_doj:
+        try:
+            from doj_usao_press_release_scraper import DOJUSAOPressReleaseScraper
+
+            with st.spinner("Discovering DOJ USAO press releases..."):
+                doj_scraper = DOJUSAOPressReleaseScraper()
+                doj_discovered = doj_scraper.discover_documents(
+                    base_url=doj_index_url,
+                    max_pages=doj_pages,
+                )
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in doj_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(existing_meta.get("published_date") or existing_meta.get("date") or "").strip()
+                    incoming_date = str(entry.get("date", "") or "").strip()
+                    if incoming_date and existing_date and incoming_date != existing_date:
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+
+            st.session_state[doj_state_key] = doj_discovered
+            new_count = sum(1 for d in doj_discovered if d.get("ingest_status") in {"new", "update_available"})
+            st.success(
+                f"Discovered {len(doj_discovered)} DOJ USAO press releases "
+                f"({new_count} new/update candidates)."
+            )
+        except Exception as e:
+            st.error(f"DOJ press-release discovery failed: {e}")
+
+    doj_discovered = st.session_state.get(doj_state_key, [])
+    if doj_discovered:
+        doj_df = pd.DataFrame(doj_discovered)
+        doj_df = _sort_table_by_date(doj_df, date_col="date")
+        show_cols = [c for c in ["date", "office", "title", "ingest_status", "url"] if c in doj_df.columns]
+        st.dataframe(
+            doj_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        doj_filter = st.selectbox(
+            "DOJ Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="doj_usao_ingest_filter",
+        )
+        if doj_filter == "New/Updates Only":
+            doj_candidates = [d for d in doj_discovered if d.get("ingest_status") in {"new", "update_available"}]
+        else:
+            doj_candidates = list(doj_discovered)
+
+        doj_count = len(doj_candidates)
+        if doj_count <= 0:
+            doj_limit = 0
+            st.caption("No DOJ press releases match the selected ingest filter.")
+        elif doj_count == 1:
+            doj_limit = 1
+            st.caption("1 DOJ press release selected for ingest.")
+        else:
+            doj_limit = st.slider(
+                "DOJ Press Releases To Ingest",
+                min_value=1,
+                max_value=doj_count,
+                value=min(10, doj_count),
+                key="doj_usao_ingest_limit",
+            )
+        st.caption(f"{doj_count} DOJ press releases currently match this ingest selection.")
+
+        if st.button("Run DOJ Press Release Extraction", disabled=(doj_limit <= 0), key="ingest_doj_usao"):
+            try:
+                from doj_usao_press_release_scraper import DOJUSAOPressReleaseScraper
+
+                doj_scraper = DOJUSAOPressReleaseScraper()
+                progress = st.progress(0, text="Starting DOJ press-release ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = doj_candidates[:doj_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / doj_limit,
+                        text=f"Ingesting {idx}/{doj_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = doj_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_office=entry.get("office", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 80:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"doj-press-release-{idx}"
+                        source_name = f"{source_name}.html" if "." not in source_name else source_name
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        office_text = str(data.get("office", "") or entry.get("office", "")).strip()
+                        if not office_text:
+                            office_text = "U.S. Attorney's Office"
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="DOJ",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                            speaker=office_text,
+                            doc_date=doc_date_value,
+                            doc_type="Press Release",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=".html",
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv="doj,usao,press-release",
+                            source_kind="doj_usao_press_release",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "doj_usao_press_release"
+                        rm["source_index_url"] = doj_index_url
+                        rm["office"] = office_text
+                        rm["published_date"] = str(entry.get("date", "") or "")
+                        rm["updated_date"] = str(data.get("updated_date", "") or "")
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="DOJ ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new DOJ docs and updated {saved_updates} existing DOJ docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} DOJ press releases failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"DOJ ingest failed: {e}")
 
     if custom_docs:
         st.markdown("---")
@@ -5564,131 +5898,51 @@ elif page == "Policy Delta Briefings":
 
 
 # =====================================================
-# PAGE: Extract Speeches
+# PAGE: Document Library
 # =====================================================
-elif page == "Extract Speeches":
-    st.title("Extract Speeches")
-    st.markdown("Discover and extract SEC speeches by date range.")
+elif page == "Document Library":
+    st.title("Document Library")
+    st.markdown("Browse ingested custom documents and connector outputs.")
 
-    # Date range picker
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start date", value=date.today() - timedelta(days=30))
-    with col2:
-        end_date = st.date_input("End date", value=date.today())
-
-    # Track discovered speeches in session state
-    if "discovered" not in st.session_state:
-        st.session_state.discovered = []
-
-    # --- Discover ---
-    if st.button("Discover Speeches"):
-        with st.status("Discovering speeches from SEC.gov...", expanded=True) as status:
-            from sec_scraper_free import SECScraper
-            scraper = SECScraper()
-            # Estimate pages by how far back we need to scan from "today" to
-            # the start of the requested range (not by range width). The scraper
-            # will stop early once it reaches rows older than start_date.
-            days_back_to_start = max(0, (date.today() - start_date).days)
-            estimated_pages = max(3, days_back_to_start // 14 + 2)
-            max_pages = min(80, estimated_pages)
-
-            st.write(
-                f"Scanning up to {max_pages} listing pages "
-                "(will stop early when start date is reached)..."
+    custom_docs = _custom_docs_as_speeches(_load_custom_documents())
+    if not custom_docs:
+        st.info("No ingested custom documents yet. Use the **Extraction** page to add documents.")
+    else:
+        rows = []
+        for item in custom_docs:
+            m = item.get("metadata", {})
+            rows.append(
+                {
+                    "date": m.get("date", ""),
+                    "title": m.get("title", ""),
+                    "organization": m.get("organization", ""),
+                    "speaker": m.get("speaker", ""),
+                    "doc_type": m.get("doc_type", ""),
+                    "source_kind": m.get("source_kind", ""),
+                    "words": m.get("word_count", 0),
+                    "source_file": m.get("source_filename", ""),
+                    "url": m.get("url", ""),
+                }
             )
-            entries = scraper.discover_speech_urls(
-                max_pages=max_pages,
-                start_date=start_date,
-                end_date=end_date,
-            )
+        docs_df = pd.DataFrame(rows)
+        docs_df = _sort_table_by_date(docs_df, date_col="date")
 
-            # Deduplicate against existing dataset
-            existing_urls = {s.get("metadata", {}).get("url", "") for s in raw_data.get("speeches", [])}
-            new_entries = [e for e in entries if e["url"] not in existing_urls]
-            already = len(entries) - len(new_entries)
+        col1, col2 = st.columns(2)
+        with col1:
+            org_options = sorted(docs_df["organization"].fillna("").astype(str).unique().tolist())
+            selected_orgs = st.multiselect("Organization Filter", org_options, default=org_options)
+        with col2:
+            kind_options = sorted(docs_df["source_kind"].fillna("").astype(str).unique().tolist())
+            selected_kinds = st.multiselect("Source Kind Filter", kind_options, default=kind_options)
 
-            st.session_state.discovered = new_entries
-            status.update(
-                label=f"Found {len(new_entries)} new speeches ({already} already extracted)",
-                state="complete",
-            )
+        filtered = docs_df.copy()
+        if selected_orgs:
+            filtered = filtered[filtered["organization"].isin(selected_orgs)]
+        if selected_kinds:
+            filtered = filtered[filtered["source_kind"].isin(selected_kinds)]
 
-    # --- Show discovered speeches ---
-    discovered = st.session_state.discovered
-    if discovered:
-        disc_df = _sort_table_by_date(pd.DataFrame(discovered), date_col="date")
-        if "speaker" in disc_df.columns:
-            disc_df["speaker"] = disc_df["speaker"].apply(format_speakers)
-        discovered_sorted = disc_df.to_dict(orient="records")
-
-        st.subheader(f"{len(discovered_sorted)} new speeches available")
         st.dataframe(
-            disc_df[["date", "title", "speaker", "type"]],
+            filtered[["date", "title", "organization", "speaker", "doc_type", "source_kind", "words", "source_file"]],
             use_container_width=True,
             hide_index=True,
         )
-
-        if len(discovered_sorted) == 1:
-            max_extract = 1
-            st.caption("1 speech found. It will be extracted.")
-        else:
-            max_extract = st.slider(
-                "Speeches to extract",
-                min_value=1,
-                max_value=len(discovered_sorted),
-                value=len(discovered_sorted),
-            )
-
-        if st.button("Extract Speeches"):
-            from speech_analyzer import SECSpeechAnalyzer
-            analyzer = SECSpeechAnalyzer()
-
-            progress = st.progress(0, text="Starting extraction...")
-            extracted = []
-            failed = []
-
-            for i, entry in enumerate(discovered_sorted[:max_extract]):
-                progress.progress(
-                    (i + 1) / max_extract,
-                    text=f"Extracting {i + 1}/{max_extract}: {entry['title'][:50]}...",
-                )
-                result = analyzer.extract_speech_for_analysis(entry["url"], listing_metadata=entry)
-                if result["success"] and analyzer.validate_full_text_extraction(result["data"]):
-                    extracted.append(result["data"])
-                else:
-                    failed.append(entry["title"])
-
-            progress.progress(1.0, text="Extraction complete!")
-
-            if extracted:
-                # Merge into dataset
-                updated_data, _ = _load_raw_data()
-                updated_data["speeches"].extend(extracted)
-                updated_data["extraction_summary"]["successful_extractions"] = len(updated_data["speeches"])
-
-                # Save to GCS
-                storage = _get_gcs_storage()
-                if storage is not None:
-                    storage.save_speeches(updated_data)
-                    st.success(f"Saved {len(extracted)} new speeches to Google Cloud Storage.")
-                else:
-                    # Fallback: save locally
-                    with open("data/all_speeches_final.json", "w", encoding="utf-8") as f:
-                        json.dump(updated_data, f, indent=2, ensure_ascii=False)
-                    st.success(f"Saved {len(extracted)} new speeches locally.")
-
-                # Clear caches so dashboard reflects new data
-                load_data.clear()
-                run_analysis.clear()
-                st.session_state.discovered = []
-
-                st.info("Refresh the page to see the new speeches in the dashboard.")
-
-            if failed:
-                st.warning(f"{len(failed)} speeches failed extraction:")
-                for title in failed:
-                    st.write(f"- {title}")
-
-    elif st.session_state.get("discovered") is not None and not discovered:
-        st.info("Use the date range picker above and click **Discover Speeches** to find speeches to extract.")

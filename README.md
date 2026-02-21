@@ -4,11 +4,12 @@ Streamlit dashboard for exploring and analyzing SEC Commissioner speeches. Inclu
 
 ## Features
 
-- **Overview** — Speech counts, word counts, and commissioner breakdown
-- **Sentiment Analysis** — Keyword-based sentiment scoring per speech
-- **Topic Analysis** — 6-category topic relevance (Digital Assets, Enforcement, Market Structure, Innovation, Investor Protection, Regulatory Framework)
-- **Speech Explorer** — Full-text search and reading with filters
-- **Extract Speeches** — Discover and ingest new speeches by date range directly from the dashboard
+- **Overview** - Speech counts, word counts, and commissioner breakdown
+- **Sentiment Analysis** - Keyword-based sentiment scoring per speech
+- **Topic Analysis** - 6-category topic relevance (Digital Assets, Enforcement, Market Structure, Innovation, Investor Protection, Regulatory Framework)
+- **Speech Explorer** - Full-text search and reading with filters
+- **Extraction Workspace** - Discover and ingest SEC speeches plus connector documents from one admin section
+- **Document Connectors** - Ingest SEC policy docs and DOJ USAO press releases into the shared knowledge base
 
 ## Quick Start
 
@@ -61,7 +62,7 @@ gsutil cp data/all_speeches_final.json gs://your-bucket-name/all_speeches.json
 
 The scraper uses `curl_cffi` + `BeautifulSoup` to fetch speeches directly from SEC.gov (no API keys needed). `curl_cffi` is required because SEC.gov blocks standard HTTP clients via TLS fingerprinting.
 
-**From the dashboard:** Use the "Extract Speeches" page to pick a date range, discover available speeches, and extract them.
+**From the dashboard:** Use the "Extraction" page to run SEC speech extraction and document connectors.
 
 **From the command line:**
 
@@ -71,10 +72,11 @@ python extract_all_speeches.py
 
 ## Project Structure
 
-```
+```text
 app.py                  # Streamlit dashboard (with extraction UI)
 gcs_storage.py          # Google Cloud Storage read/write
 sec_scraper_free.py     # Free SEC.gov scraper (curl_cffi)
+doj_usao_press_release_scraper.py  # DOJ USAO press-release scraper
 speech_analyzer.py      # Speech parsing and extraction
 analysis_pipeline.py    # Sentiment, topic, commissioner analysis
 extract_all_speeches.py # Batch extraction script (CLI)
