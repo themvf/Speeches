@@ -846,17 +846,22 @@ def _overlap_score(left, right):
     return inter / denom
 
 
-def _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=None):
+def _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=None, org_keys=None):
     entries = enrichment_state.get("entries", {}) if isinstance(enrichment_state, dict) else {}
     if not isinstance(entries, dict):
         entries = {}
+    allowed_org_keys = set()
+    if isinstance(org_keys, (list, tuple, set)):
+        allowed_org_keys = {str(k).strip() for k in org_keys if str(k).strip()}
+    elif org_key and str(org_key).strip() and str(org_key).strip() != "__all__":
+        allowed_org_keys = {str(org_key).strip()}
 
     rows = []
     for speech in knowledge_data.get("speeches", []):
         if not isinstance(speech, dict):
             continue
         doc_org_key = _speech_org_key(speech)
-        if org_key and org_key != "__all__" and doc_org_key != org_key:
+        if allowed_org_keys and doc_org_key not in allowed_org_keys:
             continue
 
         content = speech.get("content", {}) if isinstance(speech.get("content", {}), dict) else {}
@@ -954,14 +959,35 @@ def _select_prior_docs_for_policy_delta(
     knowledge_data,
     enrichment_state,
     source_doc_id,
-    org_key,
+    org_key=None,
+    source_org_keys=None,
+    compare_org_keys=None,
+    compare_source_kinds=None,
     lookback_days=730,
     max_candidates=20,
 ):
-    docs = _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=org_key)
-    source = next((d for d in docs if str(d.get("doc_id", "")) == str(source_doc_id)), None)
+    all_docs = _build_policy_doc_rows(knowledge_data, enrichment_state)
+    source = next((d for d in all_docs if str(d.get("doc_id", "")) == str(source_doc_id)), None)
     if not source:
         return None, []
+    source_org_scope = set()
+    if isinstance(source_org_keys, (list, tuple, set)):
+        source_org_scope = {str(k).strip() for k in source_org_keys if str(k).strip()}
+    elif org_key and str(org_key).strip() and str(org_key).strip() != "__all__":
+        source_org_scope = {str(org_key).strip()}
+    if source_org_scope and str(source.get("org_key", "") or "").strip() not in source_org_scope:
+        return None, []
+
+    prior_scope_orgs = set()
+    if isinstance(compare_org_keys, (list, tuple, set)):
+        prior_scope_orgs = {str(k).strip() for k in compare_org_keys if str(k).strip()}
+    elif source_org_scope:
+        prior_scope_orgs = set(source_org_scope)
+
+    docs = _build_policy_doc_rows(knowledge_data, enrichment_state, org_keys=prior_scope_orgs or None)
+    compare_source_kinds_set = set()
+    if isinstance(compare_source_kinds, (list, tuple, set)):
+        compare_source_kinds_set = {str(k).strip() for k in compare_source_kinds if str(k).strip()}
 
     lookback_days = _coerce_int(lookback_days, default=730, min_value=1)
     max_candidates = _coerce_int(max_candidates, default=20, min_value=1)
@@ -970,6 +996,8 @@ def _select_prior_docs_for_policy_delta(
     scored = []
     for candidate in docs:
         if candidate.get("doc_id") == source.get("doc_id"):
+            continue
+        if compare_source_kinds_set and str(candidate.get("source_kind", "") or "").strip() not in compare_source_kinds_set:
             continue
 
         cand_date = candidate.get("date_parsed")
@@ -1258,8 +1286,11 @@ def _generate_policy_delta_brief(
     knowledge_data,
     enrichment_state,
     source_doc_id,
-    org_key,
-    model_name,
+    org_key=None,
+    source_org_keys=None,
+    compare_org_keys=None,
+    compare_source_kinds=None,
+    model_name="gpt-4o-mini",
     lookback_days=730,
     max_candidates=20,
 ):
@@ -1268,6 +1299,9 @@ def _generate_policy_delta_brief(
         enrichment_state=enrichment_state,
         source_doc_id=source_doc_id,
         org_key=org_key,
+        source_org_keys=source_org_keys,
+        compare_org_keys=compare_org_keys,
+        compare_source_kinds=compare_source_kinds,
         lookback_days=lookback_days,
         max_candidates=max_candidates,
     )
@@ -1288,7 +1322,12 @@ def _generate_policy_delta_brief(
         brief = _heuristic_policy_delta_brief(source_doc, prior_docs)
 
     brief_id = hashlib.sha256(
-        f"{org_key}|{source_doc_id}|policy_delta|{POLICY_BRIEFING_VERSION}".encode("utf-8")
+        (
+            f"{org_key or source_doc.get('org_key', '')}|{source_doc_id}|policy_delta|"
+            f"{','.join(sorted([str(k).strip() for k in (compare_org_keys or []) if str(k).strip()]))}|"
+            f"{','.join(sorted([str(k).strip() for k in (compare_source_kinds or []) if str(k).strip()]))}|"
+            f"{POLICY_BRIEFING_VERSION}"
+        ).encode("utf-8")
     ).hexdigest()[:24]
 
     source_snapshot = {
@@ -1325,7 +1364,7 @@ def _generate_policy_delta_brief(
     return {
         "brief_id": brief_id,
         "doc_id": str(source_doc_id or "").strip(),
-        "org_key": str(org_key or "").strip(),
+        "org_key": str(source_doc.get("org_key", "") or org_key or "").strip(),
         "org_label": str(source_doc.get("organization", "") or "").strip(),
         "generated_at": _utc_now_iso(),
         "model": str(model_name or "").strip(),
@@ -1337,11 +1376,182 @@ def _generate_policy_delta_brief(
             "lookback_days": _coerce_int(lookback_days, default=730, min_value=1),
             "candidate_count": len(prior_snapshot),
             "max_candidates": _coerce_int(max_candidates, default=20, min_value=1),
+            "source_org_keys": [str(k).strip() for k in (source_org_keys or []) if str(k).strip()],
+            "compare_org_keys": [str(k).strip() for k in (compare_org_keys or []) if str(k).strip()],
+            "compare_source_kinds": [str(k).strip() for k in (compare_source_kinds or []) if str(k).strip()],
         },
         "source_doc": source_snapshot,
         "prior_docs": prior_snapshot,
         "brief": brief,
     }
+
+
+def _format_policy_brief_context_block(brief):
+    source = brief.get("source_doc", {}) if isinstance(brief.get("source_doc", {}), dict) else {}
+    detail = brief.get("brief", {}) if isinstance(brief.get("brief", {}), dict) else {}
+    lines = [
+        f"Title: {source.get('title', '')}",
+        f"Organization: {source.get('organization', '')}",
+        f"Date: {source.get('date', '')}",
+        f"Type: {source.get('doc_type', '')}",
+        f"Source Kind: {source.get('source_kind', '')}",
+        f"Overall Position: {detail.get('overall_position', '')}",
+        f"Change Intensity: {detail.get('change_intensity', '')}",
+        f"Stance Direction: {detail.get('stance_direction', '')}",
+        (
+            f"Novelty/Continuity/Confidence: "
+            f"{_coerce_float(detail.get('novelty_score', 0.0), default=0.0):.2f} / "
+            f"{_coerce_float(detail.get('continuity_score', 0.0), default=0.0):.2f} / "
+            f"{_coerce_float(detail.get('confidence', 0.0), default=0.0):.2f}"
+        ),
+        f"Executive Summary: {str(detail.get('executive_summary', '') or '').strip()}",
+    ]
+    for label, key in [
+        ("New Elements", "new_elements"),
+        ("Continued Elements", "continued_elements"),
+        ("Changed Elements", "changed_elements"),
+        ("Legal Risk Points", "legal_risk_points"),
+    ]:
+        vals = detail.get(key, [])
+        if isinstance(vals, list) and vals:
+            lines.append(f"{label}: " + " | ".join(str(v).strip() for v in vals[:6] if str(v).strip()))
+    return "\n".join(lines)
+
+
+def _policy_brief_org_key(brief):
+    if not isinstance(brief, dict):
+        return ""
+    source = brief.get("source_doc", {}) if isinstance(brief.get("source_doc", {}), dict) else {}
+    org_key = (
+        brief.get("org_key", "")
+        or source.get("org_key", "")
+        or _org_key_from_label(source.get("organization", ""))
+    )
+    return str(org_key or "").strip()
+
+
+def _select_policy_brief_context(
+    briefs_payload,
+    question,
+    org_keys=None,
+    source_kinds=None,
+    limit=5,
+):
+    brief_rows = briefs_payload.get("briefs", []) if isinstance(briefs_payload, dict) else []
+    if not isinstance(brief_rows, list):
+        return [], "", []
+
+    org_scope = set()
+    if isinstance(org_keys, (list, tuple, set)):
+        org_scope = {str(k).strip() for k in org_keys if str(k).strip()}
+    source_scope = set()
+    if isinstance(source_kinds, (list, tuple, set)):
+        source_scope = {str(k).strip() for k in source_kinds if str(k).strip()}
+
+    q_tokens = _policy_tokenize(question, max_tokens=120)
+    limit = _coerce_int(limit, default=5, min_value=1)
+    scored = []
+    for brief in brief_rows:
+        if not isinstance(brief, dict):
+            continue
+        source = brief.get("source_doc", {}) if isinstance(brief.get("source_doc", {}), dict) else {}
+        brief_org_key = str(brief.get("org_key", "") or source.get("org_key", "") or _org_key_from_label(source.get("organization", ""))).strip()
+        if org_scope and brief_org_key not in org_scope:
+            continue
+        brief_source_kind = str(source.get("source_kind", "") or "").strip()
+        if source_scope and brief_source_kind not in source_scope:
+            continue
+
+        detail = brief.get("brief", {}) if isinstance(brief.get("brief", {}), dict) else {}
+        blob = "\n".join(
+            [
+                str(source.get("title", "") or ""),
+                str(source.get("doc_type", "") or ""),
+                str(source.get("source_kind", "") or ""),
+                str(detail.get("executive_summary", "") or ""),
+                " ".join(detail.get("new_elements", []) if isinstance(detail.get("new_elements", []), list) else []),
+                " ".join(detail.get("changed_elements", []) if isinstance(detail.get("changed_elements", []), list) else []),
+                " ".join(detail.get("legal_risk_points", []) if isinstance(detail.get("legal_risk_points", []), list) else []),
+            ]
+        )
+        b_tokens = _policy_tokenize(blob, max_tokens=240)
+        overlap = len(q_tokens.intersection(b_tokens)) if q_tokens and b_tokens else 0
+        conf = _coerce_float(detail.get("confidence", 0.0), default=0.0, min_value=0.0, max_value=1.0)
+        recency_bonus = 0.0
+        parsed = _parse_single_date(source.get("date", ""))
+        if pd.notna(parsed):
+            days_old = max(0, (pd.Timestamp(date.today()) - parsed).days)
+            recency_bonus = 1.0 / (1.0 + (days_old / 365.0))
+        score = (2.0 * overlap) + (0.8 * conf) + (0.4 * recency_bonus)
+        scored.append((score, brief))
+
+    scored = sorted(scored, key=lambda x: x[0], reverse=True)[:limit]
+    selected = [row[1] for row in scored]
+
+    context_blocks = []
+    sources = []
+    for idx, brief in enumerate(selected, 1):
+        source = brief.get("source_doc", {}) if isinstance(brief.get("source_doc", {}), dict) else {}
+        detail = brief.get("brief", {}) if isinstance(brief.get("brief", {}), dict) else {}
+        block = _format_policy_brief_context_block(brief)
+        context_blocks.append(f"[Brief {idx}]\n{block}")
+        sources.append(
+            {
+                "filename": source.get("title", f"brief_{idx}"),
+                "score": float(scored[idx - 1][0]),
+                "file_id": brief.get("brief_id", ""),
+                "snippet": str(detail.get("executive_summary", "") or "")[:300],
+            }
+        )
+
+    return selected, "\n\n".join(context_blocks), sources
+
+
+def _ask_policy_brief_chat(client, question, model_name, context_text, instructions_text=None):
+    system_text = (
+        "You are a policy research assistant. Answer using only the provided policy delta briefing context. "
+        "If context is insufficient, say so and ask for a narrower scope."
+    )
+    if instructions_text:
+        system_text = f"{system_text}\n\n{instructions_text}"
+
+    user_text = (
+        f"Question:\n{question}\n\n"
+        f"Policy Delta Briefing Context:\n{context_text}\n\n"
+        "Use this context only."
+    )
+    response = client.responses.create(
+        model=model_name,
+        input=[
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": user_text},
+        ],
+        max_output_tokens=1600,
+    )
+    return {"answer": _extract_response_text(response), "results": []}
+
+
+def _ask_policy_brief_chat_with_fallback(client, question, preferred_model, model_pool, context_text, instructions_text=None):
+    ordered = [preferred_model] + [m for m in model_pool if m != preferred_model]
+    last_error = None
+    for idx, model_name in enumerate(ordered):
+        try:
+            result = _ask_policy_brief_chat(
+                client=client,
+                question=question,
+                model_name=model_name,
+                context_text=context_text,
+                instructions_text=instructions_text,
+            )
+            return {"result": result, "used_model": model_name, "fallback_used": idx > 0}
+        except Exception as e:
+            last_error = e
+            if not _is_model_access_error(e):
+                raise
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("No model available for policy-brief chat request.")
 
 
 def _corpus_doc_id(speech):
@@ -3142,11 +3352,14 @@ sentiment_data, topic_data, commissioner_data = run_analysis(raw_data_json)
 st.sidebar.title("Policy Research Hub")
 section = st.sidebar.radio(
     "Section",
-    ["Agent Chat", "Corpus Explorer", "Analytics", "Admin"],
+    ["Discussion", "Corpus Explorer", "Analytics", "Admin"],
 )
 
-if section == "Agent Chat":
-    page = "Agent Chat"
+if section == "Discussion":
+    page = st.sidebar.radio(
+        "Discuss",
+        ["Agent Chat", "Policy Delta Briefings"],
+    )
 elif section == "Corpus Explorer":
     page = "Corpus Explorer"
 elif section == "Analytics":
@@ -3157,7 +3370,7 @@ elif section == "Analytics":
 else:
     page = st.sidebar.radio(
         "Admin",
-        ["Document Library", "Enrichment Pipeline", "Policy Delta Briefings", "Extract Speeches"],
+        ["Document Library", "Enrichment Pipeline", "Extract Speeches"],
     )
 
 st.sidebar.markdown("---")
@@ -3533,6 +3746,16 @@ elif page == "Agent Chat":
         horizontal=True,
         help="Selected Organization queries one org store. All Organizations queries every indexed org store.",
     )
+    discussion_mode = st.radio(
+        "Discussion Mode",
+        ["Corpus Retrieval", "Policy Briefings", "Corpus + Policy Briefings"],
+        horizontal=True,
+        help=(
+            "Corpus Retrieval uses vector-search over indexed docs. "
+            "Policy Briefings uses saved policy-delta reports. "
+            "Corpus + Policy Briefings combines both."
+        ),
+    )
 
     index_status = _get_org_index_status(knowledge_data, org_key, org_label)
     if "vector_store_ids_by_org" not in st.session_state:
@@ -3584,6 +3807,50 @@ elif page == "Agent Chat":
             st.caption(f"All-organizations chat enabled across {len(all_store_rows)} indexed organization stores.")
         else:
             st.caption("All-organizations chat has no indexed stores yet.")
+
+    brief_org_keys = [org_key]
+    if chat_scope == "All Organizations":
+        brief_org_keys = [o["key"] for o in org_options]
+    briefs_payload = _load_policy_briefs()
+
+    available_brief_kinds = sorted(
+        {
+            str((b.get("source_doc", {}) if isinstance(b.get("source_doc", {}), dict) else {}).get("source_kind", "") or "document")
+            for b in briefs_payload.get("briefs", [])
+            if isinstance(b, dict)
+            and (not brief_org_keys or _policy_brief_org_key(b) in set(brief_org_keys))
+        }
+    )
+    if not available_brief_kinds:
+        available_brief_kinds = ["document"]
+    selected_brief_source_kinds = available_brief_kinds
+    brief_context_limit = 5
+    with st.expander("Policy Briefing Context", expanded=(discussion_mode != "Corpus Retrieval")):
+        selected_brief_source_kinds = st.multiselect(
+            "Briefing Source Kinds",
+            available_brief_kinds,
+            default=available_brief_kinds,
+            key=f"chat_brief_kinds_{chat_scope}_{org_key}",
+        )
+        brief_context_limit = st.slider(
+            "Briefings To Use Per Answer",
+            min_value=1,
+            max_value=12,
+            value=5,
+            key=f"chat_brief_limit_{chat_scope}_{org_key}",
+        )
+        brief_count_in_scope = sum(
+            1
+            for b in briefs_payload.get("briefs", [])
+            if isinstance(b, dict)
+            and _policy_brief_org_key(b) in set(brief_org_keys)
+            and (
+                not selected_brief_source_kinds
+                or str((b.get("source_doc", {}) if isinstance(b.get("source_doc", {}), dict) else {}).get("source_kind", "") or "document")
+                in set(selected_brief_source_kinds)
+            )
+        )
+        st.caption(f"{brief_count_in_scope} saved policy briefs currently match this chat scope.")
 
     if active_vector_store_id:
         with st.expander("Vector Store Diagnostics"):
@@ -3822,12 +4089,20 @@ elif page == "Agent Chat":
         chat_scope_key = "__all_organizations__"
         chat_scope_label = "All Organizations"
         chat_vector_store_ids = all_vector_store_ids
+    chat_mode_key = (
+        str(discussion_mode or "corpus")
+        .strip()
+        .lower()
+        .replace(" + ", "_plus_")
+        .replace(" ", "_")
+    )
+    chat_session_key = f"{chat_scope_key}::{chat_mode_key}"
 
     if "chat_messages_by_org" not in st.session_state:
         st.session_state["chat_messages_by_org"] = {}
-    if chat_scope_key not in st.session_state["chat_messages_by_org"]:
-        st.session_state["chat_messages_by_org"][chat_scope_key] = []
-    chat_messages = st.session_state["chat_messages_by_org"][chat_scope_key]
+    if chat_session_key not in st.session_state["chat_messages_by_org"]:
+        st.session_state["chat_messages_by_org"][chat_session_key] = []
+    chat_messages = st.session_state["chat_messages_by_org"][chat_session_key]
 
     for msg in chat_messages:
         with st.chat_message(msg["role"]):
@@ -3847,7 +4122,9 @@ elif page == "Agent Chat":
         with st.chat_message("user"):
             st.markdown(user_prompt)
 
-        if not chat_vector_store_ids:
+        need_vector = discussion_mode in {"Corpus Retrieval", "Corpus + Policy Briefings"}
+        need_briefs = discussion_mode in {"Policy Briefings", "Corpus + Policy Briefings"}
+        if need_vector and not chat_vector_store_ids and not need_briefs:
             err_msg = "Please click **Build/Sync Knowledge Index** before chatting."
             chat_messages.append({"role": "assistant", "content": err_msg})
             with st.chat_message("assistant"):
@@ -3861,23 +4138,113 @@ elif page == "Agent Chat":
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
                     try:
-                        agent_out = _ask_agent_with_fallback(
-                            client=client,
-                            vector_store_ids=chat_vector_store_ids,
-                            question=user_prompt,
-                            preferred_model=model_name,
-                            model_pool=available_models,
-                            instructions_text=_build_agent_instructions(
-                                knowledge_df,
-                                chat_scope_key,
-                                chat_scope_label,
-                            ),
+                        brief_sources = []
+                        brief_context_text = ""
+                        if need_briefs:
+                            _, brief_context_text, brief_sources = _select_policy_brief_context(
+                                briefs_payload=briefs_payload,
+                                question=user_prompt,
+                                org_keys=brief_org_keys,
+                                source_kinds=selected_brief_source_kinds,
+                                limit=brief_context_limit,
+                            )
+
+                        instructions_text = _build_agent_instructions(
+                            knowledge_df,
+                            chat_scope_key,
+                            chat_scope_label,
                         )
-                        result = agent_out.get("result", {})
-                        answer = result.get("answer", "No answer returned.")
-                        sources = result.get("results", [])
-                        used_model = agent_out.get("used_model", model_name)
-                        fallback_used = agent_out.get("fallback_used", False)
+                        if discussion_mode == "Policy Briefings":
+                            if not brief_context_text.strip():
+                                answer = (
+                                    "No saved policy delta briefings match this scope yet. "
+                                    "Generate briefings in **Policy Delta Briefings** first."
+                                )
+                                sources = []
+                                used_model = model_name
+                                fallback_used = False
+                            else:
+                                agent_out = _ask_policy_brief_chat_with_fallback(
+                                    client=client,
+                                    question=user_prompt,
+                                    preferred_model=model_name,
+                                    model_pool=available_models,
+                                    context_text=brief_context_text,
+                                    instructions_text=instructions_text,
+                                )
+                                result = agent_out.get("result", {})
+                                answer = result.get("answer", "No answer returned.")
+                                sources = brief_sources
+                                used_model = agent_out.get("used_model", model_name)
+                                fallback_used = agent_out.get("fallback_used", False)
+                        elif discussion_mode == "Corpus + Policy Briefings":
+                            if chat_vector_store_ids:
+                                question_text = str(user_prompt)
+                                if brief_context_text.strip():
+                                    question_text += (
+                                        "\n\nPolicy Delta Briefing Context (use this with retrieved corpus evidence):\n"
+                                        f"{brief_context_text}"
+                                    )
+                                hybrid_instructions = (
+                                    f"{instructions_text} "
+                                    "If policy briefing context is provided, treat it as analyst metadata and still "
+                                    "ground final claims in retrieved corpus text when available."
+                                )
+                                agent_out = _ask_agent_with_fallback(
+                                    client=client,
+                                    vector_store_ids=chat_vector_store_ids,
+                                    question=question_text,
+                                    preferred_model=model_name,
+                                    model_pool=available_models,
+                                    instructions_text=hybrid_instructions,
+                                )
+                                result = agent_out.get("result", {})
+                                answer = result.get("answer", "No answer returned.")
+                                sources = list(result.get("results", [])) + list(brief_sources)
+                                used_model = agent_out.get("used_model", model_name)
+                                fallback_used = agent_out.get("fallback_used", False)
+                            elif brief_context_text.strip():
+                                agent_out = _ask_policy_brief_chat_with_fallback(
+                                    client=client,
+                                    question=user_prompt,
+                                    preferred_model=model_name,
+                                    model_pool=available_models,
+                                    context_text=brief_context_text,
+                                    instructions_text=instructions_text,
+                                )
+                                result = agent_out.get("result", {})
+                                answer = result.get("answer", "No answer returned.")
+                                sources = brief_sources
+                                used_model = agent_out.get("used_model", model_name)
+                                fallback_used = agent_out.get("fallback_used", False)
+                            else:
+                                answer = (
+                                    "No indexed vector store and no saved policy briefings are available in this scope. "
+                                    "Build/Sync the index or generate policy briefs first."
+                                )
+                                sources = []
+                                used_model = model_name
+                                fallback_used = False
+                        else:
+                            if not chat_vector_store_ids:
+                                answer = "Please click **Build/Sync Knowledge Index** before chatting."
+                                sources = []
+                                used_model = model_name
+                                fallback_used = False
+                            else:
+                                agent_out = _ask_agent_with_fallback(
+                                    client=client,
+                                    vector_store_ids=chat_vector_store_ids,
+                                    question=user_prompt,
+                                    preferred_model=model_name,
+                                    model_pool=available_models,
+                                    instructions_text=instructions_text,
+                                )
+                                result = agent_out.get("result", {})
+                                answer = result.get("answer", "No answer returned.")
+                                sources = result.get("results", [])
+                                used_model = agent_out.get("used_model", model_name)
+                                fallback_used = agent_out.get("fallback_used", False)
                     except Exception as e:
                         answer = f"Chat request failed: {e}"
                         sources = []
@@ -4881,18 +5248,38 @@ elif page == "Policy Delta Briefings":
         "Generate a structured briefing that explains how a new document compares to prior corpus positions "
         "(continuity, expansion, narrowing, shift, contradiction, or novel)."
     )
+    st.caption(
+        f"Stored locally at `{POLICY_BRIEFS_LOCAL_PATH}` and in GCS blob `{POLICY_BRIEFS_BLOB_NAME}` "
+        "when GCS is configured."
+    )
 
     enrichment_state = _load_enrichment_state()
     briefs_payload = _load_policy_briefs()
 
     org_options = _list_org_options(knowledge_data)
+    org_label_to_key = {o["label"]: o["key"] for o in org_options}
     org_labels = [o["label"] for o in org_options]
-    selected_org_label = st.selectbox("Organization", org_labels, index=org_labels.index("SEC") if "SEC" in org_labels else 0)
-    selected_org = next((o for o in org_options if o["label"] == selected_org_label), org_options[0])
-    org_key = selected_org["key"]
-    selected_source_kinds = []
+    default_source_orgs = ["SEC"] if "SEC" in org_labels else (org_labels[:1] if org_labels else [])
+    selected_source_org_labels = st.multiselect(
+        "Source Organizations",
+        org_labels,
+        default=default_source_orgs,
+        help="Choose which organizations are eligible as the new/target document.",
+    )
+    source_org_keys = [org_label_to_key[l] for l in selected_source_org_labels if l in org_label_to_key]
+    default_compare_orgs = selected_source_org_labels or org_labels
+    selected_compare_org_labels = st.multiselect(
+        "Comparison Organizations",
+        org_labels,
+        default=default_compare_orgs,
+        help="Choose which organizations are searched for prior-position comparison.",
+    )
+    compare_org_keys = [org_label_to_key[l] for l in selected_compare_org_labels if l in org_label_to_key]
 
-    scoped_docs = _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=org_key)
+    selected_source_kinds = []
+    selected_compare_source_kinds = []
+
+    scoped_docs = _build_policy_doc_rows(knowledge_data, enrichment_state, org_keys=source_org_keys or None)
     scoped_docs = sorted(
         scoped_docs,
         key=lambda d: d.get("date_parsed") if pd.notna(d.get("date_parsed")) else pd.Timestamp.min,
@@ -4904,7 +5291,7 @@ elif page == "Policy Delta Briefings":
     else:
         source_kinds = sorted({str(d.get("source_kind", "") or "document") for d in scoped_docs})
         selected_source_kinds = st.multiselect(
-            "Source Kinds In Scope",
+            "Source Document Corpus Types",
             source_kinds,
             default=source_kinds,
         )
@@ -4912,6 +5299,19 @@ elif page == "Policy Delta Briefings":
             d for d in scoped_docs
             if (not selected_source_kinds or str(d.get("source_kind", "") or "document") in selected_source_kinds)
         ]
+        compare_scope_docs = _build_policy_doc_rows(
+            knowledge_data,
+            enrichment_state,
+            org_keys=compare_org_keys or None,
+        )
+        compare_source_kinds = sorted(
+            {str(d.get("source_kind", "") or "document") for d in compare_scope_docs}
+        )
+        selected_compare_source_kinds = st.multiselect(
+            "Comparison Corpus Types",
+            compare_source_kinds,
+            default=compare_source_kinds,
+        )
         if not filtered_docs:
             st.warning("No documents match the selected source-kind filters.")
         else:
@@ -4961,7 +5361,9 @@ elif page == "Policy Delta Briefings":
                 knowledge_data=knowledge_data,
                 enrichment_state=enrichment_state,
                 source_doc_id=selected_source_doc_id,
-                org_key=org_key,
+                source_org_keys=source_org_keys,
+                compare_org_keys=compare_org_keys,
+                compare_source_kinds=selected_compare_source_kinds,
                 lookback_days=lookback_days,
                 max_candidates=max_candidates,
             )
@@ -5003,7 +5405,10 @@ elif page == "Policy Delta Briefings":
                             knowledge_data=knowledge_data,
                             enrichment_state=enrichment_state,
                             source_doc_id=selected_source_doc_id,
-                            org_key=org_key,
+                            org_key=str(selected_doc.get("org_key", "") or ""),
+                            source_org_keys=source_org_keys,
+                            compare_org_keys=compare_org_keys,
+                            compare_source_kinds=selected_compare_source_kinds,
                             model_name=briefing_model,
                             lookback_days=lookback_days,
                             max_candidates=max_candidates,
@@ -5026,7 +5431,8 @@ elif page == "Policy Delta Briefings":
     for brief in briefs_payload.get("briefs", []):
         if not isinstance(brief, dict):
             continue
-        if str(brief.get("org_key", "") or "") != str(org_key):
+        brief_org_key = str(brief.get("org_key", "") or "").strip()
+        if source_org_keys and brief_org_key not in set(source_org_keys):
             continue
         source_doc = brief.get("source_doc", {}) if isinstance(brief.get("source_doc", {}), dict) else {}
         if selected_source_kinds and str(source_doc.get("source_kind", "") or "document") not in selected_source_kinds:
@@ -5078,6 +5484,7 @@ elif page == "Policy Delta Briefings":
         selected_source = selected_brief.get("source_doc", {}) if isinstance(selected_brief.get("source_doc", {}), dict) else {}
         selected_detail = selected_brief.get("brief", {}) if isinstance(selected_brief.get("brief", {}), dict) else {}
         selected_prior = selected_brief.get("prior_docs", []) if isinstance(selected_brief.get("prior_docs", []), list) else []
+        selected_comp = selected_brief.get("comparison", {}) if isinstance(selected_brief.get("comparison", {}), dict) else {}
 
         st.markdown(f"**Title:** {selected_source.get('title', '')}")
         st.markdown(
@@ -5085,6 +5492,13 @@ elif page == "Policy Delta Briefings":
             f"**Type:** {selected_source.get('doc_type', '')} | "
             f"**Source:** `{selected_source.get('source_kind', '')}`"
         )
+        comp_orgs = ", ".join(selected_comp.get("compare_org_keys", [])[:8]) if isinstance(selected_comp.get("compare_org_keys", []), list) else ""
+        comp_types = ", ".join(selected_comp.get("compare_source_kinds", [])[:8]) if isinstance(selected_comp.get("compare_source_kinds", []), list) else ""
+        if comp_orgs or comp_types:
+            st.caption(
+                f"Comparison scope | orgs: {comp_orgs or 'all'} | corpus types: {comp_types or 'all'} | "
+                f"lookback_days: {int(selected_comp.get('lookback_days', 0) or 0)}"
+            )
         st.markdown(
             f"**Overall Position:** `{selected_detail.get('overall_position', '')}` | "
             f"**Change Intensity:** `{selected_detail.get('change_intensity', '')}` | "
