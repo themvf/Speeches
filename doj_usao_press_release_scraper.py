@@ -260,28 +260,44 @@ class DOJUSAOPressReleaseScraper:
         max_pages = max(1, int(max_pages or 1))
         out = []
         seen = set()
+        pagination_blocked = False
 
         for page in range(max_pages):
             page_url = self._build_page_url(base_url, page)
-            try:
-                discovered = self._discover_from_listing_page(page_url)
-            except requests.HTTPError as e:
-                status_code = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
-                if page == 0 and fallback_to_rss:
-                    discovered = self._discover_from_rss()
-                elif status_code in {401, 403, 404, 429, 503}:
-                    # DOJ may block paged URLs; keep already-found results.
+            discovered = []
+            page_attempts = 0
+            while page_attempts < 2:
+                page_attempts += 1
+                try:
+                    discovered = self._discover_from_listing_page(page_url)
                     break
-                elif page > 0:
-                    break
-                else:
+                except requests.HTTPError as e:
+                    status_code = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
+                    if page == 0 and fallback_to_rss:
+                        discovered = self._discover_from_rss()
+                        break
+                    if status_code in {401, 403, 404, 429, 503}:
+                        if page > 0 and page_attempts == 1:
+                            # Re-prime session cookies on first blocked paged request, then retry once.
+                            try:
+                                self._fetch_html(self._build_page_url(base_url, 0), timeout=45)
+                            except Exception:
+                                pass
+                            continue
+                        pagination_blocked = pagination_blocked or page > 0
+                        discovered = []
+                        break
+                    if page > 0:
+                        discovered = []
+                        break
                     raise
-            except Exception:
-                if page == 0 and fallback_to_rss:
-                    discovered = self._discover_from_rss()
-                elif page > 0:
-                    break
-                else:
+                except Exception:
+                    if page == 0 and fallback_to_rss:
+                        discovered = self._discover_from_rss()
+                        break
+                    if page > 0:
+                        discovered = []
+                        break
                     raise
             if not discovered and page == 0 and fallback_to_rss:
                 discovered = self._discover_from_rss()
@@ -294,6 +310,19 @@ class DOJUSAOPressReleaseScraper:
                     continue
                 seen.add(key)
                 out.append(item)
+
+        # If paginated listing is blocked, supplement from RSS so discovery exceeds page 0.
+        if fallback_to_rss and (pagination_blocked or (max_pages > 1 and len(out) <= 12)):
+            try:
+                rss_items = self._discover_from_rss()
+                for item in rss_items:
+                    key = _url_key(item.get("url", ""))
+                    if not key or key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(item)
+            except Exception:
+                pass
 
         def _sort_key(item: Dict[str, str]):
             return _parse_date_text(item.get("date", "")) or datetime.min
