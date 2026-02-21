@@ -222,9 +222,8 @@ class DOJUSAOPressReleaseScraper:
         return found
 
     def _discover_from_rss(self, rss_url: str = DOJ_USAO_PRESS_RELEASES_RSS_URL) -> List[Dict[str, str]]:
-        self._rate_limit()
-        response = self.session.get(rss_url, timeout=45)
-        response.raise_for_status()
+        # Use the same Akamai-aware fetch path as listing pages.
+        response = self._fetch_html(rss_url, timeout=45, max_verify_hops=3)
 
         soup = BeautifulSoup(response.text, "xml")
         found = []
@@ -379,8 +378,8 @@ class DOJUSAOPressReleaseScraper:
                     seen.add(key)
                     out.append(item)
                     rss_added += 1
-            except Exception:
-                debug["rss_supplement_error"] = "supplement_failed"
+            except Exception as e:
+                debug["rss_supplement_error"] = str(e)
                 debug["rss_supplement_used"] = True
 
         def _sort_key(item: Dict[str, str]):
