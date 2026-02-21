@@ -33,6 +33,9 @@ CUSTOM_DOCS_RAW_DIR = Path("data/raw_documents")
 ENRICHMENT_STATE_BLOB_NAME = "document_enrichment_state.json"
 ENRICHMENT_STATE_LOCAL_PATH = Path("data/document_enrichment_state.json")
 ENRICHMENT_PIPELINE_VERSION = "v1"
+POLICY_BRIEFS_BLOB_NAME = "policy_delta_briefs.json"
+POLICY_BRIEFS_LOCAL_PATH = Path("data/policy_delta_briefs.json")
+POLICY_BRIEFING_VERSION = "v1"
 
 
 # --- GCS helpers ---
@@ -316,6 +319,25 @@ def _coerce_int(value, default=0, min_value=0):
     if min_value is not None:
         try:
             num = max(int(min_value), num)
+        except Exception:
+            pass
+    return num
+
+
+def _coerce_float(value, default=0.0, min_value=0.0, max_value=1.0):
+    try:
+        num = float(value)
+    except Exception:
+        num = float(default)
+
+    if min_value is not None:
+        try:
+            num = max(float(min_value), num)
+        except Exception:
+            pass
+    if max_value is not None:
+        try:
+            num = min(float(max_value), num)
         except Exception:
             pass
     return num
@@ -697,6 +719,629 @@ def _save_enrichment_state(state):
         )
     except Exception as e:
         st.session_state["_enrichment_error"] = f"GCS enrichment-state save failed: {e}"
+
+
+def _empty_policy_briefs_payload():
+    return {
+        "version": POLICY_BRIEFING_VERSION,
+        "updated_at": "",
+        "briefs": [],
+    }
+
+
+def _normalize_policy_briefs_payload(payload):
+    if not isinstance(payload, dict):
+        payload = {}
+    briefs = payload.get("briefs", [])
+    if not isinstance(briefs, list):
+        briefs = []
+    return {
+        "version": str(payload.get("version", POLICY_BRIEFING_VERSION) or POLICY_BRIEFING_VERSION),
+        "updated_at": str(payload.get("updated_at", "") or ""),
+        "briefs": briefs,
+    }
+
+
+def _load_policy_briefs_local():
+    if not POLICY_BRIEFS_LOCAL_PATH.exists():
+        return _empty_policy_briefs_payload()
+    try:
+        with open(POLICY_BRIEFS_LOCAL_PATH, "r", encoding="utf-8") as f:
+            return _normalize_policy_briefs_payload(json.load(f))
+    except Exception:
+        return _empty_policy_briefs_payload()
+
+
+def _save_policy_briefs_local(payload):
+    payload = _normalize_policy_briefs_payload(payload)
+    POLICY_BRIEFS_LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(POLICY_BRIEFS_LOCAL_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+def _load_policy_briefs():
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            blob = storage.bucket.blob(POLICY_BRIEFS_BLOB_NAME)
+            if blob.exists():
+                payload = _normalize_policy_briefs_payload(
+                    json.loads(blob.download_as_text(encoding="utf-8"))
+                )
+                _save_policy_briefs_local(payload)
+                return payload
+        except Exception as e:
+            st.session_state["_policy_briefs_error"] = f"GCS policy-brief load failed: {e}"
+    return _load_policy_briefs_local()
+
+
+def _save_policy_briefs(payload):
+    payload = _normalize_policy_briefs_payload(payload)
+    payload["updated_at"] = _utc_now_iso()
+    _save_policy_briefs_local(payload)
+
+    storage = _get_gcs_storage()
+    if storage is None:
+        return
+    try:
+        blob = storage.bucket.blob(POLICY_BRIEFS_BLOB_NAME)
+        blob.upload_from_string(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            content_type="application/json",
+        )
+    except Exception as e:
+        st.session_state["_policy_briefs_error"] = f"GCS policy-brief save failed: {e}"
+
+
+def _upsert_policy_delta_brief(payload, record):
+    briefs = payload.get("briefs", [])
+    record_doc_id = str(record.get("doc_id", "") or "").strip()
+    record_org = str(record.get("org_key", "") or "").strip()
+    replaced = False
+    for idx, existing in enumerate(briefs):
+        if not isinstance(existing, dict):
+            continue
+        existing_doc_id = str(existing.get("doc_id", "") or "").strip()
+        existing_org = str(existing.get("org_key", "") or "").strip()
+        if existing_doc_id == record_doc_id and existing_org == record_org:
+            briefs[idx] = record
+            replaced = True
+            break
+    if not replaced:
+        briefs.append(record)
+    payload["briefs"] = briefs
+    return replaced
+
+
+_POLICY_STOPWORDS = {
+    "the", "and", "for", "with", "that", "this", "from", "were", "have", "has", "had", "not", "are",
+    "but", "you", "your", "our", "its", "their", "they", "about", "into", "there", "than", "then", "also",
+    "because", "while", "would", "could", "should", "under", "after", "before", "over", "such", "more",
+    "most", "some", "many", "much", "each", "other", "than", "been", "being", "will", "shall", "may",
+    "can", "all", "any", "sec", "commission", "speech", "statement", "release", "litigation", "faq",
+}
+
+
+def _policy_tokenize(text, max_tokens=600):
+    tokens = re.findall(r"[a-z0-9][a-z0-9_\-]{2,}", str(text or "").lower())
+    out = []
+    for token in tokens:
+        if token in _POLICY_STOPWORDS:
+            continue
+        if token.isdigit():
+            continue
+        out.append(token)
+        if len(out) >= max_tokens:
+            break
+    return set(out)
+
+
+def _overlap_score(left, right):
+    if not left or not right:
+        return 0.0
+    inter = len(left.intersection(right))
+    denom = len(left.union(right))
+    if denom <= 0:
+        return 0.0
+    return inter / denom
+
+
+def _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=None):
+    entries = enrichment_state.get("entries", {}) if isinstance(enrichment_state, dict) else {}
+    if not isinstance(entries, dict):
+        entries = {}
+
+    rows = []
+    for speech in knowledge_data.get("speeches", []):
+        if not isinstance(speech, dict):
+            continue
+        doc_org_key = _speech_org_key(speech)
+        if org_key and org_key != "__all__" and doc_org_key != org_key:
+            continue
+
+        content = speech.get("content", {}) if isinstance(speech.get("content", {}), dict) else {}
+        full_text = str(content.get("full_text", "") or "").strip()
+        if not full_text:
+            continue
+        metadata = speech.get("metadata", {}) if isinstance(speech.get("metadata", {}), dict) else {}
+        doc_id = _corpus_doc_id(speech)
+        enrich_entry = entries.get(doc_id, {}) if isinstance(entries.get(doc_id, {}), dict) else {}
+        enrich = enrich_entry.get("enrichment", {}) if isinstance(enrich_entry.get("enrichment", {}), dict) else {}
+
+        tags = enrich.get("tags", [])
+        if not isinstance(tags, list):
+            tags = metadata.get("tags", []) if isinstance(metadata.get("tags", []), list) else []
+        tags = [str(t).strip() for t in tags if str(t).strip()]
+
+        keywords = enrich.get("keywords", [])
+        if not isinstance(keywords, list):
+            keywords = []
+        keywords = [str(k).strip() for k in keywords if str(k).strip()]
+
+        stance = enrich.get("stance", {})
+        if isinstance(stance, dict):
+            stance_label = str(stance.get("label", "") or "").strip()
+        else:
+            stance_label = str(stance or "").strip()
+
+        date_text = str(metadata.get("date", "") or "").strip()
+        date_parsed = _parse_single_date(date_text)
+
+        rows.append(
+            {
+                "doc_id": doc_id,
+                "organization": _speech_org_label(speech),
+                "org_key": doc_org_key,
+                "date": date_text,
+                "date_parsed": date_parsed,
+                "title": str(metadata.get("title", "") or "").strip(),
+                "speaker": str(metadata.get("speaker", "") or "").strip(),
+                "url": str(metadata.get("url", "") or "").strip(),
+                "doc_type": str(metadata.get("doc_type", "Document") or "Document").strip(),
+                "source_kind": _infer_source_kind(metadata),
+                "word_count": _coerce_int(metadata.get("word_count", 0), default=0, min_value=0),
+                "tags": tags,
+                "keywords": keywords,
+                "stance_label": stance_label,
+                "full_text": full_text,
+            }
+        )
+    return rows
+
+
+def _score_policy_similarity(source_doc, prior_doc):
+    source_text_tokens = _policy_tokenize(
+        f"{source_doc.get('title', '')}\n{source_doc.get('full_text', '')[:9000]}",
+        max_tokens=700,
+    )
+    prior_text_tokens = _policy_tokenize(
+        f"{prior_doc.get('title', '')}\n{prior_doc.get('full_text', '')[:6000]}",
+        max_tokens=500,
+    )
+    source_topic_tokens = _policy_tokenize(
+        " ".join(source_doc.get("tags", [])) + " " + " ".join(source_doc.get("keywords", [])),
+        max_tokens=180,
+    )
+    prior_topic_tokens = _policy_tokenize(
+        " ".join(prior_doc.get("tags", [])) + " " + " ".join(prior_doc.get("keywords", [])),
+        max_tokens=180,
+    )
+    source_title_tokens = _policy_tokenize(source_doc.get("title", ""), max_tokens=80)
+    prior_title_tokens = _policy_tokenize(prior_doc.get("title", ""), max_tokens=80)
+
+    text_overlap = _overlap_score(source_text_tokens, prior_text_tokens)
+    topic_overlap = _overlap_score(source_topic_tokens, prior_topic_tokens)
+    title_overlap = _overlap_score(source_title_tokens, prior_title_tokens)
+
+    recency = 0.0
+    source_date = source_doc.get("date_parsed")
+    prior_date = prior_doc.get("date_parsed")
+    if pd.notna(source_date) and pd.notna(prior_date):
+        day_delta = (source_date - prior_date).days
+        if day_delta > 0:
+            recency = 1.0 / (1.0 + (day_delta / 365.0))
+
+    score = (0.6 * text_overlap) + (0.2 * topic_overlap) + (0.1 * title_overlap) + (0.1 * recency)
+    return _coerce_float(score, default=0.0, min_value=0.0, max_value=1.0), {
+        "text_overlap": round(text_overlap, 4),
+        "topic_overlap": round(topic_overlap, 4),
+        "title_overlap": round(title_overlap, 4),
+        "recency": round(recency, 4),
+    }
+
+
+def _select_prior_docs_for_policy_delta(
+    knowledge_data,
+    enrichment_state,
+    source_doc_id,
+    org_key,
+    lookback_days=730,
+    max_candidates=20,
+):
+    docs = _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=org_key)
+    source = next((d for d in docs if str(d.get("doc_id", "")) == str(source_doc_id)), None)
+    if not source:
+        return None, []
+
+    lookback_days = _coerce_int(lookback_days, default=730, min_value=1)
+    max_candidates = _coerce_int(max_candidates, default=20, min_value=1)
+    source_date = source.get("date_parsed")
+
+    scored = []
+    for candidate in docs:
+        if candidate.get("doc_id") == source.get("doc_id"):
+            continue
+
+        cand_date = candidate.get("date_parsed")
+        if pd.notna(source_date) and pd.notna(cand_date):
+            if cand_date >= source_date:
+                continue
+            if (source_date - cand_date).days > lookback_days:
+                continue
+
+        sim_score, components = _score_policy_similarity(source, candidate)
+        if sim_score < 0.02:
+            continue
+        scored.append(
+            {
+                **candidate,
+                "similarity_score": sim_score,
+                "similarity_components": components,
+            }
+        )
+
+    if not scored:
+        fallback = [d for d in docs if d.get("doc_id") != source.get("doc_id")]
+        if pd.notna(source_date):
+            fallback = [
+                d for d in fallback
+                if pd.isna(d.get("date_parsed")) or d.get("date_parsed") < source_date
+            ]
+        fallback = sorted(
+            fallback,
+            key=lambda x: x.get("date_parsed") if pd.notna(x.get("date_parsed")) else pd.Timestamp.min,
+            reverse=True,
+        )
+        scored = [{**d, "similarity_score": 0.0, "similarity_components": {}} for d in fallback[:max_candidates]]
+    else:
+        scored = sorted(
+            scored,
+            key=lambda x: (
+                x.get("similarity_score", 0.0),
+                x.get("date_parsed") if pd.notna(x.get("date_parsed")) else pd.Timestamp.min,
+            ),
+            reverse=True,
+        )[:max_candidates]
+    return source, scored
+
+
+def _normalize_policy_delta_brief_obj(payload):
+    if not isinstance(payload, dict):
+        payload = {}
+
+    allowed_positions = {"continuity", "mixed_shift", "meaningful_shift", "novel_position"}
+    allowed_intensity = {"low", "medium", "high"}
+    allowed_direction = {
+        "more_supportive", "more_cautious", "more_critical", "unchanged", "mixed", "unclear"
+    }
+    allowed_labels = {"builds_upon", "expansion", "narrowing", "shift", "contradiction", "novel"}
+
+    classifications = payload.get("classifications", [])
+    if not isinstance(classifications, list):
+        classifications = []
+    normalized_classifications = []
+    for row in classifications[:12]:
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get("label", "") or "").strip().lower()
+        if label not in allowed_labels:
+            continue
+        evidence = row.get("evidence", [])
+        if not isinstance(evidence, list):
+            evidence = []
+        evidence_out = []
+        for ev in evidence[:6]:
+            if not isinstance(ev, dict):
+                continue
+            evidence_out.append(
+                {
+                    "source": str(ev.get("source", "") or "").strip(),
+                    "doc_title": str(ev.get("doc_title", "") or "").strip(),
+                    "quote": str(ev.get("quote", "") or "").strip()[:400],
+                    "date": str(ev.get("date", "") or "").strip(),
+                }
+            )
+        normalized_classifications.append(
+            {
+                "label": label,
+                "confidence": _coerce_float(row.get("confidence", 0.0), default=0.0, min_value=0.0, max_value=1.0),
+                "description": str(row.get("description", "") or "").strip(),
+                "evidence": evidence_out,
+            }
+        )
+
+    overall_position = str(payload.get("overall_position", "") or "").strip().lower()
+    if overall_position not in allowed_positions:
+        overall_position = "mixed_shift"
+    change_intensity = str(payload.get("change_intensity", "") or "").strip().lower()
+    if change_intensity not in allowed_intensity:
+        change_intensity = "medium"
+    stance_direction = str(payload.get("stance_direction", "") or "").strip().lower()
+    if stance_direction not in allowed_direction:
+        stance_direction = "unclear"
+
+    new_elements = payload.get("new_elements", [])
+    if not isinstance(new_elements, list):
+        new_elements = []
+    continued_elements = payload.get("continued_elements", [])
+    if not isinstance(continued_elements, list):
+        continued_elements = []
+    changed_elements = payload.get("changed_elements", [])
+    if not isinstance(changed_elements, list):
+        changed_elements = []
+    legal_risk_points = payload.get("legal_risk_points", [])
+    if not isinstance(legal_risk_points, list):
+        legal_risk_points = []
+
+    return {
+        "overall_position": overall_position,
+        "change_intensity": change_intensity,
+        "stance_direction": stance_direction,
+        "continuity_score": _coerce_float(payload.get("continuity_score", 0.5), default=0.5, min_value=0.0, max_value=1.0),
+        "novelty_score": _coerce_float(payload.get("novelty_score", 0.5), default=0.5, min_value=0.0, max_value=1.0),
+        "confidence": _coerce_float(payload.get("confidence", 0.6), default=0.6, min_value=0.0, max_value=1.0),
+        "executive_summary": str(payload.get("executive_summary", "") or "").strip(),
+        "new_elements": [str(x).strip() for x in new_elements[:8] if str(x).strip()],
+        "continued_elements": [str(x).strip() for x in continued_elements[:8] if str(x).strip()],
+        "changed_elements": [str(x).strip() for x in changed_elements[:8] if str(x).strip()],
+        "legal_risk_points": [str(x).strip() for x in legal_risk_points[:10] if str(x).strip()],
+        "classifications": normalized_classifications,
+    }
+
+
+def _heuristic_policy_delta_brief(source_doc, prior_docs):
+    if not prior_docs:
+        return {
+            "overall_position": "novel_position",
+            "change_intensity": "high",
+            "stance_direction": "unclear",
+            "continuity_score": 0.15,
+            "novelty_score": 0.85,
+            "confidence": 0.55,
+            "executive_summary": "No closely related prior documents were found in the selected lookback window.",
+            "new_elements": ["New document appears to introduce topics not strongly matched in prior corpus."],
+            "continued_elements": [],
+            "changed_elements": ["Insufficient evidence for continuity; classify as potentially novel."],
+            "legal_risk_points": [],
+            "classifications": [
+                {
+                    "label": "novel",
+                    "confidence": 0.55,
+                    "description": "No high-similarity prior document was identified.",
+                    "evidence": [],
+                }
+            ],
+        }
+
+    top = prior_docs[0]
+    top_score = _coerce_float(top.get("similarity_score", 0.0), default=0.0, min_value=0.0, max_value=1.0)
+    source_stance = str(source_doc.get("stance_label", "") or "").strip().lower()
+    prior_stance = str(top.get("stance_label", "") or "").strip().lower()
+    stance_shift = bool(source_stance and prior_stance and source_stance != prior_stance)
+
+    if top_score >= 0.5 and not stance_shift:
+        overall_position = "continuity"
+        change_intensity = "low"
+        continuity = 0.78
+        novelty = 0.32
+        label = "builds_upon"
+    elif top_score >= 0.32:
+        overall_position = "mixed_shift"
+        change_intensity = "medium"
+        continuity = 0.58
+        novelty = 0.52
+        label = "expansion" if not stance_shift else "shift"
+    else:
+        overall_position = "meaningful_shift"
+        change_intensity = "high"
+        continuity = 0.33
+        novelty = 0.73
+        label = "shift"
+
+    changed = []
+    if stance_shift:
+        changed.append(
+            f"Stance label shifted from `{top.get('stance_label', 'unknown')}` to `{source_doc.get('stance_label', 'unknown')}`."
+        )
+    elif top_score < 0.5:
+        changed.append("Topic overlap with the nearest prior document is limited.")
+
+    return {
+        "overall_position": overall_position,
+        "change_intensity": change_intensity,
+        "stance_direction": "mixed" if stance_shift else "unchanged",
+        "continuity_score": continuity,
+        "novelty_score": novelty,
+        "confidence": 0.62,
+        "executive_summary": f"Heuristic comparison against top prior doc `{top.get('title', '')}` (score {top_score:.2f}).",
+        "new_elements": ["Review detailed claim-level differences in the generated classifications."],
+        "continued_elements": [f"Top prior match: `{top.get('title', '')}` ({top.get('date', '')})."],
+        "changed_elements": changed,
+        "legal_risk_points": [],
+        "classifications": [
+            {
+                "label": label,
+                "confidence": 0.62,
+                "description": "Heuristic baseline classification using corpus similarity and stance comparison.",
+                "evidence": [],
+            }
+        ],
+    }
+
+
+def _run_policy_delta_brief_llm(client, source_doc, prior_docs, model_name):
+    source_excerpt = str(source_doc.get("full_text", "") or "")[:12000]
+    prior_sections = []
+    for idx, p in enumerate(prior_docs[:18], 1):
+        prior_excerpt = str(p.get("full_text", "") or "")[:1800]
+        prior_sections.append(
+            "\n".join(
+                [
+                    f"[{idx}]",
+                    f"Title: {p.get('title', '')}",
+                    f"Date: {p.get('date', '')}",
+                    f"Type: {p.get('doc_type', '')}",
+                    f"Source Kind: {p.get('source_kind', '')}",
+                    f"Similarity Score: {p.get('similarity_score', 0.0):.3f}",
+                    f"Tags: {', '.join(p.get('tags', [])[:12])}",
+                    f"Keywords: {', '.join(p.get('keywords', [])[:16])}",
+                    f"Stance: {p.get('stance_label', '')}",
+                    f"Excerpt:\n{prior_excerpt}",
+                ]
+            )
+        )
+    priors_text = "\n\n".join(prior_sections)
+
+    system_prompt = (
+        "You are a policy-change analyst. Compare one new source document against prior corpus documents and "
+        "classify whether the new position is continuity, expansion, narrowing, shift, contradiction, or novel. "
+        "Return strict JSON only."
+    )
+    user_prompt = (
+        "Output JSON with keys:\n"
+        "- overall_position: continuity|mixed_shift|meaningful_shift|novel_position\n"
+        "- change_intensity: low|medium|high\n"
+        "- stance_direction: more_supportive|more_cautious|more_critical|unchanged|mixed|unclear\n"
+        "- continuity_score: number 0..1\n"
+        "- novelty_score: number 0..1\n"
+        "- confidence: number 0..1\n"
+        "- executive_summary: string (max 120 words)\n"
+        "- new_elements: string[]\n"
+        "- continued_elements: string[]\n"
+        "- changed_elements: string[]\n"
+        "- legal_risk_points: string[]\n"
+        "- classifications: [{label, confidence, description, evidence:[{source,new_or_prior,doc_title,quote,date}]}]\n"
+        "\nRules:\n"
+        "- Use only provided text.\n"
+        "- Evidence quotes must be short and concrete.\n"
+        "- If unsure, lower confidence rather than hallucinating.\n\n"
+        f"New Document Title: {source_doc.get('title', '')}\n"
+        f"New Document Date: {source_doc.get('date', '')}\n"
+        f"New Document Type: {source_doc.get('doc_type', '')}\n"
+        f"New Document Source Kind: {source_doc.get('source_kind', '')}\n"
+        f"New Document Tags: {', '.join(source_doc.get('tags', [])[:12])}\n"
+        f"New Document Keywords: {', '.join(source_doc.get('keywords', [])[:20])}\n"
+        f"New Document Stance: {source_doc.get('stance_label', '')}\n"
+        f"New Document Excerpt:\n{source_excerpt}\n\n"
+        f"Prior Documents:\n{priors_text}\n"
+    )
+
+    response = client.responses.create(
+        model=model_name,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_output_tokens=2200,
+    )
+    raw_text = str(getattr(response, "output_text", "") or "").strip()
+    if not raw_text:
+        raw_text = str(_normalize_obj(response).get("output_text", "") or "").strip()
+    parsed = _extract_first_json_object(raw_text)
+    if not parsed:
+        raise RuntimeError("Policy delta briefing returned non-JSON output.")
+    return _normalize_policy_delta_brief_obj(parsed)
+
+
+def _generate_policy_delta_brief(
+    client,
+    knowledge_data,
+    enrichment_state,
+    source_doc_id,
+    org_key,
+    model_name,
+    lookback_days=730,
+    max_candidates=20,
+):
+    source_doc, prior_docs = _select_prior_docs_for_policy_delta(
+        knowledge_data=knowledge_data,
+        enrichment_state=enrichment_state,
+        source_doc_id=source_doc_id,
+        org_key=org_key,
+        lookback_days=lookback_days,
+        max_candidates=max_candidates,
+    )
+    if not source_doc:
+        raise ValueError("Selected source document was not found in the scoped corpus.")
+
+    error = ""
+    engine = "heuristic"
+    if client is not None:
+        try:
+            brief = _run_policy_delta_brief_llm(client, source_doc, prior_docs, model_name)
+            engine = "llm"
+        except Exception as e:
+            error = str(e)
+            brief = _heuristic_policy_delta_brief(source_doc, prior_docs)
+            engine = "heuristic_fallback"
+    else:
+        brief = _heuristic_policy_delta_brief(source_doc, prior_docs)
+
+    brief_id = hashlib.sha256(
+        f"{org_key}|{source_doc_id}|policy_delta|{POLICY_BRIEFING_VERSION}".encode("utf-8")
+    ).hexdigest()[:24]
+
+    source_snapshot = {
+        "doc_id": source_doc.get("doc_id", ""),
+        "title": source_doc.get("title", ""),
+        "date": source_doc.get("date", ""),
+        "organization": source_doc.get("organization", ""),
+        "doc_type": source_doc.get("doc_type", ""),
+        "source_kind": source_doc.get("source_kind", ""),
+        "speaker": source_doc.get("speaker", ""),
+        "url": source_doc.get("url", ""),
+        "tags": source_doc.get("tags", []),
+        "keywords": source_doc.get("keywords", []),
+        "stance_label": source_doc.get("stance_label", ""),
+        "word_count": source_doc.get("word_count", 0),
+    }
+
+    prior_snapshot = []
+    for p in prior_docs:
+        prior_snapshot.append(
+            {
+                "doc_id": p.get("doc_id", ""),
+                "title": p.get("title", ""),
+                "date": p.get("date", ""),
+                "doc_type": p.get("doc_type", ""),
+                "source_kind": p.get("source_kind", ""),
+                "speaker": p.get("speaker", ""),
+                "url": p.get("url", ""),
+                "similarity_score": round(_coerce_float(p.get("similarity_score", 0.0), default=0.0), 4),
+                "similarity_components": p.get("similarity_components", {}),
+            }
+        )
+
+    return {
+        "brief_id": brief_id,
+        "doc_id": str(source_doc_id or "").strip(),
+        "org_key": str(org_key or "").strip(),
+        "org_label": str(source_doc.get("organization", "") or "").strip(),
+        "generated_at": _utc_now_iso(),
+        "model": str(model_name or "").strip(),
+        "engine": engine,
+        "status": "generated",
+        "error": error,
+        "comparison": {
+            "method": "local_similarity_v1",
+            "lookback_days": _coerce_int(lookback_days, default=730, min_value=1),
+            "candidate_count": len(prior_snapshot),
+            "max_candidates": _coerce_int(max_candidates, default=20, min_value=1),
+        },
+        "source_doc": source_snapshot,
+        "prior_docs": prior_snapshot,
+        "brief": brief,
+    }
 
 
 def _corpus_doc_id(speech):
@@ -2512,7 +3157,7 @@ elif section == "Analytics":
 else:
     page = st.sidebar.radio(
         "Admin",
-        ["Document Library", "Enrichment Pipeline", "Extract Speeches"],
+        ["Document Library", "Enrichment Pipeline", "Policy Delta Briefings", "Extract Speeches"],
     )
 
 st.sidebar.markdown("---")
@@ -4225,6 +4870,283 @@ elif page == "Enrichment Pipeline":
                     st.success("Reset to pending.")
     else:
         st.info("No enrichment entries yet in this scope. Run a batch to generate them.")
+
+
+# =====================================================
+# PAGE: Policy Delta Briefings
+# =====================================================
+elif page == "Policy Delta Briefings":
+    st.title("Policy Delta Briefings")
+    st.markdown(
+        "Generate a structured briefing that explains how a new document compares to prior corpus positions "
+        "(continuity, expansion, narrowing, shift, contradiction, or novel)."
+    )
+
+    enrichment_state = _load_enrichment_state()
+    briefs_payload = _load_policy_briefs()
+
+    org_options = _list_org_options(knowledge_data)
+    org_labels = [o["label"] for o in org_options]
+    selected_org_label = st.selectbox("Organization", org_labels, index=org_labels.index("SEC") if "SEC" in org_labels else 0)
+    selected_org = next((o for o in org_options if o["label"] == selected_org_label), org_options[0])
+    org_key = selected_org["key"]
+    selected_source_kinds = []
+
+    scoped_docs = _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=org_key)
+    scoped_docs = sorted(
+        scoped_docs,
+        key=lambda d: d.get("date_parsed") if pd.notna(d.get("date_parsed")) else pd.Timestamp.min,
+        reverse=True,
+    )
+
+    if not scoped_docs:
+        st.info("No documents found in this scope.")
+    else:
+        source_kinds = sorted({str(d.get("source_kind", "") or "document") for d in scoped_docs})
+        selected_source_kinds = st.multiselect(
+            "Source Kinds In Scope",
+            source_kinds,
+            default=source_kinds,
+        )
+        filtered_docs = [
+            d for d in scoped_docs
+            if (not selected_source_kinds or str(d.get("source_kind", "") or "document") in selected_source_kinds)
+        ]
+        if not filtered_docs:
+            st.warning("No documents match the selected source-kind filters.")
+        else:
+            st.caption(f"{len(filtered_docs)} documents available for policy-delta briefing.")
+            source_doc_ids = [d["doc_id"] for d in filtered_docs]
+            doc_map = {d["doc_id"]: d for d in filtered_docs}
+            selected_source_doc_id = st.selectbox(
+                "New Document To Brief",
+                source_doc_ids,
+                format_func=lambda d: (
+                    f"{doc_map.get(d, {}).get('date', '')} | "
+                    f"{doc_map.get(d, {}).get('title', '')} "
+                    f"[{doc_map.get(d, {}).get('source_kind', '')}]"
+                ),
+            )
+            selected_doc = doc_map.get(selected_source_doc_id, {})
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                lookback_days = st.slider("Prior Window (days)", min_value=30, max_value=3650, value=730, step=30)
+            with c2:
+                max_candidates = st.slider("Prior Docs To Compare", min_value=5, max_value=40, value=20, step=1)
+            with c3:
+                min_words = st.slider("Min Words In New Doc", min_value=0, max_value=2000, value=120, step=20)
+
+            if _coerce_int(selected_doc.get("word_count", 0), default=0, min_value=0) < min_words:
+                st.warning(
+                    f"Selected document has {_coerce_int(selected_doc.get('word_count', 0))} words, below your min threshold ({min_words})."
+                )
+
+            available_models = []
+            client = None
+            if _openai_key is not None:
+                client = _get_openai_client()
+                if client is not None:
+                    available_models = _get_accessible_chat_models(client)
+            if not available_models:
+                available_models = _candidate_chat_models() or ["gpt-4o-mini"]
+            default_model = "gpt-4o-mini" if "gpt-4o-mini" in available_models else available_models[0]
+            briefing_model = st.selectbox(
+                "Briefing Model",
+                available_models,
+                index=available_models.index(default_model),
+            )
+
+            preview_source, preview_prior_docs = _select_prior_docs_for_policy_delta(
+                knowledge_data=knowledge_data,
+                enrichment_state=enrichment_state,
+                source_doc_id=selected_source_doc_id,
+                org_key=org_key,
+                lookback_days=lookback_days,
+                max_candidates=max_candidates,
+            )
+            if preview_source:
+                st.markdown(
+                    f"**Selected Source:** `{preview_source.get('title', '')}` | "
+                    f"{preview_source.get('date', '')} | `{preview_source.get('source_kind', '')}`"
+                )
+            if preview_prior_docs:
+                preview_rows = []
+                for item in preview_prior_docs:
+                    preview_rows.append(
+                        {
+                            "date": item.get("date", ""),
+                            "title": item.get("title", ""),
+                            "source_kind": item.get("source_kind", ""),
+                            "doc_type": item.get("doc_type", ""),
+                            "similarity": round(_coerce_float(item.get("similarity_score", 0.0), default=0.0), 3),
+                        }
+                    )
+                st.caption("Comparison set preview")
+                st.dataframe(
+                    _sort_table_by_date(pd.DataFrame(preview_rows), date_col="date"),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.caption("No prior comparison docs found in the current scope and window.")
+
+            if st.button("Generate/Refresh Policy Delta Brief", type="primary"):
+                if not selected_doc:
+                    st.error("Select a source document.")
+                elif _coerce_int(selected_doc.get("word_count", 0), default=0, min_value=0) < min_words:
+                    st.error("Selected document is below min word threshold. Lower threshold or choose another document.")
+                else:
+                    with st.spinner("Generating policy delta briefing..."):
+                        record = _generate_policy_delta_brief(
+                            client=client,
+                            knowledge_data=knowledge_data,
+                            enrichment_state=enrichment_state,
+                            source_doc_id=selected_source_doc_id,
+                            org_key=org_key,
+                            model_name=briefing_model,
+                            lookback_days=lookback_days,
+                            max_candidates=max_candidates,
+                        )
+                    replaced = _upsert_policy_delta_brief(briefs_payload, record)
+                    _save_policy_briefs(briefs_payload)
+                    action = "Updated" if replaced else "Saved"
+                    st.success(
+                        f"{action} policy delta brief for `{record.get('source_doc', {}).get('title', '')}` "
+                        f"(engine: {record.get('engine', '')})."
+                    )
+                    if str(record.get("error", "") or "").strip():
+                        st.warning(f"LLM error captured, used fallback: {record.get('error', '')}")
+                    briefs_payload = _load_policy_briefs()
+
+    st.markdown("---")
+    st.subheader("Saved Briefings")
+    saved_rows = []
+    brief_map = {}
+    for brief in briefs_payload.get("briefs", []):
+        if not isinstance(brief, dict):
+            continue
+        if str(brief.get("org_key", "") or "") != str(org_key):
+            continue
+        source_doc = brief.get("source_doc", {}) if isinstance(brief.get("source_doc", {}), dict) else {}
+        if selected_source_kinds and str(source_doc.get("source_kind", "") or "document") not in selected_source_kinds:
+            continue
+        brief_obj = brief.get("brief", {}) if isinstance(brief.get("brief", {}), dict) else {}
+        brief_id = str(brief.get("brief_id", "") or "")
+        if not brief_id:
+            continue
+        brief_map[brief_id] = brief
+        saved_rows.append(
+            {
+                "brief_id": brief_id,
+                "date": source_doc.get("date", ""),
+                "title": source_doc.get("title", ""),
+                "source_kind": source_doc.get("source_kind", ""),
+                "overall_position": brief_obj.get("overall_position", ""),
+                "change_intensity": brief_obj.get("change_intensity", ""),
+                "novelty": brief_obj.get("novelty_score", 0.0),
+                "continuity": brief_obj.get("continuity_score", 0.0),
+                "confidence": brief_obj.get("confidence", 0.0),
+                "engine": brief.get("engine", ""),
+                "model": brief.get("model", ""),
+                "generated_at": brief.get("generated_at", ""),
+            }
+        )
+
+    if saved_rows:
+        saved_df = pd.DataFrame(saved_rows)
+        saved_df = _sort_table_by_date(saved_df, date_col="date")
+        st.dataframe(
+            saved_df[[
+                "date", "title", "source_kind", "overall_position", "change_intensity",
+                "novelty", "continuity", "confidence", "engine", "model", "generated_at"
+            ]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        selected_brief_id = st.selectbox(
+            "Review Brief",
+            saved_df["brief_id"].tolist(),
+            format_func=lambda b: (
+                f"{brief_map.get(b, {}).get('source_doc', {}).get('date', '')} | "
+                f"{brief_map.get(b, {}).get('source_doc', {}).get('title', b)}"
+            ),
+            key="review_policy_delta_brief_id",
+        )
+        selected_brief = brief_map.get(selected_brief_id, {})
+        selected_source = selected_brief.get("source_doc", {}) if isinstance(selected_brief.get("source_doc", {}), dict) else {}
+        selected_detail = selected_brief.get("brief", {}) if isinstance(selected_brief.get("brief", {}), dict) else {}
+        selected_prior = selected_brief.get("prior_docs", []) if isinstance(selected_brief.get("prior_docs", []), list) else []
+
+        st.markdown(f"**Title:** {selected_source.get('title', '')}")
+        st.markdown(
+            f"**Date:** {selected_source.get('date', '')} | "
+            f"**Type:** {selected_source.get('doc_type', '')} | "
+            f"**Source:** `{selected_source.get('source_kind', '')}`"
+        )
+        st.markdown(
+            f"**Overall Position:** `{selected_detail.get('overall_position', '')}` | "
+            f"**Change Intensity:** `{selected_detail.get('change_intensity', '')}` | "
+            f"**Confidence:** {float(selected_detail.get('confidence', 0.0) or 0.0):.2f}"
+        )
+        st.markdown(
+            f"**Novelty Score:** {float(selected_detail.get('novelty_score', 0.0) or 0.0):.2f} | "
+            f"**Continuity Score:** {float(selected_detail.get('continuity_score', 0.0) or 0.0):.2f} | "
+            f"**Stance Direction:** `{selected_detail.get('stance_direction', '')}`"
+        )
+        st.markdown(f"**Executive Summary:** {selected_detail.get('executive_summary', '')}")
+
+        if selected_detail.get("new_elements", []):
+            st.markdown("**New Elements**")
+            for line in selected_detail.get("new_elements", []):
+                st.markdown(f"- {line}")
+        if selected_detail.get("continued_elements", []):
+            st.markdown("**Continued Elements**")
+            for line in selected_detail.get("continued_elements", []):
+                st.markdown(f"- {line}")
+        if selected_detail.get("changed_elements", []):
+            st.markdown("**Changed Elements**")
+            for line in selected_detail.get("changed_elements", []):
+                st.markdown(f"- {line}")
+        if selected_detail.get("legal_risk_points", []):
+            st.markdown("**Legal Risk Points**")
+            for line in selected_detail.get("legal_risk_points", []):
+                st.markdown(f"- {line}")
+
+        classifications = selected_detail.get("classifications", [])
+        if isinstance(classifications, list) and classifications:
+            with st.expander("Classifications + Evidence", expanded=False):
+                for c in classifications:
+                    label = c.get("label", "")
+                    conf = _coerce_float(c.get("confidence", 0.0), default=0.0, min_value=0.0, max_value=1.0)
+                    st.markdown(f"**{label}** (confidence {conf:.2f})")
+                    st.caption(c.get("description", ""))
+                    for ev in c.get("evidence", [])[:4]:
+                        st.markdown(
+                            f"- `{ev.get('source', '')}` | **{ev.get('doc_title', '')}** | {ev.get('date', '')}"
+                        )
+                        if ev.get("quote"):
+                            st.caption(ev.get("quote", ""))
+
+        if selected_prior:
+            with st.expander("Compared Prior Documents", expanded=False):
+                prior_df = pd.DataFrame(
+                    [
+                        {
+                            "date": p.get("date", ""),
+                            "title": p.get("title", ""),
+                            "source_kind": p.get("source_kind", ""),
+                            "doc_type": p.get("doc_type", ""),
+                            "similarity": p.get("similarity_score", 0.0),
+                        }
+                        for p in selected_prior
+                    ]
+                )
+                prior_df = _sort_table_by_date(prior_df, date_col="date")
+                st.dataframe(prior_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No policy delta briefs saved yet. Generate one above.")
 
 
 # =====================================================
