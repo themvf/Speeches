@@ -5023,16 +5023,20 @@ elif page == "Extraction":
     doj_debug = st.session_state.get(doj_debug_key, {})
     if isinstance(doj_debug, dict) and doj_debug:
         with st.expander("DOJ Discovery Debug", expanded=False):
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2, c3, c4, c5, c6 = st.columns(6)
             c1.metric("Requested Pages", int(doj_debug.get("max_pages_requested", 0) or 0))
             c2.metric("Pages Logged", len(doj_debug.get("pages", []) if isinstance(doj_debug.get("pages", []), list) else []))
             c3.metric("Listing Added", int(doj_debug.get("listing_added", 0) or 0))
             c4.metric("RSS Added", int(doj_debug.get("rss_added", 0) or 0))
+            c5.metric("News Added", int(doj_debug.get("news_added", 0) or 0))
+            c6.metric("Sitemap Added", int(doj_debug.get("sitemap_added", 0) or 0))
             st.caption(
                 f"Stop reason: `{doj_debug.get('stop_reason', '')}` | "
                 f"Pagination blocked: `{doj_debug.get('pagination_blocked', False)}` | "
                 f"RSS page0 used: `{doj_debug.get('rss_page0_used', False)}` | "
-                f"RSS supplement used: `{doj_debug.get('rss_supplement_used', False)}`"
+                f"RSS supplement used: `{doj_debug.get('rss_supplement_used', False)}` | "
+                f"News supplement used: `{doj_debug.get('news_supplement_used', False)}` | "
+                f"Sitemap supplement used: `{doj_debug.get('sitemap_supplement_used', False)}`"
             )
             page_logs = doj_debug.get("pages", [])
             if isinstance(page_logs, list) and page_logs:

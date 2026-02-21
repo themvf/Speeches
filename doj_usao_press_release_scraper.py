@@ -23,6 +23,8 @@ DOJ_USAO_PRESS_RELEASES_RSS_URL = (
     "https://www.justice.gov/news/rss?"
     "field_component=1681&require_all=0&search_api_language=en&type=press_release"
 )
+DOJ_NEWS_PRESS_RELEASES_URL = "https://www.justice.gov/news/press-releases"
+DOJ_SITEMAP_INDEX_URL = "https://www.justice.gov/sitemap.xml"
 
 
 def _normalize_space(text: str) -> str:
@@ -94,6 +96,24 @@ def _url_key(url: str) -> str:
     netloc = parsed.netloc.lower()
     path = parsed.path.rstrip("/") or "/"
     return f"{scheme}://{netloc}{path}"
+
+
+def _canonical_press_url(url: str) -> str:
+    clean = _url_without_query(url)
+    if clean.endswith("/alias"):
+        clean = clean[: -len("/alias")]
+    return clean
+
+
+def _title_from_url(url: str) -> str:
+    path = urlparse(str(url or "")).path
+    slug = path.rstrip("/").rsplit("/", 1)[-1].strip()
+    if not slug or slug in {"pr", "alias"}:
+        return "DOJ USAO Press Release"
+    words = [w for w in slug.replace("-", " ").split(" ") if w]
+    if not words:
+        return "DOJ USAO Press Release"
+    return " ".join(words[:24]).strip().title()
 
 
 def _looks_like_akamai_challenge(html: str) -> bool:
@@ -175,6 +195,7 @@ class DOJUSAOPressReleaseScraper:
                 if bm_url:
                     current_url = bm_url
                     continue
+                break
             if int(response.status_code or 0) >= 400:
                 response.raise_for_status()
             return response
@@ -224,6 +245,9 @@ class DOJUSAOPressReleaseScraper:
     def _discover_from_rss(self, rss_url: str = DOJ_USAO_PRESS_RELEASES_RSS_URL) -> List[Dict[str, str]]:
         # Use the same Akamai-aware fetch path as listing pages.
         response = self._fetch_html(rss_url, timeout=45, max_verify_hops=3)
+        xml_head = str(response.text or "")[:2000].lower()
+        if "<rss" not in xml_head and "<feed" not in xml_head:
+            raise RuntimeError(f"RSS endpoint did not return XML (status={getattr(response, 'status_code', 'unknown')})")
 
         soup = BeautifulSoup(response.text, "xml")
         found = []
@@ -249,7 +273,139 @@ class DOJUSAOPressReleaseScraper:
                     "listing_page": rss_url,
                 }
             )
+        if not found:
+            raise RuntimeError("RSS returned zero USAO press-release items")
         return found
+
+    def _discover_from_news_press_listing(
+        self,
+        base_url: str = DOJ_NEWS_PRESS_RELEASES_URL,
+        max_pages: int = 3,
+    ) -> List[Dict[str, str]]:
+        max_pages = max(1, int(max_pages or 1))
+        found: List[Dict[str, str]] = []
+        seen = set()
+
+        for page in range(max_pages):
+            page_url = self._build_page_url(base_url, page)
+            try:
+                response = self._fetch_html(page_url, timeout=60)
+            except requests.HTTPError as e:
+                status_code = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
+                if page > 0 and status_code in {401, 403, 404, 429, 503}:
+                    break
+                if page > 0:
+                    break
+                raise
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            rows = soup.select("div.views-row")
+            if page > 0 and not rows:
+                break
+
+            page_found = 0
+            for row in rows:
+                link = row.select_one("h2.news-title a[href], h2 a[href], a[rel='bookmark'][href]")
+                if not link:
+                    continue
+                doc_url = urljoin("https://www.justice.gov", link.get("href", ""))
+                if not _is_usao_press_release_url(doc_url):
+                    continue
+
+                key = _url_key(doc_url)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+
+                title = _normalize_space(link.get_text(" ", strip=True))
+                date_el = row.select_one("time")
+                date_text = _normalize_space(date_el.get_text(" ", strip=True) if date_el else "")
+                teaser_el = row.select_one("div.field_teaser, div.field-formatter--smart-trim")
+                teaser = _normalize_space(teaser_el.get_text(" ", strip=True) if teaser_el else "")
+
+                found.append(
+                    {
+                        "url": _url_without_query(doc_url),
+                        "title": title,
+                        "date": _date_to_display(date_text),
+                        "office": "",
+                        "teaser": teaser,
+                        "source_format": "html",
+                        "listing_page": str(page_url or ""),
+                    }
+                )
+                page_found += 1
+
+            if page > 0 and page_found <= 0:
+                break
+
+        return found
+
+    def _discover_from_sitemap(
+        self,
+        sitemap_index_url: str = DOJ_SITEMAP_INDEX_URL,
+        max_sitemap_pages: int = 6,
+        max_records: int = 250,
+    ) -> List[Dict[str, str]]:
+        index_response = self._fetch_html(sitemap_index_url, timeout=60)
+        index_soup = BeautifulSoup(index_response.text, "xml")
+        sitemap_urls = [
+            _normalize_space(loc.get_text(" ", strip=True))
+            for loc in index_soup.find_all("loc")
+        ]
+        sitemap_urls = [u for u in sitemap_urls if u]
+
+        page_urls = [u for u in sitemap_urls if "/sitemap.xml?page=" in u.lower()]
+        if not page_urls:
+            page_urls = [sitemap_index_url]
+
+        def _page_num(u: str) -> int:
+            try:
+                q = dict(parse_qsl(urlparse(u).query, keep_blank_values=True))
+                return int(q.get("page", "0") or 0)
+            except Exception:
+                return 0
+
+        page_urls = sorted(page_urls, key=_page_num, reverse=True)[: max(1, int(max_sitemap_pages or 1))]
+
+        out: List[Dict[str, str]] = []
+        seen = set()
+        for sitemap_url in page_urls:
+            try:
+                response = self._fetch_html(sitemap_url, timeout=60)
+            except requests.HTTPError:
+                continue
+            except Exception:
+                continue
+
+            soup = BeautifulSoup(response.text, "xml")
+            locs = [
+                _normalize_space(loc.get_text(" ", strip=True))
+                for loc in soup.find_all("loc")
+            ]
+            for loc_url in locs:
+                canonical = _canonical_press_url(loc_url)
+                if not _is_usao_press_release_url(canonical):
+                    continue
+                key = _url_key(canonical)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                out.append(
+                    {
+                        "url": canonical,
+                        "title": _title_from_url(canonical),
+                        "date": "",
+                        "office": "",
+                        "teaser": "",
+                        "source_format": "xml_sitemap",
+                        "listing_page": sitemap_url,
+                    }
+                )
+                if len(out) >= max_records:
+                    return out
+
+        return out
 
     def discover_documents(
         self,
@@ -263,6 +419,8 @@ class DOJUSAOPressReleaseScraper:
         pagination_blocked = False
         listing_added = 0
         rss_added = 0
+        news_added = 0
+        sitemap_added = 0
 
         debug: Dict[str, Any] = {
             "base_url": str(base_url or DOJ_USAO_PRESS_RELEASES_URL),
@@ -273,9 +431,15 @@ class DOJUSAOPressReleaseScraper:
             "rss_page0_used": False,
             "rss_supplement_used": False,
             "rss_supplement_error": "",
+            "news_supplement_used": False,
+            "news_supplement_error": "",
+            "sitemap_supplement_used": False,
+            "sitemap_supplement_error": "",
             "stop_reason": "",
             "listing_added": 0,
             "rss_added": 0,
+            "news_added": 0,
+            "sitemap_added": 0,
             "total_unique": 0,
         }
 
@@ -305,9 +469,15 @@ class DOJUSAOPressReleaseScraper:
                     page_debug["error_status"] = status_code
                     page_debug["error_message"] = str(e)
                     if page == 0 and fallback_to_rss:
-                        discovered = self._discover_from_rss()
-                        debug["rss_page0_used"] = True
-                        break
+                        try:
+                            discovered = self._discover_from_rss()
+                            debug["rss_page0_used"] = True
+                            break
+                        except Exception as rss_e:
+                            page_debug["error_type"] = type(rss_e).__name__
+                            page_debug["error_message"] = f"listing+rss_page0_failed: {rss_e}"
+                            discovered = []
+                            break
                     if status_code in {401, 403, 404, 429, 503}:
                         if page > 0 and page_attempts == 1:
                             # Re-prime session cookies on first blocked paged request, then retry once.
@@ -332,9 +502,15 @@ class DOJUSAOPressReleaseScraper:
                     page_debug["error_type"] = type(e).__name__
                     page_debug["error_message"] = str(e)
                     if page == 0 and fallback_to_rss:
-                        discovered = self._discover_from_rss()
-                        debug["rss_page0_used"] = True
-                        break
+                        try:
+                            discovered = self._discover_from_rss()
+                            debug["rss_page0_used"] = True
+                            break
+                        except Exception as rss_e:
+                            page_debug["error_type"] = type(rss_e).__name__
+                            page_debug["error_message"] = f"listing+rss_page0_failed: {rss_e}"
+                            discovered = []
+                            break
                     if page > 0:
                         discovered = []
                         debug["stop_reason"] = f"page_{page}_error"
@@ -343,8 +519,13 @@ class DOJUSAOPressReleaseScraper:
                     raise
             page_debug["returned_items"] = len(discovered)
             if not discovered and page == 0 and fallback_to_rss:
-                discovered = self._discover_from_rss()
-                debug["rss_page0_used"] = True
+                try:
+                    discovered = self._discover_from_rss()
+                    debug["rss_page0_used"] = True
+                except Exception as rss_e:
+                    page_debug["error_type"] = type(rss_e).__name__
+                    page_debug["error_message"] = f"rss_page0_failed: {rss_e}"
+                    discovered = []
             if not discovered and page > 0:
                 if not debug.get("stop_reason", ""):
                     debug["stop_reason"] = f"no_results_page_{page}"
@@ -382,12 +563,53 @@ class DOJUSAOPressReleaseScraper:
                 debug["rss_supplement_error"] = str(e)
                 debug["rss_supplement_used"] = True
 
+        # Last-resort supplement: DOJ News press-release listing pages, filtered to USAO links.
+        if max_pages > 1 and len(out) <= 12:
+            try:
+                news_items = self._discover_from_news_press_listing(
+                    base_url=DOJ_NEWS_PRESS_RELEASES_URL,
+                    max_pages=max_pages,
+                )
+                debug["news_supplement_used"] = True
+                for item in news_items:
+                    key = _url_key(item.get("url", ""))
+                    if not key or key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(item)
+                    news_added += 1
+            except Exception as e:
+                debug["news_supplement_used"] = True
+                debug["news_supplement_error"] = str(e)
+
+        # Final fallback: sitemap scan for USAO /pr/ URLs.
+        if max_pages > 1 and len(out) <= 12:
+            try:
+                sitemap_items = self._discover_from_sitemap(
+                    sitemap_index_url=DOJ_SITEMAP_INDEX_URL,
+                    max_sitemap_pages=max(4, min(12, max_pages)),
+                    max_records=max(120, max_pages * 12),
+                )
+                debug["sitemap_supplement_used"] = True
+                for item in sitemap_items:
+                    key = _url_key(item.get("url", ""))
+                    if not key or key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(item)
+                    sitemap_added += 1
+            except Exception as e:
+                debug["sitemap_supplement_used"] = True
+                debug["sitemap_supplement_error"] = str(e)
+
         def _sort_key(item: Dict[str, str]):
             return _parse_date_text(item.get("date", "")) or datetime.min
 
         debug["pagination_blocked"] = bool(pagination_blocked)
         debug["listing_added"] = int(listing_added)
         debug["rss_added"] = int(rss_added)
+        debug["news_added"] = int(news_added)
+        debug["sitemap_added"] = int(sitemap_added)
         debug["total_unique"] = int(len(out))
         if not debug.get("stop_reason", "") and max_pages > 1 and len(out) <= 12:
             debug["stop_reason"] = "low_yield"
