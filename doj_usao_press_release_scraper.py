@@ -168,20 +168,22 @@ class DOJUSAOPressReleaseScraper:
         for _ in range(max_verify_hops + 1):
             self._rate_limit()
             response = self.session.get(current_url, timeout=timeout, allow_redirects=True)
-            response.raise_for_status()
             html = str(response.text or "")
-            if not _looks_like_akamai_challenge(html):
-                return response
-
-            bm_url = _extract_bm_verify_url(html, str(response.url or current_url))
-            if not bm_url:
-                break
-            current_url = bm_url
+            if _looks_like_akamai_challenge(html):
+                bm_url = _extract_bm_verify_url(html, str(response.url or current_url))
+                if bm_url:
+                    current_url = bm_url
+                    continue
+            if int(response.status_code or 0) >= 400:
+                response.raise_for_status()
+            return response
 
         if response is not None and _looks_like_akamai_challenge(response.text):
             raise RuntimeError("DOJ returned an Akamai challenge page that could not be bypassed automatically.")
         if response is None:
             raise RuntimeError("No response received from DOJ.")
+        if int(response.status_code or 0) >= 400:
+            response.raise_for_status()
         return response
 
     def _discover_from_listing_page(self, page_url: str) -> List[Dict[str, str]]:
@@ -261,7 +263,26 @@ class DOJUSAOPressReleaseScraper:
 
         for page in range(max_pages):
             page_url = self._build_page_url(base_url, page)
-            discovered = self._discover_from_listing_page(page_url)
+            try:
+                discovered = self._discover_from_listing_page(page_url)
+            except requests.HTTPError as e:
+                status_code = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
+                if page == 0 and fallback_to_rss:
+                    discovered = self._discover_from_rss()
+                elif status_code in {401, 403, 404, 429, 503}:
+                    # DOJ may block paged URLs; keep already-found results.
+                    break
+                elif page > 0:
+                    break
+                else:
+                    raise
+            except Exception:
+                if page == 0 and fallback_to_rss:
+                    discovered = self._discover_from_rss()
+                elif page > 0:
+                    break
+                else:
+                    raise
             if not discovered and page == 0 and fallback_to_rss:
                 discovered = self._discover_from_rss()
             if not discovered and page > 0:
