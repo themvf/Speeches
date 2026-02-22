@@ -14,6 +14,7 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from itertools import zip_longest
 
 import requests
 from bs4 import BeautifulSoup
@@ -384,7 +385,7 @@ class DOJUSAOPressReleaseScraper:
         sitemap_index_url: str = DOJ_SITEMAP_INDEX_URL,
         max_sitemap_pages: int = 6,
         max_records: int = 250,
-    ) -> List[Dict[str, str]]:
+    ) -> Dict[str, Any]:
         index_response = self._fetch_html(sitemap_index_url, timeout=60)
         index_root = _parse_xml_root(index_response.text)
         sitemap_urls = _xml_find_all_text(index_root, "loc")
@@ -401,11 +402,32 @@ class DOJUSAOPressReleaseScraper:
             except Exception:
                 return 0
 
-        page_urls = sorted(page_urls, key=_page_num, reverse=True)[: max(1, int(max_sitemap_pages or 1))]
+        max_sitemap_pages = max(1, int(max_sitemap_pages or 1))
+        page_urls_sorted = sorted(page_urls, key=_page_num)
+        low_first = [u for u in page_urls_sorted if _page_num(u) >= 2] + [u for u in page_urls_sorted if _page_num(u) < 2]
+        high_first = list(reversed(page_urls_sorted))
+        ordered_candidates: List[str] = []
+        seen_candidates = set()
+        for lo, hi in zip_longest(low_first, high_first):
+            for candidate in (lo, hi):
+                if not candidate:
+                    continue
+                if candidate in seen_candidates:
+                    continue
+                seen_candidates.add(candidate)
+                ordered_candidates.append(candidate)
+                if len(ordered_candidates) >= max_sitemap_pages:
+                    break
+            if len(ordered_candidates) >= max_sitemap_pages:
+                break
 
         out: List[Dict[str, str]] = []
         seen = set()
-        for sitemap_url in page_urls:
+        pages_attempted = 0
+        pages_ok = 0
+        pages_with_hits = 0
+        for sitemap_url in ordered_candidates:
+            pages_attempted += 1
             try:
                 response = self._fetch_html(sitemap_url, timeout=60)
             except requests.HTTPError:
@@ -413,8 +435,10 @@ class DOJUSAOPressReleaseScraper:
             except Exception:
                 continue
 
+            pages_ok += 1
             page_root = _parse_xml_root(response.text)
             locs = _xml_find_all_text(page_root, "loc")
+            before_count = len(out)
             for loc_url in locs:
                 canonical = _canonical_press_url(loc_url)
                 if not _is_usao_press_release_url(canonical):
@@ -435,9 +459,23 @@ class DOJUSAOPressReleaseScraper:
                     }
                 )
                 if len(out) >= max_records:
-                    return out
+                    return {
+                        "items": out,
+                        "pages_attempted": pages_attempted,
+                        "pages_ok": pages_ok,
+                        "pages_with_hits": pages_with_hits + (1 if len(out) > before_count else 0),
+                        "candidates_considered": len(ordered_candidates),
+                    }
+            if len(out) > before_count:
+                pages_with_hits += 1
 
-        return out
+        return {
+            "items": out,
+            "pages_attempted": pages_attempted,
+            "pages_ok": pages_ok,
+            "pages_with_hits": pages_with_hits,
+            "candidates_considered": len(ordered_candidates),
+        }
 
     def discover_documents(
         self,
@@ -469,6 +507,10 @@ class DOJUSAOPressReleaseScraper:
             "news_supplement_error": "",
             "sitemap_supplement_used": False,
             "sitemap_supplement_error": "",
+            "sitemap_pages_attempted": 0,
+            "sitemap_pages_ok": 0,
+            "sitemap_pages_with_hits": 0,
+            "sitemap_candidates_considered": 0,
             "stop_reason": "",
             "listing_added": 0,
             "rss_added": 0,
@@ -620,12 +662,21 @@ class DOJUSAOPressReleaseScraper:
         if max_pages > 1 and len(out) < target_count and (pagination_blocked or len(out) <= 12):
             try:
                 records_needed = max(120, min(1200, (target_count - len(out)) + 120))
-                sitemap_items = self._discover_from_sitemap(
+                pages_needed = max(20, min(120, ((target_count - len(out)) // 5) + 10))
+                sitemap_result = self._discover_from_sitemap(
                     sitemap_index_url=DOJ_SITEMAP_INDEX_URL,
-                    max_sitemap_pages=max(4, min(12, max_pages)),
+                    max_sitemap_pages=pages_needed,
                     max_records=records_needed,
                 )
                 debug["sitemap_supplement_used"] = True
+                if isinstance(sitemap_result, dict):
+                    debug["sitemap_pages_attempted"] = int(sitemap_result.get("pages_attempted", 0) or 0)
+                    debug["sitemap_pages_ok"] = int(sitemap_result.get("pages_ok", 0) or 0)
+                    debug["sitemap_pages_with_hits"] = int(sitemap_result.get("pages_with_hits", 0) or 0)
+                    debug["sitemap_candidates_considered"] = int(sitemap_result.get("candidates_considered", 0) or 0)
+                    sitemap_items = sitemap_result.get("items", [])
+                else:
+                    sitemap_items = []
                 for item in sitemap_items:
                     key = _url_key(item.get("url", ""))
                     if not key or key in seen:

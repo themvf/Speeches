@@ -5038,6 +5038,13 @@ elif page == "Extraction":
                 f"News supplement used: `{doj_debug.get('news_supplement_used', False)}` | "
                 f"Sitemap supplement used: `{doj_debug.get('sitemap_supplement_used', False)}`"
             )
+            st.caption(
+                f"Sitemap pages attempted/ok/with hits: "
+                f"`{doj_debug.get('sitemap_pages_attempted', 0)}` / "
+                f"`{doj_debug.get('sitemap_pages_ok', 0)}` / "
+                f"`{doj_debug.get('sitemap_pages_with_hits', 0)}` "
+                f"(candidates considered: `{doj_debug.get('sitemap_candidates_considered', 0)}`)"
+            )
             page_logs = doj_debug.get("pages", [])
             if isinstance(page_logs, list) and page_logs:
                 page_df = pd.DataFrame(page_logs)
