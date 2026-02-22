@@ -3093,6 +3093,97 @@ def _extract_file_search_results(response):
     return results
 
 
+def _chunk_list(items, size):
+    if size <= 0:
+        size = 1
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def _score_value(value):
+    try:
+        if isinstance(value, bool):
+            return -1.0
+        return float(value)
+    except Exception:
+        return -1.0
+
+
+def _merge_file_search_results(result_batches, max_results=24):
+    merged = {}
+    for batch in result_batches:
+        for result in batch or []:
+            filename = str(result.get("filename", "") or "").strip()
+            file_id = str(result.get("file_id", "") or "").strip()
+            snippet = str(result.get("snippet", "") or "").strip()
+            dedupe_key = (file_id or filename, snippet)
+            if dedupe_key not in merged:
+                merged[dedupe_key] = {
+                    "filename": filename,
+                    "score": result.get("score"),
+                    "file_id": file_id,
+                    "snippet": snippet,
+                }
+                continue
+            existing = merged[dedupe_key]
+            if _score_value(result.get("score")) > _score_value(existing.get("score")):
+                existing["score"] = result.get("score")
+            if not existing.get("filename") and filename:
+                existing["filename"] = filename
+            if not existing.get("file_id") and file_id:
+                existing["file_id"] = file_id
+            if len(snippet) > len(existing.get("snippet", "")):
+                existing["snippet"] = snippet
+
+    merged_list = list(merged.values())
+    merged_list.sort(key=lambda x: _score_value(x.get("score")), reverse=True)
+    return merged_list[: max(1, int(max_results or 24))]
+
+
+def _build_retrieval_context(results, max_items=20, max_chars=12000):
+    if not results:
+        return ""
+    lines = []
+    used_chars = 0
+    capped_items = max(1, int(max_items or 20))
+    capped_chars = max(1000, int(max_chars or 12000))
+    for idx, result in enumerate(results[:capped_items], start=1):
+        filename = result.get("filename") or "unknown"
+        score = result.get("score")
+        score_txt = f"{score:.3f}" if isinstance(score, (int, float)) else "n/a"
+        snippet = str(result.get("snippet", "") or "").strip()
+        if not snippet:
+            continue
+        block = f"[Source {idx}] {filename} (score={score_txt})\n{snippet}\n"
+        if used_chars + len(block) > capped_chars:
+            break
+        lines.append(block)
+        used_chars += len(block)
+    return "\n".join(lines).strip()
+
+
+def _run_file_search_call(client, model_name, question, vector_store_ids, instructions_text=None, max_num_results=8):
+    payload = {
+        "model": model_name,
+        "input": question,
+        "tools": [
+            {
+                "type": "file_search",
+                "vector_store_ids": vector_store_ids,
+                "max_num_results": max_num_results,
+            }
+        ],
+    }
+    if instructions_text:
+        payload["instructions"] = instructions_text
+    try:
+        return client.responses.create(
+            **payload,
+            include=["file_search_call.results"],
+        )
+    except Exception:
+        return client.responses.create(**payload)
+
+
 def _ask_agent(client, vector_store_ids, question, model_name, instructions_text=None):
     if isinstance(vector_store_ids, str):
         vector_store_ids = [vector_store_ids]
@@ -3100,29 +3191,61 @@ def _ask_agent(client, vector_store_ids, question, model_name, instructions_text
     if not vector_store_ids:
         raise RuntimeError("No vector stores provided for retrieval.")
 
-    request_payload = {
-        "model": model_name,
-        "input": question,
-        "tools": [
-            {
-                "type": "file_search",
-                "vector_store_ids": vector_store_ids,
-                "max_num_results": 8,
-            }
-        ],
-    }
-    if instructions_text:
-        request_payload["instructions"] = instructions_text
-    try:
-        response = client.responses.create(
-            **request_payload,
-            include=["file_search_call.results"],
+    # Responses API file_search currently accepts at most 2 vector stores per request.
+    if len(vector_store_ids) <= 2:
+        response = _run_file_search_call(
+            client=client,
+            model_name=model_name,
+            question=question,
+            vector_store_ids=vector_store_ids,
+            instructions_text=instructions_text,
+            max_num_results=8,
         )
-    except Exception:
-        response = client.responses.create(**request_payload)
+        return {
+            "answer": _extract_response_text(response),
+            "results": _extract_file_search_results(response),
+        }
+
+    batched_results = []
+    for vs_batch in _chunk_list(vector_store_ids, 2):
+        batch_response = _run_file_search_call(
+            client=client,
+            model_name=model_name,
+            question=question,
+            vector_store_ids=vs_batch,
+            instructions_text=instructions_text,
+            max_num_results=8,
+        )
+        batched_results.append(_extract_file_search_results(batch_response))
+
+    merged_results = _merge_file_search_results(batched_results, max_results=24)
+    if not merged_results:
+        return {
+            "answer": "I could not retrieve relevant documents from the selected knowledge stores.",
+            "results": [],
+        }
+
+    evidence_context = _build_retrieval_context(merged_results, max_items=20, max_chars=12000)
+    synthesis_instructions_parts = []
+    if instructions_text:
+        synthesis_instructions_parts.append(instructions_text)
+    synthesis_instructions_parts.append(
+        "Use only the Evidence Context provided in the user input. "
+        "If evidence is insufficient, say what is missing instead of guessing."
+    )
+    synthesis_payload = {
+        "model": model_name,
+        "input": (
+            f"{question}\n\nEvidence Context:\n{evidence_context}"
+            if evidence_context
+            else question
+        ),
+        "instructions": " ".join(synthesis_instructions_parts).strip(),
+    }
+    synthesis_response = client.responses.create(**synthesis_payload)
     return {
-        "answer": _extract_response_text(response),
-        "results": _extract_file_search_results(response),
+        "answer": _extract_response_text(synthesis_response),
+        "results": merged_results,
     }
 
 
