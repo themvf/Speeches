@@ -1129,6 +1129,49 @@ def _normalize_policy_delta_brief_obj(payload):
     }
 
 
+def _policy_delta_missing_required_keys(payload):
+    if not isinstance(payload, dict):
+        return [
+            "overall_position",
+            "change_intensity",
+            "continuity_score",
+            "novelty_score",
+            "confidence",
+            "executive_summary",
+        ]
+    required = [
+        "overall_position",
+        "change_intensity",
+        "continuity_score",
+        "novelty_score",
+        "confidence",
+        "executive_summary",
+    ]
+    return [k for k in required if k not in payload]
+
+
+def _policy_delta_has_valid_shape(payload):
+    if not isinstance(payload, dict):
+        return False
+    missing = _policy_delta_missing_required_keys(payload)
+    if missing:
+        return False
+    if not isinstance(payload.get("executive_summary", ""), str):
+        return False
+    has_detail_list = any(
+        isinstance(payload.get(k), list)
+        for k in ["classifications", "new_elements", "continued_elements", "changed_elements"]
+    )
+    return bool(has_detail_list)
+
+
+def _preview_text(text, max_len=320):
+    raw = str(text or "").replace("\n", " ").strip()
+    if len(raw) <= max_len:
+        return raw
+    return raw[:max_len] + "..."
+
+
 def _heuristic_policy_delta_brief(source_doc, prior_docs):
     if not prior_docs:
         return {
@@ -1210,10 +1253,10 @@ def _heuristic_policy_delta_brief(source_doc, prior_docs):
 
 
 def _run_policy_delta_brief_llm(client, source_doc, prior_docs, model_name):
-    source_excerpt = str(source_doc.get("full_text", "") or "")[:12000]
+    source_excerpt = str(source_doc.get("full_text", "") or "")[:9000]
     prior_sections = []
-    for idx, p in enumerate(prior_docs[:18], 1):
-        prior_excerpt = str(p.get("full_text", "") or "")[:1800]
+    for idx, p in enumerate(prior_docs[:12], 1):
+        prior_excerpt = str(p.get("full_text", "") or "")[:1200]
         prior_sections.append(
             "\n".join(
                 [
@@ -1238,7 +1281,7 @@ def _run_policy_delta_brief_llm(client, source_doc, prior_docs, model_name):
         "Return strict JSON only."
     )
     user_prompt = (
-        "Output JSON with keys:\n"
+        "Output one JSON object with keys:\n"
         "- overall_position: continuity|mixed_shift|meaningful_shift|novel_position\n"
         "- change_intensity: low|medium|high\n"
         "- stance_direction: more_supportive|more_cautious|more_critical|unchanged|mixed|unclear\n"
@@ -1266,21 +1309,56 @@ def _run_policy_delta_brief_llm(client, source_doc, prior_docs, model_name):
         f"Prior Documents:\n{priors_text}\n"
     )
 
-    response = client.responses.create(
-        model=model_name,
-        input=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_output_tokens=2200,
+    max_attempts = 3
+    last_raw = ""
+    last_error = "unknown_error"
+    for attempt in range(1, max_attempts + 1):
+        attempt_system = system_prompt
+        attempt_user = user_prompt
+        if attempt > 1:
+            attempt_system += (
+                " Prior output was not valid/usable JSON. "
+                "Return raw JSON only with no markdown, no prose, and no code fences."
+            )
+            attempt_user += (
+                "\n\nIMPORTANT OUTPUT CONSTRAINTS:\n"
+                "- Respond with exactly one JSON object.\n"
+                "- Do not add commentary before or after JSON.\n"
+                "- Do not use markdown fences."
+            )
+
+        response = client.responses.create(
+            model=model_name,
+            input=[
+                {"role": "system", "content": attempt_system},
+                {"role": "user", "content": attempt_user},
+            ],
+            max_output_tokens=2200,
+        )
+        raw_text = str(getattr(response, "output_text", "") or "").strip()
+        if not raw_text:
+            raw_text = str(_normalize_obj(response).get("output_text", "") or "").strip()
+        last_raw = raw_text
+
+        parsed = _extract_first_json_object(raw_text)
+        if not parsed:
+            last_error = f"attempt_{attempt}: non_json_output"
+            continue
+
+        if not _policy_delta_has_valid_shape(parsed):
+            missing = _policy_delta_missing_required_keys(parsed)
+            if missing:
+                last_error = f"attempt_{attempt}: missing_required_keys={','.join(missing)}"
+            else:
+                last_error = f"attempt_{attempt}: invalid_payload_shape"
+            continue
+
+        return _normalize_policy_delta_brief_obj(parsed)
+
+    raise RuntimeError(
+        "Policy delta briefing returned non-JSON output after retries. "
+        f"{last_error}. Last output: {_preview_text(last_raw, max_len=420)}"
     )
-    raw_text = str(getattr(response, "output_text", "") or "").strip()
-    if not raw_text:
-        raw_text = str(_normalize_obj(response).get("output_text", "") or "").strip()
-    parsed = _extract_first_json_object(raw_text)
-    if not parsed:
-        raise RuntimeError("Policy delta briefing returned non-JSON output.")
-    return _normalize_policy_delta_brief_obj(parsed)
 
 
 def _generate_policy_delta_brief(
@@ -1311,13 +1389,15 @@ def _generate_policy_delta_brief(
         raise ValueError("Selected source document was not found in the scoped corpus.")
 
     error = ""
+    llm_error_preview = ""
     engine = "heuristic"
     if client is not None:
         try:
             brief = _run_policy_delta_brief_llm(client, source_doc, prior_docs, model_name)
             engine = "llm"
         except Exception as e:
-            error = str(e)
+            error = str(e)[:1200]
+            llm_error_preview = _preview_text(error, max_len=420)
             brief = _heuristic_policy_delta_brief(source_doc, prior_docs)
             engine = "heuristic_fallback"
     else:
@@ -1373,6 +1453,7 @@ def _generate_policy_delta_brief(
         "engine": engine,
         "status": "generated",
         "error": error,
+        "llm_error_preview": llm_error_preview,
         "comparison": {
             "method": "local_similarity_v1",
             "lookback_days": _coerce_int(lookback_days, default=730, min_value=1),
@@ -2940,6 +3021,263 @@ def _get_org_index_status(raw_data_obj, org_key, org_label):
     }
 
 
+def _render_vector_store_management_ui(
+    client,
+    raw_data_obj,
+    org_key,
+    org_label,
+    active_vector_store_id="",
+    key_prefix="vector_index",
+):
+    if "vector_store_ids_by_org" not in st.session_state:
+        st.session_state["vector_store_ids_by_org"] = {}
+
+    index_status = _get_org_index_status(raw_data_obj, org_key, org_label)
+    active_vector_store_id = str(active_vector_store_id or "").strip()
+    if not active_vector_store_id:
+        active_vector_store_id = str(index_status.get("vector_store_id", "") or "").strip()
+    if active_vector_store_id:
+        st.session_state["vector_store_ids_by_org"][org_key] = active_vector_store_id
+
+    if active_vector_store_id:
+        st.caption(f"Current vector store for {org_label}: `{active_vector_store_id}`")
+    else:
+        st.caption(f"No vector store indexed yet for {org_label}.")
+
+    if active_vector_store_id:
+        with st.expander("Vector Store Diagnostics"):
+            diag_state_key = f"{key_prefix}_vector_diag_{org_key}"
+            deep_diag_key = f"{key_prefix}_vector_diag_deep_{org_key}"
+            verify_state_key = f"{key_prefix}_vector_verify_{org_key}"
+            listing_state_key = f"{key_prefix}_vector_listing_{org_key}"
+
+            if st.button("Refresh Store Counts", key=f"{key_prefix}_refresh_store_counts_{org_key}"):
+                try:
+                    st.session_state[diag_state_key] = _get_vector_store_file_counts(
+                        client,
+                        active_vector_store_id,
+                    )
+                except Exception as e:
+                    st.session_state[diag_state_key] = {"error": str(e)}
+
+            if st.button("Run Deep Count (List All Files)", key=f"{key_prefix}_deep_store_counts_{org_key}"):
+                with st.spinner("Counting files in vector store..."):
+                    try:
+                        st.session_state[deep_diag_key] = _count_vector_store_files_deep(
+                            client,
+                            active_vector_store_id,
+                        )
+                    except Exception as e:
+                        st.session_state[deep_diag_key] = {"error": str(e)}
+
+            left_diag, right_diag = st.columns(2)
+            with left_diag:
+                if st.button("Verify Active Store ID", key=f"{key_prefix}_verify_store_{org_key}"):
+                    st.session_state[verify_state_key] = _verify_active_vector_store(
+                        client,
+                        active_vector_store_id,
+                    )
+            with right_diag:
+                if st.button("List Project Vector Stores", key=f"{key_prefix}_list_project_stores_{org_key}"):
+                    try:
+                        st.session_state[listing_state_key] = _list_project_vector_stores(client, limit=100)
+                    except Exception as e:
+                        st.session_state[listing_state_key] = [{"error": str(e)}]
+
+            diag_counts = st.session_state.get(diag_state_key)
+            if isinstance(diag_counts, dict):
+                if diag_counts.get("error"):
+                    st.error(f"Store count check failed: {diag_counts['error']}")
+                else:
+                    st.markdown(
+                        f"API counts: total={diag_counts.get('total', 0)}, "
+                        f"completed={diag_counts.get('completed', 0)}, "
+                        f"in_progress={diag_counts.get('in_progress', 0)}, "
+                        f"failed={diag_counts.get('failed', 0)}, "
+                        f"cancelled={diag_counts.get('cancelled', 0)}"
+                    )
+
+            deep_counts = st.session_state.get(deep_diag_key)
+            if isinstance(deep_counts, dict):
+                if deep_counts.get("error"):
+                    st.error(f"Deep count failed: {deep_counts['error']}")
+                else:
+                    st.markdown(
+                        f"Deep counts: total={deep_counts.get('total', 0)}, "
+                        f"completed={deep_counts.get('completed', 0)}, "
+                        f"in_progress={deep_counts.get('in_progress', 0)}, "
+                        f"failed={deep_counts.get('failed', 0)}, "
+                        f"cancelled={deep_counts.get('cancelled', 0)}"
+                    )
+
+            verify_result = st.session_state.get(verify_state_key)
+            if isinstance(verify_result, dict):
+                if verify_result.get("ok"):
+                    fc = verify_result.get("file_counts", {})
+                    st.success(
+                        f"Active store verified: {verify_result.get('id', '')} "
+                        f"(status={verify_result.get('status', '')}, "
+                        f"completed={int(fc.get('completed', 0) or 0)}, total={int(fc.get('total', 0) or 0)})"
+                    )
+                elif verify_result.get("message"):
+                    st.error(f"Active store verification failed: {verify_result['message']}")
+
+            listing_rows = st.session_state.get(listing_state_key)
+            if isinstance(listing_rows, list) and listing_rows:
+                if "error" in listing_rows[0]:
+                    st.error(f"Project vector-store listing failed: {listing_rows[0].get('error', '')}")
+                else:
+                    listing_df = pd.DataFrame(listing_rows)
+                    if not listing_df.empty:
+                        if "id" in listing_df.columns:
+                            listing_df["active"] = listing_df["id"].apply(
+                                lambda x: "yes" if str(x) == str(active_vector_store_id) else ""
+                            )
+                        show_cols = [
+                            c
+                            for c in ["active", "id", "name", "status", "total", "completed", "in_progress", "failed"]
+                            if c in listing_df.columns
+                        ]
+                        st.dataframe(listing_df[show_cols], use_container_width=True, hide_index=True)
+
+    idx_col1, idx_col2, idx_col3, idx_col4 = st.columns(4)
+    idx_col1.metric("Corpus Docs", index_status.get("current_docs", 0))
+    idx_col2.metric("Indexed Docs", index_status.get("indexed_docs", 0))
+    idx_col3.metric(
+        "Pending Add/Update",
+        index_status.get("pending_add", 0) + index_status.get("pending_update", 0),
+    )
+    idx_col4.metric("Pending Remove", index_status.get("pending_remove", 0))
+    pending_total = (
+        index_status.get("pending_add", 0)
+        + index_status.get("pending_update", 0)
+        + index_status.get("pending_remove", 0)
+    )
+    if pending_total > 0:
+        st.warning(
+            f"Knowledge index is out of sync for {org_label} "
+            f"({pending_total} pending changes). Answers may reflect older positions until sync completes."
+        )
+
+    last_sync = index_status.get("last_sync", {})
+    if isinstance(last_sync, dict) and last_sync:
+        ls_status = str(last_sync.get("status", "unknown") or "unknown")
+        ls_mode = str(last_sync.get("sync_mode", "unknown") or "unknown")
+        ls_uploaded = int(last_sync.get("uploaded", 0) or 0)
+        ls_deleted = int(last_sync.get("deleted", 0) or 0)
+        ls_failed = int(last_sync.get("failed_count", len(last_sync.get("failed", []) or [])) or 0)
+        st.caption(
+            f"Last sync: status={ls_status}, mode={ls_mode}, "
+            f"uploaded={ls_uploaded}, deleted={ls_deleted}, failed={ls_failed}"
+        )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Build/Sync Knowledge Index", type="primary", key=f"{key_prefix}_build_index_{org_key}"):
+            sync_progress = st.progress(0)
+            sync_status = st.empty()
+
+            def _sync_progress_cb(done, total, message):
+                if total <= 0:
+                    sync_progress.progress(100)
+                    sync_status.caption(message)
+                    return
+                safe_done = max(0, min(done, total))
+                pct = int((safe_done * 100) / total)
+                sync_progress.progress(max(0, min(pct, 100)))
+                sync_status.caption(f"{message} ({safe_done}/{total})")
+
+            with st.spinner(f"Syncing {org_label} knowledge index..."):
+                try:
+                    report = _sync_org_vector_store(
+                        client=client,
+                        raw_data_obj=raw_data_obj,
+                        org_key=org_key,
+                        org_label=org_label,
+                        force_rebuild=False,
+                        progress_callback=_sync_progress_cb,
+                    )
+                    vector_store_id = str(report.get("vector_store_id", "") or "").strip()
+                    if vector_store_id:
+                        st.session_state["vector_store_ids_by_org"][org_key] = vector_store_id
+
+                    if report.get("up_to_date"):
+                        st.success("Knowledge index is up to date.")
+                    else:
+                        stats = report.get("stats", {})
+                        planned_add = stats.get("add", 0)
+                        planned_update = stats.get("update", 0)
+                        planned_remove = stats.get("remove", 0)
+                        uploaded = stats.get("uploaded", 0)
+                        deleted = stats.get("deleted", 0)
+                        failed_count = len(report.get("failed", []))
+
+                        st.success(
+                            "Knowledge index sync finished: "
+                            f"planned +{planned_add}/~{planned_update}/-{planned_remove}, "
+                            f"completed uploads={uploaded}, deletes={deleted}."
+                        )
+                        if report.get("all_uploads_failed"):
+                            st.error(
+                                "No uploads were recorded in this run. "
+                                "Use Vector Store Diagnostics and check operation failures below."
+                            )
+                        if report.get("failed"):
+                            st.warning(f"{failed_count} document operations failed.")
+                            for item in report["failed"][:5]:
+                                st.write(f"- {item.get('stage', 'unknown')}: {item.get('title', item.get('doc_id', ''))}")
+                except Exception as e:
+                    st.error(f"Indexing failed: {e}")
+
+    with col2:
+        if st.button("Force Rebuild Index", key=f"{key_prefix}_force_rebuild_index_{org_key}"):
+            rebuild_progress = st.progress(0)
+            rebuild_status = st.empty()
+
+            def _rebuild_progress_cb(done, total, message):
+                if total <= 0:
+                    rebuild_progress.progress(100)
+                    rebuild_status.caption(message)
+                    return
+                safe_done = max(0, min(done, total))
+                pct = int((safe_done * 100) / total)
+                rebuild_progress.progress(max(0, min(pct, 100)))
+                rebuild_status.caption(f"{message} ({safe_done}/{total})")
+
+            with st.spinner(f"Rebuilding {org_label} knowledge index..."):
+                try:
+                    report = _sync_org_vector_store(
+                        client=client,
+                        raw_data_obj=raw_data_obj,
+                        org_key=org_key,
+                        org_label=org_label,
+                        force_rebuild=True,
+                        progress_callback=_rebuild_progress_cb,
+                    )
+                    vector_store_id = str(report.get("vector_store_id", "") or "").strip()
+                    if vector_store_id:
+                        st.session_state["vector_store_ids_by_org"][org_key] = vector_store_id
+                    stats = report.get("stats", {})
+                    st.success(
+                        "Knowledge index rebuild finished: "
+                        f"planned +{stats.get('add', 0)}/~{stats.get('update', 0)}/-{stats.get('remove', 0)}, "
+                        f"completed uploads={stats.get('uploaded', 0)}, deletes={stats.get('deleted', 0)}."
+                    )
+                    if report.get("all_uploads_failed"):
+                        st.error(
+                            "No uploads were recorded in this rebuild. "
+                            "Use Vector Store Diagnostics and check failures below."
+                        )
+                    if report.get("failed"):
+                        st.warning(f"{len(report['failed'])} document operations failed during rebuild.")
+                    if report.get("old_store_delete_error"):
+                        st.info(f"Previous vector store cleanup skipped: {report['old_store_delete_error']}")
+                except Exception as e:
+                    st.error(f"Rebuild failed: {e}")
+
+    return _get_org_index_status(raw_data_obj, org_key, org_label)
+
+
 def _normalize_obj(obj):
     if obj is None:
         return {}
@@ -3977,102 +4315,6 @@ elif page == "Agent Chat":
         )
         st.caption(f"{brief_count_in_scope} saved policy briefs currently match this chat scope.")
 
-    if active_vector_store_id:
-        with st.expander("Vector Store Diagnostics"):
-            diag_state_key = f"vector_diag_{org_key}"
-            deep_diag_key = f"vector_diag_deep_{org_key}"
-            verify_state_key = f"vector_verify_{org_key}"
-            listing_state_key = f"vector_listing_{org_key}"
-
-            if st.button("Refresh Store Counts", key=f"refresh_store_counts_{org_key}"):
-                try:
-                    st.session_state[diag_state_key] = _get_vector_store_file_counts(
-                        client,
-                        active_vector_store_id,
-                    )
-                except Exception as e:
-                    st.session_state[diag_state_key] = {"error": str(e)}
-
-            if st.button("Run Deep Count (List All Files)", key=f"deep_store_counts_{org_key}"):
-                with st.spinner("Counting files in vector store..."):
-                    try:
-                        st.session_state[deep_diag_key] = _count_vector_store_files_deep(
-                            client,
-                            active_vector_store_id,
-                        )
-                    except Exception as e:
-                        st.session_state[deep_diag_key] = {"error": str(e)}
-
-            left_diag, right_diag = st.columns(2)
-            with left_diag:
-                if st.button("Verify Active Store ID", key=f"verify_store_{org_key}"):
-                    st.session_state[verify_state_key] = _verify_active_vector_store(
-                        client,
-                        active_vector_store_id,
-                    )
-            with right_diag:
-                if st.button("List Project Vector Stores", key=f"list_project_stores_{org_key}"):
-                    try:
-                        st.session_state[listing_state_key] = _list_project_vector_stores(client, limit=100)
-                    except Exception as e:
-                        st.session_state[listing_state_key] = [{"error": str(e)}]
-
-            diag_counts = st.session_state.get(diag_state_key)
-            if isinstance(diag_counts, dict):
-                if diag_counts.get("error"):
-                    st.error(f"Store count check failed: {diag_counts['error']}")
-                else:
-                    st.markdown(
-                        f"API counts: total={diag_counts.get('total', 0)}, "
-                        f"completed={diag_counts.get('completed', 0)}, "
-                        f"in_progress={diag_counts.get('in_progress', 0)}, "
-                        f"failed={diag_counts.get('failed', 0)}, "
-                        f"cancelled={diag_counts.get('cancelled', 0)}"
-                    )
-
-            deep_counts = st.session_state.get(deep_diag_key)
-            if isinstance(deep_counts, dict):
-                if deep_counts.get("error"):
-                    st.error(f"Deep count failed: {deep_counts['error']}")
-                else:
-                    st.markdown(
-                        f"Deep counts: total={deep_counts.get('total', 0)}, "
-                        f"completed={deep_counts.get('completed', 0)}, "
-                        f"in_progress={deep_counts.get('in_progress', 0)}, "
-                        f"failed={deep_counts.get('failed', 0)}, "
-                        f"cancelled={deep_counts.get('cancelled', 0)}"
-                    )
-
-            verify_result = st.session_state.get(verify_state_key)
-            if isinstance(verify_result, dict):
-                if verify_result.get("ok"):
-                    fc = verify_result.get("file_counts", {})
-                    st.success(
-                        f"Active store verified: {verify_result.get('id', '')} "
-                        f"(status={verify_result.get('status', '')}, "
-                        f"completed={int(fc.get('completed', 0) or 0)}, total={int(fc.get('total', 0) or 0)})"
-                    )
-                elif verify_result.get("message"):
-                    st.error(f"Active store verification failed: {verify_result['message']}")
-
-            listing_rows = st.session_state.get(listing_state_key)
-            if isinstance(listing_rows, list) and listing_rows:
-                if "error" in listing_rows[0]:
-                    st.error(f"Project vector-store listing failed: {listing_rows[0].get('error', '')}")
-                else:
-                    listing_df = pd.DataFrame(listing_rows)
-                    if not listing_df.empty:
-                        if "id" in listing_df.columns:
-                            listing_df["active"] = listing_df["id"].apply(
-                                lambda x: "yes" if str(x) == str(active_vector_store_id) else ""
-                            )
-                        show_cols = [
-                            c
-                            for c in ["active", "id", "name", "status", "total", "completed", "in_progress", "failed"]
-                            if c in listing_df.columns
-                        ]
-                        st.dataframe(listing_df[show_cols], use_container_width=True, hide_index=True)
-
     idx_col1, idx_col2, idx_col3, idx_col4 = st.columns(4)
     idx_col1.metric("Corpus Docs", index_status.get("current_docs", 0))
     idx_col2.metric("Indexed Docs", index_status.get("indexed_docs", 0))
@@ -4103,109 +4345,10 @@ elif page == "Agent Chat":
             f"Last sync: status={ls_status}, mode={ls_mode}, "
             f"uploaded={ls_uploaded}, deleted={ls_deleted}, failed={ls_failed}"
         )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Build/Sync Knowledge Index", type="primary"):
-            sync_progress = st.progress(0)
-            sync_status = st.empty()
-
-            def _sync_progress_cb(done, total, message):
-                if total <= 0:
-                    sync_progress.progress(100)
-                    sync_status.caption(message)
-                    return
-                safe_done = max(0, min(done, total))
-                pct = int((safe_done * 100) / total)
-                sync_progress.progress(max(0, min(pct, 100)))
-                sync_status.caption(f"{message} ({safe_done}/{total})")
-
-            with st.spinner(f"Syncing {org_label} knowledge index..."):
-                try:
-                    report = _sync_org_vector_store(
-                        client=client,
-                        raw_data_obj=knowledge_data,
-                        org_key=org_key,
-                        org_label=org_label,
-                        force_rebuild=False,
-                        progress_callback=_sync_progress_cb,
-                    )
-                    vector_store_id = report.get("vector_store_id", "")
-                    if vector_store_id:
-                        st.session_state["vector_store_ids_by_org"][org_key] = vector_store_id
-
-                    if report.get("up_to_date"):
-                        st.success("Knowledge index is up to date.")
-                    else:
-                        stats = report.get("stats", {})
-                        planned_add = stats.get("add", 0)
-                        planned_update = stats.get("update", 0)
-                        planned_remove = stats.get("remove", 0)
-                        uploaded = stats.get("uploaded", 0)
-                        deleted = stats.get("deleted", 0)
-                        failed_count = len(report.get("failed", []))
-
-                        st.success(
-                            "Knowledge index sync finished: "
-                            f"planned +{planned_add}/~{planned_update}/-{planned_remove}, "
-                            f"completed uploads={uploaded}, deletes={deleted}."
-                        )
-                        if report.get("all_uploads_failed"):
-                            st.error(
-                                "No uploads were recorded in this run. "
-                                "Use Vector Store Diagnostics and check operation failures below."
-                            )
-                        if report.get("failed"):
-                            st.warning(f"{failed_count} document operations failed.")
-                            for item in report["failed"][:5]:
-                                st.write(f"- {item.get('stage', 'unknown')}: {item.get('title', item.get('doc_id', ''))}")
-                except Exception as e:
-                    st.error(f"Indexing failed: {e}")
-    with col2:
-        if st.button("Force Rebuild Index"):
-            rebuild_progress = st.progress(0)
-            rebuild_status = st.empty()
-
-            def _rebuild_progress_cb(done, total, message):
-                if total <= 0:
-                    rebuild_progress.progress(100)
-                    rebuild_status.caption(message)
-                    return
-                safe_done = max(0, min(done, total))
-                pct = int((safe_done * 100) / total)
-                rebuild_progress.progress(max(0, min(pct, 100)))
-                rebuild_status.caption(f"{message} ({safe_done}/{total})")
-
-            with st.spinner(f"Rebuilding {org_label} knowledge index..."):
-                try:
-                    report = _sync_org_vector_store(
-                        client=client,
-                        raw_data_obj=knowledge_data,
-                        org_key=org_key,
-                        org_label=org_label,
-                        force_rebuild=True,
-                        progress_callback=_rebuild_progress_cb,
-                    )
-                    vector_store_id = report.get("vector_store_id", "")
-                    if vector_store_id:
-                        st.session_state["vector_store_ids_by_org"][org_key] = vector_store_id
-                    stats = report.get("stats", {})
-                    st.success(
-                        "Knowledge index rebuild finished: "
-                        f"planned +{stats.get('add', 0)}/~{stats.get('update', 0)}/-{stats.get('remove', 0)}, "
-                        f"completed uploads={stats.get('uploaded', 0)}, deletes={stats.get('deleted', 0)}."
-                    )
-                    if report.get("all_uploads_failed"):
-                        st.error(
-                            "No uploads were recorded in this rebuild. "
-                            "Use Vector Store Diagnostics and check failures below."
-                        )
-                    if report.get("failed"):
-                        st.warning(f"{len(report['failed'])} document operations failed during rebuild.")
-                    if report.get("old_store_delete_error"):
-                        st.info(f"Previous vector store cleanup skipped: {report['old_store_delete_error']}")
-                except Exception as e:
-                    st.error(f"Rebuild failed: {e}")
+    st.info(
+        "Knowledge index management moved to **Extraction** under "
+        "**Knowledge Index (Vector Store)**."
+    )
 
     chat_scope_key = org_key
     chat_scope_label = org_label
@@ -4250,7 +4393,10 @@ elif page == "Agent Chat":
         need_vector = discussion_mode in {"Corpus Retrieval", "Corpus + Policy Briefings"}
         need_briefs = discussion_mode in {"Policy Briefings", "Corpus + Policy Briefings"}
         if need_vector and not chat_vector_store_ids and not need_briefs:
-            err_msg = "Please click **Build/Sync Knowledge Index** before chatting."
+            err_msg = (
+                "Please go to **Extraction -> Knowledge Index (Vector Store)** and click "
+                "**Build/Sync Knowledge Index** before chatting."
+            )
             chat_messages.append({"role": "assistant", "content": err_msg})
             with st.chat_message("assistant"):
                 st.error(err_msg)
@@ -4352,7 +4498,10 @@ elif page == "Agent Chat":
                                 fallback_used = False
                         else:
                             if not chat_vector_store_ids:
-                                answer = "Please click **Build/Sync Knowledge Index** before chatting."
+                                answer = (
+                                    "Please go to **Extraction -> Knowledge Index (Vector Store)** and click "
+                                    "**Build/Sync Knowledge Index** before chatting."
+                                )
                                 sources = []
                                 used_model = model_name
                                 fallback_used = False
@@ -5594,6 +5743,64 @@ elif page == "Extraction":
             except Exception as e:
                 st.error(f"Federal Reserve ingest failed: {e}")
 
+    st.markdown("---")
+    st.subheader("Knowledge Index (Vector Store)")
+    st.caption(
+        "After ingestion, build/sync the vector index used by Agent Chat retrieval."
+    )
+
+    index_org_options = _list_org_options(knowledge_data)
+    index_org_labels = [o["label"] for o in index_org_options]
+    index_org_state_key = "index_management_org_key"
+    if index_org_state_key not in st.session_state:
+        st.session_state[index_org_state_key] = st.session_state.get("agent_org_key", index_org_options[0]["key"])
+
+    index_default_idx = 0
+    for idx, opt in enumerate(index_org_options):
+        if opt["key"] == st.session_state.get(index_org_state_key):
+            index_default_idx = idx
+            break
+
+    selected_index_org_label = st.selectbox(
+        "Index Organization",
+        index_org_labels,
+        index=index_default_idx,
+        key="index_management_org_label",
+    )
+    selected_index_org = next(
+        (o for o in index_org_options if o["label"] == selected_index_org_label),
+        index_org_options[0],
+    )
+    index_org_key = selected_index_org["key"]
+    index_org_label = selected_index_org["label"]
+    st.session_state[index_org_state_key] = index_org_key
+
+    if _openai_key is None:
+        st.warning(
+            "OpenAI API key is not configured. Add `[openai].api_key` in Streamlit secrets "
+            "to build/sync the knowledge index."
+        )
+    else:
+        index_client = _get_openai_client()
+        if index_client is None:
+            st.error(st.session_state.get("_openai_error", "Failed to initialize OpenAI client."))
+        else:
+            if "vector_store_ids_by_org" not in st.session_state:
+                st.session_state["vector_store_ids_by_org"] = {}
+            index_status = _get_org_index_status(knowledge_data, index_org_key, index_org_label)
+            active_index_store_id = (
+                st.session_state["vector_store_ids_by_org"].get(index_org_key)
+                or index_status.get("vector_store_id")
+            )
+            _render_vector_store_management_ui(
+                client=index_client,
+                raw_data_obj=knowledge_data,
+                org_key=index_org_key,
+                org_label=index_org_label,
+                active_vector_store_id=active_index_store_id,
+                key_prefix="extraction_index",
+            )
+
     if custom_docs:
         st.markdown("---")
         st.subheader("Uploaded Documents")
@@ -6220,7 +6427,14 @@ elif page == "Policy Delta Briefings":
                         f"(engine: {record.get('engine', '')})."
                     )
                     if str(record.get("error", "") or "").strip():
-                        st.warning(f"LLM error captured, used fallback: {record.get('error', '')}")
+                        st.warning(
+                            "LLM output was not valid policy-brief JSON after retries; "
+                            "used heuristic fallback."
+                        )
+                        preview = str(record.get("llm_error_preview", "") or "").strip()
+                        if preview:
+                            with st.expander("Policy Brief LLM Error Preview", expanded=False):
+                                st.code(preview)
                     briefs_payload = _load_policy_briefs()
 
     st.markdown("---")
