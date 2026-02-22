@@ -207,6 +207,7 @@ class DOJUSAOPressReleaseScraper:
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
         self._last_request_ts = 0.0
         self.last_discovery_debug: Dict[str, Any] = {}
+        self._last_bm_verify_token: str = ""
 
     def _rate_limit(self):
         elapsed = time.time() - self._last_request_ts
@@ -222,23 +223,78 @@ class DOJUSAOPressReleaseScraper:
         query = urlencode(pairs, doseq=True)
         return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, query, parsed.fragment))
 
+    def _update_bm_token_from_url(self, url: str):
+        try:
+            q = dict(parse_qsl(urlparse(str(url or "")).query, keep_blank_values=True))
+            token = str(q.get("bm-verify", "") or "").strip()
+            if token:
+                self._last_bm_verify_token = token
+        except Exception:
+            pass
+
+    def _with_bm_token(self, url: str) -> str:
+        token = str(self._last_bm_verify_token or "").strip()
+        if not token:
+            return str(url or "")
+        parsed = urlparse(str(url or ""))
+        pairs = [(k, v) for (k, v) in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() != "bm-verify"]
+        pairs.append(("bm-verify", token))
+        query = urlencode(pairs, doseq=True)
+        return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, query, parsed.fragment))
+
+    def _prime_bm_token(self):
+        # Best-effort attempt to refresh Akamai token state for query URLs.
+        try:
+            self._rate_limit()
+            response = self.session.get(DOJ_USAO_PRESS_RELEASES_URL, timeout=45, allow_redirects=True)
+            self._update_bm_token_from_url(str(getattr(response, "url", "") or ""))
+            html = str(response.text or "")
+            if _looks_like_akamai_challenge(html):
+                bm_url = _extract_bm_verify_url(html, str(getattr(response, "url", DOJ_USAO_PRESS_RELEASES_URL)))
+                if bm_url:
+                    self._update_bm_token_from_url(bm_url)
+                    self._rate_limit()
+                    r2 = self.session.get(bm_url, timeout=45, allow_redirects=True)
+                    self._update_bm_token_from_url(str(getattr(r2, "url", "") or ""))
+        except Exception:
+            pass
+
     def _fetch_html(self, url: str, timeout: int = 60, max_verify_hops: int = 3) -> requests.Response:
         current_url = str(url or "").strip()
         if not current_url:
             raise ValueError("URL is required")
 
         response: Optional[requests.Response] = None
+        tried_bm_retry = False
+        tried_prime = False
         for _ in range(max_verify_hops + 1):
             self._rate_limit()
             response = self.session.get(current_url, timeout=timeout, allow_redirects=True)
+            self._update_bm_token_from_url(str(getattr(response, "url", "") or ""))
             html = str(response.text or "")
             if _looks_like_akamai_challenge(html):
                 bm_url = _extract_bm_verify_url(html, str(response.url or current_url))
                 if bm_url:
+                    self._update_bm_token_from_url(bm_url)
                     current_url = bm_url
                     continue
                 break
-            if int(response.status_code or 0) >= 400:
+            status_code = int(response.status_code or 0)
+            if status_code >= 400:
+                if status_code in {401, 403} and not tried_bm_retry:
+                    with_token = self._with_bm_token(current_url)
+                    if with_token and with_token != current_url:
+                        tried_bm_retry = True
+                        current_url = with_token
+                        continue
+                if status_code in {401, 403} and not tried_prime:
+                    tried_prime = True
+                    self._prime_bm_token()
+                    with_token = self._with_bm_token(current_url)
+                    if with_token and with_token != current_url:
+                        tried_bm_retry = True
+                        current_url = with_token
+                        continue
                 response.raise_for_status()
             return response
 
