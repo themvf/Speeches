@@ -9,7 +9,7 @@ Streamlit dashboard for exploring and analyzing SEC Commissioner speeches. Inclu
 - **Topic Analysis** - 6-category topic relevance (Digital Assets, Enforcement, Market Structure, Innovation, Investor Protection, Regulatory Framework)
 - **Speech Explorer** - Full-text search and reading with filters
 - **Extraction Workspace** - Discover and ingest SEC speeches plus connector documents from one admin section
-- **Document Connectors** - Ingest SEC policy docs and DOJ USAO press releases into the shared knowledge base
+- **Document Connectors** - Ingest SEC policy docs, DOJ USAO press releases, and Federal Reserve speeches/testimony into the shared knowledge base
 
 ## Quick Start
 
@@ -77,6 +77,7 @@ app.py                  # Streamlit dashboard (with extraction UI)
 gcs_storage.py          # Google Cloud Storage read/write
 sec_scraper_free.py     # Free SEC.gov scraper (curl_cffi)
 doj_usao_press_release_scraper.py  # DOJ USAO press-release scraper
+federal_reserve_speech_testimony_scraper.py  # Federal Reserve speeches/testimony scraper
 speech_analyzer.py      # Speech parsing and extraction
 analysis_pipeline.py    # Sentiment, topic, commissioner analysis
 extract_all_speeches.py # Batch extraction script (CLI)

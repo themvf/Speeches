@@ -5317,6 +5317,283 @@ elif page == "Extraction":
             except Exception as e:
                 st.error(f"DOJ ingest failed: {e}")
 
+    st.markdown("---")
+    st.subheader("Federal Reserve Connector: Speeches & Testimony")
+    st.caption(
+        "Discover and ingest Federal Reserve speeches and congressional testimony into the knowledge base."
+    )
+
+    fed_index_default = "https://www.federalreserve.gov/newsevents/speeches-testimony.htm"
+    fed_index_url = st.text_input(
+        "Federal Reserve Speeches/Testimony URL",
+        value=fed_index_default,
+        key="fed_speech_testimony_index_url",
+    ).strip() or fed_index_default
+    fed_pages = st.slider(
+        "Federal Reserve Listing Pages To Scan",
+        min_value=1,
+        max_value=20,
+        value=5,
+        key="fed_speech_testimony_pages",
+    )
+
+    fed_col1, fed_col2 = st.columns(2)
+    with fed_col1:
+        discover_fed = st.button("Discover Federal Reserve Documents", key="discover_fed_speech_testimony")
+    with fed_col2:
+        clear_fed = st.button("Clear Federal Reserve Results", key="clear_fed_speech_testimony")
+
+    fed_state_key = "fed_speech_testimony_discovered"
+    fed_debug_key = "fed_speech_testimony_discovery_debug"
+    if fed_state_key not in st.session_state:
+        st.session_state[fed_state_key] = []
+    if fed_debug_key not in st.session_state:
+        st.session_state[fed_debug_key] = {}
+    if clear_fed:
+        st.session_state[fed_state_key] = []
+        st.session_state[fed_debug_key] = {}
+
+    if discover_fed:
+        try:
+            from federal_reserve_speech_testimony_scraper import FederalReserveSpeechTestimonyScraper
+
+            with st.spinner("Discovering Federal Reserve speeches/testimony..."):
+                fed_scraper = FederalReserveSpeechTestimonyScraper()
+                fed_discovered = fed_scraper.discover_documents(
+                    base_url=fed_index_url,
+                    max_pages=fed_pages,
+                    fallback_to_feed=True,
+                )
+                debug_payload = getattr(fed_scraper, "last_discovery_debug", {})
+                if isinstance(debug_payload, dict):
+                    st.session_state[fed_debug_key] = debug_payload
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in fed_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(
+                        existing_meta.get("published_date")
+                        or existing_meta.get("date")
+                        or ""
+                    ).strip()
+                    incoming_date = str(entry.get("date", "") or "").strip()
+                    if incoming_date and existing_date and incoming_date != existing_date:
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+
+            st.session_state[fed_state_key] = fed_discovered
+            new_count = sum(1 for d in fed_discovered if d.get("ingest_status") in {"new", "update_available"})
+            st.success(
+                f"Discovered {len(fed_discovered)} Federal Reserve documents "
+                f"({new_count} new/update candidates)."
+            )
+            try:
+                dbg = st.session_state.get(fed_debug_key, {})
+                if isinstance(dbg, dict):
+                    dbg["ingest_status_counts"] = {
+                        "new": sum(1 for d in fed_discovered if d.get("ingest_status") == "new"),
+                        "update_available": sum(1 for d in fed_discovered if d.get("ingest_status") == "update_available"),
+                        "existing": sum(1 for d in fed_discovered if d.get("ingest_status") == "existing"),
+                        "existing_in_speeches": sum(1 for d in fed_discovered if d.get("ingest_status") == "existing_in_speeches"),
+                    }
+                    st.session_state[fed_debug_key] = dbg
+            except Exception:
+                pass
+        except Exception as e:
+            st.session_state[fed_debug_key] = {"error": str(e)}
+            st.error(f"Federal Reserve discovery failed: {e}")
+
+    fed_discovered = st.session_state.get(fed_state_key, [])
+    fed_debug = st.session_state.get(fed_debug_key, {})
+    if isinstance(fed_debug, dict) and fed_debug:
+        with st.expander("Federal Reserve Discovery Debug", expanded=False):
+            c1, c2, c3, c4, c5, c6 = st.columns(6)
+            pages_payload = fed_debug.get("pages", [])
+            years_payload = fed_debug.get("years_scanned", [])
+            c1.metric("Requested Pages", int(fed_debug.get("max_pages_requested", 0) or 0))
+            c2.metric("Years Scanned", len(years_payload if isinstance(years_payload, list) else []))
+            c3.metric("Pages Logged", len(pages_payload if isinstance(pages_payload, list) else []))
+            c4.metric("Listing Added", int(fed_debug.get("listing_added", 0) or 0))
+            c5.metric("Feed Added", int(fed_debug.get("feed_added", 0) or 0))
+            c6.metric("Total Unique", int(fed_debug.get("total_unique", 0) or 0))
+            st.caption(
+                f"Stop reason: `{fed_debug.get('stop_reason', '')}` | "
+                f"Feed supplement used: `{fed_debug.get('feed_supplement_used', False)}` | "
+                f"Feed supplement error: `{fed_debug.get('feed_supplement_error', '')}`"
+            )
+            if isinstance(years_payload, list) and years_payload:
+                st.caption(f"Years scanned: {', '.join(str(y) for y in years_payload[:25])}")
+            if isinstance(pages_payload, list) and pages_payload:
+                page_df = pd.DataFrame(pages_payload)
+                show_cols = [
+                    c
+                    for c in [
+                        "year",
+                        "kind",
+                        "attempts",
+                        "returned_items",
+                        "unique_added",
+                        "error_status",
+                        "error_type",
+                        "error_message",
+                        "page_url",
+                    ]
+                    if c in page_df.columns
+                ]
+                st.dataframe(page_df[show_cols], use_container_width=True, hide_index=True)
+            st.json(fed_debug)
+
+    if fed_discovered:
+        fed_df = pd.DataFrame(fed_discovered)
+        fed_df = _sort_table_by_date(fed_df, date_col="date")
+        show_cols = [c for c in ["date", "doc_type", "speaker", "title", "ingest_status", "url"] if c in fed_df.columns]
+        st.dataframe(
+            fed_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        fed_filter = st.selectbox(
+            "Federal Reserve Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="fed_speech_testimony_ingest_filter",
+        )
+        if fed_filter == "New/Updates Only":
+            fed_candidates = [d for d in fed_discovered if d.get("ingest_status") in {"new", "update_available"}]
+        else:
+            fed_candidates = list(fed_discovered)
+
+        fed_count = len(fed_candidates)
+        if fed_count <= 0:
+            fed_limit = 0
+            st.caption("No Federal Reserve documents match the selected ingest filter.")
+        elif fed_count == 1:
+            fed_limit = 1
+            st.caption("1 Federal Reserve document selected for ingest.")
+        else:
+            fed_limit = st.slider(
+                "Federal Reserve Documents To Ingest",
+                min_value=1,
+                max_value=fed_count,
+                value=min(25, fed_count),
+                key="fed_speech_testimony_ingest_limit",
+            )
+        st.caption(f"{fed_count} Federal Reserve documents currently match this ingest selection.")
+
+        if st.button("Run Federal Reserve Extraction", disabled=(fed_limit <= 0), key="ingest_fed_speech_testimony"):
+            try:
+                from federal_reserve_speech_testimony_scraper import FederalReserveSpeechTestimonyScraper
+
+                fed_scraper = FederalReserveSpeechTestimonyScraper()
+                progress = st.progress(0, text="Starting Federal Reserve ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = fed_candidates[:fed_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / fed_limit,
+                        text=f"Ingesting {idx}/{fed_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = fed_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_speaker=entry.get("speaker", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 80:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"federal-reserve-doc-{idx}"
+                        source_name = f"{source_name}.html" if "." not in source_name else source_name
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        speaker_text = str(
+                            data.get("speaker", "")
+                            or entry.get("speaker", "")
+                            or "Federal Reserve Official"
+                        ).strip()
+                        doc_type_text = str(data.get("doc_type", "") or entry.get("doc_type", "") or "Speech").strip()
+                        tags_csv = "federal-reserve,speech"
+                        if "testimony" in doc_type_text.lower():
+                            tags_csv = "federal-reserve,testimony"
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="Federal Reserve",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                            speaker=speaker_text,
+                            doc_date=doc_date_value,
+                            doc_type=doc_type_text,
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=".html",
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv=tags_csv,
+                            source_kind="federal_reserve_speech_testimony",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "federal_reserve_speech_testimony"
+                        rm["source_index_url"] = fed_index_url
+                        rm["published_date"] = str(entry.get("date", "") or "")
+                        rm["location"] = str(data.get("location", "") or entry.get("location", "")).strip()
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="Federal Reserve ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new Federal Reserve docs and updated "
+                        f"{saved_updates} existing Federal Reserve docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} Federal Reserve documents failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"Federal Reserve ingest failed: {e}")
+
     if custom_docs:
         st.markdown("---")
         st.subheader("Uploaded Documents")
