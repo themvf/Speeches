@@ -9,6 +9,7 @@ interstitial challenge automatically.
 
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
@@ -114,6 +115,46 @@ def _title_from_url(url: str) -> str:
     if not words:
         return "DOJ USAO Press Release"
     return " ".join(words[:24]).strip().title()
+
+
+def _xml_local_name(tag: str) -> str:
+    raw = str(tag or "")
+    if "}" in raw:
+        return raw.rsplit("}", 1)[-1]
+    return raw
+
+
+def _parse_xml_root(text: str) -> ET.Element:
+    blob = str(text or "").lstrip("\ufeff").strip()
+    if not blob:
+        raise RuntimeError("XML payload is empty")
+    try:
+        return ET.fromstring(blob)
+    except ET.ParseError as e:
+        raise RuntimeError(f"Invalid XML payload: {e}") from e
+
+
+def _xml_find_all_text(root: ET.Element, local_name: str) -> List[str]:
+    out = []
+    target = str(local_name or "").strip().lower()
+    for el in root.iter():
+        if _xml_local_name(el.tag).lower() != target:
+            continue
+        txt = _normalize_space(el.text or "")
+        if txt:
+            out.append(txt)
+    return out
+
+
+def _xml_find_child_text(parent: ET.Element, local_name: str) -> str:
+    target = str(local_name or "").strip().lower()
+    for child in parent.iter():
+        if _xml_local_name(child.tag).lower() != target:
+            continue
+        txt = _normalize_space(child.text or "")
+        if txt:
+            return txt
+    return ""
 
 
 def _looks_like_akamai_challenge(html: str) -> bool:
@@ -249,19 +290,16 @@ class DOJUSAOPressReleaseScraper:
         if "<rss" not in xml_head and "<feed" not in xml_head:
             raise RuntimeError(f"RSS endpoint did not return XML (status={getattr(response, 'status_code', 'unknown')})")
 
-        soup = BeautifulSoup(response.text, "xml")
+        root = _parse_xml_root(response.text)
         found = []
-        for item in soup.find_all("item"):
-            link_tag = item.find("link")
-            link = _normalize_space(link_tag.get_text(" ", strip=True) if link_tag else "")
+        items = [el for el in root.iter() if _xml_local_name(el.tag).lower() == "item"]
+        for item in items:
+            link = _xml_find_child_text(item, "link")
             if not _is_usao_press_release_url(link):
                 continue
-            title_tag = item.find("title")
-            pub_date_tag = item.find("pubDate")
-            description_tag = item.find("description")
-            title = _normalize_space(title_tag.get_text(" ", strip=True) if title_tag else "")
-            pub_date = _normalize_space(pub_date_tag.get_text(" ", strip=True) if pub_date_tag else "")
-            description = _normalize_space(description_tag.get_text(" ", strip=True) if description_tag else "")
+            title = _xml_find_child_text(item, "title")
+            pub_date = _xml_find_child_text(item, "pubDate")
+            description = _xml_find_child_text(item, "description")
             found.append(
                 {
                     "url": _url_without_query(link),
@@ -348,11 +386,8 @@ class DOJUSAOPressReleaseScraper:
         max_records: int = 250,
     ) -> List[Dict[str, str]]:
         index_response = self._fetch_html(sitemap_index_url, timeout=60)
-        index_soup = BeautifulSoup(index_response.text, "xml")
-        sitemap_urls = [
-            _normalize_space(loc.get_text(" ", strip=True))
-            for loc in index_soup.find_all("loc")
-        ]
+        index_root = _parse_xml_root(index_response.text)
+        sitemap_urls = _xml_find_all_text(index_root, "loc")
         sitemap_urls = [u for u in sitemap_urls if u]
 
         page_urls = [u for u in sitemap_urls if "/sitemap.xml?page=" in u.lower()]
@@ -378,11 +413,8 @@ class DOJUSAOPressReleaseScraper:
             except Exception:
                 continue
 
-            soup = BeautifulSoup(response.text, "xml")
-            locs = [
-                _normalize_space(loc.get_text(" ", strip=True))
-                for loc in soup.find_all("loc")
-            ]
+            page_root = _parse_xml_root(response.text)
+            locs = _xml_find_all_text(page_root, "loc")
             for loc_url in locs:
                 canonical = _canonical_press_url(loc_url)
                 if not _is_usao_press_release_url(canonical):
