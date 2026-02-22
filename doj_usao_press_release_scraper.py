@@ -449,6 +449,7 @@ class DOJUSAOPressReleaseScraper:
         out = []
         seen = set()
         pagination_blocked = False
+        target_count = max(12, min(400, max_pages * 12))
         listing_added = 0
         rss_added = 0
         news_added = 0
@@ -457,6 +458,7 @@ class DOJUSAOPressReleaseScraper:
         debug: Dict[str, Any] = {
             "base_url": str(base_url or DOJ_USAO_PRESS_RELEASES_URL),
             "max_pages_requested": max_pages,
+            "target_count": target_count,
             "fallback_to_rss": bool(fallback_to_rss),
             "pages": [],
             "pagination_blocked": False,
@@ -595,8 +597,8 @@ class DOJUSAOPressReleaseScraper:
                 debug["rss_supplement_error"] = str(e)
                 debug["rss_supplement_used"] = True
 
-        # Last-resort supplement: DOJ News press-release listing pages, filtered to USAO links.
-        if max_pages > 1 and len(out) <= 12:
+        # If pagination is blocked and still below requested depth, try DOJ News listing.
+        if max_pages > 1 and len(out) < target_count and (pagination_blocked or len(out) <= 12):
             try:
                 news_items = self._discover_from_news_press_listing(
                     base_url=DOJ_NEWS_PRESS_RELEASES_URL,
@@ -614,13 +616,14 @@ class DOJUSAOPressReleaseScraper:
                 debug["news_supplement_used"] = True
                 debug["news_supplement_error"] = str(e)
 
-        # Final fallback: sitemap scan for USAO /pr/ URLs.
-        if max_pages > 1 and len(out) <= 12:
+        # Final fallback: sitemap scan for USAO /pr/ URLs to approach requested depth.
+        if max_pages > 1 and len(out) < target_count and (pagination_blocked or len(out) <= 12):
             try:
+                records_needed = max(120, min(1200, (target_count - len(out)) + 120))
                 sitemap_items = self._discover_from_sitemap(
                     sitemap_index_url=DOJ_SITEMAP_INDEX_URL,
                     max_sitemap_pages=max(4, min(12, max_pages)),
-                    max_records=max(120, max_pages * 12),
+                    max_records=records_needed,
                 )
                 debug["sitemap_supplement_used"] = True
                 for item in sitemap_items:
