@@ -9,7 +9,7 @@ article full text from publisher pages with a snippet fallback.
 import io
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -236,6 +236,14 @@ class NewsAPIFinancialScraper:
             "domains": str(domains or "").strip(),
             "exclude_domains": str(exclude_domains or "").strip(),
             "search_in": base_params.get("searchIn", ""),
+            "passes_run": [],
+            "fallback_no_domains_used": False,
+            "fallback_no_domains_reason": "",
+            "fallback_no_search_in_used": False,
+            "fallback_no_search_in_reason": "",
+            "fallback_widened_window_used": False,
+            "fallback_widened_window_reason": "",
+            "fallback_widened_from": "",
             "pages": [],
             "stop_reason": "",
             "total_results_reported": 0,
@@ -245,81 +253,112 @@ class NewsAPIFinancialScraper:
         discovered: List[Dict[str, str]] = []
         seen = set()
 
-        for page in range(1, max_pages + 1):
-            params = dict(base_params)
-            params["page"] = page
-            prepared = requests.Request("GET", endpoint, params=params).prepare()
-            page_log = {
-                "page": page,
-                "page_url": str(getattr(prepared, "url", "") or ""),
-                "error_type": "",
-                "error_message": "",
-                "returned_items": 0,
-                "unique_added": 0,
-            }
+        def _scan_pass(pass_name: str, pass_params: Dict[str, Any], pages_limit: int) -> str:
+            pages_limit = max(1, int(pages_limit or 1))
+            debug["passes_run"].append(pass_name)
 
-            try:
-                payload = self._fetch_json(endpoint, params=params)
-                total_results = int(payload.get("totalResults", 0) or 0)
-                if total_results:
-                    debug["total_results_reported"] = total_results
+            for page in range(1, pages_limit + 1):
+                params = dict(pass_params)
+                params["page"] = page
+                prepared = requests.Request("GET", endpoint, params=params).prepare()
+                page_log = {
+                    "pass": pass_name,
+                    "page": page,
+                    "page_url": str(getattr(prepared, "url", "") or ""),
+                    "error_type": "",
+                    "error_message": "",
+                    "returned_items": 0,
+                    "unique_added": 0,
+                }
 
-                articles = payload.get("articles", [])
-                if not isinstance(articles, list):
-                    articles = []
-                page_log["returned_items"] = len(articles)
+                try:
+                    payload = self._fetch_json(endpoint, params=params)
+                    total_results = int(payload.get("totalResults", 0) or 0)
+                    if total_results:
+                        debug["total_results_reported"] = max(int(debug.get("total_results_reported", 0) or 0), total_results)
 
-                page_unique = 0
-                for article in articles:
-                    if not isinstance(article, dict):
-                        continue
-                    article_url = str(article.get("url", "") or "").strip()
-                    if not article_url:
-                        continue
-                    key = _url_key(article_url)
-                    if not key or key in seen:
-                        continue
-                    seen.add(key)
-                    page_unique += 1
+                    articles = payload.get("articles", [])
+                    if not isinstance(articles, list):
+                        articles = []
+                    page_log["returned_items"] = len(articles)
 
-                    source_obj = article.get("source", {}) if isinstance(article.get("source", {}), dict) else {}
-                    published_at = str(article.get("publishedAt", "") or "").strip()
-                    discovered.append(
-                        {
-                            "url": article_url,
-                            "title": _normalize_space(article.get("title", "")) or "Untitled News Article",
-                            "date": _date_to_display(published_at),
-                            "published_at": published_at,
-                            "source_name": _normalize_space(source_obj.get("name", "")),
-                            "source_id": _normalize_space(source_obj.get("id", "")),
-                            "author": _normalize_space(article.get("author", "")),
-                            "description": _normalize_space(article.get("description", "")),
-                            "content_snippet": _normalize_space(article.get("content", "")),
-                        }
-                    )
+                    page_unique = 0
+                    for article in articles:
+                        if not isinstance(article, dict):
+                            continue
+                        article_url = str(article.get("url", "") or "").strip()
+                        if not article_url:
+                            continue
+                        key = _url_key(article_url)
+                        if not key or key in seen:
+                            continue
+                        seen.add(key)
+                        page_unique += 1
 
-                page_log["unique_added"] = page_unique
-                debug["pages"].append(page_log)
+                        source_obj = article.get("source", {}) if isinstance(article.get("source", {}), dict) else {}
+                        published_at = str(article.get("publishedAt", "") or "").strip()
+                        discovered.append(
+                            {
+                                "url": article_url,
+                                "title": _normalize_space(article.get("title", "")) or "Untitled News Article",
+                                "date": _date_to_display(published_at),
+                                "published_at": published_at,
+                                "source_name": _normalize_space(source_obj.get("name", "")),
+                                "source_id": _normalize_space(source_obj.get("id", "")),
+                                "author": _normalize_space(article.get("author", "")),
+                                "description": _normalize_space(article.get("description", "")),
+                                "content_snippet": _normalize_space(article.get("content", "")),
+                            }
+                        )
 
-                if target_count > 0 and len(discovered) >= target_count:
-                    debug["stop_reason"] = f"target_count_reached_{target_count}"
-                    break
-                if len(articles) < page_size:
-                    debug["stop_reason"] = f"short_page_{page}"
-                    break
-                if page_unique == 0:
-                    debug["stop_reason"] = f"no_unique_results_page_{page}"
-                    break
+                    page_log["unique_added"] = page_unique
+                    debug["pages"].append(page_log)
 
-            except Exception as e:
-                page_log["error_type"] = type(e).__name__
-                page_log["error_message"] = str(e)
-                debug["pages"].append(page_log)
-                debug["stop_reason"] = f"error_page_{page}"
-                break
+                    if target_count > 0 and len(discovered) >= target_count:
+                        return f"target_count_reached_{target_count}"
+                    if len(articles) < page_size:
+                        return f"short_page_{page}"
+                    if page_unique == 0:
+                        return f"no_unique_results_page_{page}"
+
+                except Exception as e:
+                    page_log["error_type"] = type(e).__name__
+                    page_log["error_message"] = str(e)
+                    debug["pages"].append(page_log)
+                    return f"error_page_{page}"
+
+            return "max_pages_reached"
+
+        reason = _scan_pass("primary", base_params, max_pages)
+
+        if not discovered and str(base_params.get("domains", "") or "").strip():
+            debug["fallback_no_domains_used"] = True
+            no_domains_params = dict(base_params)
+            no_domains_params.pop("domains", None)
+            reason = _scan_pass("fallback_no_domains", no_domains_params, min(max_pages, 2))
+            debug["fallback_no_domains_reason"] = reason
+
+        if not discovered and str(base_params.get("searchIn", "") or "").strip():
+            debug["fallback_no_search_in_used"] = True
+            no_search_params = dict(base_params)
+            no_search_params.pop("searchIn", None)
+            reason = _scan_pass("fallback_no_search_in", no_search_params, min(max_pages, 2))
+            debug["fallback_no_search_in_reason"] = reason
+
+        if not discovered and str(base_params.get("from", "") or "").strip():
+            base_from_dt = _parse_date_text(str(base_params.get("from", "") or "").strip())
+            if base_from_dt is not None:
+                widened_from_dt = base_from_dt - timedelta(days=7)
+                widened_from = widened_from_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                debug["fallback_widened_window_used"] = True
+                debug["fallback_widened_from"] = widened_from
+                widened_params = dict(base_params)
+                widened_params["from"] = widened_from
+                reason = _scan_pass("fallback_widened_window", widened_params, min(max_pages, 2))
+                debug["fallback_widened_window_reason"] = reason
 
         if not debug.get("stop_reason"):
-            debug["stop_reason"] = "max_pages_reached"
+            debug["stop_reason"] = reason
 
         discovered.sort(
             key=lambda x: _parse_date_text(x.get("published_at", "")) or datetime.min,

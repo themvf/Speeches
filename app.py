@@ -5930,10 +5930,16 @@ elif page == "Extraction":
 
             st.session_state[news_state_key] = discovered_news
             new_count = sum(1 for d in discovered_news if d.get("ingest_status") in {"new", "update_available"})
-            st.success(
-                f"Discovered {len(discovered_news)} news articles "
-                f"({new_count} new/update candidates)."
-            )
+            if discovered_news:
+                st.success(
+                    f"Discovered {len(discovered_news)} news articles "
+                    f"({new_count} new/update candidates)."
+                )
+            else:
+                st.warning(
+                    "Discovery returned 0 articles after fallback passes. "
+                    "Relax query terms, remove domain filters, or increase lookback days."
+                )
             try:
                 dbg = st.session_state.get(news_debug_key, {})
                 if isinstance(dbg, dict):
@@ -5962,11 +5968,20 @@ elif page == "Extraction":
             d4.metric("Reported Results", int(news_debug.get("total_results_reported", 0) or 0))
             d5.metric("Total Unique", int(news_debug.get("total_unique", 0) or 0))
             st.caption(f"Stop reason: `{news_debug.get('stop_reason', '')}`")
+            st.caption(
+                f"Passes: `{', '.join(news_debug.get('passes_run', [])) if isinstance(news_debug.get('passes_run', []), list) else ''}` | "
+                f"No-domains fallback: `{news_debug.get('fallback_no_domains_used', False)}` | "
+                f"No-searchIn fallback: `{news_debug.get('fallback_no_search_in_used', False)}` | "
+                f"Widened-window fallback: `{news_debug.get('fallback_widened_window_used', False)}`"
+            )
+            if str(news_debug.get("fallback_widened_from", "")).strip():
+                st.caption(f"Widened from: `{news_debug.get('fallback_widened_from', '')}`")
             if isinstance(pages_payload, list) and pages_payload:
                 page_df = pd.DataFrame(pages_payload)
                 show_cols = [
                     c
                     for c in [
+                        "pass",
                         "page",
                         "returned_items",
                         "unique_added",
