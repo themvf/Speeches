@@ -34,6 +34,97 @@ def _clean_multiline(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+_INLINE_REMOVE_PHRASES = [
+    "share this article",
+    "copy link",
+    "x (twitter)",
+    "twitter",
+    "linkedin",
+    "facebook",
+    "email",
+    "whatsapp",
+    "telegram",
+    "share",
+]
+
+
+def _strip_inline_boilerplate(line: str) -> str:
+    out = str(line or "")
+    for phrase in _INLINE_REMOVE_PHRASES:
+        out = re.sub(rf"(?i)\b{re.escape(phrase)}\b", " ", out)
+    out = re.sub(r"\s{2,}", " ", out).strip(" |-:\t")
+    return _normalize_space(out)
+
+
+def _is_boilerplate_line(line: str) -> bool:
+    text = _normalize_space(line)
+    if not text:
+        return True
+
+    low = text.lower()
+    if low in {
+        "by",
+        "edited by",
+        "updated",
+        "published",
+        "what to know",
+        "next",
+        "read more",
+        "advertisement",
+    }:
+        return True
+    if re.fullmatch(r"[|:\-•]+", low):
+        return True
+    if re.fullmatch(r"by\s+[a-z][a-z .'-]{1,60}", low):
+        return True
+    if re.fullmatch(r"(updated|published)\s*(on)?\s*[:\-]?\s*.+", low) and len(low.split()) <= 8:
+        return True
+    if "share this article" in low:
+        return True
+    return False
+
+
+def _clean_article_body_text(text: str) -> str:
+    raw = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not raw.strip():
+        return ""
+
+    lines = []
+    seen = set()
+    for raw_line in raw.splitlines():
+        line = _strip_inline_boilerplate(raw_line)
+        if not line or _is_boilerplate_line(line):
+            continue
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(line)
+
+    if not lines:
+        return ""
+
+    paragraphs = []
+    current = ""
+    for line in lines:
+        if not current:
+            current = line
+            continue
+
+        # Merge short, broken lines into one paragraph for readability.
+        if len(line.split()) <= 6 or len(current.split()) < 28:
+            current = f"{current} {line}".strip()
+        else:
+            paragraphs.append(current)
+            current = line
+    if current:
+        paragraphs.append(current)
+
+    out = "\n\n".join(_normalize_space(p) for p in paragraphs if _normalize_space(p))
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return out
+
+
 def _url_key(url: str) -> str:
     raw = str(url or "").strip()
     if not raw:
@@ -123,17 +214,26 @@ def _best_article_text(soup: BeautifulSoup) -> str:
     best_words = 0
     for selector in selectors:
         for node in soup.select(selector):
-            txt = _clean_multiline(node.get_text("\n"))
-            words = len(txt.split())
+            paragraphs = []
+            for block in node.select("p, li"):
+                block_text = _normalize_space(block.get_text(" ", strip=True))
+                if len(block_text.split()) < 5:
+                    continue
+                paragraphs.append(block_text)
+            para_text = "\n\n".join(paragraphs).strip()
+
+            full_text = _clean_multiline(node.get_text("\n"))
+            txt = para_text if len(para_text.split()) >= 100 else full_text
+            words = len(str(txt or "").split())
             if words > best_words:
                 best_text = txt
                 best_words = words
 
     if best_words >= 80:
-        return best_text
+        return _clean_article_body_text(best_text)
 
     body = soup.body or soup
-    return _clean_multiline(body.get_text("\n"))
+    return _clean_article_body_text(_clean_multiline(body.get_text("\n")))
 
 
 class NewsAPIFinancialScraper:
