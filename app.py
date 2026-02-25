@@ -557,6 +557,111 @@ def _upsert_custom_document_record(custom_payload, record):
     return replaced
 
 
+def _remove_custom_document_record(custom_payload, doc_id="", source_url=""):
+    docs_list = custom_payload.get("documents", [])
+    if not isinstance(docs_list, list):
+        docs_list = []
+    target_doc_id = str(doc_id or "").strip()
+    target_url_key = _url_match_key(source_url)
+
+    kept = []
+    removed = None
+    for item in docs_list:
+        if not isinstance(item, dict):
+            continue
+        meta = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        existing_doc_id = str(meta.get("document_id", "") or "").strip()
+        existing_url_key = _url_match_key(meta.get("url", ""))
+        should_remove = (
+            (target_doc_id and existing_doc_id == target_doc_id)
+            or (target_url_key and existing_url_key and existing_url_key == target_url_key)
+        )
+        if should_remove and removed is None:
+            removed = item
+            continue
+        kept.append(item)
+
+    custom_payload["documents"] = kept
+    return removed
+
+
+def _remove_document_source_artifacts(record):
+    if not isinstance(record, dict):
+        return {"local_deleted": False, "gcs_deleted": False}
+
+    metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+    local_deleted = False
+    gcs_deleted = False
+
+    local_path_text = str(metadata.get("source_local_path", "") or "").strip()
+    if local_path_text:
+        try:
+            local_path = Path(local_path_text)
+            if local_path.exists() and local_path.is_file():
+                local_path.unlink()
+                local_deleted = True
+            parent = local_path.parent
+            if parent.exists() and parent.is_dir():
+                try:
+                    parent.rmdir()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    gcs_path = str(metadata.get("source_gcs_path", "") or "").strip()
+    if gcs_path:
+        storage = _get_gcs_storage()
+        if storage is not None:
+            try:
+                blob = storage.bucket.blob(gcs_path)
+                if blob.exists():
+                    blob.delete()
+                    gcs_deleted = True
+            except Exception:
+                pass
+
+    return {"local_deleted": local_deleted, "gcs_deleted": gcs_deleted}
+
+
+def _remove_document_from_enrichment_and_briefs(doc_id):
+    target_doc_id = str(doc_id or "").strip()
+    enrichment_removed = False
+    briefs_removed = 0
+
+    if target_doc_id:
+        enrichment_state = _load_enrichment_state()
+        entries = enrichment_state.get("entries", {}) if isinstance(enrichment_state, dict) else {}
+        if isinstance(entries, dict) and target_doc_id in entries:
+            entries.pop(target_doc_id, None)
+            enrichment_state["entries"] = entries
+            _save_enrichment_state(enrichment_state)
+            enrichment_removed = True
+
+        briefs_payload = _load_policy_briefs()
+        briefs = briefs_payload.get("briefs", []) if isinstance(briefs_payload, dict) else []
+        if isinstance(briefs, list):
+            kept = []
+            for b in briefs:
+                if not isinstance(b, dict):
+                    continue
+                brief_doc_id = str(b.get("doc_id", "") or "").strip()
+                source = b.get("source_doc", {}) if isinstance(b.get("source_doc", {}), dict) else {}
+                source_doc_id = str(source.get("doc_id", "") or "").strip()
+                if brief_doc_id == target_doc_id or source_doc_id == target_doc_id:
+                    briefs_removed += 1
+                    continue
+                kept.append(b)
+            if briefs_removed > 0:
+                briefs_payload["briefs"] = kept
+                _save_policy_briefs(briefs_payload)
+
+    return {
+        "enrichment_removed": enrichment_removed,
+        "briefs_removed": briefs_removed,
+    }
+
+
 def _build_knowledge_data(sec_raw_data, custom_docs_payload):
     sec_speeches = sec_raw_data.get("speeches", []) if isinstance(sec_raw_data, dict) else []
     custom_speeches = _custom_docs_as_speeches(custom_docs_payload)
@@ -7600,10 +7705,16 @@ elif page == "Document Library":
         st.info("No ingested custom documents yet. Use the **Extraction** page to add documents.")
     else:
         rows = []
+        doc_map = {}
         for item in custom_docs:
             m = item.get("metadata", {})
+            doc_id = str(m.get("document_id", "") or "").strip()
+            if not doc_id:
+                doc_id = _corpus_doc_id(item)
+            doc_map[doc_id] = item
             rows.append(
                 {
+                    "doc_id": doc_id,
                     "date": m.get("date", ""),
                     "title": m.get("title", ""),
                     "organization": m.get("organization", ""),
@@ -7637,3 +7748,66 @@ elif page == "Document Library":
             use_container_width=True,
             hide_index=True,
         )
+
+        st.markdown("---")
+        st.subheader("Delete Document")
+        if filtered.empty:
+            st.caption("No documents match current filters.")
+        else:
+            filtered_ids = filtered["doc_id"].astype(str).tolist()
+            filtered_map = {str(r["doc_id"]): r for _, r in filtered.iterrows()}
+            selected_delete_doc_id = st.selectbox(
+                "Select Document To Delete",
+                filtered_ids,
+                format_func=lambda d: (
+                    f"{filtered_map.get(d, {}).get('date', '')} | "
+                    f"{filtered_map.get(d, {}).get('title', d)}"
+                ),
+                key="doc_library_delete_doc_id",
+            )
+            selected_delete_row = filtered_map.get(selected_delete_doc_id, {})
+            selected_delete_doc = doc_map.get(selected_delete_doc_id, {})
+            selected_delete_url = str(selected_delete_row.get("url", "") or "").strip()
+
+            st.caption(
+                f"Type: `{selected_delete_row.get('doc_type', '')}` | "
+                f"Source: `{selected_delete_row.get('source_kind', '')}` | "
+                f"Organization: `{selected_delete_row.get('organization', '')}`"
+            )
+            if selected_delete_url:
+                st.markdown(f"[Open Source]({selected_delete_url})")
+
+            confirm_delete = st.checkbox(
+                "I understand this permanently removes the document from corpus metadata, enrichment state, and saved policy briefs.",
+                key=f"confirm_delete_doc_{selected_delete_doc_id}",
+            )
+            if st.button(
+                "Delete Selected Document",
+                type="secondary",
+                disabled=(not confirm_delete),
+                key="doc_library_delete_button",
+            ):
+                payload = _load_custom_documents()
+                removed = _remove_custom_document_record(
+                    payload,
+                    doc_id=selected_delete_doc_id,
+                    source_url=selected_delete_url,
+                )
+                if not removed:
+                    st.error("Document was not found in custom documents payload.")
+                else:
+                    _save_custom_documents(payload)
+                    cleanup = _remove_document_from_enrichment_and_briefs(selected_delete_doc_id)
+                    artifacts = _remove_document_source_artifacts(removed or selected_delete_doc)
+                    st.success("Document deleted.")
+                    st.caption(
+                        f"Cleanup: enrichment removed=`{cleanup.get('enrichment_removed', False)}` | "
+                        f"policy briefs removed=`{cleanup.get('briefs_removed', 0)}` | "
+                        f"local source removed=`{artifacts.get('local_deleted', False)}` | "
+                        f"GCS source removed=`{artifacts.get('gcs_deleted', False)}`"
+                    )
+                    st.info(
+                        "Run **Extraction -> Knowledge Index (Vector Store) -> Build/Sync Knowledge Index** "
+                        "for the affected organization to remove it from retrieval results."
+                    )
+                    st.rerun()
