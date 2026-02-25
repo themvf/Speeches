@@ -9,7 +9,7 @@ Streamlit dashboard for exploring and analyzing SEC Commissioner speeches. Inclu
 - **Topic Analysis** - 6-category topic relevance (Digital Assets, Enforcement, Market Structure, Innovation, Investor Protection, Regulatory Framework)
 - **Speech Explorer** - Full-text search and reading with filters
 - **Extraction Workspace** - Discover and ingest SEC speeches plus connector documents from one admin section
-- **Document Connectors** - Ingest SEC policy docs, DOJ USAO press releases, and Federal Reserve speeches/testimony into the shared knowledge base
+- **Document Connectors** - Ingest SEC policy docs, DOJ USAO press releases, Federal Reserve speeches/testimony, and targeted NewsAPI articles into the shared knowledge base
 
 ## Quick Start
 
@@ -58,6 +58,12 @@ gsutil cp data/all_speeches_final.json gs://your-bucket-name/all_speeches.json
 
 **Streamlit Cloud:** Go to your app's Settings > Secrets and paste the contents of your `secrets.toml`.
 
+Required for retrieval/index/chat:
+- `[openai].api_key`
+
+Optional connector key:
+- `[newsapi].api_key` (enables the "News Connector: Financial Fraud & Policy" in Extraction)
+
 ## Scraping New Speeches
 
 The scraper uses `curl_cffi` + `BeautifulSoup` to fetch speeches directly from SEC.gov (no API keys needed). `curl_cffi` is required because SEC.gov blocks standard HTTP clients via TLS fingerprinting.
@@ -78,6 +84,7 @@ gcs_storage.py          # Google Cloud Storage read/write
 sec_scraper_free.py     # Free SEC.gov scraper (curl_cffi)
 doj_usao_press_release_scraper.py  # DOJ USAO press-release scraper
 federal_reserve_speech_testimony_scraper.py  # Federal Reserve speeches/testimony scraper
+newsapi_financial_scraper.py  # NewsAPI discovery + article extractor
 speech_analyzer.py      # Speech parsing and extraction
 analysis_pipeline.py    # Sentiment, topic, commissioner analysis
 extract_all_speeches.py # Batch extraction script (CLI)

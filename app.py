@@ -68,6 +68,19 @@ def _get_openai_api_key():
         return None
 
 
+def _get_newsapi_api_key():
+    """Return NewsAPI key from Streamlit secrets, else None."""
+    try:
+        api_key = st.secrets["newsapi"]["api_key"]
+        api_key = str(api_key).strip()
+        if not api_key:
+            raise ValueError("newsapi.api_key is empty")
+        return api_key
+    except Exception as e:
+        st.session_state["_newsapi_error"] = str(e)
+        return None
+
+
 def _get_openai_client():
     """Create an OpenAI client using secrets-based API key."""
     api_key = _get_openai_api_key()
@@ -5742,6 +5755,374 @@ elif page == "Extraction":
                         st.write(f"- {msg}")
             except Exception as e:
                 st.error(f"Federal Reserve ingest failed: {e}")
+
+    st.markdown("---")
+    st.subheader("News Connector: Financial Fraud & Policy")
+    st.caption(
+        "Discover and ingest targeted financial-regulatory news via NewsAPI "
+        "(metadata-first discovery, then selective full-text extraction)."
+    )
+
+    news_api_key = _get_newsapi_api_key()
+    if not news_api_key:
+        st.warning(
+            "NewsAPI key is not configured. Add `[newsapi].api_key` in Streamlit secrets "
+            "to enable this connector."
+        )
+
+    news_default_query = (
+        '("securities fraud" OR "wire fraud" OR "market manipulation" OR "insider trading" OR '
+        '"ponzi" OR "crypto enforcement" OR "stablecoin regulation" OR "money laundering" OR AML) '
+        "AND (SEC OR DOJ OR CFTC OR Treasury OR FinCEN OR Congress)"
+    )
+    news_query = st.text_area(
+        "NewsAPI Query",
+        value=news_default_query,
+        height=110,
+        key="newsapi_query",
+        help="Use a focused query to reduce noise and API calls.",
+    ).strip()
+
+    news_col1, news_col2, news_col3 = st.columns(3)
+    with news_col1:
+        news_lookback_days = st.slider(
+            "Lookback Window (days)",
+            min_value=1,
+            max_value=30,
+            value=3,
+            key="newsapi_lookback_days",
+        )
+        news_max_pages = st.slider(
+            "Discovery Pages To Scan",
+            min_value=1,
+            max_value=10,
+            value=1,
+            key="newsapi_max_pages",
+        )
+    with news_col2:
+        news_page_size = st.slider(
+            "Page Size",
+            min_value=10,
+            max_value=100,
+            value=50,
+            step=10,
+            key="newsapi_page_size",
+        )
+        news_target_count = st.number_input(
+            "Target Articles To Keep",
+            min_value=10,
+            max_value=500,
+            value=100,
+            step=10,
+            key="newsapi_target_count",
+        )
+    with news_col3:
+        news_sort_by = st.selectbox(
+            "Sort By",
+            ["publishedAt", "relevancy", "popularity"],
+            index=0,
+            key="newsapi_sort_by",
+        )
+        news_org_label = st.text_input(
+            "Organization Label",
+            value="Financial News",
+            key="newsapi_org_label",
+            help="Documents from this connector are grouped under this organization for indexing.",
+        ).strip() or "Financial News"
+
+    domain_default = "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com"
+    domains_col1, domains_col2 = st.columns(2)
+    with domains_col1:
+        news_domains = st.text_input(
+            "Domain Whitelist (optional, comma-separated)",
+            value=domain_default,
+            key="newsapi_domains",
+            help="Limit discovery to these domains to reduce noise and API usage.",
+        ).strip()
+    with domains_col2:
+        news_exclude_domains = st.text_input(
+            "Exclude Domains (optional, comma-separated)",
+            value="",
+            key="newsapi_exclude_domains",
+        ).strip()
+
+    news_tags_csv = st.text_input(
+        "News Tags (comma-separated)",
+        value="news,financial-regulation,fraud,crypto,securities",
+        key="newsapi_tags_csv",
+    ).strip()
+
+    news_btn_col1, news_btn_col2 = st.columns(2)
+    with news_btn_col1:
+        discover_news = st.button(
+            "Discover News Articles",
+            key="discover_newsapi_articles",
+            disabled=(not bool(news_api_key)),
+        )
+    with news_btn_col2:
+        clear_news = st.button("Clear News Results", key="clear_newsapi_articles")
+
+    news_state_key = "newsapi_discovered"
+    news_debug_key = "newsapi_discovery_debug"
+    if news_state_key not in st.session_state:
+        st.session_state[news_state_key] = []
+    if news_debug_key not in st.session_state:
+        st.session_state[news_debug_key] = {}
+
+    if clear_news:
+        st.session_state[news_state_key] = []
+        st.session_state[news_debug_key] = {}
+
+    if discover_news:
+        try:
+            from newsapi_financial_scraper import NewsAPIFinancialScraper
+
+            with st.spinner("Discovering news articles from NewsAPI..."):
+                news_scraper = NewsAPIFinancialScraper(api_key=news_api_key)
+                now_utc = datetime.utcnow()
+                from_utc = now_utc - timedelta(days=int(news_lookback_days))
+                discovered_news = news_scraper.discover_documents(
+                    query=news_query,
+                    max_pages=int(news_max_pages),
+                    page_size=int(news_page_size),
+                    from_date=from_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    to_date=now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    sort_by=news_sort_by,
+                    domains=news_domains,
+                    exclude_domains=news_exclude_domains,
+                    search_in="title,description",
+                    target_count=int(news_target_count),
+                )
+                debug_payload = getattr(news_scraper, "last_discovery_debug", {})
+                if isinstance(debug_payload, dict):
+                    st.session_state[news_debug_key] = debug_payload
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in discovered_news:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(
+                        existing_meta.get("published_at")
+                        or existing_meta.get("published_date")
+                        or existing_meta.get("date")
+                        or ""
+                    ).strip()
+                    incoming_date = str(entry.get("published_at", "") or entry.get("date", "")).strip()
+                    if incoming_date and existing_date and incoming_date != existing_date:
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+                entry["query"] = news_query
+
+            st.session_state[news_state_key] = discovered_news
+            new_count = sum(1 for d in discovered_news if d.get("ingest_status") in {"new", "update_available"})
+            st.success(
+                f"Discovered {len(discovered_news)} news articles "
+                f"({new_count} new/update candidates)."
+            )
+            try:
+                dbg = st.session_state.get(news_debug_key, {})
+                if isinstance(dbg, dict):
+                    dbg["ingest_status_counts"] = {
+                        "new": sum(1 for d in discovered_news if d.get("ingest_status") == "new"),
+                        "update_available": sum(1 for d in discovered_news if d.get("ingest_status") == "update_available"),
+                        "existing": sum(1 for d in discovered_news if d.get("ingest_status") == "existing"),
+                        "existing_in_speeches": sum(1 for d in discovered_news if d.get("ingest_status") == "existing_in_speeches"),
+                    }
+                    st.session_state[news_debug_key] = dbg
+            except Exception:
+                pass
+        except Exception as e:
+            st.session_state[news_debug_key] = {"error": str(e)}
+            st.error(f"NewsAPI discovery failed: {e}")
+
+    news_discovered = st.session_state.get(news_state_key, [])
+    news_debug = st.session_state.get(news_debug_key, {})
+    if isinstance(news_debug, dict) and news_debug:
+        with st.expander("NewsAPI Discovery Debug", expanded=False):
+            d1, d2, d3, d4, d5 = st.columns(5)
+            pages_payload = news_debug.get("pages", [])
+            d1.metric("Requested Pages", int(news_debug.get("max_pages_requested", 0) or 0))
+            d2.metric("Pages Logged", len(pages_payload if isinstance(pages_payload, list) else []))
+            d3.metric("Page Size", int(news_debug.get("page_size", 0) or 0))
+            d4.metric("Reported Results", int(news_debug.get("total_results_reported", 0) or 0))
+            d5.metric("Total Unique", int(news_debug.get("total_unique", 0) or 0))
+            st.caption(f"Stop reason: `{news_debug.get('stop_reason', '')}`")
+            if isinstance(pages_payload, list) and pages_payload:
+                page_df = pd.DataFrame(pages_payload)
+                show_cols = [
+                    c
+                    for c in [
+                        "page",
+                        "returned_items",
+                        "unique_added",
+                        "error_type",
+                        "error_message",
+                        "page_url",
+                    ]
+                    if c in page_df.columns
+                ]
+                st.dataframe(page_df[show_cols], use_container_width=True, hide_index=True)
+            st.json(news_debug)
+
+    if news_discovered:
+        news_df = pd.DataFrame(news_discovered)
+        news_df = _sort_table_by_date(news_df, date_col="date")
+        show_cols = [c for c in ["date", "source_name", "title", "ingest_status", "url"] if c in news_df.columns]
+        st.dataframe(
+            news_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        news_filter = st.selectbox(
+            "News Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="newsapi_ingest_filter",
+        )
+        if news_filter == "New/Updates Only":
+            news_candidates = [d for d in news_discovered if d.get("ingest_status") in {"new", "update_available"}]
+        else:
+            news_candidates = list(news_discovered)
+
+        news_count = len(news_candidates)
+        if news_count <= 0:
+            news_limit = 0
+            st.caption("No news articles match the selected ingest filter.")
+        elif news_count == 1:
+            news_limit = 1
+            st.caption("1 news article selected for ingest.")
+        else:
+            news_limit = st.slider(
+                "News Articles To Ingest",
+                min_value=1,
+                max_value=news_count,
+                value=min(20, news_count),
+                key="newsapi_ingest_limit",
+            )
+        st.caption(f"{news_count} news articles currently match this ingest selection.")
+
+        if st.button("Run News Extraction", disabled=(news_limit <= 0 or not bool(news_api_key)), key="ingest_newsapi_articles"):
+            try:
+                from newsapi_financial_scraper import NewsAPIFinancialScraper
+
+                news_scraper = NewsAPIFinancialScraper(api_key=news_api_key)
+                progress = st.progress(0, text="Starting news ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = news_candidates[:news_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / news_limit,
+                        text=f"Ingesting {idx}/{news_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = news_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_description=entry.get("description", ""),
+                            fallback_content=entry.get("content_snippet", ""),
+                            fallback_source_name=entry.get("source_name", ""),
+                            fallback_author=entry.get("author", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 30:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_format = str(data.get("source_format", "") or "html").strip().lower()
+                        source_ext = ".pdf" if source_format == "pdf" else ".html"
+                        source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip()
+                        if not source_name:
+                            source_name = f"news-article-{idx}{source_ext}"
+                        elif "." not in source_name:
+                            source_name += source_ext
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        source_name_text = str(data.get("source_name", "") or entry.get("source_name", "")).strip()
+                        author_text = str(data.get("author", "") or entry.get("author", "")).strip()
+                        speaker_text = source_name_text or author_text or "News Desk"
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization=news_org_label,
+                            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                            speaker=speaker_text,
+                            doc_date=doc_date_value,
+                            doc_type="News Article",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=source_ext,
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv=news_tags_csv,
+                            source_kind="newsapi_article",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "newsapi_article"
+                        rm["news_query"] = str(entry.get("query", "") or news_query)
+                        rm["source_name"] = source_name_text
+                        rm["source_id"] = str(entry.get("source_id", "") or "").strip()
+                        rm["author"] = author_text
+                        rm["published_date"] = str(entry.get("date", "") or "").strip()
+                        rm["published_at"] = str(entry.get("published_at", "") or "").strip()
+                        rm["description"] = str(data.get("description", "") or entry.get("description", "")).strip()
+                        rm["content_snippet"] = str(entry.get("content_snippet", "") or "").strip()
+                        rm["newsapi_extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+                        rm["newsapi_domains"] = news_domains
+                        rm["newsapi_exclude_domains"] = news_exclude_domains
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="News ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new news docs and updated {saved_updates} existing news docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} news articles failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"News ingest failed: {e}")
 
     st.markdown("---")
     st.subheader("Knowledge Index (Vector Store)")
