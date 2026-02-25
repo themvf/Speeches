@@ -3685,6 +3685,59 @@ def _score_value(value):
         return -1.0
 
 
+def _normalize_source_snippet(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _extract_doc_id_from_filename(filename):
+    text = str(filename or "").strip()
+    if not text:
+        return ""
+    lower_name = text.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].strip().lower()
+    m = re.search(r"\[([a-f0-9]{24})\]\.txt$", lower_name)
+    if m:
+        return m.group(1)
+    m = re.search(r"([a-f0-9]{24})\.txt$", lower_name)
+    if m:
+        return m.group(1)
+    return ""
+
+
+def _build_doc_title_lookup(raw_data_obj):
+    lookup = {}
+    for speech in raw_data_obj.get("speeches", []):
+        if not isinstance(speech, dict):
+            continue
+        doc_id = _corpus_doc_id(speech)
+        title = str((speech.get("metadata", {}) if isinstance(speech.get("metadata", {}), dict) else {}).get("title", "") or "").strip()
+        if doc_id and title:
+            lookup[doc_id] = title
+    return lookup
+
+
+def _format_source_display_name(result, title_lookup=None):
+    filename = str(result.get("filename", "") or "").strip()
+    if not filename:
+        return "unknown"
+
+    file_stem = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if not re.fullmatch(r"[a-f0-9]{24}\.txt", file_stem.lower()):
+        return filename
+
+    doc_id = _extract_doc_id_from_filename(filename)
+    if not doc_id:
+        return filename
+
+    title_lookup = title_lookup or {}
+    title = str(title_lookup.get(doc_id, "") or "").strip()
+    if not title:
+        return filename
+    return f"{title} [{doc_id}]"
+
+
 def _merge_file_search_results(result_batches, max_results=24):
     merged = {}
     for batch in result_batches:
@@ -3692,7 +3745,8 @@ def _merge_file_search_results(result_batches, max_results=24):
             filename = str(result.get("filename", "") or "").strip()
             file_id = str(result.get("file_id", "") or "").strip()
             snippet = str(result.get("snippet", "") or "").strip()
-            dedupe_key = (file_id or filename, snippet)
+            snippet_key = _normalize_source_snippet(snippet)[:220]
+            dedupe_key = (file_id or filename, snippet_key)
             if dedupe_key not in merged:
                 merged[dedupe_key] = {
                     "filename": filename,
@@ -4117,6 +4171,7 @@ st.sidebar.markdown(f"**{speaker_df['speaker_individual'].nunique()} SEC speaker
 st.sidebar.markdown(f"**{len(custom_documents)} uploaded docs**")
 st.sidebar.markdown(f"**{len(knowledge_data.get('speeches', []))} total corpus docs**")
 st.sidebar.markdown(f"**{kb_words:,} corpus words**")
+doc_title_lookup = _build_doc_title_lookup(knowledge_data)
 
 # GCS status indicator — with debug info
 _gcs_debug = []
@@ -4649,7 +4704,8 @@ elif page == "Agent Chat":
                     for r in msg["results"][:8]:
                         score = r.get("score")
                         score_txt = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
-                        st.markdown(f"- `{r.get('filename', 'unknown')}`{score_txt}")
+                        display_name = _format_source_display_name(r, title_lookup=doc_title_lookup)
+                        st.markdown(f"- `{display_name}`{score_txt}")
                         if r.get("snippet"):
                             st.caption(r["snippet"])
 
@@ -4805,7 +4861,8 @@ elif page == "Agent Chat":
                         for r in sources[:8]:
                             score = r.get("score")
                             score_txt = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
-                            st.markdown(f"- `{r.get('filename', 'unknown')}`{score_txt}")
+                            display_name = _format_source_display_name(r, title_lookup=doc_title_lookup)
+                            st.markdown(f"- `{display_name}`{score_txt}")
                             if r.get("snippet"):
                                 st.caption(r["snippet"])
 
@@ -5091,7 +5148,8 @@ elif page == "McKinsey Report":
                 for r in sources[:10]:
                     score = r.get("score")
                     score_txt = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
-                    st.markdown(f"- `{r.get('filename', 'unknown')}`{score_txt}")
+                    display_name = _format_source_display_name(r, title_lookup=doc_title_lookup)
+                    st.markdown(f"- `{display_name}`{score_txt}")
                     if r.get("snippet"):
                         st.caption(r["snippet"])
 
