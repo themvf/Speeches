@@ -36,6 +36,17 @@ ENRICHMENT_PIPELINE_VERSION = "v1"
 POLICY_BRIEFS_BLOB_NAME = "policy_delta_briefs.json"
 POLICY_BRIEFS_LOCAL_PATH = Path("data/policy_delta_briefs.json")
 POLICY_BRIEFING_VERSION = "v1"
+NEWS_CONNECTOR_SETTINGS_BLOB_NAME = "news_connector_settings.json"
+NEWS_CONNECTOR_SETTINGS_LOCAL_PATH = Path("data/news_connector_settings.json")
+NEWSAPI_DEFAULT_QUERY = (
+    '("securities fraud" OR "wire fraud" OR "market manipulation" OR "insider trading" OR '
+    '"ponzi" OR "crypto enforcement" OR "stablecoin regulation" OR "money laundering" OR AML) '
+    "AND (SEC OR DOJ OR CFTC OR Treasury OR FinCEN OR Congress)"
+)
+NEWSAPI_DEFAULT_DOMAINS = (
+    "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com"
+)
+NEWSAPI_DEFAULT_TAGS = "news,financial-regulation,fraud,crypto,securities"
 
 
 # --- GCS helpers ---
@@ -806,6 +817,107 @@ def _save_policy_briefs(payload):
         )
     except Exception as e:
         st.session_state["_policy_briefs_error"] = f"GCS policy-brief save failed: {e}"
+
+
+def _empty_news_connector_settings():
+    return {
+        "updated_at": "",
+        "query": NEWSAPI_DEFAULT_QUERY,
+        "lookback_days": 3,
+        "max_pages": 1,
+        "page_size": 50,
+        "target_count": 100,
+        "sort_by": "publishedAt",
+        "organization_label": "Financial News",
+        "domains": NEWSAPI_DEFAULT_DOMAINS,
+        "exclude_domains": "",
+        "tags_csv": NEWSAPI_DEFAULT_TAGS,
+    }
+
+
+def _normalize_news_connector_settings(payload):
+    base = _empty_news_connector_settings()
+    if not isinstance(payload, dict):
+        payload = {}
+
+    def _clamp_int(value, default_value, min_value, max_value):
+        try:
+            num = int(value)
+        except Exception:
+            num = int(default_value)
+        return max(int(min_value), min(int(max_value), num))
+
+    sort_by = str(payload.get("sort_by", base["sort_by"]) or base["sort_by"]).strip()
+    if sort_by not in {"publishedAt", "relevancy", "popularity"}:
+        sort_by = base["sort_by"]
+
+    out = {
+        "updated_at": str(payload.get("updated_at", "") or ""),
+        "query": str(payload.get("query", base["query"]) or "").strip() or base["query"],
+        "lookback_days": _clamp_int(payload.get("lookback_days", base["lookback_days"]), base["lookback_days"], 1, 30),
+        "max_pages": _clamp_int(payload.get("max_pages", base["max_pages"]), base["max_pages"], 1, 10),
+        "page_size": _clamp_int(payload.get("page_size", base["page_size"]), base["page_size"], 10, 100),
+        "target_count": _clamp_int(payload.get("target_count", base["target_count"]), base["target_count"], 10, 500),
+        "sort_by": sort_by,
+        "organization_label": str(payload.get("organization_label", base["organization_label"]) or "").strip() or base["organization_label"],
+        "domains": str(payload.get("domains", base["domains"]) or "").strip(),
+        "exclude_domains": str(payload.get("exclude_domains", base["exclude_domains"]) or "").strip(),
+        "tags_csv": str(payload.get("tags_csv", base["tags_csv"]) or "").strip() or base["tags_csv"],
+    }
+    return out
+
+
+def _load_news_connector_settings_local():
+    if not NEWS_CONNECTOR_SETTINGS_LOCAL_PATH.exists():
+        return _empty_news_connector_settings()
+    try:
+        with open(NEWS_CONNECTOR_SETTINGS_LOCAL_PATH, "r", encoding="utf-8") as f:
+            return _normalize_news_connector_settings(json.load(f))
+    except Exception:
+        return _empty_news_connector_settings()
+
+
+def _save_news_connector_settings_local(payload):
+    payload = _normalize_news_connector_settings(payload)
+    NEWS_CONNECTOR_SETTINGS_LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(NEWS_CONNECTOR_SETTINGS_LOCAL_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+def _load_news_connector_settings():
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            blob = storage.bucket.blob(NEWS_CONNECTOR_SETTINGS_BLOB_NAME)
+            if blob.exists():
+                payload = _normalize_news_connector_settings(
+                    json.loads(blob.download_as_text(encoding="utf-8"))
+                )
+                _save_news_connector_settings_local(payload)
+                st.session_state.pop("_news_settings_error", None)
+                return payload
+        except Exception as e:
+            st.session_state["_news_settings_error"] = f"GCS news-settings load failed: {e}"
+    return _load_news_connector_settings_local()
+
+
+def _save_news_connector_settings(payload):
+    payload = _normalize_news_connector_settings(payload)
+    payload["updated_at"] = _utc_now_iso()
+    _save_news_connector_settings_local(payload)
+    st.session_state.pop("_news_settings_error", None)
+
+    storage = _get_gcs_storage()
+    if storage is None:
+        return
+    try:
+        blob = storage.bucket.blob(NEWS_CONNECTOR_SETTINGS_BLOB_NAME)
+        blob.upload_from_string(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            content_type="application/json",
+        )
+    except Exception as e:
+        st.session_state["_news_settings_error"] = f"GCS news-settings save failed: {e}"
 
 
 def _upsert_policy_delta_brief(payload, record):
@@ -5769,15 +5881,15 @@ elif page == "Extraction":
             "NewsAPI key is not configured. Add `[newsapi].api_key` in Streamlit secrets "
             "to enable this connector."
         )
+    news_settings_saved = _load_news_connector_settings()
+    if str(news_settings_saved.get("updated_at", "")).strip():
+        st.caption(f"Saved settings last updated: `{news_settings_saved.get('updated_at', '')}`")
+    if st.session_state.get("_news_settings_error"):
+        st.warning(st.session_state.get("_news_settings_error"))
 
-    news_default_query = (
-        '("securities fraud" OR "wire fraud" OR "market manipulation" OR "insider trading" OR '
-        '"ponzi" OR "crypto enforcement" OR "stablecoin regulation" OR "money laundering" OR AML) '
-        "AND (SEC OR DOJ OR CFTC OR Treasury OR FinCEN OR Congress)"
-    )
     news_query = st.text_area(
         "NewsAPI Query",
-        value=news_default_query,
+        value=str(news_settings_saved.get("query", NEWSAPI_DEFAULT_QUERY) or NEWSAPI_DEFAULT_QUERY),
         height=110,
         key="newsapi_query",
         help="Use a focused query to reduce noise and API calls.",
@@ -5789,14 +5901,14 @@ elif page == "Extraction":
             "Lookback Window (days)",
             min_value=1,
             max_value=30,
-            value=3,
+            value=int(news_settings_saved.get("lookback_days", 3) or 3),
             key="newsapi_lookback_days",
         )
         news_max_pages = st.slider(
             "Discovery Pages To Scan",
             min_value=1,
             max_value=10,
-            value=1,
+            value=int(news_settings_saved.get("max_pages", 1) or 1),
             key="newsapi_max_pages",
         )
     with news_col2:
@@ -5804,7 +5916,7 @@ elif page == "Extraction":
             "Page Size",
             min_value=10,
             max_value=100,
-            value=50,
+            value=int(news_settings_saved.get("page_size", 50) or 50),
             step=10,
             key="newsapi_page_size",
         )
@@ -5812,47 +5924,64 @@ elif page == "Extraction":
             "Target Articles To Keep",
             min_value=10,
             max_value=500,
-            value=100,
+            value=int(news_settings_saved.get("target_count", 100) or 100),
             step=10,
             key="newsapi_target_count",
         )
     with news_col3:
+        sort_options = ["publishedAt", "relevancy", "popularity"]
+        sort_saved = str(news_settings_saved.get("sort_by", "publishedAt") or "publishedAt").strip()
+        sort_idx = sort_options.index(sort_saved) if sort_saved in sort_options else 0
         news_sort_by = st.selectbox(
             "Sort By",
-            ["publishedAt", "relevancy", "popularity"],
-            index=0,
+            sort_options,
+            index=sort_idx,
             key="newsapi_sort_by",
         )
         news_org_label = st.text_input(
             "Organization Label",
-            value="Financial News",
+            value=str(news_settings_saved.get("organization_label", "Financial News") or "Financial News"),
             key="newsapi_org_label",
             help="Documents from this connector are grouped under this organization for indexing.",
         ).strip() or "Financial News"
 
-    domain_default = "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com"
     domains_col1, domains_col2 = st.columns(2)
     with domains_col1:
         news_domains = st.text_input(
             "Domain Whitelist (optional, comma-separated)",
-            value=domain_default,
+            value=str(news_settings_saved.get("domains", NEWSAPI_DEFAULT_DOMAINS) or NEWSAPI_DEFAULT_DOMAINS),
             key="newsapi_domains",
             help="Limit discovery to these domains to reduce noise and API usage.",
         ).strip()
     with domains_col2:
         news_exclude_domains = st.text_input(
             "Exclude Domains (optional, comma-separated)",
-            value="",
+            value=str(news_settings_saved.get("exclude_domains", "") or ""),
             key="newsapi_exclude_domains",
         ).strip()
 
     news_tags_csv = st.text_input(
         "News Tags (comma-separated)",
-        value="news,financial-regulation,fraud,crypto,securities",
+        value=str(news_settings_saved.get("tags_csv", NEWSAPI_DEFAULT_TAGS) or NEWSAPI_DEFAULT_TAGS),
         key="newsapi_tags_csv",
     ).strip()
 
-    news_btn_col1, news_btn_col2 = st.columns(2)
+    news_settings_payload = _normalize_news_connector_settings(
+        {
+            "query": news_query,
+            "lookback_days": int(news_lookback_days),
+            "max_pages": int(news_max_pages),
+            "page_size": int(news_page_size),
+            "target_count": int(news_target_count),
+            "sort_by": news_sort_by,
+            "organization_label": news_org_label,
+            "domains": news_domains,
+            "exclude_domains": news_exclude_domains,
+            "tags_csv": news_tags_csv,
+        }
+    )
+
+    news_btn_col1, news_btn_col2, news_btn_col3 = st.columns(3)
     with news_btn_col1:
         discover_news = st.button(
             "Discover News Articles",
@@ -5860,6 +5989,8 @@ elif page == "Extraction":
             disabled=(not bool(news_api_key)),
         )
     with news_btn_col2:
+        save_news_settings = st.button("Save News Settings", key="save_newsapi_settings")
+    with news_btn_col3:
         clear_news = st.button("Clear News Results", key="clear_newsapi_articles")
 
     news_state_key = "newsapi_discovered"
@@ -5873,10 +6004,15 @@ elif page == "Extraction":
         st.session_state[news_state_key] = []
         st.session_state[news_debug_key] = {}
 
+    if save_news_settings:
+        _save_news_connector_settings(news_settings_payload)
+        st.success("Saved News connector settings to local state and GCS (if configured).")
+
     if discover_news:
         try:
             from newsapi_financial_scraper import NewsAPIFinancialScraper
 
+            _save_news_connector_settings(news_settings_payload)
             with st.spinner("Discovering news articles from NewsAPI..."):
                 news_scraper = NewsAPIFinancialScraper(api_key=news_api_key)
                 now_utc = datetime.utcnow()
