@@ -48,6 +48,9 @@ NEWSAPI_DEFAULT_DOMAINS = (
     "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com"
 )
 NEWSAPI_DEFAULT_TAGS = "news,financial-regulation,fraud,crypto,securities"
+AGENT_CHAT_QUALITY_BLOB_NAME = "agent_chat_quality_log.json"
+AGENT_CHAT_QUALITY_LOCAL_PATH = Path("data/agent_chat_quality_log.json")
+AGENT_CHAT_QUALITY_VERSION = "v1"
 
 
 # --- GCS helpers ---
@@ -708,6 +711,186 @@ def _infer_source_kind(metadata):
     return "document"
 
 
+def _extract_release_no(text="", url=""):
+    blob = f"{text}\n{url}"
+    match = re.search(r"\bLR[-\s]?(\d{3,})\b", str(blob or ""), flags=re.IGNORECASE)
+    if match:
+        return f"LR-{match.group(1)}"
+    return ""
+
+
+def _normalize_enforcement_metadata(payload):
+    allowed_action_types = {"filing", "settlement", "judgment", "dismissal", "order", "other", "unknown"}
+    allowed_forums = {"federal_court", "administrative", "state_court", "unknown"}
+    allowed_outcomes = {"pending", "resolved", "partial", "unknown"}
+
+    if not isinstance(payload, dict):
+        payload = {}
+
+    release_no = str(payload.get("release_no", "") or "").strip().upper()
+    if release_no:
+        release_no = release_no.replace(" ", "-")
+        if release_no.startswith("LR") and not release_no.startswith("LR-") and len(release_no) > 2:
+            release_no = "LR-" + release_no[2:].lstrip("-")
+        parsed = _extract_release_no(release_no)
+        if parsed:
+            release_no = parsed
+
+    action_type = str(payload.get("action_type", "") or "").strip().lower()
+    if action_type not in allowed_action_types:
+        action_type = "unknown"
+
+    forum = str(payload.get("forum", "") or "").strip().lower()
+    if forum not in allowed_forums:
+        forum = "unknown"
+
+    outcome_status = str(payload.get("outcome_status", "") or "").strip().lower()
+    if outcome_status not in allowed_outcomes:
+        outcome_status = "unknown"
+
+    alleged_violations = payload.get("alleged_violations", [])
+    if not isinstance(alleged_violations, list):
+        alleged_violations = []
+    cleaned_violations = []
+    seen = set()
+    for item in alleged_violations[:12]:
+        label = str(item or "").strip()
+        key = label.lower()
+        if not label or key in seen:
+            continue
+        seen.add(key)
+        cleaned_violations.append(label)
+
+    return {
+        "release_no": release_no,
+        "action_type": action_type,
+        "forum": forum,
+        "alleged_violations": cleaned_violations,
+        "outcome_status": outcome_status,
+    }
+
+
+def _infer_enforcement_metadata(title="", text="", url="", doc_type="", source_kind="", release_no=""):
+    head = str(title or "")
+    body = str(text or "")[:25000]
+    blob = f"{head}\n{body}\n{url}\n{doc_type}\n{source_kind}".lower()
+
+    release_no_value = str(release_no or "").strip() or _extract_release_no(head + "\n" + body, url=url)
+
+    source_kind = str(source_kind or "").strip().lower()
+    doc_type = str(doc_type or "").strip().lower()
+    is_enforcement = (
+        source_kind == "sec_enforcement_litigation"
+        or "enforcement" in source_kind
+        or "litigation release" in doc_type
+        or bool(release_no_value)
+    )
+    if not is_enforcement:
+        return _normalize_enforcement_metadata(
+            {
+                "release_no": release_no_value,
+                "action_type": "unknown",
+                "forum": "unknown",
+                "alleged_violations": [],
+                "outcome_status": "unknown",
+            }
+        )
+
+    action_type = "unknown"
+    if any(token in blob for token in ["settled charges", "settle", "settlement", "agreed to pay", "consent judgment"]):
+        action_type = "settlement"
+    elif any(token in blob for token in ["dismissed", "dismissal"]):
+        action_type = "dismissal"
+    elif any(token in blob for token in ["final judgment", "entered judgment", "judgment", "found liable"]):
+        action_type = "judgment"
+    elif any(token in blob for token in ["order instituting", "cease-and-desist order", "administrative order", "instituting proceedings"]):
+        action_type = "order"
+    elif any(token in blob for token in ["charged", "charges", "complaint", "filed", "sued", "alleges", "alleged"]):
+        action_type = "filing"
+    elif any(token in blob for token in ["litigation release", "enforcement action"]):
+        action_type = "other"
+
+    forum = "unknown"
+    if any(token in blob for token in ["administrative proceeding", "administrative order", "in the matter of"]):
+        forum = "administrative"
+    elif any(token in blob for token in ["u.s. district court", "federal court", "civil action", "district of"]):
+        forum = "federal_court"
+    elif "state court" in blob:
+        forum = "state_court"
+
+    outcome_status = "unknown"
+    if any(token in blob for token in ["partial settlement", "partially settled", "partially resolved"]):
+        outcome_status = "partial"
+    elif action_type in {"settlement", "judgment", "dismissal"}:
+        outcome_status = "resolved"
+    elif action_type in {"filing", "order"}:
+        outcome_status = "pending"
+    elif "pending" in blob:
+        outcome_status = "pending"
+
+    violation_rules = [
+        ("insider trading", "Insider Trading"),
+        ("market manipulation", "Market Manipulation"),
+        ("rule 10b-5", "Exchange Act Section 10(b) / Rule 10b-5"),
+        ("section 10(b)", "Exchange Act Section 10(b) / Rule 10b-5"),
+        ("section 5", "Securities Act Section 5 (Unregistered Offering)"),
+        ("books and records", "Books and Records Violations"),
+        ("13(b)(2)", "Books and Records Violations"),
+        ("investment advisers act", "Investment Advisers Act Violations"),
+        ("advisor act", "Investment Advisers Act Violations"),
+        ("broker-dealer", "Broker-Dealer Registration/Conduct Violations"),
+        ("offering fraud", "Offering Fraud"),
+        ("ponzi", "Ponzi Scheme Fraud"),
+        ("fcpa", "FCPA Violations"),
+    ]
+    alleged_violations = []
+    seen = set()
+    for needle, label in violation_rules:
+        if needle in blob and label.lower() not in seen:
+            seen.add(label.lower())
+            alleged_violations.append(label)
+
+    return _normalize_enforcement_metadata(
+        {
+            "release_no": release_no_value,
+            "action_type": action_type,
+            "forum": forum,
+            "alleged_violations": alleged_violations,
+            "outcome_status": outcome_status,
+        }
+    )
+
+
+def _resolve_enforcement_metadata(metadata, enrichment_payload=None, full_text=""):
+    if not isinstance(metadata, dict):
+        metadata = {}
+    if not isinstance(enrichment_payload, dict):
+        enrichment_payload = {}
+
+    inferred = _infer_enforcement_metadata(
+        title=metadata.get("title", ""),
+        text=full_text,
+        url=metadata.get("url", ""),
+        doc_type=metadata.get("doc_type", ""),
+        source_kind=_infer_source_kind(metadata),
+        release_no=metadata.get("release_no", ""),
+    )
+    enriched_raw = enrichment_payload.get("enforcement", {})
+    enriched = _normalize_enforcement_metadata(enriched_raw if isinstance(enriched_raw, dict) else {})
+
+    merged = dict(inferred)
+    if enriched.get("release_no"):
+        merged["release_no"] = enriched.get("release_no")
+    for key in ["action_type", "forum", "outcome_status"]:
+        val = str(enriched.get(key, "") or "").strip().lower()
+        if val and val != "unknown":
+            merged[key] = val
+    if isinstance(enriched.get("alleged_violations", []), list) and enriched.get("alleged_violations", []):
+        merged["alleged_violations"] = enriched.get("alleged_violations", [])
+
+    return _normalize_enforcement_metadata(merged)
+
+
 def _build_corpus_explorer_df(knowledge_data, enrichment_state):
     entries = enrichment_state.get("entries", {}) if isinstance(enrichment_state, dict) else {}
     if not isinstance(entries, dict):
@@ -748,6 +931,11 @@ def _build_corpus_explorer_df(knowledge_data, enrichment_state):
         stance_text = stance_label
         if stance_label and stance_target:
             stance_text = f"{stance_label} ({stance_target})"
+        enforcement_meta = _resolve_enforcement_metadata(
+            metadata=m,
+            enrichment_payload=enrich,
+            full_text=str(c.get("full_text", "") or ""),
+        )
 
         rows.append(
             {
@@ -769,6 +957,11 @@ def _build_corpus_explorer_df(knowledge_data, enrichment_state):
                 "auto_verdict": str(auto_review.get("verdict", "") or ""),
                 "status": str(enrich_entry.get("status", "") or ""),
                 "full_text": str(c.get("full_text", "") or ""),
+                "release_no": enforcement_meta.get("release_no", ""),
+                "action_type": enforcement_meta.get("action_type", "unknown"),
+                "forum": enforcement_meta.get("forum", "unknown"),
+                "outcome_status": enforcement_meta.get("outcome_status", "unknown"),
+                "alleged_violations": ", ".join(enforcement_meta.get("alleged_violations", [])[:8]),
             }
         )
 
@@ -835,22 +1028,67 @@ def _load_enrichment_state():
     return _load_enrichment_state_local()
 
 
-def _save_enrichment_state(state):
+def _save_enrichment_state(state, require_remote=False):
     state = _normalize_enrichment_state(state)
     state["updated_at"] = _utc_now_iso()
     _save_enrichment_state_local(state)
 
     storage = _get_gcs_storage()
     if storage is None:
-        return
+        if require_remote:
+            gcs_err = str(st.session_state.get("_gcs_error", "") or "").strip()
+            msg = (
+                "GCS enrichment-state save required but GCS is not configured or reachable."
+                f"{f' Details: {gcs_err}' if gcs_err else ''}"
+            )
+            st.session_state["_enrichment_error"] = msg
+            return False
+        return True
     try:
         blob = storage.bucket.blob(ENRICHMENT_STATE_BLOB_NAME)
         blob.upload_from_string(
             json.dumps(state, indent=2, ensure_ascii=False),
             content_type="application/json",
         )
+        st.session_state["_enrichment_error"] = ""
+        return True
     except Exception as e:
         st.session_state["_enrichment_error"] = f"GCS enrichment-state save failed: {e}"
+        if require_remote:
+            return False
+        return True
+
+
+def _check_enrichment_remote_persistence_ready():
+    """Verify GCS enrichment persistence is available and writable."""
+    storage = _get_gcs_storage()
+    if storage is None:
+        gcs_err = str(st.session_state.get("_gcs_error", "") or "").strip()
+        msg = (
+            "GCS is required for durable enrichment state but is not configured or reachable."
+            f"{f' Details: {gcs_err}' if gcs_err else ''}"
+        )
+        st.session_state["_enrichment_error"] = msg
+        return False, msg
+
+    probe_name = (
+        f"_healthchecks/enrichment_write_probe_"
+        f"{int(time.time() * 1000)}_{time.perf_counter_ns()}.txt"
+    )
+    probe_blob = storage.bucket.blob(probe_name)
+    try:
+        probe_blob.upload_from_string(_utc_now_iso(), content_type="text/plain")
+        try:
+            probe_blob.delete()
+        except Exception:
+            # Probe cleanup failure is non-fatal for readiness checks.
+            pass
+        st.session_state["_enrichment_error"] = ""
+        return True, ""
+    except Exception as e:
+        msg = f"GCS enrichment persistence check failed: {e}"
+        st.session_state["_enrichment_error"] = msg
+        return False, msg
 
 
 def _empty_policy_briefs_payload():
@@ -1026,6 +1264,177 @@ def _save_news_connector_settings(payload):
         st.session_state["_news_settings_error"] = f"GCS news-settings save failed: {e}"
 
 
+def _empty_agent_chat_quality_payload():
+    return {
+        "version": AGENT_CHAT_QUALITY_VERSION,
+        "updated_at": "",
+        "answers": [],
+    }
+
+
+def _normalize_agent_chat_quality_payload(payload):
+    if not isinstance(payload, dict):
+        return _empty_agent_chat_quality_payload()
+    answers = payload.get("answers", [])
+    if not isinstance(answers, list):
+        answers = []
+    return {
+        "version": str(payload.get("version", AGENT_CHAT_QUALITY_VERSION) or AGENT_CHAT_QUALITY_VERSION),
+        "updated_at": str(payload.get("updated_at", "") or ""),
+        "answers": [row for row in answers if isinstance(row, dict)],
+    }
+
+
+def _load_agent_chat_quality_local():
+    if not AGENT_CHAT_QUALITY_LOCAL_PATH.exists():
+        return _empty_agent_chat_quality_payload()
+    try:
+        with open(AGENT_CHAT_QUALITY_LOCAL_PATH, "r", encoding="utf-8") as f:
+            return _normalize_agent_chat_quality_payload(json.load(f))
+    except Exception:
+        return _empty_agent_chat_quality_payload()
+
+
+def _save_agent_chat_quality_local(payload):
+    payload = _normalize_agent_chat_quality_payload(payload)
+    AGENT_CHAT_QUALITY_LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(AGENT_CHAT_QUALITY_LOCAL_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+def _load_agent_chat_quality():
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            blob = storage.bucket.blob(AGENT_CHAT_QUALITY_BLOB_NAME)
+            if blob.exists():
+                payload = _normalize_agent_chat_quality_payload(
+                    json.loads(blob.download_as_text(encoding="utf-8"))
+                )
+                _save_agent_chat_quality_local(payload)
+                st.session_state.pop("_chat_quality_error", None)
+                return payload
+        except Exception as e:
+            st.session_state["_chat_quality_error"] = f"GCS chat-quality load failed: {e}"
+    return _load_agent_chat_quality_local()
+
+
+def _save_agent_chat_quality(payload):
+    payload = _normalize_agent_chat_quality_payload(payload)
+    payload["updated_at"] = _utc_now_iso()
+    _save_agent_chat_quality_local(payload)
+    st.session_state.pop("_chat_quality_error", None)
+
+    storage = _get_gcs_storage()
+    if storage is None:
+        return
+    try:
+        blob = storage.bucket.blob(AGENT_CHAT_QUALITY_BLOB_NAME)
+        blob.upload_from_string(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            content_type="application/json",
+        )
+    except Exception as e:
+        st.session_state["_chat_quality_error"] = f"GCS chat-quality save failed: {e}"
+
+
+def _new_agent_chat_answer_id(seed_text=""):
+    raw = f"{_utc_now_iso()}|{time.time_ns()}|{seed_text}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+
+def _upsert_agent_chat_quality_answer(payload, record):
+    payload = _normalize_agent_chat_quality_payload(payload)
+    answers = payload.get("answers", [])
+    answer_id = str(record.get("answer_id", "") or "").strip()
+    if not answer_id:
+        return payload
+
+    replaced = False
+    for idx, row in enumerate(answers):
+        if str(row.get("answer_id", "") or "").strip() == answer_id:
+            answers[idx] = {**row, **record}
+            replaced = True
+            break
+    if not replaced:
+        answers.append(record)
+
+    # Keep file bounded for pilot usage.
+    if len(answers) > 2000:
+        answers = sorted(
+            answers,
+            key=lambda x: str(x.get("created_at", "") or x.get("updated_at", "")),
+            reverse=True,
+        )[:2000]
+
+    payload["answers"] = answers
+    return payload
+
+
+def _hallucination_rating_to_score(label):
+    mapping = {
+        "none": 5.0,
+        "low": 4.0,
+        "medium": 2.0,
+        "high": 1.0,
+    }
+    return mapping.get(str(label or "").strip().lower(), 0.0)
+
+
+def _chat_quality_overall_score(record):
+    citation = _coerce_float(record.get("citation_correctness", 0), default=0.0, min_value=0.0, max_value=5.0)
+    temporal = _coerce_float(record.get("temporal_correctness", 0), default=0.0, min_value=0.0, max_value=5.0)
+    nuance = _coerce_float(record.get("nuance_correctness", 0), default=0.0, min_value=0.0, max_value=5.0)
+    usefulness = _coerce_float(record.get("user_usefulness", 0), default=0.0, min_value=0.0, max_value=5.0)
+    hallucination = _hallucination_rating_to_score(record.get("hallucination_rate", ""))
+    values = [citation, temporal, nuance, usefulness, hallucination]
+    if not any(v > 0 for v in values):
+        return 0.0
+    return round(sum(values) / len(values), 2)
+
+
+def _agent_chat_quality_summary(payload, domain_mode="", lookback_days=30):
+    payload = _normalize_agent_chat_quality_payload(payload)
+    now = datetime.utcnow()
+    lookback_days = _coerce_int(lookback_days, default=30, min_value=1)
+    cutoff = now - timedelta(days=lookback_days)
+    target_domain = str(domain_mode or "").strip().lower()
+
+    scoped = []
+    for row in payload.get("answers", []):
+        if target_domain and str(row.get("domain_mode", "")).strip().lower() != target_domain:
+            continue
+        ts = str(row.get("created_at", "") or "").strip().replace("Z", "")
+        try:
+            created_at = datetime.fromisoformat(ts) if ts else None
+        except Exception:
+            created_at = None
+        if created_at is not None and created_at < cutoff:
+            continue
+        scoped.append(row)
+
+    evaluated = [r for r in scoped if bool(r.get("evaluated", False))]
+    avg_score = 0.0
+    if evaluated:
+        avg_score = round(sum(_chat_quality_overall_score(r) for r in evaluated) / len(evaluated), 2)
+
+    frequent_recurring_use = len(scoped) >= 20
+    quality_plateau_low = len(evaluated) >= 8 and avg_score < 3.5
+    strict_repeatability_needed = sum(1 for r in evaluated if bool(r.get("strict_repeatability_needed", False))) >= 3
+
+    return {
+        "answers_in_window": len(scoped),
+        "evaluated_in_window": len(evaluated),
+        "average_quality_score": avg_score,
+        "frequent_recurring_use": frequent_recurring_use,
+        "quality_plateau_low": quality_plateau_low,
+        "strict_repeatability_needed": strict_repeatability_needed,
+        "promote_to_dedicated_agent": (
+            frequent_recurring_use or quality_plateau_low or strict_repeatability_needed
+        ),
+    }
+
+
 def _upsert_policy_delta_brief(payload, record):
     briefs = payload.get("briefs", [])
     record_doc_id = str(record.get("doc_id", "") or "").strip()
@@ -1121,6 +1530,11 @@ def _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=None, org_k
             stance_label = str(stance.get("label", "") or "").strip()
         else:
             stance_label = str(stance or "").strip()
+        enforcement_meta = _resolve_enforcement_metadata(
+            metadata=metadata,
+            enrichment_payload=enrich,
+            full_text=full_text,
+        )
 
         date_text = str(metadata.get("date", "") or "").strip()
         date_parsed = _parse_single_date(date_text)
@@ -1141,6 +1555,11 @@ def _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=None, org_k
                 "tags": tags,
                 "keywords": keywords,
                 "stance_label": stance_label,
+                "release_no": enforcement_meta.get("release_no", ""),
+                "action_type": enforcement_meta.get("action_type", "unknown"),
+                "forum": enforcement_meta.get("forum", "unknown"),
+                "alleged_violations": enforcement_meta.get("alleged_violations", []),
+                "outcome_status": enforcement_meta.get("outcome_status", "unknown"),
                 "full_text": full_text,
             }
         )
@@ -1496,6 +1915,11 @@ def _run_policy_delta_brief_llm(client, source_doc, prior_docs, model_name):
                     f"Date: {p.get('date', '')}",
                     f"Type: {p.get('doc_type', '')}",
                     f"Source Kind: {p.get('source_kind', '')}",
+                    f"Release No: {p.get('release_no', '')}",
+                    f"Action Type: {p.get('action_type', '')}",
+                    f"Forum: {p.get('forum', '')}",
+                    f"Outcome Status: {p.get('outcome_status', '')}",
+                    f"Alleged Violations: {', '.join(p.get('alleged_violations', [])[:8])}",
                     f"Similarity Score: {p.get('similarity_score', 0.0):.3f}",
                     f"Tags: {', '.join(p.get('tags', [])[:12])}",
                     f"Keywords: {', '.join(p.get('keywords', [])[:16])}",
@@ -1533,6 +1957,11 @@ def _run_policy_delta_brief_llm(client, source_doc, prior_docs, model_name):
         f"New Document Date: {source_doc.get('date', '')}\n"
         f"New Document Type: {source_doc.get('doc_type', '')}\n"
         f"New Document Source Kind: {source_doc.get('source_kind', '')}\n"
+        f"New Document Release No: {source_doc.get('release_no', '')}\n"
+        f"New Document Action Type: {source_doc.get('action_type', '')}\n"
+        f"New Document Forum: {source_doc.get('forum', '')}\n"
+        f"New Document Outcome Status: {source_doc.get('outcome_status', '')}\n"
+        f"New Document Alleged Violations: {', '.join(source_doc.get('alleged_violations', [])[:10])}\n"
         f"New Document Tags: {', '.join(source_doc.get('tags', [])[:12])}\n"
         f"New Document Keywords: {', '.join(source_doc.get('keywords', [])[:20])}\n"
         f"New Document Stance: {source_doc.get('stance_label', '')}\n"
@@ -1650,6 +2079,11 @@ def _generate_policy_delta_brief(
         "organization": source_doc.get("organization", ""),
         "doc_type": source_doc.get("doc_type", ""),
         "source_kind": source_doc.get("source_kind", ""),
+        "release_no": source_doc.get("release_no", ""),
+        "action_type": source_doc.get("action_type", "unknown"),
+        "forum": source_doc.get("forum", "unknown"),
+        "alleged_violations": source_doc.get("alleged_violations", []),
+        "outcome_status": source_doc.get("outcome_status", "unknown"),
         "speaker": source_doc.get("speaker", ""),
         "url": source_doc.get("url", ""),
         "tags": source_doc.get("tags", []),
@@ -1667,6 +2101,11 @@ def _generate_policy_delta_brief(
                 "date": p.get("date", ""),
                 "doc_type": p.get("doc_type", ""),
                 "source_kind": p.get("source_kind", ""),
+                "release_no": p.get("release_no", ""),
+                "action_type": p.get("action_type", "unknown"),
+                "forum": p.get("forum", "unknown"),
+                "alleged_violations": p.get("alleged_violations", []),
+                "outcome_status": p.get("outcome_status", "unknown"),
                 "speaker": p.get("speaker", ""),
                 "url": p.get("url", ""),
                 "similarity_score": round(_coerce_float(p.get("similarity_score", 0.0), default=0.0), 4),
@@ -1709,6 +2148,11 @@ def _format_policy_brief_context_block(brief):
         f"Date: {source.get('date', '')}",
         f"Type: {source.get('doc_type', '')}",
         f"Source Kind: {source.get('source_kind', '')}",
+        f"Release No: {source.get('release_no', '')}",
+        f"Action Type: {source.get('action_type', '')}",
+        f"Forum: {source.get('forum', '')}",
+        f"Outcome Status: {source.get('outcome_status', '')}",
+        f"Alleged Violations: {', '.join(source.get('alleged_violations', [])[:8])}",
         f"Overall Position: {detail.get('overall_position', '')}",
         f"Change Intensity: {detail.get('change_intensity', '')}",
         f"Stance Direction: {detail.get('stance_direction', '')}",
@@ -1782,6 +2226,11 @@ def _select_policy_brief_context(
                 str(source.get("title", "") or ""),
                 str(source.get("doc_type", "") or ""),
                 str(source.get("source_kind", "") or ""),
+                str(source.get("release_no", "") or ""),
+                str(source.get("action_type", "") or ""),
+                str(source.get("forum", "") or ""),
+                str(source.get("outcome_status", "") or ""),
+                " ".join(source.get("alleged_violations", []) if isinstance(source.get("alleged_violations", []), list) else []),
                 str(detail.get("executive_summary", "") or ""),
                 " ".join(detail.get("new_elements", []) if isinstance(detail.get("new_elements", []), list) else []),
                 " ".join(detail.get("changed_elements", []) if isinstance(detail.get("changed_elements", []), list) else []),
@@ -2021,6 +2470,8 @@ def _build_enrichment_candidates(knowledge_data, org_key=None):
             "date": str(m.get("date", "") or "").strip(),
             "url": str(m.get("url", "") or "").strip(),
             "doc_type": str(m.get("doc_type", "Speech") or "Speech").strip(),
+            "source_kind": _infer_source_kind(m),
+            "release_no": str(m.get("release_no", "") or "").strip(),
             "full_text": text,
             "word_count": _coerce_int(m.get("word_count", 0), default=0, min_value=0),
         }
@@ -2126,6 +2577,15 @@ def _normalize_enrichment_payload(payload):
         confidence = 0.0
     confidence = max(0.0, min(1.0, confidence))
 
+    enforcement_raw = payload.get("enforcement", {})
+    if not isinstance(enforcement_raw, dict):
+        enforcement_raw = {}
+    # Backward-compatible fallback if fields are emitted at top-level.
+    for key in ["release_no", "action_type", "forum", "alleged_violations", "outcome_status"]:
+        if key in payload and key not in enforcement_raw:
+            enforcement_raw[key] = payload.get(key)
+    enforcement = _normalize_enforcement_metadata(enforcement_raw)
+
     summary = str(payload.get("summary", "") or "").strip()[:1200]
 
     return {
@@ -2135,6 +2595,7 @@ def _normalize_enrichment_payload(payload):
         "entities": normalized_entities,
         "stance": {"label": stance_label, "target": stance_target},
         "evidence_spans": normalized_evidence,
+        "enforcement": enforcement,
         "confidence": confidence,
     }
 
@@ -2195,6 +2656,14 @@ def _heuristic_enrichment(doc):
             evidence.append({"claim": "Potentially relevant policy statement", "snippet": line[:500]})
             if len(evidence) >= 3:
                 break
+    enforcement = _infer_enforcement_metadata(
+        title=doc.get("title", ""),
+        text=text,
+        url=doc.get("url", ""),
+        doc_type=doc.get("doc_type", ""),
+        source_kind=doc.get("source_kind", ""),
+        release_no=doc.get("release_no", ""),
+    )
 
     return _normalize_enrichment_payload(
         {
@@ -2204,6 +2673,7 @@ def _heuristic_enrichment(doc):
             "entities": [],
             "stance": {"label": stance_label, "target": ""},
             "evidence_spans": evidence,
+            "enforcement": enforcement,
             "confidence": 0.35,
         }
     )
@@ -2217,11 +2687,16 @@ def _run_enrichment_agent(client, doc, model_name):
     base_instruction = (
         "You are an enrichment agent for policy documents. "
         "Return ONLY valid JSON with keys: "
-        "summary, tags, keywords, entities, stance, evidence_spans, confidence. "
+        "summary, tags, keywords, entities, stance, evidence_spans, enforcement, confidence. "
         "Use concise tags and keywords. "
         "entities must be list of {name,type,mentions}. "
         "stance must be {label,target} where label in [supportive,cautious,critical,neutral,unclear]. "
-        "evidence_spans must include verbatim snippets from the document."
+        "evidence_spans must include verbatim snippets from the document. "
+        "enforcement must be {release_no,action_type,forum,alleged_violations,outcome_status} where "
+        "action_type in [filing,settlement,judgment,dismissal,order,other,unknown], "
+        "forum in [federal_court,administrative,state_court,unknown], "
+        "and outcome_status in [pending,resolved,partial,unknown]. "
+        "For non-enforcement documents, set enforcement fields to unknown/empty."
     )
     prompt = (
         f"Organization: {doc.get('organization', '')}\n"
@@ -2229,6 +2704,8 @@ def _run_enrichment_agent(client, doc, model_name):
         f"Speaker: {doc.get('speaker', '')}\n"
         f"Date: {doc.get('date', '')}\n"
         f"Type: {doc.get('doc_type', '')}\n\n"
+        f"Source Kind: {doc.get('source_kind', '')}\n"
+        f"Release No (if known): {doc.get('release_no', '')}\n\n"
         f"Document Text:\n{text}"
     )
 
@@ -2313,7 +2790,16 @@ def _select_enrichment_targets(candidates, enrichment_state, mode):
     return selected
 
 
-def _run_enrichment_batch(client, candidates, enrichment_state, model_name, mode, limit, progress_callback=None):
+def _run_enrichment_batch(
+    client,
+    candidates,
+    enrichment_state,
+    model_name,
+    mode,
+    limit,
+    progress_callback=None,
+    require_remote_persistence=False,
+):
     entries = enrichment_state.setdefault("entries", {})
     targets = _select_enrichment_targets(candidates, enrichment_state, mode)
     if limit and limit > 0:
@@ -2368,15 +2854,36 @@ def _run_enrichment_batch(client, candidates, enrichment_state, model_name, mode
 
         # checkpoint every 10 docs
         if processed % 10 == 0:
-            _save_enrichment_state(enrichment_state)
+            persisted = _save_enrichment_state(
+                enrichment_state,
+                require_remote=require_remote_persistence,
+            )
+            if require_remote_persistence and not persisted:
+                return {
+                    "processed": processed,
+                    "total_selected": total,
+                    "aborted": True,
+                    "error": str(st.session_state.get("_enrichment_error", "") or "").strip(),
+                }
 
     if progress_callback is not None:
         progress_callback(total, total, "Enrichment run complete")
 
-    _save_enrichment_state(enrichment_state)
+    persisted = _save_enrichment_state(
+        enrichment_state,
+        require_remote=require_remote_persistence,
+    )
+    if require_remote_persistence and not persisted:
+        return {
+            "processed": processed,
+            "total_selected": total,
+            "aborted": True,
+            "error": str(st.session_state.get("_enrichment_error", "") or "").strip(),
+        }
     return {
         "processed": processed,
         "total_selected": total,
+        "aborted": False,
     }
 
 
@@ -2510,6 +3017,7 @@ def _run_auto_review_batch(
     mode,
     limit,
     progress_callback=None,
+    require_remote_persistence=False,
 ):
     entries = enrichment_state.setdefault("entries", {})
     targets = _select_auto_review_targets(scoped_entries, mode)
@@ -2584,22 +3092,54 @@ def _run_auto_review_batch(
 
         processed += 1
         if processed % 10 == 0:
-            _save_enrichment_state(enrichment_state)
+            persisted = _save_enrichment_state(
+                enrichment_state,
+                require_remote=require_remote_persistence,
+            )
+            if require_remote_persistence and not persisted:
+                return {
+                    "processed": processed,
+                    "total_selected": total,
+                    "approved": approved,
+                    "flagged": flagged,
+                    "heuristic_fallbacks": heuristic_fallbacks,
+                    "aborted": True,
+                    "error": str(st.session_state.get("_enrichment_error", "") or "").strip(),
+                }
 
     if progress_callback is not None:
         progress_callback(total, total, "Auto review run complete")
 
-    _save_enrichment_state(enrichment_state)
+    persisted = _save_enrichment_state(
+        enrichment_state,
+        require_remote=require_remote_persistence,
+    )
+    if require_remote_persistence and not persisted:
+        return {
+            "processed": processed,
+            "total_selected": total,
+            "approved": approved,
+            "flagged": flagged,
+            "heuristic_fallbacks": heuristic_fallbacks,
+            "aborted": True,
+            "error": str(st.session_state.get("_enrichment_error", "") or "").strip(),
+        }
     return {
         "processed": processed,
         "total_selected": total,
         "approved": approved,
         "flagged": flagged,
         "heuristic_fallbacks": heuristic_fallbacks,
+        "aborted": False,
     }
 
 
-def _bulk_accept_reviews(enrichment_state, scoped_entries, only_pending=False):
+def _bulk_accept_reviews(
+    enrichment_state,
+    scoped_entries,
+    only_pending=False,
+    require_remote_persistence=False,
+):
     entries = enrichment_state.setdefault("entries", {})
     accepted = 0
     for item in scoped_entries:
@@ -2640,11 +3180,22 @@ def _bulk_accept_reviews(enrichment_state, scoped_entries, only_pending=False):
         entries[doc_id] = current
         accepted += 1
 
-    _save_enrichment_state(enrichment_state)
+    persisted = _save_enrichment_state(
+        enrichment_state,
+        require_remote=require_remote_persistence,
+    )
+    if require_remote_persistence and not persisted:
+        return -1
     return accepted
 
 
-def _update_review_decision(enrichment_state, doc_id, decision, notes):
+def _update_review_decision(
+    enrichment_state,
+    doc_id,
+    decision,
+    notes,
+    require_remote_persistence=False,
+):
     entries = enrichment_state.setdefault("entries", {})
     item = entries.get(doc_id)
     if not item:
@@ -2665,7 +3216,12 @@ def _update_review_decision(enrichment_state, doc_id, decision, notes):
     if decision in {"accepted", "edited"} and item.get("status") in {"enriched", "fallback_enriched"}:
         item["status"] = "reviewed"
     entries[doc_id] = item
-    _save_enrichment_state(enrichment_state)
+    persisted = _save_enrichment_state(
+        enrichment_state,
+        require_remote=require_remote_persistence,
+    )
+    if require_remote_persistence and not persisted:
+        return False
     return True
 
 
@@ -2691,6 +3247,7 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
         url = str(m.get("url", "") or "").strip()
         word_count = m.get("word_count", 0)
         doc_type = str(m.get("doc_type", "Speech") or "Speech").strip()
+        source_kind = _infer_source_kind(m)
         source_filename = str(m.get("source_filename", "") or "").strip()
 
         stable_seed = url or "|".join([title, speaker, speech_date])
@@ -2725,6 +3282,11 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
         stance_text = stance_label
         if stance_label and stance_target:
             stance_text = f"{stance_label} ({stance_target})"
+        enforcement_meta = _resolve_enforcement_metadata(
+            metadata=m,
+            enrichment_payload=enrich_obj,
+            full_text=text,
+        )
         enrich_review = str(enrich_entry.get("review", {}).get("decision", "") or "").strip().lower()
 
         for part_idx, chunk_text in enumerate(text_chunks, 1):
@@ -2748,12 +3310,25 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
                 f"Speaker: {speaker}",
                 f"Date: {speech_date}",
                 f"Document Type: {doc_type}",
+                f"Source Kind: {source_kind}",
                 f"URL: {url}",
                 f"Source File: {source_filename}",
                 f"Word Count: {word_count}",
                 f"Chunk: {chunk_header}",
                 f"Vector File Name: {vector_filename}",
             ]
+            if enforcement_meta.get("release_no"):
+                header_lines.append(f"Release No: {enforcement_meta.get('release_no', '')}")
+            if enforcement_meta.get("action_type", "unknown") != "unknown":
+                header_lines.append(f"Enforcement Action Type: {enforcement_meta.get('action_type', '')}")
+            if enforcement_meta.get("forum", "unknown") != "unknown":
+                header_lines.append(f"Enforcement Forum: {enforcement_meta.get('forum', '')}")
+            if enforcement_meta.get("alleged_violations", []):
+                header_lines.append(
+                    "Alleged Violations: " + ", ".join(enforcement_meta.get("alleged_violations", [])[:8])
+                )
+            if enforcement_meta.get("outcome_status", "unknown") != "unknown":
+                header_lines.append(f"Outcome Status: {enforcement_meta.get('outcome_status', '')}")
             if enrich_tags_text:
                 header_lines.append(f"Enrichment Tags: {enrich_tags_text}")
             if enrich_keywords_text:
@@ -3726,18 +4301,36 @@ def _build_temporal_clarification_message(df, org_key, org_label):
     )
 
 
-def _build_agent_instructions(df, org_key, org_label):
+def _build_agent_instructions(df, org_key, org_label, domain_mode="General"):
     latest = _latest_date_for_org(df, org_key)
     latest_txt = latest.strftime("%B %d, %Y") if latest is not None else "unknown"
     today_txt = date.today().strftime("%B %d, %Y")
-    return (
+    base = (
         "You are a retrieval-grounded assistant for speech analysis. "
         "Use only the retrieved speech content. "
         "If the user uses ambiguous temporal terms (such as recent, latest, current, now, today) "
         "without a concrete date range, ask one concise clarification question first and do not assume a window. "
         f"Today's date is {today_txt}. "
-        f"Latest indexed speech date for {org_label} is {latest_txt}."
+        f"Latest indexed document date for {org_label} is {latest_txt}."
     )
+    if str(domain_mode or "").strip().lower() != "sec enforcement":
+        return base
+
+    enforcement_pack = (
+        " Domain mode is SEC Enforcement. Keep all factual claims evidence-grounded and cite source/date for each key claim. "
+        "Do not provide legal advice; provide research-style analysis only. "
+        "Explicitly distinguish allegations, settlements, judgments, dismissals, and procedural posture. "
+        "If available evidence is insufficient for a claim, mark it as Unknown or Requires verification. "
+        "Output must follow this Cited Memo structure with section headings exactly:\n"
+        "1) Bottom line\n"
+        "2) Trend signal\n"
+        "3) Rule/procedure nuance\n"
+        "4) Comparable matters\n"
+        "5) Evidence with source/date\n"
+        "6) Confidence + gaps\n"
+        "In section 5, cite in the format: Source: [Source N], Date: <date if available>."
+    )
+    return f"{base} {enforcement_pack}"
 
 
 def _extract_response_text(response):
@@ -4648,6 +5241,37 @@ elif page == "Agent Chat":
             "Corpus + Policy Briefings combines both."
         ),
     )
+    domain_mode = st.radio(
+        "Domain Mode",
+        ["General", "SEC Enforcement"],
+        horizontal=True,
+        help=(
+            "General uses baseline retrieval instructions. "
+            "SEC Enforcement enforces a cited-memo output with procedural nuance and evidence/date citations."
+        ),
+    )
+    chat_quality_payload = _load_agent_chat_quality()
+    quality_summary = _agent_chat_quality_summary(
+        chat_quality_payload,
+        domain_mode=domain_mode,
+        lookback_days=30,
+    )
+    with st.expander("Pilot Quality Gate (30-day window)", expanded=False):
+        q1, q2, q3 = st.columns(3)
+        q1.metric("Answers Logged", quality_summary.get("answers_in_window", 0))
+        q2.metric("Evaluated", quality_summary.get("evaluated_in_window", 0))
+        q3.metric("Avg Quality (1-5)", quality_summary.get("average_quality_score", 0.0))
+        st.caption(
+            "Promotion criteria: frequent recurring use OR quality plateau below threshold OR strict repeatability need."
+        )
+        st.markdown(
+            f"- Frequent recurring use: `{quality_summary.get('frequent_recurring_use', False)}`\n"
+            f"- Quality plateau low: `{quality_summary.get('quality_plateau_low', False)}`\n"
+            f"- Strict repeatability needed: `{quality_summary.get('strict_repeatability_needed', False)}`\n"
+            f"- Promote to dedicated agent: `{quality_summary.get('promote_to_dedicated_agent', False)}`"
+        )
+        if str(st.session_state.get("_chat_quality_error", "") or "").strip():
+            st.warning(str(st.session_state.get("_chat_quality_error", "") or "").strip())
 
     index_status = _get_org_index_status(knowledge_data, org_key, org_label)
     if "vector_store_ids_by_org" not in st.session_state:
@@ -4786,6 +5410,12 @@ elif page == "Agent Chat":
         chat_scope_key = "__all_organizations__"
         chat_scope_label = "All Organizations"
         chat_vector_store_ids = all_vector_store_ids
+    domain_mode_key = (
+        str(domain_mode or "general")
+        .strip()
+        .lower()
+        .replace(" ", "_")
+    )
     chat_mode_key = (
         str(discussion_mode or "corpus")
         .strip()
@@ -4793,13 +5423,18 @@ elif page == "Agent Chat":
         .replace(" + ", "_plus_")
         .replace(" ", "_")
     )
-    chat_session_key = f"{chat_scope_key}::{chat_mode_key}"
+    chat_session_key = f"{chat_scope_key}::{chat_mode_key}::{domain_mode_key}"
 
     if "chat_messages_by_org" not in st.session_state:
         st.session_state["chat_messages_by_org"] = {}
     if chat_session_key not in st.session_state["chat_messages_by_org"]:
         st.session_state["chat_messages_by_org"][chat_session_key] = []
     chat_messages = st.session_state["chat_messages_by_org"][chat_session_key]
+    quality_records_by_id = {
+        str(row.get("answer_id", "") or "").strip(): row
+        for row in chat_quality_payload.get("answers", [])
+        if isinstance(row, dict) and str(row.get("answer_id", "") or "").strip()
+    }
 
     for msg in chat_messages:
         with st.chat_message(msg["role"]):
@@ -4813,10 +5448,101 @@ elif page == "Agent Chat":
                         st.markdown(f"- `{display_name}`{score_txt}")
                         if r.get("snippet"):
                             st.caption(r["snippet"])
+            answer_id = str(msg.get("answer_id", "") or "").strip()
+            if msg.get("role") == "assistant" and answer_id:
+                prior_eval = quality_records_by_id.get(answer_id, {})
+                with st.expander("Rate This Answer (Pilot Quality Gate)", expanded=False):
+                    citation_default = _coerce_int(prior_eval.get("citation_correctness", 4), default=4, min_value=1)
+                    citation_default = min(citation_default, 5)
+                    temporal_default = _coerce_int(prior_eval.get("temporal_correctness", 4), default=4, min_value=1)
+                    temporal_default = min(temporal_default, 5)
+                    nuance_default = _coerce_int(prior_eval.get("nuance_correctness", 4), default=4, min_value=1)
+                    nuance_default = min(nuance_default, 5)
+                    usefulness_default = _coerce_int(prior_eval.get("user_usefulness", 4), default=4, min_value=1)
+                    usefulness_default = min(usefulness_default, 5)
+                    hall_options = ["none", "low", "medium", "high"]
+                    hall_default = str(prior_eval.get("hallucination_rate", "low") or "low").strip().lower()
+                    if hall_default not in hall_options:
+                        hall_default = "low"
+                    strict_default = bool(prior_eval.get("strict_repeatability_needed", False))
 
-    user_prompt = st.chat_input(f"Ask a question about {chat_scope_label} documents...")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        citation_score = st.slider(
+                            "Citation correctness (1-5)",
+                            min_value=1,
+                            max_value=5,
+                            value=citation_default,
+                            key=f"quality_citation_{answer_id}",
+                        )
+                        temporal_score = st.slider(
+                            "Temporal correctness (1-5)",
+                            min_value=1,
+                            max_value=5,
+                            value=temporal_default,
+                            key=f"quality_temporal_{answer_id}",
+                        )
+                        nuance_score = st.slider(
+                            "Legal/procedural nuance (1-5)",
+                            min_value=1,
+                            max_value=5,
+                            value=nuance_default,
+                            key=f"quality_nuance_{answer_id}",
+                        )
+                    with c2:
+                        usefulness_score = st.slider(
+                            "User usefulness (1-5)",
+                            min_value=1,
+                            max_value=5,
+                            value=usefulness_default,
+                            key=f"quality_usefulness_{answer_id}",
+                        )
+                        hallucination_rate = st.selectbox(
+                            "Hallucination rate",
+                            hall_options,
+                            index=hall_options.index(hall_default),
+                            key=f"quality_hallucination_{answer_id}",
+                        )
+                        strict_repeatability_needed = st.checkbox(
+                            "Strict repeatable template needed for this use case",
+                            value=strict_default,
+                            key=f"quality_repeatability_{answer_id}",
+                        )
+
+                    if st.button("Save Evaluation", key=f"quality_save_{answer_id}"):
+                        record = {
+                            **prior_eval,
+                            "answer_id": answer_id,
+                            "question": str(msg.get("question", "") or prior_eval.get("question", "")).strip(),
+                            "answer_preview": str(msg.get("content", "") or prior_eval.get("answer_preview", ""))[:1400],
+                            "chat_scope_key": str(msg.get("chat_scope_key", "") or prior_eval.get("chat_scope_key", "")),
+                            "chat_scope_label": str(msg.get("chat_scope_label", "") or prior_eval.get("chat_scope_label", "")),
+                            "discussion_mode": str(msg.get("discussion_mode", "") or prior_eval.get("discussion_mode", "")),
+                            "domain_mode": str(msg.get("domain_mode", "") or prior_eval.get("domain_mode", "")),
+                            "model_requested": str(msg.get("model_requested", "") or prior_eval.get("model_requested", "")),
+                            "model_used": str(msg.get("model_used", "") or prior_eval.get("model_used", "")),
+                            "citation_correctness": int(citation_score),
+                            "temporal_correctness": int(temporal_score),
+                            "nuance_correctness": int(nuance_score),
+                            "hallucination_rate": str(hallucination_rate),
+                            "user_usefulness": int(usefulness_score),
+                            "strict_repeatability_needed": bool(strict_repeatability_needed),
+                            "evaluated": True,
+                            "evaluated_at": _utc_now_iso(),
+                            "updated_at": _utc_now_iso(),
+                            "created_at": str(
+                                prior_eval.get("created_at", "") or msg.get("created_at", "") or _utc_now_iso()
+                            ),
+                        }
+                        chat_quality_payload = _upsert_agent_chat_quality_answer(chat_quality_payload, record)
+                        _save_agent_chat_quality(chat_quality_payload)
+                        st.success("Evaluation saved.")
+                        st.rerun()
+
+    prompt_prefix = "SEC enforcement question" if domain_mode == "SEC Enforcement" else "question"
+    user_prompt = st.chat_input(f"Ask a {prompt_prefix} about {chat_scope_label} documents...")
     if user_prompt:
-        chat_messages.append({"role": "user", "content": user_prompt})
+        chat_messages.append({"role": "user", "content": user_prompt, "created_at": _utc_now_iso()})
         with st.chat_message("user"):
             st.markdown(user_prompt)
 
@@ -4827,12 +5553,12 @@ elif page == "Agent Chat":
                 "Please go to **Extraction -> Knowledge Index (Vector Store)** and click "
                 "**Build/Sync Knowledge Index** before chatting."
             )
-            chat_messages.append({"role": "assistant", "content": err_msg})
+            chat_messages.append({"role": "assistant", "content": err_msg, "created_at": _utc_now_iso()})
             with st.chat_message("assistant"):
                 st.error(err_msg)
         elif _needs_temporal_clarification(user_prompt):
             clarify_msg = _build_temporal_clarification_message(knowledge_df, chat_scope_key, chat_scope_label)
-            chat_messages.append({"role": "assistant", "content": clarify_msg})
+            chat_messages.append({"role": "assistant", "content": clarify_msg, "created_at": _utc_now_iso()})
             with st.chat_message("assistant"):
                 st.info(clarify_msg)
         else:
@@ -4854,6 +5580,7 @@ elif page == "Agent Chat":
                             knowledge_df,
                             chat_scope_key,
                             chat_scope_label,
+                            domain_mode=domain_mode,
                         )
                         if discussion_mode == "Policy Briefings":
                             if not brief_context_text.strip():
@@ -4971,13 +5698,47 @@ elif page == "Agent Chat":
                             if r.get("snippet"):
                                 st.caption(r["snippet"])
 
-            chat_messages.append(
+            answer_id = _new_agent_chat_answer_id(f"{chat_session_key}|{user_prompt}")
+            assistant_msg = {
+                "role": "assistant",
+                "content": answer,
+                "results": sources,
+                "answer_id": answer_id,
+                "question": user_prompt,
+                "chat_scope_key": chat_scope_key,
+                "chat_scope_label": chat_scope_label,
+                "discussion_mode": discussion_mode,
+                "domain_mode": domain_mode,
+                "model_requested": model_name,
+                "model_used": used_model,
+                "created_at": _utc_now_iso(),
+            }
+            chat_messages.append(assistant_msg)
+            chat_quality_payload = _upsert_agent_chat_quality_answer(
+                chat_quality_payload,
                 {
-                    "role": "assistant",
-                    "content": answer,
-                    "results": sources,
-                }
+                    "answer_id": answer_id,
+                    "created_at": assistant_msg["created_at"],
+                    "updated_at": assistant_msg["created_at"],
+                    "question": str(user_prompt or "").strip(),
+                    "answer_preview": str(answer or "").strip()[:1400],
+                    "chat_scope_key": chat_scope_key,
+                    "chat_scope_label": chat_scope_label,
+                    "discussion_mode": discussion_mode,
+                    "domain_mode": domain_mode,
+                    "model_requested": model_name,
+                    "model_used": used_model,
+                    "source_count": len(sources) if isinstance(sources, list) else 0,
+                    "evaluated": False,
+                    "citation_correctness": 0,
+                    "temporal_correctness": 0,
+                    "nuance_correctness": 0,
+                    "hallucination_rate": "",
+                    "user_usefulness": 0,
+                    "strict_repeatability_needed": False,
+                },
             )
+            _save_agent_chat_quality(chat_quality_payload)
 
 
 # =====================================================
@@ -5879,6 +6640,18 @@ elif page == "Extraction":
                         rm["source_index_url"] = lit_index_url
                         rm["release_no"] = str(data.get("release_no", "") or entry.get("release_no", "")).strip()
                         rm["published_date"] = str(entry.get("date", "") or "")
+                        inferred_enforcement = _infer_enforcement_metadata(
+                            title=rm.get("title", ""),
+                            text=text,
+                            url=src_url,
+                            doc_type=rm.get("doc_type", ""),
+                            source_kind=rm.get("source_kind", ""),
+                            release_no=rm.get("release_no", ""),
+                        )
+                        rm["action_type"] = inferred_enforcement.get("action_type", "unknown")
+                        rm["forum"] = inferred_enforcement.get("forum", "unknown")
+                        rm["alleged_violations"] = inferred_enforcement.get("alleged_violations", [])
+                        rm["outcome_status"] = inferred_enforcement.get("outcome_status", "unknown")
 
                         replaced = _upsert_custom_document_record(custom_payload, record)
                         if replaced:
@@ -6867,26 +7640,28 @@ elif page == "Extraction":
     )
 
     index_org_options = _list_org_options(knowledge_data)
-    index_org_labels = [o["label"] for o in index_org_options]
+    all_index_scope_key = "__all__"
+    index_scope_options = [{"key": all_index_scope_key, "label": "All Organizations"}] + index_org_options
+    index_scope_labels = [o["label"] for o in index_scope_options]
     index_org_state_key = "index_management_org_key"
     if index_org_state_key not in st.session_state:
         st.session_state[index_org_state_key] = st.session_state.get("agent_org_key", index_org_options[0]["key"])
 
     index_default_idx = 0
-    for idx, opt in enumerate(index_org_options):
+    for idx, opt in enumerate(index_scope_options):
         if opt["key"] == st.session_state.get(index_org_state_key):
             index_default_idx = idx
             break
 
     selected_index_org_label = st.selectbox(
         "Index Organization",
-        index_org_labels,
+        index_scope_labels,
         index=index_default_idx,
         key="index_management_org_label",
     )
     selected_index_org = next(
-        (o for o in index_org_options if o["label"] == selected_index_org_label),
-        index_org_options[0],
+        (o for o in index_scope_options if o["label"] == selected_index_org_label),
+        index_scope_options[0],
     )
     index_org_key = selected_index_org["key"]
     index_org_label = selected_index_org["label"]
@@ -6904,19 +7679,157 @@ elif page == "Extraction":
         else:
             if "vector_store_ids_by_org" not in st.session_state:
                 st.session_state["vector_store_ids_by_org"] = {}
-            index_status = _get_org_index_status(knowledge_data, index_org_key, index_org_label)
-            active_index_store_id = (
-                st.session_state["vector_store_ids_by_org"].get(index_org_key)
-                or index_status.get("vector_store_id")
-            )
-            _render_vector_store_management_ui(
-                client=index_client,
-                raw_data_obj=knowledge_data,
-                org_key=index_org_key,
-                org_label=index_org_label,
-                active_vector_store_id=active_index_store_id,
-                key_prefix="extraction_index",
-            )
+            if index_org_key == all_index_scope_key:
+                status_rows = []
+                total_corpus = 0
+                total_indexed = 0
+                total_pending_add_update = 0
+                total_pending_remove = 0
+                for org_opt in index_org_options:
+                    org_status = _get_org_index_status(knowledge_data, org_opt["key"], org_opt["label"])
+                    active_store_id = (
+                        st.session_state["vector_store_ids_by_org"].get(org_opt["key"])
+                        or org_status.get("vector_store_id")
+                    )
+                    if active_store_id:
+                        st.session_state["vector_store_ids_by_org"][org_opt["key"]] = active_store_id
+                    pending_add_update = int(org_status.get("pending_add", 0) or 0) + int(org_status.get("pending_update", 0) or 0)
+                    pending_remove = int(org_status.get("pending_remove", 0) or 0)
+                    total_corpus += int(org_status.get("current_docs", 0) or 0)
+                    total_indexed += int(org_status.get("indexed_docs", 0) or 0)
+                    total_pending_add_update += pending_add_update
+                    total_pending_remove += pending_remove
+                    status_rows.append(
+                        {
+                            "organization": org_opt["label"],
+                            "vector_store_id": str(active_store_id or ""),
+                            "corpus_docs": int(org_status.get("current_docs", 0) or 0),
+                            "indexed_docs": int(org_status.get("indexed_docs", 0) or 0),
+                            "pending_add_update": pending_add_update,
+                            "pending_remove": pending_remove,
+                        }
+                    )
+
+                idx_col1, idx_col2, idx_col3, idx_col4 = st.columns(4)
+                idx_col1.metric("Corpus Docs", total_corpus)
+                idx_col2.metric("Indexed Docs", total_indexed)
+                idx_col3.metric("Pending Add/Update", total_pending_add_update)
+                idx_col4.metric("Pending Remove", total_pending_remove)
+                pending_total = total_pending_add_update + total_pending_remove
+                if pending_total > 0:
+                    st.warning(
+                        f"Knowledge index is out of sync across organizations "
+                        f"({pending_total} pending changes). Answers may reflect older positions until sync completes."
+                    )
+                if status_rows:
+                    status_df = pd.DataFrame(status_rows)
+                    st.dataframe(
+                        status_df[
+                            [
+                                "organization",
+                                "vector_store_id",
+                                "corpus_docs",
+                                "indexed_docs",
+                                "pending_add_update",
+                                "pending_remove",
+                            ]
+                        ],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                def _run_bulk_index_sync(force_rebuild=False):
+                    total_orgs = len(index_org_options)
+                    if total_orgs <= 0:
+                        st.info("No organizations available for indexing.")
+                        return
+
+                    action_text = "Rebuilding" if force_rebuild else "Syncing"
+                    progress = st.progress(0)
+                    status_line = st.empty()
+                    reports = []
+                    failures = []
+
+                    for idx, org_opt in enumerate(index_org_options, start=1):
+                        org_key = org_opt["key"]
+                        org_label = org_opt["label"]
+                        status_line.caption(f"{action_text} {org_label} ({idx}/{total_orgs})")
+
+                        def _bulk_progress_cb(done, total, message, _idx=idx, _org_label=org_label):
+                            if total > 0:
+                                safe_done = max(0, min(done, total))
+                                progress_value = ((_idx - 1) + (safe_done / total)) / total_orgs
+                            else:
+                                progress_value = (_idx - 1) / total_orgs
+                            progress.progress(max(0.0, min(1.0, progress_value)))
+                            status_line.caption(f"{action_text} {_org_label}: {message}")
+
+                        try:
+                            report = _sync_org_vector_store(
+                                client=index_client,
+                                raw_data_obj=knowledge_data,
+                                org_key=org_key,
+                                org_label=org_label,
+                                force_rebuild=force_rebuild,
+                                progress_callback=_bulk_progress_cb,
+                            )
+                            vector_store_id = str(report.get("vector_store_id", "") or "").strip()
+                            if vector_store_id:
+                                st.session_state["vector_store_ids_by_org"][org_key] = vector_store_id
+                            reports.append({"org_key": org_key, "org_label": org_label, "report": report})
+                        except Exception as e:
+                            failures.append({"org_key": org_key, "org_label": org_label, "error": str(e)})
+
+                        progress.progress(idx / total_orgs)
+
+                    status_line.caption(f"{action_text} all organizations complete.")
+                    uploaded_total = sum(int(r.get("report", {}).get("stats", {}).get("uploaded", 0) or 0) for r in reports)
+                    deleted_total = sum(int(r.get("report", {}).get("stats", {}).get("deleted", 0) or 0) for r in reports)
+                    failed_ops_total = sum(len(r.get("report", {}).get("failed", []) or []) for r in reports)
+                    up_to_date_count = sum(1 for r in reports if bool(r.get("report", {}).get("up_to_date")))
+
+                    st.success(
+                        f"All-org {'rebuild' if force_rebuild else 'sync'} finished: "
+                        f"processed {len(reports)}/{total_orgs}, "
+                        f"up_to_date={up_to_date_count}, uploads={uploaded_total}, deletes={deleted_total}."
+                    )
+                    if failed_ops_total > 0:
+                        st.warning(f"{failed_ops_total} document operations failed across all organizations.")
+                    if failures:
+                        st.error(f"{len(failures)} organizations failed to process.")
+                        for item in failures[:10]:
+                            st.write(f"- {item['org_label']}: {item['error']}")
+
+                bulk_col1, bulk_col2 = st.columns(2)
+                with bulk_col1:
+                    if st.button(
+                        "Build/Sync All Knowledge Indexes",
+                        type="primary",
+                        key="extraction_index_build_all_orgs",
+                    ):
+                        with st.spinner("Syncing all organization indexes..."):
+                            _run_bulk_index_sync(force_rebuild=False)
+                with bulk_col2:
+                    if st.button(
+                        "Force Rebuild All Indexes",
+                        key="extraction_index_force_rebuild_all_orgs",
+                    ):
+                        with st.spinner("Rebuilding all organization indexes..."):
+                            _run_bulk_index_sync(force_rebuild=True)
+            else:
+                index_status = _get_org_index_status(knowledge_data, index_org_key, index_org_label)
+                active_index_store_id = (
+                    st.session_state["vector_store_ids_by_org"].get(index_org_key)
+                    or index_status.get("vector_store_id")
+                )
+                _render_vector_store_management_ui(
+                    client=index_client,
+                    raw_data_obj=knowledge_data,
+                    org_key=index_org_key,
+                    org_label=index_org_label,
+                    active_vector_store_id=active_index_store_id,
+                    key_prefix="extraction_index",
+                )
 
     if custom_docs:
         st.markdown("---")
@@ -6957,6 +7870,26 @@ elif page == "Enrichment Pipeline":
     )
 
     enrichment_state = _load_enrichment_state()
+    st.caption(
+        f"Enrichment state is stored in local `{ENRICHMENT_STATE_LOCAL_PATH}` and "
+        f"GCS blob `{ENRICHMENT_STATE_BLOB_NAME}`."
+    )
+    enrichment_remote_configured = _get_gcs_storage() is not None
+    if not enrichment_remote_configured:
+        gcs_err = str(st.session_state.get("_gcs_error", "") or "").strip()
+        msg = "GCS is unavailable. Enrichment edits are blocked to avoid non-durable runs."
+        if gcs_err:
+            msg = f"{msg} Details: {gcs_err}"
+        st.error(msg)
+    enrichment_err = str(st.session_state.get("_enrichment_error", "") or "").strip()
+    if enrichment_err:
+        st.warning(enrichment_err)
+
+    def _require_enrichment_persistence_ready():
+        ok, msg = _check_enrichment_remote_persistence_ready()
+        if not ok:
+            st.error(msg)
+        return ok
 
     def _scoped_entries_from_state(state_obj):
         scoped = []
@@ -7051,9 +7984,15 @@ elif page == "Enrichment Pipeline":
         index=available_models.index(default_enrich_model),
     )
 
-    if st.button("Run Enrichment Batch", type="primary", disabled=(batch_limit <= 0)):
+    if st.button(
+        "Run Enrichment Batch",
+        type="primary",
+        disabled=(batch_limit <= 0 or not enrichment_remote_configured),
+    ):
         if client is None:
             st.error("OpenAI client is not configured. Check API key and model access.")
+        elif not _require_enrichment_persistence_ready():
+            pass
         else:
             run_progress = st.progress(0)
             run_status = st.empty()
@@ -7077,11 +8016,19 @@ elif page == "Enrichment Pipeline":
                     mode=mode_key,
                     limit=batch_limit,
                     progress_callback=_run_progress_cb,
+                    require_remote_persistence=True,
                 )
-            st.success(
-                f"Enrichment run complete. Processed {result.get('processed', 0)} "
-                f"of {result.get('total_selected', 0)} matching docs."
-            )
+            if result.get("aborted"):
+                st.error(
+                    "Enrichment run stopped because state could not be durably saved to GCS. "
+                    f"Processed {result.get('processed', 0)} docs before stopping. "
+                    f"{str(result.get('error', '') or '').strip()}"
+                )
+            else:
+                st.success(
+                    f"Enrichment run complete. Processed {result.get('processed', 0)} "
+                    f"of {result.get('total_selected', 0)} matching docs."
+                )
             enrichment_state = _load_enrichment_state()
             scoped_entries = _scoped_entries_from_state(enrichment_state)
 
@@ -7115,11 +8062,17 @@ elif page == "Enrichment Pipeline":
                 current_review = str(current_entry.get("review", {}).get("decision", "pending") or "pending")
                 st.caption(f"Current status: {current_status} | review: {current_review}")
 
-            if st.button("Re-Enrich Selected Document", key="reenrich_selected_doc"):
+            if st.button(
+                "Re-Enrich Selected Document",
+                key="reenrich_selected_doc",
+                disabled=(not enrichment_remote_configured),
+            ):
                 if client is None:
                     st.error("OpenAI client is not configured. Check API key and model access.")
                 elif not target_doc:
                     st.error("Select a document first.")
+                elif not _require_enrichment_persistence_ready():
+                    pass
                 else:
                     re_progress = st.progress(0)
                     re_status = st.empty()
@@ -7135,7 +8088,7 @@ elif page == "Enrichment Pipeline":
                         re_status.caption(f"{message} ({safe_done}/{total})")
 
                     with st.spinner("Re-enriching selected document..."):
-                        _run_enrichment_batch(
+                        re_result = _run_enrichment_batch(
                             client=client,
                             candidates=[target_doc],
                             enrichment_state=enrichment_state,
@@ -7143,8 +8096,15 @@ elif page == "Enrichment Pipeline":
                             mode="re_enrich_all",
                             limit=1,
                             progress_callback=_re_progress_cb,
+                            require_remote_persistence=True,
                         )
-                    st.success("Selected document re-enriched.")
+                    if re_result.get("aborted"):
+                        st.error(
+                            "Targeted re-enrichment stopped because state could not be durably saved to GCS. "
+                            f"{str(re_result.get('error', '') or '').strip()}"
+                        )
+                    else:
+                        st.success("Selected document re-enriched.")
                     enrichment_state = _load_enrichment_state()
                     scoped_entries = _scoped_entries_from_state(enrichment_state)
     else:
@@ -7190,9 +8150,14 @@ elif page == "Enrichment Pipeline":
         key="auto_review_model",
     )
 
-    if st.button("Run Auto Review Agent", disabled=(auto_limit <= 0)):
+    if st.button(
+        "Run Auto Review Agent",
+        disabled=(auto_limit <= 0 or not enrichment_remote_configured),
+    ):
         if client is None:
             st.error("OpenAI client is not configured. Check API key and model access.")
+        elif not _require_enrichment_persistence_ready():
+            pass
         else:
             review_progress = st.progress(0)
             review_status = st.empty()
@@ -7217,14 +8182,22 @@ elif page == "Enrichment Pipeline":
                     mode=auto_mode_key,
                     limit=auto_limit,
                     progress_callback=_review_progress_cb,
+                    require_remote_persistence=True,
                 )
-            st.success(
-                f"Auto review complete. Processed {review_result.get('processed', 0)} "
-                f"of {review_result.get('total_selected', 0)} docs; "
-                f"approved={review_result.get('approved', 0)}, "
-                f"flagged={review_result.get('flagged', 0)}, "
-                f"heuristic_fallbacks={review_result.get('heuristic_fallbacks', 0)}."
-            )
+            if review_result.get("aborted"):
+                st.error(
+                    "Auto review stopped because state could not be durably saved to GCS. "
+                    f"Processed {review_result.get('processed', 0)} docs before stopping. "
+                    f"{str(review_result.get('error', '') or '').strip()}"
+                )
+            else:
+                st.success(
+                    f"Auto review complete. Processed {review_result.get('processed', 0)} "
+                    f"of {review_result.get('total_selected', 0)} docs; "
+                    f"approved={review_result.get('approved', 0)}, "
+                    f"flagged={review_result.get('flagged', 0)}, "
+                    f"heuristic_fallbacks={review_result.get('heuristic_fallbacks', 0)}."
+                )
             enrichment_state = _load_enrichment_state()
             scoped_entries = _scoped_entries_from_state(enrichment_state)
 
@@ -7236,17 +8209,25 @@ elif page == "Enrichment Pipeline":
     st.caption(f"{eligible_for_bulk_accept} docs in scope are eligible for bulk acceptance.")
     if st.button(
         "Auto Accept All In Scope",
-        disabled=(eligible_for_bulk_accept <= 0),
+        disabled=(eligible_for_bulk_accept <= 0 or not enrichment_remote_configured),
         key="bulk_accept_all_scope",
     ):
-        accepted_count = _bulk_accept_reviews(
-            enrichment_state,
-            scoped_entries,
-            only_pending=False,
-        )
-        st.success(f"Auto-accepted {accepted_count} documents in {scope_label}.")
-        enrichment_state = _load_enrichment_state()
-        scoped_entries = _scoped_entries_from_state(enrichment_state)
+        if _require_enrichment_persistence_ready():
+            accepted_count = _bulk_accept_reviews(
+                enrichment_state,
+                scoped_entries,
+                only_pending=False,
+                require_remote_persistence=True,
+            )
+            if accepted_count < 0:
+                st.error(
+                    "Bulk acceptance could not be durably saved to GCS. "
+                    f"{str(st.session_state.get('_enrichment_error', '') or '').strip()}"
+                )
+            else:
+                st.success(f"Auto-accepted {accepted_count} documents in {scope_label}.")
+            enrichment_state = _load_enrichment_state()
+            scoped_entries = _scoped_entries_from_state(enrichment_state)
 
     st.markdown("---")
     st.subheader("Enrichment Results")
@@ -7346,18 +8327,66 @@ elif page == "Enrichment Pipeline":
                 key=review_notes_key,
             )
             r1, r2, r3, r4 = st.columns(4)
-            if r1.button("Mark Accepted", key=f"accept_{selected_doc_id}"):
-                if _update_review_decision(enrichment_state, selected_doc_id, "accepted", review_notes):
+            if r1.button(
+                "Mark Accepted",
+                key=f"accept_{selected_doc_id}",
+                disabled=(not enrichment_remote_configured),
+            ):
+                if _update_review_decision(
+                    enrichment_state,
+                    selected_doc_id,
+                    "accepted",
+                    review_notes,
+                    require_remote_persistence=True,
+                ):
                     st.success("Marked accepted.")
-            if r2.button("Mark Edited", key=f"edited_{selected_doc_id}"):
-                if _update_review_decision(enrichment_state, selected_doc_id, "edited", review_notes):
+                else:
+                    st.error(str(st.session_state.get("_enrichment_error", "") or "Failed to save review decision."))
+            if r2.button(
+                "Mark Edited",
+                key=f"edited_{selected_doc_id}",
+                disabled=(not enrichment_remote_configured),
+            ):
+                if _update_review_decision(
+                    enrichment_state,
+                    selected_doc_id,
+                    "edited",
+                    review_notes,
+                    require_remote_persistence=True,
+                ):
                     st.success("Marked edited.")
-            if r3.button("Mark Rejected", key=f"reject_{selected_doc_id}"):
-                if _update_review_decision(enrichment_state, selected_doc_id, "rejected", review_notes):
+                else:
+                    st.error(str(st.session_state.get("_enrichment_error", "") or "Failed to save review decision."))
+            if r3.button(
+                "Mark Rejected",
+                key=f"reject_{selected_doc_id}",
+                disabled=(not enrichment_remote_configured),
+            ):
+                if _update_review_decision(
+                    enrichment_state,
+                    selected_doc_id,
+                    "rejected",
+                    review_notes,
+                    require_remote_persistence=True,
+                ):
                     st.success("Marked rejected.")
-            if r4.button("Reset Pending", key=f"pending_{selected_doc_id}"):
-                if _update_review_decision(enrichment_state, selected_doc_id, "pending", review_notes):
+                else:
+                    st.error(str(st.session_state.get("_enrichment_error", "") or "Failed to save review decision."))
+            if r4.button(
+                "Reset Pending",
+                key=f"pending_{selected_doc_id}",
+                disabled=(not enrichment_remote_configured),
+            ):
+                if _update_review_decision(
+                    enrichment_state,
+                    selected_doc_id,
+                    "pending",
+                    review_notes,
+                    require_remote_persistence=True,
+                ):
                     st.success("Reset to pending.")
+                else:
+                    st.error(str(st.session_state.get("_enrichment_error", "") or "Failed to save review decision."))
     else:
         st.info("No enrichment entries yet in this scope. Run a batch to generate them.")
 
@@ -7504,6 +8533,10 @@ elif page == "Policy Delta Briefings":
                             "title": item.get("title", ""),
                             "source_kind": item.get("source_kind", ""),
                             "doc_type": item.get("doc_type", ""),
+                            "release_no": item.get("release_no", ""),
+                            "action_type": item.get("action_type", ""),
+                            "forum": item.get("forum", ""),
+                            "outcome_status": item.get("outcome_status", ""),
                             "similarity": round(_coerce_float(item.get("similarity_score", 0.0), default=0.0), 3),
                         }
                     )
@@ -7622,6 +8655,23 @@ elif page == "Policy Delta Briefings":
             f"**Type:** {selected_source.get('doc_type', '')} | "
             f"**Source:** `{selected_source.get('source_kind', '')}`"
         )
+        source_release_no = str(selected_source.get("release_no", "") or "").strip()
+        source_action_type = str(selected_source.get("action_type", "") or "").strip()
+        source_forum = str(selected_source.get("forum", "") or "").strip()
+        source_outcome = str(selected_source.get("outcome_status", "") or "").strip()
+        source_violations = selected_source.get("alleged_violations", [])
+        if not isinstance(source_violations, list):
+            source_violations = []
+        if source_release_no or source_action_type or source_forum or source_outcome or source_violations:
+            st.caption(
+                "Enforcement metadata | "
+                f"release_no: `{source_release_no or 'n/a'}` | "
+                f"action_type: `{source_action_type or 'unknown'}` | "
+                f"forum: `{source_forum or 'unknown'}` | "
+                f"outcome_status: `{source_outcome or 'unknown'}`"
+            )
+            if source_violations:
+                st.caption("Alleged violations: " + ", ".join(source_violations[:8]))
         comp_orgs = ", ".join(selected_comp.get("compare_org_keys", [])[:8]) if isinstance(selected_comp.get("compare_org_keys", []), list) else ""
         comp_types = ", ".join(selected_comp.get("compare_source_kinds", [])[:8]) if isinstance(selected_comp.get("compare_source_kinds", []), list) else ""
         if comp_orgs or comp_types:
@@ -7682,6 +8732,10 @@ elif page == "Policy Delta Briefings":
                             "title": p.get("title", ""),
                             "source_kind": p.get("source_kind", ""),
                             "doc_type": p.get("doc_type", ""),
+                            "release_no": p.get("release_no", ""),
+                            "action_type": p.get("action_type", ""),
+                            "forum": p.get("forum", ""),
+                            "outcome_status": p.get("outcome_status", ""),
                             "similarity": p.get("similarity_score", 0.0),
                         }
                         for p in selected_prior
