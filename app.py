@@ -699,13 +699,15 @@ def _infer_source_kind(metadata):
     url = str(metadata.get("url", "") or "").lower()
     if "/newsroom/speeches-statements/" in url:
         return "sec_speech"
+    doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
+    if doc_type == "regulatory notice":
+        return "finra_regulatory_notice"
     if "/trading-markets-frequently-asked-questions/" in url or source_kind == "sec_tm_faq":
         return "sec_tm_faq"
     if "/enforcement-litigation/litigation-releases/" in url or source_kind == "sec_enforcement_litigation":
         return "sec_enforcement_litigation"
     if ("/usao-" in url or "/usao/" in url) and "/pr/" in url:
         return "doj_usao_press_release"
-    doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
     if doc_type in {"speech", "statement", "remarks"}:
         return "sec_speech"
     return "document"
@@ -3424,6 +3426,10 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
         doc_type = str(m.get("doc_type", "Speech") or "Speech").strip()
         source_kind = _infer_source_kind(m)
         source_filename = str(m.get("source_filename", "") or "").strip()
+        notice_number = str(m.get("notice_number", "") or "").strip()
+        effective_date = str(m.get("effective_date", "") or "").strip()
+        comment_deadline = str(m.get("comment_deadline", "") or "").strip()
+        pdf_url = str(m.get("pdf_url", "") or "").strip()
 
         stable_seed = url or "|".join([title, speaker, speech_date])
         if not stable_seed.strip("|"):
@@ -3492,6 +3498,14 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
                 f"Chunk: {chunk_header}",
                 f"Vector File Name: {vector_filename}",
             ]
+            if notice_number:
+                header_lines.append(f"Notice Number: {notice_number}")
+            if effective_date:
+                header_lines.append(f"Effective Date: {effective_date}")
+            if comment_deadline:
+                header_lines.append(f"Comment Period Expires: {comment_deadline}")
+            if pdf_url:
+                header_lines.append(f"PDF URL: {pdf_url}")
             if enforcement_meta.get("release_no"):
                 header_lines.append(f"Release No: {enforcement_meta.get('release_no', '')}")
             if enforcement_meta.get("action_type", "unknown") != "unknown":
@@ -7105,6 +7119,244 @@ elif page == "Extraction":
                         st.write(f"- {msg}")
             except Exception as e:
                 st.error(f"Litigation ingest failed: {e}")
+
+    st.markdown("---")
+    st.subheader("FINRA Connector: Regulatory Notices")
+    st.caption("Discover and ingest FINRA Regulatory Notices directly into the knowledge base.")
+
+    finra_notice_index_default = "https://www.finra.org/rules-guidance/notices"
+    finra_notice_index_url = st.text_input(
+        "FINRA Regulatory Notices Index URL",
+        value=finra_notice_index_default,
+        key="finra_notice_index_url",
+    ).strip() or finra_notice_index_default
+    finra_notice_pages = st.slider(
+        "FINRA Notice Pages To Scan",
+        min_value=1,
+        max_value=50,
+        value=5,
+        key="finra_notice_pages",
+    )
+    finra_notice_include_rss = st.checkbox(
+        "Use FINRA Notices RSS Feed For Freshness",
+        value=True,
+        key="finra_notice_include_rss",
+    )
+
+    finra_notice_col1, finra_notice_col2 = st.columns(2)
+    with finra_notice_col1:
+        discover_finra_notice = st.button("Discover FINRA Regulatory Notices", key="discover_finra_notice")
+    with finra_notice_col2:
+        clear_finra_notice = st.button("Clear FINRA Notice Results", key="clear_finra_notice")
+
+    finra_notice_state_key = "finra_notice_discovered"
+    if finra_notice_state_key not in st.session_state:
+        st.session_state[finra_notice_state_key] = []
+    if clear_finra_notice:
+        st.session_state[finra_notice_state_key] = []
+
+    if discover_finra_notice:
+        try:
+            from finra_regulatory_notice_scraper import FINRARegulatoryNoticeScraper
+
+            with st.spinner("Discovering FINRA Regulatory Notices..."):
+                finra_notice_scraper = FINRARegulatoryNoticeScraper()
+                finra_notice_discovered = finra_notice_scraper.discover_documents(
+                    base_url=finra_notice_index_url,
+                    max_pages=finra_notice_pages,
+                    include_rss=finra_notice_include_rss,
+                )
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in finra_notice_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(
+                        existing_meta.get("published_date")
+                        or existing_meta.get("date")
+                        or ""
+                    ).strip()
+                    incoming_date = str(entry.get("date", "") or "").strip()
+                    existing_effective = str(existing_meta.get("effective_date", "") or "").strip()
+                    incoming_effective = str(entry.get("effective_date", "") or "").strip()
+                    existing_comment = str(existing_meta.get("comment_deadline", "") or "").strip()
+                    incoming_comment = str(entry.get("comment_deadline", "") or "").strip()
+                    if (
+                        (incoming_date and existing_date and incoming_date != existing_date)
+                        or (incoming_effective and existing_effective and incoming_effective != existing_effective)
+                        or (incoming_comment and existing_comment and incoming_comment != existing_comment)
+                    ):
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+
+            st.session_state[finra_notice_state_key] = finra_notice_discovered
+            new_count = sum(
+                1
+                for d in finra_notice_discovered
+                if d.get("ingest_status") in {"new", "update_available"}
+            )
+            st.success(
+                f"Discovered {len(finra_notice_discovered)} FINRA Regulatory Notices "
+                f"({new_count} new/update candidates)."
+            )
+        except Exception as e:
+            st.error(f"FINRA Regulatory Notice discovery failed: {e}")
+
+    finra_notice_discovered = st.session_state.get(finra_notice_state_key, [])
+    if finra_notice_discovered:
+        finra_notice_df = pd.DataFrame(finra_notice_discovered)
+        finra_notice_df = _sort_table_by_date(finra_notice_df, date_col="date")
+        show_cols = [
+            c for c in [
+                "date", "notice_number", "title", "effective_date", "comment_deadline", "ingest_status", "url"
+            ] if c in finra_notice_df.columns
+        ]
+        st.dataframe(
+            finra_notice_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        finra_notice_filter = st.selectbox(
+            "FINRA Notice Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="finra_notice_ingest_filter",
+        )
+        if finra_notice_filter == "New/Updates Only":
+            finra_notice_candidates = [
+                d for d in finra_notice_discovered
+                if d.get("ingest_status") in {"new", "update_available"}
+            ]
+        else:
+            finra_notice_candidates = list(finra_notice_discovered)
+
+        finra_notice_count = len(finra_notice_candidates)
+        if finra_notice_count <= 0:
+            finra_notice_limit = 0
+            st.caption("No FINRA Regulatory Notices match the selected ingest filter.")
+        elif finra_notice_count == 1:
+            finra_notice_limit = 1
+            st.caption("1 FINRA Regulatory Notice selected for ingest.")
+        else:
+            finra_notice_limit = st.slider(
+                "FINRA Regulatory Notices To Ingest",
+                min_value=1,
+                max_value=finra_notice_count,
+                value=min(20, finra_notice_count),
+                key="finra_notice_ingest_limit",
+            )
+        st.caption(f"{finra_notice_count} FINRA Regulatory Notices currently match this ingest selection.")
+
+        if st.button("Run FINRA Regulatory Notice Extraction", disabled=(finra_notice_limit <= 0), key="ingest_finra_notice"):
+            try:
+                from finra_regulatory_notice_scraper import FINRARegulatoryNoticeScraper
+
+                finra_notice_scraper = FINRARegulatoryNoticeScraper()
+                progress = st.progress(0, text="Starting FINRA notice ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = finra_notice_candidates[:finra_notice_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / finra_notice_limit,
+                        text=f"Ingesting {idx}/{finra_notice_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = finra_notice_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_notice_number=entry.get("notice_number", ""),
+                            fallback_effective_date=entry.get("effective_date", ""),
+                            fallback_comment_deadline=entry.get("comment_deadline", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 80:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_name = str(data.get("notice_number", "") or entry.get("notice_number", "")).strip()
+                        if not source_name:
+                            source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"finra-regulatory-notice-{idx}"
+                        source_name = f"{source_name}.html" if "." not in source_name else source_name
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="FINRA",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                            speaker="FINRA",
+                            doc_date=doc_date_value,
+                            doc_type="Regulatory Notice",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=".html",
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv="finra,regulatory-notice,rule-guidance,member-supervision",
+                            source_kind="finra_regulatory_notice",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "finra_regulatory_notice"
+                        rm["source_index_url"] = finra_notice_index_url
+                        rm["notice_type"] = "Regulatory Notice"
+                        rm["notice_number"] = str(data.get("notice_number", "") or entry.get("notice_number", "")).strip()
+                        rm["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+                        rm["effective_date"] = str(data.get("effective_date", "") or entry.get("effective_date", "")).strip()
+                        rm["comment_deadline"] = str(data.get("comment_deadline", "") or entry.get("comment_deadline", "")).strip()
+                        rm["pdf_url"] = str(data.get("pdf_url", "") or "").strip()
+                        rm["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="FINRA notice ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new FINRA notice docs and updated {saved_updates} existing FINRA notice docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} FINRA Regulatory Notices failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"FINRA Regulatory Notice ingest failed: {e}")
 
     st.markdown("---")
     st.subheader("DOJ Connector: USAO Press Releases")
