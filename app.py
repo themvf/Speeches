@@ -31,6 +31,9 @@ st.set_page_config(
 CUSTOM_DOCS_BLOB_NAME = "custom_documents.json"
 CUSTOM_DOCS_LOCAL_PATH = Path("data/custom_documents.json")
 CUSTOM_DOCS_RAW_DIR = Path("data/raw_documents")
+FINRA_TOPIC_MAP_BLOB_NAME = "finra_topic_map.json"
+FINRA_TOPIC_MAP_LOCAL_PATH = Path("data/finra_topic_map.json")
+FINRA_TOPIC_MAP_VERSION = "v1"
 ENRICHMENT_STATE_BLOB_NAME = "document_enrichment_state.json"
 ENRICHMENT_STATE_LOCAL_PATH = Path("data/document_enrichment_state.json")
 ENRICHMENT_PIPELINE_VERSION = "v1"
@@ -301,6 +304,312 @@ def _save_custom_documents(payload):
         )
     except Exception as e:
         st.session_state["_custom_docs_error"] = f"GCS custom-doc save failed: {e}"
+
+
+def _coerce_string_list(values, limit=None):
+    if not isinstance(values, list):
+        values = []
+    out = []
+    seen = set()
+    for item in values:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+        if limit is not None and len(out) >= limit:
+            break
+    return out
+
+
+def _empty_finra_topic_map():
+    return {
+        "version": FINRA_TOPIC_MAP_VERSION,
+        "updated_at": "",
+        "topics": [],
+        "url_to_topics": {},
+    }
+
+
+def _normalize_finra_topic_map(payload):
+    if not isinstance(payload, dict):
+        payload = {}
+
+    raw_topics = payload.get("topics", [])
+    if not isinstance(raw_topics, list):
+        raw_topics = []
+
+    topics = []
+    for item in raw_topics:
+        if not isinstance(item, dict):
+            continue
+        url = _url_match_key(item.get("url", ""))
+        topic_name = str(item.get("topic_name", "") or item.get("title", "") or "").strip()
+        topic_slug = str(item.get("topic_slug", "") or "").strip().lower()
+        if not topic_slug and url:
+            topic_slug = str(urlparse(url).path.rstrip("/").rsplit("/", 1)[-1] or "").strip().lower()
+        if not (topic_name or topic_slug or url):
+            continue
+        topics.append(
+            {
+                "topic_name": topic_name,
+                "topic_slug": topic_slug,
+                "url": url,
+                "section_names": _coerce_string_list(item.get("section_names", []), limit=20),
+                "linked_urls": [
+                    mapped
+                    for mapped in (
+                        _url_match_key(v) for v in _coerce_string_list(item.get("linked_urls", []), limit=500)
+                    )
+                    if mapped
+                ],
+            }
+        )
+
+    url_to_topics = payload.get("url_to_topics", {})
+    if not isinstance(url_to_topics, dict):
+        url_to_topics = {}
+    normalized_lookup = {}
+    for raw_url, raw_topics in url_to_topics.items():
+        url_key = _url_match_key(raw_url)
+        if not url_key:
+            continue
+        slugs = []
+        for item in raw_topics if isinstance(raw_topics, list) else []:
+            slug = str(item or "").strip().lower()
+            if slug and slug not in slugs:
+                slugs.append(slug)
+        if slugs:
+            normalized_lookup[url_key] = slugs
+
+    out = _empty_finra_topic_map()
+    out["updated_at"] = str(payload.get("updated_at", "") or "").strip()
+    out["topics"] = topics
+    out["url_to_topics"] = normalized_lookup
+    return _rebuild_finra_topic_map_lookup(out)
+
+
+def _load_finra_topic_map_local():
+    if not FINRA_TOPIC_MAP_LOCAL_PATH.exists():
+        return _empty_finra_topic_map()
+    try:
+        with open(FINRA_TOPIC_MAP_LOCAL_PATH, "r", encoding="utf-8") as f:
+            return _normalize_finra_topic_map(json.load(f))
+    except Exception:
+        return _empty_finra_topic_map()
+
+
+def _save_finra_topic_map_local(payload):
+    payload = _normalize_finra_topic_map(payload)
+    FINRA_TOPIC_MAP_LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(FINRA_TOPIC_MAP_LOCAL_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+def _load_finra_topic_map():
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            blob = storage.bucket.blob(FINRA_TOPIC_MAP_BLOB_NAME)
+            if blob.exists():
+                payload = _normalize_finra_topic_map(
+                    json.loads(blob.download_as_text(encoding="utf-8"))
+                )
+                _save_finra_topic_map_local(payload)
+                return payload
+        except Exception as e:
+            st.session_state["_finra_topic_map_error"] = f"GCS FINRA topic map load failed: {e}"
+    return _load_finra_topic_map_local()
+
+
+def _save_finra_topic_map(payload):
+    payload = _normalize_finra_topic_map(payload)
+    payload["updated_at"] = _utc_now_iso()
+    _save_finra_topic_map_local(payload)
+
+    storage = _get_gcs_storage()
+    if storage is None:
+        return
+    try:
+        blob = storage.bucket.blob(FINRA_TOPIC_MAP_BLOB_NAME)
+        blob.upload_from_string(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            content_type="application/json",
+        )
+    except Exception as e:
+        st.session_state["_finra_topic_map_error"] = f"GCS FINRA topic map save failed: {e}"
+
+
+def _rebuild_finra_topic_map_lookup(payload):
+    payload = _empty_finra_topic_map() if not isinstance(payload, dict) else payload
+    topics = payload.get("topics", [])
+    if not isinstance(topics, list):
+        topics = []
+
+    hub_url_keys = {
+        _url_match_key(item.get("url", ""))
+        for item in topics
+        if isinstance(item, dict) and _url_match_key(item.get("url", ""))
+    }
+    lookup = {}
+    for item in topics:
+        if not isinstance(item, dict):
+            continue
+        slug = str(item.get("topic_slug", "") or "").strip().lower()
+        url = _url_match_key(item.get("url", ""))
+        if not slug:
+            continue
+        for target_url in [url] + [
+            _url_match_key(v) for v in _coerce_string_list(item.get("linked_urls", []), limit=500)
+        ]:
+            if not target_url:
+                continue
+            if target_url in hub_url_keys and target_url != url:
+                continue
+            slugs = lookup.setdefault(target_url, [])
+            if slug not in slugs:
+                slugs.append(slug)
+
+    payload["url_to_topics"] = lookup
+    payload["topics"] = topics
+    payload["version"] = str(payload.get("version", "") or FINRA_TOPIC_MAP_VERSION)
+    return payload
+
+
+def _upsert_finra_topic_entry(topic_map, topic_entry):
+    topic_map = _normalize_finra_topic_map(topic_map)
+    if not isinstance(topic_entry, dict):
+        return False
+
+    url = _url_match_key(topic_entry.get("url", ""))
+    topic_slug = str(topic_entry.get("topic_slug", "") or "").strip().lower()
+    topic_name = str(topic_entry.get("topic_name", "") or "").strip()
+    if not (url or topic_slug or topic_name):
+        return False
+
+    normalized_entry = {
+        "topic_name": topic_name,
+        "topic_slug": topic_slug,
+        "url": url,
+        "section_names": _coerce_string_list(topic_entry.get("section_names", []), limit=20),
+        "linked_urls": [
+            mapped
+            for mapped in (_url_match_key(v) for v in _coerce_string_list(topic_entry.get("linked_urls", []), limit=500))
+            if mapped
+        ],
+    }
+
+    topics = topic_map.get("topics", [])
+    replaced = False
+    for idx, existing in enumerate(topics):
+        if not isinstance(existing, dict):
+            continue
+        existing_slug = str(existing.get("topic_slug", "") or "").strip().lower()
+        existing_url = _url_match_key(existing.get("url", ""))
+        if (topic_slug and existing_slug == topic_slug) or (url and existing_url == url):
+            topics[idx] = normalized_entry
+            replaced = True
+            break
+    if not replaced:
+        topics.append(normalized_entry)
+    topic_map["topics"] = topics
+    _rebuild_finra_topic_map_lookup(topic_map)
+    return replaced
+
+
+def _finra_slug_to_name_map(topic_map):
+    mapping = {}
+    topics = topic_map.get("topics", []) if isinstance(topic_map, dict) else []
+    for item in topics:
+        if not isinstance(item, dict):
+            continue
+        slug = str(item.get("topic_slug", "") or "").strip().lower()
+        name = str(item.get("topic_name", "") or "").strip()
+        if slug and name and slug not in mapping:
+            mapping[slug] = name
+    return mapping
+
+
+def _is_finra_document(metadata):
+    if not isinstance(metadata, dict):
+        return False
+    source_kind = str(metadata.get("source_kind", "") or "").strip().lower()
+    org = _normalize_org_label(metadata.get("organization") or metadata.get("org") or "")
+    return org.upper() == "FINRA" or source_kind.startswith("finra_")
+
+
+def _apply_finra_topic_map_to_metadata(metadata, topic_map, topic_slug="", topic_name=""):
+    if not isinstance(metadata, dict) or not _is_finra_document(metadata):
+        return False
+
+    slug_to_name = _finra_slug_to_name_map(topic_map)
+    lookup = topic_map.get("url_to_topics", {}) if isinstance(topic_map, dict) else {}
+    if not isinstance(lookup, dict):
+        lookup = {}
+
+    existing_slugs = _coerce_string_list(metadata.get("finra_topic_slugs", []), limit=50)
+    existing_names = _coerce_string_list(metadata.get("finra_topics", []), limit=50)
+    url_key = _url_match_key(metadata.get("url", ""))
+
+    combined_slugs = []
+    for slug in existing_slugs:
+        slug_value = str(slug or "").strip().lower()
+        if slug_value and slug_value not in combined_slugs:
+            combined_slugs.append(slug_value)
+    for slug in lookup.get(url_key, []):
+        slug_value = str(slug or "").strip().lower()
+        if slug_value and slug_value not in combined_slugs:
+            combined_slugs.append(slug_value)
+    explicit_slug = str(topic_slug or "").strip().lower()
+    if explicit_slug and explicit_slug not in combined_slugs:
+        combined_slugs.append(explicit_slug)
+
+    combined_names = []
+    for name in existing_names:
+        if name not in combined_names:
+            combined_names.append(name)
+    for slug in combined_slugs:
+        label = str(slug_to_name.get(slug, "") or "").strip()
+        if label and label not in combined_names:
+            combined_names.append(label)
+    explicit_name = str(topic_name or "").strip()
+    if explicit_name and explicit_name not in combined_names:
+        combined_names.append(explicit_name)
+
+    existing_tags = metadata.get("tags", [])
+    tags = _coerce_string_list(existing_tags if isinstance(existing_tags, list) else [], limit=200)
+    for slug in combined_slugs:
+        tag = f"finra-topic:{slug}"
+        if tag not in tags:
+            tags.append(tag)
+
+    changed = (
+        combined_slugs != existing_slugs
+        or combined_names != existing_names
+        or tags != _coerce_string_list(existing_tags if isinstance(existing_tags, list) else [], limit=200)
+    )
+    if changed:
+        metadata["finra_topic_slugs"] = combined_slugs
+        metadata["finra_topics"] = combined_names
+        metadata["tags"] = tags
+    return changed
+
+
+def _backfill_finra_topics_on_custom_payload(custom_payload, topic_map):
+    docs = custom_payload.get("documents", []) if isinstance(custom_payload, dict) else []
+    if not isinstance(docs, list):
+        return 0
+    updated = 0
+    for item in docs:
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata", {})
+        if _apply_finra_topic_map_to_metadata(metadata, topic_map):
+            updated += 1
+    return updated
 
 
 def _safe_filename(name):
@@ -702,6 +1011,8 @@ def _infer_source_kind(metadata):
     doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
     if doc_type == "regulatory notice":
         return "finra_regulatory_notice"
+    if doc_type == "key topic":
+        return "finra_key_topic"
     if "/trading-markets-frequently-asked-questions/" in url or source_kind == "sec_tm_faq":
         return "sec_tm_faq"
     if "/enforcement-litigation/litigation-releases/" in url or source_kind == "sec_enforcement_litigation":
@@ -938,6 +1249,7 @@ def _build_corpus_explorer_df(knowledge_data, enrichment_state):
             enrichment_payload=enrich,
             full_text=str(c.get("full_text", "") or ""),
         )
+        finra_topics = _coerce_string_list(m.get("finra_topics", []), limit=20)
 
         rows.append(
             {
@@ -964,6 +1276,7 @@ def _build_corpus_explorer_df(knowledge_data, enrichment_state):
                 "forum": enforcement_meta.get("forum", "unknown"),
                 "outcome_status": enforcement_meta.get("outcome_status", "unknown"),
                 "alleged_violations": ", ".join(enforcement_meta.get("alleged_violations", [])[:8]),
+                "finra_topics": ", ".join(finra_topics),
             }
         )
 
@@ -1562,6 +1875,7 @@ def _build_policy_doc_rows(knowledge_data, enrichment_state, org_key=None, org_k
                 "forum": enforcement_meta.get("forum", "unknown"),
                 "alleged_violations": enforcement_meta.get("alleged_violations", []),
                 "outcome_status": enforcement_meta.get("outcome_status", "unknown"),
+                "finra_topics": _coerce_string_list(metadata.get("finra_topics", []), limit=20),
                 "full_text": full_text,
             }
         )
@@ -3430,6 +3744,15 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
         effective_date = str(m.get("effective_date", "") or "").strip()
         comment_deadline = str(m.get("comment_deadline", "") or "").strip()
         pdf_url = str(m.get("pdf_url", "") or "").strip()
+        finra_topics = _coerce_string_list(m.get("finra_topics", []), limit=20)
+        topic_name = str(m.get("topic_name", "") or "").strip()
+        topic_slug = str(m.get("topic_slug", "") or "").strip()
+        section_names = _coerce_string_list(m.get("section_names", []), limit=20)
+        linked_notices = _coerce_string_list(m.get("linked_notices", []), limit=200)
+        linked_guidance = _coerce_string_list(m.get("linked_guidance", []), limit=200)
+        linked_rules = _coerce_string_list(m.get("linked_rules", []), limit=200)
+        linked_news = _coerce_string_list(m.get("linked_news", []), limit=200)
+        linked_investor_education = _coerce_string_list(m.get("linked_investor_education", []), limit=200)
 
         stable_seed = url or "|".join([title, speaker, speech_date])
         if not stable_seed.strip("|"):
@@ -3506,6 +3829,24 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
                 header_lines.append(f"Comment Period Expires: {comment_deadline}")
             if pdf_url:
                 header_lines.append(f"PDF URL: {pdf_url}")
+            if topic_name:
+                header_lines.append(f"FINRA Topic Name: {topic_name}")
+            if topic_slug:
+                header_lines.append(f"FINRA Topic Slug: {topic_slug}")
+            if finra_topics:
+                header_lines.append("FINRA Topics: " + ", ".join(finra_topics))
+            if section_names:
+                header_lines.append("FINRA Topic Sections: " + ", ".join(section_names))
+            if linked_notices:
+                header_lines.append(f"Linked FINRA Notices: {len(linked_notices)}")
+            if linked_guidance:
+                header_lines.append(f"Linked Guidance Items: {len(linked_guidance)}")
+            if linked_rules:
+                header_lines.append(f"Linked Rules: {len(linked_rules)}")
+            if linked_news:
+                header_lines.append(f"Linked News Items: {len(linked_news)}")
+            if linked_investor_education:
+                header_lines.append(f"Linked Investor Education Items: {len(linked_investor_education)}")
             if enforcement_meta.get("release_no"):
                 header_lines.append(f"Release No: {enforcement_meta.get('release_no', '')}")
             if enforcement_meta.get("action_type", "unknown") != "unknown":
@@ -7267,6 +7608,7 @@ elif page == "Extraction":
                 from finra_regulatory_notice_scraper import FINRARegulatoryNoticeScraper
 
                 finra_notice_scraper = FINRARegulatoryNoticeScraper()
+                finra_topic_map = _load_finra_topic_map()
                 progress = st.progress(0, text="Starting FINRA notice ingest...")
                 saved_new = 0
                 saved_updates = 0
@@ -7332,6 +7674,7 @@ elif page == "Extraction":
                         rm["comment_deadline"] = str(data.get("comment_deadline", "") or entry.get("comment_deadline", "")).strip()
                         rm["pdf_url"] = str(data.get("pdf_url", "") or "").strip()
                         rm["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+                        _apply_finra_topic_map_to_metadata(rm, finra_topic_map)
 
                         replaced = _upsert_custom_document_record(custom_payload, record)
                         if replaced:
@@ -7357,6 +7700,229 @@ elif page == "Extraction":
                         st.write(f"- {msg}")
             except Exception as e:
                 st.error(f"FINRA Regulatory Notice ingest failed: {e}")
+
+    st.markdown("---")
+    st.subheader("FINRA Connector: Key Topics")
+    st.caption("Discover and ingest FINRA Key Topic hub pages, then use them to tag related FINRA notices and guidance.")
+
+    finra_topic_index_default = "https://www.finra.org/rules-guidance/key-topics"
+    finra_topic_index_url = st.text_input(
+        "FINRA Key Topics Index URL",
+        value=finra_topic_index_default,
+        key="finra_topic_index_url",
+    ).strip() or finra_topic_index_default
+
+    finra_topic_col1, finra_topic_col2 = st.columns(2)
+    with finra_topic_col1:
+        discover_finra_topics = st.button("Discover FINRA Key Topics", key="discover_finra_topics")
+    with finra_topic_col2:
+        clear_finra_topics = st.button("Clear FINRA Key Topic Results", key="clear_finra_topics")
+
+    finra_topic_state_key = "finra_topic_discovered"
+    if finra_topic_state_key not in st.session_state:
+        st.session_state[finra_topic_state_key] = []
+    if clear_finra_topics:
+        st.session_state[finra_topic_state_key] = []
+
+    if discover_finra_topics:
+        try:
+            from finra_key_topics_scraper import FINRAKeyTopicsScraper
+
+            with st.spinner("Discovering FINRA Key Topics..."):
+                finra_topic_scraper = FINRAKeyTopicsScraper()
+                finra_topic_discovered = finra_topic_scraper.discover_documents(
+                    index_url=finra_topic_index_url,
+                )
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in finra_topic_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                if key in existing_custom:
+                    status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+
+            st.session_state[finra_topic_state_key] = finra_topic_discovered
+            new_count = sum(1 for d in finra_topic_discovered if d.get("ingest_status") == "new")
+            st.success(
+                f"Discovered {len(finra_topic_discovered)} FINRA Key Topics "
+                f"({new_count} new topic hubs)."
+            )
+        except Exception as e:
+            st.error(f"FINRA Key Topic discovery failed: {e}")
+
+    finra_topic_discovered = st.session_state.get(finra_topic_state_key, [])
+    if finra_topic_discovered:
+        finra_topic_df = pd.DataFrame(finra_topic_discovered)
+        if "topic_name" in finra_topic_df.columns:
+            finra_topic_df = finra_topic_df.sort_values(
+                by=["topic_name", "topic_slug"],
+                na_position="last",
+            )
+        show_cols = [
+            c for c in ["topic_name", "topic_slug", "ingest_status", "url"] if c in finra_topic_df.columns
+        ]
+        st.dataframe(
+            finra_topic_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        finra_topic_filter = st.selectbox(
+            "FINRA Key Topic Ingest Selection",
+            ["New Only", "All Discovered"],
+            key="finra_topic_ingest_filter",
+        )
+        if finra_topic_filter == "New Only":
+            finra_topic_candidates = [d for d in finra_topic_discovered if d.get("ingest_status") == "new"]
+        else:
+            finra_topic_candidates = list(finra_topic_discovered)
+
+        finra_topic_count = len(finra_topic_candidates)
+        if finra_topic_count <= 0:
+            finra_topic_limit = 0
+            st.caption("No FINRA Key Topics match the selected ingest filter.")
+        elif finra_topic_count == 1:
+            finra_topic_limit = 1
+            st.caption("1 FINRA Key Topic selected for ingest.")
+        else:
+            finra_topic_limit = st.slider(
+                "FINRA Key Topics To Ingest",
+                min_value=1,
+                max_value=finra_topic_count,
+                value=min(20, finra_topic_count),
+                key="finra_topic_ingest_limit",
+            )
+        st.caption(f"{finra_topic_count} FINRA Key Topics currently match this ingest selection.")
+
+        if st.button("Run FINRA Key Topic Extraction", disabled=(finra_topic_limit <= 0), key="ingest_finra_topics"):
+            try:
+                from finra_key_topics_scraper import FINRAKeyTopicsScraper
+
+                finra_topic_scraper = FINRAKeyTopicsScraper()
+                finra_topic_map = _load_finra_topic_map()
+                progress = st.progress(0, text="Starting FINRA Key Topic ingest...")
+                saved_new = 0
+                saved_updates = 0
+                topic_map_changes = 0
+                failed = []
+
+                selected = finra_topic_candidates[:finra_topic_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / finra_topic_limit,
+                        text=f"Ingesting {idx}/{finra_topic_limit}: {entry.get('topic_name', '')[:80]}",
+                    )
+                    try:
+                        extracted = finra_topic_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("topic_name", "") or entry.get("title", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if not text:
+                            raise RuntimeError("Extracted text is empty; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_name = str(data.get("topic_slug", "") or entry.get("topic_slug", "")).strip()
+                        if not source_name:
+                            source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"finra-key-topic-{idx}"
+                        source_name = f"{source_name}.html" if "." not in source_name else source_name
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="FINRA",
+                            title=str(data.get("topic_name", "") or entry.get("topic_name", "") or entry.get("title", "")).strip(),
+                            speaker="FINRA",
+                            doc_date="",
+                            doc_type="Key Topic",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=".html",
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv="finra,key-topic,rule-guidance,taxonomy",
+                            source_kind="finra_key_topic",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "finra_key_topic"
+                        rm["source_index_url"] = finra_topic_index_url
+                        rm["topic_name"] = str(data.get("topic_name", "") or entry.get("topic_name", "")).strip()
+                        rm["topic_slug"] = str(data.get("topic_slug", "") or entry.get("topic_slug", "")).strip().lower()
+                        rm["section_names"] = _coerce_string_list(data.get("section_names", []), limit=20)
+                        rm["overview_text"] = str(data.get("overview_text", "") or "").strip()
+                        rm["ogc_contacts"] = _coerce_string_list(data.get("ogc_contacts", []), limit=20)
+                        rm["linked_notices"] = _coerce_string_list(data.get("linked_notices", []), limit=200)
+                        rm["linked_guidance"] = _coerce_string_list(data.get("linked_guidance", []), limit=200)
+                        rm["linked_rules"] = _coerce_string_list(data.get("linked_rules", []), limit=200)
+                        rm["linked_news"] = _coerce_string_list(data.get("linked_news", []), limit=200)
+                        rm["linked_investor_education"] = _coerce_string_list(
+                            data.get("linked_investor_education", []),
+                            limit=200,
+                        )
+                        rm["linked_resources"] = _coerce_string_list(data.get("linked_resources", []), limit=200)
+                        rm["section_links"] = data.get("section_links", {}) if isinstance(data.get("section_links", {}), dict) else {}
+                        _apply_finra_topic_map_to_metadata(
+                            rm,
+                            finra_topic_map,
+                            topic_slug=rm.get("topic_slug", ""),
+                            topic_name=rm.get("topic_name", ""),
+                        )
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                        _upsert_finra_topic_entry(
+                            finra_topic_map,
+                            {
+                                "topic_name": rm.get("topic_name", ""),
+                                "topic_slug": rm.get("topic_slug", ""),
+                                "url": rm.get("url", ""),
+                                "section_names": rm.get("section_names", []),
+                                "linked_urls": _coerce_string_list(data.get("linked_urls", []), limit=500),
+                            },
+                        )
+                        topic_map_changes += 1
+                    except Exception as e:
+                        failed.append(f"{entry.get('topic_name', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="FINRA Key Topic ingest complete.")
+                backfilled = _backfill_finra_topics_on_custom_payload(custom_payload, finra_topic_map)
+                if topic_map_changes > 0:
+                    _save_finra_topic_map(finra_topic_map)
+                if saved_new or saved_updates or backfilled:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new FINRA Key Topic docs, updated {saved_updates} existing topic docs, "
+                        f"and refreshed topic tags on {backfilled} FINRA docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                elif topic_map_changes > 0:
+                    st.success("FINRA Key Topic map refreshed.")
+                if failed:
+                    st.warning(f"{len(failed)} FINRA Key Topics failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"FINRA Key Topic ingest failed: {e}")
 
     st.markdown("---")
     st.subheader("DOJ Connector: USAO Press Releases")
