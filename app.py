@@ -2430,6 +2430,181 @@ def _ask_mckinsey_report_with_fallback(client, prompt_text, preferred_model, mod
     raise RuntimeError("No model available for McKinsey report request.")
 
 
+def _intelligence_analysis_system_prompt():
+    return (
+        "You are a senior regulatory intelligence analyst. Produce structured, evidence-based regulatory analysis "
+        "with precise jurisdictional framing. Distinguish confirmed facts, reasonable inferences, and uncertainty. "
+        "Do not provide legal advice. If retrieved corpus evidence is provided, use it for factual claims and state "
+        "clearly when evidence is insufficient."
+    )
+
+
+def _build_intelligence_analysis_user_prompt(topic, context_text="", evidence_mode="scenario_only"):
+    topic_text = str(topic or "").strip()
+    context_value = str(context_text or "").strip()
+    if not context_value:
+        context_value = "None provided."
+
+    lines = [
+        "FINRA Regulatory Intelligence Analysis Prompt",
+        "",
+        "Role & Objective",
+        "You are a senior regulatory intelligence analyst embedded within FINRA's Office of General Counsel, "
+        "Member Supervision, or Market Regulation. Your task is to produce a structured, evidence-based assessment "
+        "of the topic provided from FINRA's institutional perspective - balancing investor protection, market "
+        "integrity, and the practical realities of member firm oversight. Your analysis should reflect fluency in "
+        "FINRA's rulebook, examination priorities, enforcement history, and its jurisdictional boundaries relative "
+        "to the SEC, state regulators, and other SROs. Distinguish clearly between confirmed facts, reasonable "
+        "inferences, and areas of uncertainty.",
+        "",
+        "Input",
+        f"Topic / Subject of Analysis: {topic_text}",
+        f"Relevant context, scope, or constraints: {context_value}",
+        "",
+        "Analysis Framework",
+        "",
+        "Executive Summary",
+        "Provide a 3-5 sentence BLUF summary of the key findings. The intended reader is a FINRA senior leader - "
+        "a District Director, EVP of Member Supervision, or Chief Legal Officer - who needs to understand the "
+        "regulatory significance of the issue, whether it implicates existing FINRA rules or authority, and what "
+        "action, if any, FINRA should consider.",
+        "",
+        "Issue Overview & Jurisdictional Framing",
+        "Describe the subject matter and establish FINRA's jurisdictional stake. Does this issue fall squarely "
+        "within FINRA's existing authority, at the edges of it, or primarily within the domain of the SEC, CFTC, "
+        "banking regulators, or state authorities? Identify the relevant FINRA member types implicated - "
+        "broker-dealers, funding portals, capital acquisition brokers - and their role in the issue. Note whether "
+        "the issue is driven by a regulatory development, market event, technology change, or member conduct pattern.",
+        "",
+        "Applicable FINRA Rules & Regulatory Framework",
+        "Identify the specific FINRA rules, SEC regulations, and related legal authorities most relevant to the "
+        "topic. Consider:",
+        "- Conduct rules (e.g., suitability/Reg BI, communications, supervision)",
+        "- Operational rules (e.g., margin, financial responsibility, books and records)",
+        "- Market integrity rules (e.g., trading practices, manipulation, best execution)",
+        "- AML/BSA obligations under FINRA Rule 3310",
+        "- Relevant FINRA Regulatory Notices, guidance, or prior exam findings",
+        "- SEC rules that FINRA enforces on behalf of member firms",
+        "Flag open interpretive questions, areas of regulatory ambiguity, and whether existing rules are sufficient "
+        "to address the issue or whether new rulemaking or guidance is warranted.",
+        "",
+        "Member Firm Landscape",
+        "Assess how the issue is manifesting across the member firm population. Which firm types are most exposed - "
+        "wirehouse, independent broker-dealer, dually registered, introducing vs. clearing, digital asset-focused? "
+        "Where is the issue concentrated by business model, product type, or customer segment? Draw on known FINRA "
+        "examination findings, enforcement actions, or sweep letter patterns where relevant. Assess whether the issue "
+        "reflects isolated conduct, an emerging industry practice, or a structural market change that affects members broadly.",
+        "",
+        "Investor Protection Assessment",
+        "Evaluate the issue through FINRA's core investor protection mandate. What is the nature and severity of "
+        "potential investor harm - financial loss, misleading disclosures, suitability failures, lack of recourse? "
+        "Which investor populations are most at risk - retail, senior, unsophisticated, or high-net-worth? Assess "
+        "whether existing FINRA investor protection rules are adequate or whether gaps exist. Note whether the issue "
+        "involves products, platforms, or distribution channels that fall outside FINRA's direct supervisory reach, "
+        "creating blind spots.",
+        "",
+        "Market Integrity Assessment",
+        "Evaluate implications for fair and orderly markets. Does the issue implicate trading practices, price "
+        "discovery, best execution, or systemic risk? Is there potential for manipulation, conflicts of interest, "
+        "or information asymmetries that disadvantage retail participants? Note whether the issue is confined to "
+        "FINRA-regulated venues or extends to unregulated or lightly regulated markets where FINRA has limited visibility.",
+        "",
+        "Examination & Enforcement Considerations",
+        "Identify the examination and enforcement implications for FINRA. What would a targeted exam program look "
+        "like - what are the key documents, data sources, and interview subjects? Are existing exam procedures "
+        "adequate, or does the issue require new examination modules or specialist resources? Assess the enforcement "
+        "theory: which FINRA rules or SEC regulations would form the basis for a disciplinary action, what is the "
+        "evidence standard, and are there analogous enforcement precedents? Flag any issues related to statute of "
+        "limitations, jurisdiction, or burden of proof that could complicate an enforcement case.",
+        "",
+        "Scenarios & Projections",
+        "Outline 2-3 plausible scenarios for how the issue may evolve from FINRA's perspective. For each, describe "
+        "the triggering conditions, how FINRA's regulatory posture might need to adapt, and a probability estimate "
+        "(low / medium / high). Include at least one scenario involving regulatory coordination - with the SEC, CFTC, "
+        "banking regulators, or state securities administrators - as cross-agency issues are increasingly the norm.",
+        "",
+        "Recommended Regulatory Actions",
+        "Identify the specific actions FINRA should consider, calibrated to the nature and urgency of the issue. "
+        "Options include:",
+        "- Targeted examination sweeps or focused reviews",
+        "- Issuance of a Regulatory Notice (guidance, alert, or request for comment)",
+        "- Rulemaking petition to the SEC or internal rule amendment process",
+        "- Coordination with SEC, CFTC, or banking regulators",
+        "- Investor education or member firm outreach",
+        "- No action warranted at this time",
+        "Rank recommendations by priority and feasibility within FINRA's existing authority. Flag where FINRA would "
+        "need SEC approval or Congressional action to proceed.",
+        "",
+        "Intelligence Gaps",
+        "Identify the most critical unknowns - pending SEC rulemaking, unresolved jurisdictional questions, member "
+        "firm data FINRA does not currently collect, or enforcement outcomes that would clarify the legal framework. "
+        "Note what information, if obtained through examinations, market surveillance, or inter-agency coordination, "
+        "would most change this assessment.",
+        "",
+        "Analytical Standards",
+        "- Maintain FINRA's institutional perspective throughout - this is not a defense memo for member firms or "
+        "a plaintiff's brief; it is a regulatory assessment",
+        "- Distinguish clearly between issues within FINRA's existing authority and those requiring SEC action or Congressional authorization",
+        "- Avoid overstating FINRA's jurisdiction; be precise about where the SEC, CFTC, banking regulators, or state authorities have primary or concurrent authority",
+        "- Cite specific rule numbers, Regulatory Notices, exam findings, and enforcement actions where available",
+        "- Flag where conduct may be harmful but does not clearly violate an existing FINRA rule - this is often where guidance or rulemaking is most needed",
+        "- Note where politically-driven regulatory shifts at the SEC may affect FINRA's ability to act, given FINRA's status as an SEC-overseen SRO",
+        "",
+        f"Topic to analyze: {topic_text}",
+    ]
+
+    if str(evidence_mode or "").strip() == "corpus":
+        lines.extend(
+            [
+                "",
+                "Evidence constraint:",
+                "Use retrieved corpus evidence for factual claims when evidence is provided. "
+                "If corpus evidence is missing or incomplete, say so explicitly and separate evidence-backed facts "
+                "from inference or open questions.",
+            ]
+        )
+
+    return "\n".join(lines).strip()
+
+
+def _ask_intelligence_analysis(client, prompt_text, model_name, instructions_text=None):
+    system_text = _intelligence_analysis_system_prompt()
+    if instructions_text:
+        system_text = f"{system_text}\n\n{instructions_text}"
+
+    response = client.responses.create(
+        model=model_name,
+        input=[
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": str(prompt_text or "").strip()},
+        ],
+        max_output_tokens=3200,
+    )
+    return {"answer": _extract_response_text(response), "results": []}
+
+
+def _ask_intelligence_analysis_with_fallback(client, prompt_text, preferred_model, model_pool, instructions_text=None):
+    ordered = [preferred_model] + [m for m in model_pool if m != preferred_model]
+    last_error = None
+    for idx, model_name in enumerate(ordered):
+        try:
+            result = _ask_intelligence_analysis(
+                client=client,
+                prompt_text=prompt_text,
+                model_name=model_name,
+                instructions_text=instructions_text,
+            )
+            return {"result": result, "used_model": model_name, "fallback_used": idx > 0}
+        except Exception as e:
+            last_error = e
+            if not _is_model_access_error(e):
+                raise
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("No model available for intelligence-analysis request.")
+
+
 def _corpus_doc_id(speech):
     m = speech.get("metadata", {})
     existing = str(m.get("document_id", "") or "").strip()
@@ -4845,7 +5020,7 @@ section = st.sidebar.radio(
 if section == "Discussion":
     page = st.sidebar.radio(
         "Discuss",
-        ["Agent Chat", "Policy Delta Briefings", "McKinsey Report"],
+        ["Agent Chat", "Policy Delta Briefings", "McKinsey Report", "Intelligence Analysis"],
     )
 elif section == "Corpus Explorer":
     page = "Corpus Explorer"
@@ -6002,6 +6177,260 @@ elif page == "McKinsey Report":
             f"Generated at `{last_report.get('generated_at', '')}` | "
             f"Mode: `{last_report.get('mode', '')}` | Scope: `{last_report.get('scope', '')}`"
         )
+        if last_report.get("fallback_used") and last_report.get("used_model") != last_report.get("selected_model"):
+            st.info(
+                f"Selected model `{last_report.get('selected_model')}` was unavailable. "
+                f"Used fallback model `{last_report.get('used_model')}`."
+            )
+        st.markdown(str(last_report.get("answer", "")))
+        sources = last_report.get("sources", [])
+        if isinstance(sources, list) and sources:
+            with st.expander("Retrieved Sources"):
+                for r in sources[:10]:
+                    score = r.get("score")
+                    score_txt = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
+                    display_name = _format_source_display_name(r, title_lookup=doc_title_lookup)
+                    st.markdown(f"- `{display_name}`{score_txt}")
+                    if r.get("snippet"):
+                        st.caption(r["snippet"])
+
+
+# =====================================================
+# PAGE: Intelligence Analysis
+# =====================================================
+elif page == "Intelligence Analysis":
+    st.title("Intelligence Analysis")
+    st.markdown(
+        "Generate a structured regulatory intelligence assessment using the FINRA Intelligence Analysis prompt."
+    )
+    st.caption("Prompt: `Intelligence Analysis`")
+
+    if _openai_key is None:
+        st.error("OpenAI API key is not configured. Add `[openai].api_key` in Streamlit secrets.")
+        st.stop()
+
+    client = _get_openai_client()
+    if client is None:
+        st.error(st.session_state.get("_openai_error", "Failed to initialize OpenAI client."))
+        st.stop()
+
+    available_models = _get_accessible_chat_models(client)
+    if not available_models:
+        available_models = _candidate_chat_models()
+
+    default_model = "gpt-5.1" if "gpt-5.1" in available_models else available_models[0]
+    model_name = st.selectbox(
+        "Model",
+        available_models,
+        index=available_models.index(default_model),
+        key="intelligence_analysis_model",
+    )
+
+    evidence_mode = st.radio(
+        "Evidence Mode",
+        ["Scenario Only", "Scenario + Corpus Evidence"],
+        horizontal=True,
+        help="Use Scenario Only for prompt-only analysis, or include indexed corpus retrieval for grounded facts.",
+        key="intelligence_analysis_evidence_mode",
+    )
+
+    report_vector_store_ids = []
+    report_scope_label = "Scenario Only"
+    if evidence_mode == "Scenario + Corpus Evidence":
+        org_options = _list_org_options(knowledge_data)
+        org_labels = [o["label"] for o in org_options]
+
+        if "intelligence_analysis_org_key" not in st.session_state:
+            st.session_state["intelligence_analysis_org_key"] = st.session_state.get("agent_org_key", org_options[0]["key"])
+        if "vector_store_ids_by_org" not in st.session_state:
+            st.session_state["vector_store_ids_by_org"] = {}
+
+        default_org_idx = 0
+        for idx, o in enumerate(org_options):
+            if o["key"] == st.session_state.get("intelligence_analysis_org_key"):
+                default_org_idx = idx
+                break
+        selected_org_label = st.selectbox(
+            "Organization",
+            org_labels,
+            index=default_org_idx,
+            key="intelligence_analysis_org_label",
+        )
+        selected_org = next((o for o in org_options if o["label"] == selected_org_label), org_options[0])
+        report_org_key = selected_org["key"]
+        report_org_label = selected_org["label"]
+        st.session_state["intelligence_analysis_org_key"] = report_org_key
+
+        report_scope = st.radio(
+            "Corpus Scope",
+            ["Selected Organization", "All Organizations"],
+            horizontal=True,
+            key="intelligence_analysis_scope",
+        )
+
+        index_status = _get_org_index_status(knowledge_data, report_org_key, report_org_label)
+        active_vector_store_id = (
+            st.session_state["vector_store_ids_by_org"].get(report_org_key)
+            or index_status.get("vector_store_id")
+        )
+        if active_vector_store_id:
+            st.session_state["vector_store_ids_by_org"][report_org_key] = active_vector_store_id
+
+        state_all = _load_vector_state()
+        stores_all = state_all.get("stores", {}) if isinstance(state_all, dict) else {}
+        org_label_by_key = {o["key"]: o["label"] for o in org_options}
+        all_store_rows = []
+        for k, v in stores_all.items():
+            if not isinstance(v, dict):
+                continue
+            vsid = str(v.get("vector_store_id", "") or "").strip()
+            if not vsid:
+                continue
+            label = str(v.get("org_label", "") or org_label_by_key.get(k, k.upper()))
+            all_store_rows.append({"key": k, "label": label, "vector_store_id": vsid})
+
+        for k, vsid in st.session_state["vector_store_ids_by_org"].items():
+            vsid = str(vsid or "").strip()
+            if not vsid:
+                continue
+            if not any(r["key"] == k for r in all_store_rows):
+                all_store_rows.append(
+                    {
+                        "key": k,
+                        "label": org_label_by_key.get(k, k.upper()),
+                        "vector_store_id": vsid,
+                    }
+                )
+        all_store_rows = sorted(all_store_rows, key=lambda r: r["label"].lower())
+
+        if report_scope == "Selected Organization":
+            report_scope_label = report_org_label
+            report_vector_store_ids = [active_vector_store_id] if active_vector_store_id else []
+            if active_vector_store_id:
+                st.caption(f"Using vector store `{active_vector_store_id}` for {report_org_label}.")
+            else:
+                st.warning(
+                    f"No indexed vector store found for {report_org_label}. "
+                    "Build/Sync in Extraction or switch to Scenario Only."
+                )
+        else:
+            report_scope_label = "All Organizations"
+            report_vector_store_ids = [r["vector_store_id"] for r in all_store_rows]
+            if report_vector_store_ids:
+                st.caption(f"Using {len(report_vector_store_ids)} indexed organization stores.")
+            else:
+                st.warning("No indexed vector stores found. Build/Sync in Extraction or switch to Scenario Only.")
+
+    st.markdown("---")
+    st.subheader("Prompt Input")
+    intelligence_topic = st.text_area(
+        "Topic / Subject of Analysis",
+        key="intelligence_analysis_topic",
+        height=120,
+        placeholder="Example: Use of alternative data and predictive analytics in retail recommendations.",
+    ).strip()
+    intelligence_context = st.text_area(
+        "Relevant Context, Scope, or Constraints (optional)",
+        key="intelligence_analysis_context",
+        height=180,
+        placeholder=(
+            "Example: Focus on the last 12 months, dually registered firms, Reg BI and supervision implications, "
+            "and any jurisdictional overlap with the SEC."
+        ),
+    ).strip()
+
+    action_col1, action_col2 = st.columns(2)
+    with action_col1:
+        generate_intel_report = st.button(
+            "Generate Intelligence Analysis",
+            type="primary",
+            key="generate_intelligence_analysis",
+        )
+    with action_col2:
+        clear_intel_report = st.button("Clear Analysis", key="clear_intelligence_analysis")
+
+    report_state_key = "intelligence_analysis_last"
+    if clear_intel_report:
+        st.session_state.pop(report_state_key, None)
+
+    if generate_intel_report:
+        if not intelligence_topic:
+            st.error("Topic / Subject of Analysis is required.")
+        else:
+            prompt_text = _build_intelligence_analysis_user_prompt(
+                topic=intelligence_topic,
+                context_text=intelligence_context,
+                evidence_mode="corpus" if evidence_mode == "Scenario + Corpus Evidence" else "scenario_only",
+            )
+            answer = ""
+            sources = []
+            used_model = model_name
+            fallback_used = False
+            run_mode = "scenario_only"
+
+            with st.spinner("Generating analysis..."):
+                try:
+                    if evidence_mode == "Scenario + Corpus Evidence" and report_vector_store_ids:
+                        run_mode = "scenario_plus_corpus"
+                        report_instructions = (
+                            f"{_intelligence_analysis_system_prompt()} "
+                            "Use only retrieved corpus evidence for factual claims. "
+                            "If evidence is incomplete, separate evidence-backed facts from inference and unknowns."
+                        )
+                        agent_out = _ask_agent_with_fallback(
+                            client=client,
+                            vector_store_ids=report_vector_store_ids,
+                            question=prompt_text,
+                            preferred_model=model_name,
+                            model_pool=available_models,
+                            instructions_text=report_instructions,
+                        )
+                        result = agent_out.get("result", {})
+                        answer = result.get("answer", "No analysis returned.")
+                        sources = result.get("results", [])
+                        used_model = agent_out.get("used_model", model_name)
+                        fallback_used = agent_out.get("fallback_used", False)
+                    else:
+                        if evidence_mode == "Scenario + Corpus Evidence" and not report_vector_store_ids:
+                            st.info("No indexed corpus store found for this scope. Generating scenario-only analysis.")
+                        report_out = _ask_intelligence_analysis_with_fallback(
+                            client=client,
+                            prompt_text=prompt_text,
+                            preferred_model=model_name,
+                            model_pool=available_models,
+                        )
+                        result = report_out.get("result", {})
+                        answer = result.get("answer", "No analysis returned.")
+                        used_model = report_out.get("used_model", model_name)
+                        fallback_used = report_out.get("fallback_used", False)
+                except Exception as e:
+                    answer = f"Analysis generation failed: {e}"
+                    sources = []
+                    used_model = model_name
+                    fallback_used = False
+
+            st.session_state[report_state_key] = {
+                "answer": answer,
+                "sources": sources,
+                "used_model": used_model,
+                "selected_model": model_name,
+                "fallback_used": fallback_used,
+                "mode": run_mode,
+                "scope": report_scope_label,
+                "generated_at": _utc_now_iso(),
+                "topic": intelligence_topic,
+            }
+
+    last_report = st.session_state.get(report_state_key, {})
+    if isinstance(last_report, dict) and str(last_report.get("answer", "")).strip():
+        st.markdown("---")
+        st.subheader("Generated Analysis")
+        st.caption(
+            f"Generated at `{last_report.get('generated_at', '')}` | "
+            f"Mode: `{last_report.get('mode', '')}` | Scope: `{last_report.get('scope', '')}`"
+        )
+        if str(last_report.get("topic", "")).strip():
+            st.caption(f"Topic: `{last_report.get('topic', '')}`")
         if last_report.get("fallback_used") and last_report.get("used_model") != last_report.get("selected_model"):
             st.info(
                 f"Selected model `{last_report.get('selected_model')}` was unavailable. "
