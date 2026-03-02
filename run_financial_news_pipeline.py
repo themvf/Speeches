@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import json
 import os
@@ -203,10 +205,60 @@ def _get_gcs_storage(secrets_payload: Dict[str, Any]) -> Tuple[Optional[GCSStora
 
     raw_json = str(os.getenv("GCS_CREDENTIALS_JSON", "") or "").strip()
     if raw_json:
-        try:
-            credentials_info = json.loads(raw_json)
-        except Exception as e:
-            return None, f"Invalid GCS_CREDENTIALS_JSON: {e}"
+        parse_errors = []
+
+        def _try_parse_json_blob(blob_text: str):
+            parsed = json.loads(blob_text)
+            if isinstance(parsed, str):
+                parsed = json.loads(parsed)
+            if not isinstance(parsed, dict):
+                raise ValueError("Parsed credentials payload is not a JSON object.")
+            return parsed
+
+        candidate_blobs = [raw_json]
+        if len(raw_json) >= 2 and raw_json[0] == raw_json[-1] and raw_json[0] in {"'", '"'}:
+            candidate_blobs.append(raw_json[1:-1].strip())
+
+        for candidate in candidate_blobs:
+            if not candidate:
+                continue
+            try:
+                credentials_info = _try_parse_json_blob(candidate)
+                break
+            except Exception as e:
+                parse_errors.append(f"json:{e}")
+
+        if credentials_info is None:
+            try:
+                decoded = base64.b64decode(raw_json, validate=True).decode("utf-8")
+                credentials_info = _try_parse_json_blob(decoded.strip())
+            except (binascii.Error, UnicodeDecodeError, ValueError, json.JSONDecodeError) as e:
+                parse_errors.append(f"base64:{e}")
+
+        if credentials_info is None and tomllib is not None:
+            try:
+                toml_payload = tomllib.loads(raw_json)
+                if isinstance(toml_payload, dict):
+                    if isinstance(toml_payload.get("gcs"), dict):
+                        credentials_info = {
+                            k: v for k, v in toml_payload["gcs"].items() if k != "bucket_name"
+                        }
+                        if not bucket_name:
+                            bucket_name = str(toml_payload["gcs"].get("bucket_name", "") or "").strip()
+                    else:
+                        credentials_info = {k: v for k, v in toml_payload.items() if k != "bucket_name"}
+                        if not bucket_name:
+                            bucket_name = str(toml_payload.get("bucket_name", "") or "").strip()
+            except Exception as e:
+                parse_errors.append(f"toml:{e}")
+
+        if credentials_info is None:
+            return (
+                None,
+                "Invalid GCS_CREDENTIALS_JSON. Expected raw service-account JSON, a JSON string wrapper, "
+                "base64-encoded JSON, or TOML containing a [gcs] block. "
+                f"Parse attempts: {' | '.join(parse_errors[:3])}",
+            )
     else:
         credentials_path = str(
             os.getenv("GCS_CREDENTIALS_PATH", "")
