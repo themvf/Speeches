@@ -1035,6 +1035,71 @@ def _write_summary(summary_path: Optional[str], payload: Dict[str, Any]) -> None
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
+
+def _extract_newsapi_discovery_errors(debug_payload: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+    if not isinstance(debug_payload, dict):
+        return errors
+
+    for page in debug_payload.get("pages", []):
+        if not isinstance(page, dict):
+            continue
+        error_message = _normalize_space(page.get("error_message", ""))
+        if not error_message:
+            continue
+        pass_name = _normalize_space(page.get("pass", "")) or "unknown_pass"
+        page_num = _coerce_int(page.get("page"), default=0, min_value=0)
+        errors.append(f"{pass_name}:page_{page_num}: {error_message}")
+    return errors
+
+
+def _trim_newsapi_debug(debug_payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(debug_payload, dict):
+        return {}
+
+    trimmed_pages = []
+    for page in debug_payload.get("pages", []):
+        if not isinstance(page, dict):
+            continue
+        trimmed_pages.append(
+            {
+                "pass": _normalize_space(page.get("pass", "")),
+                "page": _coerce_int(page.get("page"), default=0, min_value=0),
+                "returned_items": _coerce_int(page.get("returned_items"), default=0, min_value=0),
+                "unique_added": _coerce_int(page.get("unique_added"), default=0, min_value=0),
+                "error_type": _normalize_space(page.get("error_type", "")),
+                "error_message": _normalize_space(page.get("error_message", "")),
+                "page_url": _normalize_space(page.get("page_url", ""))[:800],
+            }
+        )
+
+    return {
+        "endpoint": _normalize_space(debug_payload.get("endpoint", "")),
+        "query": _normalize_space(debug_payload.get("query", ""))[:1200],
+        "max_pages_requested": _coerce_int(debug_payload.get("max_pages_requested"), default=0, min_value=0),
+        "page_size": _coerce_int(debug_payload.get("page_size"), default=0, min_value=0),
+        "target_count": _coerce_int(debug_payload.get("target_count"), default=0, min_value=0),
+        "from": _normalize_space(debug_payload.get("from", "")),
+        "to": _normalize_space(debug_payload.get("to", "")),
+        "language": _normalize_space(debug_payload.get("language", "")),
+        "sort_by": _normalize_space(debug_payload.get("sort_by", "")),
+        "domains": _normalize_space(debug_payload.get("domains", "")),
+        "exclude_domains": _normalize_space(debug_payload.get("exclude_domains", "")),
+        "search_in": _normalize_space(debug_payload.get("search_in", "")),
+        "passes_run": [str(item) for item in debug_payload.get("passes_run", []) if str(item).strip()],
+        "fallback_no_domains_used": bool(debug_payload.get("fallback_no_domains_used")),
+        "fallback_no_domains_reason": _normalize_space(debug_payload.get("fallback_no_domains_reason", "")),
+        "fallback_no_search_in_used": bool(debug_payload.get("fallback_no_search_in_used")),
+        "fallback_no_search_in_reason": _normalize_space(debug_payload.get("fallback_no_search_in_reason", "")),
+        "fallback_widened_window_used": bool(debug_payload.get("fallback_widened_window_used")),
+        "fallback_widened_window_reason": _normalize_space(debug_payload.get("fallback_widened_window_reason", "")),
+        "fallback_widened_from": _normalize_space(debug_payload.get("fallback_widened_from", "")),
+        "stop_reason": _normalize_space(debug_payload.get("stop_reason", "")),
+        "total_results_reported": _coerce_int(debug_payload.get("total_results_reported"), default=0, min_value=0),
+        "total_unique": _coerce_int(debug_payload.get("total_unique"), default=0, min_value=0),
+        "pages": trimmed_pages[:12],
+    }
+
 def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
     secrets_payload = _load_streamlit_secrets()
     storage, gcs_status = _get_gcs_storage(secrets_payload)
@@ -1081,6 +1146,10 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         exclude_domains=settings["exclude_domains"],
         target_count=int(settings["target_count"]),
     )
+    discovery_debug = getattr(scraper, "last_discovery_debug", {}) if scraper is not None else {}
+    discovery_errors = _extract_newsapi_discovery_errors(discovery_debug)
+    if not discovered and discovery_errors:
+        raise RuntimeError(f"NewsAPI discovery failed: {discovery_errors[0]}")
 
     custom_payload = _load_custom_documents(storage)
     existing_custom = {}
@@ -1211,6 +1280,12 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         "remote_persistence": bool(storage is not None),
         "query": settings["query"],
         "lookback_days": int(settings["lookback_days"]),
+        "domains": settings["domains"],
+        "exclude_domains": settings["exclude_domains"],
+        "max_pages": int(settings["max_pages"]),
+        "page_size": int(settings["page_size"]),
+        "target_count": int(settings["target_count"]),
+        "sort_by": settings["sort_by"],
         "from_date": from_date,
         "to_date": to_date,
         "selection": args.selection,
@@ -1225,6 +1300,8 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         "updated_doc_ids": updated_doc_ids,
         "failed_count": len(failed),
         "failed": failed[:25],
+        "discovery_errors": discovery_errors[:10],
+        "discovery_debug": _trim_newsapi_debug(discovery_debug),
         "dry_run": bool(args.dry_run),
     }
     _write_summary(args.summary_path, summary)
