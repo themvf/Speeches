@@ -136,6 +136,25 @@ def _url_key(url: str) -> str:
     return f"{scheme}://{netloc}{path}"
 
 
+def _canonical_domain(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    if "://" not in text:
+        text = f"https://{text}"
+    parsed = urlparse(text)
+    host = (parsed.netloc or parsed.path or "").strip().lower().strip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _host_matches_domain(host_or_url: str, domain: str) -> bool:
+    host = _canonical_domain(host_or_url)
+    target = _canonical_domain(domain)
+    return bool(host and target and (host == target or host.endswith(f".{target}")))
+
+
 def _parse_date_text(value: str) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
@@ -293,7 +312,7 @@ class NewsAPIFinancialScraper:
         sort_by: str = "publishedAt",
         domains: str = "",
         exclude_domains: str = "",
-        search_in: str = "title,description",
+        search_in: str = "",
         target_count: int = 0,
         endpoint: str = NEWSAPI_EVERYTHING_URL,
     ) -> List[Dict[str, str]]:
@@ -305,6 +324,12 @@ class NewsAPIFinancialScraper:
         page_size = max(10, min(100, int(page_size or 100)))
         target_count = max(0, int(target_count or 0))
         endpoint = str(endpoint or NEWSAPI_EVERYTHING_URL).strip() or NEWSAPI_EVERYTHING_URL
+        requested_domains = []
+        for raw_domain in str(domains or "").split(","):
+            cleaned = _canonical_domain(raw_domain)
+            if cleaned and cleaned not in requested_domains:
+                requested_domains.append(cleaned)
+        priority_domains = [domain for domain in ("wsj.com", "bloomberg.com", "ft.com") if domain in requested_domains]
 
         base_params: Dict[str, Any] = {
             "q": query,
@@ -336,6 +361,10 @@ class NewsAPIFinancialScraper:
             "domains": str(domains or "").strip(),
             "exclude_domains": str(exclude_domains or "").strip(),
             "search_in": base_params.get("searchIn", ""),
+            "requested_domains": requested_domains,
+            "priority_domains": priority_domains,
+            "domain_split_used": False,
+            "domain_split_passes": [],
             "passes_run": [],
             "fallback_no_domains_used": False,
             "fallback_no_domains_reason": "",
@@ -348,10 +377,14 @@ class NewsAPIFinancialScraper:
             "stop_reason": "",
             "total_results_reported": 0,
             "total_unique": 0,
+            "discovered_by_domain": {},
         }
 
         discovered: List[Dict[str, str]] = []
         seen = set()
+
+        def _domain_hit_count(domain: str) -> int:
+            return sum(1 for item in discovered if _host_matches_domain(item.get("url", ""), domain))
 
         def _scan_pass(pass_name: str, pass_params: Dict[str, Any], pages_limit: int) -> str:
             pages_limit = max(1, int(pages_limit or 1))
@@ -369,6 +402,7 @@ class NewsAPIFinancialScraper:
                     "error_message": "",
                     "returned_items": 0,
                     "unique_added": 0,
+                    "domains": str(params.get("domains", "") or "").strip(),
                 }
 
                 try:
@@ -431,6 +465,31 @@ class NewsAPIFinancialScraper:
 
         reason = _scan_pass("primary", base_params, max_pages)
 
+        if len(requested_domains) > 1:
+            split_queue = [
+                domain for domain in priority_domains if _domain_hit_count(domain) == 0
+            ] + [
+                domain for domain in requested_domains
+                if domain not in priority_domains
+            ]
+            if (target_count > 0 and len(discovered) < target_count) or any(
+                _domain_hit_count(domain) == 0 for domain in priority_domains
+            ):
+                for domain in split_queue:
+                    if target_count > 0 and len(discovered) >= target_count and domain not in priority_domains:
+                        break
+                    split_params = dict(base_params)
+                    split_params["domains"] = domain
+                    split_reason = _scan_pass(f"domain_split:{domain}", split_params, min(max_pages, 2))
+                    debug["domain_split_used"] = True
+                    debug["domain_split_passes"].append(
+                        {
+                            "domain": domain,
+                            "reason": split_reason,
+                            "hits_after_pass": _domain_hit_count(domain),
+                        }
+                    )
+
         if not discovered and str(base_params.get("domains", "") or "").strip():
             debug["fallback_no_domains_used"] = True
             no_domains_params = dict(base_params)
@@ -467,6 +526,13 @@ class NewsAPIFinancialScraper:
         if target_count > 0:
             discovered = discovered[:target_count]
         debug["total_unique"] = len(discovered)
+        discovered_by_domain: Dict[str, int] = {}
+        for item in discovered:
+            article_host = _canonical_domain(item.get("url", ""))
+            if not article_host:
+                continue
+            discovered_by_domain[article_host] = int(discovered_by_domain.get(article_host, 0) or 0) + 1
+        debug["discovered_by_domain"] = discovered_by_domain
         self.last_discovery_debug = debug
         return discovered
 

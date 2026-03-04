@@ -1067,6 +1067,7 @@ def _trim_newsapi_debug(debug_payload: Dict[str, Any]) -> Dict[str, Any]:
                 "page": _coerce_int(page.get("page"), default=0, min_value=0),
                 "returned_items": _coerce_int(page.get("returned_items"), default=0, min_value=0),
                 "unique_added": _coerce_int(page.get("unique_added"), default=0, min_value=0),
+                "domains": _normalize_space(page.get("domains", "")),
                 "error_type": _normalize_space(page.get("error_type", "")),
                 "error_message": _normalize_space(page.get("error_message", "")),
                 "page_url": _normalize_space(page.get("page_url", ""))[:800],
@@ -1086,6 +1087,22 @@ def _trim_newsapi_debug(debug_payload: Dict[str, Any]) -> Dict[str, Any]:
         "domains": _normalize_space(debug_payload.get("domains", "")),
         "exclude_domains": _normalize_space(debug_payload.get("exclude_domains", "")),
         "search_in": _normalize_space(debug_payload.get("search_in", "")),
+        "requested_domains": [
+            _normalize_space(item) for item in debug_payload.get("requested_domains", []) if _normalize_space(item)
+        ],
+        "priority_domains": [
+            _normalize_space(item) for item in debug_payload.get("priority_domains", []) if _normalize_space(item)
+        ],
+        "domain_split_used": bool(debug_payload.get("domain_split_used")),
+        "domain_split_passes": [
+            {
+                "domain": _normalize_space(item.get("domain", "")),
+                "reason": _normalize_space(item.get("reason", "")),
+                "hits_after_pass": _coerce_int(item.get("hits_after_pass"), default=0, min_value=0),
+            }
+            for item in debug_payload.get("domain_split_passes", [])
+            if isinstance(item, dict)
+        ][:12],
         "passes_run": [str(item) for item in debug_payload.get("passes_run", []) if str(item).strip()],
         "fallback_no_domains_used": bool(debug_payload.get("fallback_no_domains_used")),
         "fallback_no_domains_reason": _normalize_space(debug_payload.get("fallback_no_domains_reason", "")),
@@ -1097,6 +1114,11 @@ def _trim_newsapi_debug(debug_payload: Dict[str, Any]) -> Dict[str, Any]:
         "stop_reason": _normalize_space(debug_payload.get("stop_reason", "")),
         "total_results_reported": _coerce_int(debug_payload.get("total_results_reported"), default=0, min_value=0),
         "total_unique": _coerce_int(debug_payload.get("total_unique"), default=0, min_value=0),
+        "discovered_by_domain": {
+            _normalize_space(key): _coerce_int(value, default=0, min_value=0)
+            for key, value in (debug_payload.get("discovered_by_domain", {}) or {}).items()
+            if _normalize_space(key)
+        },
         "pages": trimmed_pages[:12],
     }
 
@@ -1273,6 +1295,7 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
     if not args.dry_run and (saved_new or saved_updates):
         _save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
 
+    trimmed_discovery_debug = _trim_newsapi_debug(discovery_debug)
     summary = {
         "mode": "ingest",
         "ran_at": _utc_now_iso(),
@@ -1301,7 +1324,8 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         "failed_count": len(failed),
         "failed": failed[:25],
         "discovery_errors": discovery_errors[:10],
-        "discovery_debug": _trim_newsapi_debug(discovery_debug),
+        "discovered_by_domain": dict(trimmed_discovery_debug.get("discovered_by_domain", {})),
+        "discovery_debug": trimmed_discovery_debug,
         "dry_run": bool(args.dry_run),
     }
     _write_summary(args.summary_path, summary)
