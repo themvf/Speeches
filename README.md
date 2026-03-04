@@ -18,6 +18,25 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Vercel Migration Workspace
+
+The Vercel migration scaffold now lives under `apps/web`.
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Migration planning documents:
+- `docs/migration/vercel-migration-tracker.md`
+- `docs/migration/api-contract-v1.md`
+
+Initial Next.js API routes are available in `apps/web/app/api/*` for:
+- metrics (`GET /api/metrics`)
+- documents (`GET /api/documents`, `GET /api/documents/{id}`)
+- jobs (`POST /api/jobs/ingest`, `POST /api/jobs/enrich`, `GET /api/jobs/{id}`)
+
 The app works out of the box with the included local dataset. For persistent cloud storage (required for in-app extraction on Streamlit Cloud), set up Google Cloud Storage below.
 
 ## Google Cloud Storage Setup

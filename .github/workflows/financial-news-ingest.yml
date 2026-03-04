@@ -1,0 +1,101 @@
+name: Financial News Ingest (On Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ingest_limit:
+        description: "Max news articles to ingest"
+        required: false
+        default: "10"
+      lookback_days:
+        description: "Override NewsAPI lookback window in days"
+        required: false
+        default: ""
+      selection:
+        description: "Ingest selection scope"
+        required: false
+        type: choice
+        options:
+          - new_or_updated
+          - all
+        default: new_or_updated
+
+permissions:
+  contents: read
+
+concurrency:
+  group: financial-news-ingest-manual
+  cancel-in-progress: false
+
+jobs:
+  ingest-news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NEWSAPI_API_KEY: ${{ secrets.NEWSAPI_API_KEY }}
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      INGEST_LIMIT: ${{ github.event.inputs.ingest_limit || '10' }}
+      LOOKBACK_DAYS_OVERRIDE: ${{ github.event.inputs.lookback_days || '' }}
+      SELECTION_MODE: ${{ github.event.inputs.selection || 'new_or_updated' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate NewsAPI Secret Wiring
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          import re
+          import sys
+
+          raw = str(os.getenv("NEWSAPI_API_KEY", "") or "").strip()
+          if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
+              raw = raw[1:-1].strip()
+          if raw.lower().startswith("bearer "):
+              raw = raw[7:].strip()
+
+          if not raw:
+              print("NEWSAPI_API_KEY is empty. Set repository/org secret NEWSAPI_API_KEY.", file=sys.stderr)
+              raise SystemExit(1)
+
+          key_fp = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+          key_len = len(raw)
+          key_format_hint = "looks_like_newsapi_key" if re.fullmatch(r"[A-Za-z0-9]{20,64}", raw) else "nonstandard_format"
+          print(f"NEWSAPI key detected: len={key_len}, fp={key_fp}, format={key_format_hint}")
+          PY
+
+      - name: Run Financial News Ingest
+        run: |
+          set -euo pipefail
+          args=(ingest --require-remote-persistence --summary-path financial_news_ingest_summary.json)
+          if [ -n "${INGEST_LIMIT}" ]; then
+            args+=(--limit "${INGEST_LIMIT}")
+          fi
+          if [ -n "${LOOKBACK_DAYS_OVERRIDE}" ]; then
+            args+=(--lookback-days "${LOOKBACK_DAYS_OVERRIDE}")
+          fi
+          if [ "${SELECTION_MODE}" = "all" ]; then
+            args+=(--selection all)
+          fi
+          python run_financial_news_pipeline.py "${args[@]}"
+
+      - name: Upload Ingest Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-news-ingest-summary-${{ github.run_id }}
+          path: financial_news_ingest_summary.json
+          if-no-files-found: ignore

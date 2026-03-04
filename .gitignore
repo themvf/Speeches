@@ -12,6 +12,16 @@ __pycache__/
 dist/
 build/
 
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
 # IDE
 .vscode/
 .idea/

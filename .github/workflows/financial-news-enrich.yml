@@ -1,0 +1,88 @@
+name: Financial News Enrich (On Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      enrich_limit:
+        description: "Max articles to enrich"
+        required: false
+        default: "25"
+      mode:
+        description: "Enrichment mode"
+        required: false
+        type: choice
+        options:
+          - only_missing_or_failed
+          - all
+        default: only_missing_or_failed
+      source_kind:
+        description: "Source kind to enrich"
+        required: false
+        default: "newsapi_article"
+      heuristic_only:
+        description: "Skip OpenAI and use heuristic enrichment only"
+        required: false
+        type: boolean
+        default: false
+      model:
+        description: "Optional model override"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: financial-news-enrich-manual
+  cancel-in-progress: false
+
+jobs:
+  enrich-news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
+      ENRICH_MODE: ${{ github.event.inputs.mode || 'only_missing_or_failed' }}
+      SOURCE_KIND: ${{ github.event.inputs.source_kind || 'newsapi_article' }}
+      HEURISTIC_ONLY: ${{ github.event.inputs.heuristic_only || 'false' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Financial News Enrichment
+        run: |
+          set -euo pipefail
+          args=(enrich --require-remote-persistence --source-kind "${SOURCE_KIND}" --mode "${ENRICH_MODE}" --summary-path financial_news_enrich_summary.json)
+          if [ -n "${ENRICH_LIMIT}" ]; then
+            args+=(--limit "${ENRICH_LIMIT}")
+          fi
+          if [ "${HEURISTIC_ONLY}" = "true" ]; then
+            args+=(--heuristic-only)
+          fi
+          if [ -n "${ENRICH_MODEL}" ]; then
+            args+=(--model "${ENRICH_MODEL}")
+          fi
+          python run_financial_news_pipeline.py "${args[@]}"
+
+      - name: Upload Enrichment Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-news-enrich-summary-${{ github.run_id }}
+          path: financial_news_enrich_summary.json
+          if-no-files-found: ignore
