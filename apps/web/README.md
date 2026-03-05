@@ -19,6 +19,8 @@ Primary config lives in `.env.local`.
 - `DATA_DIR_PATH`: local path fallback for JSON stores
 - `GCS_BUCKET_NAME`, `GCS_CREDENTIALS_JSON`, `GCS_CREDENTIALS_PATH`: GCS-backed reads
 - `GITHUB_ACTIONS_*`: dispatch and status for ingest/enrich/extract workflows
+- `JOB_EXECUTION_MODE`: `github_actions` (default) or `local` for direct Python extraction
+- `PYTHON_BIN`: python executable for local extraction mode (`python` by default)
 
 Use `apps/web/.env.example` as the template.
 

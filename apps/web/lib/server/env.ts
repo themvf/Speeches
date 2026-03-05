@@ -5,6 +5,7 @@ export interface DataSourceConfig {
   gcsCredentialsJson: string;
   gcsCredentialsPath: string;
 }
+export type JobExecutionMode = "github_actions" | "local";
 
 export interface GithubActionsConfig {
   enabled: boolean;
@@ -33,6 +34,10 @@ function parseMode(raw: string): DataSourceConfig["mode"] {
 
 function parseBool(raw: string): boolean {
   return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
+}
+
+function parseJobExecutionMode(raw: string): JobExecutionMode {
+  return raw.toLowerCase() === "local" ? "local" : "github_actions";
 }
 
 export function getDataSourceConfig(): DataSourceConfig {
@@ -75,11 +80,17 @@ export function getGithubActionsConfig(): GithubActionsConfig {
   };
 }
 
+export function getJobExecutionMode(): JobExecutionMode {
+  return parseJobExecutionMode(readEnv("JOB_EXECUTION_MODE", "github_actions"));
+}
+
 export function getApiRuntimeInfo() {
   const data = getDataSourceConfig();
   const jobs = getGithubActionsConfig();
+  const mode = getJobExecutionMode();
 
   return {
+    job_execution_mode: mode,
     data_source_mode: data.mode,
     gcs_configured: Boolean(data.gcsBucketName),
     github_actions_enabled: jobs.enabled,

@@ -16,6 +16,7 @@ interface MetricsData {
   recent_ingest: { last_run_at: string; processed_count: number; failed_count: number };
   by_source_kind: Array<{ source_kind: string; count: number }>;
   runtime?: {
+    job_execution_mode?: "github_actions" | "local";
     data_source_mode: string;
     gcs_configured: boolean;
     github_actions_enabled: boolean;
@@ -66,7 +67,10 @@ interface JobState {
 
 interface JobStartPayload {
   job_id: string;
-  status: "queued";
+  status: JobStatus;
+  workflow?: string;
+  updated_at?: string;
+  conclusion?: string;
 }
 
 interface IngestFormState {
@@ -268,6 +272,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   }, [metrics?.by_source_kind]);
 
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+  const jobExecutionMode = metrics?.runtime?.job_execution_mode || "github_actions";
   const githubActionsEnabled = metrics?.runtime?.github_actions_enabled ?? true;
   const githubActionsEnabledFlag = metrics?.runtime?.github_actions_enabled_flag ?? true;
   const githubActionsMissingEnv = metrics?.runtime?.github_actions_missing_required_env || [];
@@ -355,7 +360,13 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
           method: "POST",
           body: JSON.stringify(requestBody)
         });
-        setActiveJob({ job_id: payload.job_id, status: payload.status });
+        setActiveJob({
+          job_id: payload.job_id,
+          status: payload.status,
+          workflow: payload.workflow,
+          updated_at: payload.updated_at,
+          conclusion: payload.conclusion
+        });
       } catch (err) {
         setJobError(err instanceof Error ? err.message : `Failed to run ${kind}.`);
       } finally {
@@ -482,7 +493,12 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
 
       {mode === "operations" ? (
         <section className="grid gap-4">
-          {!metricsLoading && !githubActionsEnabled ? (
+          {!metricsLoading && jobExecutionMode === "local" ? (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              Extraction execution mode: local (direct Python pipeline with remote persistence required).
+            </p>
+          ) : null}
+          {!metricsLoading && jobExecutionMode === "github_actions" && !githubActionsEnabled ? (
             <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
               {githubActionsEnabledFlag
                 ? `GitHub Actions dispatch is missing required Vercel env vars: ${githubActionsMissingEnv.join(", ")}`

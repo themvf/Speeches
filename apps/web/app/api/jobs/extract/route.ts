@@ -1,5 +1,7 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
+import { getJobExecutionMode } from "@/lib/server/env";
 import { triggerExtractJob } from "@/lib/server/github-actions";
+import { runLocalExtractJob } from "@/lib/server/local-extract";
 
 export const runtime = "nodejs";
 
@@ -23,6 +25,20 @@ export async function POST(request: Request) {
     const baseUrl = String(body.base_url ?? "").trim();
     const includePdfs = String(body.include_pdfs ?? "true").toLowerCase() === "true";
     const includeRss = String(body.include_rss ?? "true").toLowerCase() === "true";
+
+    const executionMode = getJobExecutionMode();
+    if (executionMode === "local") {
+      const payload = await runLocalExtractJob({
+        connector,
+        selection,
+        limit,
+        maxPages,
+        baseUrl,
+        includePdfs,
+        includeRss
+      });
+      return ok(payload, requestId);
+    }
 
     const payload = await triggerExtractJob({
       connector,
