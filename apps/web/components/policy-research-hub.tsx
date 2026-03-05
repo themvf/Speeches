@@ -177,6 +177,12 @@ function fmtDate(value: string): string {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function fmtDateOnly(value: string): string {
+  if (!value) return "-";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function statusClass(value: string): string {
   const s = String(value || "").toLowerCase();
   if (["enriched", "reviewed", "success"].includes(s)) return "border-emerald-300 bg-emerald-50 text-emerald-800";
@@ -548,7 +554,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                     <td className="px-3 py-3 text-xs">{exactSpeakerName(d)}</td>
                     <td className="px-3 py-3 text-xs">{(d.keywords || []).slice(0, 4).join(", ") || (d.topics || []).slice(0, 4).join(", ") || "-"}</td>
                     <td className="px-3 py-3 text-xs"><span className={`rounded-full border px-2 py-1 ${statusClass(d.enrichment_status)}`}>{d.enrichment_status || "not_enriched"}</span><p className="mt-2">Review: {d.review_decision || "pending"}</p></td>
-                    <td className="px-3 py-3 text-xs">{fmtDate(d.published_at || d.date)}</td>
+                    <td className="px-3 py-3 text-xs">{fmtDateOnly(d.published_at || d.date)}</td>
                   </tr>
                 ))}
               </tbody>
