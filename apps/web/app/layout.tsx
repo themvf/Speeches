@@ -15,8 +15,8 @@ const displayFont = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "SEC Intelligence Console",
-  description: "Vercel migration workspace for SEC speeches and policy intelligence."
+  title: "Policy Research Hub",
+  description: "Regulatory intelligence dashboard for policy and enforcement research workflows."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
