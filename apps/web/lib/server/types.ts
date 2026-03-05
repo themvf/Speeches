@@ -121,8 +121,27 @@ export interface DocumentListItem {
   date: string;
   published_at: string;
   word_count: number;
+  tags: string[];
+  keywords: string[];
+  topics: string[];
   ingest_status: string;
   enrichment_status: string;
   review_decision: string;
   updated_at: string;
+}
+
+export interface DocumentsFacets {
+  sources: string[];
+  organizations: string[];
+  topics: string[];
+  keywords: string[];
+  statuses: string[];
+}
+
+export interface DocumentsListResponseData {
+  items: DocumentListItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  facets: DocumentsFacets;
 }

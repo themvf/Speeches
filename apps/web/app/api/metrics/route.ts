@@ -1,4 +1,4 @@
-import { loadCustomDocuments, loadEnrichmentState, loadNewsConnectorSettings } from "@/lib/server/data-store";
+import { loadCorpusDocuments, loadCustomDocuments, loadEnrichmentState, loadNewsConnectorSettings } from "@/lib/server/data-store";
 import { getApiRuntimeInfo } from "@/lib/server/env";
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
 
@@ -13,13 +13,14 @@ export async function GET() {
   const requestId = createRequestId();
 
   try {
-    const [custom, enrichment, settings] = await Promise.all([
+    const [corpus, custom, enrichment, settings] = await Promise.all([
+      loadCorpusDocuments(),
       loadCustomDocuments(),
       loadEnrichmentState(),
       loadNewsConnectorSettings()
     ]);
 
-    const documents = custom.documents || [];
+    const documents = corpus || [];
     const orgSet = new Set<string>();
     const sourceCounts = new Map<string, number>();
 

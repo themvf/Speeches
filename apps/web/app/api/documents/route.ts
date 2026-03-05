@@ -1,4 +1,10 @@
-import { buildDocumentListItems, loadCustomDocuments, loadEnrichmentState, parseComparableDate } from "@/lib/server/data-store";
+import {
+  buildDocumentListItems,
+  buildDocumentsFacets,
+  loadCorpusDocuments,
+  loadEnrichmentState,
+  parseComparableDate
+} from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok, parseDate, toInt } from "@/lib/server/api-utils";
 
 export const runtime = "nodejs";
@@ -10,7 +16,9 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const q = normalizeText(url.searchParams.get("q")).toLowerCase();
     const org = normalizeText(url.searchParams.get("org"));
-    const sourceKind = normalizeText(url.searchParams.get("source_kind"));
+    const sourceKind = normalizeText(url.searchParams.get("source_kind") || url.searchParams.get("source"));
+    const topic = normalizeText(url.searchParams.get("topic")).toLowerCase();
+    const keyword = normalizeText(url.searchParams.get("keyword")).toLowerCase();
     const status = normalizeText(url.searchParams.get("status"));
     const sort = normalizeText(url.searchParams.get("sort")) || "date_desc";
 
@@ -19,12 +27,12 @@ export async function GET(request: Request) {
     const fromDate = parseDate(url.searchParams.get("date_from"));
     const toDate = parseDate(url.searchParams.get("date_to"));
 
-    const [custom, enrichment] = await Promise.all([loadCustomDocuments(), loadEnrichmentState()]);
-    const docs = custom.documents || [];
-    const items = buildDocumentListItems(custom, enrichment);
+    const [corpusDocs, enrichment] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
+    const items = buildDocumentListItems(corpusDocs, enrichment);
+    const facets = buildDocumentsFacets(items);
 
     const fullTextById = new Map<string, string>();
-    for (const doc of docs) {
+    for (const doc of corpusDocs) {
       const docId = String(doc.metadata?.document_id || "").trim();
       if (!docId) {
         continue;
@@ -41,6 +49,20 @@ export async function GET(request: Request) {
       }
       if (status && item.enrichment_status !== status) {
         return false;
+      }
+      if (topic) {
+        const hasTopic = (item.topics || []).some((value) => value.toLowerCase() === topic || value.toLowerCase().includes(topic));
+        if (!hasTopic) {
+          return false;
+        }
+      }
+      if (keyword) {
+        const hasKeyword = (item.keywords || []).some(
+          (value) => value.toLowerCase() === keyword || value.toLowerCase().includes(keyword)
+        );
+        if (!hasKeyword) {
+          return false;
+        }
       }
 
       const itemDateMs = parseComparableDate(item.published_at || item.date);
@@ -62,6 +84,9 @@ export async function GET(request: Request) {
         item.doc_type,
         item.speaker,
         item.url,
+        ...(item.tags || []),
+        ...(item.topics || []),
+        ...(item.keywords || []),
         fullTextById.get(item.document_id) || ""
       ]
         .join("\n")
@@ -86,7 +111,8 @@ export async function GET(request: Request) {
       items: filtered.slice(start, end),
       page,
       page_size: pageSize,
-      total
+      total,
+      facets
     };
 
     return ok(payload, requestId);

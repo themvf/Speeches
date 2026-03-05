@@ -1,17 +1,21 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { downloadGcsJson } from "@/lib/server/gcs-loader";
 import { getDataSourceConfig } from "@/lib/server/env";
+import { downloadGcsJson, uploadGcsJson } from "@/lib/server/gcs-loader";
 import {
   type CustomDocumentRecord,
   type CustomDocumentsPayload,
   type DocumentListItem,
+  type DocumentsFacets,
   type EnrichmentEntry,
   type EnrichmentStatePayload,
   type NewsConnectorSettingsPayload
 } from "@/lib/server/types";
 
+const SEC_SPEECHES_GCS_BLOB = "all_speeches.json";
+const SEC_SPEECHES_LOCAL_FILE = "all_speeches_final.json";
 const CUSTOM_DOCS_BLOB = "custom_documents.json";
 const ENRICHMENT_BLOB = "document_enrichment_state.json";
 const SETTINGS_BLOB = "news_connector_settings.json";
@@ -34,6 +38,93 @@ function normalizeWordCount(value: unknown): number {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+function splitCsv(value: string): string[] {
+  return String(value || "")
+    .split(",")
+    .map((item) => normalizeString(item))
+    .filter(Boolean);
+}
+
+function dedupList(items: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = normalizeString(item).toLowerCase();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(normalizeString(item));
+  }
+  return out;
+}
+
+function normalizeOrgLabel(value: unknown): string {
+  const label = normalizeString(value);
+  return label || "SEC";
+}
+
+function orgKeyFromLabel(label: string): string {
+  const cleaned = String(label)
+    .split("")
+    .map((ch) => (/[a-z0-9]/i.test(ch) ? ch.toLowerCase() : "_"))
+    .join("")
+    .replace(/^_+|_+$/g, "");
+  return cleaned || "sec";
+}
+
+function inferSourceKind(metadataRaw: Record<string, unknown>): string {
+  const explicit = normalizeString(metadataRaw.source_kind).toLowerCase();
+  if (explicit) {
+    return explicit;
+  }
+
+  const url = normalizeString(metadataRaw.url).toLowerCase();
+  const docType = normalizeString(metadataRaw.doc_type).toLowerCase();
+
+  if (url.includes("/newsroom/speeches-statements/")) {
+    return "sec_speech";
+  }
+  if (docType === "regulatory notice") {
+    return "finra_regulatory_notice";
+  }
+  if (docType === "key topic") {
+    return "finra_key_topic";
+  }
+  if (url.includes("/trading-markets-frequently-asked-questions/")) {
+    return "sec_tm_faq";
+  }
+  if (url.includes("/enforcement-litigation/litigation-releases/")) {
+    return "sec_enforcement_litigation";
+  }
+  if ((url.includes("/usao-") || url.includes("/usao/")) && url.includes("/pr/")) {
+    return "doj_usao_press_release";
+  }
+  if (["speech", "statement", "remarks"].includes(docType)) {
+    return "sec_speech";
+  }
+  return "document";
+}
+
+function corpusDocId(record: Record<string, unknown>, fullText: string): string {
+  const existing = normalizeString(record.document_id);
+  if (existing) {
+    return existing;
+  }
+
+  const orgLabel = normalizeOrgLabel(record.organization || record.org || "SEC");
+  const stable = [
+    orgKeyFromLabel(orgLabel),
+    normalizeString(record.url),
+    normalizeString(record.title),
+    normalizeString(record.speaker),
+    normalizeString(record.date)
+  ].join("|");
+
+  const key = stable.replace(/\|/g, "").trim() ? stable : fullText.slice(0, 1000);
+  return createHash("sha256").update(key).digest("hex").slice(0, 24);
+}
+
 function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
   if (!record || typeof record !== "object") {
     return null;
@@ -43,14 +134,22 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
   const metadataRaw = src.metadata && typeof src.metadata === "object" ? (src.metadata as Record<string, unknown>) : {};
   const contentRaw = src.content && typeof src.content === "object" ? (src.content as Record<string, unknown>) : {};
 
+  const paragraphs = Array.isArray(contentRaw.paragraphs)
+    ? contentRaw.paragraphs.map((item) => normalizeString(item)).filter(Boolean)
+    : [];
+  const sentences = Array.isArray(contentRaw.sentences)
+    ? contentRaw.sentences.map((item) => normalizeString(item)).filter(Boolean)
+    : [];
+  const fullText = normalizeString(contentRaw.full_text);
+
   const metadata = {
-    document_id: normalizeString(metadataRaw.document_id),
+    document_id: normalizeString(metadataRaw.document_id) || corpusDocId(metadataRaw, fullText),
     title: normalizeString(metadataRaw.title),
     speaker: normalizeString(metadataRaw.speaker),
     date: normalizeString(metadataRaw.date),
     url: normalizeString(metadataRaw.url),
     word_count: normalizeWordCount(metadataRaw.word_count),
-    organization: normalizeString(metadataRaw.organization),
+    organization: normalizeOrgLabel(metadataRaw.organization),
     doc_type: normalizeString(metadataRaw.doc_type),
     source_filename: normalizeString(metadataRaw.source_filename),
     source_format: normalizeString(metadataRaw.source_format),
@@ -62,9 +161,28 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     source_index_url: normalizeString(metadataRaw.source_index_url),
     published_date: normalizeString(metadataRaw.published_date),
     updated_date: normalizeString(metadataRaw.updated_date),
-    last_reviewed_or_updated: normalizeString(metadataRaw.last_reviewed_or_updated),
-    ...metadataRaw
+    last_reviewed_or_updated: normalizeString(metadataRaw.last_reviewed_or_updated)
   };
+
+  return {
+    metadata,
+    content: {
+      full_text: fullText,
+      paragraphs,
+      sentences
+    },
+    validation: src.validation && typeof src.validation === "object" ? (src.validation as Record<string, unknown>) : {}
+  } as CustomDocumentRecord;
+}
+
+function normalizeSecSpeechRecord(speech: unknown): CustomDocumentRecord | null {
+  if (!speech || typeof speech !== "object") {
+    return null;
+  }
+
+  const src = speech as Record<string, unknown>;
+  const metadataRaw = src.metadata && typeof src.metadata === "object" ? (src.metadata as Record<string, unknown>) : {};
+  const contentRaw = src.content && typeof src.content === "object" ? (src.content as Record<string, unknown>) : {};
 
   const paragraphs = Array.isArray(contentRaw.paragraphs)
     ? contentRaw.paragraphs.map((item) => normalizeString(item)).filter(Boolean)
@@ -73,13 +191,43 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     ? contentRaw.sentences.map((item) => normalizeString(item)).filter(Boolean)
     : [];
 
+  const fullText = normalizeString(contentRaw.full_text);
+  const wordCount = normalizeWordCount(metadataRaw.word_count) || (fullText ? fullText.split(/\s+/).filter(Boolean).length : 0);
+
+  const organization = normalizeOrgLabel(metadataRaw.organization || metadataRaw.org || "SEC");
+  const sourceKind = inferSourceKind(metadataRaw);
+  const docType = normalizeString(metadataRaw.doc_type) || "Speech";
+  const publishedDate = normalizeString(metadataRaw.published_date) || normalizeString(metadataRaw.date);
+  const updatedDate = normalizeString(metadataRaw.updated_date) || normalizeString(metadataRaw.extraction_date);
+
+  const metadata = {
+    document_id: corpusDocId(metadataRaw, fullText),
+    title: normalizeString(metadataRaw.title),
+    speaker: normalizeString(metadataRaw.speaker),
+    date: normalizeString(metadataRaw.date),
+    url: normalizeString(metadataRaw.url),
+    word_count: wordCount,
+    organization,
+    doc_type: docType,
+    source_filename: normalizeString(metadataRaw.source_filename),
+    source_format: normalizeString(metadataRaw.source_format) || "html",
+    source_local_path: normalizeString(metadataRaw.source_local_path),
+    source_gcs_path: normalizeString(metadataRaw.source_gcs_path),
+    tags: normalizeString(metadataRaw.tags),
+    source_kind: sourceKind,
+    source_family: normalizeString(metadataRaw.source_family) || sourceKind,
+    source_index_url: normalizeString(metadataRaw.source_index_url),
+    published_date: publishedDate,
+    updated_date: updatedDate,
+    last_reviewed_or_updated: normalizeString(metadataRaw.last_reviewed_or_updated) || updatedDate || publishedDate
+  };
+
   return {
     metadata,
     content: {
-      full_text: normalizeString(contentRaw.full_text),
+      full_text: fullText,
       paragraphs,
-      sentences,
-      ...contentRaw
+      sentences
     },
     validation: src.validation && typeof src.validation === "object" ? (src.validation as Record<string, unknown>) : {}
   } as CustomDocumentRecord;
@@ -93,6 +241,21 @@ function normalizeCustomDocumentsPayload(payload: unknown): CustomDocumentsPaylo
   const src = payload as Record<string, unknown>;
   const docsRaw = Array.isArray(src.documents) ? src.documents : [];
   const documents = docsRaw.map((item) => normalizeCustomDocument(item)).filter(Boolean) as CustomDocumentRecord[];
+
+  return {
+    updated_at: normalizeString(src.updated_at),
+    documents
+  };
+}
+
+function normalizeSecSpeechesPayload(payload: unknown): CustomDocumentsPayload {
+  if (!payload || typeof payload !== "object") {
+    return { updated_at: "", documents: [] };
+  }
+
+  const src = payload as Record<string, unknown>;
+  const speechesRaw = Array.isArray(src.speeches) ? src.speeches : [];
+  const documents = speechesRaw.map((item) => normalizeSecSpeechRecord(item)).filter(Boolean) as CustomDocumentRecord[];
 
   return {
     updated_at: normalizeString(src.updated_at),
@@ -133,18 +296,15 @@ function normalizeEnrichmentEntry(docId: string, value: unknown): EnrichmentEntr
       evidence_spans: Array.isArray(enrichmentRaw.evidence_spans)
         ? enrichmentRaw.evidence_spans.filter((item) => item && typeof item === "object")
         : [],
-      confidence: Number.parseFloat(String(enrichmentRaw.confidence ?? "0")) || 0,
-      ...enrichmentRaw
+      confidence: Number.parseFloat(String(enrichmentRaw.confidence ?? "0")) || 0
     },
     review: {
       decision: normalizeString(reviewRaw.decision),
       notes: normalizeString(reviewRaw.notes),
-      reviewed_at: normalizeString(reviewRaw.reviewed_at),
-      ...reviewRaw
+      reviewed_at: normalizeString(reviewRaw.reviewed_at)
     },
     reward: src.reward && typeof src.reward === "object" ? (src.reward as Record<string, unknown>) : {},
-    auto_review: src.auto_review && typeof src.auto_review === "object" ? (src.auto_review as Record<string, unknown>) : {},
-    ...src
+    auto_review: src.auto_review && typeof src.auto_review === "object" ? (src.auto_review as Record<string, unknown>) : {}
   } as EnrichmentEntry;
 }
 
@@ -206,7 +366,7 @@ function normalizeNewsSettingsPayload(payload: unknown): NewsConnectorSettingsPa
 function findProjectRootWithData(startDir: string): string {
   let current = path.resolve(startDir);
   for (let i = 0; i < 7; i += 1) {
-    const candidate = path.join(current, "data", CUSTOM_DOCS_BLOB);
+    const candidate = path.join(current, "data", SEC_SPEECHES_LOCAL_FILE);
     if (fs.existsSync(candidate)) {
       return current;
     }
@@ -228,9 +388,12 @@ function resolveDataDirPath(): string {
   return path.join(root, "data");
 }
 
+function localDataFilePath(fileName: string): string {
+  return path.join(resolveDataDirPath(), fileName);
+}
+
 function readLocalJson(fileName: string): unknown | null {
-  const dataDir = resolveDataDirPath();
-  const filePath = path.join(dataDir, fileName);
+  const filePath = localDataFilePath(fileName);
   if (!fs.existsSync(filePath)) {
     return null;
   }
@@ -241,14 +404,28 @@ function readLocalJson(fileName: string): unknown | null {
   }
 }
 
-async function loadFromSource<T>(
-  cacheKey: string,
-  blobName: string,
-  normalize: (payload: unknown) => T,
-  emptyFactory: () => T
-): Promise<T> {
+function writeLocalJson(fileName: string, payload: unknown): boolean {
+  try {
+    const filePath = localDataFilePath(fileName);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+interface SourceLoadConfig<T> {
+  cacheKey: string;
+  gcsBlobName: string;
+  localFileName: string;
+  normalize: (payload: unknown) => T;
+  emptyFactory: () => T;
+}
+
+async function loadFromSource<T>(config: SourceLoadConfig<T>): Promise<T> {
   const now = Date.now();
-  const hit = cache.get(cacheKey);
+  const hit = cache.get(config.cacheKey);
   if (hit && now - hit.loadedAt < CACHE_TTL_MS) {
     return hit.data as T;
   }
@@ -257,41 +434,58 @@ async function loadFromSource<T>(
   let raw: unknown | null = null;
 
   if (cfg.mode === "gcs" || cfg.mode === "auto") {
-    raw = await downloadGcsJson<unknown>(blobName);
+    raw = await downloadGcsJson<unknown>(config.gcsBlobName);
   }
   if (raw === null && (cfg.mode === "local" || cfg.mode === "auto")) {
-    raw = readLocalJson(blobName);
+    raw = readLocalJson(config.localFileName);
   }
 
-  const normalized = raw === null ? emptyFactory() : normalize(raw);
-  cache.set(cacheKey, { loadedAt: now, data: normalized });
+  const normalized = raw === null ? config.emptyFactory() : config.normalize(raw);
+  cache.set(config.cacheKey, { loadedAt: now, data: normalized });
   return normalized;
 }
 
+function clearCacheKey(cacheKey: string): void {
+  cache.delete(cacheKey);
+}
+
+export async function loadSecSpeeches(): Promise<CustomDocumentsPayload> {
+  return loadFromSource({
+    cacheKey: "sec_speeches",
+    gcsBlobName: SEC_SPEECHES_GCS_BLOB,
+    localFileName: SEC_SPEECHES_LOCAL_FILE,
+    normalize: normalizeSecSpeechesPayload,
+    emptyFactory: () => ({ updated_at: "", documents: [] })
+  });
+}
+
 export async function loadCustomDocuments(): Promise<CustomDocumentsPayload> {
-  return loadFromSource(
-    "custom_documents",
-    CUSTOM_DOCS_BLOB,
-    normalizeCustomDocumentsPayload,
-    () => ({ updated_at: "", documents: [] })
-  );
+  return loadFromSource({
+    cacheKey: "custom_documents",
+    gcsBlobName: CUSTOM_DOCS_BLOB,
+    localFileName: CUSTOM_DOCS_BLOB,
+    normalize: normalizeCustomDocumentsPayload,
+    emptyFactory: () => ({ updated_at: "", documents: [] })
+  });
 }
 
 export async function loadEnrichmentState(): Promise<EnrichmentStatePayload> {
-  return loadFromSource(
-    "enrichment_state",
-    ENRICHMENT_BLOB,
-    normalizeEnrichmentStatePayload,
-    () => ({ version: 1, pipeline_version: "v1", updated_at: "", entries: {} })
-  );
+  return loadFromSource({
+    cacheKey: "enrichment_state",
+    gcsBlobName: ENRICHMENT_BLOB,
+    localFileName: ENRICHMENT_BLOB,
+    normalize: normalizeEnrichmentStatePayload,
+    emptyFactory: () => ({ version: 1, pipeline_version: "v1", updated_at: "", entries: {} })
+  });
 }
 
 export async function loadNewsConnectorSettings(): Promise<NewsConnectorSettingsPayload> {
-  return loadFromSource(
-    "news_connector_settings",
-    SETTINGS_BLOB,
-    normalizeNewsSettingsPayload,
-    () => ({
+  return loadFromSource({
+    cacheKey: "news_connector_settings",
+    gcsBlobName: SETTINGS_BLOB,
+    localFileName: SETTINGS_BLOB,
+    normalize: normalizeNewsSettingsPayload,
+    emptyFactory: () => ({
       updated_at: "",
       query: "",
       lookback_days: 7,
@@ -304,32 +498,99 @@ export async function loadNewsConnectorSettings(): Promise<NewsConnectorSettings
       exclude_domains: "",
       tags_csv: ""
     })
-  );
+  });
+}
+
+export async function saveNewsConnectorSettings(payload: NewsConnectorSettingsPayload): Promise<{
+  saved: boolean;
+  local_saved: boolean;
+  remote_saved: boolean;
+  settings: NewsConnectorSettingsPayload;
+}> {
+  const normalized = normalizeNewsSettingsPayload({
+    ...payload,
+    updated_at: new Date().toISOString()
+  });
+
+  const cfg = getDataSourceConfig();
+  let remoteSaved = false;
+  let localSaved = false;
+
+  if (cfg.mode === "gcs" || cfg.mode === "auto") {
+    remoteSaved = await uploadGcsJson(SETTINGS_BLOB, normalized);
+  }
+  if (cfg.mode === "local" || cfg.mode === "auto" || !remoteSaved) {
+    localSaved = writeLocalJson(SETTINGS_BLOB, normalized);
+  }
+
+  clearCacheKey("news_connector_settings");
+
+  return {
+    saved: remoteSaved || localSaved,
+    local_saved: localSaved,
+    remote_saved: remoteSaved,
+    settings: normalized
+  };
+}
+
+export async function loadCorpusDocuments(): Promise<CustomDocumentRecord[]> {
+  const [secPayload, customPayload] = await Promise.all([loadSecSpeeches(), loadCustomDocuments()]);
+
+  const dedup = new Map<string, CustomDocumentRecord>();
+
+  for (const doc of secPayload.documents || []) {
+    const id = normalizeString(doc.metadata?.document_id);
+    if (id) {
+      dedup.set(id, doc);
+    }
+  }
+  for (const doc of customPayload.documents || []) {
+    const id = normalizeString(doc.metadata?.document_id);
+    if (id) {
+      dedup.set(id, doc);
+    }
+  }
+
+  return [...dedup.values()];
 }
 
 export function buildDocumentListItems(
-  customDocs: CustomDocumentsPayload,
+  corpusDocs: CustomDocumentRecord[],
   enrichmentState: EnrichmentStatePayload
 ): DocumentListItem[] {
   const entries = enrichmentState.entries || {};
 
-  return customDocs.documents.map((doc) => {
+  return corpusDocs.map((doc) => {
     const m = doc.metadata || ({} as CustomDocumentRecord["metadata"]);
     const docId = normalizeString(m.document_id);
     const enrich = entries[docId];
     const reviewDecision = normalizeString(enrich?.review?.decision || "pending") || "pending";
 
+    const metadataTags = splitCsv(normalizeString(m.tags));
+    const enrichTags = Array.isArray(enrich?.enrichment?.tags)
+      ? enrich?.enrichment?.tags.map((item) => normalizeString(item)).filter(Boolean)
+      : [];
+    const keywords = Array.isArray(enrich?.enrichment?.keywords)
+      ? enrich?.enrichment?.keywords.map((item) => normalizeString(item)).filter(Boolean)
+      : [];
+
+    const topics = dedupList([...enrichTags, ...metadataTags]);
+    const tags = dedupList([...metadataTags, ...enrichTags]);
+
     return {
       document_id: docId,
       title: normalizeString(m.title),
-      organization: normalizeString(m.organization),
-      source_kind: normalizeString(m.source_kind),
-      doc_type: normalizeString(m.doc_type),
+      organization: normalizeOrgLabel(m.organization),
+      source_kind: normalizeString(m.source_kind) || inferSourceKind((m as unknown as Record<string, unknown>) || {}),
+      doc_type: normalizeString(m.doc_type) || "Document",
       speaker: normalizeString(m.speaker),
       url: normalizeString(m.url),
       date: normalizeString(m.date),
       published_at: normalizeString(m.published_date) || normalizeString(m.date),
       word_count: normalizeWordCount(m.word_count),
+      tags,
+      keywords: dedupList(keywords),
+      topics,
       ingest_status: "existing",
       enrichment_status: normalizeString(enrich?.status || "not_enriched") || "not_enriched",
       review_decision: reviewDecision,
@@ -337,6 +598,22 @@ export function buildDocumentListItems(
         normalizeString(m.last_reviewed_or_updated) || normalizeString(m.updated_date) || normalizeString(enrich?.updated_at)
     };
   });
+}
+
+export function buildDocumentsFacets(items: DocumentListItem[]): DocumentsFacets {
+  const sources = dedupList(items.map((item) => item.source_kind));
+  const organizations = dedupList(items.map((item) => item.organization));
+  const topics = dedupList(items.flatMap((item) => item.topics || []));
+  const keywords = dedupList(items.flatMap((item) => item.keywords || []));
+  const statuses = dedupList(items.map((item) => item.enrichment_status));
+
+  return {
+    sources,
+    organizations,
+    topics,
+    keywords,
+    statuses
+  };
 }
 
 export function parseComparableDate(value: string): number {

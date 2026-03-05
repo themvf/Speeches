@@ -117,3 +117,26 @@ export async function downloadGcsJson<T>(blobName: string): Promise<T | null> {
     return null;
   }
 }
+
+export async function uploadGcsJson(blobName: string, payload: unknown): Promise<boolean> {
+  const cfg = getDataSourceConfig();
+  const client = await getStorageClient();
+  if (!client || !cfg.gcsBucketName) {
+    return false;
+  }
+
+  try {
+    const bucket = client.bucket(cfg.gcsBucketName);
+    const file = bucket.file(blobName);
+    await file.save(JSON.stringify(payload, null, 2), {
+      resumable: false,
+      contentType: "application/json; charset=utf-8",
+      metadata: {
+        cacheControl: "no-cache"
+      }
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}

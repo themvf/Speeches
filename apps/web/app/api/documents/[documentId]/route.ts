@@ -1,4 +1,4 @@
-import { loadCustomDocuments, loadEnrichmentState } from "@/lib/server/data-store";
+import { loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
 
 export const runtime = "nodejs";
@@ -16,9 +16,9 @@ export async function GET(
       return fail("Document ID is required.", "DOCUMENT_ID_REQUIRED", 400, requestId);
     }
 
-    const [custom, enrichmentState] = await Promise.all([loadCustomDocuments(), loadEnrichmentState()]);
+    const [corpus, enrichmentState] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
 
-    const doc = custom.documents.find((item) => String(item.metadata?.document_id || "").trim() === docId);
+    const doc = corpus.find((item) => String(item.metadata?.document_id || "").trim() === docId);
     if (!doc) {
       return fail("Document not found.", "DOCUMENT_NOT_FOUND", 404, requestId);
     }
