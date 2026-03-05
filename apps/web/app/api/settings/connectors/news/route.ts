@@ -49,7 +49,7 @@ export async function PUT(request: Request) {
       page_size: clampInt(body.page_size, 50, 10, 100),
       target_count: clampInt(body.target_count, 100, 10, 500),
       sort_by: normalizeSortBy(body.sort_by),
-      organization_label: normalizeText(body.organization_label || "Financial News") || "Financial News",
+      organization_label: normalizeText(body.organization_label || "News") || "News",
       domains: normalizeText(body.domains),
       exclude_domains: normalizeText(body.exclude_domains),
       tags_csv: normalizeText(body.tags_csv)

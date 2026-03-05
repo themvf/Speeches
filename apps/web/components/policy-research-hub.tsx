@@ -31,10 +31,12 @@ interface DocumentItem {
   organization: string;
   source_kind: string;
   doc_type: string;
+  speaker: string;
   url: string;
   date: string;
   published_at: string;
   word_count: number;
+  keywords: string[];
   topics: string[];
   enrichment_status: string;
   review_decision: string;
@@ -158,7 +160,7 @@ const DEFAULT_SETTINGS: NewsConnectorSettings = {
   page_size: 50,
   target_count: 100,
   sort_by: "publishedAt",
-  organization_label: "Financial News",
+  organization_label: "News",
   domains: "",
   exclude_domains: "",
   tags_csv: "financial-regulation,policy,enforcement"
@@ -180,6 +182,41 @@ function statusClass(value: string): string {
   if (["fallback_enriched", "queued", "running"].includes(s)) return "border-amber-300 bg-amber-50 text-amber-800";
   if (["failed", "rejected"].includes(s)) return "border-rose-300 bg-rose-50 text-rose-800";
   return "border-slate-300 bg-slate-50 text-slate-700";
+}
+
+function displayOrganization(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "Unknown";
+  }
+  const lowered = raw.toLowerCase();
+  if (lowered === "financial news" || lowered === "financials news") {
+    return "News";
+  }
+  return raw;
+}
+
+function inferSpeakerGroup(item: DocumentItem): string {
+  const text = `${item.title} ${item.speaker} ${item.doc_type}`.toLowerCase();
+  if (text.includes("chairman")) return "Chairman";
+  if (/\bchair\b/.test(text)) return "Chair";
+  if (text.includes("commissioner")) return "Commissioner";
+  if (text.includes("director")) return "Director";
+  if (text.includes("division")) return "Division";
+  if (text.includes("board")) return "Board";
+  if (text.includes("office")) return "Office";
+  if (item.source_kind === "newsapi_article") return "Publisher";
+  const org = displayOrganization(item.organization);
+  if (org === "SEC") return "Commission";
+  if (org === "Federal Reserve") return "Federal Reserve";
+  if (org === "FINRA") return "FINRA";
+  if (org === "DOJ") return "DOJ";
+  return item.doc_type || "Speaker";
+}
+
+function exactSpeakerName(item: DocumentItem): string {
+  const raw = String(item.speaker || "").trim();
+  return raw || "-";
 }
 
 function headerFor(mode: HubMode): { title: string; subtitle: string } {
@@ -453,7 +490,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
             <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={topic} onChange={(e) => { setPage(1); setTopic(e.target.value); }}>
               <option value="">All topics</option>{facets.topics.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
-            <input className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" placeholder="Keyword" value={keyword} onChange={(e) => { setPage(1); setKeyword(e.target.value); }} />
+            <input className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" placeholder="Keyword Text" value={keyword} onChange={(e) => { setPage(1); setKeyword(e.target.value); }} />
             <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }}>
               <option value="">All statuses</option><option value="not_enriched">Not Enriched</option><option value="enriched">Enriched</option><option value="fallback_enriched">Fallback Enriched</option><option value="reviewed">Reviewed</option>
             </select>
@@ -467,13 +504,15 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
           {docsError ? <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{docsError}</p> : null}
           <div className="mt-3 overflow-x-auto rounded-xl border border-[color:var(--line)] bg-white">
             <table className="min-w-full text-left text-sm">
-              <thead className="bg-[color:rgba(16,36,59,0.05)] text-xs uppercase tracking-[0.08em] text-[color:rgba(16,36,59,0.72)]"><tr><th className="px-3 py-2">Title</th><th className="px-3 py-2">Source</th><th className="px-3 py-2">Topics</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Published</th></tr></thead>
+              <thead className="bg-[color:rgba(16,36,59,0.05)] text-xs uppercase tracking-[0.08em] text-[color:rgba(16,36,59,0.72)]"><tr><th className="px-3 py-2">Title</th><th className="px-3 py-2">Organization</th><th className="px-3 py-2">Speaker</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Keyword Text</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Published</th></tr></thead>
               <tbody>
-                {docsLoading ? <tr><td colSpan={5} className="px-3 py-4 text-sm">Loading feed...</td></tr> : items.length === 0 ? <tr><td colSpan={5} className="px-3 py-4 text-sm">No documents match these filters.</td></tr> : items.map((d) => (
+                {docsLoading ? <tr><td colSpan={7} className="px-3 py-4 text-sm">Loading feed...</td></tr> : items.length === 0 ? <tr><td colSpan={7} className="px-3 py-4 text-sm">No documents match these filters.</td></tr> : items.map((d) => (
                   <tr key={d.document_id} className="border-t border-[color:var(--line)] align-top">
-                    <td className="px-3 py-3"><p className="font-semibold">{d.title || "Untitled"}</p><p className="mt-1 text-xs text-[color:rgba(16,36,59,0.66)]">{d.organization} - {d.doc_type || "Document"}</p>{d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-[color:#2d5673] hover:underline">Open source</a> : null}</td>
-                    <td className="px-3 py-3 text-xs"><span className="rounded-full border border-[color:var(--line)] bg-[color:rgba(16,36,59,0.04)] px-2 py-1">{d.source_kind || "unknown"}</span><p className="mt-2">{fmt(d.word_count)} words</p></td>
-                    <td className="px-3 py-3 text-xs">{(d.topics || []).slice(0, 3).join(", ") || "-"}</td>
+                    <td className="px-3 py-3"><p className="font-semibold">{d.title || "Untitled"}</p><p className="mt-1 text-xs text-[color:rgba(16,36,59,0.66)]">{d.doc_type || "Document"}</p>{d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-[color:#2d5673] hover:underline">Open source</a> : null}</td>
+                    <td className="px-3 py-3 text-xs"><span className="rounded-full border border-[color:var(--line)] bg-[color:rgba(16,36,59,0.04)] px-2 py-1">{displayOrganization(d.organization)}</span><p className="mt-2">{fmt(d.word_count)} words</p></td>
+                    <td className="px-3 py-3 text-xs">{inferSpeakerGroup(d)}</td>
+                    <td className="px-3 py-3 text-xs">{exactSpeakerName(d)}</td>
+                    <td className="px-3 py-3 text-xs">{(d.keywords || []).slice(0, 4).join(", ") || (d.topics || []).slice(0, 4).join(", ") || "-"}</td>
                     <td className="px-3 py-3 text-xs"><span className={`rounded-full border px-2 py-1 ${statusClass(d.enrichment_status)}`}>{d.enrichment_status || "not_enriched"}</span><p className="mt-2">Review: {d.review_decision || "pending"}</p></td>
                     <td className="px-3 py-3 text-xs">{fmtDate(d.published_at || d.date)}</td>
                   </tr>

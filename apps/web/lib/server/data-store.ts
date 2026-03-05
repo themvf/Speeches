@@ -61,7 +61,26 @@ function dedupList(items: string[]): string[] {
 
 function normalizeOrgLabel(value: unknown): string {
   const label = normalizeString(value);
-  return label || "SEC";
+  if (!label) {
+    return "SEC";
+  }
+  const lower = label.toLowerCase();
+  if (lower === "financial news" || lower === "financials news") {
+    return "News";
+  }
+  return label;
+}
+
+function normalizeNewsOrgLabel(value: unknown): string {
+  const label = normalizeString(value);
+  if (!label) {
+    return "News";
+  }
+  const lower = label.toLowerCase();
+  if (lower === "financial news" || lower === "financials news") {
+    return "News";
+  }
+  return label;
 }
 
 function orgKeyFromLabel(label: string): string {
@@ -339,7 +358,7 @@ function normalizeNewsSettingsPayload(payload: unknown): NewsConnectorSettingsPa
       page_size: 50,
       target_count: 100,
       sort_by: "publishedAt",
-      organization_label: "Financial News",
+      organization_label: "News",
       domains: "",
       exclude_domains: "",
       tags_csv: ""
@@ -356,7 +375,7 @@ function normalizeNewsSettingsPayload(payload: unknown): NewsConnectorSettingsPa
     page_size: Number.parseInt(String(src.page_size ?? "50"), 10) || 50,
     target_count: Number.parseInt(String(src.target_count ?? "100"), 10) || 100,
     sort_by: normalizeString(src.sort_by || "publishedAt"),
-    organization_label: normalizeString(src.organization_label || "Financial News"),
+    organization_label: normalizeNewsOrgLabel(src.organization_label || "News"),
     domains: normalizeString(src.domains),
     exclude_domains: normalizeString(src.exclude_domains),
     tags_csv: normalizeString(src.tags_csv)
@@ -493,7 +512,7 @@ export async function loadNewsConnectorSettings(): Promise<NewsConnectorSettings
       page_size: 50,
       target_count: 100,
       sort_by: "publishedAt",
-      organization_label: "Financial News",
+      organization_label: "News",
       domains: "",
       exclude_domains: "",
       tags_csv: ""
