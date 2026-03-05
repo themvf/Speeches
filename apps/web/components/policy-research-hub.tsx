@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type HubMode = "overview" | "research" | "operations";
 type JobStatus = "queued" | "running" | "success" | "failed" | "unknown";
 
 interface ApiEnvelope<T> {
@@ -91,6 +93,35 @@ interface EnrichFormState {
   model: string;
 }
 
+interface PolicyResearchHubProps {
+  mode?: HubMode;
+}
+
+interface ResearchFeedPanelProps {
+  documents: DocumentItem[];
+  documentsTotal: number;
+  documentsLoading: boolean;
+  documentsError: string;
+  query: string;
+  status: string;
+  sort: string;
+  setQuery: (value: string) => void;
+  setStatus: (value: string) => void;
+  setSort: (value: string) => void;
+}
+
+interface OperationsPanelProps {
+  ingestForm: IngestFormState;
+  enrichForm: EnrichFormState;
+  activeJob: JobState | null;
+  jobError: string;
+  runAction: "ingest" | "enrich" | null;
+  setIngestForm: React.Dispatch<React.SetStateAction<IngestFormState>>;
+  setEnrichForm: React.Dispatch<React.SetStateAction<EnrichFormState>>;
+  launchIngest: () => Promise<void>;
+  launchEnrich: () => Promise<void>;
+}
+
 function metricFormatter(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
 }
@@ -126,6 +157,12 @@ function statusPillClass(status: string): string {
   return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
+function routePillClass(active: boolean): string {
+  return active
+    ? "rounded-full border border-[color:rgba(16,36,59,0.35)] bg-white px-3 py-1.5 text-xs font-semibold text-[color:#10243b]"
+    : "rounded-full border border-transparent bg-white/70 px-3 py-1.5 text-xs font-semibold text-[color:rgba(16,36,59,0.72)] hover:border-[color:var(--line)]";
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     cache: "no-store",
@@ -151,14 +188,314 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return parsed.data;
 }
 
-export function PolicyResearchHub() {
+function ResearchFeedPanel({
+  documents,
+  documentsTotal,
+  documentsLoading,
+  documentsError,
+  query,
+  status,
+  sort,
+  setQuery,
+  setStatus,
+  setSort
+}: ResearchFeedPanelProps) {
+  return (
+    <article className="panel p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold">Research Feed</h2>
+        <p className="text-sm text-[color:rgba(16,36,59,0.7)]">{metricFormatter(documentsTotal)} matching documents</p>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-[color:rgba(16,36,59,0.66)]">
+          Search
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Title, source, or text"
+            className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-2 text-sm font-normal tracking-normal text-[color:#10243b]"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-[color:rgba(16,36,59,0.66)]">
+          Status
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+            className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-2 text-sm font-normal tracking-normal text-[color:#10243b]"
+          >
+            <option value="">All statuses</option>
+            <option value="not_enriched">Not Enriched</option>
+            <option value="enriched">Enriched</option>
+            <option value="fallback_enriched">Fallback Enriched</option>
+            <option value="reviewed">Reviewed</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-[color:rgba(16,36,59,0.66)]">
+          Sort
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value)}
+            className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-2 text-sm font-normal tracking-normal text-[color:#10243b]"
+          >
+            <option value="updated_desc">Recently Updated</option>
+            <option value="date_desc">Newest Published</option>
+            <option value="date_asc">Oldest Published</option>
+          </select>
+        </label>
+      </div>
+
+      {documentsError ? (
+        <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{documentsError}</p>
+      ) : null}
+
+      <div className="mt-4 overflow-x-auto rounded-xl border border-[color:var(--line)] bg-white">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-[color:rgba(16,36,59,0.05)] text-xs uppercase tracking-[0.08em] text-[color:rgba(16,36,59,0.72)]">
+            <tr>
+              <th className="px-3 py-2">Title</th>
+              <th className="px-3 py-2">Source</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Published</th>
+            </tr>
+          </thead>
+          <tbody>
+            {documentsLoading ? (
+              <tr>
+                <td colSpan={4} className="px-3 py-4 text-sm text-[color:rgba(16,36,59,0.65)]">
+                  Loading feed...
+                </td>
+              </tr>
+            ) : documents.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-3 py-4 text-sm text-[color:rgba(16,36,59,0.65)]">
+                  No documents match these filters.
+                </td>
+              </tr>
+            ) : (
+              documents.map((doc) => (
+                <tr key={doc.document_id} className="border-t border-[color:var(--line)] align-top">
+                  <td className="px-3 py-3">
+                    <p className="font-semibold text-[color:#10243b]">{doc.title || "Untitled"}</p>
+                    <p className="mt-1 text-xs text-[color:rgba(16,36,59,0.66)]">
+                      {doc.organization} - {doc.doc_type || "Document"}
+                    </p>
+                    {doc.url ? (
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-block text-xs text-[color:#2d5673] underline-offset-2 hover:underline"
+                      >
+                        Open source
+                      </a>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-3 text-xs">
+                    <span className="rounded-full border border-[color:var(--line)] bg-[color:rgba(16,36,59,0.04)] px-2 py-1">
+                      {doc.source_kind || "unknown"}
+                    </span>
+                    <p className="mt-2 text-[color:rgba(16,36,59,0.65)]">{metricFormatter(doc.word_count || 0)} words</p>
+                  </td>
+                  <td className="px-3 py-3 text-xs">
+                    <span className={`rounded-full border px-2 py-1 ${statusPillClass(doc.enrichment_status)}`}>
+                      {doc.enrichment_status || "not_enriched"}
+                    </span>
+                    <p className="mt-2 text-[color:rgba(16,36,59,0.65)]">Review: {doc.review_decision || "pending"}</p>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-[color:rgba(16,36,59,0.7)]">{formatDate(doc.published_at || doc.date)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  );
+}
+
+function OperationsPanel({
+  ingestForm,
+  enrichForm,
+  activeJob,
+  jobError,
+  runAction,
+  setIngestForm,
+  setEnrichForm,
+  launchIngest,
+  launchEnrich
+}: OperationsPanelProps) {
+  return (
+    <article className="panel p-5">
+      <h2 className="text-2xl font-semibold">Operations Console</h2>
+      <p className="mt-2 text-sm text-[color:rgba(16,36,59,0.72)]">
+        Launch collection or enrichment jobs and monitor execution in real time.
+      </p>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <section className="rounded-xl border border-[color:var(--line)] bg-white p-3">
+          <h3 className="text-sm font-semibold">Launch Ingest</h3>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs">Limit</span>
+              <input
+                type="number"
+                min={1}
+                value={ingestForm.limit}
+                onChange={(event) =>
+                  setIngestForm((prev) => ({ ...prev, limit: Math.max(1, Number.parseInt(event.target.value, 10) || 1) }))
+                }
+                className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs">Lookback Days</span>
+              <input
+                type="number"
+                min={1}
+                value={ingestForm.lookback_days}
+                onChange={(event) =>
+                  setIngestForm((prev) => ({ ...prev, lookback_days: Math.max(1, Number.parseInt(event.target.value, 10) || 1) }))
+                }
+                className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+              />
+            </label>
+            <label className="col-span-2 flex flex-col gap-1">
+              <span className="text-xs">Selection</span>
+              <select
+                value={ingestForm.selection}
+                onChange={(event) =>
+                  setIngestForm((prev) => ({
+                    ...prev,
+                    selection: event.target.value === "all" ? "all" : "new_or_updated"
+                  }))
+                }
+                className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+              >
+                <option value="new_or_updated">new_or_updated</option>
+                <option value="all">all</option>
+              </select>
+            </label>
+          </div>
+          <button
+            onClick={() => void launchIngest()}
+            disabled={runAction !== null}
+            className="mt-3 w-full rounded-xl bg-[color:#2d5673] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {runAction === "ingest" ? "Launching..." : "Run Ingest"}
+          </button>
+        </section>
+
+        <section className="rounded-xl border border-[color:var(--line)] bg-white p-3">
+          <h3 className="text-sm font-semibold">Launch Enrichment</h3>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs">Limit</span>
+              <input
+                type="number"
+                min={1}
+                value={enrichForm.limit}
+                onChange={(event) =>
+                  setEnrichForm((prev) => ({ ...prev, limit: Math.max(1, Number.parseInt(event.target.value, 10) || 1) }))
+                }
+                className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs">Source Kind</span>
+              <input
+                value={enrichForm.source_kind}
+                onChange={(event) => setEnrichForm((prev) => ({ ...prev, source_kind: event.target.value || "newsapi_article" }))}
+                className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs">Mode</span>
+              <select
+                value={enrichForm.mode}
+                onChange={(event) =>
+                  setEnrichForm((prev) => ({
+                    ...prev,
+                    mode: event.target.value === "all" ? "all" : "only_missing_or_failed"
+                  }))
+                }
+                className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+              >
+                <option value="only_missing_or_failed">only_missing_or_failed</option>
+                <option value="all">all</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs">Model (optional)</span>
+              <input
+                value={enrichForm.model}
+                onChange={(event) => setEnrichForm((prev) => ({ ...prev, model: event.target.value }))}
+                placeholder="gpt-4o-mini"
+                className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+              />
+            </label>
+            <label className="col-span-2 flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={enrichForm.heuristic_only}
+                onChange={(event) => setEnrichForm((prev) => ({ ...prev, heuristic_only: event.target.checked }))}
+              />
+              Heuristic-only (skip OpenAI)
+            </label>
+          </div>
+          <button
+            onClick={() => void launchEnrich()}
+            disabled={runAction !== null}
+            className="mt-3 w-full rounded-xl bg-[color:#c77d28] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {runAction === "enrich" ? "Launching..." : "Run Enrichment"}
+          </button>
+        </section>
+      </div>
+
+      <section className="mt-4 rounded-xl border border-[color:var(--line)] bg-white p-3 text-sm">
+        <h3 className="font-semibold">Active Job</h3>
+        {!activeJob ? (
+          <p className="mt-2 text-[color:rgba(16,36,59,0.66)]">No active run yet.</p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            <p>
+              <span className={`rounded-full border px-2 py-1 text-xs ${statusPillClass(activeJob.status)}`}>
+                {activeJob.status}
+              </span>
+            </p>
+            <p className="text-xs">Job ID: {activeJob.job_id}</p>
+            {activeJob.workflow ? <p className="text-xs">Workflow: {activeJob.workflow}</p> : null}
+            {activeJob.updated_at ? <p className="text-xs">Updated: {formatDate(activeJob.updated_at)}</p> : null}
+            {activeJob.html_url ? (
+              <a
+                href={activeJob.html_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block text-xs text-[color:#2d5673] underline-offset-2 hover:underline"
+              >
+                Open GitHub run
+              </a>
+            ) : null}
+          </div>
+        )}
+        {jobError ? <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">{jobError}</p> : null}
+      </section>
+    </article>
+  );
+}
+
+export function PolicyResearchHub({ mode = "overview" }: PolicyResearchHubProps) {
+  const showResearch = mode === "overview" || mode === "research";
+  const showOperations = mode === "overview" || mode === "operations";
+
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
   const [metricsError, setMetricsError] = useState("");
 
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [documentsTotal, setDocumentsTotal] = useState(0);
-  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [documentsLoading, setDocumentsLoading] = useState(showResearch);
   const [documentsError, setDocumentsError] = useState("");
 
   const [query, setQuery] = useState("");
@@ -196,6 +533,14 @@ export function PolicyResearchHub() {
   }, []);
 
   const fetchDocuments = useCallback(async () => {
+    if (!showResearch) {
+      setDocuments([]);
+      setDocumentsTotal(0);
+      setDocumentsError("");
+      setDocumentsLoading(false);
+      return;
+    }
+
     setDocumentsLoading(true);
     setDocumentsError("");
     try {
@@ -218,20 +563,26 @@ export function PolicyResearchHub() {
     } finally {
       setDocumentsLoading(false);
     }
-  }, [query, status, sort]);
+  }, [query, showResearch, sort, status]);
 
   useEffect(() => {
     void fetchMetrics();
   }, [fetchMetrics]);
 
   useEffect(() => {
+    if (!showResearch) {
+      return;
+    }
     const timer = setTimeout(() => {
       void fetchDocuments();
     }, 220);
     return () => clearTimeout(timer);
-  }, [fetchDocuments]);
+  }, [fetchDocuments, showResearch]);
 
   useEffect(() => {
+    if (!showOperations) {
+      return;
+    }
     if (!activeJob?.job_id || !["queued", "running", "unknown"].includes(activeJob.status)) {
       return;
     }
@@ -264,7 +615,7 @@ export function PolicyResearchHub() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [activeJob?.job_id, activeJob?.status, fetchDocuments, fetchMetrics]);
+  }, [activeJob?.job_id, activeJob?.status, fetchDocuments, fetchMetrics, showOperations]);
 
   const sourceMix = useMemo(() => {
     const rows = metrics?.by_source_kind || [];
@@ -307,32 +658,52 @@ export function PolicyResearchHub() {
     }
   }, [enrichForm]);
 
+  const modeTitle =
+    mode === "research"
+      ? "Research Feed"
+      : mode === "operations"
+        ? "Operations"
+        : "Regulatory Intelligence, Built For Decisions";
+  const modeSubtitle =
+    mode === "research"
+      ? "Review policy and enforcement signals with searchable, high-context document intelligence."
+      : mode === "operations"
+        ? "Run ingest and enrichment workflows, monitor job health, and close the research loop faster."
+        : "Track policy and enforcement signals, triage incoming sources, and run ingestion and enrichment from one operational surface.";
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
       <header className="panel reveal p-6 md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <span className="kicker">Policy Research Hub</span>
-            <h1 className="mt-3 text-3xl font-bold leading-tight md:text-5xl">Regulatory Intelligence, Built For Decisions</h1>
-            <p className="mt-3 max-w-3xl text-base text-[color:rgba(16,36,59,0.76)] md:text-lg">
-              Track policy and enforcement signals, triage incoming sources, and run ingestion and enrichment from one
-              operational surface.
-            </p>
+            <h1 className="mt-3 text-3xl font-bold leading-tight md:text-5xl">{modeTitle}</h1>
+            <p className="mt-3 max-w-3xl text-base text-[color:rgba(16,36,59,0.76)] md:text-lg">{modeSubtitle}</p>
           </div>
-          <nav className="flex flex-wrap gap-2 text-sm font-semibold">
-            <a href="#signals" className="rounded-full border border-[color:var(--line)] bg-white/80 px-3 py-1.5">
-              Signals
-            </a>
-            <a href="#feed" className="rounded-full border border-[color:var(--line)] bg-white/80 px-3 py-1.5">
+          <nav aria-label="Hub Sections" className="flex flex-wrap gap-2">
+            <Link href="/" prefetch className={routePillClass(mode === "overview")} aria-current={mode === "overview" ? "page" : undefined}>
+              Overview
+            </Link>
+            <Link
+              href="/research"
+              prefetch
+              className={routePillClass(mode === "research")}
+              aria-current={mode === "research" ? "page" : undefined}
+            >
               Research Feed
-            </a>
-            <a href="#operations" className="rounded-full border border-[color:var(--line)] bg-white/80 px-3 py-1.5">
+            </Link>
+            <Link
+              href="/operations"
+              prefetch
+              className={routePillClass(mode === "operations")}
+              aria-current={mode === "operations" ? "page" : undefined}
+            >
               Operations
-            </a>
+            </Link>
           </nav>
         </div>
 
-        <section id="signals" className="mt-6 grid gap-3 md:grid-cols-4">
+        <section className="mt-6 grid gap-3 md:grid-cols-4">
           <article className="panel p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:rgba(45,86,115,0.8)]">Documents</p>
             <p className="mt-1 text-2xl font-semibold">{metricsLoading ? "..." : metricFormatter(metrics?.totals.documents || 0)}</p>
@@ -367,10 +738,7 @@ export function PolicyResearchHub() {
                       <span>{metricFormatter(row.count)}</span>
                     </div>
                     <div className="h-2 rounded-full bg-[color:rgba(16,36,59,0.1)]">
-                      <div
-                        className="h-2 rounded-full bg-[linear-gradient(90deg,#2d5673,#c77d28)]"
-                        style={{ width: `${row.width}%` }}
-                      />
+                      <div className="h-2 rounded-full bg-[linear-gradient(90deg,#2d5673,#c77d28)]" style={{ width: `${row.width}%` }} />
                     </div>
                   </div>
                 ))
@@ -397,246 +765,62 @@ export function PolicyResearchHub() {
         </section>
       </header>
 
-      <section className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
-        <article id="feed" className="panel reveal reveal-delay-1 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold">Research Feed</h2>
-            <p className="text-sm text-[color:rgba(16,36,59,0.7)]">{metricFormatter(documentsTotal)} matching documents</p>
-          </div>
+      {mode === "overview" ? (
+        <section className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
+          <ResearchFeedPanel
+            documents={documents}
+            documentsTotal={documentsTotal}
+            documentsLoading={documentsLoading}
+            documentsError={documentsError}
+            query={query}
+            status={status}
+            sort={sort}
+            setQuery={setQuery}
+            setStatus={setStatus}
+            setSort={setSort}
+          />
+          <OperationsPanel
+            ingestForm={ingestForm}
+            enrichForm={enrichForm}
+            activeJob={activeJob}
+            jobError={jobError}
+            runAction={runAction}
+            setIngestForm={setIngestForm}
+            setEnrichForm={setEnrichForm}
+            launchIngest={launchIngest}
+            launchEnrich={launchEnrich}
+          />
+        </section>
+      ) : null}
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search title, source, text"
-              className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:#2d5673]"
-            />
-            <select
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-              className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:#2d5673]"
-            >
-              <option value="">All statuses</option>
-              <option value="not_enriched">Not Enriched</option>
-              <option value="enriched">Enriched</option>
-              <option value="fallback_enriched">Fallback Enriched</option>
-              <option value="reviewed">Reviewed</option>
-            </select>
-            <select
-              value={sort}
-              onChange={(event) => setSort(event.target.value)}
-              className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:#2d5673]"
-            >
-              <option value="updated_desc">Recently Updated</option>
-              <option value="date_desc">Newest Published</option>
-              <option value="date_asc">Oldest Published</option>
-            </select>
-          </div>
+      {mode === "research" ? (
+        <ResearchFeedPanel
+          documents={documents}
+          documentsTotal={documentsTotal}
+          documentsLoading={documentsLoading}
+          documentsError={documentsError}
+          query={query}
+          status={status}
+          sort={sort}
+          setQuery={setQuery}
+          setStatus={setStatus}
+          setSort={setSort}
+        />
+      ) : null}
 
-          {documentsError ? (
-            <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{documentsError}</p>
-          ) : null}
-
-          <div className="mt-4 overflow-x-auto rounded-xl border border-[color:var(--line)] bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-[color:rgba(16,36,59,0.05)] text-xs uppercase tracking-[0.08em] text-[color:rgba(16,36,59,0.72)]">
-                <tr>
-                  <th className="px-3 py-2">Title</th>
-                  <th className="px-3 py-2">Source</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Published</th>
-                </tr>
-              </thead>
-              <tbody>
-                {documentsLoading ? (
-                  <tr>
-                    <td colSpan={4} className="px-3 py-4 text-sm text-[color:rgba(16,36,59,0.65)]">
-                      Loading feed...
-                    </td>
-                  </tr>
-                ) : documents.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-3 py-4 text-sm text-[color:rgba(16,36,59,0.65)]">
-                      No documents match these filters.
-                    </td>
-                  </tr>
-                ) : (
-                  documents.map((doc) => (
-                    <tr key={doc.document_id} className="border-t border-[color:var(--line)] align-top">
-                      <td className="px-3 py-3">
-                        <p className="font-semibold text-[color:#10243b]">{doc.title || "Untitled"}</p>
-                        <p className="mt-1 text-xs text-[color:rgba(16,36,59,0.66)]">{doc.organization} - {doc.doc_type || "Document"}</p>
-                        {doc.url ? (
-                          <a href={doc.url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-[color:#2d5673] underline-offset-2 hover:underline">
-                            Open source
-                          </a>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-3 text-xs">
-                        <span className="rounded-full border border-[color:var(--line)] bg-[color:rgba(16,36,59,0.04)] px-2 py-1">
-                          {doc.source_kind || "unknown"}
-                        </span>
-                        <p className="mt-2 text-[color:rgba(16,36,59,0.65)]">{metricFormatter(doc.word_count || 0)} words</p>
-                      </td>
-                      <td className="px-3 py-3 text-xs">
-                        <span className={`rounded-full border px-2 py-1 ${statusPillClass(doc.enrichment_status)}`}>
-                          {doc.enrichment_status || "not_enriched"}
-                        </span>
-                        <p className="mt-2 text-[color:rgba(16,36,59,0.65)]">Review: {doc.review_decision || "pending"}</p>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-[color:rgba(16,36,59,0.7)]">{formatDate(doc.published_at || doc.date)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article id="operations" className="panel reveal reveal-delay-2 p-5">
-          <h2 className="text-2xl font-semibold">Operations Console</h2>
-          <p className="mt-2 text-sm text-[color:rgba(16,36,59,0.72)]">Launch collection or enrichment jobs and monitor execution in real time.</p>
-
-          <div className="mt-4 space-y-4">
-            <section className="rounded-xl border border-[color:var(--line)] bg-white p-3">
-              <h3 className="text-sm font-semibold">Launch Ingest</h3>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs">Limit</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={ingestForm.limit}
-                    onChange={(event) => setIngestForm((prev) => ({ ...prev, limit: Math.max(1, Number.parseInt(event.target.value, 10) || 1) }))}
-                    className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs">Lookback Days</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={ingestForm.lookback_days}
-                    onChange={(event) =>
-                      setIngestForm((prev) => ({ ...prev, lookback_days: Math.max(1, Number.parseInt(event.target.value, 10) || 1) }))
-                    }
-                    className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
-                  />
-                </label>
-                <label className="col-span-2 flex flex-col gap-1">
-                  <span className="text-xs">Selection</span>
-                  <select
-                    value={ingestForm.selection}
-                    onChange={(event) =>
-                      setIngestForm((prev) => ({
-                        ...prev,
-                        selection: event.target.value === "all" ? "all" : "new_or_updated"
-                      }))
-                    }
-                    className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
-                  >
-                    <option value="new_or_updated">new_or_updated</option>
-                    <option value="all">all</option>
-                  </select>
-                </label>
-              </div>
-              <button
-                onClick={() => void launchIngest()}
-                disabled={runAction !== null}
-                className="mt-3 w-full rounded-xl bg-[color:#2d5673] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-              >
-                {runAction === "ingest" ? "Launching..." : "Run Ingest"}
-              </button>
-            </section>
-
-            <section className="rounded-xl border border-[color:var(--line)] bg-white p-3">
-              <h3 className="text-sm font-semibold">Launch Enrichment</h3>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs">Limit</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={enrichForm.limit}
-                    onChange={(event) => setEnrichForm((prev) => ({ ...prev, limit: Math.max(1, Number.parseInt(event.target.value, 10) || 1) }))}
-                    className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs">Source Kind</span>
-                  <input
-                    value={enrichForm.source_kind}
-                    onChange={(event) => setEnrichForm((prev) => ({ ...prev, source_kind: event.target.value || "newsapi_article" }))}
-                    className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs">Mode</span>
-                  <select
-                    value={enrichForm.mode}
-                    onChange={(event) =>
-                      setEnrichForm((prev) => ({
-                        ...prev,
-                        mode: event.target.value === "all" ? "all" : "only_missing_or_failed"
-                      }))
-                    }
-                    className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
-                  >
-                    <option value="only_missing_or_failed">only_missing_or_failed</option>
-                    <option value="all">all</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs">Model (optional)</span>
-                  <input
-                    value={enrichForm.model}
-                    onChange={(event) => setEnrichForm((prev) => ({ ...prev, model: event.target.value }))}
-                    placeholder="gpt-4o-mini"
-                    className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
-                  />
-                </label>
-                <label className="col-span-2 flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={enrichForm.heuristic_only}
-                    onChange={(event) => setEnrichForm((prev) => ({ ...prev, heuristic_only: event.target.checked }))}
-                  />
-                  Heuristic-only (skip OpenAI)
-                </label>
-              </div>
-              <button
-                onClick={() => void launchEnrich()}
-                disabled={runAction !== null}
-                className="mt-3 w-full rounded-xl bg-[color:#c77d28] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-              >
-                {runAction === "enrich" ? "Launching..." : "Run Enrichment"}
-              </button>
-            </section>
-
-            <section className="rounded-xl border border-[color:var(--line)] bg-white p-3 text-sm">
-              <h3 className="font-semibold">Active Job</h3>
-              {!activeJob ? (
-                <p className="mt-2 text-[color:rgba(16,36,59,0.66)]">No active run yet.</p>
-              ) : (
-                <div className="mt-2 space-y-2">
-                  <p>
-                    <span className={`rounded-full border px-2 py-1 text-xs ${statusPillClass(activeJob.status)}`}>{activeJob.status}</span>
-                  </p>
-                  <p className="text-xs">Job ID: {activeJob.job_id}</p>
-                  {activeJob.workflow ? <p className="text-xs">Workflow: {activeJob.workflow}</p> : null}
-                  {activeJob.updated_at ? <p className="text-xs">Updated: {formatDate(activeJob.updated_at)}</p> : null}
-                  {activeJob.html_url ? (
-                    <a href={activeJob.html_url} target="_blank" rel="noreferrer" className="inline-block text-xs text-[color:#2d5673] underline-offset-2 hover:underline">
-                      Open GitHub run
-                    </a>
-                  ) : null}
-                </div>
-              )}
-              {jobError ? <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">{jobError}</p> : null}
-            </section>
-          </div>
-        </article>
-      </section>
-    </main>
+      {mode === "operations" ? (
+        <OperationsPanel
+          ingestForm={ingestForm}
+          enrichForm={enrichForm}
+          activeJob={activeJob}
+          jobError={jobError}
+          runAction={runAction}
+          setIngestForm={setIngestForm}
+          setEnrichForm={setEnrichForm}
+          launchIngest={launchIngest}
+          launchEnrich={launchEnrich}
+        />
+      ) : null}
+    </div>
   );
 }

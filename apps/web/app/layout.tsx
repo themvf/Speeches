@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
+import { AppNav } from "@/components/app-nav";
 import "./globals.css";
 
 const bodyFont = IBM_Plex_Sans({
@@ -22,7 +23,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${bodyFont.variable} ${displayFont.variable}`}>{children}</body>
+      <body className={`${bodyFont.variable} ${displayFont.variable}`}>
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
+        <div className="min-h-screen">
+          <AppNav />
+          <main id="main-content">{children}</main>
+        </div>
+      </body>
     </html>
   );
 }

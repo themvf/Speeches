@@ -31,6 +31,25 @@ body {
     linear-gradient(150deg, var(--dune), #fefdf8 48%, var(--mist));
 }
 
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  z-index: 80;
+  transform: translateY(-220%);
+  border: 1px solid rgba(16, 36, 59, 0.25);
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.8rem;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
 h1,
 h2,
 h3 {
@@ -82,6 +101,15 @@ h3 {
   font-family: var(--font-display), "Trebuchet MS", sans-serif;
   font-size: clamp(1.45rem, 2vw, 2rem);
   font-weight: 700;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(45, 86, 115, 0.75);
+  outline-offset: 2px;
 }
 
 @keyframes float-up {
