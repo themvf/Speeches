@@ -18,7 +18,7 @@ Primary config lives in `.env.local`.
 - `DATA_SOURCE_MODE`: `auto`, `local`, or `gcs`
 - `DATA_DIR_PATH`: local path fallback for JSON stores
 - `GCS_BUCKET_NAME`, `GCS_CREDENTIALS_JSON`, `GCS_CREDENTIALS_PATH`: GCS-backed reads
-- `GITHUB_ACTIONS_*`: dispatch and status for ingest/enrich workflows
+- `GITHUB_ACTIONS_*`: dispatch and status for ingest/enrich/extract workflows
 
 Use `apps/web/.env.example` as the template.
 

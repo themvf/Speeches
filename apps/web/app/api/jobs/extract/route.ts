@@ -14,8 +14,8 @@ export async function POST(request: Request) {
       body = {};
     }
 
-    const connectorRaw = String(body.connector ?? "sec_enforcement_litigation").trim();
-    const connector = connectorRaw || "sec_enforcement_litigation";
+    const connectorRaw = String(body.connector ?? "sec_speech").trim();
+    const connector = connectorRaw || "sec_speech";
     const selectionRaw = String(body.selection ?? "new_or_updated").trim();
     const selection = ["new_or_updated", "all"].includes(selectionRaw) ? selectionRaw : "new_or_updated";
     const limit = Math.max(1, Number.parseInt(String(body.limit ?? "25"), 10) || 25);

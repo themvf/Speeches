@@ -15,7 +15,13 @@ interface MetricsData {
   totals: { documents: number; organizations: number; enriched: number; pending_review: number };
   recent_ingest: { last_run_at: string; processed_count: number; failed_count: number };
   by_source_kind: Array<{ source_kind: string; count: number }>;
-  runtime?: { data_source_mode: string; gcs_configured: boolean; github_actions_enabled: boolean };
+  runtime?: {
+    data_source_mode: string;
+    gcs_configured: boolean;
+    github_actions_enabled: boolean;
+    github_actions_enabled_flag?: boolean;
+    github_actions_missing_required_env?: string[];
+  };
 }
 
 interface DocumentItem {
@@ -79,6 +85,7 @@ interface EnrichFormState {
 
 interface ExtractFormState {
   connector:
+    | "sec_speech"
     | "sec_tm_faq"
     | "sec_enforcement_litigation"
     | "finra_regulatory_notice"
@@ -235,7 +242,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     model: ""
   });
   const [extract, setExtract] = useState<ExtractFormState>({
-    connector: "sec_enforcement_litigation",
+    connector: "sec_speech",
     selection: "new_or_updated",
     limit: 20,
     max_pages: 5,
@@ -261,6 +268,9 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   }, [metrics?.by_source_kind]);
 
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+  const githubActionsEnabled = metrics?.runtime?.github_actions_enabled ?? true;
+  const githubActionsEnabledFlag = metrics?.runtime?.github_actions_enabled_flag ?? true;
+  const githubActionsMissingEnv = metrics?.runtime?.github_actions_missing_required_env || [];
 
   const loadMetrics = useCallback(async () => {
     if (!needsMetrics) return;
@@ -472,6 +482,13 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
 
       {mode === "operations" ? (
         <section className="grid gap-4">
+          {!metricsLoading && !githubActionsEnabled ? (
+            <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {githubActionsEnabledFlag
+                ? `GitHub Actions dispatch is missing required Vercel env vars: ${githubActionsMissingEnv.join(", ")}`
+                : "GitHub Actions dispatch is disabled by GITHUB_ACTIONS_ENABLED=false"}
+            </p>
+          ) : null}
           <article className="panel p-5">
             <div className="flex items-center justify-between"><h2 className="text-xl font-semibold">News Connector Settings</h2><div className="flex gap-2"><button className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-1.5 text-xs font-semibold" onClick={() => void loadSettings()}>Reload</button><button className="rounded-xl bg-[color:#2d5673] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50" disabled={settingsSaving} onClick={() => void saveSettings()}>{settingsSaving ? "Saving..." : "Save Settings"}</button></div></div>
             {settingsLoading ? <p className="mt-2 text-sm">Loading settings...</p> : null}
@@ -499,6 +516,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   value={extract.connector}
                   onChange={(e) => setExtract({ ...extract, connector: e.target.value as ExtractFormState["connector"] })}
                 >
+                  <option value="sec_speech">SEC Speeches &amp; Statements</option>
                   <option value="sec_enforcement_litigation">SEC Litigation Releases</option>
                   <option value="sec_tm_faq">SEC Trading & Markets FAQ</option>
                   <option value="finra_regulatory_notice">FINRA Regulatory Notices</option>

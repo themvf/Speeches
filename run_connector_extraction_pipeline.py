@@ -13,12 +13,14 @@ import run_financial_news_pipeline as core
 
 SEC_TM_FAQ_DEFAULT_URL = "https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions"
 SEC_LIT_DEFAULT_URL = "https://www.sec.gov/enforcement-litigation/litigation-releases"
+SEC_SPEECH_DEFAULT_URL = "https://www.sec.gov/newsroom/speeches-statements"
 FINRA_NOTICE_DEFAULT_URL = "https://www.finra.org/rules-guidance/notices"
 FINRA_TOPIC_DEFAULT_URL = "https://www.finra.org/rules-guidance/key-topics"
 DOJ_DEFAULT_URL = "https://www.justice.gov/usao/pressreleases"
 FED_DEFAULT_URL = "https://www.federalreserve.gov/newsevents/speeches-testimony.htm"
 
 SUPPORTED_CONNECTORS = {
+    "sec_speech",
     "sec_tm_faq",
     "sec_enforcement_litigation",
     "finra_regulatory_notice",
@@ -29,6 +31,8 @@ SUPPORTED_CONNECTORS = {
 
 
 def _default_base_url(connector: str) -> str:
+    if connector == "sec_speech":
+        return SEC_SPEECH_DEFAULT_URL
     if connector == "sec_tm_faq":
         return SEC_TM_FAQ_DEFAULT_URL
     if connector == "sec_enforcement_litigation":
@@ -136,6 +140,17 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector == "sec_speech":
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_speaker = _normalize_space(existing_meta.get("listing_speaker") or existing_meta.get("speaker") or "")
+        incoming_speaker = _normalize_space(entry.get("speaker", ""))
+        if (incoming_date and existing_date and incoming_date != existing_date) or (
+            incoming_speaker and existing_speaker and incoming_speaker != existing_speaker
+        ):
+            return "update_available"
+        return "existing"
+
     if connector == "finra_regulatory_notice":
         existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
         incoming_date = _normalize_space(entry.get("date", ""))
@@ -159,6 +174,13 @@ def _status_for_entry(
 
 
 def _discover_connector(connector: str, base_url: str, max_pages: int, include_pdfs: bool, include_rss: bool) -> Tuple[Any, List[Dict[str, Any]], Dict[str, Any]]:
+    if connector == "sec_speech":
+        from speech_analyzer import SECSpeechAnalyzer
+
+        analyzer = SECSpeechAnalyzer()
+        docs = analyzer.scraper.discover_speech_urls(base_url=base_url, max_pages=max_pages)
+        return analyzer, docs, {}
+
     if connector == "sec_tm_faq":
         from sec_tm_faq_scraper import TradingMarketsFAQScraper
 
@@ -207,6 +229,61 @@ def _discover_connector(connector: str, base_url: str, max_pages: int, include_p
 
 
 def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: int, base_url: str) -> Dict[str, Any]:
+    if connector == "sec_speech":
+        extracted = scraper.extract_speech_for_analysis(
+            entry.get("url", ""),
+            listing_metadata=entry if isinstance(entry, dict) else None,
+        )
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "") or "Extraction returned unsuccessful result."))
+
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        if not scraper.validate_full_text_extraction(data):
+            raise RuntimeError("Extracted text failed SEC speech quality validation.")
+
+        data_meta = data.get("metadata", {}) if isinstance(data.get("metadata", {}), dict) else {}
+        data_content = data.get("content", {}) if isinstance(data.get("content", {}), dict) else {}
+        text = str(data_content.get("full_text", "") or "").strip()
+        if len(text.split()) < 80:
+            raise RuntimeError("Extracted text appears too short.")
+
+        src_url = str(data_meta.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"sec-speech-{idx}", ".html")
+        date_text = str(data_meta.get("date", "") or entry.get("date", "")).strip()
+        doc_date = _parse_doc_date(date_text)
+        speaker = str(data_meta.get("speaker", "") or entry.get("speaker", "")).strip() or "SEC Speaker"
+        doc_type = str(entry.get("type", "") or data_meta.get("speech_type", "") or "Speech").strip() or "Speech"
+        doc_type_lower = doc_type.lower()
+        if "remarks" in doc_type_lower:
+            tags_csv = "sec,remarks,speech,policy"
+        elif "statement" in doc_type_lower:
+            tags_csv = "sec,statement,policy"
+        else:
+            tags_csv = "sec,speech,policy"
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="SEC",
+            title=str(data_meta.get("title", "") or entry.get("title", "")).strip(),
+            speaker=speaker,
+            doc_date=doc_date,
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=tags_csv,
+            source_kind="sec_speech",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "sec_speech"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["listing_speaker"] = str(entry.get("speaker", "") or "").strip()
+        metadata["speech_type"] = doc_type
+        return record
+
     if connector == "sec_tm_faq":
         extracted = scraper.extract_document(
             entry.get("url", ""),

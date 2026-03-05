@@ -8,6 +8,7 @@ on:
         required: true
         type: choice
         options:
+          - sec_speech
           - sec_tm_faq
           - sec_enforcement_litigation
           - finra_regulatory_notice

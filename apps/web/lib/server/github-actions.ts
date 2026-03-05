@@ -38,6 +38,16 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function githubDisabledReason(cfg: ReturnType<typeof getGithubActionsConfig>): string {
+  if (!cfg.enabledFlag) {
+    return "GitHub Actions integration is disabled by GITHUB_ACTIONS_ENABLED=false.";
+  }
+  if (cfg.missingRequiredEnv.length > 0) {
+    return `GitHub Actions integration is missing required environment variables: ${cfg.missingRequiredEnv.join(", ")}.`;
+  }
+  return "GitHub Actions integration is not configured.";
+}
+
 function extractErrorMessage(payload: unknown): string {
   if (!payload || typeof payload !== "object") {
     return "GitHub API error";
@@ -53,7 +63,7 @@ function extractErrorMessage(payload: unknown): string {
 async function githubRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const cfg = getGithubActionsConfig();
   if (!cfg.enabled) {
-    throw new Error("GitHub Actions integration is not configured.");
+    throw new Error(githubDisabledReason(cfg));
   }
 
   const response = await fetch(`https://api.github.com${path}`, {
@@ -143,7 +153,7 @@ async function findRunIdAfterDispatch(workflow: string, startedAtMs: number): Pr
 async function dispatchWorkflow(workflow: string, inputs: Record<string, string>): Promise<{ job_id: string; github_run_id: number }> {
   const cfg = getGithubActionsConfig();
   if (!cfg.enabled) {
-    throw new Error("GitHub Actions integration is disabled or missing required environment variables.");
+    throw new Error(githubDisabledReason(cfg));
   }
 
   const startedAtMs = Date.now();
@@ -246,7 +256,7 @@ export async function triggerExtractJob(payload: {
 export async function getJobSummary(jobId: string): Promise<GithubRunSummary> {
   const cfg = getGithubActionsConfig();
   if (!cfg.enabled) {
-    throw new Error("GitHub Actions integration is disabled or missing required environment variables.");
+    throw new Error(githubDisabledReason(cfg));
   }
 
   const runId = parseJobId(jobId);
