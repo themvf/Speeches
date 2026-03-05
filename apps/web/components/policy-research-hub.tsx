@@ -46,6 +46,7 @@ interface DocumentsFacets {
   sources: string[];
   organizations: string[];
   topics: string[];
+  key_topics: string[];
   keywords: string[];
   statuses: string[];
 }
@@ -151,7 +152,7 @@ interface PolicyResearchHubProps {
   mode?: HubMode;
 }
 
-const EMPTY_FACETS: DocumentsFacets = { sources: [], organizations: [], topics: [], keywords: [], statuses: [] };
+const EMPTY_FACETS: DocumentsFacets = { sources: [], organizations: [], topics: [], key_topics: [], keywords: [], statuses: [] };
 const DEFAULT_SETTINGS: NewsConnectorSettings = {
   updated_at: "",
   query: "federal reserve OR sec OR cftc OR finra OR doj antitrust OR enforcement OR regulation",
@@ -217,6 +218,34 @@ function inferSpeakerGroup(item: DocumentItem): string {
 function exactSpeakerName(item: DocumentItem): string {
   const raw = String(item.speaker || "").trim();
   return raw || "-";
+}
+
+const SOURCE_KIND_LABELS: Record<string, string> = {
+  sec_speech: "SEC Speeches & Statements",
+  sec_tm_faq: "SEC Trading & Markets FAQ",
+  sec_enforcement_litigation: "SEC Enforcement Litigation",
+  finra_regulatory_notice: "FINRA Regulatory Notices",
+  finra_key_topic: "FINRA Key Topics",
+  doj_usao_press_release: "DOJ USAO Press Releases",
+  federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
+  newsapi_article: "News",
+  uploaded: "Uploaded"
+};
+
+function displaySourceKind(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "Unknown";
+  }
+  const mapped = SOURCE_KIND_LABELS[raw];
+  if (mapped) {
+    return mapped;
+  }
+  return raw
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function headerFor(mode: HubMode): { title: string; subtitle: string } {
@@ -307,6 +336,11 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     const max = rows.reduce((best, row) => (row.count > best ? row.count : best), 1);
     return rows.map((row) => ({ ...row, width: Math.max(8, Math.round((row.count / max) * 100)) }));
   }, [metrics?.by_source_kind]);
+  const sourceOptions = useMemo(
+    () => [...facets.sources].sort((a, b) => displaySourceKind(a).localeCompare(displaySourceKind(b))),
+    [facets.sources]
+  );
+  const topicOptions = facets.key_topics.length > 0 ? facets.key_topics : facets.topics.slice(0, 10);
 
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
   const jobExecutionMode = metrics?.runtime?.job_execution_mode || "github_actions";
@@ -482,13 +516,13 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-7">
             <input className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm xl:col-span-2" placeholder="Search text" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
             <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={source} onChange={(e) => { setPage(1); setSource(e.target.value); }}>
-              <option value="">All sources</option>{facets.sources.map((v) => <option key={v} value={v}>{v}</option>)}
+              <option value="">All sources</option>{sourceOptions.map((v) => <option key={v} value={v}>{displaySourceKind(v)}</option>)}
             </select>
             <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={org} onChange={(e) => { setPage(1); setOrg(e.target.value); }}>
               <option value="">All orgs</option>{facets.organizations.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
             <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={topic} onChange={(e) => { setPage(1); setTopic(e.target.value); }}>
-              <option value="">All topics</option>{facets.topics.map((v) => <option key={v} value={v}>{v}</option>)}
+              <option value="">Key topics (Top 10)</option>{topicOptions.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
             <input className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" placeholder="Keyword Text" value={keyword} onChange={(e) => { setPage(1); setKeyword(e.target.value); }} />
             <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }}>

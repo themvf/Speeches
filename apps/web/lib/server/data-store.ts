@@ -623,6 +623,31 @@ export function buildDocumentsFacets(items: DocumentListItem[]): DocumentsFacets
   const sources = dedupList(items.map((item) => item.source_kind));
   const organizations = dedupList(items.map((item) => item.organization));
   const topics = dedupList(items.flatMap((item) => item.topics || []));
+  const topicCounts = new Map<string, { label: string; count: number }>();
+  for (const item of items) {
+    const uniqueTopicKeys = new Set<string>();
+    for (const topic of item.topics || []) {
+      const label = normalizeString(topic);
+      if (!label) {
+        continue;
+      }
+      const key = label.toLowerCase();
+      if (uniqueTopicKeys.has(key)) {
+        continue;
+      }
+      uniqueTopicKeys.add(key);
+      const current = topicCounts.get(key);
+      if (current) {
+        current.count += 1;
+      } else {
+        topicCounts.set(key, { label, count: 1 });
+      }
+    }
+  }
+  const keyTopics = [...topicCounts.values()]
+    .sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label))
+    .slice(0, 10)
+    .map((entry) => entry.label);
   const keywords = dedupList(items.flatMap((item) => item.keywords || []));
   const statuses = dedupList(items.map((item) => item.enrichment_status));
 
@@ -630,6 +655,7 @@ export function buildDocumentsFacets(items: DocumentListItem[]): DocumentsFacets
     sources,
     organizations,
     topics,
+    key_topics: keyTopics,
     keywords,
     statuses
   };

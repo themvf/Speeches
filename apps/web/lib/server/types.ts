@@ -134,6 +134,7 @@ export interface DocumentsFacets {
   sources: string[];
   organizations: string[];
   topics: string[];
+  key_topics: string[];
   keywords: string[];
   statuses: string[];
 }
