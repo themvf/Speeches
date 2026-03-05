@@ -1,0 +1,621 @@
+#!/usr/bin/env python3
+"""Headless connector extraction pipeline for non-NewsAPI sources."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
+
+import run_financial_news_pipeline as core
+
+
+SEC_TM_FAQ_DEFAULT_URL = "https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions"
+SEC_LIT_DEFAULT_URL = "https://www.sec.gov/enforcement-litigation/litigation-releases"
+FINRA_NOTICE_DEFAULT_URL = "https://www.finra.org/rules-guidance/notices"
+FINRA_TOPIC_DEFAULT_URL = "https://www.finra.org/rules-guidance/key-topics"
+DOJ_DEFAULT_URL = "https://www.justice.gov/usao/pressreleases"
+FED_DEFAULT_URL = "https://www.federalreserve.gov/newsevents/speeches-testimony.htm"
+
+SUPPORTED_CONNECTORS = {
+    "sec_tm_faq",
+    "sec_enforcement_litigation",
+    "finra_regulatory_notice",
+    "finra_key_topic",
+    "doj_usao_press_release",
+    "federal_reserve_speech_testimony",
+}
+
+
+def _default_base_url(connector: str) -> str:
+    if connector == "sec_tm_faq":
+        return SEC_TM_FAQ_DEFAULT_URL
+    if connector == "sec_enforcement_litigation":
+        return SEC_LIT_DEFAULT_URL
+    if connector == "finra_regulatory_notice":
+        return FINRA_NOTICE_DEFAULT_URL
+    if connector == "finra_key_topic":
+        return FINRA_TOPIC_DEFAULT_URL
+    if connector == "doj_usao_press_release":
+        return DOJ_DEFAULT_URL
+    if connector == "federal_reserve_speech_testimony":
+        return FED_DEFAULT_URL
+    return ""
+
+
+def _normalize_space(value: Any) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _to_bool(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _safe_source_name(url: str, fallback_prefix: str, source_ext: str) -> str:
+    parsed = urlparse(str(url or "").strip())
+    candidate = parsed.path.rsplit("/", 1)[-1].strip() if parsed.path else ""
+    if not candidate:
+        candidate = fallback_prefix
+    candidate = core._safe_filename(candidate)
+    if "." not in candidate:
+        candidate += source_ext
+    return candidate
+
+
+def _parse_doc_date(value: Any) -> Any:
+    parsed = core._parse_single_date(value)
+    if parsed is not None:
+        return parsed
+    return str(value or "").strip()
+
+
+def _load_existing_speech_url_keys(storage: Any) -> set[str]:
+    keys: set[str] = set()
+
+    if storage is not None:
+        try:
+            payload = storage.load_speeches()
+            for item in payload.get("speeches", []):
+                if not isinstance(item, dict):
+                    continue
+                metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+                key = core._url_match_key(metadata.get("url", ""))
+                if key:
+                    keys.add(key)
+        except Exception:
+            pass
+
+    local_file = core.DATA_DIR / "all_speeches_final.json"
+    if local_file.exists():
+        try:
+            data = json.loads(local_file.read_text(encoding="utf-8"))
+            for item in data.get("speeches", []):
+                if not isinstance(item, dict):
+                    continue
+                metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+                key = core._url_match_key(metadata.get("url", ""))
+                if key:
+                    keys.add(key)
+        except Exception:
+            pass
+
+    return keys
+
+
+def _build_existing_custom_map(custom_payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for item in custom_payload.get("documents", []):
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        key = core._url_match_key(metadata.get("url", ""))
+        if key:
+            out[key] = metadata
+    return out
+
+
+def _status_for_entry(
+    connector: str,
+    entry: Dict[str, Any],
+    existing_meta: Optional[Dict[str, Any]],
+    existing_speech_keys: set[str],
+) -> str:
+    key = core._url_match_key(entry.get("url", ""))
+    if not existing_meta:
+        return "existing_in_speeches" if key and key in existing_speech_keys else "new"
+
+    if connector == "sec_tm_faq":
+        existing_updated = _normalize_space(
+            existing_meta.get("last_reviewed_or_updated")
+            or existing_meta.get("updated_date")
+            or ""
+        )
+        incoming_updated = _normalize_space(entry.get("updated_date", ""))
+        if incoming_updated and existing_updated and incoming_updated != existing_updated:
+            return "update_available"
+        return "existing"
+
+    if connector == "finra_regulatory_notice":
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_effective = _normalize_space(existing_meta.get("effective_date", ""))
+        incoming_effective = _normalize_space(entry.get("effective_date", ""))
+        existing_comment = _normalize_space(existing_meta.get("comment_deadline", ""))
+        incoming_comment = _normalize_space(entry.get("comment_deadline", ""))
+        if (
+            (incoming_date and existing_date and incoming_date != existing_date)
+            or (incoming_effective and existing_effective and incoming_effective != existing_effective)
+            or (incoming_comment and existing_comment and incoming_comment != existing_comment)
+        ):
+            return "update_available"
+        return "existing"
+
+    existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+    incoming_date = _normalize_space(entry.get("date") or entry.get("published_date") or "")
+    if incoming_date and existing_date and incoming_date != existing_date:
+        return "update_available"
+    return "existing"
+
+
+def _discover_connector(connector: str, base_url: str, max_pages: int, include_pdfs: bool, include_rss: bool) -> Tuple[Any, List[Dict[str, Any]], Dict[str, Any]]:
+    if connector == "sec_tm_faq":
+        from sec_tm_faq_scraper import TradingMarketsFAQScraper
+
+        scraper = TradingMarketsFAQScraper()
+        docs = scraper.discover_documents(index_url=base_url, include_pdfs=include_pdfs)
+        return scraper, docs, {}
+
+    if connector == "sec_enforcement_litigation":
+        from sec_enforcement_litigation_scraper import SECEnforcementLitigationScraper
+
+        scraper = SECEnforcementLitigationScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
+        return scraper, docs, {}
+
+    if connector == "finra_regulatory_notice":
+        from finra_regulatory_notice_scraper import FINRARegulatoryNoticeScraper
+
+        scraper = FINRARegulatoryNoticeScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages, include_rss=include_rss)
+        return scraper, docs, {}
+
+    if connector == "finra_key_topic":
+        from finra_key_topics_scraper import FINRAKeyTopicsScraper
+
+        scraper = FINRAKeyTopicsScraper()
+        docs = scraper.discover_documents(index_url=base_url)
+        return scraper, docs, {}
+
+    if connector == "doj_usao_press_release":
+        from doj_usao_press_release_scraper import DOJUSAOPressReleaseScraper
+
+        scraper = DOJUSAOPressReleaseScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "federal_reserve_speech_testimony":
+        from federal_reserve_speech_testimony_scraper import FederalReserveSpeechTestimonyScraper
+
+        scraper = FederalReserveSpeechTestimonyScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages, fallback_to_feed=True)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    raise RuntimeError(f"Unsupported connector: {connector}")
+
+
+def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: int, base_url: str) -> Dict[str, Any]:
+    if connector == "sec_tm_faq":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("updated_date") or entry.get("published_date") or "",
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 80:
+            raise RuntimeError("Extracted text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        src_format = str(data.get("source_format", "") or entry.get("source_format", "html")).lower()
+        source_ext = ".pdf" if src_format == "pdf" else ".html"
+        source_name = _safe_source_name(src_url, f"tm-faq-{idx}", source_ext)
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("updated_date") or entry.get("published_date") or "")
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="SEC",
+            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            speaker="Division of Trading and Markets",
+            doc_date=doc_date,
+            doc_type="FAQ",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=source_ext,
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="sec,trading-markets,faq,staff-guidance",
+            source_kind="sec_tm_faq",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "sec_tm_faq"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = str(entry.get("published_date", "") or "")
+        metadata["updated_date"] = str(entry.get("updated_date", "") or "")
+        metadata["last_reviewed_or_updated"] = str(data.get("last_reviewed_or_updated", "") or entry.get("updated_date", "") or "")
+        return record
+
+    if connector == "sec_enforcement_litigation":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_release_no=entry.get("release_no", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 80:
+            raise RuntimeError("Extracted text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"litigation-release-{idx}", ".html")
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="SEC",
+            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            speaker="SEC Division of Enforcement",
+            doc_date=doc_date,
+            doc_type="Litigation Release",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="sec,enforcement,litigation-release",
+            source_kind="sec_enforcement_litigation",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "sec_enforcement_litigation"
+        metadata["source_index_url"] = base_url
+        metadata["release_no"] = str(data.get("release_no", "") or entry.get("release_no", "")).strip()
+        metadata["published_date"] = str(entry.get("date", "") or "")
+        inferred = core._infer_enforcement_metadata(
+            title=metadata.get("title", ""),
+            text=text,
+            url=src_url,
+            doc_type=metadata.get("doc_type", ""),
+            source_kind=metadata.get("source_kind", ""),
+            release_no=metadata.get("release_no", ""),
+        )
+        metadata["action_type"] = inferred.get("action_type", "unknown")
+        metadata["forum"] = inferred.get("forum", "unknown")
+        metadata["alleged_violations"] = inferred.get("alleged_violations", [])
+        metadata["outcome_status"] = inferred.get("outcome_status", "unknown")
+        return record
+
+    if connector == "finra_regulatory_notice":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_notice_number=entry.get("notice_number", ""),
+            fallback_effective_date=entry.get("effective_date", ""),
+            fallback_comment_deadline=entry.get("comment_deadline", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 80:
+            raise RuntimeError("Extracted text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"finra-regulatory-notice-{idx}", ".html")
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="FINRA",
+            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            speaker="FINRA",
+            doc_date=doc_date,
+            doc_type="Regulatory Notice",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="finra,regulatory-notice,rule-guidance,member-supervision",
+            source_kind="finra_regulatory_notice",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "finra_regulatory_notice"
+        metadata["source_index_url"] = base_url
+        metadata["notice_type"] = "Regulatory Notice"
+        metadata["notice_number"] = str(data.get("notice_number", "") or entry.get("notice_number", "")).strip()
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+        metadata["effective_date"] = str(data.get("effective_date", "") or entry.get("effective_date", "")).strip()
+        metadata["comment_deadline"] = str(data.get("comment_deadline", "") or entry.get("comment_deadline", "")).strip()
+        metadata["pdf_url"] = str(data.get("pdf_url", "") or "").strip()
+        metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+        return record
+
+    if connector == "finra_key_topic":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("topic_name", "") or entry.get("title", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 20:
+            raise RuntimeError("Extracted text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"finra-key-topic-{idx}", ".html")
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="FINRA",
+            title=str(data.get("topic_name", "") or entry.get("topic_name", "") or entry.get("title", "")).strip(),
+            speaker="FINRA",
+            doc_date="",
+            doc_type="Key Topic",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="finra,key-topic,rule-guidance,taxonomy",
+            source_kind="finra_key_topic",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "finra_key_topic"
+        metadata["source_index_url"] = base_url
+        metadata["topic_name"] = str(data.get("topic_name", "") or entry.get("topic_name", "")).strip()
+        metadata["topic_slug"] = str(data.get("topic_slug", "") or entry.get("topic_slug", "")).strip().lower()
+        metadata["section_names"] = data.get("section_names", []) if isinstance(data.get("section_names", []), list) else []
+        metadata["overview_text"] = str(data.get("overview_text", "") or "").strip()
+        metadata["ogc_contacts"] = data.get("ogc_contacts", []) if isinstance(data.get("ogc_contacts", []), list) else []
+        metadata["linked_notices"] = data.get("linked_notices", []) if isinstance(data.get("linked_notices", []), list) else []
+        metadata["linked_guidance"] = data.get("linked_guidance", []) if isinstance(data.get("linked_guidance", []), list) else []
+        metadata["linked_rules"] = data.get("linked_rules", []) if isinstance(data.get("linked_rules", []), list) else []
+        metadata["linked_news"] = data.get("linked_news", []) if isinstance(data.get("linked_news", []), list) else []
+        metadata["linked_investor_education"] = data.get("linked_investor_education", []) if isinstance(data.get("linked_investor_education", []), list) else []
+        metadata["linked_resources"] = data.get("linked_resources", []) if isinstance(data.get("linked_resources", []), list) else []
+        metadata["section_links"] = data.get("section_links", {}) if isinstance(data.get("section_links", {}), dict) else {}
+        return record
+
+    if connector == "doj_usao_press_release":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_office=entry.get("office", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 80:
+            raise RuntimeError("Extracted text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"doj-press-release-{idx}", ".html")
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+        office = str(data.get("office", "") or entry.get("office", "")).strip() or "U.S. Attorney's Office"
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="DOJ",
+            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            speaker=office,
+            doc_date=doc_date,
+            doc_type="Press Release",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="doj,usao,press-release",
+            source_kind="doj_usao_press_release",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "doj_usao_press_release"
+        metadata["source_index_url"] = base_url
+        metadata["office"] = office
+        metadata["published_date"] = str(entry.get("date", "") or "")
+        metadata["updated_date"] = str(data.get("updated_date", "") or "")
+        return record
+
+    if connector == "federal_reserve_speech_testimony":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_speaker=entry.get("speaker", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 80:
+            raise RuntimeError("Extracted text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"federal-reserve-doc-{idx}", ".html")
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+        speaker = str(data.get("speaker", "") or entry.get("speaker", "")).strip() or "Federal Reserve Board"
+        doc_type = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "Speech"
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="Federal Reserve",
+            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            speaker=speaker,
+            doc_date=doc_date,
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="federal-reserve,speech,testimony,monetary-policy",
+            source_kind="federal_reserve_speech_testimony",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "federal_reserve_speech_testimony"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+        metadata["location"] = str(data.get("location", "") or entry.get("location", "")).strip()
+        return record
+
+    raise RuntimeError(f"Unsupported connector: {connector}")
+
+
+def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
+    if args.connector not in SUPPORTED_CONNECTORS:
+        raise RuntimeError(f"Unsupported connector '{args.connector}'.")
+
+    secrets_payload = core._load_streamlit_secrets()
+    storage, gcs_status = core._get_gcs_storage(secrets_payload)
+    if args.require_remote_persistence and storage is None:
+        raise RuntimeError(gcs_status)
+
+    base_url = str(args.base_url or "").strip() or _default_base_url(args.connector)
+    if not base_url:
+        raise RuntimeError(f"No base URL configured for connector '{args.connector}'.")
+
+    custom_payload = core._load_custom_documents(storage)
+    existing_custom = _build_existing_custom_map(custom_payload)
+    existing_speech_keys = _load_existing_speech_url_keys(storage)
+
+    scraper, discovered_raw, discovery_debug = _discover_connector(
+        connector=args.connector,
+        base_url=base_url,
+        max_pages=max(1, int(args.max_pages)),
+        include_pdfs=bool(args.include_pdfs),
+        include_rss=bool(args.include_rss),
+    )
+    discovered = [item for item in discovered_raw if isinstance(item, dict)]
+
+    status_counts = {"new": 0, "update_available": 0, "existing": 0, "existing_in_speeches": 0}
+    for entry in discovered:
+        key = core._url_match_key(entry.get("url", ""))
+        existing_meta = existing_custom.get(key)
+        status = _status_for_entry(args.connector, entry, existing_meta, existing_speech_keys)
+        entry["ingest_status"] = status
+        status_counts[status] = int(status_counts.get(status, 0)) + 1
+
+    if args.selection == "all":
+        candidates = list(discovered)
+    else:
+        candidates = [entry for entry in discovered if entry.get("ingest_status") in {"new", "update_available"}]
+
+    limit = len(candidates) if args.limit is None else max(0, int(args.limit))
+    selected = candidates[:limit] if limit > 0 else []
+
+    saved_new = 0
+    saved_updates = 0
+    failed: List[Dict[str, Any]] = []
+    processed_doc_ids: List[str] = []
+
+    for idx, entry in enumerate(selected, 1):
+        try:
+            record = _extract_record(args.connector, scraper, entry, idx, base_url)
+            metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+            doc_id = str(metadata.get("document_id", "") or "").strip()
+            replaced = core._upsert_custom_document_record(custom_payload, record)
+            if replaced:
+                saved_updates += 1
+            else:
+                saved_new += 1
+            if doc_id:
+                processed_doc_ids.append(doc_id)
+        except Exception as exc:
+            failed.append(
+                {
+                    "url": str(entry.get("url", "") or ""),
+                    "title": str(entry.get("title", "") or ""),
+                    "error": str(exc),
+                }
+            )
+
+    if not args.dry_run and (saved_new or saved_updates):
+        core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
+
+    summary = {
+        "mode": "extract",
+        "connector": args.connector,
+        "ran_at": core._utc_now_iso(),
+        "require_remote_persistence": bool(args.require_remote_persistence),
+        "remote_persistence": bool(storage is not None),
+        "base_url": base_url,
+        "selection": args.selection,
+        "max_pages": int(args.max_pages),
+        "limit": limit,
+        "include_pdfs": bool(args.include_pdfs),
+        "include_rss": bool(args.include_rss),
+        "discovered_count": len(discovered),
+        "candidate_count": len(candidates),
+        "selected_count": len(selected),
+        "processed_count": len(processed_doc_ids),
+        "saved_new": saved_new,
+        "saved_updates": saved_updates,
+        "failed_count": len(failed),
+        "failed": failed[:25],
+        "status_counts": status_counts,
+        "discovery_debug": discovery_debug if isinstance(discovery_debug, dict) else {},
+        "dry_run": bool(args.dry_run),
+    }
+    core._write_summary(args.summary_path, summary)
+    return summary
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Connector extraction pipeline")
+    parser.add_argument("--connector", required=True, choices=sorted(SUPPORTED_CONNECTORS))
+    parser.add_argument("--base-url", default="")
+    parser.add_argument("--selection", choices=["new_or_updated", "all"], default="new_or_updated")
+    parser.add_argument("--max-pages", type=int, default=5)
+    parser.add_argument("--limit", type=int, default=25)
+    parser.add_argument("--include-pdfs", default="")
+    parser.add_argument("--include-rss", default="")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--require-remote-persistence", action="store_true")
+    parser.add_argument("--summary-path", default="")
+    return parser
+
+
+def main() -> int:
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    if args.base_url == "":
+        args.base_url = _default_base_url(args.connector)
+
+    include_pdfs_raw = str(getattr(args, "include_pdfs", "") or "").strip()
+    include_rss_raw = str(getattr(args, "include_rss", "") or "").strip()
+
+    if include_pdfs_raw == "":
+        args.include_pdfs = args.connector == "sec_tm_faq"
+    else:
+        args.include_pdfs = _to_bool(include_pdfs_raw)
+
+    if include_rss_raw == "":
+        args.include_rss = args.connector == "finra_regulatory_notice"
+    else:
+        args.include_rss = _to_bool(include_rss_raw)
+
+    try:
+        summary = _run_connector_extraction(args)
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "error": str(exc),
+            "command": "extract",
+            "connector": str(args.connector or ""),
+            "ran_at": core._utc_now_iso(),
+        }
+        core._write_summary(getattr(args, "summary_path", ""), payload)
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 1
+
+    summary["ok"] = True
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

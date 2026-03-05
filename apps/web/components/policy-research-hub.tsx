@@ -77,6 +77,22 @@ interface EnrichFormState {
   model: string;
 }
 
+interface ExtractFormState {
+  connector:
+    | "sec_tm_faq"
+    | "sec_enforcement_litigation"
+    | "finra_regulatory_notice"
+    | "finra_key_topic"
+    | "doj_usao_press_release"
+    | "federal_reserve_speech_testimony";
+  selection: "new_or_updated" | "all";
+  limit: number;
+  max_pages: number;
+  base_url: string;
+  include_pdfs: boolean;
+  include_rss: boolean;
+}
+
 interface NewsConnectorSettings {
   updated_at: string;
   query: string;
@@ -218,7 +234,16 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     heuristic_only: false,
     model: ""
   });
-  const [runAction, setRunAction] = useState<"ingest" | "enrich" | null>(null);
+  const [extract, setExtract] = useState<ExtractFormState>({
+    connector: "sec_enforcement_litigation",
+    selection: "new_or_updated",
+    limit: 20,
+    max_pages: 5,
+    base_url: "",
+    include_pdfs: true,
+    include_rss: true
+  });
+  const [runAction, setRunAction] = useState<"extract" | "ingest" | "enrich" | null>(null);
   const [activeJob, setActiveJob] = useState<JobState | null>(null);
   const [jobError, setJobError] = useState("");
 
@@ -306,13 +331,19 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   }, [settings]);
 
   const launch = useCallback(
-    async (kind: "ingest" | "enrich") => {
+    async (kind: "extract" | "ingest" | "enrich") => {
       setRunAction(kind);
       setJobError("");
       try {
+        const requestBody =
+          kind === "ingest"
+            ? ingest
+            : kind === "enrich"
+              ? enrich
+              : extract;
         const payload = await fetchJson<JobStartPayload>(`/api/jobs/${kind}`, {
           method: "POST",
-          body: JSON.stringify(kind === "ingest" ? ingest : enrich)
+          body: JSON.stringify(requestBody)
         });
         setActiveJob({ job_id: payload.job_id, status: payload.status });
       } catch (err) {
@@ -321,7 +352,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
         setRunAction(null);
       }
     },
-    [enrich, ingest]
+    [enrich, extract, ingest]
   );
 
   const ask = useCallback(async () => {
@@ -459,7 +490,76 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
               <input className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm md:col-span-2" value={settings.tags_csv} onChange={(e) => setSettings({ ...settings, tags_csv: e.target.value })} placeholder="Tags CSV" />
             </div>
           </article>
-          <section className="grid gap-4 md:grid-cols-2">
+          <section className="grid gap-4 md:grid-cols-3">
+            <article className="panel p-5">
+              <h2 className="text-xl font-semibold">Run Extraction</h2>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <select
+                  className="col-span-2 rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+                  value={extract.connector}
+                  onChange={(e) => setExtract({ ...extract, connector: e.target.value as ExtractFormState["connector"] })}
+                >
+                  <option value="sec_enforcement_litigation">SEC Litigation Releases</option>
+                  <option value="sec_tm_faq">SEC Trading & Markets FAQ</option>
+                  <option value="finra_regulatory_notice">FINRA Regulatory Notices</option>
+                  <option value="finra_key_topic">FINRA Key Topics</option>
+                  <option value="doj_usao_press_release">DOJ USAO Press Releases</option>
+                  <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
+                </select>
+                <select
+                  className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+                  value={extract.selection}
+                  onChange={(e) => setExtract({ ...extract, selection: e.target.value === "all" ? "all" : "new_or_updated" })}
+                >
+                  <option value="new_or_updated">new_or_updated</option>
+                  <option value="all">all</option>
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+                  value={extract.limit}
+                  onChange={(e) => setExtract({ ...extract, limit: Math.max(1, Number.parseInt(e.target.value || "20", 10) || 20) })}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  className="rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+                  value={extract.max_pages}
+                  onChange={(e) => setExtract({ ...extract, max_pages: Math.max(1, Number.parseInt(e.target.value || "5", 10) || 5) })}
+                  placeholder="Max pages"
+                />
+                <input
+                  className="col-span-2 rounded-lg border border-[color:var(--line)] px-2 py-1.5"
+                  value={extract.base_url}
+                  onChange={(e) => setExtract({ ...extract, base_url: e.target.value })}
+                  placeholder="Optional index URL override"
+                />
+                <label className="col-span-2 flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={extract.include_pdfs}
+                    onChange={(e) => setExtract({ ...extract, include_pdfs: e.target.checked })}
+                  />
+                  Include PDFs (SEC TM FAQ)
+                </label>
+                <label className="col-span-2 flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={extract.include_rss}
+                    onChange={(e) => setExtract({ ...extract, include_rss: e.target.checked })}
+                  />
+                  Use RSS supplement (FINRA notices)
+                </label>
+              </div>
+              <button
+                className="mt-3 w-full rounded-xl bg-[color:#1f4e5f] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={runAction !== null}
+                onClick={() => void launch("extract")}
+              >
+                {runAction === "extract" ? "Launching..." : "Run Extraction"}
+              </button>
+            </article>
             <article className="panel p-5"><h2 className="text-xl font-semibold">Run Ingest</h2><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><input type="number" min={1} className="rounded-lg border border-[color:var(--line)] px-2 py-1.5" value={ingest.limit} onChange={(e) => setIngest({ ...ingest, limit: Math.max(1, Number.parseInt(e.target.value || "10", 10) || 10) })} /><input type="number" min={1} className="rounded-lg border border-[color:var(--line)] px-2 py-1.5" value={ingest.lookback_days} onChange={(e) => setIngest({ ...ingest, lookback_days: Math.max(1, Number.parseInt(e.target.value || "7", 10) || 7) })} /><select className="col-span-2 rounded-lg border border-[color:var(--line)] px-2 py-1.5" value={ingest.selection} onChange={(e) => setIngest({ ...ingest, selection: e.target.value === "all" ? "all" : "new_or_updated" })}><option value="new_or_updated">new_or_updated</option><option value="all">all</option></select></div><button className="mt-3 w-full rounded-xl bg-[color:#2d5673] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={runAction !== null} onClick={() => void launch("ingest")}>{runAction === "ingest" ? "Launching..." : "Run Ingest"}</button></article>
             <article className="panel p-5"><h2 className="text-xl font-semibold">Run Enrichment</h2><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><input type="number" min={1} className="rounded-lg border border-[color:var(--line)] px-2 py-1.5" value={enrich.limit} onChange={(e) => setEnrich({ ...enrich, limit: Math.max(1, Number.parseInt(e.target.value || "25", 10) || 25) })} /><input className="rounded-lg border border-[color:var(--line)] px-2 py-1.5" value={enrich.source_kind} onChange={(e) => setEnrich({ ...enrich, source_kind: e.target.value || "newsapi_article" })} /><select className="rounded-lg border border-[color:var(--line)] px-2 py-1.5" value={enrich.mode} onChange={(e) => setEnrich({ ...enrich, mode: e.target.value === "all" ? "all" : "only_missing_or_failed" })}><option value="only_missing_or_failed">only_missing_or_failed</option><option value="all">all</option></select><input className="rounded-lg border border-[color:var(--line)] px-2 py-1.5" placeholder="model (optional)" value={enrich.model} onChange={(e) => setEnrich({ ...enrich, model: e.target.value })} /><label className="col-span-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={enrich.heuristic_only} onChange={(e) => setEnrich({ ...enrich, heuristic_only: e.target.checked })} />Heuristic-only</label></div><button className="mt-3 w-full rounded-xl bg-[color:#c77d28] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={runAction !== null} onClick={() => void launch("enrich")}>{runAction === "enrich" ? "Launching..." : "Run Enrichment"}</button></article>
           </section>

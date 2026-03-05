@@ -14,6 +14,7 @@ export interface GithubActionsConfig {
   ref: string;
   ingestWorkflow: string;
   enrichWorkflow: string;
+  extractWorkflow: string;
 }
 
 function readEnv(name: string, fallback = ""): string {
@@ -58,7 +59,8 @@ export function getGithubActionsConfig(): GithubActionsConfig {
     repo,
     ref: readEnv("GITHUB_DEFAULT_REF", "main"),
     ingestWorkflow: readEnv("GITHUB_INGEST_WORKFLOW", "financial-news-ingest.yml"),
-    enrichWorkflow: readEnv("GITHUB_ENRICH_WORKFLOW", "financial-news-enrich.yml")
+    enrichWorkflow: readEnv("GITHUB_ENRICH_WORKFLOW", "financial-news-enrich.yml"),
+    extractWorkflow: readEnv("GITHUB_EXTRACT_WORKFLOW", "policy-extraction.yml")
   };
 }
 

@@ -214,6 +214,35 @@ export async function triggerEnrichJob(payload: {
   };
 }
 
+export async function triggerExtractJob(payload: {
+  connector: string;
+  selection: string;
+  limit: number;
+  maxPages: number;
+  baseUrl: string;
+  includePdfs: boolean;
+  includeRss: boolean;
+}): Promise<{ job_id: string; provider: "github_actions"; status: "queued"; status_url: string; github_run_id: number }> {
+  const cfg = getGithubActionsConfig();
+  const dispatch = await dispatchWorkflow(cfg.extractWorkflow, {
+    connector: payload.connector,
+    selection: payload.selection,
+    extraction_limit: String(payload.limit),
+    max_pages: String(payload.maxPages),
+    base_url: payload.baseUrl,
+    include_pdfs: payload.includePdfs ? "true" : "false",
+    include_rss: payload.includeRss ? "true" : "false"
+  });
+
+  return {
+    job_id: dispatch.job_id,
+    provider: "github_actions",
+    status: "queued",
+    status_url: `/api/jobs/${dispatch.job_id}`,
+    github_run_id: dispatch.github_run_id
+  };
+}
+
 export async function getJobSummary(jobId: string): Promise<GithubRunSummary> {
   const cfg = getGithubActionsConfig();
   if (!cfg.enabled) {
