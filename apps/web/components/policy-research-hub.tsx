@@ -347,6 +347,39 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     [facets.sources]
   );
   const topicOptions = facets.key_topics.length > 0 ? facets.key_topics : facets.topics.slice(0, 10);
+  const homeInsights = useMemo(() => {
+    const orgCounts = new Map<string, number>();
+    const groupCounts = new Map<string, number>();
+    let totalWords = 0;
+    let latestDateMs = 0;
+
+    for (const item of items) {
+      const org = displayOrganization(item.organization);
+      orgCounts.set(org, (orgCounts.get(org) || 0) + 1);
+
+      const grp = inferSpeakerGroup(item);
+      groupCounts.set(grp, (groupCounts.get(grp) || 0) + 1);
+
+      totalWords += Number.isFinite(item.word_count) ? item.word_count : 0;
+      const ms = Date.parse(String(item.published_at || item.date || ""));
+      if (Number.isFinite(ms) && ms > latestDateMs) {
+        latestDateMs = ms;
+      }
+    }
+
+    const topOrg = [...orgCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+    const topGroup = [...groupCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+    const avgWords = items.length > 0 ? Math.round(totalWords / items.length) : 0;
+    const latestPublished = latestDateMs > 0 ? fmtDateOnly(new Date(latestDateMs).toISOString()) : "-";
+
+    return [
+      { label: "Visible Results", value: fmt(items.length) },
+      { label: "Top Organization", value: topOrg },
+      { label: "Top Speaker Group", value: topGroup },
+      { label: "Avg Words", value: fmt(avgWords) },
+      { label: "Latest Published", value: latestPublished }
+    ];
+  }, [items]);
 
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
   const jobExecutionMode = metrics?.runtime?.job_execution_mode || "github_actions";
@@ -511,60 +544,202 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
-      <header className="panel p-6 md:p-8">
+      <header className="panel hero-panel reveal p-6 md:p-8">
         <span className="kicker">Policy Research Hub</span>
         <h1 className="mt-3 text-3xl font-bold leading-tight md:text-5xl">{header.title}</h1>
         <p className="mt-3 max-w-3xl text-base text-[color:rgba(16,36,59,0.76)] md:text-lg">{header.subtitle}</p>
       </header>
 
       {mode === "home" ? (
-        <section className="panel p-5">
+        <section className="panel reveal reveal-delay-1 p-5 md:p-6">
+          <div className="insight-grid">
+            {homeInsights.map((insight, idx) => (
+              <article key={`${insight.label}_${idx}`} className="insight-card">
+                <p className="label">{insight.label}</p>
+                <p className="value">{insight.value}</p>
+              </article>
+            ))}
+          </div>
+          <div className="my-4 soft-divider" />
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-7">
-            <input className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm xl:col-span-2" placeholder="Search text" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
-            <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={source} onChange={(e) => { setPage(1); setSource(e.target.value); }}>
-              <option value="">All sources</option>{sourceOptions.map((v) => <option key={v} value={v}>{displaySourceKind(v)}</option>)}
+            <input
+              className="form-control px-3 py-2 text-sm xl:col-span-2"
+              placeholder="Search text"
+              value={q}
+              onChange={(e) => {
+                setPage(1);
+                setQ(e.target.value);
+              }}
+            />
+            <select
+              className="form-control px-3 py-2 text-sm"
+              value={source}
+              onChange={(e) => {
+                setPage(1);
+                setSource(e.target.value);
+              }}
+            >
+              <option value="">All sources</option>
+              {sourceOptions.map((v) => (
+                <option key={v} value={v}>
+                  {displaySourceKind(v)}
+                </option>
+              ))}
             </select>
-            <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={org} onChange={(e) => { setPage(1); setOrg(e.target.value); }}>
-              <option value="">All orgs</option>{facets.organizations.map((v) => <option key={v} value={v}>{v}</option>)}
+            <select
+              className="form-control px-3 py-2 text-sm"
+              value={org}
+              onChange={(e) => {
+                setPage(1);
+                setOrg(e.target.value);
+              }}
+            >
+              <option value="">All orgs</option>
+              {facets.organizations.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
             </select>
-            <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={topic} onChange={(e) => { setPage(1); setTopic(e.target.value); }}>
-              <option value="">Key topics (Top 10)</option>{topicOptions.map((v) => <option key={v} value={v}>{v}</option>)}
+            <select
+              className="form-control px-3 py-2 text-sm"
+              value={topic}
+              onChange={(e) => {
+                setPage(1);
+                setTopic(e.target.value);
+              }}
+            >
+              <option value="">Key topics (Top 10)</option>
+              {topicOptions.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
             </select>
-            <input className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" placeholder="Keyword Text" value={keyword} onChange={(e) => { setPage(1); setKeyword(e.target.value); }} />
-            <select className="rounded-xl border border-[color:var(--line)] px-3 py-2 text-sm" value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }}>
-              <option value="">All statuses</option><option value="not_enriched">Not Enriched</option><option value="enriched">Enriched</option><option value="fallback_enriched">Fallback Enriched</option><option value="reviewed">Reviewed</option>
+            <input
+              className="form-control px-3 py-2 text-sm"
+              placeholder="Keyword Text"
+              value={keyword}
+              onChange={(e) => {
+                setPage(1);
+                setKeyword(e.target.value);
+              }}
+            />
+            <select
+              className="form-control px-3 py-2 text-sm"
+              value={status}
+              onChange={(e) => {
+                setPage(1);
+                setStatus(e.target.value);
+              }}
+            >
+              <option value="">All statuses</option>
+              <option value="not_enriched">Not Enriched</option>
+              <option value="enriched">Enriched</option>
+              <option value="fallback_enriched">Fallback Enriched</option>
+              <option value="reviewed">Reviewed</option>
             </select>
           </div>
-          <div className="mt-2 flex items-center justify-between">
-            <p className="text-sm text-[color:rgba(16,36,59,0.7)]">{fmt(total)} matching documents</p>
-            <select className="rounded-xl border border-[color:var(--line)] px-3 py-1.5 text-sm" value={sort} onChange={(e) => { setPage(1); setSort(e.target.value); }}>
-              <option value="updated_desc">Recently Updated</option><option value="date_desc">Newest Published</option><option value="date_asc">Oldest Published</option>
+          <div className="mt-3 flex items-center justify-between">
+            <p className="text-sm text-[color:var(--ink-soft)]">{fmt(total)} matching documents</p>
+            <select
+              className="form-control px-3 py-1.5 text-sm"
+              value={sort}
+              onChange={(e) => {
+                setPage(1);
+                setSort(e.target.value);
+              }}
+            >
+              <option value="updated_desc">Recently Updated</option>
+              <option value="date_desc">Newest Published</option>
+              <option value="date_asc">Oldest Published</option>
             </select>
           </div>
-          {docsError ? <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{docsError}</p> : null}
-          <div className="mt-3 overflow-x-auto rounded-xl border border-[color:var(--line)] bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-[color:rgba(16,36,59,0.05)] text-xs uppercase tracking-[0.08em] text-[color:rgba(16,36,59,0.72)]"><tr><th className="px-3 py-2">Title</th><th className="px-3 py-2">Organization</th><th className="px-3 py-2">Speaker</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Keyword Text</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Published</th></tr></thead>
+          {docsError ? (
+            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{docsError}</p>
+          ) : null}
+          <div className="feed-table-wrap mt-3">
+            <table className="feed-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Organization</th>
+                  <th>Speaker</th>
+                  <th>Name</th>
+                  <th>Keyword Text</th>
+                  <th>Status</th>
+                  <th>Published</th>
+                </tr>
+              </thead>
               <tbody>
-                {docsLoading ? <tr><td colSpan={7} className="px-3 py-4 text-sm">Loading feed...</td></tr> : items.length === 0 ? <tr><td colSpan={7} className="px-3 py-4 text-sm">No documents match these filters.</td></tr> : items.map((d) => (
-                  <tr key={d.document_id} className="border-t border-[color:var(--line)] align-top">
-                    <td className="px-3 py-3"><p className="font-semibold">{d.title || "Untitled"}</p><p className="mt-1 text-xs text-[color:rgba(16,36,59,0.66)]">{d.doc_type || "Document"}</p>{d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-[color:#2d5673] hover:underline">Open source</a> : null}</td>
-                    <td className="px-3 py-3 text-xs"><span className="rounded-full border border-[color:var(--line)] bg-[color:rgba(16,36,59,0.04)] px-2 py-1">{displayOrganization(d.organization)}</span><p className="mt-2">{fmt(d.word_count)} words</p></td>
-                    <td className="px-3 py-3 text-xs">{inferSpeakerGroup(d)}</td>
-                    <td className="px-3 py-3 text-xs">{exactSpeakerName(d)}</td>
-                    <td className="px-3 py-3 text-xs">{(d.keywords || []).slice(0, 4).join(", ") || (d.topics || []).slice(0, 4).join(", ") || "-"}</td>
-                    <td className="px-3 py-3 text-xs"><span className={`rounded-full border px-2 py-1 ${statusClass(d.enrichment_status)}`}>{d.enrichment_status || "not_enriched"}</span><p className="mt-2">Review: {d.review_decision || "pending"}</p></td>
-                    <td className="px-3 py-3 text-xs">{fmtDateOnly(d.published_at || d.date)}</td>
+                {docsLoading ? (
+                  <tr>
+                    <td colSpan={7} className="text-sm">
+                      Loading feed...
+                    </td>
                   </tr>
-                ))}
+                ) : items.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-sm">
+                      No documents match these filters.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((d) => (
+                    <tr key={d.document_id}>
+                      <td>
+                        <p className="feed-title">{d.title || "Untitled"}</p>
+                        <p className="feed-subtle mt-1">{d.doc_type || "Document"}</p>
+                        {d.url ? (
+                          <a
+                            href={d.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-block text-xs text-[color:#2d5673] hover:underline"
+                          >
+                            Open source
+                          </a>
+                        ) : null}
+                      </td>
+                      <td className="text-xs">
+                        <span className="tone-chip">{displayOrganization(d.organization)}</span>
+                        <p className="feed-subtle mt-2">{fmt(d.word_count)} words</p>
+                      </td>
+                      <td className="text-xs">{inferSpeakerGroup(d)}</td>
+                      <td className="text-xs">{exactSpeakerName(d)}</td>
+                      <td className="text-xs">
+                        {(d.keywords || []).slice(0, 4).join(", ") || (d.topics || []).slice(0, 4).join(", ") || "-"}
+                      </td>
+                      <td className="text-xs">
+                        <span className={`rounded-full border px-2 py-1 ${statusClass(d.enrichment_status)}`}>
+                          {d.enrichment_status || "not_enriched"}
+                        </span>
+                        <p className="feed-subtle mt-2">Review: {d.review_decision || "pending"}</p>
+                      </td>
+                      <td className="text-xs">{fmtDateOnly(d.published_at || d.date)}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
           <div className="mt-3 flex items-center justify-between text-xs">
-            <p>Page {page} of {totalPages}</p>
+            <p className="text-[color:var(--ink-faint)]">Page {page} of {totalPages}</p>
             <div className="flex gap-2">
-              <button className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-1.5 font-semibold disabled:opacity-50" disabled={page <= 1 || docsLoading} onClick={() => setPage(Math.max(1, page - 1))}>Previous</button>
-              <button className="rounded-xl border border-[color:var(--line)] bg-white px-3 py-1.5 font-semibold disabled:opacity-50" disabled={page >= totalPages || docsLoading} onClick={() => setPage(Math.min(totalPages, page + 1))}>Next</button>
+              <button
+                className="form-control bg-white px-3 py-1.5 font-semibold disabled:opacity-50"
+                disabled={page <= 1 || docsLoading}
+                onClick={() => setPage(Math.max(1, page - 1))}
+              >
+                Previous
+              </button>
+              <button
+                className="form-control bg-white px-3 py-1.5 font-semibold disabled:opacity-50"
+                disabled={page >= totalPages || docsLoading}
+                onClick={() => setPage(Math.min(totalPages, page + 1))}
+              >
+                Next
+              </button>
             </div>
           </div>
         </section>
