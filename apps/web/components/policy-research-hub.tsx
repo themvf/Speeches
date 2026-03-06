@@ -257,8 +257,8 @@ function displaySourceKind(value: string): string {
 function headerFor(mode: HubMode): { title: string; subtitle: string } {
   if (mode === "home") {
     return {
-      title: "Regulatory Intelligence, Built For Decisions",
-      subtitle: "Track policy and enforcement signals, triage incoming sources, and run ingestion and enrichment from one operational surface."
+      title: "Regulatory Intelligence",
+      subtitle: "Track policy and enforcement signals."
     };
   }
   if (mode === "operations") return { title: "Operations", subtitle: "Run extraction and enrichment workflows with connector settings and execution visibility." };
@@ -300,8 +300,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   const [source, setSource] = useState("");
   const [topic, setTopic] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState("");
-  const [sort, setSort] = useState("updated_desc");
+  const [sort, setSort] = useState("date_desc");
 
   const [settings, setSettings] = useState<NewsConnectorSettings>(DEFAULT_SETTINGS);
   const [settingsLoading, setSettingsLoading] = useState(needsOps);
@@ -347,38 +346,17 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     [facets.sources]
   );
   const topicOptions = facets.key_topics.length > 0 ? facets.key_topics : facets.topics.slice(0, 10);
-  const homeInsights = useMemo(() => {
-    const orgCounts = new Map<string, number>();
-    const groupCounts = new Map<string, number>();
-    let totalWords = 0;
+  const latestPublished = useMemo(() => {
     let latestDateMs = 0;
 
     for (const item of items) {
-      const org = displayOrganization(item.organization);
-      orgCounts.set(org, (orgCounts.get(org) || 0) + 1);
-
-      const grp = inferSpeakerGroup(item);
-      groupCounts.set(grp, (groupCounts.get(grp) || 0) + 1);
-
-      totalWords += Number.isFinite(item.word_count) ? item.word_count : 0;
       const ms = Date.parse(String(item.published_at || item.date || ""));
       if (Number.isFinite(ms) && ms > latestDateMs) {
         latestDateMs = ms;
       }
     }
 
-    const topOrg = [...orgCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-    const topGroup = [...groupCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-    const avgWords = items.length > 0 ? Math.round(totalWords / items.length) : 0;
-    const latestPublished = latestDateMs > 0 ? fmtDateOnly(new Date(latestDateMs).toISOString()) : "-";
-
-    return [
-      { label: "Visible Results", value: fmt(items.length) },
-      { label: "Top Organization", value: topOrg },
-      { label: "Top Speaker Group", value: topGroup },
-      { label: "Avg Words", value: fmt(avgWords) },
-      { label: "Latest Published", value: latestPublished }
-    ];
+    return latestDateMs > 0 ? fmtDateOnly(new Date(latestDateMs).toISOString()) : "-";
   }, [items]);
 
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
@@ -411,7 +389,6 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
       if (source.trim()) params.set("source_kind", source.trim());
       if (topic.trim()) params.set("topic", topic.trim());
       if (keyword.trim()) params.set("keyword", keyword.trim());
-      if (status.trim()) params.set("status", status.trim());
       const data = await fetchJson<DocumentsData>(`/api/documents?${params.toString()}`);
       setItems(data.items || []);
       setFacets(data.facets || EMPTY_FACETS);
@@ -423,7 +400,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     } finally {
       setDocsLoading(false);
     }
-  }, [keyword, needsDocs, org, page, pageSize, q, sort, source, status, topic]);
+  }, [keyword, needsDocs, org, page, pageSize, q, sort, source, topic]);
 
   const loadSettings = useCallback(async () => {
     if (!needsOps) return;
@@ -552,16 +529,14 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
 
       {mode === "home" ? (
         <section className="panel reveal reveal-delay-1 p-5 md:p-6">
-          <div className="insight-grid">
-            {homeInsights.map((insight, idx) => (
-              <article key={`${insight.label}_${idx}`} className="insight-card">
-                <p className="label">{insight.label}</p>
-                <p className="value">{insight.value}</p>
-              </article>
-            ))}
+          <div className="max-w-xs">
+            <article className="insight-card">
+              <p className="label">Latest Published</p>
+              <p className="value">{latestPublished}</p>
+            </article>
           </div>
           <div className="my-4 soft-divider" />
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-7">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
             <input
               className="form-control px-3 py-2 text-sm xl:col-span-2"
               placeholder="Search text"
@@ -625,20 +600,6 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 setKeyword(e.target.value);
               }}
             />
-            <select
-              className="form-control px-3 py-2 text-sm"
-              value={status}
-              onChange={(e) => {
-                setPage(1);
-                setStatus(e.target.value);
-              }}
-            >
-              <option value="">All statuses</option>
-              <option value="not_enriched">Not Enriched</option>
-              <option value="enriched">Enriched</option>
-              <option value="fallback_enriched">Fallback Enriched</option>
-              <option value="reviewed">Reviewed</option>
-            </select>
           </div>
           <div className="mt-3 flex items-center justify-between">
             <p className="text-sm text-[color:var(--ink-soft)]">{fmt(total)} matching documents</p>
@@ -650,8 +611,8 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 setSort(e.target.value);
               }}
             >
-              <option value="updated_desc">Recently Updated</option>
               <option value="date_desc">Newest Published</option>
+              <option value="updated_desc">Recently Updated</option>
               <option value="date_asc">Oldest Published</option>
             </select>
           </div>

@@ -9,6 +9,14 @@ import { createRequestId, fail, normalizeText, ok, parseDate, toInt } from "@/li
 
 export const runtime = "nodejs";
 
+function normalizeFacetToken(value: string): string {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function GET(request: Request) {
   const requestId = createRequestId();
 
@@ -17,8 +25,8 @@ export async function GET(request: Request) {
     const q = normalizeText(url.searchParams.get("q")).toLowerCase();
     const org = normalizeText(url.searchParams.get("org"));
     const sourceKind = normalizeText(url.searchParams.get("source_kind") || url.searchParams.get("source"));
-    const topic = normalizeText(url.searchParams.get("topic")).toLowerCase();
-    const keyword = normalizeText(url.searchParams.get("keyword")).toLowerCase();
+    const topic = normalizeFacetToken(url.searchParams.get("topic") || "");
+    const keyword = normalizeFacetToken(url.searchParams.get("keyword") || "");
     const status = normalizeText(url.searchParams.get("status"));
     const sort = normalizeText(url.searchParams.get("sort")) || "date_desc";
 
@@ -51,15 +59,19 @@ export async function GET(request: Request) {
         return false;
       }
       if (topic) {
-        const hasTopic = (item.topics || []).some((value) => value.toLowerCase() === topic || value.toLowerCase().includes(topic));
+        const hasTopic = (item.topics || []).some((value) => {
+          const token = normalizeFacetToken(value);
+          return token === topic || token.includes(topic);
+        });
         if (!hasTopic) {
           return false;
         }
       }
       if (keyword) {
-        const hasKeyword = (item.keywords || []).some(
-          (value) => value.toLowerCase() === keyword || value.toLowerCase().includes(keyword)
-        );
+        const hasKeyword = (item.keywords || []).some((value) => {
+          const token = normalizeFacetToken(value);
+          return token === keyword || token.includes(keyword);
+        });
         if (!hasKeyword) {
           return false;
         }

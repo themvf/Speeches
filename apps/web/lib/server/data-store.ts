@@ -59,6 +59,39 @@ function dedupList(items: string[]): string[] {
   return out;
 }
 
+const TOPIC_ACRONYMS = new Set(["SEC", "DOJ", "FINRA", "CFTC", "FOMC", "FDIC", "OCC", "CFPB", "AML", "KYC", "ESG"]);
+
+function canonicalFacetToken(value: string): string {
+  return normalizeString(value)
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatFacetLabel(value: string): string {
+  const normalized = normalizeString(value)
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  return normalized
+    .split(" ")
+    .map((word) => {
+      const upper = word.toUpperCase();
+      if (TOPIC_ACRONYMS.has(upper) || /^[A-Z]{2,}$/.test(word)) {
+        return upper;
+      }
+      if (/^\d+$/.test(word)) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
 function normalizeOrgLabel(value: unknown): string {
   const label = normalizeString(value);
   if (!label) {
@@ -622,16 +655,15 @@ export function buildDocumentListItems(
 export function buildDocumentsFacets(items: DocumentListItem[]): DocumentsFacets {
   const sources = dedupList(items.map((item) => item.source_kind));
   const organizations = dedupList(items.map((item) => item.organization));
-  const topics = dedupList(items.flatMap((item) => item.topics || []));
   const topicCounts = new Map<string, { label: string; count: number }>();
   for (const item of items) {
     const uniqueTopicKeys = new Set<string>();
     for (const topic of item.topics || []) {
-      const label = normalizeString(topic);
+      const key = canonicalFacetToken(topic);
+      const label = formatFacetLabel(topic);
       if (!label) {
         continue;
       }
-      const key = label.toLowerCase();
       if (uniqueTopicKeys.has(key)) {
         continue;
       }
@@ -644,6 +676,9 @@ export function buildDocumentsFacets(items: DocumentListItem[]): DocumentsFacets
       }
     }
   }
+  const topics = [...topicCounts.values()]
+    .map((entry) => entry.label)
+    .sort((a, b) => a.localeCompare(b));
   const keyTopics = [...topicCounts.values()]
     .sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label))
     .slice(0, 10)
