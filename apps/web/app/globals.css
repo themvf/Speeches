@@ -323,6 +323,71 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
+.type-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  padding: 0.18rem 0.56rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.type-default {
+  border-color: rgba(159, 184, 210, 0.4);
+  background: rgba(159, 184, 210, 0.14);
+  color: #d5e2ef;
+}
+
+.type-speech {
+  border-color: rgba(79, 213, 255, 0.5);
+  background: rgba(79, 213, 255, 0.16);
+  color: #c9efff;
+}
+
+.type-testimony {
+  border-color: rgba(102, 187, 255, 0.45);
+  background: rgba(102, 187, 255, 0.14);
+  color: #d2ebff;
+}
+
+.type-news {
+  border-color: rgba(136, 167, 196, 0.45);
+  background: rgba(136, 167, 196, 0.16);
+  color: #dbe8f4;
+}
+
+.type-regulatory {
+  border-color: rgba(242, 171, 67, 0.5);
+  background: rgba(242, 171, 67, 0.16);
+  color: #ffe6bf;
+}
+
+.type-press {
+  border-color: rgba(95, 209, 163, 0.48);
+  background: rgba(95, 209, 163, 0.14);
+  color: #cbfae8;
+}
+
+.type-faq {
+  border-color: rgba(90, 199, 191, 0.48);
+  background: rgba(90, 199, 191, 0.14);
+  color: #cffaf6;
+}
+
+.type-key-topic {
+  border-color: rgba(216, 176, 95, 0.5);
+  background: rgba(216, 176, 95, 0.16);
+  color: #ffe9c4;
+}
+
+.type-litigation {
+  border-color: rgba(255, 107, 127, 0.52);
+  background: rgba(255, 107, 127, 0.16);
+  color: #ffc7d0;
+}
+
 .soft-divider {
   height: 1px;
   width: 100%;

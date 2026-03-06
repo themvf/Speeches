@@ -203,24 +203,6 @@ function displayOrganization(value: string): string {
   return raw;
 }
 
-function inferSpeakerGroup(item: DocumentItem): string {
-  const text = `${item.title} ${item.speaker} ${item.doc_type}`.toLowerCase();
-  if (text.includes("chairman")) return "Chairman";
-  if (/\bchair\b/.test(text)) return "Chair";
-  if (text.includes("commissioner")) return "Commissioner";
-  if (text.includes("director")) return "Director";
-  if (text.includes("division")) return "Division";
-  if (text.includes("board")) return "Board";
-  if (text.includes("office")) return "Office";
-  if (item.source_kind === "newsapi_article") return "Publisher";
-  const org = displayOrganization(item.organization);
-  if (org === "SEC") return "Commission";
-  if (org === "Federal Reserve") return "Federal Reserve";
-  if (org === "FINRA") return "FINRA";
-  if (org === "DOJ") return "DOJ";
-  return item.doc_type || "Speaker";
-}
-
 function exactSpeakerName(item: DocumentItem): string {
   const raw = String(item.speaker || "").trim();
   return raw || "-";
@@ -252,6 +234,53 @@ function displaySourceKind(value: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
+  sec_speech: "Speech",
+  sec_tm_faq: "FAQ",
+  sec_enforcement_litigation: "Litigation Release",
+  finra_regulatory_notice: "Regulatory Notice",
+  finra_key_topic: "Key Topic",
+  doj_usao_press_release: "Press Release",
+  federal_reserve_speech_testimony: "Testimony",
+  newsapi_article: "News Article",
+  uploaded: "Uploaded Document"
+};
+
+function normalizeTypeLabel(value: string): string {
+  const normalized = String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  return normalized
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function displayType(docType: string, sourceKind: string): string {
+  const normalized = normalizeTypeLabel(docType);
+  if (normalized) {
+    return normalized;
+  }
+  return SOURCE_KIND_TYPE_LABELS[sourceKind] || "Document";
+}
+
+function typeClass(typeLabel: string): string {
+  const t = typeLabel.toLowerCase();
+  if (t.includes("litigation")) return "type-chip type-litigation";
+  if (t.includes("regulatory notice")) return "type-chip type-regulatory";
+  if (t.includes("speech") || t.includes("statement")) return "type-chip type-speech";
+  if (t.includes("testimony")) return "type-chip type-testimony";
+  if (t.includes("news")) return "type-chip type-news";
+  if (t.includes("press release")) return "type-chip type-press";
+  if (t.includes("faq")) return "type-chip type-faq";
+  if (t.includes("key topic")) return "type-chip type-key-topic";
+  return "type-chip type-default";
 }
 
 function headerFor(mode: HubMode): { title: string; subtitle: string } {
@@ -625,61 +654,58 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 <tr>
                   <th>Title</th>
                   <th>Organization</th>
-                  <th>Speaker</th>
+                  <th>Type</th>
                   <th>Name</th>
                   <th>Keyword Text</th>
-                  <th>Status</th>
                   <th>Published</th>
                 </tr>
               </thead>
               <tbody>
                 {docsLoading ? (
                   <tr>
-                    <td colSpan={7} className="text-sm">
+                    <td colSpan={6} className="text-sm">
                       Loading feed...
                     </td>
                   </tr>
                 ) : items.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-sm">
+                    <td colSpan={6} className="text-sm">
                       No documents match these filters.
                     </td>
                   </tr>
                 ) : (
-                  items.map((d) => (
-                    <tr key={d.document_id}>
-                      <td>
-                        <p className="feed-title">{d.title || "Untitled"}</p>
-                        <p className="feed-subtle mt-1">{d.doc_type || "Document"}</p>
-                        {d.url ? (
-                          <a
-                            href={d.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="link-inline mt-1 inline-block text-xs"
-                          >
-                            Open source
-                          </a>
-                        ) : null}
-                      </td>
-                      <td className="text-xs">
-                        <span className="tone-chip">{displayOrganization(d.organization)}</span>
-                        <p className="feed-subtle mt-2">{fmt(d.word_count)} words</p>
-                      </td>
-                      <td className="text-xs">{inferSpeakerGroup(d)}</td>
-                      <td className="text-xs">{exactSpeakerName(d)}</td>
-                      <td className="text-xs">
-                        {(d.keywords || []).slice(0, 4).join(", ") || (d.topics || []).slice(0, 4).join(", ") || "-"}
-                      </td>
-                      <td className="text-xs">
-                        <span className={statusClass(d.enrichment_status)}>
-                          {d.enrichment_status || "not_enriched"}
-                        </span>
-                        <p className="feed-subtle mt-2">Review: {d.review_decision || "pending"}</p>
-                      </td>
-                      <td className="text-xs">{fmtDateOnly(d.published_at || d.date)}</td>
-                    </tr>
-                  ))
+                  items.map((d) => {
+                    const typeLabel = displayType(d.doc_type, d.source_kind);
+                    return (
+                      <tr key={d.document_id}>
+                        <td>
+                          <p className="feed-title">{d.title || "Untitled"}</p>
+                          {d.url ? (
+                            <a
+                              href={d.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="link-inline mt-1 inline-block text-xs"
+                            >
+                              Open source
+                            </a>
+                          ) : null}
+                        </td>
+                        <td className="text-xs">
+                          <span className="tone-chip">{displayOrganization(d.organization)}</span>
+                          <p className="feed-subtle mt-2">{fmt(d.word_count)} words</p>
+                        </td>
+                        <td className="text-xs">
+                          <span className={typeClass(typeLabel)}>{typeLabel}</span>
+                        </td>
+                        <td className="text-xs">{exactSpeakerName(d)}</td>
+                        <td className="text-xs">
+                          {(d.keywords || []).slice(0, 4).join(", ") || (d.topics || []).slice(0, 4).join(", ") || "-"}
+                        </td>
+                        <td className="text-xs">{fmtDateOnly(d.published_at || d.date)}</td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
