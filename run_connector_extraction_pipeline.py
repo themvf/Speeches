@@ -24,6 +24,7 @@ SUPPORTED_CONNECTORS = {
     "sec_tm_faq",
     "sec_enforcement_litigation",
     "finra_regulatory_notice",
+    "finra_comment_letter",
     "finra_key_topic",
     "doj_usao_press_release",
     "federal_reserve_speech_testimony",
@@ -39,6 +40,8 @@ def _default_base_url(connector: str) -> str:
         return SEC_LIT_DEFAULT_URL
     if connector == "finra_regulatory_notice":
         return FINRA_NOTICE_DEFAULT_URL
+    if connector == "finra_comment_letter":
+        return ""
     if connector == "finra_key_topic":
         return FINRA_TOPIC_DEFAULT_URL
     if connector == "doj_usao_press_release":
@@ -166,6 +169,21 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector == "finra_comment_letter":
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_commenter = _normalize_space(existing_meta.get("commenter_name") or existing_meta.get("speaker") or "")
+        incoming_commenter = _normalize_space(entry.get("commenter_name", ""))
+        existing_notice = _normalize_space(existing_meta.get("notice_number", ""))
+        incoming_notice = _normalize_space(entry.get("notice_number", ""))
+        if (
+            (incoming_date and existing_date and incoming_date != existing_date)
+            or (incoming_commenter and existing_commenter and incoming_commenter != existing_commenter)
+            or (incoming_notice and existing_notice and incoming_notice != existing_notice)
+        ):
+            return "update_available"
+        return "existing"
+
     existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
     incoming_date = _normalize_space(entry.get("date") or entry.get("published_date") or "")
     if incoming_date and existing_date and incoming_date != existing_date:
@@ -200,6 +218,13 @@ def _discover_connector(connector: str, base_url: str, max_pages: int, include_p
 
         scraper = FINRARegulatoryNoticeScraper()
         docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages, include_rss=include_rss)
+        return scraper, docs, {}
+
+    if connector == "finra_comment_letter":
+        from finra_comment_letter_scraper import FINRACommentLetterScraper
+
+        scraper = FINRACommentLetterScraper()
+        docs = scraper.discover_documents(notice_url=base_url, include_pdfs=include_pdfs)
         return scraper, docs, {}
 
     if connector == "finra_key_topic":
@@ -413,6 +438,63 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["effective_date"] = str(data.get("effective_date", "") or entry.get("effective_date", "")).strip()
         metadata["comment_deadline"] = str(data.get("comment_deadline", "") or entry.get("comment_deadline", "")).strip()
         metadata["pdf_url"] = str(data.get("pdf_url", "") or "").strip()
+        metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+        return record
+
+    if connector == "finra_comment_letter":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_commenter_name=entry.get("commenter_name", ""),
+            fallback_notice_number=entry.get("notice_number", ""),
+            fallback_notice_title=entry.get("notice_title", ""),
+            fallback_notice_url=entry.get("notice_url", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 20:
+            raise RuntimeError("Extracted text appears too short.")
+
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_format = str(data.get("source_format", "") or entry.get("source_format", "html")).strip().lower()
+        source_ext = ".pdf" if source_format == "pdf" else ".html"
+        source_name = _safe_source_name(src_url, f"finra-comment-letter-{idx}", source_ext)
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+        commenter_name = str(data.get("commenter_name", "") or entry.get("commenter_name", "")).strip()
+        commenter_org = str(data.get("commenter_org", "") or "").strip()
+
+        tags = "finra,comment-letter,rule-guidance,public-comment"
+        notice_number = str(data.get("notice_number", "") or entry.get("notice_number", "")).strip()
+        if notice_number:
+            tags = f"{tags},notice-{notice_number.lower()}"
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="FINRA",
+            title=str(data.get("title", "") or entry.get("title", "")).strip() or "Comment Letter",
+            speaker=commenter_name or commenter_org or "Commenter",
+            doc_date=doc_date,
+            doc_type="Comment Letter",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=source_ext,
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=tags,
+            source_kind="finra_comment_letter",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "finra_comment_letter"
+        metadata["source_index_url"] = str(data.get("notice_url", "") or entry.get("comments_url", "") or base_url).strip()
+        metadata["notice_number"] = notice_number
+        metadata["notice_title"] = str(data.get("notice_title", "") or entry.get("notice_title", "")).strip()
+        metadata["notice_url"] = str(data.get("notice_url", "") or entry.get("notice_url", "")).strip()
+        metadata["comment_url"] = str(data.get("comment_url", "") or src_url).strip()
+        metadata["pdf_url"] = str(data.get("pdf_url", "") or (src_url if source_format == "pdf" else "")).strip()
+        metadata["commenter_name"] = commenter_name
+        metadata["commenter_org"] = commenter_org
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
         metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
         return record
 
@@ -666,7 +748,7 @@ def main() -> int:
     include_rss_raw = str(getattr(args, "include_rss", "") or "").strip()
 
     if include_pdfs_raw == "":
-        args.include_pdfs = args.connector == "sec_tm_faq"
+        args.include_pdfs = args.connector in {"sec_tm_faq", "finra_comment_letter"}
     else:
         args.include_pdfs = _to_bool(include_pdfs_raw)
 

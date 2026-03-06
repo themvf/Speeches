@@ -140,6 +140,9 @@ function inferSourceKind(metadataRaw: Record<string, unknown>): string {
   if (docType === "regulatory notice") {
     return "finra_regulatory_notice";
   }
+  if (docType === "comment letter") {
+    return "finra_comment_letter";
+  }
   if (docType === "key topic") {
     return "finra_key_topic";
   }

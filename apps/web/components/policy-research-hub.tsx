@@ -96,6 +96,7 @@ interface ExtractFormState {
     | "sec_tm_faq"
     | "sec_enforcement_litigation"
     | "finra_regulatory_notice"
+    | "finra_comment_letter"
     | "finra_key_topic"
     | "doj_usao_press_release"
     | "federal_reserve_speech_testimony";
@@ -213,6 +214,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   sec_tm_faq: "SEC Trading & Markets FAQ",
   sec_enforcement_litigation: "SEC Enforcement Litigation",
   finra_regulatory_notice: "FINRA Regulatory Notices",
+  finra_comment_letter: "FINRA Comment Letters",
   finra_key_topic: "FINRA Key Topics",
   doj_usao_press_release: "DOJ USAO Press Releases",
   federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
@@ -241,6 +243,7 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   sec_tm_faq: "FAQ",
   sec_enforcement_litigation: "Litigation Release",
   finra_regulatory_notice: "Regulatory Notice",
+  finra_comment_letter: "Comment Letter",
   finra_key_topic: "Key Topic",
   doj_usao_press_release: "Press Release",
   federal_reserve_speech_testimony: "Testimony",
@@ -876,6 +879,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="sec_enforcement_litigation">SEC Litigation Releases</option>
                   <option value="sec_tm_faq">SEC Trading & Markets FAQ</option>
                   <option value="finra_regulatory_notice">FINRA Regulatory Notices</option>
+                  <option value="finra_comment_letter">FINRA Comment Letters (Rule URL)</option>
                   <option value="finra_key_topic">FINRA Key Topics</option>
                   <option value="doj_usao_press_release">DOJ USAO Press Releases</option>
                   <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
@@ -915,7 +919,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                     checked={extract.include_pdfs}
                     onChange={(e) => setExtract({ ...extract, include_pdfs: e.target.checked })}
                   />
-                  Include PDFs (SEC TM FAQ)
+                  Include PDFs (SEC TM FAQ, FINRA comment letters)
                 </label>
                 <label className="col-span-2 flex items-center gap-2 text-xs text-[color:var(--ink-soft)]">
                   <input
