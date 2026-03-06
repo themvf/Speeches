@@ -24,6 +24,8 @@ Primary config lives in `.env.local`.
 
 Use `apps/web/.env.example` as the template.
 
+If you want manual extraction without GitHub Actions, set `JOB_EXECUTION_MODE=local`. In that mode the API runs `run_connector_extraction_pipeline.py` directly and requires Python + dependencies in the runtime environment.
+
 ## Implemented API Routes (V1)
 
 - `GET /api/metrics`
@@ -38,6 +40,20 @@ Use `apps/web/.env.example` as the template.
 ```bash
 npm run build
 ```
+
+## FINRA Comment-Letter Pilot (Notice 26-06)
+
+```bash
+python run_connector_extraction_pipeline.py ^
+  --connector finra_comment_letter ^
+  --base-url https://www.finra.org/rules-guidance/notices/26-06 ^
+  --selection all ^
+  --limit 50 ^
+  --include-pdfs true ^
+  --dry-run
+```
+
+Use the same command without `--dry-run` to persist results. If GCS credentials are configured and valid, records are written to `custom_documents.json` in your bucket.
 
 ## Deployment
 

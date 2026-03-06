@@ -167,6 +167,7 @@ const DEFAULT_SETTINGS: NewsConnectorSettings = {
   exclude_domains: "",
   tags_csv: "financial-regulation,policy,enforcement"
 };
+const FINRA_COMMENT_NOTICE_EXAMPLE = "https://www.finra.org/rules-guidance/notices/26-06";
 
 function fmt(value: number): string {
   return new Intl.NumberFormat("en-US").format(value || 0);
@@ -392,6 +393,10 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   }, [items]);
 
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+  const extractBaseUrlPlaceholder =
+    extract.connector === "finra_comment_letter"
+      ? `Required: FINRA notice URL (e.g., ${FINRA_COMMENT_NOTICE_EXAMPLE})`
+      : "Optional index URL override";
   const jobExecutionMode = metrics?.runtime?.job_execution_mode || "github_actions";
   const githubActionsEnabled = metrics?.runtime?.github_actions_enabled ?? true;
   const githubActionsEnabledFlag = metrics?.runtime?.github_actions_enabled_flag ?? true;
@@ -873,7 +878,16 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 <select
                   className="form-control col-span-2 px-2 py-1.5"
                   value={extract.connector}
-                  onChange={(e) => setExtract({ ...extract, connector: e.target.value as ExtractFormState["connector"] })}
+                  onChange={(e) =>
+                    setExtract((prev) => {
+                      const connector = e.target.value as ExtractFormState["connector"];
+                      const nextBaseUrl =
+                        connector === "finra_comment_letter" && !prev.base_url.trim()
+                          ? FINRA_COMMENT_NOTICE_EXAMPLE
+                          : prev.base_url;
+                      return { ...prev, connector, base_url: nextBaseUrl };
+                    })
+                  }
                 >
                   <option value="sec_speech">SEC Speeches &amp; Statements</option>
                   <option value="sec_enforcement_litigation">SEC Litigation Releases</option>
@@ -911,8 +925,13 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   className="form-control col-span-2 px-2 py-1.5"
                   value={extract.base_url}
                   onChange={(e) => setExtract({ ...extract, base_url: e.target.value })}
-                  placeholder="Optional index URL override"
+                  placeholder={extractBaseUrlPlaceholder}
                 />
+                {extract.connector === "finra_comment_letter" ? (
+                  <p className="col-span-2 text-xs text-[color:var(--ink-soft)]">
+                    Use the FINRA notice URL. The scraper will discover linked comment letters from the comments section.
+                  </p>
+                ) : null}
                 <label className="col-span-2 flex items-center gap-2 text-xs text-[color:var(--ink-soft)]">
                   <input
                     type="checkbox"

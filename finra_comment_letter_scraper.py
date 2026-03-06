@@ -68,8 +68,14 @@ def _commenter_from_label(text: str) -> str:
     lowered = label.lower()
     if lowered.startswith("letter from "):
         return _normalize_space(label[12:])
-    if lowered.endswith(" comment on regulatory notice"):
-        return _normalize_space(label.rsplit(" comment on regulatory notice", 1)[0])
+    # Common FINRA link labels: "<Name> Comment On Regulatory Notice 26-06"
+    notice_suffix = re.compile(
+        r"\s+comment\s+on\s+(?:regulatory\s+)?notice(?:\s+\d{2}-\d{2})?\s*$",
+        flags=re.IGNORECASE,
+    )
+    normalized = notice_suffix.sub("", label).strip()
+    if normalized:
+        return _normalize_space(normalized)
     return label
 
 
@@ -172,7 +178,7 @@ class FINRACommentLetterScraper:
                 out.append(
                     {
                         "url": comment_url,
-                        "title": commenter_label or "Comment Letter",
+                        "title": commenter_name or commenter_label or "Comment Letter",
                         "date": date_text,
                         "commenter_name": commenter_name,
                         "notice_number": notice_number,
