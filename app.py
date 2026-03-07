@@ -8915,7 +8915,6 @@ elif page == "Extraction":
                     sort_by=news_sort_by,
                     domains=news_domains,
                     exclude_domains=news_exclude_domains,
-                    search_in="title,description",
                     target_count=int(news_target_count),
                 )
                 debug_payload = getattr(news_scraper, "last_discovery_debug", {})

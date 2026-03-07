@@ -155,6 +155,16 @@ def _host_matches_domain(host_or_url: str, domain: str) -> bool:
     return bool(host and target and (host == target or host.endswith(f".{target}")))
 
 
+def _matched_requested_domain(url: str, requested_domains: List[str]) -> str:
+    host = _canonical_domain(url)
+    if not host:
+        return ""
+    for domain in requested_domains:
+        if _host_matches_domain(host, domain):
+            return domain
+    return ""
+
+
 def _parse_date_text(value: str) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
@@ -476,8 +486,6 @@ class NewsAPIFinancialScraper:
                 _domain_hit_count(domain) == 0 for domain in priority_domains
             ):
                 for domain in split_queue:
-                    if target_count > 0 and len(discovered) >= target_count and domain not in priority_domains:
-                        break
                     split_params = dict(base_params)
                     split_params["domains"] = domain
                     split_reason = _scan_pass(f"domain_split:{domain}", split_params, min(max_pages, 2))
@@ -523,8 +531,69 @@ class NewsAPIFinancialScraper:
             key=lambda x: _parse_date_text(x.get("published_at", "")) or datetime.min,
             reverse=True,
         )
-        if target_count > 0:
+
+        # Keep source diversity when trimming by target_count so high-volume publishers
+        # do not crowd out the full domain whitelist.
+        if target_count > 0 and len(discovered) > target_count and requested_domains:
+            by_requested_domain: Dict[str, List[Dict[str, str]]] = {d: [] for d in requested_domains}
+            outside_requested: List[Dict[str, str]] = []
+            for item in discovered:
+                bucket = _matched_requested_domain(item.get("url", ""), requested_domains)
+                if bucket:
+                    by_requested_domain[bucket].append(item)
+                else:
+                    outside_requested.append(item)
+
+            selected: List[Dict[str, str]] = []
+            selected_keys = set()
+
+            def _append_item(item: Dict[str, str]) -> bool:
+                key = _url_key(item.get("url", ""))
+                if not key or key in selected_keys:
+                    return False
+                selected.append(item)
+                selected_keys.add(key)
+                return True
+
+            # Pass 1: one newest article from each requested domain.
+            for domain in requested_domains:
+                domain_rows = by_requested_domain.get(domain, [])
+                if domain_rows:
+                    _append_item(domain_rows.pop(0))
+                if len(selected) >= target_count:
+                    break
+
+            # Pass 2: round-robin by requested domain.
+            while len(selected) < target_count:
+                made_progress = False
+                for domain in requested_domains:
+                    domain_rows = by_requested_domain.get(domain, [])
+                    if not domain_rows:
+                        continue
+                    if _append_item(domain_rows.pop(0)):
+                        made_progress = True
+                    if len(selected) >= target_count:
+                        break
+                if not made_progress:
+                    break
+
+            # Pass 3: fill any remaining slots by global recency.
+            if len(selected) < target_count:
+                for item in discovered:
+                    if _append_item(item) and len(selected) >= target_count:
+                        break
+
+            debug["domain_balance_applied"] = True
+            debug["domain_balance_selected"] = len(selected)
+            discovered = selected
+        elif target_count > 0:
             discovered = discovered[:target_count]
+            debug["domain_balance_applied"] = False
+            debug["domain_balance_selected"] = len(discovered)
+        else:
+            debug["domain_balance_applied"] = False
+            debug["domain_balance_selected"] = len(discovered)
+
         debug["total_unique"] = len(discovered)
         discovered_by_domain: Dict[str, int] = {}
         for item in discovered:
