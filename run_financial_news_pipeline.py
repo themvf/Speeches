@@ -744,7 +744,104 @@ def _extract_first_json_object(text: str) -> Dict[str, Any]:
     return {}
 
 
-def _normalize_enrichment_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+_COMMENT_POSITION_LABELS = {"supportive", "opposed", "mixed", "neutral", "unclear", "not_applicable"}
+_COMMENT_SUPPORT_RULES: Sequence[Tuple[str, str]] = (
+    (r"\bstrongly support\b", "strongly support"),
+    (r"\bsupport(?:s|ed|ing)?\b", "support"),
+    (r"\bin favor of\b", "in favor of"),
+    (r"\bagree with\b", "agree with"),
+    (r"\bendorse(?:s|d|ment)?\b", "endorse"),
+    (r"\bcommend(?:s|ed)?\b", "commend"),
+    (r"\bwelcome(?:s|d)?\b", "welcome"),
+    (r"\bapprove(?:s|d)?\b", "approve"),
+    (r"\bfavor(?:s|ed)?\b", "favor"),
+)
+_COMMENT_OPPOSE_RULES: Sequence[Tuple[str, str]] = (
+    (r"\bstrongly oppose\b", "strongly oppose"),
+    (r"\boppose(?:s|d|ition)?\b", "oppose"),
+    (r"\bobject(?:s|ed)? to\b", "object to"),
+    (r"\bdisagree with\b", "disagree with"),
+    (r"\brecommend against\b", "recommend against"),
+    (r"\bshould not\b", "should not"),
+    (r"\breject(?:s|ed)?\b", "reject"),
+    (r"\bharmful\b", "harmful"),
+    (r"\bunworkable\b", "unworkable"),
+    (r"\bburdensome\b", "burdensome"),
+)
+_COMMENT_MIXED_RULES: Sequence[Tuple[str, str]] = (
+    (r"\bwhile we support\b", "while we support"),
+    (r"\bsupport\b[\s\S]{0,120}\bbut\b", "support ... but"),
+    (r"\bagree\b[\s\S]{0,120}\bhowever\b", "agree ... however"),
+    (r"\bsupport\b[\s\S]{0,120}\bconcern(?:s)?\b", "support with concerns"),
+    (r"\bcommend\b[\s\S]{0,120}\bbut\b", "commend ... but"),
+)
+_COMMENT_NEUTRAL_RULES: Sequence[Tuple[str, str]] = (
+    (r"\brequest(?:s|ed)? clarification\b", "request clarification"),
+    (r"\bseek(?:s|ing)? clarification\b", "seek clarification"),
+    (r"\brecommend(?:s|ed|ing)? clarification\b", "recommend clarification"),
+    (r"\bsuggest(?:s|ed|ing)? changes\b", "suggest changes"),
+    (r"\bprovide feedback\b", "provide feedback"),
+)
+
+
+def _is_comment_letter(doc: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(doc, dict):
+        return False
+    source_kind = str(doc.get("source_kind", "") or "").strip().lower()
+    doc_type = str(doc.get("doc_type", "") or "").strip().lower()
+    return source_kind == "finra_comment_letter" or doc_type == "comment letter"
+
+
+def _collect_regex_hits(text: str, rules: Sequence[Tuple[str, str]], limit: int = 3) -> List[str]:
+    hits: List[str] = []
+    seen = set()
+    for pattern, label in rules:
+        if label in seen:
+            continue
+        if re.search(pattern, text):
+            seen.add(label)
+            hits.append(label)
+            if len(hits) >= limit:
+                break
+    return hits
+
+
+def _infer_comment_position(doc: Optional[Dict[str, Any]], text: str) -> Dict[str, Any]:
+    if not _is_comment_letter(doc):
+        return {"label": "not_applicable", "confidence": 0.0, "rationale": ""}
+
+    lower = str(text or "").lower()
+    support_hits = _collect_regex_hits(lower, _COMMENT_SUPPORT_RULES)
+    oppose_hits = _collect_regex_hits(lower, _COMMENT_OPPOSE_RULES)
+    mixed_hits = _collect_regex_hits(lower, _COMMENT_MIXED_RULES)
+    neutral_hits = _collect_regex_hits(lower, _COMMENT_NEUTRAL_RULES)
+
+    if mixed_hits or (support_hits and oppose_hits):
+        label = "mixed"
+        confidence = 0.82 if mixed_hits else 0.72
+        cues = mixed_hits or (support_hits + oppose_hits)[:3]
+        rationale = "Detected both supportive and opposing cues: " + ", ".join(cues[:3])
+    elif support_hits:
+        label = "supportive"
+        confidence = min(0.9, 0.58 + 0.09 * len(support_hits))
+        rationale = "Supportive cues: " + ", ".join(support_hits[:3])
+    elif oppose_hits:
+        label = "opposed"
+        confidence = min(0.9, 0.58 + 0.09 * len(oppose_hits))
+        rationale = "Opposing cues: " + ", ".join(oppose_hits[:3])
+    elif neutral_hits:
+        label = "neutral"
+        confidence = min(0.7, 0.4 + 0.08 * len(neutral_hits))
+        rationale = "Neutral/request-for-clarification cues: " + ", ".join(neutral_hits[:3])
+    else:
+        label = "unclear"
+        confidence = 0.2
+        rationale = "No clear support or opposition cues detected."
+
+    return {"label": label, "confidence": round(confidence, 2), "rationale": rationale[:240]}
+
+
+def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         payload = {}
     tags = payload.get("tags", [])
@@ -778,6 +875,37 @@ def _normalize_enrichment_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         stance_label = "unclear"
     stance_target = str(stance.get("target", "") or "").strip()
 
+    fallback_comment_position = _infer_comment_position(doc, str((doc or {}).get("full_text", "") or ""))
+    comment_position = payload.get("comment_position", fallback_comment_position)
+    if not isinstance(comment_position, dict):
+        comment_position = {"label": str(comment_position or "")}
+    comment_position_label = str(
+        comment_position.get("label", fallback_comment_position.get("label", "not_applicable"))
+        or fallback_comment_position.get("label", "not_applicable")
+    ).strip().lower()
+    if comment_position_label not in _COMMENT_POSITION_LABELS:
+        comment_position_label = str(fallback_comment_position.get("label", "not_applicable") or "not_applicable")
+    if _is_comment_letter(doc) and comment_position_label == "not_applicable":
+        comment_position_label = str(fallback_comment_position.get("label", "unclear") or "unclear")
+    if not _is_comment_letter(doc):
+        comment_position_label = "not_applicable"
+    try:
+        comment_position_confidence = float(
+            comment_position.get("confidence", fallback_comment_position.get("confidence", 0.0))
+            or fallback_comment_position.get("confidence", 0.0)
+        )
+    except Exception:
+        comment_position_confidence = float(fallback_comment_position.get("confidence", 0.0) or 0.0)
+    comment_position_confidence = max(0.0, min(1.0, comment_position_confidence))
+    if comment_position_label == "not_applicable":
+        comment_position_confidence = 0.0
+    comment_position_rationale = str(
+        comment_position.get("rationale", fallback_comment_position.get("rationale", ""))
+        or fallback_comment_position.get("rationale", "")
+    ).strip()[:240]
+    if comment_position_label == "not_applicable":
+        comment_position_rationale = ""
+
     evidence_spans = payload.get("evidence_spans", [])
     normalized_evidence = []
     if isinstance(evidence_spans, list):
@@ -809,6 +937,11 @@ def _normalize_enrichment_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "keywords": keywords,
         "entities": normalized_entities,
         "stance": {"label": stance_label, "target": stance_target},
+        "comment_position": {
+            "label": comment_position_label,
+            "confidence": comment_position_confidence,
+            "rationale": comment_position_rationale,
+        },
         "evidence_spans": normalized_evidence,
         "enforcement": enforcement,
         "confidence": confidence,
@@ -818,6 +951,7 @@ def _normalize_enrichment_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 def _heuristic_enrichment(doc: Dict[str, Any]) -> Dict[str, Any]:
     text = str(doc.get("full_text", "") or "")
     lower = text.lower()
+    comment_position = _infer_comment_position(doc, text)
     topic_rules = {
         "crypto_assets": ["crypto", "token", "digital asset", "blockchain", "stablecoin", "bitcoin", "ether"],
         "enforcement": ["enforcement", "violation", "charges", "penalty", "compliance", "investigation"],
@@ -882,10 +1016,12 @@ def _heuristic_enrichment(doc: Dict[str, Any]) -> Dict[str, Any]:
             "keywords": keywords,
             "entities": [],
             "stance": {"label": stance_label, "target": ""},
+            "comment_position": comment_position,
             "evidence_spans": evidence,
             "enforcement": enforcement,
             "confidence": 0.35,
-        }
+        },
+        doc=doc,
     )
 
 
@@ -912,9 +1048,13 @@ def _run_enrichment_agent(client: Any, doc: Dict[str, Any], model_name: str) -> 
         text = text[:45000] + "\n\n[...TRUNCATED FOR ENRICHMENT...]\n\n" + text[-30000:]
     instruction = (
         "You are an enrichment agent for policy documents. Return ONLY valid JSON with keys: "
-        "summary, tags, keywords, entities, stance, evidence_spans, enforcement, confidence. "
+        "summary, tags, keywords, entities, stance, comment_position, evidence_spans, enforcement, confidence. "
         "Use concise tags and keywords. entities must be list of {name,type,mentions}. "
         "stance must be {label,target} where label in [supportive,cautious,critical,neutral,unclear]. "
+        "comment_position must be {label,confidence,rationale} where label in "
+        "[supportive,opposed,mixed,neutral,unclear,not_applicable]. "
+        "For FINRA comment letters, classify the submitter as supportive, opposed, mixed, neutral, or unclear. "
+        "For all other documents, set comment_position to {label:not_applicable, confidence:0, rationale:''}. "
         "evidence_spans must include verbatim snippets from the document. "
         "enforcement must be {release_no,action_type,forum,alleged_violations,outcome_status} where "
         "action_type in [filing,settlement,judgment,dismissal,order,other,unknown], "
@@ -942,7 +1082,7 @@ def _run_enrichment_agent(client: Any, doc: Dict[str, Any], model_name: str) -> 
         last_raw = raw_text
         parsed = _extract_first_json_object(raw_text)
         if parsed:
-            return _normalize_enrichment_payload(parsed)
+            return _normalize_enrichment_payload(parsed, doc=doc)
     preview = (last_raw or "").replace("\n", " ").strip()[:300]
     raise RuntimeError(f"Model did not return parseable JSON after 2 attempts. Last output: {preview}")
 

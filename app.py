@@ -3007,7 +3007,104 @@ def _extract_first_json_object(text):
     return {}
 
 
-def _normalize_enrichment_payload(payload):
+_COMMENT_POSITION_LABELS = {"supportive", "opposed", "mixed", "neutral", "unclear", "not_applicable"}
+_COMMENT_SUPPORT_RULES = (
+    (r"\bstrongly support\b", "strongly support"),
+    (r"\bsupport(?:s|ed|ing)?\b", "support"),
+    (r"\bin favor of\b", "in favor of"),
+    (r"\bagree with\b", "agree with"),
+    (r"\bendorse(?:s|d|ment)?\b", "endorse"),
+    (r"\bcommend(?:s|ed)?\b", "commend"),
+    (r"\bwelcome(?:s|d)?\b", "welcome"),
+    (r"\bapprove(?:s|d)?\b", "approve"),
+    (r"\bfavor(?:s|ed)?\b", "favor"),
+)
+_COMMENT_OPPOSE_RULES = (
+    (r"\bstrongly oppose\b", "strongly oppose"),
+    (r"\boppose(?:s|d|ition)?\b", "oppose"),
+    (r"\bobject(?:s|ed)? to\b", "object to"),
+    (r"\bdisagree with\b", "disagree with"),
+    (r"\brecommend against\b", "recommend against"),
+    (r"\bshould not\b", "should not"),
+    (r"\breject(?:s|ed)?\b", "reject"),
+    (r"\bharmful\b", "harmful"),
+    (r"\bunworkable\b", "unworkable"),
+    (r"\bburdensome\b", "burdensome"),
+)
+_COMMENT_MIXED_RULES = (
+    (r"\bwhile we support\b", "while we support"),
+    (r"\bsupport\b[\s\S]{0,120}\bbut\b", "support ... but"),
+    (r"\bagree\b[\s\S]{0,120}\bhowever\b", "agree ... however"),
+    (r"\bsupport\b[\s\S]{0,120}\bconcern(?:s)?\b", "support with concerns"),
+    (r"\bcommend\b[\s\S]{0,120}\bbut\b", "commend ... but"),
+)
+_COMMENT_NEUTRAL_RULES = (
+    (r"\brequest(?:s|ed)? clarification\b", "request clarification"),
+    (r"\bseek(?:s|ing)? clarification\b", "seek clarification"),
+    (r"\brecommend(?:s|ed|ing)? clarification\b", "recommend clarification"),
+    (r"\bsuggest(?:s|ed|ing)? changes\b", "suggest changes"),
+    (r"\bprovide feedback\b", "provide feedback"),
+)
+
+
+def _is_comment_letter(doc):
+    if not isinstance(doc, dict):
+        return False
+    source_kind = str(doc.get("source_kind", "") or "").strip().lower()
+    doc_type = str(doc.get("doc_type", "") or "").strip().lower()
+    return source_kind == "finra_comment_letter" or doc_type == "comment letter"
+
+
+def _collect_regex_hits(text, rules, limit=3):
+    hits = []
+    seen = set()
+    for pattern, label in rules:
+        if label in seen:
+            continue
+        if re.search(pattern, text):
+            seen.add(label)
+            hits.append(label)
+            if len(hits) >= limit:
+                break
+    return hits
+
+
+def _infer_comment_position(doc, text):
+    if not _is_comment_letter(doc):
+        return {"label": "not_applicable", "confidence": 0.0, "rationale": ""}
+
+    lower = str(text or "").lower()
+    support_hits = _collect_regex_hits(lower, _COMMENT_SUPPORT_RULES)
+    oppose_hits = _collect_regex_hits(lower, _COMMENT_OPPOSE_RULES)
+    mixed_hits = _collect_regex_hits(lower, _COMMENT_MIXED_RULES)
+    neutral_hits = _collect_regex_hits(lower, _COMMENT_NEUTRAL_RULES)
+
+    if mixed_hits or (support_hits and oppose_hits):
+        label = "mixed"
+        confidence = 0.82 if mixed_hits else 0.72
+        cues = mixed_hits or (support_hits + oppose_hits)[:3]
+        rationale = "Detected both supportive and opposing cues: " + ", ".join(cues[:3])
+    elif support_hits:
+        label = "supportive"
+        confidence = min(0.9, 0.58 + 0.09 * len(support_hits))
+        rationale = "Supportive cues: " + ", ".join(support_hits[:3])
+    elif oppose_hits:
+        label = "opposed"
+        confidence = min(0.9, 0.58 + 0.09 * len(oppose_hits))
+        rationale = "Opposing cues: " + ", ".join(oppose_hits[:3])
+    elif neutral_hits:
+        label = "neutral"
+        confidence = min(0.7, 0.4 + 0.08 * len(neutral_hits))
+        rationale = "Neutral/request-for-clarification cues: " + ", ".join(neutral_hits[:3])
+    else:
+        label = "unclear"
+        confidence = 0.2
+        rationale = "No clear support or opposition cues detected."
+
+    return {"label": label, "confidence": round(confidence, 2), "rationale": rationale[:240]}
+
+
+def _normalize_enrichment_payload(payload, doc=None):
     if not isinstance(payload, dict):
         payload = {}
 
@@ -3047,6 +3144,37 @@ def _normalize_enrichment_payload(payload):
         stance_label = "unclear"
     stance_target = str(stance.get("target", "") or "").strip()
 
+    fallback_comment_position = _infer_comment_position(doc, str((doc or {}).get("full_text", "") or ""))
+    comment_position = payload.get("comment_position", fallback_comment_position)
+    if not isinstance(comment_position, dict):
+        comment_position = {"label": str(comment_position or "")}
+    comment_position_label = str(
+        comment_position.get("label", fallback_comment_position.get("label", "not_applicable"))
+        or fallback_comment_position.get("label", "not_applicable")
+    ).strip().lower()
+    if comment_position_label not in _COMMENT_POSITION_LABELS:
+        comment_position_label = str(fallback_comment_position.get("label", "not_applicable") or "not_applicable")
+    if _is_comment_letter(doc) and comment_position_label == "not_applicable":
+        comment_position_label = str(fallback_comment_position.get("label", "unclear") or "unclear")
+    if not _is_comment_letter(doc):
+        comment_position_label = "not_applicable"
+    try:
+        comment_position_confidence = float(
+            comment_position.get("confidence", fallback_comment_position.get("confidence", 0.0))
+            or fallback_comment_position.get("confidence", 0.0)
+        )
+    except Exception:
+        comment_position_confidence = float(fallback_comment_position.get("confidence", 0.0) or 0.0)
+    comment_position_confidence = max(0.0, min(1.0, comment_position_confidence))
+    if comment_position_label == "not_applicable":
+        comment_position_confidence = 0.0
+    comment_position_rationale = str(
+        comment_position.get("rationale", fallback_comment_position.get("rationale", ""))
+        or fallback_comment_position.get("rationale", "")
+    ).strip()[:240]
+    if comment_position_label == "not_applicable":
+        comment_position_rationale = ""
+
     evidence_spans = payload.get("evidence_spans", [])
     normalized_evidence = []
     if isinstance(evidence_spans, list):
@@ -3085,6 +3213,11 @@ def _normalize_enrichment_payload(payload):
         "keywords": keywords,
         "entities": normalized_entities,
         "stance": {"label": stance_label, "target": stance_target},
+        "comment_position": {
+            "label": comment_position_label,
+            "confidence": comment_position_confidence,
+            "rationale": comment_position_rationale,
+        },
         "evidence_spans": normalized_evidence,
         "enforcement": enforcement,
         "confidence": confidence,
@@ -3094,6 +3227,7 @@ def _normalize_enrichment_payload(payload):
 def _heuristic_enrichment(doc):
     text = str(doc.get("full_text", "") or "")
     lower = text.lower()
+    comment_position = _infer_comment_position(doc, text)
 
     topic_rules = {
         "crypto_assets": ["crypto", "token", "digital asset", "blockchain", "stablecoin", "bitcoin", "ether"],
@@ -3163,10 +3297,12 @@ def _heuristic_enrichment(doc):
             "keywords": keywords,
             "entities": [],
             "stance": {"label": stance_label, "target": ""},
+            "comment_position": comment_position,
             "evidence_spans": evidence,
             "enforcement": enforcement,
             "confidence": 0.35,
-        }
+        },
+        doc=doc,
     )
 
 
@@ -3178,10 +3314,14 @@ def _run_enrichment_agent(client, doc, model_name):
     base_instruction = (
         "You are an enrichment agent for policy documents. "
         "Return ONLY valid JSON with keys: "
-        "summary, tags, keywords, entities, stance, evidence_spans, enforcement, confidence. "
+        "summary, tags, keywords, entities, stance, comment_position, evidence_spans, enforcement, confidence. "
         "Use concise tags and keywords. "
         "entities must be list of {name,type,mentions}. "
         "stance must be {label,target} where label in [supportive,cautious,critical,neutral,unclear]. "
+        "comment_position must be {label,confidence,rationale} where label in "
+        "[supportive,opposed,mixed,neutral,unclear,not_applicable]. "
+        "For FINRA comment letters, classify the submitter as supportive, opposed, mixed, neutral, or unclear. "
+        "For all other documents, set comment_position to {label:not_applicable, confidence:0, rationale:''}. "
         "evidence_spans must include verbatim snippets from the document. "
         "enforcement must be {release_no,action_type,forum,alleged_violations,outcome_status} where "
         "action_type in [filing,settlement,judgment,dismissal,order,other,unknown], "
@@ -3215,7 +3355,7 @@ def _run_enrichment_agent(client, doc, model_name):
         last_raw = raw_text
         parsed = _extract_first_json_object(raw_text)
         if parsed:
-            return _normalize_enrichment_payload(parsed)
+            return _normalize_enrichment_payload(parsed, doc=doc)
 
     preview = (last_raw or "").replace("\n", " ").strip()[:300]
     raise RuntimeError(f"Model did not return parseable JSON after 2 attempts. Last output: {preview}")
@@ -3786,6 +3926,21 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
         stance_text = stance_label
         if stance_label and stance_target:
             stance_text = f"{stance_label} ({stance_target})"
+        enrich_comment_position = enrich_obj.get("comment_position", {})
+        if not isinstance(enrich_comment_position, dict):
+            enrich_comment_position = {"label": str(enrich_comment_position or "").strip()}
+        comment_position_label = str(enrich_comment_position.get("label", "") or "").strip().lower()
+        try:
+            comment_position_confidence = float(enrich_comment_position.get("confidence", 0.0) or 0.0)
+        except Exception:
+            comment_position_confidence = 0.0
+        comment_position_confidence = max(0.0, min(1.0, comment_position_confidence))
+        comment_position_rationale = str(enrich_comment_position.get("rationale", "") or "").strip()
+        comment_position_text = ""
+        if comment_position_label and comment_position_label != "not_applicable":
+            comment_position_text = comment_position_label
+            if comment_position_confidence > 0:
+                comment_position_text = f"{comment_position_text} ({comment_position_confidence:.2f})"
         enforcement_meta = _resolve_enforcement_metadata(
             metadata=m,
             enrichment_payload=enrich_obj,
@@ -3865,6 +4020,10 @@ def _build_org_documents(raw_data_obj, org_key, org_label, enrichment_entries=No
                 header_lines.append(f"Enrichment Keywords: {enrich_keywords_text}")
             if stance_text:
                 header_lines.append(f"Enrichment Stance: {stance_text}")
+            if comment_position_text:
+                header_lines.append(f"Comment Position: {comment_position_text}")
+            if comment_position_rationale and comment_position_label != "not_applicable":
+                header_lines.append(f"Comment Position Rationale: {comment_position_rationale}")
             if enrich_review:
                 header_lines.append(f"Enrichment Review: {enrich_review}")
 
@@ -9841,6 +10000,19 @@ elif page == "Enrichment Pipeline":
                 f"**Stance:** {stance.get('label', 'unclear')} "
                 f"{'(' + stance.get('target', '') + ')' if stance.get('target') else ''}"
             )
+            comment_position = selected_enrichment.get("comment_position", {})
+            if isinstance(comment_position, dict):
+                comment_position_label = str(comment_position.get("label", "") or "").strip()
+                if comment_position_label and comment_position_label != "not_applicable":
+                    try:
+                        comment_position_conf = float(comment_position.get("confidence", 0.0) or 0.0)
+                    except Exception:
+                        comment_position_conf = 0.0
+                    rationale = str(comment_position.get("rationale", "") or "").strip()
+                    conf_suffix = f" ({comment_position_conf:.2f})" if comment_position_conf > 0 else ""
+                    st.markdown(f"**Comment Position:** {comment_position_label}{conf_suffix}")
+                    if rationale:
+                        st.caption(rationale)
 
             evidence_rows = selected_enrichment.get("evidence_spans", [])
             if evidence_rows:

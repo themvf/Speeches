@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type NavItem = {
-  href: "/" | "/analytics" | "/chats";
+  href: "/" | "/analytics" | "/chats" | "/notices";
   label: string;
   prefetch?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", prefetch: true },
+  { href: "/notices", label: "Notices & Comments", prefetch: true },
   { href: "/analytics", label: "Analytics", prefetch: true },
   { href: "/chats", label: "Agentic Chats", prefetch: true }
 ];
@@ -61,7 +62,7 @@ export function AppNav() {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={item.href as any}
                 prefetch={item.prefetch}
                 className={navLinkClass(active)}
                 aria-current={active ? "page" : undefined}
@@ -99,7 +100,7 @@ export function AppNav() {
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={item.href as any}
                     prefetch={item.prefetch}
                     className={`block min-h-11 rounded-xl px-3 py-2 ${navLinkClass(active)}`}
                     aria-current={active ? "page" : undefined}

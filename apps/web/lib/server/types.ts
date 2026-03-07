@@ -33,6 +33,19 @@ export interface CustomDocumentMetadata {
   published_date: string;
   updated_date: string;
   last_reviewed_or_updated: string;
+  notice_type?: string;
+  notice_number?: string;
+  notice_title?: string;
+  notice_url?: string;
+  source_notice_url?: string;
+  comment_url?: string;
+  comments_url?: string;
+  commenter_name?: string;
+  commenter_org?: string;
+  effective_date?: string;
+  comment_deadline?: string;
+  pdf_url?: string;
+  discovery_source?: string;
 }
 
 export interface CustomDocumentContent {
@@ -64,6 +77,7 @@ export interface EnrichmentPayload {
   keywords: string[];
   entities: string[];
   stance: Record<string, JsonValue>;
+  comment_position: Record<string, JsonValue>;
   evidence_spans: Array<Record<string, JsonValue>>;
   confidence: number;
 }

@@ -49,6 +49,10 @@ export async function GET(
           enrichEntry?.enrichment?.stance && typeof enrichEntry?.enrichment?.stance === "object"
             ? enrichEntry?.enrichment?.stance
             : {},
+        comment_position:
+          enrichEntry?.enrichment?.comment_position && typeof enrichEntry?.enrichment?.comment_position === "object"
+            ? enrichEntry?.enrichment?.comment_position
+            : {},
         confidence: Number.parseFloat(String(enrichEntry?.enrichment?.confidence ?? "0")) || 0
       },
       review: {

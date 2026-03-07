@@ -216,7 +216,20 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     source_index_url: normalizeString(metadataRaw.source_index_url),
     published_date: normalizeString(metadataRaw.published_date),
     updated_date: normalizeString(metadataRaw.updated_date),
-    last_reviewed_or_updated: normalizeString(metadataRaw.last_reviewed_or_updated)
+    last_reviewed_or_updated: normalizeString(metadataRaw.last_reviewed_or_updated),
+    notice_type: normalizeString(metadataRaw.notice_type),
+    notice_number: normalizeString(metadataRaw.notice_number),
+    notice_title: normalizeString(metadataRaw.notice_title),
+    notice_url: normalizeString(metadataRaw.notice_url),
+    source_notice_url: normalizeString(metadataRaw.source_notice_url),
+    comment_url: normalizeString(metadataRaw.comment_url),
+    comments_url: normalizeString(metadataRaw.comments_url),
+    commenter_name: normalizeString(metadataRaw.commenter_name),
+    commenter_org: normalizeString(metadataRaw.commenter_org),
+    effective_date: normalizeString(metadataRaw.effective_date),
+    comment_deadline: normalizeString(metadataRaw.comment_deadline),
+    pdf_url: normalizeString(metadataRaw.pdf_url),
+    discovery_source: normalizeString(metadataRaw.discovery_source)
   };
 
   return {
@@ -348,6 +361,10 @@ function normalizeEnrichmentEntry(docId: string, value: unknown): EnrichmentEntr
         ? enrichmentRaw.entities.map((item) => normalizeString(item)).filter(Boolean)
         : [],
       stance: enrichmentRaw.stance && typeof enrichmentRaw.stance === "object" ? enrichmentRaw.stance : {},
+      comment_position:
+        enrichmentRaw.comment_position && typeof enrichmentRaw.comment_position === "object"
+          ? enrichmentRaw.comment_position
+          : {},
       evidence_spans: Array.isArray(enrichmentRaw.evidence_spans)
         ? enrichmentRaw.evidence_spans.filter((item) => item && typeof item === "object")
         : [],
