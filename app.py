@@ -7702,6 +7702,290 @@ elif page == "Extraction":
                 st.error(f"FINRA Regulatory Notice ingest failed: {e}")
 
     st.markdown("---")
+    st.subheader("FINRA Connector: Rule Comment Letters (BETA)")
+    st.caption(
+        "Discover and ingest comment letters filed on a FINRA Regulatory Notice comments page."
+    )
+
+    finra_comment_notice_default = "https://www.finra.org/rules-guidance/notices/26-06"
+    finra_comment_notice_url = st.text_input(
+        "FINRA Notice URL (comments discovered from this notice)",
+        value=finra_comment_notice_default,
+        key="finra_comment_notice_url",
+    ).strip() or finra_comment_notice_default
+    finra_comment_include_pdfs = st.checkbox(
+        "Include linked PDF comment letters",
+        value=True,
+        key="finra_comment_include_pdfs",
+    )
+
+    finra_comment_col1, finra_comment_col2 = st.columns(2)
+    with finra_comment_col1:
+        discover_finra_comments = st.button(
+            "Discover FINRA Comment Letters",
+            key="discover_finra_comment_letters",
+        )
+    with finra_comment_col2:
+        clear_finra_comments = st.button(
+            "Clear FINRA Comment Letter Results",
+            key="clear_finra_comment_letters",
+        )
+
+    finra_comment_state_key = "finra_comment_letters_discovered"
+    if finra_comment_state_key not in st.session_state:
+        st.session_state[finra_comment_state_key] = []
+    if clear_finra_comments:
+        st.session_state[finra_comment_state_key] = []
+
+    if discover_finra_comments:
+        try:
+            from finra_comment_letter_scraper import FINRACommentLetterScraper
+
+            with st.spinner("Discovering FINRA comment letters..."):
+                finra_comment_scraper = FINRACommentLetterScraper()
+                finra_comment_discovered = finra_comment_scraper.discover_documents(
+                    notice_url=finra_comment_notice_url,
+                    include_pdfs=finra_comment_include_pdfs,
+                )
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in finra_comment_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(
+                        existing_meta.get("published_date")
+                        or existing_meta.get("date")
+                        or ""
+                    ).strip()
+                    incoming_date = str(entry.get("date", "") or "").strip()
+                    existing_commenter = str(
+                        existing_meta.get("commenter_name")
+                        or existing_meta.get("speaker")
+                        or ""
+                    ).strip()
+                    incoming_commenter = str(entry.get("commenter_name", "") or "").strip()
+                    existing_notice = str(existing_meta.get("notice_number", "") or "").strip()
+                    incoming_notice = str(entry.get("notice_number", "") or "").strip()
+                    if (
+                        (incoming_date and existing_date and incoming_date != existing_date)
+                        or (
+                            incoming_commenter
+                            and existing_commenter
+                            and incoming_commenter != existing_commenter
+                        )
+                        or (incoming_notice and existing_notice and incoming_notice != existing_notice)
+                    ):
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+
+            st.session_state[finra_comment_state_key] = finra_comment_discovered
+            new_count = sum(
+                1
+                for d in finra_comment_discovered
+                if d.get("ingest_status") in {"new", "update_available"}
+            )
+            st.success(
+                f"Discovered {len(finra_comment_discovered)} FINRA comment letters "
+                f"({new_count} new/update candidates)."
+            )
+        except Exception as e:
+            st.error(f"FINRA comment letter discovery failed: {e}")
+
+    finra_comment_discovered = st.session_state.get(finra_comment_state_key, [])
+    if finra_comment_discovered:
+        finra_comment_df = pd.DataFrame(finra_comment_discovered)
+        finra_comment_df = _sort_table_by_date(finra_comment_df, date_col="date")
+        show_cols = [
+            c
+            for c in [
+                "date",
+                "notice_number",
+                "title",
+                "commenter_name",
+                "source_format",
+                "ingest_status",
+                "url",
+            ]
+            if c in finra_comment_df.columns
+        ]
+        st.dataframe(
+            finra_comment_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        finra_comment_filter = st.selectbox(
+            "FINRA Comment Letter Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="finra_comment_ingest_filter",
+        )
+        if finra_comment_filter == "New/Updates Only":
+            finra_comment_candidates = [
+                d
+                for d in finra_comment_discovered
+                if d.get("ingest_status") in {"new", "update_available"}
+            ]
+        else:
+            finra_comment_candidates = list(finra_comment_discovered)
+
+        finra_comment_count = len(finra_comment_candidates)
+        if finra_comment_count <= 0:
+            finra_comment_limit = 0
+            st.caption("No FINRA comment letters match the selected ingest filter.")
+        elif finra_comment_count == 1:
+            finra_comment_limit = 1
+            st.caption("1 FINRA comment letter selected for ingest.")
+        else:
+            finra_comment_limit = st.slider(
+                "FINRA Comment Letters To Ingest",
+                min_value=1,
+                max_value=finra_comment_count,
+                value=min(20, finra_comment_count),
+                key="finra_comment_ingest_limit",
+            )
+        st.caption(
+            f"{finra_comment_count} FINRA comment letters currently match this ingest selection."
+        )
+
+        if st.button(
+            "Run FINRA Comment Letter Extraction",
+            disabled=(finra_comment_limit <= 0),
+            key="ingest_finra_comment_letters",
+        ):
+            try:
+                from finra_comment_letter_scraper import FINRACommentLetterScraper
+
+                finra_comment_scraper = FINRACommentLetterScraper()
+                progress = st.progress(0, text="Starting FINRA comment-letter ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = finra_comment_candidates[:finra_comment_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / finra_comment_limit,
+                        text=f"Ingesting {idx}/{finra_comment_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = finra_comment_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_commenter_name=entry.get("commenter_name", ""),
+                            fallback_notice_number=entry.get("notice_number", ""),
+                            fallback_notice_title=entry.get("notice_title", ""),
+                            fallback_notice_url=entry.get("notice_url", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 30:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_format = str(
+                            data.get("source_format", "") or entry.get("source_format", "") or "html"
+                        ).strip().lower()
+                        source_ext = ".pdf" if source_format == "pdf" else ".html"
+                        source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip()
+                        if not source_name:
+                            source_name = f"finra-comment-letter-{idx}{source_ext}"
+                        elif "." not in source_name:
+                            source_name = f"{source_name}{source_ext}"
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        commenter_name = str(
+                            data.get("commenter_name", "") or entry.get("commenter_name", "")
+                        ).strip()
+                        commenter_org = str(data.get("commenter_org", "") or "").strip()
+                        speaker_text = commenter_name or commenter_org or "Commenter"
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="FINRA",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip()
+                            or "Comment Letter",
+                            speaker=speaker_text,
+                            doc_date=doc_date_value,
+                            doc_type="Comment Letter",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=source_ext,
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv="finra,comment-letter,rulemaking,regulatory-feedback",
+                            source_kind="finra_comment_letter",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "finra_comment_letter"
+                        rm["source_notice_url"] = finra_comment_notice_url
+                        rm["notice_number"] = str(
+                            data.get("notice_number", "") or entry.get("notice_number", "")
+                        ).strip()
+                        rm["notice_title"] = str(
+                            data.get("notice_title", "") or entry.get("notice_title", "")
+                        ).strip()
+                        rm["notice_url"] = str(
+                            data.get("notice_url", "") or entry.get("notice_url", "")
+                        ).strip()
+                        rm["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+                        rm["commenter_name"] = commenter_name
+                        rm["commenter_org"] = commenter_org
+                        rm["comment_url"] = str(data.get("comment_url", "") or "").strip()
+                        rm["pdf_url"] = str(data.get("pdf_url", "") or "").strip()
+                        rm["comments_url"] = str(entry.get("comments_url", "") or "").strip()
+                        rm["source_format"] = source_format
+                        rm["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="FINRA comment-letter ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new FINRA comment letters and updated {saved_updates} existing comment letters."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} FINRA comment letters failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"FINRA comment-letter ingest failed: {e}")
+
+    st.markdown("---")
     st.subheader("FINRA Connector: Key Topics")
     st.caption("Discover and ingest FINRA Key Topic hub pages, then use them to tag related FINRA notices and guidance.")
 
