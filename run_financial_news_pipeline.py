@@ -25,6 +25,12 @@ except Exception:  # pragma: no cover
 
 from gcs_storage import GCSStorage
 from newsapi_financial_scraper import NewsAPIFinancialScraper
+from comment_position import (
+    COMMENT_POSITION_INSTRUCTION as SHARED_COMMENT_POSITION_INSTRUCTION,
+    COMMENT_POSITION_LABELS as SHARED_COMMENT_POSITION_LABELS,
+    infer_comment_position as shared_infer_comment_position,
+    is_comment_position_document as shared_is_comment_position_document,
+)
 
 try:
     from openai import OpenAI
@@ -744,101 +750,15 @@ def _extract_first_json_object(text: str) -> Dict[str, Any]:
     return {}
 
 
-_COMMENT_POSITION_LABELS = {"supportive", "opposed", "mixed", "neutral", "unclear", "not_applicable"}
-_COMMENT_SUPPORT_RULES: Sequence[Tuple[str, str]] = (
-    (r"\bstrongly support\b", "strongly support"),
-    (r"\bsupport(?:s|ed|ing)?\b", "support"),
-    (r"\bin favor of\b", "in favor of"),
-    (r"\bagree with\b", "agree with"),
-    (r"\bendorse(?:s|d|ment)?\b", "endorse"),
-    (r"\bcommend(?:s|ed)?\b", "commend"),
-    (r"\bwelcome(?:s|d)?\b", "welcome"),
-    (r"\bapprove(?:s|d)?\b", "approve"),
-    (r"\bfavor(?:s|ed)?\b", "favor"),
-)
-_COMMENT_OPPOSE_RULES: Sequence[Tuple[str, str]] = (
-    (r"\bstrongly oppose\b", "strongly oppose"),
-    (r"\boppose(?:s|d|ition)?\b", "oppose"),
-    (r"\bobject(?:s|ed)? to\b", "object to"),
-    (r"\bdisagree with\b", "disagree with"),
-    (r"\brecommend against\b", "recommend against"),
-    (r"\bshould not\b", "should not"),
-    (r"\breject(?:s|ed)?\b", "reject"),
-    (r"\bharmful\b", "harmful"),
-    (r"\bunworkable\b", "unworkable"),
-    (r"\bburdensome\b", "burdensome"),
-)
-_COMMENT_MIXED_RULES: Sequence[Tuple[str, str]] = (
-    (r"\bwhile we support\b", "while we support"),
-    (r"\bsupport\b[\s\S]{0,120}\bbut\b", "support ... but"),
-    (r"\bagree\b[\s\S]{0,120}\bhowever\b", "agree ... however"),
-    (r"\bsupport\b[\s\S]{0,120}\bconcern(?:s)?\b", "support with concerns"),
-    (r"\bcommend\b[\s\S]{0,120}\bbut\b", "commend ... but"),
-)
-_COMMENT_NEUTRAL_RULES: Sequence[Tuple[str, str]] = (
-    (r"\brequest(?:s|ed)? clarification\b", "request clarification"),
-    (r"\bseek(?:s|ing)? clarification\b", "seek clarification"),
-    (r"\brecommend(?:s|ed|ing)? clarification\b", "recommend clarification"),
-    (r"\bsuggest(?:s|ed|ing)? changes\b", "suggest changes"),
-    (r"\bprovide feedback\b", "provide feedback"),
-)
+_COMMENT_POSITION_LABELS = SHARED_COMMENT_POSITION_LABELS
 
 
-def _is_comment_letter(doc: Optional[Dict[str, Any]]) -> bool:
-    if not isinstance(doc, dict):
-        return False
-    source_kind = str(doc.get("source_kind", "") or "").strip().lower()
-    doc_type = str(doc.get("doc_type", "") or "").strip().lower()
-    return source_kind == "finra_comment_letter" or doc_type == "comment letter"
-
-
-def _collect_regex_hits(text: str, rules: Sequence[Tuple[str, str]], limit: int = 3) -> List[str]:
-    hits: List[str] = []
-    seen = set()
-    for pattern, label in rules:
-        if label in seen:
-            continue
-        if re.search(pattern, text):
-            seen.add(label)
-            hits.append(label)
-            if len(hits) >= limit:
-                break
-    return hits
+def _is_comment_position_doc(doc: Optional[Dict[str, Any]]) -> bool:
+    return shared_is_comment_position_document(doc)
 
 
 def _infer_comment_position(doc: Optional[Dict[str, Any]], text: str) -> Dict[str, Any]:
-    if not _is_comment_letter(doc):
-        return {"label": "not_applicable", "confidence": 0.0, "rationale": ""}
-
-    lower = str(text or "").lower()
-    support_hits = _collect_regex_hits(lower, _COMMENT_SUPPORT_RULES)
-    oppose_hits = _collect_regex_hits(lower, _COMMENT_OPPOSE_RULES)
-    mixed_hits = _collect_regex_hits(lower, _COMMENT_MIXED_RULES)
-    neutral_hits = _collect_regex_hits(lower, _COMMENT_NEUTRAL_RULES)
-
-    if mixed_hits or (support_hits and oppose_hits):
-        label = "mixed"
-        confidence = 0.82 if mixed_hits else 0.72
-        cues = mixed_hits or (support_hits + oppose_hits)[:3]
-        rationale = "Detected both supportive and opposing cues: " + ", ".join(cues[:3])
-    elif support_hits:
-        label = "supportive"
-        confidence = min(0.9, 0.58 + 0.09 * len(support_hits))
-        rationale = "Supportive cues: " + ", ".join(support_hits[:3])
-    elif oppose_hits:
-        label = "opposed"
-        confidence = min(0.9, 0.58 + 0.09 * len(oppose_hits))
-        rationale = "Opposing cues: " + ", ".join(oppose_hits[:3])
-    elif neutral_hits:
-        label = "neutral"
-        confidence = min(0.7, 0.4 + 0.08 * len(neutral_hits))
-        rationale = "Neutral/request-for-clarification cues: " + ", ".join(neutral_hits[:3])
-    else:
-        label = "unclear"
-        confidence = 0.2
-        rationale = "No clear support or opposition cues detected."
-
-    return {"label": label, "confidence": round(confidence, 2), "rationale": rationale[:240]}
+    return shared_infer_comment_position(doc, text)
 
 
 def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -885,9 +805,9 @@ def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[st
     ).strip().lower()
     if comment_position_label not in _COMMENT_POSITION_LABELS:
         comment_position_label = str(fallback_comment_position.get("label", "not_applicable") or "not_applicable")
-    if _is_comment_letter(doc) and comment_position_label == "not_applicable":
+    if _is_comment_position_doc(doc) and comment_position_label == "not_applicable":
         comment_position_label = str(fallback_comment_position.get("label", "unclear") or "unclear")
-    if not _is_comment_letter(doc):
+    if not _is_comment_position_doc(doc):
         comment_position_label = "not_applicable"
     try:
         comment_position_confidence = float(
@@ -1053,8 +973,7 @@ def _run_enrichment_agent(client: Any, doc: Dict[str, Any], model_name: str) -> 
         "stance must be {label,target} where label in [supportive,cautious,critical,neutral,unclear]. "
         "comment_position must be {label,confidence,rationale} where label in "
         "[supportive,opposed,mixed,neutral,unclear,not_applicable]. "
-        "For FINRA comment letters, classify the submitter as supportive, opposed, mixed, neutral, or unclear. "
-        "For all other documents, set comment_position to {label:not_applicable, confidence:0, rationale:''}. "
+        f"{SHARED_COMMENT_POSITION_INSTRUCTION}"
         "evidence_spans must include verbatim snippets from the document. "
         "enforcement must be {release_no,action_type,forum,alleged_violations,outcome_status} where "
         "action_type in [filing,settlement,judgment,dismissal,order,other,unknown], "
