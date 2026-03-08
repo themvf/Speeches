@@ -46,6 +46,18 @@ export interface CustomDocumentMetadata {
   comment_deadline?: string;
   pdf_url?: string;
   discovery_source?: string;
+  input_url?: string;
+  docket_id?: string;
+  docket_url?: string;
+  document_url?: string;
+  rule_url?: string;
+  comment_id?: string;
+  comment_page_url?: string;
+  resolved_content_url?: string;
+  attachment_urls?: string[];
+  extraction_mode?: string;
+  extraction_warnings?: string[];
+  summary?: string;
 }
 
 export interface CustomDocumentContent {

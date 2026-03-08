@@ -12,7 +12,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", prefetch: true },
-  { href: "/notices", label: "Notices & Comments", prefetch: true },
+  { href: "/notices", label: "Rulemakings & Comments", prefetch: true },
   { href: "/analytics", label: "Analytics", prefetch: true },
   { href: "/chats", label: "Agentic Chats", prefetch: true }
 ];

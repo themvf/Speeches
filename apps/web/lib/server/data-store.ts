@@ -143,6 +143,12 @@ function inferSourceKind(metadataRaw: Record<string, unknown>): string {
   if (docType === "comment letter") {
     return "finra_comment_letter";
   }
+  if (docType === "rulemaking document") {
+    return "regulations_gov_rule";
+  }
+  if (docType === "public comment") {
+    return "regulations_gov_comment";
+  }
   if (docType === "key topic") {
     return "finra_key_topic";
   }
@@ -229,7 +235,23 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     effective_date: normalizeString(metadataRaw.effective_date),
     comment_deadline: normalizeString(metadataRaw.comment_deadline),
     pdf_url: normalizeString(metadataRaw.pdf_url),
-    discovery_source: normalizeString(metadataRaw.discovery_source)
+    discovery_source: normalizeString(metadataRaw.discovery_source),
+    input_url: normalizeString(metadataRaw.input_url),
+    docket_id: normalizeString(metadataRaw.docket_id),
+    docket_url: normalizeString(metadataRaw.docket_url),
+    document_url: normalizeString(metadataRaw.document_url),
+    rule_url: normalizeString(metadataRaw.rule_url),
+    comment_id: normalizeString(metadataRaw.comment_id),
+    comment_page_url: normalizeString(metadataRaw.comment_page_url),
+    resolved_content_url: normalizeString(metadataRaw.resolved_content_url),
+    attachment_urls: Array.isArray(metadataRaw.attachment_urls)
+      ? metadataRaw.attachment_urls.map((item) => normalizeString(item)).filter(Boolean)
+      : [],
+    extraction_mode: normalizeString(metadataRaw.extraction_mode),
+    extraction_warnings: Array.isArray(metadataRaw.extraction_warnings)
+      ? metadataRaw.extraction_warnings.map((item) => normalizeString(item)).filter(Boolean)
+      : [],
+    summary: normalizeString(metadataRaw.summary)
   };
 
   return {

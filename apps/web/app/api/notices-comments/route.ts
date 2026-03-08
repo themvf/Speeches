@@ -1,11 +1,13 @@
 import { loadCustomDocuments, loadEnrichmentState, parseComparableDate } from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
-import type { CustomDocumentRecord, EnrichmentEntry } from "@/lib/server/types";
+import type { CustomDocumentMetadata, CustomDocumentRecord, EnrichmentEntry } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 
 interface NoticeCommentItem {
   document_id: string;
+  source_kind: string;
+  source_family: string;
   title: string;
   commenter_name: string;
   commenter_org: string;
@@ -13,6 +15,7 @@ interface NoticeCommentItem {
   url: string;
   comment_url: string;
   pdf_url: string;
+  resolved_content_url: string;
   published_at: string;
   summary: string;
   tags: string[];
@@ -28,8 +31,15 @@ interface NoticeCommentItem {
 
 interface NoticeGroupItem {
   notice_key: string;
+  source_kind: string;
+  source_family: string;
+  source_family_label: string;
+  group_type_label: string;
+  group_identifier_label: string;
+  group_identifier: string;
   notice_document_id: string;
   notice_number: string;
+  docket_id: string;
   title: string;
   summary: string;
   organization: string;
@@ -58,6 +68,8 @@ interface NoticeCommentsResponse {
 }
 
 const ENRICHED_STATUSES = new Set(["enriched", "fallback_enriched", "reviewed"]);
+const NOTICE_SOURCE_KINDS = new Set(["finra_regulatory_notice", "regulations_gov_rule"]);
+const COMMENT_SOURCE_KINDS = new Set(["finra_comment_letter", "regulations_gov_comment"]);
 
 function splitCsv(value: unknown): string[] {
   return String(value ?? "")
@@ -151,6 +163,11 @@ function summaryFor(record: CustomDocumentRecord, entry: EnrichmentEntry | undef
     return enriched;
   }
 
+  const metadataSummary = normalizeText(record.metadata?.summary || "");
+  if (metadataSummary) {
+    return metadataSummary.slice(0, 420);
+  }
+
   const raw = String(record.content?.full_text || "");
   const blocks = raw
     .split(/\n\s*\n/)
@@ -160,7 +177,9 @@ function summaryFor(record: CustomDocumentRecord, entry: EnrichmentEntry | undef
   for (const block of blocks) {
     const looksLikeHeader =
       /Source URL:/i.test(block) &&
-      /(Notice Number:|Published Date:|Commenter:|Professional Affiliation:|Date:|Title:)/i.test(block);
+      /(Notice Number:|Published Date:|Commenter:|Professional Affiliation:|Date:|Title:|Docket ID:|Comment ID:)/i.test(
+        block
+      );
     if (!looksLikeHeader) {
       return block.slice(0, 420);
     }
@@ -169,19 +188,89 @@ function summaryFor(record: CustomDocumentRecord, entry: EnrichmentEntry | undef
   return normalizeText(record.metadata?.title || "").slice(0, 420);
 }
 
-function noticeGroupKey(metadata: CustomDocumentRecord["metadata"]): string {
-  const noticeNumber = normalizeText(metadata.notice_number || "");
-  if (noticeNumber) {
-    return noticeNumber.toLowerCase();
+function sourceFamily(metadata: CustomDocumentMetadata): string {
+  const explicit = normalizeText(metadata.source_family || "").toLowerCase();
+  if (explicit === "regulations_gov") {
+    return "regulations_gov";
+  }
+  const sourceKind = normalizeText(metadata.source_kind || "").toLowerCase();
+  if (sourceKind.startsWith("regulations_gov_")) {
+    return "regulations_gov";
+  }
+  if (
+    explicit.includes("finra") ||
+    sourceKind.startsWith("finra_") ||
+    normalizeText(metadata.organization || "").toLowerCase() === "finra"
+  ) {
+    return "finra";
+  }
+  return explicit || sourceKind || "document";
+}
+
+function sourceFamilyLabel(family: string): string {
+  if (family === "regulations_gov") {
+    return "Regulations.gov";
+  }
+  if (family === "finra") {
+    return "FINRA";
+  }
+  return family
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function groupTypeLabel(metadata: CustomDocumentMetadata, family: string): string {
+  if (family === "regulations_gov") {
+    return "Rulemaking Docket";
+  }
+  if (family === "finra") {
+    return normalizeText(metadata.notice_type || "Regulatory Notice") || "Regulatory Notice";
+  }
+  return normalizeText(metadata.doc_type || "Document") || "Document";
+}
+
+function groupIdentifierLabel(family: string): string {
+  return family === "regulations_gov" ? "Docket" : "Notice";
+}
+
+function noticeGroupKey(metadata: CustomDocumentMetadata): string {
+  const family = sourceFamily(metadata);
+
+  if (family === "regulations_gov") {
+    const docketId = normalizeText(metadata.docket_id || "");
+    if (docketId) {
+      return `regulations_gov:docket:${docketId.toLowerCase()}`;
+    }
+
+    const ruleUrl = normalizeText(metadata.rule_url || metadata.docket_url || metadata.document_url || metadata.url || "");
+    if (ruleUrl) {
+      return `regulations_gov:url:${ruleUrl.toLowerCase()}`;
+    }
   }
 
-  const noticeUrl = normalizeText(metadata.notice_url || metadata.source_notice_url || metadata.source_index_url || metadata.url || "");
+  const noticeNumber = normalizeText(metadata.notice_number || "");
+  if (noticeNumber) {
+    return `finra:notice:${noticeNumber.toLowerCase()}`;
+  }
+
+  const noticeUrl = normalizeText(
+    metadata.notice_url || metadata.source_notice_url || metadata.source_index_url || metadata.url || ""
+  );
   if (noticeUrl) {
-    return noticeUrl.toLowerCase();
+    return `finra:url:${noticeUrl.toLowerCase()}`;
   }
 
   const title = normalizeText(metadata.notice_title || metadata.title || "");
-  return title.toLowerCase();
+  return `${family}:title:${title.toLowerCase()}`;
+}
+
+function groupIdentifier(metadata: CustomDocumentMetadata, family: string): string {
+  if (family === "regulations_gov") {
+    return normalizeText(metadata.docket_id || "");
+  }
+  return normalizeText(metadata.notice_number || "");
 }
 
 function buildNoticeTags(record: CustomDocumentRecord, entry: EnrichmentEntry | undefined): string[] {
@@ -199,6 +288,73 @@ function buildKeywords(entry: EnrichmentEntry | undefined): string[] {
   return dedupList(entry.enrichment.keywords.map((item) => normalizeText(item)).filter(Boolean));
 }
 
+function buildBaseGroup(
+  metadata: CustomDocumentMetadata,
+  record: CustomDocumentRecord,
+  entry: EnrichmentEntry | undefined
+): NoticeGroupItem {
+  const family = sourceFamily(metadata);
+  const publishedAt = normalizeText(metadata.published_date || metadata.date || "");
+  const identifier = groupIdentifier(metadata, family);
+
+  return {
+    notice_key: noticeGroupKey(metadata),
+    source_kind: normalizeText(metadata.source_kind || ""),
+    source_family: family,
+    source_family_label: sourceFamilyLabel(family),
+    group_type_label: groupTypeLabel(metadata, family),
+    group_identifier_label: groupIdentifierLabel(family),
+    group_identifier: identifier,
+    notice_document_id: normalizeText(metadata.document_id || ""),
+    notice_number: normalizeText(metadata.notice_number || ""),
+    docket_id: normalizeText(metadata.docket_id || ""),
+    title:
+      normalizeText(metadata.title || metadata.notice_title || "") ||
+      (family === "regulations_gov" ? "Rulemaking Docket" : "Regulatory Notice"),
+    summary: summaryFor(record, entry),
+    organization:
+      normalizeText(metadata.organization || "") || (family === "regulations_gov" ? "Regulations.gov" : "FINRA"),
+    url:
+      normalizeText(metadata.url || metadata.notice_url || metadata.rule_url || metadata.docket_url || metadata.document_url || ""),
+    pdf_url: normalizeText(metadata.pdf_url || ""),
+    published_at: publishedAt,
+    effective_date: normalizeText(metadata.effective_date || ""),
+    comment_deadline: normalizeText(metadata.comment_deadline || ""),
+    tags: buildNoticeTags(record, entry),
+    keywords: buildKeywords(entry),
+    enrichment_status: enrichmentStatus(entry),
+    review_decision: reviewDecision(entry),
+    comment_count: 0,
+    latest_comment_at: "",
+    comments: []
+  };
+}
+
+function buildFallbackGroup(
+  metadata: CustomDocumentMetadata,
+  record: CustomDocumentRecord,
+  entry: EnrichmentEntry | undefined
+): NoticeGroupItem {
+  const base = buildBaseGroup(metadata, record, entry);
+  const family = base.source_family;
+
+  return {
+    ...base,
+    notice_document_id: "",
+    title:
+      base.title ||
+      normalizeText(metadata.notice_title || metadata.title || "") ||
+      (family === "regulations_gov" ? "Rulemaking Docket" : "Regulatory Notice"),
+    summary: "",
+    organization: base.organization || (family === "regulations_gov" ? "Regulations.gov" : "FINRA"),
+    url:
+      base.url ||
+      normalizeText(
+        metadata.rule_url || metadata.notice_url || metadata.source_notice_url || metadata.docket_url || metadata.document_url || ""
+      )
+  };
+}
+
 export async function GET() {
   const requestId = createRequestId();
 
@@ -209,41 +365,20 @@ export async function GET() {
     const groups = new Map<string, NoticeGroupItem>();
 
     for (const record of customPayload.documents || []) {
-      const metadata = record.metadata || ({} as CustomDocumentRecord["metadata"]);
-      if (metadata.source_kind !== "finra_regulatory_notice") {
+      const metadata = record.metadata || ({} as CustomDocumentMetadata);
+      if (!NOTICE_SOURCE_KINDS.has(normalizeText(metadata.source_kind || ""))) {
         continue;
       }
 
       const docId = normalizeText(metadata.document_id || "");
       const entry = entries[docId];
-      const key = noticeGroupKey(metadata);
-      const publishedAt = normalizeText(metadata.published_date || metadata.date || "");
-
-      groups.set(key, {
-        notice_key: key,
-        notice_document_id: docId,
-        notice_number: normalizeText(metadata.notice_number || ""),
-        title: normalizeText(metadata.title || metadata.notice_title || "FINRA Regulatory Notice"),
-        summary: summaryFor(record, entry),
-        organization: normalizeText(metadata.organization || "FINRA") || "FINRA",
-        url: normalizeText(metadata.url || metadata.notice_url || ""),
-        pdf_url: normalizeText(metadata.pdf_url || ""),
-        published_at: publishedAt,
-        effective_date: normalizeText(metadata.effective_date || ""),
-        comment_deadline: normalizeText(metadata.comment_deadline || ""),
-        tags: buildNoticeTags(record, entry),
-        keywords: buildKeywords(entry),
-        enrichment_status: enrichmentStatus(entry),
-        review_decision: reviewDecision(entry),
-        comment_count: 0,
-        latest_comment_at: "",
-        comments: []
-      });
+      const group = buildBaseGroup(metadata, record, entry);
+      groups.set(group.notice_key, group);
     }
 
     for (const record of customPayload.documents || []) {
-      const metadata = record.metadata || ({} as CustomDocumentRecord["metadata"]);
-      if (metadata.source_kind !== "finra_comment_letter") {
+      const metadata = record.metadata || ({} as CustomDocumentMetadata);
+      if (!COMMENT_SOURCE_KINDS.has(normalizeText(metadata.source_kind || ""))) {
         continue;
       }
 
@@ -251,40 +386,23 @@ export async function GET() {
       const entry = entries[docId];
       const key = noticeGroupKey(metadata);
       const publishedAt = normalizeText(metadata.published_date || metadata.date || "");
+      const family = sourceFamily(metadata);
 
       const existing = groups.get(key);
-      const group: NoticeGroupItem =
-        existing ||
-        {
-          notice_key: key,
-          notice_document_id: "",
-          notice_number: normalizeText(metadata.notice_number || ""),
-          title: normalizeText(metadata.notice_title || metadata.title || "FINRA Notice"),
-          summary: "",
-          organization: "FINRA",
-          url: normalizeText(metadata.notice_url || metadata.source_notice_url || metadata.source_index_url || ""),
-          pdf_url: "",
-          published_at: "",
-          effective_date: "",
-          comment_deadline: "",
-          tags: [],
-          keywords: [],
-          enrichment_status: "not_enriched",
-          review_decision: "pending",
-          comment_count: 0,
-          latest_comment_at: "",
-          comments: []
-        };
+      const group = existing || buildFallbackGroup(metadata, record, entry);
 
       group.comments.push({
         document_id: docId,
-        title: normalizeText(metadata.title || "Comment Letter"),
+        source_kind: normalizeText(metadata.source_kind || ""),
+        source_family: family,
+        title: normalizeText(metadata.title || "Comment"),
         commenter_name: normalizeText(metadata.commenter_name || ""),
         commenter_org: normalizeText(metadata.commenter_org || ""),
         speaker: normalizeText(metadata.speaker || ""),
-        url: normalizeText(metadata.url || ""),
-        comment_url: normalizeText(metadata.comment_url || metadata.url || ""),
+        url: normalizeText(metadata.url || metadata.comment_page_url || metadata.comment_url || ""),
+        comment_url: normalizeText(metadata.comment_page_url || metadata.comment_url || metadata.url || ""),
         pdf_url: normalizeText(metadata.pdf_url || ""),
+        resolved_content_url: normalizeText(metadata.resolved_content_url || ""),
         published_at: publishedAt,
         summary: summaryFor(record, entry),
         tags: buildNoticeTags(record, entry),
@@ -321,7 +439,7 @@ export async function GET() {
         if (latestCommentDiff !== 0) {
           return latestCommentDiff;
         }
-        return a.notice_number.localeCompare(b.notice_number);
+        return a.group_identifier.localeCompare(b.group_identifier);
       });
 
     const allComments = orderedGroups.flatMap((group) => group.comments);
@@ -342,7 +460,7 @@ export async function GET() {
     return ok(payload, requestId);
   } catch (error) {
     return fail(
-      `Failed to load FINRA notices/comments: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Failed to load notices/comments: ${error instanceof Error ? error.message : "Unknown error"}`,
       "NOTICE_COMMENT_LOAD_FAILED",
       500,
       requestId
