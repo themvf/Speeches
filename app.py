@@ -10754,10 +10754,23 @@ elif page == "Document Library":
         doc_map = {}
         for item in custom_docs:
             m = item.get("metadata", {})
+            content = item.get("content", {}) if isinstance(item.get("content", {}), dict) else {}
             doc_id = str(m.get("document_id", "") or "").strip()
             if not doc_id:
                 doc_id = _corpus_doc_id(item)
             doc_map[doc_id] = item
+            search_blob = " ".join(
+                [
+                    str(m.get("title", "") or ""),
+                    str(m.get("organization", "") or ""),
+                    str(m.get("speaker", "") or ""),
+                    str(m.get("doc_type", "") or ""),
+                    str(m.get("source_kind", "") or ""),
+                    str(m.get("source_filename", "") or ""),
+                    str(m.get("url", "") or ""),
+                    str(content.get("full_text", "") or "")[:4000],
+                ]
+            ).lower()
             rows.append(
                 {
                     "doc_id": doc_id,
@@ -10770,24 +10783,47 @@ elif page == "Document Library":
                     "words": m.get("word_count", 0),
                     "source_file": m.get("source_filename", ""),
                     "url": m.get("url", ""),
+                    "search_text": search_blob,
                 }
             )
         docs_df = pd.DataFrame(rows)
         docs_df = _sort_table_by_date(docs_df, date_col="date")
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns([1, 1, 1.2])
         with col1:
             org_options = sorted(docs_df["organization"].fillna("").astype(str).unique().tolist())
             selected_orgs = st.multiselect("Organization Filter", org_options, default=org_options)
         with col2:
             kind_options = sorted(docs_df["source_kind"].fillna("").astype(str).unique().tolist())
             selected_kinds = st.multiselect("Source Kind Filter", kind_options, default=kind_options)
+        with col3:
+            keyword_query = st.text_input(
+                "Keyword Search",
+                value="",
+                placeholder="Comma-separated terms, e.g. sports betting, celebrity",
+                help=(
+                    "Matches against title, organization, speaker, source file, URL, and the first portion "
+                    "of the extracted document text."
+                ),
+                key="doc_library_keyword_search",
+            )
 
         filtered = docs_df.copy()
         if selected_orgs:
             filtered = filtered[filtered["organization"].isin(selected_orgs)]
         if selected_kinds:
             filtered = filtered[filtered["source_kind"].isin(selected_kinds)]
+        search_terms = [term.strip().lower() for term in str(keyword_query or "").split(",") if term.strip()]
+        if search_terms:
+            search_pattern = "|".join(re.escape(term) for term in search_terms)
+            filtered = filtered[
+                filtered["search_text"].fillna("").astype(str).str.contains(search_pattern, case=False, regex=True)
+            ]
+
+        st.caption(
+            "Tip: select `newsapi_article` in Source Kind Filter, then search by keyword to isolate irrelevant news."
+        )
+        st.caption(f"{len(filtered)} documents match the current filters.")
 
         st.dataframe(
             filtered[["date", "title", "organization", "speaker", "doc_type", "source_kind", "words", "source_file"]],
