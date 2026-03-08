@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from analysis_pipeline import SpeechAnalysisPipeline
+from enrichment_candidates import build_enrichment_candidates as _shared_build_enrichment_candidates
 from speaker_utils import extract_speakers, format_speakers, primary_speaker
 
 
@@ -97,6 +98,18 @@ def _get_newsapi_api_key():
     except Exception as e:
         st.session_state["_newsapi_error"] = str(e)
         return None
+
+
+def _get_regulations_gov_api_key():
+    """Return Regulations.gov API key from Streamlit secrets, else DEMO_KEY."""
+    try:
+        api_key = st.secrets["regulations_gov"]["api_key"]
+        api_key = str(api_key).strip()
+        if api_key:
+            return api_key
+    except Exception:
+        pass
+    return "DEMO_KEY"
 
 
 def _get_openai_client():
@@ -741,6 +754,19 @@ def _extract_text_from_uploaded_file(uploaded_file):
 
     decoded = file_bytes.decode("utf-8", errors="replace")
     return decoded.strip(), file_ext, warnings, file_bytes
+
+
+def _merge_tags_csv(*values):
+    tags = []
+    seen = set()
+    for raw in values:
+        for item in str(raw or "").split(","):
+            tag = item.strip()
+            if not tag or tag in seen:
+                continue
+            seen.add(tag)
+            tags.append(tag)
+    return ",".join(tags)
 
 
 def _split_text_for_indexing(text, max_chars=40000, overlap_chars=3000):
@@ -2942,31 +2968,7 @@ def _corpus_doc_id(speech):
 
 
 def _build_enrichment_candidates(knowledge_data, org_key=None):
-    dedup = {}
-    for speech in knowledge_data.get("speeches", []):
-        key = _speech_org_key(speech)
-        if org_key and org_key != "__all__" and key != org_key:
-            continue
-        text = str(speech.get("content", {}).get("full_text", "") or "").strip()
-        if not text:
-            continue
-        m = speech.get("metadata", {})
-        doc_id = _corpus_doc_id(speech)
-        dedup[doc_id] = {
-            "doc_id": doc_id,
-            "organization": _speech_org_label(speech),
-            "org_key": key,
-            "title": str(m.get("title", "") or "").strip(),
-            "speaker": str(m.get("speaker", "") or "").strip(),
-            "date": str(m.get("date", "") or "").strip(),
-            "url": str(m.get("url", "") or "").strip(),
-            "doc_type": str(m.get("doc_type", "Speech") or "Speech").strip(),
-            "source_kind": _infer_source_kind(m),
-            "release_no": str(m.get("release_no", "") or "").strip(),
-            "full_text": text,
-            "word_count": _coerce_int(m.get("word_count", 0), default=0, min_value=0),
-        }
-    return list(dedup.values())
+    return _shared_build_enrichment_candidates(knowledge_data, org_key=org_key)
 
 
 def _extract_first_json_object(text):
@@ -3462,6 +3464,7 @@ def _run_enrichment_batch(
             "doc_id": doc_id,
             "organization": doc.get("organization", ""),
             "org_key": doc.get("org_key", ""),
+            "source_kind": doc.get("source_kind", ""),
             "title": doc.get("title", ""),
             "speaker": doc.get("speaker", ""),
             "date": doc.get("date", ""),
@@ -8145,6 +8148,302 @@ elif page == "Extraction":
                 st.error(f"FINRA comment-letter ingest failed: {e}")
 
     st.markdown("---")
+    st.subheader("Regulations.gov Connector: Manual Rule + Selected Comments (BETA)")
+    st.caption(
+        "Ingest one docket/rule URL plus a curated list of comment-page or direct PDF URLs. "
+        "The saved doc keeps the resolved public page link and the extracted file link."
+    )
+
+    regulations_rule_default = "https://www.regulations.gov/docket/CFPB-2025-0037"
+    regulations_rule_url = st.text_input(
+        "Rule or Docket URL",
+        value=regulations_rule_default,
+        key="regulations_gov_rule_url",
+    ).strip()
+    regulations_comment_urls_raw = st.text_area(
+        "Selected Comment URLs (one per line)",
+        value="",
+        height=160,
+        key="regulations_gov_comment_urls",
+        help=(
+            "Supports public Regulations.gov comment URLs and direct downloads.regulations.gov "
+            "PDF/TXT/HTML file URLs."
+        ),
+    )
+    regulations_include_rule = st.checkbox(
+        "Ingest the rule/docket record",
+        value=True,
+        key="regulations_gov_include_rule",
+    )
+    regulations_extra_tags = st.text_input(
+        "Additional Tags (optional)",
+        value="",
+        key="regulations_gov_extra_tags",
+    ).strip()
+
+    if st.button(
+        "Run Regulations.gov Manual Extraction",
+        key="run_regulations_gov_manual_extraction",
+    ):
+        comment_urls = []
+        seen_comment_urls = set()
+        for raw_line in str(regulations_comment_urls_raw or "").splitlines():
+            line = str(raw_line or "").strip()
+            if not line or line in seen_comment_urls:
+                continue
+            seen_comment_urls.add(line)
+            comment_urls.append(line)
+
+        selected_rule = bool(regulations_include_rule and regulations_rule_url)
+        if not selected_rule and not comment_urls:
+            st.warning("Select the rule/docket record and/or add at least one comment URL.")
+        else:
+            try:
+                from regulations_gov_manual_scraper import RegulationsGovManualScraper
+
+                scraper = RegulationsGovManualScraper(
+                    api_key=_get_regulations_gov_api_key()
+                )
+                total_items = len(comment_urls) + (1 if selected_rule else 0)
+                progress = st.progress(0, text="Starting Regulations.gov ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+                saved_rows = []
+                current_step = 0
+                linked_rule_url = regulations_rule_url
+                rule_tags_csv = _merge_tags_csv(
+                    "regulations-gov,federal-rulemaking,rulemaking-document",
+                    regulations_extra_tags,
+                )
+                comment_tags_csv = _merge_tags_csv(
+                    "regulations-gov,federal-rulemaking,public-comment",
+                    regulations_extra_tags,
+                )
+
+                def _coerce_doc_date(date_text):
+                    parsed_date = _parse_single_date(str(date_text or "").strip())
+                    if pd.notna(parsed_date):
+                        return parsed_date.date()
+                    return str(date_text or "").strip()
+
+                def _source_ext_for_format(source_format):
+                    fmt = str(source_format or "").strip().lower()
+                    if fmt == "pdf":
+                        return ".pdf"
+                    if fmt == "txt":
+                        return ".txt"
+                    return ".html"
+
+                if selected_rule:
+                    current_step += 1
+                    progress.progress(
+                        current_step / max(total_items, 1),
+                        text="Ingesting rule/docket record...",
+                    )
+                    try:
+                        extracted = scraper.extract_rule(regulations_rule_url)
+                        if not extracted.get("success"):
+                            raise RuntimeError("Rule extraction returned no result.")
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if not text:
+                            raise RuntimeError("No rule text or metadata was extracted.")
+
+                        source_format = str(data.get("source_format", "") or "html").strip().lower()
+                        source_ext = _source_ext_for_format(source_format)
+                        source_name = str(
+                            data.get("document_id", "")
+                            or data.get("docket_id", "")
+                            or "regulations-gov-rule"
+                        ).strip()
+                        if not source_name:
+                            source_name = "regulations-gov-rule"
+                        if "." not in source_name:
+                            source_name = f"{source_name}{source_ext}"
+
+                        agency = str(data.get("agency", "") or "Regulations.gov").strip()
+                        canonical_rule_url = str(
+                            data.get("url", "")
+                            or data.get("document_url", "")
+                            or data.get("docket_url", "")
+                            or regulations_rule_url
+                        ).strip()
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization=agency,
+                            title=str(data.get("title", "") or "Rulemaking Document").strip(),
+                            speaker=agency,
+                            doc_date=_coerce_doc_date(data.get("date", "")),
+                            doc_type="Rulemaking Document",
+                            source_url=canonical_rule_url,
+                            source_filename=source_name,
+                            source_ext=source_ext,
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv=rule_tags_csv,
+                            source_kind="regulations_gov_rule",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "regulations_gov"
+                        rm["input_url"] = str(data.get("input_url", "") or regulations_rule_url).strip()
+                        rm["docket_id"] = str(data.get("docket_id", "") or "").strip()
+                        rm["docket_url"] = str(data.get("docket_url", "") or regulations_rule_url).strip()
+                        rm["document_id"] = str(data.get("document_id", "") or "").strip()
+                        rm["document_url"] = str(data.get("document_url", "") or "").strip()
+                        rm["resolved_content_url"] = str(data.get("resolved_content_url", "") or "").strip()
+                        rm["pdf_url"] = str(data.get("pdf_url", "") or "").strip()
+                        rm["source_format"] = source_format
+                        rm["extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+                        rm["document_type"] = str(data.get("document_type", "") or "").strip()
+                        rm["published_date"] = str(data.get("date", "") or "").strip()
+                        rm["summary"] = str(data.get("summary", "") or "").strip()
+                        rm["extraction_warnings"] = data.get("warnings", [])
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+                        linked_rule_url = canonical_rule_url or linked_rule_url
+                        saved_rows.append(
+                            {
+                                "source_kind": "regulations_gov_rule",
+                                "title": rm.get("title", ""),
+                                "date": rm.get("published_date", rm.get("date", "")),
+                                "url": rm.get("url", ""),
+                            }
+                        )
+                    except Exception as e:
+                        failed.append(f"Rule/Docket: {e}")
+
+                for idx, comment_url in enumerate(comment_urls, 1):
+                    current_step += 1
+                    progress.progress(
+                        current_step / max(total_items, 1),
+                        text=f"Ingesting comment {idx}/{len(comment_urls)}...",
+                    )
+                    try:
+                        extracted = scraper.extract_comment(
+                            comment_url,
+                            rule_url=linked_rule_url or regulations_rule_url,
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Comment extraction returned no result.")
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if not text:
+                            raise RuntimeError("No comment text or metadata was extracted.")
+
+                        source_format = str(data.get("source_format", "") or "html").strip().lower()
+                        source_ext = _source_ext_for_format(source_format)
+                        source_name = str(
+                            data.get("comment_id", "")
+                            or urlparse(str(comment_url or "")).path.rsplit("/", 1)[-1]
+                            or f"regulations-gov-comment-{idx}"
+                        ).strip()
+                        if not source_name:
+                            source_name = f"regulations-gov-comment-{idx}"
+                        if "." not in source_name:
+                            source_name = f"{source_name}{source_ext}"
+
+                        agency = str(data.get("agency", "") or "Regulations.gov").strip()
+                        commenter_name = str(data.get("commenter_name", "") or "").strip()
+                        commenter_org = str(data.get("commenter_org", "") or "").strip()
+                        speaker_text = commenter_name or commenter_org or "Public Comment"
+                        canonical_comment_url = str(
+                            data.get("url", "")
+                            or data.get("comment_page_url", "")
+                            or comment_url
+                        ).strip()
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization=agency,
+                            title=str(data.get("title", "") or "Public Comment").strip(),
+                            speaker=speaker_text,
+                            doc_date=_coerce_doc_date(data.get("date", "")),
+                            doc_type="Public Comment",
+                            source_url=canonical_comment_url,
+                            source_filename=source_name,
+                            source_ext=source_ext,
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv=comment_tags_csv,
+                            source_kind="regulations_gov_comment",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "regulations_gov"
+                        rm["input_url"] = str(data.get("input_url", "") or comment_url).strip()
+                        rm["rule_url"] = str(
+                            data.get("rule_url", "") or linked_rule_url or regulations_rule_url
+                        ).strip()
+                        rm["docket_id"] = str(data.get("docket_id", "") or "").strip()
+                        rm["comment_id"] = str(data.get("comment_id", "") or "").strip()
+                        rm["comment_page_url"] = str(
+                            data.get("comment_page_url", "") or canonical_comment_url
+                        ).strip()
+                        rm["resolved_content_url"] = str(data.get("resolved_content_url", "") or "").strip()
+                        rm["pdf_url"] = str(data.get("pdf_url", "") or "").strip()
+                        rm["attachment_urls"] = data.get("attachment_urls", [])
+                        rm["source_format"] = source_format
+                        rm["extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+                        rm["published_date"] = str(data.get("date", "") or "").strip()
+                        rm["commenter_name"] = commenter_name
+                        rm["commenter_org"] = commenter_org
+                        rm["summary"] = str(data.get("summary", "") or "").strip()
+                        rm["extraction_warnings"] = data.get("warnings", [])
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+                        saved_rows.append(
+                            {
+                                "source_kind": "regulations_gov_comment",
+                                "title": rm.get("title", ""),
+                                "date": rm.get("published_date", rm.get("date", "")),
+                                "url": rm.get("url", ""),
+                            }
+                        )
+                    except Exception as e:
+                        failed.append(f"{comment_url}: {e}")
+
+                progress.progress(1.0, text="Regulations.gov ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        "Saved "
+                        f"{saved_new} new Regulations.gov docs and updated {saved_updates} existing docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if saved_rows:
+                    saved_df = pd.DataFrame(saved_rows)
+                    if "date" in saved_df.columns:
+                        saved_df = _sort_table_by_date(saved_df, date_col="date")
+                    st.dataframe(
+                        saved_df[["date", "source_kind", "title", "url"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                if failed:
+                    st.warning(f"{len(failed)} Regulations.gov items failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"Regulations.gov ingest failed: {e}")
+
+    st.markdown(
+        "Supported URLs: public docket/document/comment pages on `regulations.gov` and direct "
+        "`downloads.regulations.gov` PDF/TXT/HTML files. Uses `DEMO_KEY` unless a "
+        "`regulations_gov.api_key` Streamlit secret is configured."
+    )
+
+    st.markdown("---")
     st.subheader("FINRA Connector: Key Topics")
     st.caption("Discover and ingest FINRA Key Topic hub pages, then use them to tag related FINRA notices and guidance.")
 
@@ -9580,12 +9879,18 @@ elif page == "Enrichment Pipeline":
             st.error(msg)
         return ok
 
-    def _scoped_entries_from_state(state_obj):
+    def _scoped_entries_from_state(state_obj, allowed_doc_ids=None):
+        allowed_ids = set()
+        if isinstance(allowed_doc_ids, (list, tuple, set)):
+            allowed_ids = {str(doc_id).strip() for doc_id in allowed_doc_ids if str(doc_id).strip()}
         scoped = []
         for entry in state_obj.get("entries", {}).values():
             if not isinstance(entry, dict):
                 continue
             if scope_key != "__all__" and str(entry.get("org_key", "") or "") != scope_key:
+                continue
+            doc_id = str(entry.get("doc_id", "") or "").strip()
+            if allowed_ids and doc_id not in allowed_ids:
                 continue
             scoped.append(entry)
         return scoped
@@ -9600,13 +9905,48 @@ elif page == "Enrichment Pipeline":
         scope_key = selected_org["key"]
         scope_label = selected_org["label"]
 
-    scoped_candidates = _build_enrichment_candidates(
+    scoped_candidates_all = _build_enrichment_candidates(
         knowledge_data,
         org_key=None if scope_key == "__all__" else scope_key,
     )
-    candidate_map = {str(d.get("doc_id", "") or ""): d for d in scoped_candidates}
+    source_kind_options = sorted(
+        {
+            str(d.get("source_kind", "") or "unknown").strip() or "unknown"
+            for d in scoped_candidates_all
+        }
+    )
+    selected_source_kinds = source_kind_options
+    if source_kind_options:
+        selected_source_kinds = st.multiselect(
+            "Source Kinds In Scope",
+            source_kind_options,
+            default=source_kind_options,
+        )
+        source_kind_counts = []
+        for kind in source_kind_options:
+            count = sum(
+                1
+                for doc in scoped_candidates_all
+                if (str(doc.get("source_kind", "") or "unknown").strip() or "unknown") == kind
+            )
+            source_kind_counts.append(f"{kind} ({count})")
+        st.caption("Available source kinds: " + ", ".join(source_kind_counts))
 
-    scoped_entries = _scoped_entries_from_state(enrichment_state)
+    selected_source_kind_set = {
+        str(kind).strip()
+        for kind in (selected_source_kinds or [])
+        if str(kind).strip()
+    }
+    scoped_candidates = [
+        doc
+        for doc in scoped_candidates_all
+        if not selected_source_kind_set
+        or (str(doc.get("source_kind", "") or "unknown").strip() or "unknown") in selected_source_kind_set
+    ]
+    candidate_map = {str(d.get("doc_id", "") or ""): d for d in scoped_candidates}
+    scoped_doc_ids = set(candidate_map.keys())
+
+    scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
 
     total_scope_docs = len(scoped_candidates)
     enriched_count = sum(1 for e in scoped_entries if str(e.get("status", "")) in {"enriched", "reviewed", "fallback_enriched"})
@@ -9719,7 +10059,7 @@ elif page == "Enrichment Pipeline":
                     f"of {result.get('total_selected', 0)} matching docs."
                 )
             enrichment_state = _load_enrichment_state()
-            scoped_entries = _scoped_entries_from_state(enrichment_state)
+            scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
 
     st.markdown("---")
     st.subheader("Targeted Re-Enrichment")
@@ -9795,7 +10135,7 @@ elif page == "Enrichment Pipeline":
                     else:
                         st.success("Selected document re-enriched.")
                     enrichment_state = _load_enrichment_state()
-                    scoped_entries = _scoped_entries_from_state(enrichment_state)
+                    scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
     else:
         st.caption("No documents in scope for targeted re-enrichment.")
 
@@ -9888,7 +10228,7 @@ elif page == "Enrichment Pipeline":
                     f"heuristic_fallbacks={review_result.get('heuristic_fallbacks', 0)}."
                 )
             enrichment_state = _load_enrichment_state()
-            scoped_entries = _scoped_entries_from_state(enrichment_state)
+            scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
 
     eligible_for_bulk_accept = sum(
         1
@@ -9926,12 +10266,17 @@ elif page == "Enrichment Pipeline":
         review = entry.get("review", {})
         reward = entry.get("reward", {})
         auto_review = entry.get("auto_review", {})
+        doc_id = str(entry.get("doc_id", "") or "").strip()
+        source_kind = str(entry.get("source_kind", "") or "").strip()
+        if not source_kind:
+            source_kind = str(candidate_map.get(doc_id, {}).get("source_kind", "") or "").strip()
         rows.append(
             {
-                "doc_id": entry.get("doc_id", ""),
+                "doc_id": doc_id,
                 "date": entry.get("date", ""),
                 "title": entry.get("title", ""),
                 "organization": entry.get("organization", ""),
+                "source_kind": source_kind,
                 "status": entry.get("status", ""),
                 "review": review.get("decision", "pending"),
                 "auto_verdict": auto_review.get("verdict", ""),
@@ -9949,7 +10294,21 @@ elif page == "Enrichment Pipeline":
         if "date" in result_df.columns:
             result_df = _sort_table_by_date(result_df, date_col="date")
         st.dataframe(
-            result_df[["date", "title", "organization", "status", "review", "auto_verdict", "auto_conf", "reward", "tags", "keywords"]],
+            result_df[
+                [
+                    "date",
+                    "title",
+                    "organization",
+                    "source_kind",
+                    "status",
+                    "review",
+                    "auto_verdict",
+                    "auto_conf",
+                    "reward",
+                    "tags",
+                    "keywords",
+                ]
+            ],
             use_container_width=True,
             hide_index=True,
         )
@@ -9957,15 +10316,27 @@ elif page == "Enrichment Pipeline":
         id_to_entry = {str(e.get("doc_id", "")): e for e in scoped_entries}
         review_ids = [r["doc_id"] for r in rows if r["doc_id"] in id_to_entry]
         if review_ids:
-            selected_doc_id = st.selectbox("Review Document", review_ids, format_func=lambda d: id_to_entry[d].get("title", d))
+            selected_doc_id = st.selectbox(
+                "Review Document",
+                review_ids,
+                format_func=lambda d: (
+                    f"{id_to_entry[d].get('date', '')} | "
+                    f"[{id_to_entry[d].get('source_kind', '') or candidate_map.get(d, {}).get('source_kind', '')}] "
+                    f"{id_to_entry[d].get('title', d)}"
+                ),
+            )
             selected_entry = id_to_entry.get(selected_doc_id, {})
             selected_enrichment = selected_entry.get("enrichment", {})
             selected_review = selected_entry.get("review", {})
             selected_reward = selected_entry.get("reward", {})
             selected_auto_review = selected_entry.get("auto_review", {})
+            selected_source_kind = str(
+                selected_entry.get("source_kind", "") or candidate_map.get(selected_doc_id, {}).get("source_kind", "")
+            ).strip()
 
             st.markdown(f"**Title:** {selected_entry.get('title', '')}")
             st.markdown(
+                f"**Source Kind:** {selected_source_kind} | "
                 f"**Status:** {selected_entry.get('status', '')} | "
                 f"**Review:** {selected_review.get('decision', 'pending')} | "
                 f"**Reward:** {selected_reward.get('score', 0.0)}"
