@@ -18,6 +18,9 @@ Primary config lives in `.env.local`.
 - `DATA_SOURCE_MODE`: `auto`, `local`, or `gcs`
 - `DATA_DIR_PATH`: local path fallback for JSON stores
 - `GCS_BUCKET_NAME`, `GCS_CREDENTIALS_JSON`, `GCS_CREDENTIALS_PATH`: GCS-backed reads
+- `OPENAI_API_KEY`: required for `/chats` to use OpenAI-backed retrieval and synthesis
+- `OPENAI_CHAT_MODEL`: optional, defaults to `gpt-5.1`
+- `OPENAI_BASE_URL`: optional, defaults to `https://api.openai.com/v1`
 - `GITHUB_ACTIONS_*`: dispatch and status for ingest/enrich/extract workflows
 - `JOB_EXECUTION_MODE`: `github_actions` (default) or `local` for direct Python extraction
 - `PYTHON_BIN`: python executable for local extraction mode (`python` by default)
@@ -25,6 +28,14 @@ Primary config lives in `.env.local`.
 Use `apps/web/.env.example` as the template.
 
 If you want manual extraction without GitHub Actions, set `JOB_EXECUTION_MODE=local`. In that mode the API runs `run_connector_extraction_pipeline.py` directly and requires Python + dependencies in the runtime environment.
+
+## Web Chat Requirements
+
+The Vercel `/chats` route now uses OpenAI plus the persisted vector-store state written by the Streamlit app. For it to work:
+
+- `OPENAI_API_KEY` must be configured in the web environment.
+- The shared data source must include `openai_vector_store_state.json`.
+- Those vector store IDs must point to live OpenAI vector stores that were built from the current corpus.
 
 ## Implemented API Routes (V1)
 

@@ -7,6 +7,12 @@ export interface DataSourceConfig {
 }
 export type JobExecutionMode = "github_actions" | "local";
 
+export interface OpenAiConfig {
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+}
+
 export interface GithubActionsConfig {
   enabled: boolean;
   enabledFlag: boolean;
@@ -96,5 +102,13 @@ export function getApiRuntimeInfo() {
     github_actions_enabled: jobs.enabled,
     github_actions_enabled_flag: jobs.enabledFlag,
     github_actions_missing_required_env: jobs.missingRequiredEnv
+  };
+}
+
+export function getOpenAiConfig(): OpenAiConfig {
+  return {
+    apiKey: readEnv("OPENAI_API_KEY", ""),
+    model: readEnv("OPENAI_CHAT_MODEL", "gpt-5.1"),
+    baseUrl: readEnv("OPENAI_BASE_URL", "https://api.openai.com/v1")
   };
 }

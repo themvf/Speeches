@@ -134,6 +134,7 @@ interface ChatCitation {
   title: string;
   organization: string;
   source_kind: string;
+  published_at?: string;
   url: string;
   snippet: string;
 }
@@ -141,12 +142,15 @@ interface ChatCitation {
 interface ChatAnswerData {
   answer: string;
   citations: ChatCitation[];
+  retrieved_count?: number;
+  model?: string;
 }
 
 interface ChatMessage {
   role: "assistant" | "user";
   content: string;
   citations?: ChatCitation[];
+  model?: string;
 }
 
 interface PolicyResearchHubProps {
@@ -503,19 +507,26 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   const ask = useCallback(async () => {
     if (!needsChats || !prompt.trim()) return;
     const userPrompt = prompt.trim();
+    const history = messages
+      .slice(-6)
+      .map((message) => ({ role: message.role, content: message.content }))
+      .filter((message) => message.content.trim().length > 0);
     setPrompt("");
     setChatError("");
     setChatLoading(true);
     setMessages((prev) => [...prev, { role: "user", content: userPrompt }]);
     try {
-      const data = await fetchJson<ChatAnswerData>("/api/chats/ask", { method: "POST", body: JSON.stringify({ prompt: userPrompt, top_k: 5 }) });
-      setMessages((prev) => [...prev, { role: "assistant", content: data.answer, citations: data.citations }]);
+      const data = await fetchJson<ChatAnswerData>("/api/chats/ask", {
+        method: "POST",
+        body: JSON.stringify({ prompt: userPrompt, top_k: 8, history })
+      });
+      setMessages((prev) => [...prev, { role: "assistant", content: data.answer, citations: data.citations, model: data.model }]);
     } catch (err) {
       setChatError(err instanceof Error ? err.message : "Failed to run chat.");
     } finally {
       setChatLoading(false);
     }
-  }, [needsChats, prompt]);
+  }, [messages, needsChats, prompt]);
 
   useEffect(() => {
     if (needsMetrics) void loadMetrics();
@@ -1134,6 +1145,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 >
                   <p className="text-xs font-semibold uppercase">{m.role}</p>
                   <p className="mt-1 whitespace-pre-wrap text-sm">{m.content}</p>
+                  {m.model ? <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">Model: {m.model}</p> : null}
                   {m.citations?.length ? (
                     <div className="mt-2 space-y-2">
                       {m.citations.map((c) => (
@@ -1145,6 +1157,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                           <p className="mt-1">
                             {c.organization} - {c.source_kind}
                           </p>
+                          {c.published_at ? <p className="mt-1">{fmtDateOnly(c.published_at)}</p> : null}
                           {c.snippet ? <p className="mt-1">{c.snippet}</p> : null}
                           {c.url ? (
                             <a href={c.url} target="_blank" rel="noreferrer" className="link-inline mt-1 inline-block">
