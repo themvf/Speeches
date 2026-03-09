@@ -235,16 +235,99 @@ function groupIdentifierLabel(family: string): string {
   return family === "regulations_gov" ? "Docket" : "Notice";
 }
 
+function extractRegulationsGovDocketId(value: unknown): string {
+  const text = normalizeText(value || "");
+  if (!text) {
+    return "";
+  }
+
+  const docketLikeMatch = text.match(/\b([A-Z][A-Z0-9]*-\d{4}-\d{4})\b/i);
+  if (docketLikeMatch?.[1]) {
+    return normalizeText(docketLikeMatch[1]).toUpperCase();
+  }
+
+  try {
+    const parsed = new URL(text);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.length >= 2) {
+      const prefix = parts[0]?.toLowerCase();
+      const identifier = normalizeText(parts[1] || "");
+      if (prefix === "docket" && identifier) {
+        return identifier.toUpperCase();
+      }
+
+      const identifierMatch = identifier.match(/^([A-Z][A-Z0-9]*-\d{4}-\d{4})-\d+$/i);
+      if (identifierMatch?.[1]) {
+        return normalizeText(identifierMatch[1]).toUpperCase();
+      }
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
+}
+
+function regulationsGovDocketId(metadata: CustomDocumentMetadata): string {
+  const candidates = [
+    metadata.docket_id,
+    metadata.rule_url,
+    metadata.docket_url,
+    metadata.document_url,
+    metadata.comment_page_url,
+    metadata.comment_url,
+    metadata.url,
+    metadata.input_url,
+    metadata.comment_id,
+    metadata.document_id
+  ];
+
+  for (const candidate of candidates) {
+    const docketId = extractRegulationsGovDocketId(candidate);
+    if (docketId) {
+      return docketId;
+    }
+  }
+
+  return "";
+}
+
+function regulationsGovGroupUrl(metadata: CustomDocumentMetadata): string {
+  return normalizeText(
+    metadata.docket_url ||
+      metadata.rule_url ||
+      metadata.document_url ||
+      metadata.url ||
+      metadata.comment_page_url ||
+      metadata.comment_url ||
+      ""
+  );
+}
+
+function regulationsGovGroupTitle(metadata: CustomDocumentMetadata): string {
+  const docketId = regulationsGovDocketId(metadata);
+  const sourceKind = normalizeText(metadata.source_kind || "");
+  const metadataTitle = normalizeText(metadata.title || metadata.notice_title || "");
+
+  if (sourceKind === "regulations_gov_rule" && metadataTitle) {
+    return metadataTitle;
+  }
+  if (docketId) {
+    return docketId;
+  }
+  return metadataTitle || "Rulemaking Docket";
+}
+
 function noticeGroupKey(metadata: CustomDocumentMetadata): string {
   const family = sourceFamily(metadata);
 
   if (family === "regulations_gov") {
-    const docketId = normalizeText(metadata.docket_id || "");
+    const docketId = regulationsGovDocketId(metadata);
     if (docketId) {
       return `regulations_gov:docket:${docketId.toLowerCase()}`;
     }
 
-    const ruleUrl = normalizeText(metadata.rule_url || metadata.docket_url || metadata.document_url || metadata.url || "");
+    const ruleUrl = regulationsGovGroupUrl(metadata);
     if (ruleUrl) {
       return `regulations_gov:url:${ruleUrl.toLowerCase()}`;
     }
@@ -268,7 +351,7 @@ function noticeGroupKey(metadata: CustomDocumentMetadata): string {
 
 function groupIdentifier(metadata: CustomDocumentMetadata, family: string): string {
   if (family === "regulations_gov") {
-    return normalizeText(metadata.docket_id || "");
+    return regulationsGovDocketId(metadata);
   }
   return normalizeText(metadata.notice_number || "");
 }
@@ -296,6 +379,15 @@ function buildBaseGroup(
   const family = sourceFamily(metadata);
   const publishedAt = normalizeText(metadata.published_date || metadata.date || "");
   const identifier = groupIdentifier(metadata, family);
+  const docketId = family === "regulations_gov" ? regulationsGovDocketId(metadata) : normalizeText(metadata.docket_id || "");
+  const title =
+    family === "regulations_gov"
+      ? regulationsGovGroupTitle(metadata)
+      : normalizeText(metadata.title || metadata.notice_title || "") || "Regulatory Notice";
+  const url =
+    family === "regulations_gov"
+      ? regulationsGovGroupUrl(metadata)
+      : normalizeText(metadata.url || metadata.notice_url || metadata.rule_url || metadata.docket_url || metadata.document_url || "");
 
   return {
     notice_key: noticeGroupKey(metadata),
@@ -307,15 +399,12 @@ function buildBaseGroup(
     group_identifier: identifier,
     notice_document_id: normalizeText(metadata.document_id || ""),
     notice_number: normalizeText(metadata.notice_number || ""),
-    docket_id: normalizeText(metadata.docket_id || ""),
-    title:
-      normalizeText(metadata.title || metadata.notice_title || "") ||
-      (family === "regulations_gov" ? "Rulemaking Docket" : "Regulatory Notice"),
+    docket_id: docketId,
+    title: title || (family === "regulations_gov" ? "Rulemaking Docket" : "Regulatory Notice"),
     summary: summaryFor(record, entry),
     organization:
       normalizeText(metadata.organization || "") || (family === "regulations_gov" ? "Regulations.gov" : "FINRA"),
-    url:
-      normalizeText(metadata.url || metadata.notice_url || metadata.rule_url || metadata.docket_url || metadata.document_url || ""),
+    url,
     pdf_url: normalizeText(metadata.pdf_url || ""),
     published_at: publishedAt,
     effective_date: normalizeText(metadata.effective_date || ""),
@@ -342,12 +431,14 @@ function buildFallbackGroup(
     ...base,
     notice_document_id: "",
     title:
+      (family === "regulations_gov" ? regulationsGovGroupTitle(metadata) : "") ||
       base.title ||
       normalizeText(metadata.notice_title || metadata.title || "") ||
       (family === "regulations_gov" ? "Rulemaking Docket" : "Regulatory Notice"),
     summary: "",
     organization: base.organization || (family === "regulations_gov" ? "Regulations.gov" : "FINRA"),
     url:
+      (family === "regulations_gov" ? regulationsGovGroupUrl(metadata) : "") ||
       base.url ||
       normalizeText(
         metadata.rule_url || metadata.notice_url || metadata.source_notice_url || metadata.docket_url || metadata.document_url || ""

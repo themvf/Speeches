@@ -8306,7 +8306,9 @@ elif page == "Extraction":
                             saved_updates += 1
                         else:
                             saved_new += 1
-                        linked_rule_url = canonical_rule_url or linked_rule_url
+                        linked_rule_url = str(
+                            data.get("docket_url", "") or canonical_rule_url or linked_rule_url
+                        ).strip()
                         saved_rows.append(
                             {
                                 "source_kind": "regulations_gov_rule",
