@@ -1361,6 +1361,7 @@ def _save_enrichment_state_local(state):
         json.dump(state, f, indent=2, ensure_ascii=False)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def _load_enrichment_state():
     storage = _get_gcs_storage()
     if storage is not None:
@@ -1379,6 +1380,7 @@ def _save_enrichment_state(state, require_remote=False):
     state = _normalize_enrichment_state(state)
     state["updated_at"] = _utc_now_iso()
     _save_enrichment_state_local(state)
+    _load_enrichment_state.clear()
 
     storage = _get_gcs_storage()
     if storage is None:
@@ -1476,6 +1478,7 @@ def _save_policy_briefs_local(payload):
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def _load_policy_briefs():
     storage = _get_gcs_storage()
     if storage is not None:
@@ -1496,6 +1499,7 @@ def _save_policy_briefs(payload):
     payload = _normalize_policy_briefs_payload(payload)
     payload["updated_at"] = _utc_now_iso()
     _save_policy_briefs_local(payload)
+    _load_policy_briefs.clear()
 
     storage = _get_gcs_storage()
     if storage is None:
@@ -1575,6 +1579,7 @@ def _save_news_connector_settings_local(payload):
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def _load_news_connector_settings():
     storage = _get_gcs_storage()
     if storage is not None:
@@ -1597,6 +1602,7 @@ def _save_news_connector_settings(payload):
     payload["updated_at"] = _utc_now_iso()
     _save_news_connector_settings_local(payload)
     st.session_state.pop("_news_settings_error", None)
+    _load_news_connector_settings.clear()
 
     storage = _get_gcs_storage()
     if storage is None:
@@ -1649,6 +1655,7 @@ def _save_agent_chat_quality_local(payload):
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def _load_agent_chat_quality():
     storage = _get_gcs_storage()
     if storage is not None:
@@ -1671,6 +1678,7 @@ def _save_agent_chat_quality(payload):
     payload["updated_at"] = _utc_now_iso()
     _save_agent_chat_quality_local(payload)
     st.session_state.pop("_chat_quality_error", None)
+    _load_agent_chat_quality.clear()
 
     storage = _get_gcs_storage()
     if storage is None:
@@ -5376,6 +5384,33 @@ def _explode_speakers(df: pd.DataFrame) -> pd.DataFrame:
     return exploded
 
 
+def _count_unique_speakers(df: pd.DataFrame) -> int:
+    if df.empty or "speaker_list" not in df.columns:
+        return 0
+    seen = set()
+    for speaker_list in df["speaker_list"]:
+        if not isinstance(speaker_list, list):
+            continue
+        for speaker in speaker_list:
+            speaker_text = str(speaker or "").strip()
+            if speaker_text:
+                seen.add(speaker_text)
+    return len(seen)
+
+
+def _custom_payload_stats(payload):
+    payload = _normalize_custom_docs_payload(payload)
+    doc_count = 0
+    total_words = 0
+    for item in payload.get("documents", []):
+        if not isinstance(item, dict):
+            continue
+        doc_count += 1
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        total_words += _coerce_int(metadata.get("word_count", 0), default=0, min_value=0)
+    return doc_count, total_words
+
+
 @st.cache_data(ttl=300)
 def load_data(_cache_buster=None):
     """Load and cache the speech dataset."""
@@ -5384,7 +5419,6 @@ def load_data(_cache_buster=None):
     rows = []
     for speech in raw_data.get("speeches", []):
         m = speech.get("metadata", {})
-        c = speech.get("content", {})
         v = speech.get("validation", {})
         raw_speaker = m.get("speaker", "Unknown")
         speaker_list = extract_speakers(raw_speaker)
@@ -5399,7 +5433,6 @@ def load_data(_cache_buster=None):
             "date": m.get("date", ""),
             "url": m.get("url", ""),
             "word_count": m.get("word_count", 0),
-            "full_text": c.get("full_text", ""),
             "paragraph_count": len(c.get("paragraphs", [])),
             "sentence_count": len(c.get("sentences", [])),
             "completeness_score": v.get("completeness_score", 0),
@@ -5421,10 +5454,10 @@ def load_data(_cache_buster=None):
 
 
 @st.cache_data
-def run_analysis(raw_data_json):
+def run_analysis(raw_data_obj):
     """Run the analysis pipeline and cache results."""
     pipeline = SpeechAnalysisPipeline()
-    pipeline.speeches_data = json.loads(raw_data_json)
+    pipeline.speeches_data = raw_data_obj
     pipeline.create_dataframe()
 
     sentiment = pipeline.basic_sentiment_analysis()
@@ -5432,18 +5465,6 @@ def run_analysis(raw_data_json):
     commissioner = pipeline.commissioner_analysis()
 
     return sentiment, topics, commissioner
-
-
-# --- Load Data ---
-raw_data, df = load_data()
-speaker_df = _explode_speakers(df)
-custom_docs_payload = _load_custom_documents()
-custom_documents = _custom_docs_as_speeches(custom_docs_payload)
-knowledge_data = _build_knowledge_data(raw_data, custom_docs_payload)
-knowledge_df = _build_knowledge_df(knowledge_data)
-
-raw_data_json = json.dumps(raw_data)
-sentiment_data, topic_data, commissioner_data = run_analysis(raw_data_json)
 
 
 # --- Sidebar Navigation ---
@@ -5471,16 +5492,74 @@ else:
         ["Extraction", "Document Library", "Enrichment Pipeline"],
     )
 
+raw_data, df = load_data()
+sec_speech_count = len(df)
+sec_speaker_count = _count_unique_speakers(df)
+sec_word_count = _coerce_int(df["word_count"].sum(), default=0, min_value=0) if "word_count" in df.columns else 0
+
+pages_needing_custom_docs = {
+    "Corpus Explorer",
+    "Agent Chat",
+    "Policy Delta Briefings",
+    "McKinsey Report",
+    "Intelligence Analysis",
+    "Extraction",
+    "Document Library",
+    "Enrichment Pipeline",
+}
+pages_needing_knowledge_data = {
+    "Corpus Explorer",
+    "Agent Chat",
+    "Policy Delta Briefings",
+    "McKinsey Report",
+    "Intelligence Analysis",
+    "Extraction",
+    "Enrichment Pipeline",
+}
+pages_needing_discussion_context = {
+    "Agent Chat",
+    "Policy Delta Briefings",
+    "McKinsey Report",
+    "Intelligence Analysis",
+}
+
+custom_docs_payload = None
+knowledge_data = None
+knowledge_df = None
+doc_title_lookup = {}
+sentiment_data = None
+topic_data = None
+commissioner_data = None
+custom_doc_count = 0
+custom_doc_words = 0
+
+if page in pages_needing_custom_docs:
+    custom_docs_payload = _load_custom_documents()
+    custom_doc_count, custom_doc_words = _custom_payload_stats(custom_docs_payload)
+
+if page in pages_needing_knowledge_data:
+    if custom_docs_payload is None:
+        custom_docs_payload = _load_custom_documents()
+        custom_doc_count, custom_doc_words = _custom_payload_stats(custom_docs_payload)
+    knowledge_data = _build_knowledge_data(raw_data, custom_docs_payload)
+
+if page in pages_needing_discussion_context:
+    knowledge_df = _build_knowledge_df(knowledge_data)
+    doc_title_lookup = _build_doc_title_lookup(knowledge_data)
+
+if page in {"Sentiment Analysis", "Topic Analysis"}:
+    sentiment_data, topic_data, commissioner_data = run_analysis(raw_data)
+
 st.sidebar.markdown("---")
-kb_words = 0
-for s in knowledge_data.get("speeches", []):
-    kb_words += int(s.get("metadata", {}).get("word_count", 0) or 0)
-st.sidebar.markdown(f"**{len(df)} SEC speeches**")
-st.sidebar.markdown(f"**{speaker_df['speaker_individual'].nunique()} SEC speakers**")
-st.sidebar.markdown(f"**{len(custom_documents)} uploaded docs**")
-st.sidebar.markdown(f"**{len(knowledge_data.get('speeches', []))} total corpus docs**")
-st.sidebar.markdown(f"**{kb_words:,} corpus words**")
-doc_title_lookup = _build_doc_title_lookup(knowledge_data)
+st.sidebar.markdown(f"**{sec_speech_count} SEC speeches**")
+st.sidebar.markdown(f"**{sec_speaker_count} SEC speakers**")
+if custom_docs_payload is not None:
+    st.sidebar.markdown(f"**{custom_doc_count} uploaded docs**")
+    st.sidebar.markdown(f"**{sec_speech_count + custom_doc_count} total corpus docs**")
+    st.sidebar.markdown(f"**{sec_word_count + custom_doc_words:,} corpus words**")
+else:
+    st.sidebar.markdown(f"**{sec_word_count:,} SEC corpus words**")
+    st.sidebar.caption("Uploaded-document corpus stats load on corpus and admin pages.")
 
 # GCS status indicator — with debug info
 _gcs_debug = []
@@ -5521,6 +5600,7 @@ else:
 if page == "Overview":
     st.title("SEC Commissioner Speeches Dashboard")
     st.markdown("Analysis of SEC Commissioner speeches \u2014 sentiment, topics, and trends.")
+    speaker_df = _explode_speakers(df)
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Speeches", len(df))
