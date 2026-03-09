@@ -140,6 +140,16 @@ const SKIP_SUBMITTER_PREFIXES = [
   "date:",
   "dear "
 ];
+const DISALLOWED_SUBMITTER_PHRASES = [
+  "comment intake",
+  "financial data rights",
+  "personal financial data rights",
+  "advanced notice of proposed rulemaking",
+  "advance notice of proposed rulemaking",
+  "notice of proposed rulemaking",
+  "proposed rulemaking",
+  "reconsideration of the"
+];
 
 function splitCsv(value: unknown): string[] {
   return String(value ?? "")
@@ -263,6 +273,13 @@ function isGenericSubmitter(value: unknown): boolean {
   return GENERIC_SUBMITTER_VALUES.has(normalized);
 }
 
+function normalizedSubmitterKey(value: unknown): string {
+  return normalizeText(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function cleanSubmitterCandidate(value: unknown): string {
   return normalizeText(value || "")
     .replace(
@@ -276,9 +293,32 @@ function cleanSubmitterCandidate(value: unknown): string {
     .replace(/^[\s\-:;,.]+|[\s\-:;,.]+$/g, "");
 }
 
-function looksLikePersonName(value: unknown): boolean {
+function isDisallowedSubmitterCandidate(value: unknown, agency = ""): boolean {
+  const cleaned = cleanSubmitterCandidate(value);
+  if (!cleaned || isGenericSubmitter(cleaned)) {
+    return true;
+  }
+
+  const candidateKey = normalizedSubmitterKey(cleaned);
+  if (!candidateKey) {
+    return true;
+  }
+
+  if (DISALLOWED_SUBMITTER_PHRASES.some((phrase) => candidateKey.includes(phrase))) {
+    return true;
+  }
+
+  const agencyKey = normalizedSubmitterKey(agency);
+  if (agencyKey && (candidateKey === agencyKey || candidateKey.includes(agencyKey) || agencyKey.includes(candidateKey))) {
+    return true;
+  }
+
+  return false;
+}
+
+function looksLikePersonName(value: unknown, agency = ""): boolean {
   const text = cleanSubmitterCandidate(value);
-  if (!text || isGenericSubmitter(text)) {
+  if (isDisallowedSubmitterCandidate(text, agency)) {
     return false;
   }
   const lowered = text.toLowerCase();
@@ -303,9 +343,9 @@ function looksLikePersonName(value: unknown): boolean {
   });
 }
 
-function looksLikeOrganization(value: unknown): boolean {
+function looksLikeOrganization(value: unknown, agency = ""): boolean {
   const text = cleanSubmitterCandidate(value);
-  if (!text || isGenericSubmitter(text)) {
+  if (isDisallowedSubmitterCandidate(text, agency)) {
     return false;
   }
   const lowered = text.toLowerCase();
@@ -335,7 +375,7 @@ function shouldSkipSubmitterLine(value: unknown): boolean {
   return digitCount >= 8;
 }
 
-function extractSubmitterSubject(value: unknown): string {
+function extractSubmitterSubject(value: unknown, agency = ""): string {
   const text = normalizeText(value || "");
   if (!text) {
     return "";
@@ -354,7 +394,7 @@ function extractSubmitterSubject(value: unknown): string {
       continue;
     }
     const candidate = cleanSubmitterCandidate(match[1]);
-    if (candidate && !isGenericSubmitter(candidate)) {
+    if (candidate && !isDisallowedSubmitterCandidate(candidate, agency)) {
       return candidate;
     }
   }
@@ -362,15 +402,44 @@ function extractSubmitterSubject(value: unknown): string {
   return "";
 }
 
+function extractTitleSubmitterCandidate(title: string): string {
+  const text = normalizeText(title || "");
+  if (!text) {
+    return "";
+  }
+  const match = text.match(/^(?:comment from|comment submitted by|letter from)\s+(.+)$/i);
+  if (!match?.[1]) {
+    return "";
+  }
+  return cleanSubmitterCandidate(match[1]);
+}
+
+function shouldResetCommentTitle(title: string, commentId: string, agency = ""): boolean {
+  const normalized = normalizeText(title || "");
+  if (!normalized) {
+    return true;
+  }
+  const candidate = extractTitleSubmitterCandidate(normalized);
+  if (candidate) {
+    return isDisallowedSubmitterCandidate(candidate, agency);
+  }
+  const lowered = normalized.toLowerCase();
+  if (lowered === "public comment") {
+    return true;
+  }
+  return Boolean(commentId) && lowered === normalizeText(commentId).toLowerCase();
+}
+
 function inferCommentIdentity(
   title: string,
   summary: string,
-  fullText: string
+  fullText: string,
+  agency = ""
 ): { commenter_name: string; commenter_org: string } {
   const candidates: string[] = [];
 
   for (const value of [title, summary, fullText]) {
-    const candidate = extractSubmitterSubject(value);
+    const candidate = extractSubmitterSubject(value, agency);
     if (candidate) {
       candidates.push(candidate);
     }
@@ -385,29 +454,29 @@ function inferCommentIdentity(
     if (shouldSkipSubmitterLine(line)) {
       continue;
     }
-    const candidate = extractSubmitterSubject(line);
+    const candidate = extractSubmitterSubject(line, agency);
     if (candidate) {
       candidates.push(candidate);
       continue;
     }
     const cleaned = cleanSubmitterCandidate(line);
-    if (!cleaned || isGenericSubmitter(cleaned)) {
+    if (isDisallowedSubmitterCandidate(cleaned, agency)) {
       continue;
     }
-    if (looksLikeOrganization(cleaned) || looksLikePersonName(cleaned)) {
+    if (looksLikeOrganization(cleaned, agency) || looksLikePersonName(cleaned, agency)) {
       candidates.push(cleaned);
     }
   }
 
   for (const candidate of candidates) {
     const cleaned = cleanSubmitterCandidate(candidate);
-    if (!cleaned || isGenericSubmitter(cleaned)) {
+    if (isDisallowedSubmitterCandidate(cleaned, agency)) {
       continue;
     }
-    if (looksLikePersonName(cleaned)) {
+    if (looksLikePersonName(cleaned, agency)) {
       return { commenter_name: cleaned, commenter_org: "" };
     }
-    if (looksLikeOrganization(cleaned) || (cleaned.split(/\s+/).length >= 2 && cleaned.split(/\s+/).length <= 16)) {
+    if (looksLikeOrganization(cleaned, agency)) {
       return { commenter_name: "", commenter_org: cleaned };
     }
   }
@@ -439,23 +508,28 @@ function resolvedCommentPresentation(
 ): Pick<NoticeCommentItem, "title" | "commenter_name" | "commenter_org" | "speaker" | "summary"> {
   const fullText = String(record.content?.full_text || "");
   const summary = summaryFor(record, entry);
+  const agency = normalizeText(metadata.organization || "");
+  const commentId = normalizeText(metadata.comment_id || "");
   let title = normalizeText(metadata.title || "Comment");
   let commenterName = normalizeText(metadata.commenter_name || extractLabeledValue(fullText, "Commenter") || "");
   let commenterOrg = normalizeText(metadata.commenter_org || extractLabeledValue(fullText, "Commenter Organization") || "");
   let speaker = normalizeText(metadata.speaker || "");
 
   if (!commenterName && !commenterOrg) {
-    const inferred = inferCommentIdentity(title, summary, fullText);
+    const inferred = inferCommentIdentity(title, summary, fullText, agency);
     commenterName = inferred.commenter_name;
     commenterOrg = inferred.commenter_org;
   }
 
   const primarySubmitter = commenterName || commenterOrg;
+  if (shouldResetCommentTitle(title, commentId, agency)) {
+    title = commentId || "Public Comment";
+  }
   if (primarySubmitter) {
     if (!speaker || isGenericSubmitter(speaker)) {
       speaker = primarySubmitter;
     }
-    if (isGenericCommentTitle(title, normalizeText(metadata.comment_id || ""))) {
+    if (isGenericCommentTitle(title, commentId)) {
       title = `Comment from ${primarySubmitter}`;
     }
   }

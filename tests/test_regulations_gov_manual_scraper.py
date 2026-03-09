@@ -7,6 +7,7 @@ from regulations_gov_manual_scraper import (
     _parse_regulations_url,
     _public_comment_url,
     _public_document_url,
+    _should_reset_comment_title,
     _extract_urls_from_value,
 )
 
@@ -131,6 +132,48 @@ class RegulationsGovManualScraperHelpersTests(unittest.TestCase):
         )
         self.assertEqual(inferred["commenter_name"], "Jane Doe")
         self.assertEqual(inferred["commenter_org"], "")
+
+    def test_reject_issue_intake_label(self):
+        inferred = _infer_commenter_identity(
+            title="Comment from Comment Intake—Financial Data Rights",
+            summary="",
+            body_text="",
+        )
+        self.assertEqual(inferred["commenter_name"], "")
+        self.assertEqual(inferred["commenter_org"], "")
+
+    def test_reject_agency_name_as_submitter(self):
+        inferred = _infer_commenter_identity(
+            title="Comment from CONSUMER FINANCIAL PROTECTION BUREAU",
+            summary="",
+            body_text="",
+            agency="Consumer Financial Protection Bureau",
+        )
+        self.assertEqual(inferred["commenter_name"], "")
+        self.assertEqual(inferred["commenter_org"], "")
+
+    def test_reset_bad_inferred_titles(self):
+        self.assertTrue(
+            _should_reset_comment_title(
+                "Comment from Comment Intake—Financial Data Rights",
+                comment_id="CFPB-2025-0037-12345",
+                agency="Consumer Financial Protection Bureau",
+            )
+        )
+        self.assertTrue(
+            _should_reset_comment_title(
+                "Comment from CONSUMER FINANCIAL PROTECTION BUREAU",
+                comment_id="CFPB-2025-0037-12345",
+                agency="Consumer Financial Protection Bureau",
+            )
+        )
+        self.assertFalse(
+            _should_reset_comment_title(
+                "Comment from Mortgage Bankers Association",
+                comment_id="CFPB-2025-0037-12345",
+                agency="Consumer Financial Protection Bureau",
+            )
+        )
 
 
 if __name__ == "__main__":

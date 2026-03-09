@@ -97,6 +97,17 @@ _SKIP_SUBMITTER_PREFIXES = (
     "dear ",
 )
 
+_DISALLOWED_SUBMITTER_PHRASES = (
+    "comment intake",
+    "financial data rights",
+    "personal financial data rights",
+    "advanced notice of proposed rulemaking",
+    "advance notice of proposed rulemaking",
+    "notice of proposed rulemaking",
+    "proposed rulemaking",
+    "reconsideration of the",
+)
+
 
 def _normalize_space(text: Any) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
@@ -375,6 +386,10 @@ def _is_generic_submitter(value: Any) -> bool:
     return normalized in _GENERIC_SUBMITTER_VALUES
 
 
+def _normalized_submitter_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", _normalize_space(value).lower()).strip()
+
+
 def _clean_submitter_candidate(value: Any) -> str:
     text = _normalize_space(value)
     text = re.sub(
@@ -394,9 +409,32 @@ def _clean_submitter_candidate(value: Any) -> str:
     return _normalize_space(text)
 
 
-def _looks_like_person_name(value: Any) -> bool:
+def _is_disallowed_submitter_candidate(value: Any, agency: Any = "") -> bool:
+    cleaned = _clean_submitter_candidate(value)
+    if not cleaned or _is_generic_submitter(cleaned):
+        return True
+
+    candidate_key = _normalized_submitter_key(cleaned)
+    if not candidate_key:
+        return True
+
+    if any(phrase in candidate_key for phrase in _DISALLOWED_SUBMITTER_PHRASES):
+        return True
+
+    agency_key = _normalized_submitter_key(agency)
+    if agency_key and (
+        candidate_key == agency_key
+        or candidate_key in agency_key
+        or agency_key in candidate_key
+    ):
+        return True
+
+    return False
+
+
+def _looks_like_person_name(value: Any, agency: Any = "") -> bool:
     text = _clean_submitter_candidate(value)
-    if not text or _is_generic_submitter(text):
+    if _is_disallowed_submitter_candidate(text, agency=agency):
         return False
     lowered = text.lower()
     if any(marker in lowered for marker in _ORG_MARKERS):
@@ -419,9 +457,9 @@ def _looks_like_person_name(value: Any) -> bool:
     return True
 
 
-def _looks_like_org_name(value: Any) -> bool:
+def _looks_like_org_name(value: Any, agency: Any = "") -> bool:
     text = _clean_submitter_candidate(value)
-    if not text or _is_generic_submitter(text):
+    if _is_disallowed_submitter_candidate(text, agency=agency):
         return False
     lowered = text.lower()
     if any(marker in lowered for marker in _ORG_MARKERS):
@@ -448,7 +486,7 @@ def _should_skip_submitter_line(value: Any) -> bool:
     return False
 
 
-def _extract_submitter_subject(value: Any) -> str:
+def _extract_submitter_subject(value: Any, agency: Any = "") -> str:
     text = _normalize_space(value)
     if not text:
         return ""
@@ -469,12 +507,35 @@ def _extract_submitter_subject(value: Any) -> str:
         if not match:
             continue
         candidate = _clean_submitter_candidate(match.group(1))
-        if candidate and not _is_generic_submitter(candidate):
+        if candidate and not _is_disallowed_submitter_candidate(candidate, agency=agency):
             return candidate
     return ""
 
 
-def _infer_commenter_identity(title: Any = "", summary: Any = "", body_text: Any = "") -> Dict[str, str]:
+def _extract_title_submitter_candidate(title: Any) -> str:
+    text = _normalize_space(title)
+    if not text:
+        return ""
+    match = re.match(r"^(?:comment from|comment submitted by|letter from)\s+(.+)$", text, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    return _clean_submitter_candidate(match.group(1))
+
+
+def _should_reset_comment_title(title: Any, comment_id: Any = "", agency: Any = "") -> bool:
+    text = _normalize_space(title)
+    if not text:
+        return True
+    candidate = _extract_title_submitter_candidate(text)
+    if candidate:
+        return _is_disallowed_submitter_candidate(candidate, agency=agency)
+    lowered = text.lower()
+    if lowered in {"public comment", str(comment_id or "").strip().lower()}:
+        return True
+    return False
+
+
+def _infer_commenter_identity(title: Any = "", summary: Any = "", body_text: Any = "", agency: Any = "") -> Dict[str, str]:
     sources: List[str] = []
     for value in (title, summary, body_text):
         text = str(value or "").strip()
@@ -484,7 +545,7 @@ def _infer_commenter_identity(title: Any = "", summary: Any = "", body_text: Any
     candidates: List[str] = []
 
     for source in sources:
-        candidate = _extract_submitter_subject(source)
+        candidate = _extract_submitter_subject(source, agency=agency)
         if candidate:
             candidates.append(candidate)
 
@@ -494,26 +555,24 @@ def _infer_commenter_identity(title: Any = "", summary: Any = "", body_text: Any
         if _should_skip_submitter_line(line):
             continue
 
-        candidate = _extract_submitter_subject(line)
+        candidate = _extract_submitter_subject(line, agency=agency)
         if candidate:
             candidates.append(candidate)
             continue
 
         cleaned = _clean_submitter_candidate(line)
-        if not cleaned or _is_generic_submitter(cleaned):
+        if _is_disallowed_submitter_candidate(cleaned, agency=agency):
             continue
-        if _looks_like_org_name(cleaned) or _looks_like_person_name(cleaned):
+        if _looks_like_org_name(cleaned, agency=agency) or _looks_like_person_name(cleaned, agency=agency):
             candidates.append(cleaned)
 
     for candidate in candidates:
         cleaned = _clean_submitter_candidate(candidate)
-        if not cleaned or _is_generic_submitter(cleaned):
+        if _is_disallowed_submitter_candidate(cleaned, agency=agency):
             continue
-        if _looks_like_person_name(cleaned):
+        if _looks_like_person_name(cleaned, agency=agency):
             return {"commenter_name": cleaned, "commenter_org": ""}
-        if _looks_like_org_name(cleaned):
-            return {"commenter_name": "", "commenter_org": cleaned}
-        if 2 <= len(cleaned.split()) <= 16:
+        if _looks_like_org_name(cleaned, agency=agency):
             return {"commenter_name": "", "commenter_org": cleaned}
 
     return {"commenter_name": "", "commenter_org": ""}
@@ -964,6 +1023,7 @@ class RegulationsGovManualScraper:
                 title=title,
                 summary=inline_comment or attachment_text,
                 body_text=body_text,
+                agency=agency,
             )
             commenter_name = inferred_identity.get("commenter_name", "") or commenter_name
             commenter_org = inferred_identity.get("commenter_org", "") or commenter_org
@@ -973,7 +1033,8 @@ class RegulationsGovManualScraper:
                 title = f"Comment from {commenter_name or commenter_org}"
             else:
                 title = comment_id or "Public Comment"
-        elif title.strip().lower() in {"public comment", str(comment_id or "").strip().lower()}:
+        elif _should_reset_comment_title(title, comment_id=comment_id, agency=agency):
+            title = comment_id or "Public Comment"
             if commenter_name or commenter_org:
                 title = f"Comment from {commenter_name or commenter_org}"
 
