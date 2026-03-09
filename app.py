@@ -5419,6 +5419,7 @@ def load_data(_cache_buster=None):
     rows = []
     for speech in raw_data.get("speeches", []):
         m = speech.get("metadata", {})
+        c = speech.get("content", {})
         v = speech.get("validation", {})
         raw_speaker = m.get("speaker", "Unknown")
         speaker_list = extract_speakers(raw_speaker)
