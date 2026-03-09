@@ -70,6 +70,76 @@ interface NoticeCommentsResponse {
 const ENRICHED_STATUSES = new Set(["enriched", "fallback_enriched", "reviewed"]);
 const NOTICE_SOURCE_KINDS = new Set(["finra_regulatory_notice", "regulations_gov_rule"]);
 const COMMENT_SOURCE_KINDS = new Set(["finra_comment_letter", "regulations_gov_comment"]);
+const GENERIC_SUBMITTER_VALUES = new Set([
+  "",
+  "comment",
+  "commenter",
+  "public comment",
+  "public comments",
+  "anonymous",
+  "anonymous commenter",
+  "n/a",
+  "na",
+  "none",
+  "unknown"
+]);
+const ORG_MARKERS = [
+  "association",
+  "federation",
+  "institute",
+  "alliance",
+  "coalition",
+  "council",
+  "chamber",
+  "union",
+  "bank",
+  "bancorp",
+  "company",
+  "co.",
+  "corp",
+  "corporation",
+  "inc",
+  "llc",
+  "l.p.",
+  "ltd",
+  "group",
+  "partners",
+  "capital",
+  "securities",
+  "financial",
+  "technology",
+  "technologies",
+  "network",
+  "society",
+  "committee",
+  "conference",
+  "center",
+  "centre",
+  "foundation",
+  "university",
+  "college",
+  "retail",
+  "manufacturers",
+  "merchants",
+  "credit union"
+];
+const SKIP_SUBMITTER_PREFIXES = [
+  "docket id:",
+  "comment id:",
+  "title:",
+  "agency:",
+  "posted date:",
+  "rule url:",
+  "comment page url:",
+  "resolved content url:",
+  "comment summary",
+  "comment text",
+  "extraction notes",
+  "re:",
+  "subject:",
+  "date:",
+  "dear "
+];
 
 function splitCsv(value: unknown): string[] {
   return String(value ?? "")
@@ -186,6 +256,217 @@ function summaryFor(record: CustomDocumentRecord, entry: EnrichmentEntry | undef
   }
 
   return normalizeText(record.metadata?.title || "").slice(0, 420);
+}
+
+function isGenericSubmitter(value: unknown): boolean {
+  const normalized = normalizeText(value || "").replace(/^[\s\-:;,.]+|[\s\-:;,.]+$/g, "").toLowerCase();
+  return GENERIC_SUBMITTER_VALUES.has(normalized);
+}
+
+function cleanSubmitterCandidate(value: unknown): string {
+  return normalizeText(value || "")
+    .replace(
+      /^(?:comment from|comment submitted by|comment submitted on behalf of|submitted by|submitter|commenter(?: name)?|commenter organization|organization|letter from|from|on behalf of)\s*:?\s*/i,
+      ""
+    )
+    .replace(
+      /\s+(?:re|subject|docket id|comment id|title|agency|posted date|rule url|comment page url|resolved content url)\s*:\s+.*$/i,
+      ""
+    )
+    .replace(/^[\s\-:;,.]+|[\s\-:;,.]+$/g, "");
+}
+
+function looksLikePersonName(value: unknown): boolean {
+  const text = cleanSubmitterCandidate(value);
+  if (!text || isGenericSubmitter(text)) {
+    return false;
+  }
+  const lowered = text.toLowerCase();
+  if (ORG_MARKERS.some((marker) => lowered.includes(marker))) {
+    return false;
+  }
+
+  const tokens = text.match(/[A-Za-z][A-Za-z'.-]*/g) || [];
+  if (tokens.length < 2 || tokens.length > 5) {
+    return false;
+  }
+
+  const allowedLower = new Set(["de", "del", "der", "di", "la", "le", "van", "von", "da", "jr", "sr", "ii", "iii", "iv", "esq"]);
+  return tokens.every((token) => {
+    if (token.length === 1) {
+      return true;
+    }
+    if (allowedLower.has(token.toLowerCase())) {
+      return true;
+    }
+    return token[0] === token[0]?.toUpperCase();
+  });
+}
+
+function looksLikeOrganization(value: unknown): boolean {
+  const text = cleanSubmitterCandidate(value);
+  if (!text || isGenericSubmitter(text)) {
+    return false;
+  }
+  const lowered = text.toLowerCase();
+  if (ORG_MARKERS.some((marker) => lowered.includes(marker))) {
+    return true;
+  }
+  if (text.includes("(") && text.includes(")")) {
+    return true;
+  }
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length >= 2 && words.length <= 10 && text === text.toUpperCase() && /[A-Z]/.test(text);
+}
+
+function shouldSkipSubmitterLine(value: unknown): boolean {
+  const text = normalizeText(value || "");
+  if (!text) {
+    return true;
+  }
+  const lowered = text.toLowerCase();
+  if (SKIP_SUBMITTER_PREFIXES.some((prefix) => lowered.startsWith(prefix))) {
+    return true;
+  }
+  if (/(https?:\/\/|www\.|@)/i.test(text)) {
+    return true;
+  }
+  const digitCount = (text.match(/\d/g) || []).length;
+  return digitCount >= 8;
+}
+
+function extractSubmitterSubject(value: unknown): string {
+  const text = normalizeText(value || "");
+  if (!text) {
+    return "";
+  }
+
+  const patterns = [
+    /^(?:submitted by|submitter|commenter(?: name)?|commenter organization|organization)\s*:\s*(.+)$/i,
+    /^(?:comment from|comment submitted by|letter from)\s+(.+)$/i,
+    /^(?:submitted on behalf of|on behalf of)\s+(.+?)(?:[.;]|$)/i,
+    /^(.{3,160}?)\s+(?:files?|filed|submit(?:s|ted)?|writes?|wrote|urges?|urge|supports?|support|opposes?|oppose|requests?|request|asks?|ask|recommends?|recommend|believes?|believe|argues?|argue|seeks?|seek)\b/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) {
+      continue;
+    }
+    const candidate = cleanSubmitterCandidate(match[1]);
+    if (candidate && !isGenericSubmitter(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+function inferCommentIdentity(
+  title: string,
+  summary: string,
+  fullText: string
+): { commenter_name: string; commenter_org: string } {
+  const candidates: string[] = [];
+
+  for (const value of [title, summary, fullText]) {
+    const candidate = extractSubmitterSubject(value);
+    if (candidate) {
+      candidates.push(candidate);
+    }
+  }
+
+  const lines = String(fullText || "")
+    .split(/\r?\n/)
+    .map((line) => normalizeText(line))
+    .filter(Boolean);
+
+  for (const line of lines.slice(0, 12)) {
+    if (shouldSkipSubmitterLine(line)) {
+      continue;
+    }
+    const candidate = extractSubmitterSubject(line);
+    if (candidate) {
+      candidates.push(candidate);
+      continue;
+    }
+    const cleaned = cleanSubmitterCandidate(line);
+    if (!cleaned || isGenericSubmitter(cleaned)) {
+      continue;
+    }
+    if (looksLikeOrganization(cleaned) || looksLikePersonName(cleaned)) {
+      candidates.push(cleaned);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const cleaned = cleanSubmitterCandidate(candidate);
+    if (!cleaned || isGenericSubmitter(cleaned)) {
+      continue;
+    }
+    if (looksLikePersonName(cleaned)) {
+      return { commenter_name: cleaned, commenter_org: "" };
+    }
+    if (looksLikeOrganization(cleaned) || (cleaned.split(/\s+/).length >= 2 && cleaned.split(/\s+/).length <= 16)) {
+      return { commenter_name: "", commenter_org: cleaned };
+    }
+  }
+
+  return { commenter_name: "", commenter_org: "" };
+}
+
+function extractLabeledValue(fullText: string, label: string): string {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(fullText || "").match(new RegExp(`^${escaped}\\s*:\\s*(.+)$`, "im"));
+  return normalizeText(match?.[1] || "");
+}
+
+function isGenericCommentTitle(title: string, commentId: string): boolean {
+  const normalized = normalizeText(title || "").toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  if (normalized === "comment" || normalized === "public comment") {
+    return true;
+  }
+  return Boolean(commentId) && normalized === normalizeText(commentId).toLowerCase();
+}
+
+function resolvedCommentPresentation(
+  record: CustomDocumentRecord,
+  metadata: CustomDocumentMetadata,
+  entry: EnrichmentEntry | undefined
+): Pick<NoticeCommentItem, "title" | "commenter_name" | "commenter_org" | "speaker" | "summary"> {
+  const fullText = String(record.content?.full_text || "");
+  const summary = summaryFor(record, entry);
+  let title = normalizeText(metadata.title || "Comment");
+  let commenterName = normalizeText(metadata.commenter_name || extractLabeledValue(fullText, "Commenter") || "");
+  let commenterOrg = normalizeText(metadata.commenter_org || extractLabeledValue(fullText, "Commenter Organization") || "");
+  let speaker = normalizeText(metadata.speaker || "");
+
+  if (!commenterName && !commenterOrg) {
+    const inferred = inferCommentIdentity(title, summary, fullText);
+    commenterName = inferred.commenter_name;
+    commenterOrg = inferred.commenter_org;
+  }
+
+  const primarySubmitter = commenterName || commenterOrg;
+  if (primarySubmitter) {
+    if (!speaker || isGenericSubmitter(speaker)) {
+      speaker = primarySubmitter;
+    }
+    if (isGenericCommentTitle(title, normalizeText(metadata.comment_id || ""))) {
+      title = `Comment from ${primarySubmitter}`;
+    }
+  }
+
+  return {
+    title: title || "Comment",
+    commenter_name: commenterName,
+    commenter_org: commenterOrg,
+    speaker,
+    summary
+  };
 }
 
 function sourceFamily(metadata: CustomDocumentMetadata): string {
@@ -478,6 +759,7 @@ export async function GET() {
       const key = noticeGroupKey(metadata);
       const publishedAt = normalizeText(metadata.published_date || metadata.date || "");
       const family = sourceFamily(metadata);
+      const commentPresentation = resolvedCommentPresentation(record, metadata, entry);
 
       const existing = groups.get(key);
       const group = existing || buildFallbackGroup(metadata, record, entry);
@@ -486,16 +768,16 @@ export async function GET() {
         document_id: docId,
         source_kind: normalizeText(metadata.source_kind || ""),
         source_family: family,
-        title: normalizeText(metadata.title || "Comment"),
-        commenter_name: normalizeText(metadata.commenter_name || ""),
-        commenter_org: normalizeText(metadata.commenter_org || ""),
-        speaker: normalizeText(metadata.speaker || ""),
+        title: commentPresentation.title,
+        commenter_name: commentPresentation.commenter_name,
+        commenter_org: commentPresentation.commenter_org,
+        speaker: commentPresentation.speaker,
         url: normalizeText(metadata.url || metadata.comment_page_url || metadata.comment_url || ""),
         comment_url: normalizeText(metadata.comment_page_url || metadata.comment_url || metadata.url || ""),
         pdf_url: normalizeText(metadata.pdf_url || ""),
         resolved_content_url: normalizeText(metadata.resolved_content_url || ""),
         published_at: publishedAt,
-        summary: summaryFor(record, entry),
+        summary: commentPresentation.summary,
         tags: buildNoticeTags(record, entry),
         keywords: buildKeywords(entry),
         enrichment_status: enrichmentStatus(entry),

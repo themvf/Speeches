@@ -3,6 +3,7 @@ import unittest
 from regulations_gov_manual_scraper import (
     _download_attachment_url,
     _download_content_url,
+    _infer_commenter_identity,
     _parse_regulations_url,
     _public_comment_url,
     _public_document_url,
@@ -91,6 +92,45 @@ class RegulationsGovManualScraperHelpersTests(unittest.TestCase):
                 "https://downloads.regulations.gov/CFPB-2025-0037-4964/attachment_1.txt",
             ],
         )
+
+    def test_infer_commenter_identity_from_summary_subject(self):
+        inferred = _infer_commenter_identity(
+            title="CFPB-2025-0037-13872",
+            summary=(
+                "The National Retail Federation (NRF) files a public comment strongly supporting the "
+                "CFPB's reconsideration of its Personal Financial Data Rights rule."
+            ),
+            body_text="",
+        )
+        self.assertEqual(inferred["commenter_name"], "")
+        self.assertEqual(inferred["commenter_org"], "The National Retail Federation (NRF)")
+
+    def test_infer_commenter_identity_from_title(self):
+        inferred = _infer_commenter_identity(
+            title="Comment from Cato Institute",
+            summary="",
+            body_text="",
+        )
+        self.assertEqual(inferred["commenter_name"], "")
+        self.assertEqual(inferred["commenter_org"], "Cato Institute")
+
+    def test_infer_commenter_identity_from_labeled_body_line(self):
+        inferred = _infer_commenter_identity(
+            title="Public Comment",
+            summary="",
+            body_text="Submitted by: Consumer Bankers Association\nRe: CFPB-2025-0037",
+        )
+        self.assertEqual(inferred["commenter_name"], "")
+        self.assertEqual(inferred["commenter_org"], "Consumer Bankers Association")
+
+    def test_infer_commenter_identity_person_name(self):
+        inferred = _infer_commenter_identity(
+            title="Comment from Jane Doe",
+            summary="",
+            body_text="",
+        )
+        self.assertEqual(inferred["commenter_name"], "Jane Doe")
+        self.assertEqual(inferred["commenter_org"], "")
 
 
 if __name__ == "__main__":

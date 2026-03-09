@@ -24,6 +24,79 @@ REGULATIONS_API_BASE = "https://api.regulations.gov/v4"
 REGULATIONS_PUBLIC_BASE = "https://www.regulations.gov"
 REGULATIONS_DOWNLOAD_BASE = "https://downloads.regulations.gov"
 
+_GENERIC_SUBMITTER_VALUES = {
+    "",
+    "comment",
+    "commenter",
+    "public comment",
+    "public comments",
+    "anonymous",
+    "anonymous commenter",
+    "n/a",
+    "na",
+    "none",
+    "unknown",
+}
+
+_ORG_MARKERS = (
+    "association",
+    "federation",
+    "institute",
+    "alliance",
+    "coalition",
+    "council",
+    "chamber",
+    "union",
+    "bank",
+    "bancorp",
+    "company",
+    "co.",
+    "corp",
+    "corporation",
+    "inc",
+    "llc",
+    "l.p.",
+    "ltd",
+    "group",
+    "partners",
+    "capital",
+    "securities",
+    "financial",
+    "technology",
+    "technologies",
+    "network",
+    "society",
+    "committee",
+    "conference",
+    "center",
+    "centre",
+    "foundation",
+    "university",
+    "college",
+    "retail",
+    "manufacturers",
+    "merchants",
+    "credit union",
+)
+
+_SKIP_SUBMITTER_PREFIXES = (
+    "docket id:",
+    "comment id:",
+    "title:",
+    "agency:",
+    "posted date:",
+    "rule url:",
+    "comment page url:",
+    "resolved content url:",
+    "comment summary",
+    "comment text",
+    "extraction notes",
+    "re:",
+    "subject:",
+    "date:",
+    "dear ",
+)
+
 
 def _normalize_space(text: Any) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
@@ -295,6 +368,155 @@ def _select_primary_document(documents: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not documents:
         return {}
     return max(documents, key=_score)
+
+
+def _is_generic_submitter(value: Any) -> bool:
+    normalized = _normalize_space(value).strip(" -:;,.").lower()
+    return normalized in _GENERIC_SUBMITTER_VALUES
+
+
+def _clean_submitter_candidate(value: Any) -> str:
+    text = _normalize_space(value)
+    text = re.sub(
+        r"^(?:comment from|comment submitted by|comment submitted on behalf of|submitted by|submitter|"
+        r"commenter(?: name)?|commenter organization|organization|letter from|from|on behalf of)\s*:?\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\s+(?:re|subject|docket id|comment id|title|agency|posted date|rule url|comment page url|resolved content url)\s*:\s+.*$",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = text.strip(" -:;,.")
+    return _normalize_space(text)
+
+
+def _looks_like_person_name(value: Any) -> bool:
+    text = _clean_submitter_candidate(value)
+    if not text or _is_generic_submitter(text):
+        return False
+    lowered = text.lower()
+    if any(marker in lowered for marker in _ORG_MARKERS):
+        return False
+    if any(token in lowered for token in ("committee", "association", "federation", "institute", "coalition")):
+        return False
+
+    tokens = re.findall(r"[A-Za-z][A-Za-z'.-]*", text)
+    if len(tokens) < 2 or len(tokens) > 5:
+        return False
+
+    allowed_lower = {"de", "del", "der", "di", "la", "le", "van", "von", "da", "jr", "sr", "ii", "iii", "iv", "esq"}
+    for token in tokens:
+        if len(token) == 1:
+            continue
+        if token.lower() in allowed_lower:
+            continue
+        if not token[0].isupper():
+            return False
+    return True
+
+
+def _looks_like_org_name(value: Any) -> bool:
+    text = _clean_submitter_candidate(value)
+    if not text or _is_generic_submitter(text):
+        return False
+    lowered = text.lower()
+    if any(marker in lowered for marker in _ORG_MARKERS):
+        return True
+    if "(" in text and ")" in text:
+        return True
+    words = text.split()
+    if 2 <= len(words) <= 10 and text.upper() == text and any(ch.isalpha() for ch in text):
+        return True
+    return False
+
+
+def _should_skip_submitter_line(value: Any) -> bool:
+    text = _normalize_space(value)
+    if not text:
+        return True
+    lowered = text.lower()
+    if lowered.startswith(_SKIP_SUBMITTER_PREFIXES):
+        return True
+    if "http://" in lowered or "https://" in lowered or "www." in lowered or "@" in text:
+        return True
+    if sum(ch.isdigit() for ch in text) >= 8:
+        return True
+    return False
+
+
+def _extract_submitter_subject(value: Any) -> str:
+    text = _normalize_space(value)
+    if not text:
+        return ""
+
+    patterns = [
+        r"^(?:submitted by|submitter|commenter(?: name)?|commenter organization|organization)\s*:\s*(.+)$",
+        r"^(?:comment from|comment submitted by|letter from)\s+(.+)$",
+        r"^(?:submitted on behalf of|on behalf of)\s+(.+?)(?:[.;]|$)",
+        (
+            r"^(.{3,160}?)\s+"
+            r"(?:files?|filed|submit(?:s|ted)?|writes?|wrote|urges?|urge|supports?|support|opposes?|oppose|"
+            r"requests?|request|asks?|ask|recommends?|recommend|believes?|believe|argues?|argue|seeks?|seek)\b"
+        ),
+    ]
+
+    for pattern in patterns:
+        match = re.match(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        candidate = _clean_submitter_candidate(match.group(1))
+        if candidate and not _is_generic_submitter(candidate):
+            return candidate
+    return ""
+
+
+def _infer_commenter_identity(title: Any = "", summary: Any = "", body_text: Any = "") -> Dict[str, str]:
+    sources: List[str] = []
+    for value in (title, summary, body_text):
+        text = str(value or "").strip()
+        if text:
+            sources.append(text)
+
+    candidates: List[str] = []
+
+    for source in sources:
+        candidate = _extract_submitter_subject(source)
+        if candidate:
+            candidates.append(candidate)
+
+    body_lines = [line for line in str(body_text or "").splitlines() if _normalize_space(line)]
+    for raw_line in body_lines[:12]:
+        line = _normalize_space(raw_line)
+        if _should_skip_submitter_line(line):
+            continue
+
+        candidate = _extract_submitter_subject(line)
+        if candidate:
+            candidates.append(candidate)
+            continue
+
+        cleaned = _clean_submitter_candidate(line)
+        if not cleaned or _is_generic_submitter(cleaned):
+            continue
+        if _looks_like_org_name(cleaned) or _looks_like_person_name(cleaned):
+            candidates.append(cleaned)
+
+    for candidate in candidates:
+        cleaned = _clean_submitter_candidate(candidate)
+        if not cleaned or _is_generic_submitter(cleaned):
+            continue
+        if _looks_like_person_name(cleaned):
+            return {"commenter_name": cleaned, "commenter_org": ""}
+        if _looks_like_org_name(cleaned):
+            return {"commenter_name": "", "commenter_org": cleaned}
+        if 2 <= len(cleaned.split()) <= 16:
+            return {"commenter_name": "", "commenter_org": cleaned}
+
+    return {"commenter_name": "", "commenter_org": ""}
 
 
 class RegulationsGovManualScraper:
@@ -736,11 +958,24 @@ class RegulationsGovManualScraper:
                 if not source_format:
                     source_format = "html"
 
+        inferred_identity = {"commenter_name": "", "commenter_org": ""}
+        if not commenter_name and not commenter_org:
+            inferred_identity = _infer_commenter_identity(
+                title=title,
+                summary=inline_comment or attachment_text,
+                body_text=body_text,
+            )
+            commenter_name = inferred_identity.get("commenter_name", "") or commenter_name
+            commenter_org = inferred_identity.get("commenter_org", "") or commenter_org
+
         if not title:
             if commenter_name or commenter_org:
                 title = f"Comment from {commenter_name or commenter_org}"
             else:
                 title = comment_id or "Public Comment"
+        elif title.strip().lower() in {"public comment", str(comment_id or "").strip().lower()}:
+            if commenter_name or commenter_org:
+                title = f"Comment from {commenter_name or commenter_org}"
 
         summary = _summarize_text(inline_comment or attachment_text)
         full_text = self._build_comment_text(

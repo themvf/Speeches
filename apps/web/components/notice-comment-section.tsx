@@ -115,6 +115,19 @@ function formatPositionLabel(value: string): string {
     .join(" ");
 }
 
+function commentDisplayName(comment: NoticeCommentItem): string {
+  return comment.commenter_name || comment.commenter_org || comment.speaker || "Commenter";
+}
+
+function commentOrgSuffix(comment: NoticeCommentItem): string {
+  const primary = commentDisplayName(comment);
+  const org = String(comment.commenter_org || "").trim();
+  if (!org || org === primary) {
+    return "";
+  }
+  return org;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, {
     cache: "no-store",
@@ -448,8 +461,8 @@ export function NoticeCommentSection() {
                           </div>
                           <h3 className="mt-2 text-lg font-semibold leading-snug">{comment.title || "Comment"}</h3>
                           <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
-                            {comment.commenter_name || comment.speaker || "Commenter"}
-                            {comment.commenter_org ? ` | ${comment.commenter_org}` : ""}
+                            {commentDisplayName(comment)}
+                            {commentOrgSuffix(comment) ? ` | ${commentOrgSuffix(comment)}` : ""}
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
