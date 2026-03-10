@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 type HubMode = "home" | "operations" | "analytics" | "chats";
@@ -337,6 +338,20 @@ function analysisChipClass(value: string): string {
   return "status-chip status-neutral";
 }
 
+function analysisPreviewCardClass(value: string): string {
+  const label = String(value || "").toLowerCase();
+  if (["supportive", "supports", "aligned", "favorable"].includes(label)) {
+    return "border-[rgba(65,211,157,0.52)] bg-[rgba(65,211,157,0.14)] text-[#bcf9e3]";
+  }
+  if (["opposed", "opposes", "critical", "negative", "adverse"].includes(label)) {
+    return "border-[rgba(255,107,127,0.52)] bg-[rgba(255,107,127,0.14)] text-[#ffc7d0]";
+  }
+  if (["mixed", "qualified", "partially_supportive"].includes(label)) {
+    return "border-[rgba(242,171,67,0.52)] bg-[rgba(242,171,67,0.14)] text-[#ffe6bf]";
+  }
+  return "border-[rgba(159,184,210,0.44)] bg-[rgba(159,184,210,0.14)] text-[#d5e2ef]";
+}
+
 function readStringField(value: unknown, key: string): string {
   if (!value || typeof value !== "object") {
     return "";
@@ -396,16 +411,35 @@ function pickPrimaryAnalysis(detail: DocumentDetailData | null | undefined): {
   return { kind: "", label: "", tone: "", rationale: "", confidence: 0 };
 }
 
-function renderToneChips(items: string[], emptyLabel: string) {
+function quickAnalysisHeading(kind: "position" | "stance" | "summary" | "", isExpanded: boolean): string {
+  if (isExpanded) return "Hide analysis";
+  if (kind === "position") return "Position";
+  if (kind === "stance") return "Stance";
+  if (kind === "summary") return "Summary";
+  return "Analysis";
+}
+
+function renderToneChips(items: string[], emptyLabel: string, onSelect?: (item: string) => void) {
   if (!items.length) {
     return <span className="text-xs text-[color:var(--ink-faint)]">{emptyLabel}</span>;
   }
   return (
     <div className="flex flex-wrap gap-2">
       {items.map((item) => (
-        <span key={item} className="tone-chip">
-          {item}
-        </span>
+        onSelect ? (
+          <button
+            key={item}
+            type="button"
+            className="tone-chip transition hover:border-[color:var(--accent)] hover:text-[color:var(--ink)]"
+            onClick={() => onSelect(item)}
+          >
+            {item}
+          </button>
+        ) : (
+          <span key={item} className="tone-chip">
+            {item}
+          </span>
+        )
       ))}
     </div>
   );
@@ -440,6 +474,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   const needsMetrics = mode === "analytics" || mode === "operations";
   const needsOps = mode === "operations";
   const needsChats = mode === "chats";
+  const searchParams = useSearchParams();
 
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(needsMetrics);
@@ -456,11 +491,12 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   const [docDetails, setDocDetails] = useState<Record<string, DocumentDetailData>>({});
   const [docDetailLoading, setDocDetailLoading] = useState<Record<string, boolean>>({});
   const [docDetailError, setDocDetailError] = useState<Record<string, string>>({});
-  const [q, setQ] = useState("");
-  const [org, setOrg] = useState("");
-  const [source, setSource] = useState("");
-  const [topic, setTopic] = useState("");
-  const [keyword, setKeyword] = useState("");
+  const [q, setQ] = useState(searchParams.get("q") || "");
+  const [org, setOrg] = useState(searchParams.get("org") || "");
+  const [source, setSource] = useState(searchParams.get("source_kind") || searchParams.get("source") || "");
+  const [topic, setTopic] = useState(searchParams.get("topic") || "");
+  const [keyword, setKeyword] = useState(searchParams.get("keyword") || "");
+  const [tag, setTag] = useState(searchParams.get("tag") || "");
   const [sort, setSort] = useState("date_desc");
 
   const [settings, setSettings] = useState<NewsConnectorSettings>(DEFAULT_SETTINGS);
@@ -554,6 +590,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
       if (source.trim()) params.set("source_kind", source.trim());
       if (topic.trim()) params.set("topic", topic.trim());
       if (keyword.trim()) params.set("keyword", keyword.trim());
+      if (tag.trim()) params.set("tag", tag.trim());
       const data = await fetchJson<DocumentsData>(`/api/documents?${params.toString()}`);
       setItems(data.items || []);
       setFacets(data.facets || EMPTY_FACETS);
@@ -565,7 +602,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     } finally {
       setDocsLoading(false);
     }
-  }, [keyword, needsDocs, org, page, pageSize, q, sort, source, topic]);
+  }, [keyword, needsDocs, org, page, pageSize, q, sort, source, tag, topic]);
 
   const loadSettings = useCallback(async () => {
     if (!needsOps) return;
@@ -630,6 +667,23 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
       void loadDocDetail(docId);
     }
   }, [docDetailLoading, docDetails, loadDocDetail]);
+
+  const applyCorpusChipFilter = useCallback((value: string, kind: "tag" | "keyword") => {
+    const term = String(value || "").trim();
+    if (!term) return;
+    setPage(1);
+    setSource("");
+    setOrg("");
+    setTopic("");
+    setQ("");
+    if (kind === "keyword") {
+      setKeyword(term);
+      setTag("");
+    } else {
+      setTag(term);
+      setKeyword("");
+    }
+  }, []);
 
   const launch = useCallback(
     async (kind: "extract" | "ingest" | "enrich") => {
@@ -699,6 +753,24 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   useEffect(() => {
     if (needsOps) void loadSettings();
   }, [loadSettings, needsOps]);
+
+  useEffect(() => {
+    if (!needsDocs) return;
+    const nextQ = searchParams.get("q") || "";
+    const nextOrg = searchParams.get("org") || "";
+    const nextSource = searchParams.get("source_kind") || searchParams.get("source") || "";
+    const nextTopic = searchParams.get("topic") || "";
+    const nextKeyword = searchParams.get("keyword") || "";
+    const nextTag = searchParams.get("tag") || "";
+
+    setQ((prev) => (prev === nextQ ? prev : nextQ));
+    setOrg((prev) => (prev === nextOrg ? prev : nextOrg));
+    setSource((prev) => (prev === nextSource ? prev : nextSource));
+    setTopic((prev) => (prev === nextTopic ? prev : nextTopic));
+    setKeyword((prev) => (prev === nextKeyword ? prev : nextKeyword));
+    setTag((prev) => (prev === nextTag ? prev : nextTag));
+    setPage(1);
+  }, [needsDocs, searchParams]);
 
   useEffect(() => {
     if (!needsOps || !activeJob?.job_id || !["queued", "running", "unknown"].includes(activeJob.status)) return;
@@ -822,6 +894,21 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
               <option value="date_asc">Oldest Published</option>
             </select>
           </div>
+          {tag ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Active tag</span>
+              <button
+                type="button"
+                className="tone-chip transition hover:border-[color:var(--accent)] hover:text-[color:var(--ink)]"
+                onClick={() => {
+                  setPage(1);
+                  setTag("");
+                }}
+              >
+                {tag} x
+              </button>
+            </div>
+          ) : null}
           {docsError ? (
             <p className="callout callout-error mt-3">{docsError}</p>
           ) : null}
@@ -858,21 +945,21 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                     const detailError = docDetailError[d.document_id] || "";
                     const isExpanded = !!expandedDocs[d.document_id];
                     const primaryAnalysis = pickPrimaryAnalysis(detail);
-                    let analysisButtonLabel = "View analysis";
+                    let analysisPreviewText = "Open the analysis panel for summary, stance, tags, and keywords.";
                     if (detailLoading) {
-                      analysisButtonLabel = "Loading analysis...";
+                      analysisPreviewText = "Loading analysis...";
                     } else if (primaryAnalysis.kind === "position") {
-                      analysisButtonLabel = `Position: ${formatAnalysisLabel(primaryAnalysis.label)}`;
+                      analysisPreviewText = formatAnalysisLabel(primaryAnalysis.label);
                     } else if (primaryAnalysis.kind === "stance") {
-                      analysisButtonLabel = `Stance: ${formatAnalysisLabel(primaryAnalysis.label)}`;
+                      analysisPreviewText = formatAnalysisLabel(primaryAnalysis.label);
                     } else if (detail?.enrichment.summary) {
-                      analysisButtonLabel = "Summary ready";
+                      analysisPreviewText = detail.enrichment.summary;
                     } else if (["enriched", "reviewed", "fallback_enriched"].includes(String(d.enrichment_status || "").toLowerCase())) {
-                      analysisButtonLabel = "Analysis ready";
+                      analysisPreviewText = "Analysis ready. Click to expand the extracted summary and rationale.";
                     } else if (detailError) {
-                      analysisButtonLabel = "Retry analysis";
+                      analysisPreviewText = "Analysis failed to load. Click to retry.";
                     } else {
-                      analysisButtonLabel = "No analysis yet";
+                      analysisPreviewText = "No analysis is available for this document yet.";
                     }
 
                     return (
@@ -880,7 +967,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                         <tr>
                           <td>
                             <p className="feed-title">{d.title || "Untitled"}</p>
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <div className="mt-2 flex flex-col items-start gap-2">
                               {d.url ? (
                                 <a
                                   href={d.url}
@@ -893,14 +980,28 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                               ) : null}
                               <button
                                 type="button"
-                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-[0.04em] ${
+                                className={`flex w-full max-w-[31rem] flex-col items-start rounded-lg border px-4 py-3 text-left transition hover:border-[color:var(--accent)] ${
                                   primaryAnalysis.kind
-                                    ? analysisChipClass(primaryAnalysis.tone)
-                                    : "border-[color:var(--line)] text-[color:var(--ink-soft)]"
+                                    ? analysisPreviewCardClass(primaryAnalysis.tone)
+                                    : "border-[color:var(--line)] bg-[color:rgba(9,22,36,0.68)] text-[color:var(--ink-soft)]"
                                 }`}
                                 onClick={() => toggleDocAnalysis(d.document_id)}
                               >
-                                {isExpanded ? "Hide analysis" : analysisButtonLabel}
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] opacity-80">
+                                  {quickAnalysisHeading(primaryAnalysis.kind, isExpanded)}
+                                </span>
+                                <span
+                                  className="mt-2 block text-sm font-semibold leading-6"
+                                  style={{
+                                    textAlign: "justify",
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 4,
+                                    WebkitBoxOrient: "vertical",
+                                    overflow: "hidden"
+                                  }}
+                                >
+                                  {analysisPreviewText}
+                                </span>
                               </button>
                             </div>
                           </td>
@@ -970,13 +1071,17 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                                       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
                                         Tags
                                       </p>
-                                      {renderToneChips(detail.enrichment.tags, "No tags yet")}
+                                      {renderToneChips(detail.enrichment.tags, "No tags yet", (item) =>
+                                        applyCorpusChipFilter(item, "tag")
+                                      )}
                                     </div>
                                     <div>
                                       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
                                         Keywords
                                       </p>
-                                      {renderToneChips(detail.enrichment.keywords, "No keywords yet")}
+                                      {renderToneChips(detail.enrichment.keywords, "No keywords yet", (item) =>
+                                        applyCorpusChipFilter(item, "keyword")
+                                      )}
                                     </div>
                                   </div>
                                 </div>

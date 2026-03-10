@@ -140,16 +140,27 @@ async function fetchJson<T>(url: string): Promise<T> {
   return payload.data;
 }
 
-function detailChips(items: string[], emptyLabel: string) {
+function corpusFilterHref(kind: "tag" | "keyword", value: string): string {
+  const params = new URLSearchParams();
+  params.set(kind, value);
+  return `/?${params.toString()}`;
+}
+
+function detailChips(items: string[], emptyLabel: string, kind: "tag" | "keyword") {
   if (items.length === 0) {
     return <span className="text-xs text-[color:var(--ink-faint)]">{emptyLabel}</span>;
   }
   return (
     <div className="flex flex-wrap gap-2">
       {items.map((item) => (
-        <span key={item} className="tone-chip">
+        <a
+          key={item}
+          href={corpusFilterHref(kind, item)}
+          className="tone-chip transition hover:border-[color:var(--accent)] hover:text-[color:var(--ink)]"
+          title={`Find other corpus documents with ${kind} ${item}`}
+        >
           {item}
-        </span>
+        </a>
       ))}
     </div>
   );
@@ -431,13 +442,13 @@ export function NoticeCommentSection() {
                     <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
                       Group Tags
                     </p>
-                    {detailChips(group.tags, "No group tags")}
+                    {detailChips(group.tags, "No group tags", "tag")}
                   </div>
                   <div>
                     <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
                       Group Keywords
                     </p>
-                    {detailChips(group.keywords, "No group keywords")}
+                    {detailChips(group.keywords, "No group keywords", "keyword")}
                   </div>
                 </div>
               )}
@@ -492,13 +503,13 @@ export function NoticeCommentSection() {
                           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
                             Tags
                           </p>
-                          {detailChips(comment.tags, "No tags yet")}
+                          {detailChips(comment.tags, "No tags yet", "tag")}
                         </div>
                         <div>
                           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
                             Keywords
                           </p>
-                          {detailChips(comment.keywords, "No keywords yet")}
+                          {detailChips(comment.keywords, "No keywords yet", "keyword")}
                         </div>
                       </div>
 

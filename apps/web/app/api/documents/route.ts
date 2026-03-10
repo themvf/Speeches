@@ -27,6 +27,7 @@ export async function GET(request: Request) {
     const sourceKind = normalizeText(url.searchParams.get("source_kind") || url.searchParams.get("source"));
     const topic = normalizeFacetToken(url.searchParams.get("topic") || "");
     const keyword = normalizeFacetToken(url.searchParams.get("keyword") || "");
+    const tag = normalizeFacetToken(url.searchParams.get("tag") || "");
     const status = normalizeText(url.searchParams.get("status"));
     const sort = normalizeText(url.searchParams.get("sort")) || "date_desc";
 
@@ -73,6 +74,15 @@ export async function GET(request: Request) {
           return token === keyword || token.includes(keyword);
         });
         if (!hasKeyword) {
+          return false;
+        }
+      }
+      if (tag) {
+        const hasTag = (item.tags || []).some((value) => {
+          const token = normalizeFacetToken(value);
+          return token === tag || token.includes(tag);
+        });
+        if (!hasTag) {
           return false;
         }
       }
