@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 type HubMode = "home" | "operations" | "analytics" | "chats";
 type JobStatus = "queued" | "running" | "success" | "failed" | "unknown";
@@ -57,6 +57,34 @@ interface DocumentsData {
   page_size: number;
   total: number;
   facets: DocumentsFacets;
+}
+
+interface DocumentDetailData {
+  metadata: {
+    document_id: string;
+    published_at: string;
+  };
+  content: {
+    full_text: string;
+    paragraphs: string[];
+    sentences: string[];
+  };
+  enrichment: {
+    status: string;
+    summary: string;
+    tags: string[];
+    keywords: string[];
+    entities: string[];
+    evidence_spans: Array<Record<string, unknown>>;
+    stance: Record<string, unknown>;
+    comment_position: Record<string, unknown>;
+    confidence: number;
+  };
+  review: {
+    decision: string;
+    notes: string;
+    reviewed_at: string;
+  };
 }
 
 interface JobState {
@@ -291,6 +319,98 @@ function typeClass(typeLabel: string): string {
   return "type-chip type-default";
 }
 
+function formatAnalysisLabel(value: string): string {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function analysisChipClass(value: string): string {
+  const label = String(value || "").toLowerCase();
+  if (["supportive", "supports", "aligned", "favorable"].includes(label)) return "status-chip status-success";
+  if (["opposed", "opposes", "critical", "negative", "adverse"].includes(label)) return "status-chip status-failure";
+  if (["mixed", "qualified", "partially_supportive"].includes(label)) return "status-chip status-warn";
+  return "status-chip status-neutral";
+}
+
+function readStringField(value: unknown, key: string): string {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+  const out = (value as Record<string, unknown>)[key];
+  return typeof out === "string" ? out.trim() : "";
+}
+
+function readNumberField(value: unknown, key: string): number {
+  if (!value || typeof value !== "object") {
+    return 0;
+  }
+  const out = Number.parseFloat(String((value as Record<string, unknown>)[key] ?? "0"));
+  return Number.isFinite(out) ? out : 0;
+}
+
+function pickPrimaryAnalysis(detail: DocumentDetailData | null | undefined): {
+  kind: "position" | "stance" | "summary" | "";
+  label: string;
+  tone: string;
+  rationale: string;
+  confidence: number;
+} {
+  if (!detail) {
+    return { kind: "", label: "", tone: "", rationale: "", confidence: 0 };
+  }
+
+  const positionLabel = readStringField(detail.enrichment.comment_position, "label").toLowerCase();
+  const positionRationale = readStringField(detail.enrichment.comment_position, "rationale");
+  const positionConfidence = readNumberField(detail.enrichment.comment_position, "confidence");
+  if (positionLabel && positionLabel !== "not_applicable" && positionLabel !== "unclear") {
+    return {
+      kind: "position",
+      label: positionLabel,
+      tone: positionLabel,
+      rationale: positionRationale,
+      confidence: Math.max(0, Math.min(1, positionConfidence))
+    };
+  }
+
+  const stanceLabel = readStringField(detail.enrichment.stance, "label").toLowerCase();
+  const stanceTarget = readStringField(detail.enrichment.stance, "target");
+  if (stanceLabel && stanceLabel !== "unclear" && stanceLabel !== "not_applicable") {
+    return {
+      kind: "stance",
+      label: stanceTarget ? `${stanceLabel} (${stanceTarget})` : stanceLabel,
+      tone: stanceLabel,
+      rationale: "",
+      confidence: Math.max(0, Math.min(1, Number(detail.enrichment.confidence || 0)))
+    };
+  }
+
+  if (detail.enrichment.summary) {
+    return { kind: "summary", label: "summary_ready", tone: "summary_ready", rationale: "", confidence: 0 };
+  }
+
+  return { kind: "", label: "", tone: "", rationale: "", confidence: 0 };
+}
+
+function renderToneChips(items: string[], emptyLabel: string) {
+  if (!items.length) {
+    return <span className="text-xs text-[color:var(--ink-faint)]">{emptyLabel}</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <span key={item} className="tone-chip">
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function headerFor(mode: HubMode): { title: string; subtitle: string } {
   if (mode === "home") {
     return {
@@ -332,6 +452,10 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   const [pageSize, setPageSize] = useState(20);
   const [docsLoading, setDocsLoading] = useState(needsDocs);
   const [docsError, setDocsError] = useState("");
+  const [expandedDocs, setExpandedDocs] = useState<Record<string, boolean>>({});
+  const [docDetails, setDocDetails] = useState<Record<string, DocumentDetailData>>({});
+  const [docDetailLoading, setDocDetailLoading] = useState<Record<string, boolean>>({});
+  const [docDetailError, setDocDetailError] = useState<Record<string, string>>({});
   const [q, setQ] = useState("");
   const [org, setOrg] = useState("");
   const [source, setSource] = useState("");
@@ -472,6 +596,40 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
       setSettingsSaving(false);
     }
   }, [settings]);
+
+  const loadDocDetail = useCallback(async (documentId: string) => {
+    const docId = String(documentId || "").trim();
+    if (!docId) return;
+    if (docDetails[docId] || docDetailLoading[docId]) return;
+
+    setDocDetailLoading((prev) => ({ ...prev, [docId]: true }));
+    setDocDetailError((prev) => ({ ...prev, [docId]: "" }));
+    try {
+      const detail = await fetchJson<DocumentDetailData>(`/api/documents/${encodeURIComponent(docId)}`);
+      setDocDetails((prev) => ({ ...prev, [docId]: detail }));
+    } catch (err) {
+      setDocDetailError((prev) => ({
+        ...prev,
+        [docId]: err instanceof Error ? err.message : "Failed to load analysis."
+      }));
+    } finally {
+      setDocDetailLoading((prev) => ({ ...prev, [docId]: false }));
+    }
+  }, [docDetailLoading, docDetails]);
+
+  const toggleDocAnalysis = useCallback((documentId: string) => {
+    const docId = String(documentId || "").trim();
+    if (!docId) return;
+
+    setExpandedDocs((prev) => {
+      const nextValue = !prev[docId];
+      return { ...prev, [docId]: nextValue };
+    });
+
+    if (!docDetails[docId] && !docDetailLoading[docId]) {
+      void loadDocDetail(docId);
+    }
+  }, [docDetailLoading, docDetails, loadDocDetail]);
 
   const launch = useCallback(
     async (kind: "extract" | "ingest" | "enrich") => {
@@ -695,34 +853,140 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 ) : (
                   items.map((d) => {
                     const typeLabel = displayType(d.doc_type, d.source_kind);
+                    const detail = docDetails[d.document_id];
+                    const detailLoading = !!docDetailLoading[d.document_id];
+                    const detailError = docDetailError[d.document_id] || "";
+                    const isExpanded = !!expandedDocs[d.document_id];
+                    const primaryAnalysis = pickPrimaryAnalysis(detail);
+                    let analysisButtonLabel = "View analysis";
+                    if (detailLoading) {
+                      analysisButtonLabel = "Loading analysis...";
+                    } else if (primaryAnalysis.kind === "position") {
+                      analysisButtonLabel = `Position: ${formatAnalysisLabel(primaryAnalysis.label)}`;
+                    } else if (primaryAnalysis.kind === "stance") {
+                      analysisButtonLabel = `Stance: ${formatAnalysisLabel(primaryAnalysis.label)}`;
+                    } else if (detail?.enrichment.summary) {
+                      analysisButtonLabel = "Summary ready";
+                    } else if (["enriched", "reviewed", "fallback_enriched"].includes(String(d.enrichment_status || "").toLowerCase())) {
+                      analysisButtonLabel = "Analysis ready";
+                    } else if (detailError) {
+                      analysisButtonLabel = "Retry analysis";
+                    } else {
+                      analysisButtonLabel = "No analysis yet";
+                    }
+
                     return (
-                      <tr key={d.document_id}>
-                        <td>
-                          <p className="feed-title">{d.title || "Untitled"}</p>
-                          {d.url ? (
-                            <a
-                              href={d.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="link-inline mt-1 inline-block text-xs"
-                            >
-                              Open source
-                            </a>
-                          ) : null}
-                        </td>
-                        <td className="text-xs">
-                          <span className="tone-chip">{displayOrganization(d.organization)}</span>
-                          <p className="feed-subtle mt-2">{fmt(d.word_count)} words</p>
-                        </td>
-                        <td className="text-xs">
-                          <span className={typeClass(typeLabel)}>{typeLabel}</span>
-                        </td>
-                        <td className="text-xs">{exactSpeakerName(d)}</td>
-                        <td className="text-xs">
-                          {(d.keywords || []).slice(0, 4).join(", ") || (d.topics || []).slice(0, 4).join(", ") || "-"}
-                        </td>
-                        <td className="text-xs">{fmtDateOnly(d.published_at || d.date)}</td>
-                      </tr>
+                      <Fragment key={d.document_id}>
+                        <tr>
+                          <td>
+                            <p className="feed-title">{d.title || "Untitled"}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              {d.url ? (
+                                <a
+                                  href={d.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="link-inline inline-block text-xs"
+                                >
+                                  Open source
+                                </a>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-[0.04em] ${
+                                  primaryAnalysis.kind
+                                    ? analysisChipClass(primaryAnalysis.tone)
+                                    : "border-[color:var(--line)] text-[color:var(--ink-soft)]"
+                                }`}
+                                onClick={() => toggleDocAnalysis(d.document_id)}
+                              >
+                                {isExpanded ? "Hide analysis" : analysisButtonLabel}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="text-xs">
+                            <span className="tone-chip">{displayOrganization(d.organization)}</span>
+                            <p className="feed-subtle mt-2">{fmt(d.word_count)} words</p>
+                          </td>
+                          <td className="text-xs">
+                            <span className={typeClass(typeLabel)}>{typeLabel}</span>
+                          </td>
+                          <td className="text-xs">{exactSpeakerName(d)}</td>
+                          <td className="text-xs">
+                            {(d.keywords || []).slice(0, 4).join(", ") || (d.topics || []).slice(0, 4).join(", ") || "-"}
+                          </td>
+                          <td className="text-xs">{fmtDateOnly(d.published_at || d.date)}</td>
+                        </tr>
+                        {isExpanded ? (
+                          <tr>
+                            <td colSpan={6} className="bg-[color:rgba(8,18,30,0.82)] px-4 py-4">
+                              {detailLoading ? (
+                                <p className="text-sm text-[color:var(--ink-soft)]">Loading analysis...</p>
+                              ) : detailError ? (
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <p className="text-sm text-[color:var(--danger)]">{detailError}</p>
+                                  <button
+                                    type="button"
+                                    className="link-inline text-xs"
+                                    onClick={() => void loadDocDetail(d.document_id)}
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              ) : detail ? (
+                                <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+                                  <div>
+                                    <div className="flex flex-wrap gap-2">
+                                      <span className={statusClass(detail.enrichment.status)}>
+                                        {detail.enrichment.status || "not_enriched"}
+                                      </span>
+                                      <span className="tone-chip">Review: {detail.review.decision || "pending"}</span>
+                                      {primaryAnalysis.kind === "position" ? (
+                                        <span className={analysisChipClass(primaryAnalysis.tone)}>
+                                          Position: {formatAnalysisLabel(primaryAnalysis.label)}
+                                        </span>
+                                      ) : primaryAnalysis.kind === "stance" ? (
+                                        <span className={analysisChipClass(primaryAnalysis.tone)}>
+                                          Stance: {formatAnalysisLabel(primaryAnalysis.label)}
+                                        </span>
+                                      ) : null}
+                                      {primaryAnalysis.confidence > 0 ? (
+                                        <span className="tone-chip">
+                                          Confidence: {Math.round(primaryAnalysis.confidence * 100)}%
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <p className="mt-3 text-sm leading-6 text-[color:var(--ink-soft)]">
+                                      {detail.enrichment.summary || "No summary is available for this document yet."}
+                                    </p>
+                                    {primaryAnalysis.rationale ? (
+                                      <p className="mt-3 text-xs leading-5 text-[color:var(--ink-faint)]">
+                                        {primaryAnalysis.rationale}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  <div className="grid gap-3">
+                                    <div>
+                                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                                        Tags
+                                      </p>
+                                      {renderToneChips(detail.enrichment.tags, "No tags yet")}
+                                    </div>
+                                    <div>
+                                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                                        Keywords
+                                      </p>
+                                      {renderToneChips(detail.enrichment.keywords, "No keywords yet")}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-[color:var(--ink-faint)]">No analysis is available for this document.</p>
+                              )}
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
                     );
                   })
                 )}
