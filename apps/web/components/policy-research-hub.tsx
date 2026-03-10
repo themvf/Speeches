@@ -338,20 +338,6 @@ function analysisChipClass(value: string): string {
   return "status-chip status-neutral";
 }
 
-function analysisPreviewCardClass(value: string): string {
-  const label = String(value || "").toLowerCase();
-  if (["supportive", "supports", "aligned", "favorable"].includes(label)) {
-    return "border-[rgba(65,211,157,0.52)] bg-[rgba(65,211,157,0.14)] text-[#bcf9e3]";
-  }
-  if (["opposed", "opposes", "critical", "negative", "adverse"].includes(label)) {
-    return "border-[rgba(255,107,127,0.52)] bg-[rgba(255,107,127,0.14)] text-[#ffc7d0]";
-  }
-  if (["mixed", "qualified", "partially_supportive"].includes(label)) {
-    return "border-[rgba(242,171,67,0.52)] bg-[rgba(242,171,67,0.14)] text-[#ffe6bf]";
-  }
-  return "border-[rgba(159,184,210,0.44)] bg-[rgba(159,184,210,0.14)] text-[#d5e2ef]";
-}
-
 function readStringField(value: unknown, key: string): string {
   if (!value || typeof value !== "object") {
     return "";
@@ -409,14 +395,6 @@ function pickPrimaryAnalysis(detail: DocumentDetailData | null | undefined): {
   }
 
   return { kind: "", label: "", tone: "", rationale: "", confidence: 0 };
-}
-
-function quickAnalysisHeading(kind: "position" | "stance" | "summary" | "", isExpanded: boolean): string {
-  if (isExpanded) return "Hide analysis";
-  if (kind === "position") return "Position";
-  if (kind === "stance") return "Stance";
-  if (kind === "summary") return "Summary";
-  return "Analysis";
 }
 
 function renderToneChips(items: string[], emptyLabel: string, onSelect?: (item: string) => void) {
@@ -945,29 +923,14 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                     const detailError = docDetailError[d.document_id] || "";
                     const isExpanded = !!expandedDocs[d.document_id];
                     const primaryAnalysis = pickPrimaryAnalysis(detail);
-                    let analysisPreviewText = "Open the analysis panel for summary, stance, tags, and keywords.";
-                    if (detailLoading) {
-                      analysisPreviewText = "Loading analysis...";
-                    } else if (primaryAnalysis.kind === "position") {
-                      analysisPreviewText = formatAnalysisLabel(primaryAnalysis.label);
-                    } else if (primaryAnalysis.kind === "stance") {
-                      analysisPreviewText = formatAnalysisLabel(primaryAnalysis.label);
-                    } else if (detail?.enrichment.summary) {
-                      analysisPreviewText = detail.enrichment.summary;
-                    } else if (["enriched", "reviewed", "fallback_enriched"].includes(String(d.enrichment_status || "").toLowerCase())) {
-                      analysisPreviewText = "Analysis ready. Click to expand the extracted summary and rationale.";
-                    } else if (detailError) {
-                      analysisPreviewText = "Analysis failed to load. Click to retry.";
-                    } else {
-                      analysisPreviewText = "No analysis is available for this document yet.";
-                    }
+                    const analysisActionLabel = detailLoading ? "Loading Analysis..." : isExpanded ? "Hide Analysis" : "Open Analysis";
 
                     return (
                       <Fragment key={d.document_id}>
                         <tr>
                           <td>
                             <p className="feed-title">{d.title || "Untitled"}</p>
-                            <div className="mt-2 flex flex-col items-start gap-2">
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
                               {d.url ? (
                                 <a
                                   href={d.url}
@@ -980,28 +943,14 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                               ) : null}
                               <button
                                 type="button"
-                                className={`flex w-full max-w-[31rem] flex-col items-start rounded-lg border px-4 py-3 text-left transition hover:border-[color:var(--accent)] ${
-                                  primaryAnalysis.kind
-                                    ? analysisPreviewCardClass(primaryAnalysis.tone)
-                                    : "border-[color:var(--line)] bg-[color:rgba(9,22,36,0.68)] text-[color:var(--ink-soft)]"
+                                className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.04em] transition ${
+                                  isExpanded
+                                    ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.12)] text-[color:var(--ink)]"
+                                    : "border-[color:var(--line)] text-[color:var(--ink-soft)] hover:border-[color:var(--accent)] hover:text-[color:var(--ink)]"
                                 }`}
                                 onClick={() => toggleDocAnalysis(d.document_id)}
                               >
-                                <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] opacity-80">
-                                  {quickAnalysisHeading(primaryAnalysis.kind, isExpanded)}
-                                </span>
-                                <span
-                                  className="mt-2 block text-sm font-semibold leading-6"
-                                  style={{
-                                    textAlign: "justify",
-                                    display: "-webkit-box",
-                                    WebkitLineClamp: 4,
-                                    WebkitBoxOrient: "vertical",
-                                    overflow: "hidden"
-                                  }}
-                                >
-                                  {analysisPreviewText}
-                                </span>
+                                {analysisActionLabel}
                               </button>
                             </div>
                           </td>
@@ -1020,7 +969,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                         </tr>
                         {isExpanded ? (
                           <tr>
-                            <td colSpan={6} className="bg-[color:rgba(8,18,30,0.82)] px-4 py-4">
+                            <td colSpan={6} className="bg-[color:rgba(8,18,30,0.82)] px-4 py-3">
                               {detailLoading ? (
                                 <p className="text-sm text-[color:var(--ink-soft)]">Loading analysis...</p>
                               ) : detailError ? (
@@ -1035,7 +984,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                                   </button>
                                 </div>
                               ) : detail ? (
-                                <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+                                <div className="grid gap-3 lg:grid-cols-[1.45fr_0.55fr]">
                                   <div>
                                     <div className="flex flex-wrap gap-2">
                                       <span className={statusClass(detail.enrichment.status)}>
@@ -1057,18 +1006,18 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                                         </span>
                                       ) : null}
                                     </div>
-                                    <p className="mt-3 text-sm leading-6 text-[color:var(--ink-soft)]">
+                                    <p className="mt-2 text-sm leading-6 text-left text-[color:var(--ink-soft)]">
                                       {detail.enrichment.summary || "No summary is available for this document yet."}
                                     </p>
                                     {primaryAnalysis.rationale ? (
-                                      <p className="mt-3 text-xs leading-5 text-[color:var(--ink-faint)]">
+                                      <p className="mt-2 text-xs leading-5 text-left text-[color:var(--ink-faint)]">
                                         {primaryAnalysis.rationale}
                                       </p>
                                     ) : null}
                                   </div>
-                                  <div className="grid gap-3">
+                                  <div className="grid gap-2">
                                     <div>
-                                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
                                         Tags
                                       </p>
                                       {renderToneChips(detail.enrichment.tags, "No tags yet", (item) =>
@@ -1076,7 +1025,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                                       )}
                                     </div>
                                     <div>
-                                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
                                         Keywords
                                       </p>
                                       {renderToneChips(detail.enrichment.keywords, "No keywords yet", (item) =>
