@@ -43,10 +43,24 @@ _SOURCE_CONFIG: Dict[str, Dict[str, Any]] = {
     "treasury_statement_remark": {
         "default_url": TREASURY_STATEMENTS_REMARKS_URL,
         "allowed_prefixes": ["/news/press-releases/"],
-        "listing_paths": ["/news/press-releases/statements-remarks"],
+        "listing_paths": [
+            "/news/press-releases",
+            "/news/press-releases/statements-remarks",
+            "/news/press-releases/readouts",
+            "/news/press-releases/testimonies",
+        ],
         "fallback_title": "Treasury Statement or Remark",
         "default_doc_type": "Statement",
     },
+}
+
+_TREASURY_SECTION_LANDING_SLUGS = {
+    "news",
+    "press-releases",
+    "readouts",
+    "statements",
+    "statements-remarks",
+    "testimonies",
 }
 
 
@@ -229,6 +243,9 @@ def _is_treasury_detail_url(url: Any, source_key: str) -> bool:
         return False
     listing_paths = [str(item).rstrip("/").lower() for item in cfg.get("listing_paths", [])]
     if lower_path in listing_paths or lower_path.endswith("/index.htm") or lower_path.endswith("/index.html"):
+        return False
+    slug = lower_path.rsplit("/", 1)[-1].strip()
+    if slug in _TREASURY_SECTION_LANDING_SLUGS:
         return False
     return True
 
