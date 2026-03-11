@@ -134,6 +134,7 @@ export interface NewsConnectorSettingsPayload {
   domains: string;
   exclude_domains: string;
   tags_csv: string;
+  doj_usao_exclude_terms: string;
 }
 
 export interface DocumentListItem {

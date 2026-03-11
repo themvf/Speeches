@@ -1531,6 +1531,7 @@ def _empty_news_connector_settings():
         "domains": NEWSAPI_DEFAULT_DOMAINS,
         "exclude_domains": "",
         "tags_csv": NEWSAPI_DEFAULT_TAGS,
+        "doj_usao_exclude_terms": "",
     }
 
 
@@ -1562,6 +1563,9 @@ def _normalize_news_connector_settings(payload):
         "domains": str(payload.get("domains", base["domains"]) or "").strip(),
         "exclude_domains": str(payload.get("exclude_domains", base["exclude_domains"]) or "").strip(),
         "tags_csv": str(payload.get("tags_csv", base["tags_csv"]) or "").strip() or base["tags_csv"],
+        "doj_usao_exclude_terms": str(
+            payload.get("doj_usao_exclude_terms", base["doj_usao_exclude_terms"]) or ""
+        ).strip(),
     }
     return out
 
@@ -1602,7 +1606,12 @@ def _load_news_connector_settings():
 
 
 def _save_news_connector_settings(payload):
-    payload = _normalize_news_connector_settings(payload)
+    merged = _load_news_connector_settings()
+    if not isinstance(merged, dict):
+        merged = {}
+    if isinstance(payload, dict):
+        merged.update(payload)
+    payload = _normalize_news_connector_settings(merged)
     payload["updated_at"] = _utc_now_iso()
     _save_news_connector_settings_local(payload)
     st.session_state.pop("_news_settings_error", None)
@@ -8697,6 +8706,7 @@ elif page == "Extraction":
         "Discover and ingest Department of Justice U.S. Attorneys' Office press releases into the knowledge base."
     )
 
+    connector_settings_saved = _load_news_connector_settings()
     doj_index_default = "https://www.justice.gov/usao/pressreleases"
     doj_index_url = st.text_input(
         "DOJ USAO Press Releases URL",
@@ -8710,11 +8720,24 @@ elif page == "Extraction":
         value=3,
         key="doj_usao_pages",
     )
+    doj_exclude_query = st.text_area(
+        "Exclude DOJ Topics/Keywords Before Ingest (optional)",
+        value=str(connector_settings_saved.get("doj_usao_exclude_terms", "") or ""),
+        key="doj_usao_exclude_terms",
+        height=80,
+        help="Comma- or newline-separated phrases matched against the discovered title, teaser, office, and URL.",
+    ).strip()
+    doj_settings_payload = {
+        "doj_usao_exclude_terms": doj_exclude_query,
+    }
+    doj_exclude_terms = _parse_keyword_filter_terms(doj_exclude_query)
 
-    doj_col1, doj_col2 = st.columns(2)
+    doj_col1, doj_col2, doj_col3 = st.columns(3)
     with doj_col1:
         discover_doj = st.button("Discover DOJ Press Releases", key="discover_doj_usao")
     with doj_col2:
+        save_doj_settings = st.button("Save DOJ Filters", key="save_doj_usao_filters")
+    with doj_col3:
         clear_doj = st.button("Clear DOJ Results", key="clear_doj_usao")
 
     doj_state_key = "doj_usao_discovered"
@@ -8727,10 +8750,15 @@ elif page == "Extraction":
         st.session_state[doj_state_key] = []
         st.session_state[doj_debug_key] = {}
 
+    if save_doj_settings:
+        _save_news_connector_settings(doj_settings_payload)
+        st.success("Saved DOJ filter settings to local state and GCS (if configured).")
+
     if discover_doj:
         try:
             from doj_usao_press_release_scraper import DOJUSAOPressReleaseScraper
 
+            _save_news_connector_settings(doj_settings_payload)
             with st.spinner("Discovering DOJ USAO press releases..."):
                 doj_scraper = DOJUSAOPressReleaseScraper()
                 doj_discovered = doj_scraper.discover_documents(
@@ -8835,14 +8863,6 @@ elif page == "Extraction":
             st.json(doj_debug)
 
     if doj_discovered:
-        doj_exclude_query = st.text_area(
-            "Exclude DOJ Topics/Keywords Before Ingest (optional)",
-            value=st.session_state.get("doj_usao_exclude_terms", ""),
-            key="doj_usao_exclude_terms",
-            height=80,
-            help="Comma- or newline-separated phrases matched against the discovered title, teaser, office, and URL.",
-        ).strip()
-        doj_exclude_terms = _parse_keyword_filter_terms(doj_exclude_query)
         doj_filtered_discovered = []
         doj_excluded = []
         for entry in doj_discovered:
@@ -9720,6 +9740,7 @@ elif page == "Extraction":
 
     news_settings_payload = _normalize_news_connector_settings(
         {
+            **(news_settings_saved if isinstance(news_settings_saved, dict) else {}),
             "query": news_query,
             "lookback_days": int(news_lookback_days),
             "max_pages": int(news_max_pages),

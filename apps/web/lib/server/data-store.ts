@@ -442,7 +442,8 @@ function normalizeNewsSettingsPayload(payload: unknown): NewsConnectorSettingsPa
       organization_label: "News",
       domains: "",
       exclude_domains: "",
-      tags_csv: ""
+      tags_csv: "",
+      doj_usao_exclude_terms: ""
     };
   }
 
@@ -459,7 +460,8 @@ function normalizeNewsSettingsPayload(payload: unknown): NewsConnectorSettingsPa
     organization_label: normalizeNewsOrgLabel(src.organization_label || "News"),
     domains: normalizeString(src.domains),
     exclude_domains: normalizeString(src.exclude_domains),
-    tags_csv: normalizeString(src.tags_csv)
+    tags_csv: normalizeString(src.tags_csv),
+    doj_usao_exclude_terms: normalizeString(src.doj_usao_exclude_terms)
   };
 }
 
@@ -596,18 +598,21 @@ export async function loadNewsConnectorSettings(): Promise<NewsConnectorSettings
       organization_label: "News",
       domains: "",
       exclude_domains: "",
-      tags_csv: ""
+      tags_csv: "",
+      doj_usao_exclude_terms: ""
     })
   });
 }
 
-export async function saveNewsConnectorSettings(payload: NewsConnectorSettingsPayload): Promise<{
+export async function saveNewsConnectorSettings(payload: Partial<NewsConnectorSettingsPayload>): Promise<{
   saved: boolean;
   local_saved: boolean;
   remote_saved: boolean;
   settings: NewsConnectorSettingsPayload;
 }> {
+  const existing = await loadNewsConnectorSettings();
   const normalized = normalizeNewsSettingsPayload({
+    ...existing,
     ...payload,
     updated_at: new Date().toISOString()
   });

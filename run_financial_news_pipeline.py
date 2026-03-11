@@ -394,6 +394,7 @@ def _empty_news_connector_settings() -> Dict[str, Any]:
         "domains": NEWSAPI_DEFAULT_DOMAINS,
         "exclude_domains": "",
         "tags_csv": NEWSAPI_DEFAULT_TAGS,
+        "doj_usao_exclude_terms": "",
     }
 
 
@@ -437,6 +438,9 @@ def _normalize_news_connector_settings(payload: Dict[str, Any]) -> Dict[str, Any
         "domains": str(payload.get("domains", base["domains"]) or "").strip(),
         "exclude_domains": str(payload.get("exclude_domains", base["exclude_domains"]) or "").strip(),
         "tags_csv": str(payload.get("tags_csv", base["tags_csv"]) or "").strip() or base["tags_csv"],
+        "doj_usao_exclude_terms": str(
+            payload.get("doj_usao_exclude_terms", base["doj_usao_exclude_terms"]) or ""
+        ).strip(),
     }
 
 
