@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -18,6 +19,8 @@ FINRA_NOTICE_DEFAULT_URL = "https://www.finra.org/rules-guidance/notices"
 FINRA_TOPIC_DEFAULT_URL = "https://www.finra.org/rules-guidance/key-topics"
 DOJ_DEFAULT_URL = "https://www.justice.gov/usao/pressreleases"
 FED_DEFAULT_URL = "https://www.federalreserve.gov/newsevents/speeches-testimony.htm"
+CFTC_PRESS_RELEASE_DEFAULT_URL = "https://www.cftc.gov/PressRoom/PressReleases"
+CFTC_PUBLIC_STATEMENT_DEFAULT_URL = "https://www.cftc.gov/PressRoom/SpeechesTestimony/index.htm"
 
 SUPPORTED_CONNECTORS = {
     "sec_speech",
@@ -28,6 +31,8 @@ SUPPORTED_CONNECTORS = {
     "finra_key_topic",
     "doj_usao_press_release",
     "federal_reserve_speech_testimony",
+    "cftc_press_release",
+    "cftc_public_statement_remark",
 }
 
 
@@ -48,6 +53,10 @@ def _default_base_url(connector: str) -> str:
         return DOJ_DEFAULT_URL
     if connector == "federal_reserve_speech_testimony":
         return FED_DEFAULT_URL
+    if connector == "cftc_press_release":
+        return CFTC_PRESS_RELEASE_DEFAULT_URL
+    if connector == "cftc_public_statement_remark":
+        return CFTC_PUBLIC_STATEMENT_DEFAULT_URL
     return ""
 
 
@@ -57,6 +66,25 @@ def _normalize_space(value: Any) -> str:
 
 def _to_bool(value: Any) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_filter_terms(value: Any) -> List[str]:
+    terms: List[str] = []
+    seen = set()
+    for raw in re.split(r"[,;\n]+", str(value or "")):
+        term = _normalize_space(raw).lower()
+        if not term or term in seen:
+            continue
+        seen.add(term)
+        terms.append(term)
+    return terms
+
+
+def _match_filter_terms(parts: List[Any], terms: List[str]) -> List[str]:
+    if not terms:
+        return []
+    haystack = " ".join(str(part or "") for part in parts).lower()
+    return [term for term in terms if term in haystack]
 
 
 def _safe_source_name(url: str, fallback_prefix: str, source_ext: str) -> str:
@@ -247,6 +275,14 @@ def _discover_connector(connector: str, base_url: str, max_pages: int, include_p
 
         scraper = FederalReserveSpeechTestimonyScraper()
         docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages, fallback_to_feed=True)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector in {"cftc_press_release", "cftc_public_statement_remark"}:
+        from cftc_press_room_scraper import CFTCPressRoomScraper
+
+        scraper = CFTCPressRoomScraper()
+        docs = scraper.discover_documents(source_key=connector, base_url=base_url, max_pages=max_pages)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
 
@@ -620,6 +656,89 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["location"] = str(data.get("location", "") or entry.get("location", "")).strip()
         return record
 
+    if connector == "cftc_press_release":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_doc_type="Press Release",
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 80:
+            raise RuntimeError("Extracted text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"cftc-press-release-{idx}", ".html")
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="CFTC",
+            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            speaker="CFTC",
+            doc_date=doc_date,
+            doc_type="Press Release",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="cftc,press-release,commodities-regulation,market-oversight",
+            source_kind="cftc_press_release",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "cftc_press_release"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+        return record
+
+    if connector == "cftc_public_statement_remark":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_speaker=entry.get("speaker", ""),
+            fallback_doc_type=entry.get("doc_type", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 80:
+            raise RuntimeError("Extracted text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"cftc-statement-{idx}", ".html")
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+        speaker = str(data.get("speaker", "") or entry.get("speaker", "")).strip() or "CFTC Official"
+        doc_type = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "Statement"
+        doc_type_lower = doc_type.lower()
+        if "testimony" in doc_type_lower:
+            tags_csv = "cftc,testimony,public-statement,market-regulation"
+        elif "remark" in doc_type_lower or "speech" in doc_type_lower:
+            tags_csv = "cftc,remarks,public-statement,market-regulation"
+        else:
+            tags_csv = "cftc,statement,public-statement,market-regulation"
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="CFTC",
+            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            speaker=speaker,
+            doc_date=doc_date,
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=tags_csv,
+            source_kind="cftc_public_statement_remark",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "cftc_public_statement_remark"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+        metadata["location"] = str(data.get("location", "") or entry.get("location", "")).strip()
+        return record
+
     raise RuntimeError(f"Unsupported connector: {connector}")
 
 
@@ -648,9 +767,31 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         include_rss=bool(args.include_rss),
     )
     discovered = [item for item in discovered_raw if isinstance(item, dict)]
+    exclude_terms = _parse_filter_terms(getattr(args, "exclude_terms", ""))
+    excluded: List[Dict[str, Any]] = []
+    filtered_discovered: List[Dict[str, Any]] = []
+    if args.connector == "doj_usao_press_release" and exclude_terms:
+        for entry in discovered:
+            matched_terms = _match_filter_terms(
+                [
+                    entry.get("title", ""),
+                    entry.get("teaser", ""),
+                    entry.get("office", ""),
+                    entry.get("url", ""),
+                ],
+                exclude_terms,
+            )
+            if matched_terms:
+                skipped_entry = dict(entry)
+                skipped_entry["exclude_matches"] = matched_terms
+                excluded.append(skipped_entry)
+            else:
+                filtered_discovered.append(entry)
+    else:
+        filtered_discovered = list(discovered)
 
     status_counts = {"new": 0, "update_available": 0, "existing": 0, "existing_in_speeches": 0}
-    for entry in discovered:
+    for entry in filtered_discovered:
         key = core._url_match_key(entry.get("url", ""))
         existing_meta = existing_custom.get(key)
         status = _status_for_entry(args.connector, entry, existing_meta, existing_speech_keys)
@@ -658,9 +799,11 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         status_counts[status] = int(status_counts.get(status, 0)) + 1
 
     if args.selection == "all":
-        candidates = list(discovered)
+        candidates = list(filtered_discovered)
     else:
-        candidates = [entry for entry in discovered if entry.get("ingest_status") in {"new", "update_available"}]
+        candidates = [
+            entry for entry in filtered_discovered if entry.get("ingest_status") in {"new", "update_available"}
+        ]
 
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
     selected = candidates[:limit] if limit > 0 else []
@@ -706,7 +849,10 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "limit": limit,
         "include_pdfs": bool(args.include_pdfs),
         "include_rss": bool(args.include_rss),
+        "exclude_terms": exclude_terms,
         "discovered_count": len(discovered),
+        "filtered_count": len(filtered_discovered),
+        "excluded_count": len(excluded),
         "candidate_count": len(candidates),
         "selected_count": len(selected),
         "processed_count": len(processed_doc_ids),
@@ -714,6 +860,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "saved_updates": saved_updates,
         "failed_count": len(failed),
         "failed": failed[:25],
+        "excluded_preview": excluded[:25],
         "status_counts": status_counts,
         "discovery_debug": discovery_debug if isinstance(discovery_debug, dict) else {},
         "dry_run": bool(args.dry_run),
@@ -731,6 +878,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=25)
     parser.add_argument("--include-pdfs", default="")
     parser.add_argument("--include-rss", default="")
+    parser.add_argument("--exclude-terms", default="")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--require-remote-persistence", action="store_true")
     parser.add_argument("--summary-path", default="")

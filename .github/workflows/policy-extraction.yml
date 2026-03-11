@@ -15,6 +15,8 @@ on:
           - finra_key_topic
           - doj_usao_press_release
           - federal_reserve_speech_testimony
+          - cftc_press_release
+          - cftc_public_statement_remark
         default: sec_enforcement_litigation
       selection:
         description: "Extraction selection scope"
@@ -46,6 +48,10 @@ on:
         required: false
         type: boolean
         default: true
+      exclude_terms:
+        description: "Optional comma-separated exclude phrases (used by DOJ press releases)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -68,6 +74,7 @@ jobs:
       BASE_URL: ${{ github.event.inputs.base_url || '' }}
       INCLUDE_PDFS: ${{ github.event.inputs.include_pdfs || 'true' }}
       INCLUDE_RSS: ${{ github.event.inputs.include_rss || 'true' }}
+      EXCLUDE_TERMS: ${{ github.event.inputs.exclude_terms || '' }}
 
     steps:
       - name: Checkout
@@ -86,7 +93,7 @@ jobs:
       - name: Run Connector Extraction
         run: |
           set -euo pipefail
-          args=(--connector "${CONNECTOR}" --selection "${SELECTION}" --limit "${EXTRACTION_LIMIT}" --max-pages "${MAX_PAGES}" --include-pdfs "${INCLUDE_PDFS}" --include-rss "${INCLUDE_RSS}" --require-remote-persistence --summary-path policy_extraction_summary.json)
+          args=(--connector "${CONNECTOR}" --selection "${SELECTION}" --limit "${EXTRACTION_LIMIT}" --max-pages "${MAX_PAGES}" --include-pdfs "${INCLUDE_PDFS}" --include-rss "${INCLUDE_RSS}" --exclude-terms "${EXCLUDE_TERMS}" --require-remote-persistence --summary-path policy_extraction_summary.json)
           if [ -n "${BASE_URL}" ]; then
             args+=(--base-url "${BASE_URL}")
           fi

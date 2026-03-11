@@ -161,6 +161,12 @@ function inferSourceKind(metadataRaw: Record<string, unknown>): string {
   if ((url.includes("/usao-") || url.includes("/usao/")) && url.includes("/pr/")) {
     return "doj_usao_press_release";
   }
+  if (url.includes("/pressroom/pressreleases/")) {
+    return "cftc_press_release";
+  }
+  if (url.includes("/pressroom/speechestestimony/")) {
+    return "cftc_public_statement_remark";
+  }
   if (["speech", "statement", "remarks"].includes(docType)) {
     return "sec_speech";
   }

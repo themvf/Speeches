@@ -10,6 +10,7 @@ export interface LocalExtractPayload {
   baseUrl: string;
   includePdfs: boolean;
   includeRss: boolean;
+  excludeTerms: string;
 }
 
 export interface LocalExtractJobResult {
@@ -144,6 +145,8 @@ export async function runLocalExtractJob(payload: LocalExtractPayload): Promise<
     payload.includePdfs ? "true" : "false",
     "--include-rss",
     payload.includeRss ? "true" : "false",
+    "--exclude-terms",
+    String(payload.excludeTerms || "").trim(),
     "--require-remote-persistence",
     "--summary-path",
     summaryFile
@@ -188,4 +191,3 @@ export async function runLocalExtractJob(payload: LocalExtractPayload): Promise<
     conclusion: "success"
   };
 }
-

@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     const baseUrl = String(body.base_url ?? "").trim();
     const includePdfs = String(body.include_pdfs ?? "true").toLowerCase() === "true";
     const includeRss = String(body.include_rss ?? "true").toLowerCase() === "true";
+    const excludeTerms = String(body.exclude_terms ?? "").trim();
 
     const executionMode = getJobExecutionMode();
     if (executionMode === "local") {
@@ -35,7 +36,8 @@ export async function POST(request: Request) {
         maxPages,
         baseUrl,
         includePdfs,
-        includeRss
+        includeRss,
+        excludeTerms
       });
       return ok(payload, requestId);
     }
@@ -47,7 +49,8 @@ export async function POST(request: Request) {
       maxPages,
       baseUrl,
       includePdfs,
-      includeRss
+      includeRss,
+      excludeTerms
     });
 
     return ok(payload, requestId);

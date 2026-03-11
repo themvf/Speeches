@@ -128,13 +128,16 @@ interface ExtractFormState {
     | "finra_comment_letter"
     | "finra_key_topic"
     | "doj_usao_press_release"
-    | "federal_reserve_speech_testimony";
+    | "federal_reserve_speech_testimony"
+    | "cftc_press_release"
+    | "cftc_public_statement_remark";
   selection: "new_or_updated" | "all";
   limit: number;
   max_pages: number;
   base_url: string;
   include_pdfs: boolean;
   include_rss: boolean;
+  exclude_terms: string;
 }
 
 interface NewsConnectorSettings {
@@ -252,6 +255,8 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   finra_key_topic: "FINRA Key Topics",
   doj_usao_press_release: "DOJ USAO Press Releases",
   federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
+  cftc_press_release: "CFTC Press Releases",
+  cftc_public_statement_remark: "CFTC Public Statements & Remarks",
   newsapi_article: "News",
   uploaded: "Uploaded"
 };
@@ -281,6 +286,8 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   finra_key_topic: "Key Topic",
   doj_usao_press_release: "Press Release",
   federal_reserve_speech_testimony: "Testimony",
+  cftc_press_release: "Press Release",
+  cftc_public_statement_remark: "Statement",
   newsapi_article: "News Article",
   uploaded: "Uploaded Document"
 };
@@ -498,7 +505,8 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     max_pages: 5,
     base_url: "",
     include_pdfs: true,
-    include_rss: true
+    include_rss: true,
+    exclude_terms: ""
   });
   const [runAction, setRunAction] = useState<"extract" | "ingest" | "enrich" | null>(null);
   const [activeJob, setActiveJob] = useState<JobState | null>(null);
@@ -1226,6 +1234,8 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="finra_key_topic">FINRA Key Topics</option>
                   <option value="doj_usao_press_release">DOJ USAO Press Releases</option>
                   <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
+                  <option value="cftc_press_release">CFTC Press Releases</option>
+                  <option value="cftc_public_statement_remark">CFTC Public Statements &amp; Remarks</option>
                 </select>
                 <select
                   className="form-control px-2 py-1.5"
@@ -1259,6 +1269,19 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 {extract.connector === "finra_comment_letter" ? (
                   <p className="col-span-2 text-xs text-[color:var(--ink-soft)]">
                     Use the FINRA notice URL. The scraper will discover linked comment letters from the comments section.
+                  </p>
+                ) : null}
+                {extract.connector === "doj_usao_press_release" ? (
+                  <textarea
+                    className="form-control col-span-2 min-h-[84px] px-2 py-1.5 text-sm"
+                    value={extract.exclude_terms}
+                    onChange={(e) => setExtract({ ...extract, exclude_terms: e.target.value })}
+                    placeholder="Exclude DOJ keywords or topics before ingest, comma or newline separated"
+                  />
+                ) : null}
+                {extract.connector === "doj_usao_press_release" ? (
+                  <p className="col-span-2 text-xs text-[color:var(--ink-soft)]">
+                    Matches against the discovered DOJ title, teaser, office, and URL before extraction runs.
                   </p>
                 ) : null}
                 <label className="col-span-2 flex items-center gap-2 text-xs text-[color:var(--ink-soft)]">

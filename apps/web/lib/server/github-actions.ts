@@ -232,6 +232,7 @@ export async function triggerExtractJob(payload: {
   baseUrl: string;
   includePdfs: boolean;
   includeRss: boolean;
+  excludeTerms: string;
 }): Promise<{ job_id: string; provider: "github_actions"; status: "queued"; status_url: string; github_run_id: number }> {
   const cfg = getGithubActionsConfig();
   const dispatch = await dispatchWorkflow(cfg.extractWorkflow, {
@@ -241,7 +242,8 @@ export async function triggerExtractJob(payload: {
     max_pages: String(payload.maxPages),
     base_url: payload.baseUrl,
     include_pdfs: payload.includePdfs ? "true" : "false",
-    include_rss: payload.includeRss ? "true" : "false"
+    include_rss: payload.includeRss ? "true" : "false",
+    exclude_terms: payload.excludeTerms
   });
 
   return {

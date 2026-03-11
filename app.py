@@ -1051,6 +1051,10 @@ def _infer_source_kind(metadata):
         return "sec_enforcement_litigation"
     if ("/usao-" in url or "/usao/" in url) and "/pr/" in url:
         return "doj_usao_press_release"
+    if "/pressroom/pressreleases/" in url:
+        return "cftc_press_release"
+    if "/pressroom/speechestestimony/" in url:
+        return "cftc_public_statement_remark"
     if doc_type in {"speech", "statement", "remarks"}:
         return "sec_speech"
     return "document"
@@ -5337,6 +5341,25 @@ def _sort_table_by_date(df: pd.DataFrame, date_col: str = "date") -> pd.DataFram
     return out
 
 
+def _parse_keyword_filter_terms(value: str) -> list[str]:
+    terms = []
+    seen = set()
+    for raw in re.split(r"[,;\n]+", str(value or "")):
+        term = str(raw or "").strip().lower()
+        if not term or term in seen:
+            continue
+        seen.add(term)
+        terms.append(term)
+    return terms
+
+
+def _match_keyword_filter_terms(parts, terms: list[str]) -> list[str]:
+    if not terms:
+        return []
+    haystack = " ".join(str(part or "") for part in parts).lower()
+    return [term for term in terms if term in haystack]
+
+
 def _normalize_full_text_for_render(value: str) -> str:
     text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+\n", "\n", text)
@@ -8812,14 +8835,63 @@ elif page == "Extraction":
             st.json(doj_debug)
 
     if doj_discovered:
-        doj_df = pd.DataFrame(doj_discovered)
-        doj_df = _sort_table_by_date(doj_df, date_col="date")
-        show_cols = [c for c in ["date", "office", "title", "ingest_status", "url"] if c in doj_df.columns]
-        st.dataframe(
-            doj_df[show_cols],
-            use_container_width=True,
-            hide_index=True,
-        )
+        doj_exclude_query = st.text_area(
+            "Exclude DOJ Topics/Keywords Before Ingest (optional)",
+            value=st.session_state.get("doj_usao_exclude_terms", ""),
+            key="doj_usao_exclude_terms",
+            height=80,
+            help="Comma- or newline-separated phrases matched against the discovered title, teaser, office, and URL.",
+        ).strip()
+        doj_exclude_terms = _parse_keyword_filter_terms(doj_exclude_query)
+        doj_filtered_discovered = []
+        doj_excluded = []
+        for entry in doj_discovered:
+            matched_terms = _match_keyword_filter_terms(
+                [
+                    entry.get("title", ""),
+                    entry.get("teaser", ""),
+                    entry.get("office", ""),
+                    entry.get("url", ""),
+                ],
+                doj_exclude_terms,
+            )
+            if matched_terms:
+                excluded_entry = dict(entry)
+                excluded_entry["exclude_matches"] = ", ".join(matched_terms)
+                doj_excluded.append(excluded_entry)
+            else:
+                doj_filtered_discovered.append(entry)
+
+        if doj_filtered_discovered:
+            doj_df = pd.DataFrame(doj_filtered_discovered)
+            doj_df = _sort_table_by_date(doj_df, date_col="date")
+            show_cols = [c for c in ["date", "office", "title", "ingest_status", "url"] if c in doj_df.columns]
+            st.dataframe(
+                doj_df[show_cols],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.warning("All discovered DOJ press releases are currently excluded by the keyword/topic filter.")
+
+        if doj_exclude_terms:
+            st.caption(
+                f"Excluded {len(doj_excluded)} of {len(doj_discovered)} discovered DOJ press releases before ingest."
+            )
+        if doj_excluded:
+            with st.expander("View Excluded DOJ Results", expanded=False):
+                excluded_df = pd.DataFrame(doj_excluded)
+                excluded_df = _sort_table_by_date(excluded_df, date_col="date")
+                excluded_cols = [
+                    c
+                    for c in ["date", "office", "title", "exclude_matches", "ingest_status", "url"]
+                    if c in excluded_df.columns
+                ]
+                st.dataframe(
+                    excluded_df[excluded_cols],
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
         doj_filter = st.selectbox(
             "DOJ Ingest Selection",
@@ -8827,9 +8899,11 @@ elif page == "Extraction":
             key="doj_usao_ingest_filter",
         )
         if doj_filter == "New/Updates Only":
-            doj_candidates = [d for d in doj_discovered if d.get("ingest_status") in {"new", "update_available"}]
+            doj_candidates = [
+                d for d in doj_filtered_discovered if d.get("ingest_status") in {"new", "update_available"}
+            ]
         else:
-            doj_candidates = list(doj_discovered)
+            doj_candidates = list(doj_filtered_discovered)
 
         doj_count = len(doj_candidates)
         if doj_count <= 0:
@@ -9218,6 +9292,335 @@ elif page == "Extraction":
                 st.error(f"Federal Reserve ingest failed: {e}")
 
     st.markdown("---")
+    cftc_connector_configs = {
+        "cftc_press_release": {
+            "subheader": "CFTC Connector: Press Releases",
+            "caption": "Discover and ingest CFTC press releases into the knowledge base.",
+            "default_url": "https://www.cftc.gov/PressRoom/PressReleases",
+            "url_label": "CFTC Press Releases URL",
+            "discover_label": "Discover CFTC Press Releases",
+            "clear_label": "Clear CFTC Press Release Results",
+            "debug_label": "CFTC Press Release Discovery Debug",
+            "selection_label": "CFTC Press Release Ingest Selection",
+            "slider_label": "CFTC Press Releases To Ingest",
+            "run_label": "Run CFTC Press Release Extraction",
+            "progress_label": "Starting CFTC press-release ingest...",
+            "source_kind": "cftc_press_release",
+            "doc_type": "Press Release",
+            "organization": "CFTC",
+            "speaker_fallback": "CFTC",
+            "tags_csv": "cftc,press-release,commodities-regulation,market-oversight",
+            "table_cols": ["date", "title", "ingest_status", "url"],
+        },
+        "cftc_public_statement_remark": {
+            "subheader": "CFTC Connector: Public Statements & Remarks",
+            "caption": "Discover and ingest CFTC public statements, remarks, speeches, and testimony into the knowledge base.",
+            "default_url": "https://www.cftc.gov/PressRoom/SpeechesTestimony/index.htm",
+            "url_label": "CFTC Public Statements & Remarks URL",
+            "discover_label": "Discover CFTC Statements & Remarks",
+            "clear_label": "Clear CFTC Statements & Remarks Results",
+            "debug_label": "CFTC Statements & Remarks Discovery Debug",
+            "selection_label": "CFTC Statements & Remarks Ingest Selection",
+            "slider_label": "CFTC Statements & Remarks To Ingest",
+            "run_label": "Run CFTC Statements & Remarks Extraction",
+            "progress_label": "Starting CFTC statements/remarks ingest...",
+            "source_kind": "cftc_public_statement_remark",
+            "doc_type": "Statement",
+            "organization": "CFTC",
+            "speaker_fallback": "CFTC Official",
+            "tags_csv": "cftc,statement,public-statement,market-regulation",
+            "table_cols": ["date", "doc_type", "speaker", "title", "ingest_status", "url"],
+        },
+    }
+
+    for cftc_connector_key, cftc_cfg in cftc_connector_configs.items():
+        st.subheader(str(cftc_cfg.get("subheader", "") or "CFTC Connector"))
+        st.caption(str(cftc_cfg.get("caption", "") or ""))
+
+        cftc_default_url = str(cftc_cfg.get("default_url", "") or "").strip()
+        cftc_index_url = st.text_input(
+            str(cftc_cfg.get("url_label", "") or "CFTC URL"),
+            value=cftc_default_url,
+            key=f"{cftc_connector_key}_index_url",
+        ).strip() or cftc_default_url
+        cftc_pages = st.slider(
+            "CFTC Listing Pages To Scan",
+            min_value=1,
+            max_value=20,
+            value=5,
+            key=f"{cftc_connector_key}_pages",
+        )
+
+        cftc_col1, cftc_col2 = st.columns(2)
+        with cftc_col1:
+            discover_cftc = st.button(
+                str(cftc_cfg.get("discover_label", "") or "Discover CFTC Documents"),
+                key=f"discover_{cftc_connector_key}",
+            )
+        with cftc_col2:
+            clear_cftc = st.button(
+                str(cftc_cfg.get("clear_label", "") or "Clear CFTC Results"),
+                key=f"clear_{cftc_connector_key}",
+            )
+
+        cftc_state_key = f"{cftc_connector_key}_discovered"
+        cftc_debug_key = f"{cftc_connector_key}_discovery_debug"
+        if cftc_state_key not in st.session_state:
+            st.session_state[cftc_state_key] = []
+        if cftc_debug_key not in st.session_state:
+            st.session_state[cftc_debug_key] = {}
+        if clear_cftc:
+            st.session_state[cftc_state_key] = []
+            st.session_state[cftc_debug_key] = {}
+
+        if discover_cftc:
+            try:
+                from cftc_press_room_scraper import CFTCPressRoomScraper
+
+                with st.spinner(f"Discovering {cftc_cfg.get('subheader', 'CFTC documents').lower()}..."):
+                    cftc_scraper = CFTCPressRoomScraper()
+                    cftc_discovered = cftc_scraper.discover_documents(
+                        source_key=cftc_connector_key,
+                        base_url=cftc_index_url,
+                        max_pages=cftc_pages,
+                    )
+                    debug_payload = getattr(cftc_scraper, "last_discovery_debug", {})
+                    if isinstance(debug_payload, dict):
+                        st.session_state[cftc_debug_key] = debug_payload
+
+                existing_custom = {}
+                for item in custom_docs:
+                    m = item.get("metadata", {})
+                    existing_custom[_url_match_key(m.get("url", ""))] = m
+
+                existing_speech_urls = {
+                    _url_match_key(s.get("metadata", {}).get("url", ""))
+                    for s in raw_data.get("speeches", [])
+                }
+
+                for entry in cftc_discovered:
+                    key = _url_match_key(entry.get("url", ""))
+                    status = "new"
+                    existing_meta = existing_custom.get(key)
+                    if existing_meta:
+                        existing_date = str(existing_meta.get("published_date") or existing_meta.get("date") or "").strip()
+                        incoming_date = str(entry.get("date", "") or "").strip()
+                        existing_speaker = str(existing_meta.get("speaker", "") or "").strip()
+                        incoming_speaker = str(entry.get("speaker", "") or "").strip()
+                        if (
+                            (incoming_date and existing_date and incoming_date != existing_date)
+                            or (incoming_speaker and existing_speaker and incoming_speaker != existing_speaker)
+                        ):
+                            status = "update_available"
+                        else:
+                            status = "existing"
+                    elif key in existing_speech_urls:
+                        status = "existing_in_speeches"
+                    entry["ingest_status"] = status
+
+                st.session_state[cftc_state_key] = cftc_discovered
+                new_count = sum(1 for d in cftc_discovered if d.get("ingest_status") in {"new", "update_available"})
+                st.success(
+                    f"Discovered {len(cftc_discovered)} CFTC documents "
+                    f"({new_count} new/update candidates)."
+                )
+                try:
+                    dbg = st.session_state.get(cftc_debug_key, {})
+                    if isinstance(dbg, dict):
+                        dbg["ingest_status_counts"] = {
+                            "new": sum(1 for d in cftc_discovered if d.get("ingest_status") == "new"),
+                            "update_available": sum(1 for d in cftc_discovered if d.get("ingest_status") == "update_available"),
+                            "existing": sum(1 for d in cftc_discovered if d.get("ingest_status") == "existing"),
+                            "existing_in_speeches": sum(1 for d in cftc_discovered if d.get("ingest_status") == "existing_in_speeches"),
+                        }
+                        st.session_state[cftc_debug_key] = dbg
+                except Exception:
+                    pass
+            except Exception as e:
+                st.session_state[cftc_debug_key] = {"error": str(e)}
+                st.error(f"CFTC discovery failed: {e}")
+
+        cftc_discovered = st.session_state.get(cftc_state_key, [])
+        cftc_debug = st.session_state.get(cftc_debug_key, {})
+        if isinstance(cftc_debug, dict) and cftc_debug:
+            with st.expander(str(cftc_cfg.get("debug_label", "") or "CFTC Discovery Debug"), expanded=False):
+                c1, c2, c3, c4 = st.columns(4)
+                pages_payload = cftc_debug.get("pages", [])
+                c1.metric("Requested Pages", int(cftc_debug.get("max_pages_requested", 0) or 0))
+                c2.metric("Pages Logged", len(pages_payload if isinstance(pages_payload, list) else []))
+                c3.metric("Listing Added", int(cftc_debug.get("listing_added", 0) or 0))
+                c4.metric("Total Unique", int(cftc_debug.get("total_unique", 0) or 0))
+                st.caption(f"Stop reason: `{cftc_debug.get('stop_reason', '')}`")
+                if isinstance(pages_payload, list) and pages_payload:
+                    page_df = pd.DataFrame(pages_payload)
+                    show_cols = [
+                        c
+                        for c in [
+                            "page",
+                            "returned_items",
+                            "unique_added",
+                            "page_url",
+                            "next_page_url",
+                            "error_status",
+                            "error_type",
+                            "error_message",
+                        ]
+                        if c in page_df.columns
+                    ]
+                    st.dataframe(page_df[show_cols], use_container_width=True, hide_index=True)
+                st.json(cftc_debug)
+
+        if cftc_discovered:
+            cftc_df = pd.DataFrame(cftc_discovered)
+            cftc_df = _sort_table_by_date(cftc_df, date_col="date")
+            show_cols = [c for c in cftc_cfg.get("table_cols", []) if c in cftc_df.columns]
+            st.dataframe(
+                cftc_df[show_cols],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            cftc_filter = st.selectbox(
+                str(cftc_cfg.get("selection_label", "") or "CFTC Ingest Selection"),
+                ["New/Updates Only", "All Discovered"],
+                key=f"{cftc_connector_key}_ingest_filter",
+            )
+            if cftc_filter == "New/Updates Only":
+                cftc_candidates = [
+                    d for d in cftc_discovered if d.get("ingest_status") in {"new", "update_available"}
+                ]
+            else:
+                cftc_candidates = list(cftc_discovered)
+
+            cftc_count = len(cftc_candidates)
+            if cftc_count <= 0:
+                cftc_limit = 0
+                st.caption("No CFTC documents match the selected ingest filter.")
+            elif cftc_count == 1:
+                cftc_limit = 1
+                st.caption("1 CFTC document selected for ingest.")
+            else:
+                cftc_limit = st.slider(
+                    str(cftc_cfg.get("slider_label", "") or "CFTC Documents To Ingest"),
+                    min_value=1,
+                    max_value=cftc_count,
+                    value=min(25, cftc_count),
+                    key=f"{cftc_connector_key}_ingest_limit",
+                )
+            st.caption(f"{cftc_count} CFTC documents currently match this ingest selection.")
+
+            if st.button(
+                str(cftc_cfg.get("run_label", "") or "Run CFTC Extraction"),
+                disabled=(cftc_limit <= 0),
+                key=f"ingest_{cftc_connector_key}",
+            ):
+                try:
+                    from cftc_press_room_scraper import CFTCPressRoomScraper
+
+                    cftc_scraper = CFTCPressRoomScraper()
+                    progress = st.progress(0, text=str(cftc_cfg.get("progress_label", "") or "Starting CFTC ingest..."))
+                    saved_new = 0
+                    saved_updates = 0
+                    failed = []
+
+                    selected = cftc_candidates[:cftc_limit]
+                    for idx, entry in enumerate(selected, 1):
+                        progress.progress(
+                            idx / cftc_limit,
+                            text=f"Ingesting {idx}/{cftc_limit}: {entry.get('title', '')[:80]}",
+                        )
+                        try:
+                            extracted = cftc_scraper.extract_document(
+                                entry.get("url", ""),
+                                fallback_title=entry.get("title", ""),
+                                fallback_date=entry.get("date", ""),
+                                fallback_speaker=entry.get("speaker", ""),
+                                fallback_doc_type=entry.get("doc_type", ""),
+                            )
+                            if not extracted.get("success"):
+                                raise RuntimeError("Extraction returned unsuccessful result.")
+
+                            data = extracted.get("data", {})
+                            text = str(data.get("full_text", "") or "").strip()
+                            if len(text.split()) < 80:
+                                raise RuntimeError("Extracted text appears too short; skipping.")
+
+                            src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                            source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"{cftc_connector_key}-{idx}"
+                            source_name = f"{source_name}.html" if "." not in source_name else source_name
+
+                            date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                            parsed_date = _parse_single_date(date_text)
+                            if pd.notna(parsed_date):
+                                doc_date_value = parsed_date.date()
+                            else:
+                                doc_date_value = date_text
+
+                            doc_type_text = str(data.get("doc_type", "") or entry.get("doc_type", "") or cftc_cfg.get("doc_type", "")).strip()
+                            speaker_text = str(
+                                data.get("speaker", "")
+                                or entry.get("speaker", "")
+                                or cftc_cfg.get("speaker_fallback", "")
+                                or "CFTC"
+                            ).strip()
+
+                            tags_csv = str(cftc_cfg.get("tags_csv", "") or "").strip()
+                            if cftc_connector_key == "cftc_public_statement_remark":
+                                doc_type_lower = doc_type_text.lower()
+                                if "testimony" in doc_type_lower:
+                                    tags_csv = "cftc,testimony,public-statement,market-regulation"
+                                elif "remark" in doc_type_lower or "speech" in doc_type_lower:
+                                    tags_csv = "cftc,remarks,public-statement,market-regulation"
+                                else:
+                                    tags_csv = "cftc,statement,public-statement,market-regulation"
+
+                            record = _create_uploaded_document_record(
+                                text=text,
+                                organization=str(cftc_cfg.get("organization", "") or "CFTC"),
+                                title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                                speaker=speaker_text,
+                                doc_date=doc_date_value,
+                                doc_type=doc_type_text or str(cftc_cfg.get("doc_type", "") or "Document"),
+                                source_url=src_url,
+                                source_filename=source_name,
+                                source_ext=".html",
+                                source_local_path="",
+                                source_gcs_path="",
+                                tags_csv=tags_csv,
+                                source_kind=str(cftc_cfg.get("source_kind", "") or cftc_connector_key),
+                            )
+                            rm = record.setdefault("metadata", {})
+                            rm["source_family"] = str(cftc_cfg.get("source_kind", "") or cftc_connector_key)
+                            rm["source_index_url"] = cftc_index_url
+                            rm["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+                            rm["location"] = str(data.get("location", "") or entry.get("location", "")).strip()
+
+                            replaced = _upsert_custom_document_record(custom_payload, record)
+                            if replaced:
+                                saved_updates += 1
+                            else:
+                                saved_new += 1
+
+                        except Exception as e:
+                            failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                    progress.progress(1.0, text="CFTC ingest complete.")
+                    if saved_new or saved_updates:
+                        _save_custom_documents(custom_payload)
+                        st.success(
+                            f"Saved {saved_new} new CFTC docs and updated {saved_updates} existing CFTC docs."
+                        )
+                        custom_payload = _load_custom_documents()
+                        custom_docs = _custom_docs_as_speeches(custom_payload)
+                    if failed:
+                        st.warning(f"{len(failed)} CFTC documents failed ingest.")
+                        for msg in failed[:20]:
+                            st.write(f"- {msg}")
+                except Exception as e:
+                    st.error(f"CFTC ingest failed: {e}")
+
+        st.markdown("---")
+
     st.subheader("News Connector: Financial Fraud & Policy")
     st.caption(
         "Discover and ingest targeted financial-regulatory news via NewsAPI "
