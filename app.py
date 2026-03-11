@@ -10342,12 +10342,19 @@ elif page == "Enrichment Pipeline":
         for kind in (selected_source_kinds or [])
         if str(kind).strip()
     }
+    def _candidate_sort_key(doc_obj):
+        parsed = _parse_single_date(doc_obj.get("date", ""))
+        if pd.notna(parsed):
+            return parsed
+        return pd.Timestamp.min
+
     scoped_candidates = [
         doc
         for doc in scoped_candidates_all
         if not selected_source_kind_set
         or (str(doc.get("source_kind", "") or "unknown").strip() or "unknown") in selected_source_kind_set
     ]
+    scoped_candidates = sorted(scoped_candidates, key=_candidate_sort_key, reverse=True)
     candidate_map = {str(d.get("doc_id", "") or ""): d for d in scoped_candidates}
     scoped_doc_ids = set(candidate_map.keys())
 
@@ -10469,12 +10476,6 @@ elif page == "Enrichment Pipeline":
     st.markdown("---")
     st.subheader("Targeted Re-Enrichment")
     if scoped_candidates:
-        def _candidate_sort_key(doc_obj):
-            parsed = _parse_single_date(doc_obj.get("date", ""))
-            if pd.notna(parsed):
-                return parsed
-            return pd.Timestamp.min
-
         target_candidates = sorted(scoped_candidates, key=_candidate_sort_key, reverse=True)
         target_ids = [str(d.get("doc_id", "") or "") for d in target_candidates if str(d.get("doc_id", "") or "").strip()]
         if not target_ids:
