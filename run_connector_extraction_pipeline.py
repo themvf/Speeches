@@ -21,6 +21,9 @@ DOJ_DEFAULT_URL = "https://www.justice.gov/usao/pressreleases"
 FED_DEFAULT_URL = "https://www.federalreserve.gov/newsevents/speeches-testimony.htm"
 CFTC_PRESS_RELEASE_DEFAULT_URL = "https://www.cftc.gov/PressRoom/PressReleases"
 CFTC_PUBLIC_STATEMENT_DEFAULT_URL = "https://www.cftc.gov/PressRoom/SpeechesTestimony/index.htm"
+TREASURY_FEATURED_STORIES_DEFAULT_URL = "https://home.treasury.gov/news/featured-stories"
+TREASURY_PRESS_RELEASES_DEFAULT_URL = "https://home.treasury.gov/news/press-releases"
+TREASURY_STATEMENTS_REMARKS_DEFAULT_URL = "https://home.treasury.gov/news/press-releases/statements-remarks"
 
 SUPPORTED_CONNECTORS = {
     "sec_speech",
@@ -33,6 +36,9 @@ SUPPORTED_CONNECTORS = {
     "federal_reserve_speech_testimony",
     "cftc_press_release",
     "cftc_public_statement_remark",
+    "treasury_featured_story",
+    "treasury_press_release",
+    "treasury_statement_remark",
 }
 
 
@@ -57,6 +63,12 @@ def _default_base_url(connector: str) -> str:
         return CFTC_PRESS_RELEASE_DEFAULT_URL
     if connector == "cftc_public_statement_remark":
         return CFTC_PUBLIC_STATEMENT_DEFAULT_URL
+    if connector == "treasury_featured_story":
+        return TREASURY_FEATURED_STORIES_DEFAULT_URL
+    if connector == "treasury_press_release":
+        return TREASURY_PRESS_RELEASES_DEFAULT_URL
+    if connector == "treasury_statement_remark":
+        return TREASURY_STATEMENTS_REMARKS_DEFAULT_URL
     return ""
 
 
@@ -212,6 +224,24 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector in {"treasury_featured_story", "treasury_press_release", "treasury_statement_remark"}:
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_title = _normalize_space(existing_meta.get("title", ""))
+        incoming_title = _normalize_space(entry.get("title", ""))
+        existing_speaker = _normalize_space(existing_meta.get("speaker", ""))
+        incoming_speaker = _normalize_space(entry.get("speaker", ""))
+        existing_doc_type = _normalize_space(existing_meta.get("doc_type", ""))
+        incoming_doc_type = _normalize_space(entry.get("doc_type", ""))
+        if (
+            (incoming_date and existing_date and incoming_date != existing_date)
+            or (incoming_title and existing_title and incoming_title != existing_title)
+            or (incoming_speaker and existing_speaker and incoming_speaker != existing_speaker)
+            or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
+        ):
+            return "update_available"
+        return "existing"
+
     existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
     incoming_date = _normalize_space(entry.get("date") or entry.get("published_date") or "")
     if incoming_date and existing_date and incoming_date != existing_date:
@@ -282,6 +312,14 @@ def _discover_connector(connector: str, base_url: str, max_pages: int, include_p
         from cftc_press_room_scraper import CFTCPressRoomScraper
 
         scraper = CFTCPressRoomScraper()
+        docs = scraper.discover_documents(source_key=connector, base_url=base_url, max_pages=max_pages)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector in {"treasury_featured_story", "treasury_press_release", "treasury_statement_remark"}:
+        from treasury_news_scraper import TreasuryNewsScraper
+
+        scraper = TreasuryNewsScraper()
         docs = scraper.discover_documents(source_key=connector, base_url=base_url, max_pages=max_pages)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
@@ -737,6 +775,62 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["source_index_url"] = base_url
         metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
         metadata["location"] = str(data.get("location", "") or entry.get("location", "")).strip()
+        return record
+
+    if connector in {"treasury_featured_story", "treasury_press_release", "treasury_statement_remark"}:
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_speaker=entry.get("speaker", ""),
+            fallback_doc_type=entry.get("doc_type", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 60:
+            raise RuntimeError("Extracted text appears too short.")
+
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"{connector}-{idx}", ".html")
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+        speaker = str(data.get("speaker", "") or entry.get("speaker", "")).strip() or "Treasury"
+        doc_type = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "Document"
+        doc_type_lower = doc_type.lower()
+
+        if connector == "treasury_featured_story":
+            tags_csv = "treasury,featured-story,department-news,policy"
+        elif connector == "treasury_press_release":
+            tags_csv = "treasury,press-release,department-news"
+        elif "testimony" in doc_type_lower:
+            tags_csv = "treasury,testimony,statement,policy"
+        elif "readout" in doc_type_lower:
+            tags_csv = "treasury,readout,statement,policy"
+        elif "remark" in doc_type_lower or "speech" in doc_type_lower:
+            tags_csv = "treasury,remarks,statement,policy"
+        else:
+            tags_csv = "treasury,statement,policy"
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="Treasury",
+            title=str(data.get("title", "") or entry.get("title", "")).strip() or "Treasury Document",
+            speaker=speaker,
+            doc_date=doc_date,
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=tags_csv,
+            source_kind=connector,
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = connector
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+        metadata["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
         return record
 
     raise RuntimeError(f"Unsupported connector: {connector}")

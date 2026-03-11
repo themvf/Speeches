@@ -9639,8 +9639,378 @@ elif page == "Extraction":
                 except Exception as e:
                     st.error(f"CFTC ingest failed: {e}")
 
+    st.markdown("---")
+    treasury_connector_configs = {
+        "treasury_featured_story": {
+            "subheader": "Treasury Connector: Featured Stories",
+            "caption": "Discover and ingest Treasury featured stories into the knowledge base.",
+            "default_url": "https://home.treasury.gov/news/featured-stories",
+            "url_label": "Treasury Featured Stories URL",
+            "discover_label": "Discover Treasury Featured Stories",
+            "clear_label": "Clear Treasury Featured Story Results",
+            "debug_label": "Treasury Featured Story Discovery Debug",
+            "selection_label": "Treasury Featured Story Ingest Selection",
+            "slider_label": "Treasury Featured Stories To Ingest",
+            "run_label": "Run Treasury Featured Story Extraction",
+            "progress_label": "Starting Treasury featured-story ingest...",
+            "source_kind": "treasury_featured_story",
+            "doc_type": "Featured Story",
+            "organization": "Treasury",
+            "speaker_fallback": "U.S. Department of the Treasury",
+            "tags_csv": "treasury,featured-story,department-news,policy",
+            "table_cols": ["date", "title", "ingest_status", "url"],
+            "min_words": 60,
+        },
+        "treasury_press_release": {
+            "subheader": "Treasury Connector: Press Releases",
+            "caption": "Discover and ingest Treasury press releases into the knowledge base.",
+            "default_url": "https://home.treasury.gov/news/press-releases",
+            "url_label": "Treasury Press Releases URL",
+            "discover_label": "Discover Treasury Press Releases",
+            "clear_label": "Clear Treasury Press Release Results",
+            "debug_label": "Treasury Press Release Discovery Debug",
+            "selection_label": "Treasury Press Release Ingest Selection",
+            "slider_label": "Treasury Press Releases To Ingest",
+            "run_label": "Run Treasury Press Release Extraction",
+            "progress_label": "Starting Treasury press-release ingest...",
+            "source_kind": "treasury_press_release",
+            "doc_type": "Press Release",
+            "organization": "Treasury",
+            "speaker_fallback": "U.S. Department of the Treasury",
+            "tags_csv": "treasury,press-release,department-news",
+            "table_cols": ["date", "title", "ingest_status", "url"],
+            "min_words": 60,
+        },
+        "treasury_statement_remark": {
+            "subheader": "Treasury Connector: Statements & Remarks",
+            "caption": "Discover and ingest Treasury statements, remarks, readouts, and testimony into the knowledge base.",
+            "default_url": "https://home.treasury.gov/news/press-releases/statements-remarks",
+            "url_label": "Treasury Statements & Remarks URL",
+            "discover_label": "Discover Treasury Statements & Remarks",
+            "clear_label": "Clear Treasury Statements & Remarks Results",
+            "debug_label": "Treasury Statements & Remarks Discovery Debug",
+            "selection_label": "Treasury Statements & Remarks Ingest Selection",
+            "slider_label": "Treasury Statements & Remarks To Ingest",
+            "run_label": "Run Treasury Statements & Remarks Extraction",
+            "progress_label": "Starting Treasury statements/remarks ingest...",
+            "source_kind": "treasury_statement_remark",
+            "doc_type": "Statement",
+            "organization": "Treasury",
+            "speaker_fallback": "Treasury Official",
+            "tags_csv": "treasury,statement,policy",
+            "table_cols": ["date", "doc_type", "speaker", "title", "ingest_status", "url"],
+            "min_words": 60,
+        },
+    }
+
+    for treasury_connector_key, treasury_cfg in treasury_connector_configs.items():
+        st.subheader(str(treasury_cfg.get("subheader", "") or "Treasury Connector"))
+        st.caption(str(treasury_cfg.get("caption", "") or ""))
+
+        treasury_default_url = str(treasury_cfg.get("default_url", "") or "").strip()
+        treasury_index_url = st.text_input(
+            str(treasury_cfg.get("url_label", "") or "Treasury URL"),
+            value=treasury_default_url,
+            key=f"{treasury_connector_key}_index_url",
+        ).strip() or treasury_default_url
+        treasury_pages = st.slider(
+            "Treasury Listing Pages To Scan",
+            min_value=1,
+            max_value=20,
+            value=3,
+            key=f"{treasury_connector_key}_pages",
+        )
+
+        treasury_col1, treasury_col2 = st.columns(2)
+        with treasury_col1:
+            discover_treasury = st.button(
+                str(treasury_cfg.get("discover_label", "") or "Discover Treasury Documents"),
+                key=f"discover_{treasury_connector_key}",
+            )
+        with treasury_col2:
+            clear_treasury = st.button(
+                str(treasury_cfg.get("clear_label", "") or "Clear Treasury Results"),
+                key=f"clear_{treasury_connector_key}",
+            )
+
+        treasury_state_key = f"{treasury_connector_key}_discovered"
+        treasury_debug_key = f"{treasury_connector_key}_discovery_debug"
+        if treasury_state_key not in st.session_state:
+            st.session_state[treasury_state_key] = []
+        if treasury_debug_key not in st.session_state:
+            st.session_state[treasury_debug_key] = {}
+        if clear_treasury:
+            st.session_state[treasury_state_key] = []
+            st.session_state[treasury_debug_key] = {}
+
+        if discover_treasury:
+            try:
+                from treasury_news_scraper import TreasuryNewsScraper
+
+                with st.spinner(f"Discovering {treasury_cfg.get('subheader', 'Treasury documents').lower()}..."):
+                    treasury_scraper = TreasuryNewsScraper()
+                    treasury_discovered = treasury_scraper.discover_documents(
+                        source_key=treasury_connector_key,
+                        base_url=treasury_index_url,
+                        max_pages=treasury_pages,
+                    )
+                    debug_payload = getattr(treasury_scraper, "last_discovery_debug", {})
+                    if isinstance(debug_payload, dict):
+                        st.session_state[treasury_debug_key] = debug_payload
+
+                existing_custom = {}
+                for item in custom_docs:
+                    m = item.get("metadata", {})
+                    existing_custom[_url_match_key(m.get("url", ""))] = m
+
+                existing_speech_urls = {
+                    _url_match_key(s.get("metadata", {}).get("url", ""))
+                    for s in raw_data.get("speeches", [])
+                }
+
+                for entry in treasury_discovered:
+                    key = _url_match_key(entry.get("url", ""))
+                    status = "new"
+                    existing_meta = existing_custom.get(key)
+                    if existing_meta:
+                        existing_date = str(existing_meta.get("published_date") or existing_meta.get("date") or "").strip()
+                        incoming_date = str(entry.get("date", "") or "").strip()
+                        existing_title = str(existing_meta.get("title", "") or "").strip()
+                        incoming_title = str(entry.get("title", "") or "").strip()
+                        existing_speaker = str(existing_meta.get("speaker", "") or "").strip()
+                        incoming_speaker = str(entry.get("speaker", "") or "").strip()
+                        existing_doc_type = str(existing_meta.get("doc_type", "") or "").strip()
+                        incoming_doc_type = str(entry.get("doc_type", "") or "").strip()
+                        if (
+                            (incoming_date and existing_date and incoming_date != existing_date)
+                            or (incoming_title and existing_title and incoming_title != existing_title)
+                            or (incoming_speaker and existing_speaker and incoming_speaker != existing_speaker)
+                            or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
+                        ):
+                            status = "update_available"
+                        else:
+                            status = "existing"
+                    elif key in existing_speech_urls:
+                        status = "existing_in_speeches"
+                    entry["ingest_status"] = status
+                    entry["source_key"] = treasury_connector_key
+
+                st.session_state[treasury_state_key] = treasury_discovered
+                new_count = sum(1 for d in treasury_discovered if d.get("ingest_status") in {"new", "update_available"})
+                st.success(
+                    f"Discovered {len(treasury_discovered)} Treasury documents "
+                    f"({new_count} new/update candidates)."
+                )
+                try:
+                    dbg = st.session_state.get(treasury_debug_key, {})
+                    if isinstance(dbg, dict):
+                        dbg["ingest_status_counts"] = {
+                            "new": sum(1 for d in treasury_discovered if d.get("ingest_status") == "new"),
+                            "update_available": sum(1 for d in treasury_discovered if d.get("ingest_status") == "update_available"),
+                            "existing": sum(1 for d in treasury_discovered if d.get("ingest_status") == "existing"),
+                            "existing_in_speeches": sum(1 for d in treasury_discovered if d.get("ingest_status") == "existing_in_speeches"),
+                        }
+                        st.session_state[treasury_debug_key] = dbg
+                except Exception:
+                    pass
+            except Exception as e:
+                st.session_state[treasury_debug_key] = {"error": str(e)}
+                st.error(f"Treasury discovery failed: {e}")
+
+        treasury_discovered = st.session_state.get(treasury_state_key, [])
+        treasury_debug = st.session_state.get(treasury_debug_key, {})
+        if isinstance(treasury_debug, dict) and treasury_debug:
+            with st.expander(str(treasury_cfg.get("debug_label", "") or "Treasury Discovery Debug"), expanded=False):
+                c1, c2, c3, c4 = st.columns(4)
+                pages_payload = treasury_debug.get("pages", [])
+                c1.metric("Requested Pages", int(treasury_debug.get("max_pages_requested", 0) or 0))
+                c2.metric("Pages Logged", len(pages_payload if isinstance(pages_payload, list) else []))
+                c3.metric("Listing Added", int(treasury_debug.get("listing_added", 0) or 0))
+                c4.metric("Total Unique", int(treasury_debug.get("total_unique", 0) or 0))
+                st.caption(f"Stop reason: `{treasury_debug.get('stop_reason', '')}`")
+                if isinstance(pages_payload, list) and pages_payload:
+                    page_df = pd.DataFrame(pages_payload)
+                    show_cols = [
+                        c
+                        for c in [
+                            "page",
+                            "returned_items",
+                            "unique_added",
+                            "page_url",
+                            "next_page_url",
+                            "error_status",
+                            "error_type",
+                            "error_message",
+                        ]
+                        if c in page_df.columns
+                    ]
+                    st.dataframe(page_df[show_cols], use_container_width=True, hide_index=True)
+                st.json(treasury_debug)
+
+        if treasury_discovered:
+            treasury_df = pd.DataFrame(treasury_discovered)
+            treasury_df = _sort_table_by_date(treasury_df, date_col="date")
+            show_cols = [c for c in treasury_cfg.get("table_cols", []) if c in treasury_df.columns]
+            st.dataframe(
+                treasury_df[show_cols],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            treasury_filter = st.selectbox(
+                str(treasury_cfg.get("selection_label", "") or "Treasury Ingest Selection"),
+                ["New/Updates Only", "All Discovered"],
+                key=f"{treasury_connector_key}_ingest_filter",
+            )
+            if treasury_filter == "New/Updates Only":
+                treasury_candidates = [
+                    d for d in treasury_discovered if d.get("ingest_status") in {"new", "update_available"}
+                ]
+            else:
+                treasury_candidates = list(treasury_discovered)
+
+            treasury_count = len(treasury_candidates)
+            if treasury_count <= 0:
+                treasury_limit = 0
+                st.caption("No Treasury documents match the selected ingest filter.")
+            elif treasury_count == 1:
+                treasury_limit = 1
+                st.caption("1 Treasury document selected for ingest.")
+            else:
+                treasury_limit = st.slider(
+                    str(treasury_cfg.get("slider_label", "") or "Treasury Documents To Ingest"),
+                    min_value=1,
+                    max_value=treasury_count,
+                    value=min(25, treasury_count),
+                    key=f"{treasury_connector_key}_ingest_limit",
+                )
+            st.caption(f"{treasury_count} Treasury documents currently match this ingest selection.")
+
+            if st.button(
+                str(treasury_cfg.get("run_label", "") or "Run Treasury Extraction"),
+                disabled=(treasury_limit <= 0),
+                key=f"ingest_{treasury_connector_key}",
+            ):
+                try:
+                    from treasury_news_scraper import TreasuryNewsScraper
+
+                    treasury_scraper = TreasuryNewsScraper()
+                    progress = st.progress(
+                        0,
+                        text=str(treasury_cfg.get("progress_label", "") or "Starting Treasury ingest..."),
+                    )
+                    saved_new = 0
+                    saved_updates = 0
+                    failed = []
+
+                    selected = treasury_candidates[:treasury_limit]
+                    for idx, entry in enumerate(selected, 1):
+                        progress.progress(
+                            idx / treasury_limit,
+                            text=f"Ingesting {idx}/{treasury_limit}: {entry.get('title', '')[:80]}",
+                        )
+                        try:
+                            extracted = treasury_scraper.extract_document(
+                                entry.get("url", ""),
+                                fallback_title=entry.get("title", ""),
+                                fallback_date=entry.get("date", ""),
+                                fallback_speaker=entry.get("speaker", ""),
+                                fallback_doc_type=entry.get("doc_type", ""),
+                            )
+                            if not extracted.get("success"):
+                                raise RuntimeError("Extraction returned unsuccessful result.")
+
+                            data = extracted.get("data", {})
+                            text = str(data.get("full_text", "") or "").strip()
+                            min_words = int(treasury_cfg.get("min_words", 60) or 60)
+                            if len(text.split()) < min_words:
+                                raise RuntimeError("Extracted text appears too short; skipping.")
+
+                            src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                            source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"{treasury_connector_key}-{idx}"
+                            source_name = f"{source_name}.html" if "." not in source_name else source_name
+
+                            date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                            parsed_date = _parse_single_date(date_text)
+                            if pd.notna(parsed_date):
+                                doc_date_value = parsed_date.date()
+                            else:
+                                doc_date_value = date_text
+
+                            doc_type_text = str(
+                                data.get("doc_type", "")
+                                or entry.get("doc_type", "")
+                                or treasury_cfg.get("doc_type", "")
+                            ).strip() or "Document"
+                            speaker_text = str(
+                                data.get("speaker", "")
+                                or entry.get("speaker", "")
+                                or treasury_cfg.get("speaker_fallback", "")
+                                or "Treasury"
+                            ).strip()
+
+                            tags_csv = str(treasury_cfg.get("tags_csv", "") or "").strip()
+                            if treasury_connector_key == "treasury_statement_remark":
+                                doc_type_lower = doc_type_text.lower()
+                                if "testimony" in doc_type_lower:
+                                    tags_csv = "treasury,testimony,statement,policy"
+                                elif "readout" in doc_type_lower:
+                                    tags_csv = "treasury,readout,statement,policy"
+                                elif "remark" in doc_type_lower or "speech" in doc_type_lower:
+                                    tags_csv = "treasury,remarks,statement,policy"
+                                else:
+                                    tags_csv = "treasury,statement,policy"
+
+                            record = _create_uploaded_document_record(
+                                text=text,
+                                organization=str(treasury_cfg.get("organization", "") or "Treasury"),
+                                title=str(data.get("title", "") or entry.get("title", "")).strip() or "Treasury Document",
+                                speaker=speaker_text,
+                                doc_date=doc_date_value,
+                                doc_type=doc_type_text,
+                                source_url=src_url,
+                                source_filename=source_name,
+                                source_ext=".html",
+                                source_local_path="",
+                                source_gcs_path="",
+                                tags_csv=tags_csv,
+                                source_kind=str(treasury_cfg.get("source_kind", "") or treasury_connector_key),
+                            )
+                            rm = record.setdefault("metadata", {})
+                            rm["source_family"] = str(treasury_cfg.get("source_kind", "") or treasury_connector_key)
+                            rm["source_index_url"] = treasury_index_url
+                            rm["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+                            rm["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+                            rm["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+
+                            replaced = _upsert_custom_document_record(custom_payload, record)
+                            if replaced:
+                                saved_updates += 1
+                            else:
+                                saved_new += 1
+
+                        except Exception as e:
+                            failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                    progress.progress(1.0, text="Treasury ingest complete.")
+                    if saved_new or saved_updates:
+                        _save_custom_documents(custom_payload)
+                        st.success(
+                            f"Saved {saved_new} new Treasury docs and updated {saved_updates} existing Treasury docs."
+                        )
+                        custom_payload = _load_custom_documents()
+                        custom_docs = _custom_docs_as_speeches(custom_payload)
+                        knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                    if failed:
+                        st.warning(f"{len(failed)} Treasury documents failed ingest.")
+                        for msg in failed[:20]:
+                            st.write(f"- {msg}")
+                except Exception as e:
+                    st.error(f"Treasury ingest failed: {e}")
+
         st.markdown("---")
 
+    st.markdown("---")
     st.subheader("News Connector: Financial Fraud & Policy")
     st.caption(
         "Discover and ingest targeted financial-regulatory news via NewsAPI "
