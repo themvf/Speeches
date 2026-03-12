@@ -21,15 +21,17 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 
-TREASURY_FEATURED_STORIES_URL = "https://home.treasury.gov/news/featured-stories"
-TREASURY_PRESS_RELEASES_URL = "https://home.treasury.gov/news/press-releases"
-TREASURY_STATEMENTS_REMARKS_URL = "https://home.treasury.gov/news/press-releases/statements-remarks"
+TREASURY_HOME_URL = "https://home.treasury.gov"
+TREASURY_FEATURED_STORIES_URL = f"{TREASURY_HOME_URL}/news/featured-stories"
+TREASURY_PRESS_RELEASES_URL = f"{TREASURY_HOME_URL}/news/press-releases"
+TREASURY_STATEMENTS_REMARKS_URL = f"{TREASURY_HOME_URL}/news/press-releases/statements-remarks"
 
 _SOURCE_CONFIG: Dict[str, Dict[str, Any]] = {
     "treasury_featured_story": {
         "default_url": TREASURY_FEATURED_STORIES_URL,
         "allowed_prefixes": ["/news/featured-stories/"],
         "listing_paths": ["/news/featured-stories"],
+        "discovery_paths": ["/news/featured-stories"],
         "fallback_title": "Treasury Featured Story",
         "default_doc_type": "Featured Story",
     },
@@ -37,6 +39,7 @@ _SOURCE_CONFIG: Dict[str, Dict[str, Any]] = {
         "default_url": TREASURY_PRESS_RELEASES_URL,
         "allowed_prefixes": ["/news/press-releases/"],
         "listing_paths": ["/news/press-releases", "/news/press-releases/statements-remarks"],
+        "discovery_paths": ["/news/press-releases"],
         "fallback_title": "Treasury Press Release",
         "default_doc_type": "Press Release",
     },
@@ -45,6 +48,11 @@ _SOURCE_CONFIG: Dict[str, Dict[str, Any]] = {
         "allowed_prefixes": ["/news/press-releases/"],
         "listing_paths": [
             "/news/press-releases",
+            "/news/press-releases/statements-remarks",
+            "/news/press-releases/readouts",
+            "/news/press-releases/testimonies",
+        ],
+        "discovery_paths": [
             "/news/press-releases/statements-remarks",
             "/news/press-releases/readouts",
             "/news/press-releases/testimonies",
@@ -62,6 +70,25 @@ _TREASURY_SECTION_LANDING_SLUGS = {
     "statements-remarks",
     "testimonies",
 }
+
+_TREASURY_SECTION_LANDING_PREFIXES = (
+    "/news/press-releases/statements-remarks/",
+    "/news/press-releases/readouts/",
+    "/news/press-releases/testimonies/",
+)
+
+_LISTING_ROW_SELECTORS = (
+    ".content--2col__body > div",
+    ".view-content > .mm-news-row",
+    ".featured-stories--vertical__col2",
+    "div.views-row",
+    "li.views-row",
+    "div.news-item",
+    "div.story-item",
+    "tr",
+    "article",
+    "li",
+)
 
 
 def _normalize_space(text: Any) -> str:
@@ -81,6 +108,16 @@ def _parse_date_text(value: Any) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
         return None
+    iso_text = text
+    if iso_text.endswith("Z"):
+        iso_text = f"{iso_text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(iso_text)
+        if parsed.tzinfo is not None:
+            return parsed.replace(tzinfo=None)
+        return parsed
+    except ValueError:
+        pass
     text = (
         text.replace("Jan.", "Jan")
         .replace("Feb.", "Feb")
@@ -147,6 +184,14 @@ def _url_without_query(url: Any) -> str:
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
 
+def _url_without_fragment(url: Any) -> str:
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, parsed.query, ""))
+
+
 def _url_key(url: Any) -> str:
     raw = str(url or "").strip()
     if not raw:
@@ -156,6 +201,18 @@ def _url_key(url: Any) -> str:
     netloc = parsed.netloc.lower()
     path = parsed.path.rstrip("/") or "/"
     return f"{scheme}://{netloc}{path}"
+
+
+def _listing_url_key(url: Any) -> str:
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or "https").lower()
+    netloc = parsed.netloc.lower()
+    path = parsed.path.rstrip("/") or "/"
+    query = f"?{parsed.query}" if parsed.query else ""
+    return f"{scheme}://{netloc}{path}{query}"
 
 
 def _title_from_url(url: Any, fallback: str) -> str:
@@ -173,17 +230,24 @@ def _infer_treasury_doc_type(source_key: str, title: Any, url: Any = "", text: A
     if source_key == "treasury_featured_story":
         return "Featured Story"
 
-    blob = " ".join(
-        value for value in [_normalize_space(title), _normalize_space(url), _normalize_space(text)] if value
-    ).lower()
-    if "testimony" in blob:
+    title_blob = " ".join(value for value in [_normalize_space(title), _normalize_space(url)] if value).lower()
+    text_blob = _normalize_space(text).lower()
+    if "testimony" in title_blob:
         return "Testimony"
-    if "remarks" in blob or "speech" in blob or "prepared remarks" in blob or "keynote" in blob:
-        return "Remarks"
-    if "readout" in blob:
+    if "readout" in title_blob:
         return "Readout"
-    if "statement" in blob:
+    if "statement" in title_blob:
         return "Statement"
+    if "remarks" in title_blob or "speech" in title_blob or "prepared remarks" in title_blob or "keynote" in title_blob:
+        return "Remarks"
+    if "testimony" in text_blob:
+        return "Testimony"
+    if "readout" in text_blob:
+        return "Readout"
+    if "statement" in text_blob:
+        return "Statement"
+    if "remarks" in text_blob or "speech" in text_blob or "prepared remarks" in text_blob or "keynote" in text_blob:
+        return "Remarks"
     if source_key == "treasury_statement_remark":
         return "Statement"
     return "Press Release"
@@ -244,10 +308,50 @@ def _is_treasury_detail_url(url: Any, source_key: str) -> bool:
     listing_paths = [str(item).rstrip("/").lower() for item in cfg.get("listing_paths", [])]
     if lower_path in listing_paths or lower_path.endswith("/index.htm") or lower_path.endswith("/index.html"):
         return False
+    if any(lower_path.startswith(prefix) for prefix in _TREASURY_SECTION_LANDING_PREFIXES):
+        return False
     slug = lower_path.rsplit("/", 1)[-1].strip()
     if slug in _TREASURY_SECTION_LANDING_SLUGS:
         return False
     return True
+
+
+def _detail_links_for_row(row: Tag, source_key: str) -> List[Tuple[str, Tag]]:
+    out: List[Tuple[str, Tag]] = []
+    seen = set()
+    for anchor in row.select("a[href]"):
+        if not isinstance(anchor, Tag):
+            continue
+        href = _normalize_space(anchor.get("href", ""))
+        detail_url = _url_without_query(urljoin(TREASURY_HOME_URL, href))
+        if not _is_treasury_detail_url(detail_url, source_key):
+            continue
+        key = _url_key(detail_url)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append((detail_url, anchor))
+    return out
+
+
+def _discover_listing_rows(soup: BeautifulSoup, source_key: str) -> List[Tag]:
+    for selector in _LISTING_ROW_SELECTORS:
+        matched_rows: List[Tag] = []
+        seen = set()
+        for row in soup.select(selector):
+            if not isinstance(row, Tag):
+                continue
+            row_id = id(row)
+            if row_id in seen:
+                continue
+            detail_links = _detail_links_for_row(row, source_key)
+            if len(detail_links) != 1:
+                continue
+            seen.add(row_id)
+            matched_rows.append(row)
+        if matched_rows:
+            return matched_rows
+    return []
 
 
 def _best_listing_container(anchor: Tag) -> Tag:
@@ -314,8 +418,8 @@ def _find_next_page_url(soup: BeautifulSoup, current_url: str) -> str:
         if isinstance(node, Tag):
             href = _normalize_space(node.get("href", ""))
             if href:
-                next_url = _url_without_query(urljoin(current_url, href))
-                if next_url and _url_key(next_url) != _url_key(current_url):
+                next_url = _url_without_fragment(urljoin(current_url, href))
+                if next_url and _listing_url_key(next_url) != _listing_url_key(current_url):
                     return next_url
 
     for node in soup.select("a[href]"):
@@ -329,8 +433,8 @@ def _find_next_page_url(soup: BeautifulSoup, current_url: str) -> str:
         href = _normalize_space(node.get("href", ""))
         if not href:
             continue
-        next_url = _url_without_query(urljoin(current_url, href))
-        if next_url and _url_key(next_url) != _url_key(current_url):
+        next_url = _url_without_fragment(urljoin(current_url, href))
+        if next_url and _listing_url_key(next_url) != _listing_url_key(current_url):
             return next_url
     return ""
 
@@ -376,26 +480,17 @@ class TreasuryNewsScraper:
     def _discover_from_listing_page(self, page_url: str, source_key: str) -> Tuple[List[Dict[str, str]], str]:
         response = self._fetch_html(page_url, timeout=60)
         soup = BeautifulSoup(response.text, "html.parser")
-        rows = soup.select("div.views-row, article, li.views-row, li, div.news-item, div.story-item, tr")
+        rows = _discover_listing_rows(soup, source_key)
 
         out: List[Dict[str, str]] = []
         seen = set()
         for row in rows:
             if not isinstance(row, Tag):
                 continue
-            detail_anchor: Optional[Tag] = None
-            for anchor in row.select("a[href]"):
-                if not isinstance(anchor, Tag):
-                    continue
-                href = _normalize_space(anchor.get("href", ""))
-                full_url = _url_without_query(urljoin("https://home.treasury.gov", href))
-                if _is_treasury_detail_url(full_url, source_key):
-                    detail_anchor = anchor
-                    break
-            if detail_anchor is None:
+            detail_links = _detail_links_for_row(row, source_key)
+            if len(detail_links) != 1:
                 continue
-
-            detail_url = _url_without_query(urljoin("https://home.treasury.gov", detail_anchor.get("href", "")))
+            detail_url, detail_anchor = detail_links[0]
             key = _url_key(detail_url)
             if not key or key in seen:
                 continue
@@ -422,7 +517,7 @@ class TreasuryNewsScraper:
                 if not isinstance(anchor, Tag):
                     continue
                 href = _normalize_space(anchor.get("href", ""))
-                detail_url = _url_without_query(urljoin("https://home.treasury.gov", href))
+                detail_url = _url_without_query(urljoin(TREASURY_HOME_URL, href))
                 if not _is_treasury_detail_url(detail_url, source_key):
                     continue
                 key = _url_key(detail_url)
@@ -452,16 +547,34 @@ class TreasuryNewsScraper:
         if not cfg:
             raise ValueError(f"Unsupported Treasury source_key: {source_key}")
 
-        start_url = str(base_url or "").strip() or cfg["default_url"]
+        explicit_base_url = str(base_url or "").strip()
+        default_url = str(cfg.get("default_url", "") or "").strip()
+        start_url = explicit_base_url or default_url
         max_pages = max(1, int(max_pages or 1))
+
+        discovery_paths = cfg.get("discovery_paths", []) or [default_url]
+        seed_urls: List[str] = []
+        seed_seen = set()
+        if explicit_base_url and _listing_url_key(_url_without_fragment(explicit_base_url)) != _listing_url_key(default_url):
+            discovery_candidates = [explicit_base_url]
+        else:
+            discovery_candidates = discovery_paths
+        for candidate in discovery_candidates:
+            candidate_url = _url_without_fragment(urljoin(TREASURY_HOME_URL, str(candidate or "").strip()))
+            key = _listing_url_key(candidate_url)
+            if not key or key in seed_seen:
+                continue
+            seed_seen.add(key)
+            seed_urls.append(candidate_url)
+        if not seed_urls:
+            seed_urls = [_url_without_fragment(start_url)]
 
         out: List[Dict[str, str]] = []
         seen = set()
-        current_url = start_url
-        pages_scanned = 0
         debug: Dict[str, Any] = {
             "source_key": str(source_key or ""),
             "base_url": start_url,
+            "seed_urls": list(seed_urls),
             "max_pages_requested": max_pages,
             "pages": [],
             "listing_added": 0,
@@ -469,52 +582,59 @@ class TreasuryNewsScraper:
             "stop_reason": "",
         }
 
-        while current_url and pages_scanned < max_pages:
-            page_debug: Dict[str, Any] = {
-                "page": pages_scanned + 1,
-                "page_url": current_url,
-                "returned_items": 0,
-                "unique_added": 0,
-                "next_page_url": "",
-                "error_type": "",
-                "error_status": 0,
-                "error_message": "",
-            }
-            try:
-                discovered, next_page = self._discover_from_listing_page(current_url, source_key)
-                page_debug["returned_items"] = len(discovered)
-                page_debug["next_page_url"] = next_page
-                for item in discovered:
-                    key = _url_key(item.get("url", ""))
-                    if not key or key in seen:
-                        continue
-                    seen.add(key)
-                    out.append(item)
-                    page_debug["unique_added"] += 1
-                current_url = next_page
-                pages_scanned += 1
-                debug["pages"].append(page_debug)
-                if not next_page:
-                    debug["stop_reason"] = "pagination_exhausted"
-                    break
-            except requests.HTTPError as exc:
-                page_debug["error_type"] = "HTTPError"
-                page_debug["error_status"] = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
-                page_debug["error_message"] = str(exc)
-                debug["pages"].append(page_debug)
-                debug["stop_reason"] = f"http_error_{page_debug['error_status']}"
-                self.last_discovery_debug = debug
-                raise
-            except Exception as exc:
-                page_debug["error_type"] = type(exc).__name__
-                page_debug["error_message"] = str(exc)
-                debug["pages"].append(page_debug)
-                debug["stop_reason"] = "error"
-                self.last_discovery_debug = debug
-                raise
+        for seed_url in seed_urls:
+            current_url = seed_url
+            pages_scanned = 0
+            while current_url and pages_scanned < max_pages:
+                page_debug: Dict[str, Any] = {
+                    "seed_url": seed_url,
+                    "page": pages_scanned + 1,
+                    "page_url": current_url,
+                    "returned_items": 0,
+                    "unique_added": 0,
+                    "next_page_url": "",
+                    "error_type": "",
+                    "error_status": 0,
+                    "error_message": "",
+                }
+                try:
+                    discovered, next_page = self._discover_from_listing_page(current_url, source_key)
+                    page_debug["returned_items"] = len(discovered)
+                    page_debug["next_page_url"] = next_page
+                    for item in discovered:
+                        key = _url_key(item.get("url", ""))
+                        if not key or key in seen:
+                            continue
+                        seen.add(key)
+                        out.append(item)
+                        page_debug["unique_added"] += 1
+                    current_url = next_page
+                    pages_scanned += 1
+                    debug["pages"].append(page_debug)
+                    if not next_page:
+                        break
+                except requests.HTTPError as exc:
+                    page_debug["error_type"] = "HTTPError"
+                    page_debug["error_status"] = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
+                    page_debug["error_message"] = str(exc)
+                    debug["pages"].append(page_debug)
+                    debug["stop_reason"] = f"http_error_{page_debug['error_status']}"
+                    self.last_discovery_debug = debug
+                    raise
+                except Exception as exc:
+                    page_debug["error_type"] = type(exc).__name__
+                    page_debug["error_message"] = str(exc)
+                    debug["pages"].append(page_debug)
+                    debug["stop_reason"] = "error"
+                    self.last_discovery_debug = debug
+                    raise
 
-        if not debug["stop_reason"]:
+        if not debug["pages"]:
+            debug["stop_reason"] = "no_pages_scanned"
+        elif any(str(page.get("next_page_url", "") or "").strip() for page in debug["pages"]):
             debug["stop_reason"] = "completed"
+        else:
+            debug["stop_reason"] = "pagination_exhausted"
 
         def _sort_key(item: Dict[str, str]):
             return _parse_date_text(item.get("date", "")) or datetime.min
