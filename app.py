@@ -10011,6 +10011,293 @@ elif page == "Extraction":
         st.markdown("---")
 
     st.markdown("---")
+    st.subheader("SIFMA Connector: News")
+    st.caption(
+        "Discover and ingest the latest SIFMA news items from https://www.sifma.org/news. "
+        "Note: SIFMA may intermittently serve a Vercel Security Checkpoint to automated requests."
+    )
+
+    sifma_default_url = "https://www.sifma.org/news"
+    sifma_index_url = st.text_input(
+        "SIFMA News URL",
+        value=sifma_default_url,
+        key="sifma_news_index_url",
+    ).strip() or sifma_default_url
+    sifma_pages = st.slider(
+        "SIFMA Listing Pages To Scan",
+        min_value=1,
+        max_value=10,
+        value=3,
+        key="sifma_news_pages",
+    )
+
+    sifma_col1, sifma_col2 = st.columns(2)
+    with sifma_col1:
+        discover_sifma = st.button("Discover SIFMA News", key="discover_sifma_news")
+    with sifma_col2:
+        clear_sifma = st.button("Clear SIFMA Results", key="clear_sifma_news")
+
+    sifma_state_key = "sifma_news_discovered"
+    sifma_debug_key = "sifma_news_discovery_debug"
+    if sifma_state_key not in st.session_state:
+        st.session_state[sifma_state_key] = []
+    if sifma_debug_key not in st.session_state:
+        st.session_state[sifma_debug_key] = {}
+    if clear_sifma:
+        st.session_state[sifma_state_key] = []
+        st.session_state[sifma_debug_key] = {}
+
+    if discover_sifma:
+        try:
+            from sifma_news_scraper import SIFMANewsScraper
+
+            with st.spinner("Discovering SIFMA news..."):
+                sifma_scraper = SIFMANewsScraper()
+                sifma_discovered = sifma_scraper.discover_documents(
+                    base_url=sifma_index_url,
+                    max_pages=sifma_pages,
+                )
+                debug_payload = getattr(sifma_scraper, "last_discovery_debug", {})
+                if isinstance(debug_payload, dict):
+                    st.session_state[sifma_debug_key] = debug_payload
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in sifma_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(existing_meta.get("published_date") or existing_meta.get("date") or "").strip()
+                    incoming_date = str(entry.get("date", "") or "").strip()
+                    existing_title = str(existing_meta.get("title", "") or "").strip()
+                    incoming_title = str(entry.get("title", "") or "").strip()
+                    existing_category = str(existing_meta.get("category", "") or "").strip()
+                    incoming_category = str(entry.get("category", "") or "").strip()
+                    existing_doc_type = str(existing_meta.get("doc_type", "") or "").strip()
+                    incoming_doc_type = str(entry.get("doc_type", "") or "").strip()
+                    if (
+                        (incoming_date and existing_date and incoming_date != existing_date)
+                        or (incoming_title and existing_title and incoming_title != existing_title)
+                        or (incoming_category and existing_category and incoming_category != existing_category)
+                        or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
+                    ):
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+                entry["source_key"] = "sifma_news_item"
+
+            st.session_state[sifma_state_key] = sifma_discovered
+            new_count = sum(1 for d in sifma_discovered if d.get("ingest_status") in {"new", "update_available"})
+            st.success(
+                f"Discovered {len(sifma_discovered)} SIFMA news items "
+                f"({new_count} new/update candidates)."
+            )
+            try:
+                dbg = st.session_state.get(sifma_debug_key, {})
+                if isinstance(dbg, dict):
+                    dbg["ingest_status_counts"] = {
+                        "new": sum(1 for d in sifma_discovered if d.get("ingest_status") == "new"),
+                        "update_available": sum(1 for d in sifma_discovered if d.get("ingest_status") == "update_available"),
+                        "existing": sum(1 for d in sifma_discovered if d.get("ingest_status") == "existing"),
+                        "existing_in_speeches": sum(1 for d in sifma_discovered if d.get("ingest_status") == "existing_in_speeches"),
+                    }
+                    st.session_state[sifma_debug_key] = dbg
+            except Exception:
+                pass
+        except Exception as e:
+            st.session_state[sifma_debug_key] = {"error": str(e)}
+            st.error(f"SIFMA discovery failed: {e}")
+
+    sifma_discovered = st.session_state.get(sifma_state_key, [])
+    sifma_debug = st.session_state.get(sifma_debug_key, {})
+    if isinstance(sifma_debug, dict) and sifma_debug:
+        with st.expander("SIFMA Discovery Debug", expanded=False):
+            c1, c2, c3, c4 = st.columns(4)
+            pages_payload = sifma_debug.get("pages", [])
+            c1.metric("Requested Pages", int(sifma_debug.get("max_pages_requested", 0) or 0))
+            c2.metric("Pages Logged", len(pages_payload if isinstance(pages_payload, list) else []))
+            c3.metric("Listing Added", int(sifma_debug.get("listing_added", 0) or 0))
+            c4.metric("Total Unique", int(sifma_debug.get("total_unique", 0) or 0))
+            st.caption(
+                f"Stop reason: `{sifma_debug.get('stop_reason', '')}` | "
+                f"Checkpoint blocked: `{sifma_debug.get('checkpoint_blocked', False)}`"
+            )
+            if isinstance(pages_payload, list) and pages_payload:
+                page_df = pd.DataFrame(pages_payload)
+                show_cols = [
+                    c
+                    for c in [
+                        "page",
+                        "status_code",
+                        "returned_items",
+                        "unique_added",
+                        "page_url",
+                        "next_page_url",
+                        "checkpoint_blocked",
+                        "error_type",
+                        "error_message",
+                    ]
+                    if c in page_df.columns
+                ]
+                st.dataframe(page_df[show_cols], use_container_width=True, hide_index=True)
+            st.json(sifma_debug)
+
+    if sifma_discovered:
+        sifma_df = pd.DataFrame(sifma_discovered)
+        sifma_df = _sort_table_by_date(sifma_df, date_col="date")
+        show_cols = [c for c in ["date", "category", "doc_type", "title", "ingest_status", "url"] if c in sifma_df.columns]
+        st.dataframe(
+            sifma_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        sifma_filter = st.selectbox(
+            "SIFMA Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="sifma_news_ingest_filter",
+        )
+        if sifma_filter == "New/Updates Only":
+            sifma_candidates = [d for d in sifma_discovered if d.get("ingest_status") in {"new", "update_available"}]
+        else:
+            sifma_candidates = list(sifma_discovered)
+
+        sifma_count = len(sifma_candidates)
+        if sifma_count <= 0:
+            sifma_limit = 0
+            st.caption("No SIFMA news items match the selected ingest filter.")
+        elif sifma_count == 1:
+            sifma_limit = 1
+            st.caption("1 SIFMA news item selected for ingest.")
+        else:
+            sifma_limit = st.slider(
+                "SIFMA News Items To Ingest",
+                min_value=1,
+                max_value=sifma_count,
+                value=min(10, sifma_count),
+                key="sifma_news_ingest_limit",
+            )
+        st.caption(f"{sifma_count} SIFMA news items currently match this ingest selection.")
+
+        if st.button("Run SIFMA News Extraction", disabled=(sifma_limit <= 0), key="ingest_sifma_news"):
+            try:
+                from sifma_news_scraper import SIFMANewsScraper
+
+                sifma_scraper = SIFMANewsScraper()
+                progress = st.progress(0, text="Starting SIFMA ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = sifma_candidates[:sifma_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / sifma_limit,
+                        text=f"Ingesting {idx}/{sifma_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = sifma_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_category=entry.get("category", ""),
+                            fallback_doc_type=entry.get("doc_type", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 40:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"sifma-news-{idx}"
+                        source_name = f"{source_name}.html" if "." not in source_name else source_name
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        doc_type_text = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "News Item"
+                        category_text = str(data.get("category", "") or entry.get("category", "")).strip()
+                        doc_type_lower = doc_type_text.lower()
+                        if "press release" in doc_type_lower:
+                            tags_csv = "sifma,press-release,association-news,capital-markets"
+                        elif "speech" in doc_type_lower:
+                            tags_csv = "sifma,speech,association-news,capital-markets"
+                        elif "podcast" in doc_type_lower:
+                            tags_csv = "sifma,podcast,association-news,capital-markets"
+                        elif "blog" in doc_type_lower:
+                            tags_csv = "sifma,blog,association-news,capital-markets"
+                        else:
+                            tags_csv = "sifma,news,association-news,capital-markets"
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="SIFMA",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip() or "SIFMA News Item",
+                            speaker="SIFMA",
+                            doc_date=doc_date_value,
+                            doc_type=doc_type_text,
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=".html",
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv=tags_csv,
+                            source_kind="sifma_news_item",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "sifma_news_item"
+                        rm["source_index_url"] = sifma_index_url
+                        rm["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+                        rm["category"] = category_text
+                        rm["topics"] = str(entry.get("topics", "") or "").strip()
+                        rm["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+                        rm["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="SIFMA ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new SIFMA docs and updated {saved_updates} existing SIFMA docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} SIFMA documents failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"SIFMA ingest failed: {e}")
+
+    st.markdown("---")
     st.subheader("News Connector: Financial Fraud & Policy")
     st.caption(
         "Discover and ingest targeted financial-regulatory news via NewsAPI "
