@@ -173,3 +173,36 @@ export interface DocumentsListResponseData {
   total: number;
   facets: DocumentsFacets;
 }
+
+export interface TimelineBucketSourceCount {
+  source_kind: string;
+  count: number;
+}
+
+export interface TimelineBucket {
+  key: string;
+  label: string;
+  start: string;
+  end: string;
+  count: number;
+  source_counts: TimelineBucketSourceCount[];
+}
+
+export interface TimelineSummary {
+  matching_documents: number;
+  dated_documents: number;
+  undated_documents: number;
+  bucket_count: number;
+  peak_bucket_key: string;
+  peak_bucket_label: string;
+  peak_bucket_count: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface TimelineResponseData {
+  grain: "month" | "quarter" | "year";
+  buckets: TimelineBucket[];
+  totals: TimelineSummary;
+  facets: DocumentsFacets;
+}

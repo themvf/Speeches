@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type NavItem = {
-  href: "/" | "/analytics" | "/chats" | "/notices";
+  href: "/" | "/timeline" | "/analytics" | "/chats" | "/notices";
   label: string;
   prefetch?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", prefetch: true },
+  { href: "/timeline", label: "Timeline", prefetch: true },
   { href: "/notices", label: "Rulemakings & Comments", prefetch: true },
   { href: "/analytics", label: "Analytics", prefetch: true },
   { href: "/chats", label: "Agentic Chats", prefetch: true }

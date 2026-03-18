@@ -5,17 +5,10 @@ import {
   loadEnrichmentState,
   parseComparableDate
 } from "@/lib/server/data-store";
+import { buildFullTextById, filterDocumentListItems, normalizeFacetToken } from "@/lib/server/document-query";
 import { createRequestId, fail, normalizeText, ok, parseDate, toInt } from "@/lib/server/api-utils";
 
 export const runtime = "nodejs";
-
-function normalizeFacetToken(value: string): string {
-  return normalizeText(value)
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 export async function GET(request: Request) {
   const requestId = createRequestId();
@@ -39,82 +32,18 @@ export async function GET(request: Request) {
     const [corpusDocs, enrichment] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
     const items = buildDocumentListItems(corpusDocs, enrichment);
     const facets = buildDocumentsFacets(items);
+    const fullTextById = buildFullTextById(corpusDocs);
 
-    const fullTextById = new Map<string, string>();
-    for (const doc of corpusDocs) {
-      const docId = String(doc.metadata?.document_id || "").trim();
-      if (!docId) {
-        continue;
-      }
-      fullTextById.set(docId, String(doc.content?.full_text || "").toLowerCase());
-    }
-
-    let filtered = items.filter((item) => {
-      if (org && item.organization !== org) {
-        return false;
-      }
-      if (sourceKind && item.source_kind !== sourceKind) {
-        return false;
-      }
-      if (status && item.enrichment_status !== status) {
-        return false;
-      }
-      if (topic) {
-        const hasTopic = (item.topics || []).some((value) => {
-          const token = normalizeFacetToken(value);
-          return token === topic || token.includes(topic);
-        });
-        if (!hasTopic) {
-          return false;
-        }
-      }
-      if (keyword) {
-        const hasKeyword = (item.keywords || []).some((value) => {
-          const token = normalizeFacetToken(value);
-          return token === keyword || token.includes(keyword);
-        });
-        if (!hasKeyword) {
-          return false;
-        }
-      }
-      if (tag) {
-        const hasTag = (item.tags || []).some((value) => {
-          const token = normalizeFacetToken(value);
-          return token === tag || token.includes(tag);
-        });
-        if (!hasTag) {
-          return false;
-        }
-      }
-
-      const itemDateMs = parseComparableDate(item.published_at || item.date);
-      if (fromDate && itemDateMs && itemDateMs < fromDate.getTime()) {
-        return false;
-      }
-      if (toDate && itemDateMs && itemDateMs > toDate.getTime()) {
-        return false;
-      }
-
-      if (!q) {
-        return true;
-      }
-
-      const haystack = [
-        item.title,
-        item.organization,
-        item.source_kind,
-        item.doc_type,
-        item.speaker,
-        item.url,
-        ...(item.tags || []),
-        ...(item.topics || []),
-        ...(item.keywords || []),
-        fullTextById.get(item.document_id) || ""
-      ]
-        .join("\n")
-        .toLowerCase();
-
-      return haystack.includes(q);
+    let filtered = filterDocumentListItems(items, fullTextById, {
+      q,
+      org,
+      sourceKind,
+      topic,
+      keyword,
+      tag,
+      status,
+      fromDate,
+      toDate
     });
 
     const sorters: Record<string, (a: (typeof filtered)[number], b: (typeof filtered)[number]) => number> = {
