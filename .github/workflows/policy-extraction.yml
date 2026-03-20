@@ -17,6 +17,7 @@ on:
           - federal_reserve_speech_testimony
           - cftc_press_release
           - cftc_public_statement_remark
+          - congress_crs_product
         default: sec_enforcement_litigation
       selection:
         description: "Extraction selection scope"

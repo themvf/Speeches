@@ -167,6 +167,9 @@ function inferSourceKind(metadataRaw: Record<string, unknown>): string {
   if (url.includes("/pressroom/speechestestimony/")) {
     return "cftc_public_statement_remark";
   }
+  if (url.includes("/crs-product/")) {
+    return "congress_crs_product";
+  }
   if (["speech", "statement", "remarks"].includes(docType)) {
     return "sec_speech";
   }

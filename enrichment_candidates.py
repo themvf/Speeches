@@ -50,6 +50,8 @@ def infer_source_kind(metadata: Dict[str, Any]) -> str:
         return "sec_enforcement_litigation"
     if ("/usao-" in url or "/usao/" in url) and "/pr/" in url:
         return "doj_usao_press_release"
+    if "/crs-product/" in url:
+        return "congress_crs_product"
     if doc_type in {"speech", "statement", "remarks"}:
         return "sec_speech"
     return "document"

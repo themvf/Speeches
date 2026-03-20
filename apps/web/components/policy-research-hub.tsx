@@ -130,7 +130,8 @@ interface ExtractFormState {
     | "doj_usao_press_release"
     | "federal_reserve_speech_testimony"
     | "cftc_press_release"
-    | "cftc_public_statement_remark";
+    | "cftc_public_statement_remark"
+    | "congress_crs_product";
   selection: "new_or_updated" | "all";
   limit: number;
   max_pages: number;
@@ -257,6 +258,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
   cftc_press_release: "CFTC Press Releases",
   cftc_public_statement_remark: "CFTC Public Statements & Remarks",
+  congress_crs_product: "Congress CRS Products",
   newsapi_article: "News",
   uploaded: "Uploaded"
 };
@@ -288,6 +290,7 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   federal_reserve_speech_testimony: "Testimony",
   cftc_press_release: "Press Release",
   cftc_public_statement_remark: "Statement",
+  congress_crs_product: "CRS Product",
   newsapi_article: "News Article",
   uploaded: "Uploaded Document"
 };
@@ -1236,6 +1239,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
                   <option value="cftc_press_release">CFTC Press Releases</option>
                   <option value="cftc_public_statement_remark">CFTC Public Statements &amp; Remarks</option>
+                  <option value="congress_crs_product">Congress CRS Products</option>
                 </select>
                 <select
                   className="form-control px-2 py-1.5"

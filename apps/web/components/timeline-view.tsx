@@ -36,6 +36,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   jdsupra_article: "JD Supra",
   investmentnews_article: "InvestmentNews",
   citywire_article: "Citywire",
+  congress_crs_product: "Congress CRS Products",
   newsapi_article: "News",
   uploaded: "Uploaded"
 };

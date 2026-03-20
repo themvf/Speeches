@@ -25,6 +25,7 @@ TREASURY_FEATURED_STORIES_DEFAULT_URL = "https://home.treasury.gov/news/featured
 TREASURY_PRESS_RELEASES_DEFAULT_URL = "https://home.treasury.gov/news/press-releases"
 TREASURY_STATEMENTS_REMARKS_DEFAULT_URL = "https://home.treasury.gov/news/press-releases/statements-remarks"
 SIFMA_NEWS_DEFAULT_URL = "https://www.sifma.org/news"
+CONGRESS_CRS_PRODUCTS_DEFAULT_URL = "https://www.congress.gov/crs-products"
 
 SUPPORTED_CONNECTORS = {
     "sec_speech",
@@ -41,6 +42,7 @@ SUPPORTED_CONNECTORS = {
     "treasury_press_release",
     "treasury_statement_remark",
     "sifma_news_item",
+    "congress_crs_product",
 }
 
 
@@ -73,6 +75,8 @@ def _default_base_url(connector: str) -> str:
         return TREASURY_STATEMENTS_REMARKS_DEFAULT_URL
     if connector == "sifma_news_item":
         return SIFMA_NEWS_DEFAULT_URL
+    if connector == "congress_crs_product":
+        return CONGRESS_CRS_PRODUCTS_DEFAULT_URL
     return ""
 
 
@@ -246,6 +250,24 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector == "congress_crs_product":
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_title = _normalize_space(existing_meta.get("title", ""))
+        incoming_title = _normalize_space(entry.get("title", ""))
+        existing_author = _normalize_space(existing_meta.get("speaker", ""))
+        incoming_author = _normalize_space(entry.get("authors", ""))
+        existing_doc_type = _normalize_space(existing_meta.get("doc_type", ""))
+        incoming_doc_type = _normalize_space(entry.get("doc_type", ""))
+        if (
+            (incoming_date and existing_date and incoming_date != existing_date)
+            or (incoming_title and existing_title and incoming_title != existing_title)
+            or (incoming_author and existing_author and incoming_author != existing_author)
+            or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
+        ):
+            return "update_available"
+        return "existing"
+
     if connector in {"treasury_featured_story", "treasury_press_release", "treasury_statement_remark"}:
         existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
         incoming_date = _normalize_space(entry.get("date", ""))
@@ -350,6 +372,14 @@ def _discover_connector(connector: str, base_url: str, max_pages: int, include_p
         from sifma_news_scraper import SIFMANewsScraper
 
         scraper = SIFMANewsScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "congress_crs_product":
+        from congress_crs_products_scraper import CongressCRSProductsScraper
+
+        scraper = CongressCRSProductsScraper()
         docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
@@ -917,6 +947,65 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["topics"] = str(entry.get("topics", "") or "").strip()
         metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
         metadata["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+        return record
+
+    if connector == "congress_crs_product":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_doc_type=entry.get("doc_type", ""),
+            fallback_authors=entry.get("authors", ""),
+            fallback_product_number=entry.get("product_number", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 60:
+            raise RuntimeError("Extracted text appears too short.")
+
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        product_number = str(data.get("product_number", "") or entry.get("product_number", "")).strip().upper()
+        source_name = _safe_source_name(src_url, product_number or f"congress-crs-{idx}", ".html")
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+        authors = str(data.get("authors", "") or entry.get("authors", "")).strip()
+        doc_type = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "CRS Product"
+        topics = data.get("topics", entry.get("topics", []))
+        if not isinstance(topics, list):
+            topics = [str(topics or "").strip()] if str(topics or "").strip() else []
+        topic_tags = []
+        seen_topic_tags = set()
+        for topic in topics:
+            cleaned = re.sub(r"[^a-z0-9]+", "-", str(topic or "").strip().lower()).strip("-")
+            if not cleaned or cleaned in seen_topic_tags:
+                continue
+            seen_topic_tags.add(cleaned)
+            topic_tags.append(cleaned)
+        tags_csv = ",".join(["crs", "congress", "library-of-congress", *topic_tags])
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="Congressional Research Service",
+            title=str(data.get("title", "") or entry.get("title", "")).strip() or (product_number or "CRS Product"),
+            speaker=authors or "Congressional Research Service",
+            doc_date=doc_date,
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=tags_csv,
+            source_kind="congress_crs_product",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "congress_crs_product"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+        metadata["pdf_url"] = str(data.get("pdf_url", "") or entry.get("pdf_url", "")).strip()
+        metadata["tags"] = tags_csv
+        metadata["source_name"] = "Congress.gov"
+        metadata["product_number"] = product_number
+        metadata["crs_topics"] = "; ".join(str(topic or "").strip() for topic in topics if str(topic or "").strip())
         return record
 
     raise RuntimeError(f"Unsupported connector: {connector}")
