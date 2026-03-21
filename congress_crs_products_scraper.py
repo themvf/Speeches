@@ -4,6 +4,9 @@ Congress.gov CRS products scraper.
 
 Discovery uses the public CRS quick-search listing. Extraction pulls the
 product detail page HTML and preserves the linked PDF URL in metadata.
+
+Congress.gov blocks standard ``requests`` clients on these endpoints, so this
+scraper uses ``curl_cffi`` with a browser impersonation profile.
 """
 
 from __future__ import annotations
@@ -15,8 +18,8 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
-import requests
 from bs4 import BeautifulSoup, Tag
+from curl_cffi import requests as cffi_requests
 
 
 CONGRESS_HOME_URL = "https://www.congress.gov"
@@ -285,7 +288,7 @@ def _content_score(node: Optional[Tag]) -> int:
 
 class CongressCRSProductsScraper:
     def __init__(self, min_delay_seconds: float = 0.8):
-        self.session = requests.Session()
+        self.session = cffi_requests.Session(impersonate="chrome")
         self.session.headers.update(
             {
                 "User-Agent": (
@@ -306,7 +309,7 @@ class CongressCRSProductsScraper:
             time.sleep(self.min_delay_seconds - elapsed)
         self._last_request_ts = time.time()
 
-    def _fetch_html(self, url: str, timeout: int = 60) -> requests.Response:
+    def _fetch_html(self, url: str, timeout: int = 60) -> Any:
         target = str(url or "").strip()
         if not target:
             raise ValueError("URL is required")
