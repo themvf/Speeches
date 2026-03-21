@@ -1055,6 +1055,8 @@ def _infer_source_kind(metadata):
         return "cftc_press_release"
     if "/pressroom/speechestestimony/" in url:
         return "cftc_public_statement_remark"
+    if "/crs-product/" in url:
+        return "congress_crs_product"
     if doc_type in {"speech", "statement", "remarks"}:
         return "sec_speech"
     return "document"
@@ -10296,6 +10298,299 @@ elif page == "Extraction":
                         st.write(f"- {msg}")
             except Exception as e:
                 st.error(f"SIFMA ingest failed: {e}")
+
+    st.markdown("---")
+    st.subheader("Congress Connector: CRS Products")
+    st.caption(
+        "Discover and ingest Congressional Research Service products from Congress.gov."
+    )
+
+    crs_default_url = "https://www.congress.gov/crs-products"
+    crs_index_url = st.text_input(
+        "Congress CRS Products URL",
+        value=crs_default_url,
+        key="congress_crs_products_index_url",
+    ).strip() or crs_default_url
+    crs_pages = st.slider(
+        "Congress CRS Listing Pages To Scan",
+        min_value=1,
+        max_value=10,
+        value=3,
+        key="congress_crs_products_pages",
+    )
+
+    crs_col1, crs_col2 = st.columns(2)
+    with crs_col1:
+        discover_crs = st.button("Discover Congress CRS Products", key="discover_congress_crs_products")
+    with crs_col2:
+        clear_crs = st.button("Clear Congress CRS Results", key="clear_congress_crs_products")
+
+    crs_state_key = "congress_crs_products_discovered"
+    crs_debug_key = "congress_crs_products_discovery_debug"
+    if crs_state_key not in st.session_state:
+        st.session_state[crs_state_key] = []
+    if crs_debug_key not in st.session_state:
+        st.session_state[crs_debug_key] = {}
+    if clear_crs:
+        st.session_state[crs_state_key] = []
+        st.session_state[crs_debug_key] = {}
+
+    if discover_crs:
+        try:
+            from congress_crs_products_scraper import CongressCRSProductsScraper
+
+            with st.spinner("Discovering Congress CRS products..."):
+                crs_scraper = CongressCRSProductsScraper()
+                crs_discovered = crs_scraper.discover_documents(
+                    base_url=crs_index_url,
+                    max_pages=crs_pages,
+                )
+                debug_payload = getattr(crs_scraper, "last_discovery_debug", {})
+                if isinstance(debug_payload, dict):
+                    st.session_state[crs_debug_key] = debug_payload
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in crs_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(existing_meta.get("published_date") or existing_meta.get("date") or "").strip()
+                    incoming_date = str(entry.get("date", "") or "").strip()
+                    existing_title = str(existing_meta.get("title", "") or "").strip()
+                    incoming_title = str(entry.get("title", "") or "").strip()
+                    existing_author = str(existing_meta.get("speaker", "") or "").strip()
+                    incoming_author = str(entry.get("authors", "") or "").strip()
+                    existing_doc_type = str(existing_meta.get("doc_type", "") or "").strip()
+                    incoming_doc_type = str(entry.get("doc_type", "") or "").strip()
+                    if (
+                        (incoming_date and existing_date and incoming_date != existing_date)
+                        or (incoming_title and existing_title and incoming_title != existing_title)
+                        or (incoming_author and existing_author and incoming_author != existing_author)
+                        or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
+                    ):
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+                entry["source_key"] = "congress_crs_product"
+
+            st.session_state[crs_state_key] = crs_discovered
+            new_count = sum(1 for d in crs_discovered if d.get("ingest_status") in {"new", "update_available"})
+            st.success(
+                f"Discovered {len(crs_discovered)} Congress CRS products "
+                f"({new_count} new/update candidates)."
+            )
+            try:
+                dbg = st.session_state.get(crs_debug_key, {})
+                if isinstance(dbg, dict):
+                    dbg["ingest_status_counts"] = {
+                        "new": sum(1 for d in crs_discovered if d.get("ingest_status") == "new"),
+                        "update_available": sum(1 for d in crs_discovered if d.get("ingest_status") == "update_available"),
+                        "existing": sum(1 for d in crs_discovered if d.get("ingest_status") == "existing"),
+                        "existing_in_speeches": sum(1 for d in crs_discovered if d.get("ingest_status") == "existing_in_speeches"),
+                    }
+                    st.session_state[crs_debug_key] = dbg
+            except Exception:
+                pass
+        except Exception as e:
+            st.session_state[crs_debug_key] = {"error": str(e)}
+            st.error(f"Congress CRS discovery failed: {e}")
+
+    crs_discovered = st.session_state.get(crs_state_key, [])
+    crs_debug = st.session_state.get(crs_debug_key, {})
+    if isinstance(crs_debug, dict) and crs_debug:
+        with st.expander("Congress CRS Discovery Debug", expanded=False):
+            c1, c2, c3, c4 = st.columns(4)
+            pages_payload = crs_debug.get("pages", [])
+            c1.metric("Requested Pages", int(crs_debug.get("max_pages_requested", 0) or 0))
+            c2.metric("Pages Logged", len(pages_payload if isinstance(pages_payload, list) else []))
+            c3.metric("Listing Added", int(crs_debug.get("listing_added", 0) or 0))
+            c4.metric("Total Unique", int(crs_debug.get("total_unique", 0) or 0))
+            st.caption(f"Stop reason: `{crs_debug.get('stop_reason', '')}`")
+            if isinstance(pages_payload, list) and pages_payload:
+                page_df = pd.DataFrame(pages_payload)
+                show_cols = [
+                    c
+                    for c in [
+                        "page",
+                        "returned_items",
+                        "unique_added",
+                        "page_url",
+                        "next_page_url",
+                        "error_type",
+                        "error_message",
+                    ]
+                    if c in page_df.columns
+                ]
+                st.dataframe(page_df[show_cols], use_container_width=True, hide_index=True)
+            st.json(crs_debug)
+
+    if crs_discovered:
+        crs_df = pd.DataFrame(crs_discovered)
+        crs_df = _sort_table_by_date(crs_df, date_col="date")
+        show_cols = [
+            c
+            for c in ["date", "product_number", "authors", "doc_type", "title", "ingest_status", "url"]
+            if c in crs_df.columns
+        ]
+        st.dataframe(
+            crs_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        crs_filter = st.selectbox(
+            "Congress CRS Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="congress_crs_products_ingest_filter",
+        )
+        if crs_filter == "New/Updates Only":
+            crs_candidates = [d for d in crs_discovered if d.get("ingest_status") in {"new", "update_available"}]
+        else:
+            crs_candidates = list(crs_discovered)
+
+        crs_count = len(crs_candidates)
+        if crs_count <= 0:
+            crs_limit = 0
+            st.caption("No Congress CRS products match the selected ingest filter.")
+        elif crs_count == 1:
+            crs_limit = 1
+            st.caption("1 Congress CRS product selected for ingest.")
+        else:
+            crs_limit = st.slider(
+                "Congress CRS Products To Ingest",
+                min_value=1,
+                max_value=crs_count,
+                value=min(20, crs_count),
+                key="congress_crs_products_ingest_limit",
+            )
+        st.caption(f"{crs_count} Congress CRS products currently match this ingest selection.")
+
+        if st.button("Run Congress CRS Extraction", disabled=(crs_limit <= 0), key="ingest_congress_crs_products"):
+            try:
+                from congress_crs_products_scraper import CongressCRSProductsScraper
+
+                crs_scraper = CongressCRSProductsScraper()
+                progress = st.progress(0, text="Starting Congress CRS ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = crs_candidates[:crs_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / crs_limit,
+                        text=f"Ingesting {idx}/{crs_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = crs_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_doc_type=entry.get("doc_type", ""),
+                            fallback_authors=entry.get("authors", ""),
+                            fallback_product_number=entry.get("product_number", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 60:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        product_number = str(data.get("product_number", "") or entry.get("product_number", "")).strip().upper()
+                        source_name = f"{product_number or f'congress-crs-{idx}'}.html"
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        authors = str(data.get("authors", "") or entry.get("authors", "")).strip()
+                        doc_type_text = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "CRS Product"
+                        topics = data.get("topics", entry.get("topics", []))
+                        if not isinstance(topics, list):
+                            topics = [str(topics or "").strip()] if str(topics or "").strip() else []
+
+                        topic_tags = []
+                        seen_topic_tags = set()
+                        for topic in topics:
+                            cleaned = re.sub(r"[^a-z0-9]+", "-", str(topic or "").strip().lower()).strip("-")
+                            if not cleaned or cleaned in seen_topic_tags:
+                                continue
+                            seen_topic_tags.add(cleaned)
+                            topic_tags.append(cleaned)
+                        tags_csv = ",".join(["crs", "congress", "library-of-congress", *topic_tags])
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="Congressional Research Service",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip() or (product_number or "CRS Product"),
+                            speaker=authors or "Congressional Research Service",
+                            doc_date=doc_date_value,
+                            doc_type=doc_type_text,
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=".html",
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv=tags_csv,
+                            source_kind="congress_crs_product",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "congress_crs_product"
+                        rm["source_index_url"] = crs_index_url
+                        rm["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+                        rm["pdf_url"] = str(data.get("pdf_url", "") or entry.get("pdf_url", "")).strip()
+                        rm["tags"] = tags_csv
+                        rm["source_name"] = "Congress.gov"
+                        rm["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+                        rm["product_number"] = product_number
+                        rm["authors"] = authors
+                        rm["topics"] = "; ".join(str(topic or "").strip() for topic in topics if str(topic or "").strip())
+                        rm["crs_topics"] = rm["topics"]
+                        rm["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="Congress CRS ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new Congress CRS docs and updated {saved_updates} existing Congress CRS docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} Congress CRS products failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"Congress CRS ingest failed: {e}")
 
     st.markdown("---")
     st.subheader("News Connector: Financial Fraud & Policy")
