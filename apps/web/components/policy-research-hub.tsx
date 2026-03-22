@@ -131,6 +131,9 @@ interface ExtractFormState {
     | "federal_reserve_speech_testimony"
     | "cftc_press_release"
     | "cftc_public_statement_remark"
+    | "jdsupra_article"
+    | "investmentnews_article"
+    | "citywire_article"
     | "congress_crs_product";
   selection: "new_or_updated" | "all";
   limit: number;
@@ -184,6 +187,7 @@ interface ChatMessage {
   content: string;
   citations?: ChatCitation[];
   model?: string;
+  retrieved_count?: number;
 }
 
 interface PolicyResearchHubProps {
@@ -258,6 +262,9 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
   cftc_press_release: "CFTC Press Releases",
   cftc_public_statement_remark: "CFTC Public Statements & Remarks",
+  jdsupra_article: "JD Supra",
+  investmentnews_article: "InvestmentNews",
+  citywire_article: "Citywire",
   congress_crs_product: "Congress CRS Products",
   newsapi_article: "News",
   uploaded: "Uploaded"
@@ -290,6 +297,9 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   federal_reserve_speech_testimony: "Testimony",
   cftc_press_release: "Press Release",
   cftc_public_statement_remark: "Statement",
+  jdsupra_article: "Article",
+  investmentnews_article: "Article",
+  citywire_article: "Article",
   congress_crs_product: "CRS Product",
   newsapi_article: "News Article",
   uploaded: "Uploaded Document"
@@ -433,6 +443,69 @@ function renderToneChips(items: string[], emptyLabel: string, onSelect?: (item: 
   );
 }
 
+function renderChatContent(content: string) {
+  const blocks = String(content || "")
+    .replace(/\r\n?/g, "\n")
+    .trim()
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  if (!blocks.length) {
+    return <p className="mt-1 text-sm whitespace-pre-wrap">{content}</p>;
+  }
+
+  return (
+    <div className="mt-2 space-y-3 text-sm text-[color:var(--ink)]">
+      {blocks.map((block, index) => {
+        const lines = block.split("\n").map((line) => line.trimEnd());
+        const nonEmptyLines = lines.map((line) => line.trim()).filter(Boolean);
+        if (!nonEmptyLines.length) {
+          return null;
+        }
+
+        const firstLine = nonEmptyLines[0];
+        if (/^##\s+/.test(firstLine)) {
+          return (
+            <div key={`block_${index}`} className="space-y-2">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
+                {firstLine.replace(/^##\s+/, "")}
+              </h3>
+              {nonEmptyLines.slice(1).length ? renderChatContent(nonEmptyLines.slice(1).join("\n\n")) : null}
+            </div>
+          );
+        }
+
+        if (nonEmptyLines.every((line) => /^[-*]\s+/.test(line))) {
+          return (
+            <ul key={`block_${index}`} className="list-disc space-y-1 pl-5">
+              {nonEmptyLines.map((line, itemIndex) => (
+                <li key={`item_${itemIndex}`}>{line.replace(/^[-*]\s+/, "")}</li>
+              ))}
+            </ul>
+          );
+        }
+
+        if (nonEmptyLines.every((line) => /^\d+\.\s+/.test(line))) {
+          return (
+            <ol key={`block_${index}`} className="list-decimal space-y-1 pl-5">
+              {nonEmptyLines.map((line, itemIndex) => (
+                <li key={`item_${itemIndex}`}>{line.replace(/^\d+\.\s+/, "")}</li>
+              ))}
+            </ol>
+          );
+        }
+
+        return (
+          <p key={`block_${index}`} className="whitespace-pre-wrap leading-6 text-[color:var(--ink-soft)]">
+            {block}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 function headerFor(mode: HubMode): { title: string; subtitle: string } {
   if (mode === "home") {
     return {
@@ -516,7 +589,11 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   const [jobError, setJobError] = useState("");
 
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "Ask a policy question and I will retrieve relevant documents from your corpus." }
+    {
+      role: "assistant",
+      content:
+        "Ask a policy question and I will return a structured research brief with inline [Source N] citations and a separate source list."
+    }
   ]);
   const [prompt, setPrompt] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -721,7 +798,16 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
         method: "POST",
         body: JSON.stringify({ prompt: userPrompt, top_k: 8, history })
       });
-      setMessages((prev) => [...prev, { role: "assistant", content: data.answer, citations: data.citations, model: data.model }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: data.answer,
+          citations: data.citations,
+          model: data.model,
+          retrieved_count: data.retrieved_count
+        }
+      ]);
     } catch (err) {
       setChatError(err instanceof Error ? err.message : "Failed to run chat.");
     } finally {
@@ -1239,6 +1325,9 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
                   <option value="cftc_press_release">CFTC Press Releases</option>
                   <option value="cftc_public_statement_remark">CFTC Public Statements &amp; Remarks</option>
+                  <option value="jdsupra_article">JD Supra Articles</option>
+                  <option value="investmentnews_article">InvestmentNews Articles</option>
+                  <option value="citywire_article">Citywire Articles</option>
                   <option value="congress_crs_product">Congress CRS Products</option>
                 </select>
                 <select
@@ -1489,29 +1578,41 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   }`}
                 >
                   <p className="text-xs font-semibold uppercase">{m.role}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm">{m.content}</p>
-                  {m.model ? <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">Model: {m.model}</p> : null}
-                  {m.citations?.length ? (
-                    <div className="mt-2 space-y-2">
-                      {m.citations.map((c) => (
-                        <div
-                          key={c.document_id}
-                          className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.96)] px-2 py-2 text-xs"
-                        >
-                          <p className="font-semibold">{c.title}</p>
-                          <p className="mt-1">
-                            {c.organization} - {c.source_kind}
-                          </p>
-                          {c.published_at ? <p className="mt-1">{fmtDateOnly(c.published_at)}</p> : null}
-                          {c.snippet ? <p className="mt-1">{c.snippet}</p> : null}
-                          {c.url ? (
-                            <a href={c.url} target="_blank" rel="noreferrer" className="link-inline mt-1 inline-block">
-                              Open source
-                            </a>
-                          ) : null}
-                        </div>
-                      ))}
+                  {renderChatContent(m.content)}
+                  {m.model || m.retrieved_count ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                      {m.model ? <span>Model: {m.model}</span> : null}
+                      {m.retrieved_count ? <span>Retrieved: {fmt(m.retrieved_count)} passages</span> : null}
                     </div>
+                  ) : null}
+                  {m.citations?.length ? (
+                    <details className="mt-3 rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.55)] px-3 py-2">
+                      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
+                        Sources ({m.citations.length})
+                      </summary>
+                      <div className="mt-3 space-y-2">
+                        {m.citations.map((c, citationIndex) => (
+                          <div
+                            key={`${c.document_id}_${citationIndex}`}
+                            className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.96)] px-2 py-2 text-xs"
+                          >
+                            <p className="font-semibold">
+                              [Source {citationIndex + 1}] {c.title}
+                            </p>
+                            <p className="mt-1">
+                              {c.organization} - {displaySourceKind(c.source_kind)}
+                            </p>
+                            {c.published_at ? <p className="mt-1">{fmtDateOnly(c.published_at)}</p> : null}
+                            {c.snippet ? <p className="mt-1 text-[color:var(--ink-soft)]">{c.snippet}</p> : null}
+                            {c.url ? (
+                              <a href={c.url} target="_blank" rel="noreferrer" className="link-inline mt-1 inline-block">
+                                Open source
+                              </a>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
                   ) : null}
                 </article>
               ))}
@@ -1535,7 +1636,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 onClick={() => void ask()}
                 disabled={chatLoading}
               >
-                {chatLoading ? "Thinking..." : "Ask"}
+                {chatLoading ? "Analyzing..." : "Ask"}
               </button>
             </div>
           </article>

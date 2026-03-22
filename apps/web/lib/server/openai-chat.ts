@@ -64,6 +64,15 @@ function normalizeText(value: unknown): string {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function normalizeResponseText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function clampInt(value: number, fallback: number, minValue: number, maxValue: number): number {
   const parsed = Number.isFinite(value) ? value : fallback;
   return Math.max(minValue, Math.min(maxValue, parsed));
@@ -104,7 +113,7 @@ function normalizeSnippet(value: unknown, maxChars = 320): string {
 }
 
 function extractResponseText(payload: OpenAiResponsePayload): string {
-  const direct = normalizeText(payload.output_text);
+  const direct = normalizeResponseText(payload.output_text);
   if (direct) {
     return direct;
   }
@@ -115,7 +124,7 @@ function extractResponseText(payload: OpenAiResponsePayload): string {
       continue;
     }
     for (const contentItem of item.content) {
-      const text = normalizeText(contentItem?.text);
+      const text = normalizeResponseText(contentItem?.text);
       if (text) {
         pieces.push(text);
       }
@@ -239,17 +248,20 @@ function buildChatInstructions(latestIndexedDate?: string): string {
   });
   const latestText = normalizeText(latestIndexedDate) || "the latest indexed date available";
   return [
-    "You are a retrieval-grounded policy research assistant.",
+    "You are a retrieval-grounded policy research assistant writing for an analyst who wants synthesis, not a source dump.",
     "Use only the retrieved corpus evidence provided in the Evidence Context for factual claims.",
-    "Start with a direct answer, then add the most important nuance, disagreement, and gaps.",
-    "Cite evidence inline using [Source N] references when making factual claims.",
+    "Write in clear markdown-like plain text with short sections and bullets where useful.",
+    "When evidence is sufficient, structure the answer with these headings in this order: '## Bottom line', '## What the evidence shows', '## Important nuance or disagreement', and '## Gaps or follow-up'.",
+    "Under 'What the evidence shows', synthesize across sources instead of repeating snippets one by one.",
+    "Cite evidence inline using [Source N] references when making factual claims. Reuse the provided source numbers exactly and do not invent citations.",
+    "Do not append a raw source list inside the answer body. The UI will render sources separately.",
     "If evidence is insufficient, say exactly what is missing instead of guessing.",
     "If the user uses ambiguous temporal language like recent, latest, current, now, or today without a date range, ask one concise clarification question first.",
     `Today's date is ${todayText}. Latest indexed coverage appears to run through ${latestText}.`
   ].join(" ");
 }
 
-function buildEvidenceContext(results: FileSearchResult[], documentsById: Map<string, DocumentListItem>, maxItems = 12, maxChars = 16_000): string {
+function buildEvidenceContext(results: FileSearchResult[], documentsById: Map<string, DocumentListItem>, maxItems = 14, maxChars = 20_000): string {
   let usedChars = 0;
   const blocks: string[] = [];
   for (let idx = 0; idx < results.length && blocks.length < maxItems; idx += 1) {
@@ -387,7 +399,7 @@ export async function askVectorStoreChat(args: AskVectorChatArgs): Promise<Vecto
     const batchResults = await runFileSearchCall(model, retrievalPrompt, batch, topK);
     allResults.push(...batchResults);
   }
-  const mergedResults = mergeFileSearchResults(allResults, Math.max(topK * 3, 12));
+  const mergedResults = mergeFileSearchResults(allResults, Math.max(topK * 4, 16));
   if (!mergedResults.length) {
     return {
       answer: `I could not retrieve relevant indexed documents for "${normalizeText(args.prompt)}". Try adding specific entities, agencies, dates, or source names.`,
