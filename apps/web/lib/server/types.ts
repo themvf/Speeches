@@ -206,3 +206,57 @@ export interface TimelineResponseData {
   totals: TimelineSummary;
   facets: DocumentsFacets;
 }
+
+export type GraphNodeKind = "document" | "organization" | "speaker" | "topic" | "keyword" | "entity";
+
+export type GraphEdgeKind =
+  | "published_by"
+  | "spoken_by"
+  | "has_topic"
+  | "has_keyword"
+  | "mentions_entity"
+  | "org_topic"
+  | "org_keyword"
+  | "org_entity"
+  | "speaker_topic"
+  | "topic_entity";
+
+export interface GraphNode {
+  id: string;
+  kind: GraphNodeKind;
+  label: string;
+  document_count: number;
+  degree: number;
+  metadata: Record<string, JsonValue>;
+}
+
+export interface GraphEdge {
+  id: string;
+  kind: GraphEdgeKind;
+  source: string;
+  target: string;
+  weight: number;
+  document_count: number;
+  evidence_doc_ids: string[];
+  metadata: Record<string, JsonValue>;
+}
+
+export interface GraphSummary {
+  matching_documents: number;
+  node_count: number;
+  edge_count: number;
+  returned_nodes: number;
+  returned_edges: number;
+  include_documents: boolean;
+  nodes_by_kind: Record<string, number>;
+  edges_by_kind: Record<string, number>;
+  start_date: string;
+  end_date: string;
+}
+
+export interface GraphResponseData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  summary: GraphSummary;
+  facets: DocumentsFacets;
+}
