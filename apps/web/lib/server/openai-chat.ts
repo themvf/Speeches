@@ -73,6 +73,13 @@ function normalizeResponseText(value: unknown): string {
     .trim();
 }
 
+function normalizeStandaloneQuery(value: unknown): string {
+  return normalizeText(value)
+    .replace(/^(standalone query|rewritten query|search query|query)\s*:\s*/i, "")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .trim();
+}
+
 function clampInt(value: number, fallback: number, minValue: number, maxValue: number): number {
   const parsed = Number.isFinite(value) ? value : fallback;
   return Math.max(minValue, Math.min(maxValue, parsed));
@@ -221,7 +228,7 @@ function trimHistory(history: ChatHistoryMessage[], maxMessages = 6, maxChars = 
   return kept;
 }
 
-function buildRetrievalPrompt(prompt: string, history: ChatHistoryMessage[]): string {
+function buildLegacyRetrievalPrompt(prompt: string, history: ChatHistoryMessage[]): string {
   const recentHistory = trimHistory(history, 4, 2200);
   if (!recentHistory.length) {
     return prompt;
@@ -230,6 +237,29 @@ function buildRetrievalPrompt(prompt: string, history: ChatHistoryMessage[]): st
     .map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`)
     .join("\n");
   return `Conversation context:\n${historyText}\n\nCurrent user question:\n${prompt}`;
+}
+
+function buildRetrievalRewriteInstructions(): string {
+  return [
+    "Rewrite the user's latest question into a standalone retrieval query for searching policy and regulatory documents.",
+    "Use the conversation context only to resolve shorthand or references like 'it', 'that', 'this', 'they', or similar follow-up wording.",
+    "Preserve the user's intent and carry forward the relevant named entities, agencies, products, dates, and jurisdiction.",
+    "If the latest question is already standalone, return it unchanged.",
+    "Do not answer the question.",
+    "Do not add explanations, labels, bullets, markdown, or quotation marks.",
+    "Return one plain-text query only."
+  ].join("\n");
+}
+
+function buildRetrievalRewriteInput(prompt: string, history: ChatHistoryMessage[]): string {
+  const recentHistory = trimHistory(history, 4, 1800);
+  if (!recentHistory.length) {
+    return prompt;
+  }
+  const historyText = recentHistory
+    .map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`)
+    .join("\n");
+  return `Conversation context:\n${historyText}\n\nLatest user question:\n${prompt}`;
 }
 
 function buildResponseInput(prompt: string, history: ChatHistoryMessage[], evidenceContext: string): string {
@@ -360,6 +390,25 @@ async function callOpenAiResponses(payload: Record<string, unknown>): Promise<Op
   return json;
 }
 
+async function rewritePromptForRetrieval(model: string, prompt: string, history: ChatHistoryMessage[]): Promise<string> {
+  const recentHistory = trimHistory(history, 4, 1800);
+  if (!recentHistory.length) {
+    return prompt;
+  }
+
+  try {
+    const response = await callOpenAiResponses({
+      model,
+      instructions: buildRetrievalRewriteInstructions(),
+      input: buildRetrievalRewriteInput(prompt, recentHistory)
+    });
+    const rewritten = normalizeStandaloneQuery(extractResponseText(response)).slice(0, 600);
+    return rewritten || prompt;
+  } catch {
+    return prompt;
+  }
+}
+
 async function runFileSearchCall(model: string, question: string, vectorStoreIds: string[], maxNumResults: number): Promise<FileSearchResult[]> {
   const payload = {
     model,
@@ -375,6 +424,16 @@ async function runFileSearchCall(model: string, question: string, vectorStoreIds
   };
   const response = await callOpenAiResponses(payload);
   return extractFileSearchResults(response);
+}
+
+async function searchVectorStores(model: string, question: string, vectorStoreIds: string[], topK: number): Promise<FileSearchResult[]> {
+  const retrievalBatches = chunkList(vectorStoreIds, 2);
+  const allResults: FileSearchResult[] = [];
+  for (const batch of retrievalBatches) {
+    const batchResults = await runFileSearchCall(model, question, batch, topK);
+    allResults.push(...batchResults);
+  }
+  return mergeFileSearchResults(allResults, Math.max(topK * 4, 16));
 }
 
 function buildCitations(results: FileSearchResult[], documentsById: Map<string, DocumentListItem>, maxItems: number): VectorChatCitation[] {
@@ -409,6 +468,7 @@ export async function askVectorStoreChat(args: AskVectorChatArgs): Promise<Vecto
   const cfg = getOpenAiConfig();
   const model = normalizeText(args.model) || normalizeText(cfg.model) || "gpt-5.1";
   const topK = clampInt(args.topK, 8, 1, 12);
+  const prompt = normalizeText(args.prompt);
   const vectorStoreIds = [...new Set((args.vectorStoreIds || []).map((item) => normalizeText(item)).filter(Boolean))];
   if (!vectorStoreIds.length) {
     throw new Error("No active vector stores are available for web chat. Build/Sync the knowledge index first.");
@@ -422,17 +482,19 @@ export async function askVectorStoreChat(args: AskVectorChatArgs): Promise<Vecto
     }
   }
 
-  const retrievalPrompt = buildRetrievalPrompt(normalizeText(args.prompt), args.history || []);
-  const retrievalBatches = chunkList(vectorStoreIds, 2);
-  const allResults: FileSearchResult[] = [];
-  for (const batch of retrievalBatches) {
-    const batchResults = await runFileSearchCall(model, retrievalPrompt, batch, topK);
-    allResults.push(...batchResults);
+  const history = args.history || [];
+  const retrievalPrompt = await rewritePromptForRetrieval(model, prompt, history);
+  let mergedResults = await searchVectorStores(model, retrievalPrompt, vectorStoreIds, topK);
+  if (!mergedResults.length && history.length > 0) {
+    const legacyPrompt = buildLegacyRetrievalPrompt(prompt, history);
+    if (legacyPrompt && legacyPrompt !== retrievalPrompt) {
+      mergedResults = await searchVectorStores(model, legacyPrompt, vectorStoreIds, topK);
+    }
   }
-  const mergedResults = mergeFileSearchResults(allResults, Math.max(topK * 4, 16));
+
   if (!mergedResults.length) {
     return {
-      answer: `I could not retrieve relevant indexed documents for "${normalizeText(args.prompt)}". Try adding specific entities, agencies, dates, or source names.`,
+      answer: `I could not retrieve relevant indexed documents for "${prompt}". Try adding specific entities, agencies, dates, or source names.`,
       citations: [],
       retrieved_count: 0,
       model
@@ -443,7 +505,7 @@ export async function askVectorStoreChat(args: AskVectorChatArgs): Promise<Vecto
   const synthesisPayload = {
     model,
     instructions: buildChatInstructions(args.latestIndexedDate),
-    input: buildResponseInput(normalizeText(args.prompt), args.history || [], evidenceContext)
+    input: buildResponseInput(prompt, history, evidenceContext)
   };
   const synthesisResponse = await callOpenAiResponses(synthesisPayload);
   const answer = extractResponseText(synthesisResponse) || "No answer returned.";
