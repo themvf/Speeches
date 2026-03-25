@@ -592,7 +592,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     {
       role: "assistant",
       content:
-        "Ask a policy question and I will return a structured research brief with inline [Source N] citations and a separate source list."
+        "Ask a policy question and I'll pull the most relevant evidence, explain what's going on in plain language, and cite the supporting sources inline."
     }
   ]);
   const [prompt, setPrompt] = useState("");
