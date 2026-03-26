@@ -77,6 +77,8 @@ gsutil cp data/all_speeches_final.json gs://your-bucket-name/all_speeches.json
 
 **Streamlit Cloud:** Go to your app's Settings > Secrets and paste the contents of your `secrets.toml`.
 
+Do not commit raw Google service-account JSON files to this repository. Keep the live credential only in local `.streamlit/secrets.toml` or in Streamlit Cloud Secrets.
+
 Required for retrieval/index/chat:
 - `[openai].api_key`
 

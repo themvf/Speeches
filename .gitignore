@@ -35,6 +35,9 @@ Thumbs.db
 # Secrets (never commit real credentials)
 .streamlit/secrets.toml
 key.json
+speeches-487600-187454e9c304.json
+*-service-account.json
+*service-account*.json
 
 # Claude
 .claude/
