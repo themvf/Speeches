@@ -68,8 +68,8 @@ interface NoticeCommentsResponse {
 }
 
 const ENRICHED_STATUSES = new Set(["enriched", "fallback_enriched", "reviewed"]);
-const NOTICE_SOURCE_KINDS = new Set(["finra_regulatory_notice", "regulations_gov_rule"]);
-const COMMENT_SOURCE_KINDS = new Set(["finra_comment_letter", "regulations_gov_comment"]);
+const NOTICE_SOURCE_KINDS = new Set(["finra_regulatory_notice", "regulations_gov_rule", "sec_rule_release"]);
+const COMMENT_SOURCE_KINDS = new Set(["finra_comment_letter", "regulations_gov_comment", "sec_rule_comment"]);
 const GENERIC_SUBMITTER_VALUES = new Set([
   "",
   "comment",
@@ -150,6 +150,64 @@ const DISALLOWED_SUBMITTER_PHRASES = [
   "proposed rulemaking",
   "reconsideration of the"
 ];
+
+function resolvedSourceKind(metadata: CustomDocumentMetadata): string {
+  const explicit = normalizeText(metadata.source_kind || "").toLowerCase();
+  if (explicit) {
+    return explicit;
+  }
+
+  const sourceFamily = normalizeText(metadata.source_family || "").toLowerCase();
+  const docType = normalizeText(metadata.doc_type || "").toLowerCase();
+  const organization = normalizeText(metadata.organization || "").toLowerCase();
+  const urls = [
+    metadata.url,
+    metadata.rule_url,
+    metadata.notice_url,
+    metadata.comments_url,
+    metadata.comment_url,
+    metadata.comment_page_url,
+    metadata.docket_url,
+    metadata.document_url,
+    metadata.source_index_url,
+    metadata.resolved_content_url
+  ]
+    .map((value) => normalizeText(value || "").toLowerCase())
+    .filter(Boolean);
+
+  const hasUrl = (fragment: string) => urls.some((value) => value.includes(fragment));
+
+  if (
+    hasUrl("/rules-regulations/public-comments/") ||
+    hasUrl("/comments/") ||
+    (sourceFamily === "sec_rule" && docType === "public comment")
+  ) {
+    return "sec_rule_comment";
+  }
+
+  if (
+    sourceFamily === "sec_rule" ||
+    (hasUrl("/rules-regulations/") && (docType.includes("rule") || docType.includes("release") || organization === "sec"))
+  ) {
+    return "sec_rule_release";
+  }
+
+  if (sourceFamily === "regulations_gov" && docType === "public comment") {
+    return "regulations_gov_comment";
+  }
+  if (sourceFamily === "regulations_gov") {
+    return "regulations_gov_rule";
+  }
+
+  if (sourceFamily.includes("finra_comment") || (organization === "finra" && docType === "public comment")) {
+    return "finra_comment_letter";
+  }
+  if (sourceFamily.includes("finra") || organization === "finra") {
+    return "finra_regulatory_notice";
+  }
+
+  return explicit;
+}
 
 function splitCsv(value: unknown): string[] {
   return String(value ?? "")
@@ -257,7 +315,7 @@ function summaryFor(record: CustomDocumentRecord, entry: EnrichmentEntry | undef
   for (const block of blocks) {
     const looksLikeHeader =
       /Source URL:/i.test(block) &&
-      /(Notice Number:|Published Date:|Commenter:|Professional Affiliation:|Date:|Title:|Docket ID:|Comment ID:)/i.test(
+      /(Notice Number:|Published Date:|Commenter:|Professional Affiliation:|Date:|Title:|Docket ID:|Comment ID:|File Number:|Release Numbers?:|Rule Type:|Rule Title:|Rule URL:|Comments URL:|Comment URL:|Letter Type:)/i.test(
         block
       );
     if (!looksLikeHeader) {
@@ -548,9 +606,15 @@ function sourceFamily(metadata: CustomDocumentMetadata): string {
   if (explicit === "regulations_gov") {
     return "regulations_gov";
   }
+  if (explicit === "sec_rule" || explicit === "sec") {
+    return "sec";
+  }
   const sourceKind = normalizeText(metadata.source_kind || "").toLowerCase();
   if (sourceKind.startsWith("regulations_gov_")) {
     return "regulations_gov";
+  }
+  if (sourceKind.startsWith("sec_rule_")) {
+    return "sec";
   }
   if (
     explicit.includes("finra") ||
@@ -559,12 +623,18 @@ function sourceFamily(metadata: CustomDocumentMetadata): string {
   ) {
     return "finra";
   }
+  if (normalizeText(metadata.organization || "").toLowerCase() === "sec") {
+    return "sec";
+  }
   return explicit || sourceKind || "document";
 }
 
 function sourceFamilyLabel(family: string): string {
   if (family === "regulations_gov") {
     return "Regulations.gov";
+  }
+  if (family === "sec") {
+    return "SEC";
   }
   if (family === "finra") {
     return "FINRA";
@@ -580,6 +650,9 @@ function groupTypeLabel(metadata: CustomDocumentMetadata, family: string): strin
   if (family === "regulations_gov") {
     return "Rulemaking Docket";
   }
+  if (family === "sec") {
+    return normalizeText(metadata.rule_type || metadata.doc_type || "Rule Release") || "Rule Release";
+  }
   if (family === "finra") {
     return normalizeText(metadata.notice_type || "Regulatory Notice") || "Regulatory Notice";
   }
@@ -587,7 +660,25 @@ function groupTypeLabel(metadata: CustomDocumentMetadata, family: string): strin
 }
 
 function groupIdentifierLabel(family: string): string {
-  return family === "regulations_gov" ? "Docket" : "Notice";
+  if (family === "regulations_gov") {
+    return "Docket";
+  }
+  if (family === "sec") {
+    return "File Number";
+  }
+  return "Notice";
+}
+
+function secFileNumber(metadata: CustomDocumentMetadata): string {
+  return normalizeText(metadata.file_number || metadata.notice_number || "").toUpperCase();
+}
+
+function secRuleUrl(metadata: CustomDocumentMetadata): string {
+  return normalizeText(metadata.rule_url || metadata.url || metadata.notice_url || metadata.source_index_url || "");
+}
+
+function secRuleTitle(metadata: CustomDocumentMetadata): string {
+  return normalizeText(metadata.notice_title || metadata.title || "");
 }
 
 function extractRegulationsGovDocketId(value: unknown): string {
@@ -688,6 +779,18 @@ function noticeGroupKey(metadata: CustomDocumentMetadata): string {
     }
   }
 
+  if (family === "sec") {
+    const fileNumber = secFileNumber(metadata);
+    if (fileNumber) {
+      return `sec:file:${fileNumber.toLowerCase()}`;
+    }
+
+    const ruleUrl = secRuleUrl(metadata);
+    if (ruleUrl) {
+      return `sec:url:${ruleUrl.toLowerCase()}`;
+    }
+  }
+
   const noticeNumber = normalizeText(metadata.notice_number || "");
   if (noticeNumber) {
     return `finra:notice:${noticeNumber.toLowerCase()}`;
@@ -707,6 +810,9 @@ function noticeGroupKey(metadata: CustomDocumentMetadata): string {
 function groupIdentifier(metadata: CustomDocumentMetadata, family: string): string {
   if (family === "regulations_gov") {
     return regulationsGovDocketId(metadata);
+  }
+  if (family === "sec") {
+    return secFileNumber(metadata);
   }
   return normalizeText(metadata.notice_number || "");
 }
@@ -732,33 +838,38 @@ function buildBaseGroup(
   entry: EnrichmentEntry | undefined
 ): NoticeGroupItem {
   const family = sourceFamily(metadata);
+  const sourceKind = resolvedSourceKind(metadata);
   const publishedAt = normalizeText(metadata.published_date || metadata.date || "");
   const identifier = groupIdentifier(metadata, family);
   const docketId = family === "regulations_gov" ? regulationsGovDocketId(metadata) : normalizeText(metadata.docket_id || "");
   const title =
     family === "regulations_gov"
       ? regulationsGovGroupTitle(metadata)
-      : normalizeText(metadata.title || metadata.notice_title || "") || "Regulatory Notice";
+      : family === "sec"
+        ? secRuleTitle(metadata) || "SEC Rule Release"
+        : normalizeText(metadata.title || metadata.notice_title || "") || "Regulatory Notice";
   const url =
     family === "regulations_gov"
       ? regulationsGovGroupUrl(metadata)
-      : normalizeText(metadata.url || metadata.notice_url || metadata.rule_url || metadata.docket_url || metadata.document_url || "");
+      : family === "sec"
+        ? secRuleUrl(metadata)
+        : normalizeText(metadata.url || metadata.notice_url || metadata.rule_url || metadata.docket_url || metadata.document_url || "");
 
   return {
     notice_key: noticeGroupKey(metadata),
-    source_kind: normalizeText(metadata.source_kind || ""),
+    source_kind: sourceKind,
     source_family: family,
     source_family_label: sourceFamilyLabel(family),
     group_type_label: groupTypeLabel(metadata, family),
     group_identifier_label: groupIdentifierLabel(family),
     group_identifier: identifier,
     notice_document_id: normalizeText(metadata.document_id || ""),
-    notice_number: normalizeText(metadata.notice_number || ""),
+    notice_number: family === "sec" ? secFileNumber(metadata) : normalizeText(metadata.notice_number || ""),
     docket_id: docketId,
-    title: title || (family === "regulations_gov" ? "Rulemaking Docket" : "Regulatory Notice"),
+    title: title || (family === "regulations_gov" ? "Rulemaking Docket" : family === "sec" ? "SEC Rule Release" : "Regulatory Notice"),
     summary: summaryFor(record, entry),
     organization:
-      normalizeText(metadata.organization || "") || (family === "regulations_gov" ? "Regulations.gov" : "FINRA"),
+      normalizeText(metadata.organization || "") || (family === "regulations_gov" ? "Regulations.gov" : family === "sec" ? "SEC" : "FINRA"),
     url,
     pdf_url: normalizeText(metadata.pdf_url || ""),
     published_at: publishedAt,
@@ -786,14 +897,14 @@ function buildFallbackGroup(
     ...base,
     notice_document_id: "",
     title:
-      (family === "regulations_gov" ? regulationsGovGroupTitle(metadata) : "") ||
+      (family === "regulations_gov" ? regulationsGovGroupTitle(metadata) : family === "sec" ? secRuleTitle(metadata) : "") ||
       base.title ||
       normalizeText(metadata.notice_title || metadata.title || "") ||
-      (family === "regulations_gov" ? "Rulemaking Docket" : "Regulatory Notice"),
+      (family === "regulations_gov" ? "Rulemaking Docket" : family === "sec" ? "SEC Rule Release" : "Regulatory Notice"),
     summary: "",
-    organization: base.organization || (family === "regulations_gov" ? "Regulations.gov" : "FINRA"),
+    organization: base.organization || (family === "regulations_gov" ? "Regulations.gov" : family === "sec" ? "SEC" : "FINRA"),
     url:
-      (family === "regulations_gov" ? regulationsGovGroupUrl(metadata) : "") ||
+      (family === "regulations_gov" ? regulationsGovGroupUrl(metadata) : family === "sec" ? secRuleUrl(metadata) : "") ||
       base.url ||
       normalizeText(
         metadata.rule_url || metadata.notice_url || metadata.source_notice_url || metadata.docket_url || metadata.document_url || ""
@@ -812,7 +923,8 @@ export async function GET() {
 
     for (const record of customPayload.documents || []) {
       const metadata = record.metadata || ({} as CustomDocumentMetadata);
-      if (!NOTICE_SOURCE_KINDS.has(normalizeText(metadata.source_kind || ""))) {
+      const sourceKind = resolvedSourceKind(metadata);
+      if (!NOTICE_SOURCE_KINDS.has(sourceKind)) {
         continue;
       }
 
@@ -824,7 +936,8 @@ export async function GET() {
 
     for (const record of customPayload.documents || []) {
       const metadata = record.metadata || ({} as CustomDocumentMetadata);
-      if (!COMMENT_SOURCE_KINDS.has(normalizeText(metadata.source_kind || ""))) {
+      const sourceKind = resolvedSourceKind(metadata);
+      if (!COMMENT_SOURCE_KINDS.has(sourceKind)) {
         continue;
       }
 
@@ -840,7 +953,7 @@ export async function GET() {
 
       group.comments.push({
         document_id: docId,
-        source_kind: normalizeText(metadata.source_kind || ""),
+        source_kind: sourceKind,
         source_family: family,
         title: commentPresentation.title,
         commenter_name: commentPresentation.commenter_name,
@@ -914,3 +1027,4 @@ export async function GET() {
     );
   }
 }
+

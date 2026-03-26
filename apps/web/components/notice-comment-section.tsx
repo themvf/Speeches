@@ -167,11 +167,14 @@ function detailChips(items: string[], emptyLabel: string, kind: "tag" | "keyword
 }
 
 function groupPrimaryLinkLabel(group: NoticeGroupItem): string {
-  return group.source_family === "regulations_gov" ? "Open rule/docket" : "Open notice";
+  if (group.source_family === "regulations_gov") return "Open rule/docket";
+  if (group.source_family === "sec") return "Open rule";
+  return "Open notice";
 }
 
 function groupPdfLabel(group: NoticeGroupItem): string {
-  return group.source_family === "regulations_gov" ? "Rule PDF" : "Notice PDF";
+  if (group.source_family === "regulations_gov" || group.source_family === "sec") return "Rule PDF";
+  return "Notice PDF";
 }
 
 export function NoticeCommentSection() {
@@ -296,7 +299,7 @@ export function NoticeCommentSection() {
         <h1 className="mt-3 text-3xl font-bold leading-tight md:text-5xl">Rulemakings &amp; Comments</h1>
         <p className="mt-3 max-w-3xl text-base text-[color:var(--ink-soft)] md:text-lg">
           Review notice and rulemaking records alongside linked comments, summaries, and extracted tags and keywords
-          across FINRA and Regulations.gov workflows.
+          across SEC, FINRA, and Regulations.gov workflows.
         </p>
       </header>
 
@@ -339,8 +342,8 @@ export function NoticeCommentSection() {
           </div>
 
           <p className="mt-3 text-sm text-[color:var(--ink-faint)]">
-            Comment position is estimated from enrichment when available. The page groups FINRA by notice and
-            Regulations.gov by docket/rule link.
+            Comment position is estimated from enrichment when available. The page groups SEC by file number,
+            FINRA by notice, and Regulations.gov by docket/rule link.
           </p>
         </article>
 
@@ -546,3 +549,4 @@ export function NoticeCommentSection() {
     </div>
   );
 }
+
