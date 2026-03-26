@@ -75,6 +75,45 @@ class BuildEnrichmentCandidatesTests(unittest.TestCase):
         candidates = build_enrichment_candidates(knowledge_data, org_key="finra")
         self.assertEqual(candidates, [])
 
+    def test_sec_rule_release_and_comment_are_preserved_for_enrichment(self):
+        knowledge_data = {
+            "speeches": [
+                {
+                    "metadata": {
+                        "document_id": "sec-rule-1",
+                        "organization": "SEC",
+                        "title": "Application of the Federal Securities Laws to Certain Types of Crypto Assets",
+                        "doc_type": "Interpretive Release",
+                        "source_kind": "sec_rule_release",
+                        "date": "2026-03-17",
+                        "url": "https://www.sec.gov/rules-regulations/2026/03/s7-2026-09",
+                        "word_count": 2400,
+                    },
+                    "content": {"full_text": "Interpretive release body text"},
+                },
+                {
+                    "metadata": {
+                        "document_id": "sec-comment-1",
+                        "organization": "SEC",
+                        "title": "Comment from Example Commenter",
+                        "doc_type": "Public Comment",
+                        "source_kind": "sec_rule_comment",
+                        "date": "2026-03-20",
+                        "url": "https://www.sec.gov/comments/s7-2026-09/example.pdf",
+                        "word_count": 900,
+                    },
+                    "content": {"full_text": "We support the interpretive approach but recommend targeted clarification."},
+                },
+            ]
+        }
+
+        candidates = build_enrichment_candidates(knowledge_data, org_key="sec")
+        by_id = {item["doc_id"]: item for item in candidates}
+
+        self.assertEqual(set(by_id.keys()), {"sec-rule-1", "sec-comment-1"})
+        self.assertEqual(by_id["sec-rule-1"]["source_kind"], "sec_rule_release")
+        self.assertEqual(by_id["sec-comment-1"]["source_kind"], "sec_rule_comment")
+
 
 if __name__ == "__main__":
     unittest.main()

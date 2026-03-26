@@ -8,6 +8,10 @@ class CommentPositionInferenceTests(unittest.TestCase):
         doc = {"source_kind": "regulations_gov_comment", "doc_type": "Public Comment"}
         self.assertTrue(is_comment_position_document(doc))
 
+    def test_sec_rule_public_comment_is_eligible(self):
+        doc = {"source_kind": "sec_rule_comment", "doc_type": "Public Comment"}
+        self.assertTrue(is_comment_position_document(doc))
+
     def test_supportive_public_comment_can_still_note_limited_objections(self):
         doc = {"source_kind": "regulations_gov_comment", "doc_type": "Public Comment"}
         text = (

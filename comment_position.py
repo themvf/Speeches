@@ -19,7 +19,7 @@ COMMENT_POSITION_INSTRUCTION = (
     "For all other documents, set comment_position to {label:not_applicable, confidence:0, rationale:''}. "
 )
 
-_COMMENT_POSITION_SOURCE_KINDS = {"finra_comment_letter", "regulations_gov_comment"}
+_COMMENT_POSITION_SOURCE_KINDS = {"finra_comment_letter", "regulations_gov_comment", "sec_rule_comment"}
 _COMMENT_POSITION_DOC_TYPES = {"comment letter", "public comment"}
 
 _WeightedRule = Tuple[str, str, int]

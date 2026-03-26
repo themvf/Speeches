@@ -37,6 +37,10 @@ def infer_source_kind(metadata: Dict[str, Any]) -> str:
     if source_kind:
         return source_kind
     url = str(metadata.get("url", "") or "").lower()
+    if "/rules-regulations/public-comments/" in url or "/comments/" in url:
+        return "sec_rule_comment"
+    if "/rules-regulations/" in url and "release" in str(metadata.get("doc_type", "") or "").strip().lower():
+        return "sec_rule_release"
     if "/newsroom/speeches-statements/" in url:
         return "sec_speech"
     doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
