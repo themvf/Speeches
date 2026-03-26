@@ -137,6 +137,12 @@ function inferSourceKind(metadataRaw: Record<string, unknown>): string {
   if (url.includes("/newsroom/speeches-statements/")) {
     return "sec_speech";
   }
+  if (url.includes("/rules-regulations/public-comments/") || url.includes("/comments/")) {
+    return "sec_rule_comment";
+  }
+  if (url.includes("/rules-regulations/") && docType.includes("release")) {
+    return "sec_rule_release";
+  }
   if (docType === "regulatory notice") {
     return "finra_regulatory_notice";
   }
@@ -236,11 +242,19 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     notice_number: normalizeString(metadataRaw.notice_number),
     notice_title: normalizeString(metadataRaw.notice_title),
     notice_url: normalizeString(metadataRaw.notice_url),
+    file_number: normalizeString(metadataRaw.file_number),
+    release_numbers: Array.isArray(metadataRaw.release_numbers)
+      ? metadataRaw.release_numbers.map((item) => normalizeString(item)).filter(Boolean)
+      : [],
+    rule_type: normalizeString(metadataRaw.rule_type),
+    sec_issue_date: normalizeString(metadataRaw.sec_issue_date),
+    federal_register_publish_date: normalizeString(metadataRaw.federal_register_publish_date),
     source_notice_url: normalizeString(metadataRaw.source_notice_url),
     comment_url: normalizeString(metadataRaw.comment_url),
     comments_url: normalizeString(metadataRaw.comments_url),
     commenter_name: normalizeString(metadataRaw.commenter_name),
     commenter_org: normalizeString(metadataRaw.commenter_org),
+    letter_type: normalizeString(metadataRaw.letter_type),
     effective_date: normalizeString(metadataRaw.effective_date),
     comment_deadline: normalizeString(metadataRaw.comment_deadline),
     pdf_url: normalizeString(metadataRaw.pdf_url),

@@ -37,11 +37,17 @@ export interface CustomDocumentMetadata {
   notice_number?: string;
   notice_title?: string;
   notice_url?: string;
+  file_number?: string;
+  release_numbers?: string[];
+  rule_type?: string;
+  sec_issue_date?: string;
+  federal_register_publish_date?: string;
   source_notice_url?: string;
   comment_url?: string;
   comments_url?: string;
   commenter_name?: string;
   commenter_org?: string;
+  letter_type?: string;
   effective_date?: string;
   comment_deadline?: string;
   pdf_url?: string;
