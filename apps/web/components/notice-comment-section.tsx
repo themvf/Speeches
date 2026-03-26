@@ -33,6 +33,25 @@ interface NoticeCommentItem {
   };
 }
 
+interface NoticeOverviewTopic {
+  label: string;
+  count: number;
+  share: number;
+}
+
+interface NoticeOverview {
+  total_comments: number;
+  enriched_comments: number;
+  position_counts: {
+    supportive: number;
+    neutral: number;
+    opposed: number;
+    mixed: number;
+    unclear: number;
+  };
+  top_topics: NoticeOverviewTopic[];
+}
+
 interface NoticeGroupItem {
   notice_key: string;
   source_kind: string;
@@ -58,6 +77,7 @@ interface NoticeGroupItem {
   review_decision: string;
   comment_count: number;
   latest_comment_at: string;
+  overview: NoticeOverview;
   comments: NoticeCommentItem[];
 }
 
@@ -175,6 +195,32 @@ function groupPrimaryLinkLabel(group: NoticeGroupItem): string {
 function groupPdfLabel(group: NoticeGroupItem): string {
   if (group.source_family === "regulations_gov" || group.source_family === "sec") return "Rule PDF";
   return "Notice PDF";
+}
+
+const OVERVIEW_POSITIONS: Array<{
+  key: keyof NoticeOverview["position_counts"];
+  label: string;
+  fill: string;
+}> = [
+  { key: "supportive", label: "Supporting", fill: "linear-gradient(90deg, rgba(45, 212, 191, 0.95), rgba(16, 185, 129, 0.85))" },
+  { key: "neutral", label: "Neutral", fill: "linear-gradient(90deg, rgba(125, 211, 252, 0.92), rgba(56, 189, 248, 0.82))" },
+  { key: "opposed", label: "Opposing", fill: "linear-gradient(90deg, rgba(251, 113, 133, 0.94), rgba(239, 68, 68, 0.84))" },
+  { key: "mixed", label: "Mixed", fill: "linear-gradient(90deg, rgba(251, 191, 36, 0.92), rgba(245, 158, 11, 0.82))" },
+  { key: "unclear", label: "Unclear", fill: "linear-gradient(90deg, rgba(148, 163, 184, 0.9), rgba(100, 116, 139, 0.82))" }
+];
+
+function pct(value: number, total: number): string {
+  if (total <= 0) {
+    return "0%";
+  }
+  return `${Math.round((value / total) * 100)}%`;
+}
+
+function barWidth(value: number, total: number): string {
+  if (value <= 0 || total <= 0) {
+    return "0%";
+  }
+  return `${(value / total) * 100}%`;
 }
 
 export function NoticeCommentSection() {
@@ -439,6 +485,90 @@ export function NoticeCommentSection() {
                 ) : null}
               </div>
 
+              {group.overview.total_comments > 0 ? (
+                <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                  <section className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                          Comment Stance
+                        </p>
+                        <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
+                          {fmt(group.overview.enriched_comments)} of {fmt(group.overview.total_comments)} comments enriched
+                        </p>
+                      </div>
+                      <span className="tone-chip">{fmt(group.overview.total_comments)} comments</span>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {OVERVIEW_POSITIONS.map((item) => {
+                        const count = group.overview.position_counts[item.key];
+                        return (
+                          <div key={item.key} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-3 text-xs text-[color:var(--ink-faint)]">
+                              <span>{item.label}</span>
+                              <span>{fmt(count)} | {pct(count, group.overview.total_comments)}</span>
+                            </div>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-[color:rgba(148,163,184,0.16)]">
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: barWidth(count, group.overview.total_comments),
+                                  minWidth: count > 0 ? "0.75rem" : "0",
+                                  background: item.fill
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                          Top Topics
+                        </p>
+                        <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
+                          Ranked by distinct comments mentioning each topic.
+                        </p>
+                      </div>
+                      <span className="tone-chip">Top {Math.min(5, group.overview.top_topics.length || 5)}</span>
+                    </div>
+                    {group.overview.top_topics.length === 0 ? (
+                      <p className="mt-4 text-sm text-[color:var(--ink-faint)]">
+                        No reliable topics yet. Enrich more comments to populate this view.
+                      </p>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        {group.overview.top_topics.map((topic, index) => (
+                          <div key={topic.label} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="text-[color:var(--ink)]">
+                                {index + 1}. {topic.label}
+                              </span>
+                              <span className="text-[color:var(--ink-faint)]">
+                                {fmt(topic.count)} | {pct(topic.count, group.overview.total_comments)}
+                              </span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-[color:rgba(148,163,184,0.16)]">
+                              <div
+                                className="h-full rounded-full bg-[linear-gradient(90deg,rgba(79,213,255,0.95),rgba(26,74,112,0.95))]"
+                                style={{
+                                  width: barWidth(topic.count, group.overview.total_comments),
+                                  minWidth: topic.count > 0 ? "0.75rem" : "0"
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </div>
+              ) : null}
+
               {(group.tags.length > 0 || group.keywords.length > 0) && (
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <div>
@@ -549,4 +679,3 @@ export function NoticeCommentSection() {
     </div>
   );
 }
-

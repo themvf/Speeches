@@ -29,6 +29,25 @@ interface NoticeCommentItem {
   };
 }
 
+interface NoticeOverviewTopic {
+  label: string;
+  count: number;
+  share: number;
+}
+
+interface NoticeOverview {
+  total_comments: number;
+  enriched_comments: number;
+  position_counts: {
+    supportive: number;
+    neutral: number;
+    opposed: number;
+    mixed: number;
+    unclear: number;
+  };
+  top_topics: NoticeOverviewTopic[];
+}
+
 interface NoticeGroupItem {
   notice_key: string;
   source_kind: string;
@@ -54,6 +73,7 @@ interface NoticeGroupItem {
   review_decision: string;
   comment_count: number;
   latest_comment_at: string;
+  overview: NoticeOverview;
   comments: NoticeCommentItem[];
 }
 
@@ -150,6 +170,26 @@ const DISALLOWED_SUBMITTER_PHRASES = [
   "proposed rulemaking",
   "reconsideration of the"
 ];
+const POSITION_BUCKETS = ["supportive", "neutral", "opposed", "mixed", "unclear"] as const;
+const TOP_TOPIC_LIMIT = 5;
+const NOISE_TOPIC_KEYS = new Set([
+  "",
+  "sec",
+  "finra",
+  "regulations gov",
+  "rule",
+  "rules",
+  "rule release",
+  "rule releases",
+  "rulemaking",
+  "rulemakings",
+  "public comment",
+  "public comments",
+  "comment",
+  "comments",
+  "notice",
+  "notices"
+]);
 
 function resolvedSourceKind(metadata: CustomDocumentMetadata): string {
   const explicit = normalizeText(metadata.source_kind || "").toLowerCase();
@@ -229,6 +269,135 @@ function dedupList(items: string[]): string[] {
     out.push(value);
   }
   return out;
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => {
+      if (/^[A-Z0-9]{2,}$/.test(part)) {
+        return part;
+      }
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+function normalizedTopicKey(value: unknown): string {
+  return normalizeText(value || "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function topicDisplayLabel(value: unknown): string {
+  const normalized = normalizeText(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  return titleCase(normalized);
+}
+
+function shouldIgnoreTopic(value: unknown): boolean {
+  const key = normalizedTopicKey(value);
+  if (!key || NOISE_TOPIC_KEYS.has(key)) {
+    return true;
+  }
+  if (/^(?:file|notice)\s+/.test(key)) {
+    return true;
+  }
+  if (/^s\d+\s+\d{4}\s+\d{2}$/.test(key)) {
+    return true;
+  }
+  return false;
+}
+
+function positionBucket(value: string): (typeof POSITION_BUCKETS)[number] {
+  const normalized = normalizeText(value || "").toLowerCase();
+  if (normalized === "supportive" || normalized === "neutral" || normalized === "opposed" || normalized === "mixed") {
+    return normalized;
+  }
+  return "unclear";
+}
+
+function commentTopics(comment: NoticeCommentItem): string[] {
+  const preferred = comment.keywords.length > 0 ? comment.keywords : comment.tags;
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const raw of preferred) {
+    if (shouldIgnoreTopic(raw)) {
+      continue;
+    }
+    const key = normalizedTopicKey(raw);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    const label = topicDisplayLabel(raw);
+    if (label) {
+      out.push(label);
+    }
+  }
+
+  return out;
+}
+
+function emptyOverview(): NoticeOverview {
+  return {
+    total_comments: 0,
+    enriched_comments: 0,
+    position_counts: {
+      supportive: 0,
+      neutral: 0,
+      opposed: 0,
+      mixed: 0,
+      unclear: 0
+    },
+    top_topics: []
+  };
+}
+
+function buildGroupOverview(comments: NoticeCommentItem[]): NoticeOverview {
+  const topicCounts = new Map<string, { label: string; count: number }>();
+  const overview = emptyOverview();
+
+  overview.total_comments = comments.length;
+
+  for (const comment of comments) {
+    if (ENRICHED_STATUSES.has(comment.enrichment_status)) {
+      overview.enriched_comments += 1;
+    }
+
+    const bucket = positionBucket(comment.comment_position.label);
+    overview.position_counts[bucket] += 1;
+
+    for (const label of commentTopics(comment)) {
+      const key = normalizedTopicKey(label);
+      const current = topicCounts.get(key);
+      if (current) {
+        current.count += 1;
+      } else {
+        topicCounts.set(key, { label, count: 1 });
+      }
+    }
+  }
+
+  overview.top_topics = [...topicCounts.values()]
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, TOP_TOPIC_LIMIT)
+    .map((item) => ({
+      label: item.label,
+      count: item.count,
+      share: overview.total_comments > 0 ? item.count / overview.total_comments : 0
+    }));
+
+  return overview;
 }
 
 function enrichmentStatus(entry: EnrichmentEntry | undefined): string {
@@ -881,6 +1050,7 @@ function buildBaseGroup(
     review_decision: reviewDecision(entry),
     comment_count: 0,
     latest_comment_at: "",
+    overview: emptyOverview(),
     comments: []
   };
 }
@@ -988,7 +1158,8 @@ export async function GET() {
         comments: [...group.comments].sort(
           (a, b) => parseComparableDate(b.published_at) - parseComparableDate(a.published_at)
         ),
-        comment_count: group.comments.length
+        comment_count: group.comments.length,
+        overview: buildGroupOverview(group.comments)
       }))
       .sort((a, b) => {
         const noticeDiff = parseComparableDate(b.published_at) - parseComparableDate(a.published_at);
@@ -1027,4 +1198,3 @@ export async function GET() {
     );
   }
 }
-
