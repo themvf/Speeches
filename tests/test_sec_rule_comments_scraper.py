@@ -14,6 +14,20 @@ class _FakeResponse:
         return None
 
 
+class _FakeSession:
+    def __init__(self, responses):
+        self._responses = responses
+        self.headers = {}
+        self.requested_urls = []
+
+    def get(self, url: str, timeout: int = 60, allow_redirects: bool = True):
+        self.requested_urls.append(url)
+        response = self._responses.get(url)
+        if response is None:
+            raise AssertionError(f"Unexpected URL requested: {url}")
+        return response
+
+
 class _FakeScraper(SECRuleCommentsScraper):
     def __init__(self, responses):
         super().__init__(min_delay_seconds=0.0)
@@ -27,6 +41,33 @@ class _FakeScraper(SECRuleCommentsScraper):
 
 
 class SECRuleCommentsScraperTests(unittest.TestCase):
+    def test_discover_documents_strips_rule_url_fragment_before_fetch(self):
+        input_rule_url = "https://www.sec.gov/rules-regulations/2026/03/s7-2026-09#33-11412interpretive"
+        rule_url = "https://www.sec.gov/rules-regulations/2026/03/s7-2026-09"
+        rule_html = """
+        <html><body>
+        <h1>Application of the Federal Securities Laws to Certain Types of Crypto Assets</h1>
+        <div>
+          <p>File Number</p><p>S7-2026-09</p>
+          <p>Release Number</p><p>33-11412</p>
+          <p>SEC Issue Date</p><p>March 17, 2026</p>
+        </div>
+        </body></html>
+        """
+        scraper = SECRuleCommentsScraper(min_delay_seconds=0.0)
+        fake_session = _FakeSession({rule_url: _FakeResponse(rule_url, text=rule_html)})
+        scraper.session = fake_session
+
+        docs = scraper.discover_documents(input_rule_url, include_pdfs=False)
+
+        self.assertGreaterEqual(len(fake_session.requested_urls), 1)
+        self.assertEqual(fake_session.requested_urls[0], rule_url)
+        self.assertTrue(all("#" not in requested_url for requested_url in fake_session.requested_urls))
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["entry_kind"], "rule")
+        self.assertEqual(docs[0]["url"], rule_url)
+        self.assertEqual(docs[0]["file_number"], "S7-2026-09")
+
     def test_discover_documents_returns_rule_and_comments(self):
         rule_url = "https://www.sec.gov/rules-regulations/2026/03/s7-2026-09"
         comments_url = "https://www.sec.gov/rules-regulations/public-comments/s7-2026-09"
@@ -125,3 +166,4 @@ class SECRuleCommentsScraperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

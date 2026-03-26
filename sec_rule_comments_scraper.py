@@ -14,10 +14,10 @@ import re
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urldefrag, urljoin, urlparse
 
-import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests as cffi_requests
 
 
 def _normalize_space(text: Any) -> str:
@@ -149,6 +149,14 @@ def _url_key(url: Any) -> str:
     return f"{scheme}://{netloc}{path}"
 
 
+def _normalize_request_url(url: Any) -> str:
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    normalized, _fragment = urldefrag(raw)
+    return normalized.strip()
+
+
 def _is_pdf_url(url: Any) -> bool:
     return str(url or "").strip().lower().endswith(".pdf")
 
@@ -194,7 +202,7 @@ def _extract_text_from_html(html_text: str) -> str:
 
 class SECRuleCommentsScraper:
     def __init__(self, min_delay_seconds: float = 0.8):
-        self.session = requests.Session()
+        self.session = cffi_requests.Session(impersonate="chrome")
         self.session.headers.update(
             {
                 "User-Agent": (
@@ -203,6 +211,7 @@ class SECRuleCommentsScraper:
                 ),
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.sec.gov/",
             }
         )
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
@@ -214,8 +223,8 @@ class SECRuleCommentsScraper:
             time.sleep(self.min_delay_seconds - elapsed)
         self._last_request_ts = time.time()
 
-    def _fetch(self, url: str, timeout: int = 60) -> requests.Response:
-        target = str(url or "").strip()
+    def _fetch(self, url: str, timeout: int = 60):
+        target = _normalize_request_url(url)
         if not target:
             raise ValueError("URL is required")
         self._rate_limit()
@@ -354,7 +363,7 @@ class SECRuleCommentsScraper:
 
     def discover_documents(self, rule_url: str, include_pdfs: bool = True) -> List[Dict[str, Any]]:
         response = self._fetch(rule_url, timeout=60)
-        final_rule_url = str(getattr(response, "url", rule_url) or rule_url)
+        final_rule_url = _normalize_request_url(getattr(response, "url", rule_url) or rule_url)
         soup = BeautifulSoup(response.text, "html.parser")
         rule_metadata = self._parse_rule_page_metadata(soup, final_rule_url)
         rule_metadata["rule_url"] = final_rule_url
@@ -383,7 +392,9 @@ class SECRuleCommentsScraper:
         if comments_url:
             try:
                 comments_response = self._fetch(comments_url, timeout=60)
-                comments_final_url = str(getattr(comments_response, "url", comments_url) or comments_url)
+                comments_final_url = _normalize_request_url(
+                    getattr(comments_response, "url", comments_url) or comments_url
+                )
                 comments_soup = BeautifulSoup(comments_response.text, "html.parser")
                 out.extend(
                     self._parse_comment_listing(
@@ -413,7 +424,7 @@ class SECRuleCommentsScraper:
         fallback_federal_register_publish_date: str = "",
     ) -> Dict[str, Any]:
         response = self._fetch(url, timeout=60)
-        final_url = str(getattr(response, "url", url) or url)
+        final_url = _normalize_request_url(getattr(response, "url", url) or url)
         soup = BeautifulSoup(response.text, "html.parser")
         metadata = self._parse_rule_page_metadata(soup, final_url)
 
@@ -506,7 +517,7 @@ class SECRuleCommentsScraper:
         fallback_letter_type: str = "",
     ) -> Dict[str, Any]:
         response = self._fetch(url, timeout=90)
-        final_url = str(getattr(response, "url", url) or url)
+        final_url = _normalize_request_url(getattr(response, "url", url) or url)
         content_type = str(response.headers.get("Content-Type", "") or "").lower()
         source_format = _comment_source_format(final_url)
         if "application/pdf" in content_type:
