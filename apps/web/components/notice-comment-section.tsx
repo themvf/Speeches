@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { buildNoticeOverview, confidenceFilterLabel, filterCommentsByConfidence, isEnrichedCommentStatus, type NoticeOverview } from "@/lib/notices-overview";
 
 interface ApiEnvelope<T> {
   ok: boolean;
@@ -33,24 +34,6 @@ interface NoticeCommentItem {
   };
 }
 
-interface NoticeOverviewTopic {
-  label: string;
-  count: number;
-  share: number;
-}
-
-interface NoticeOverview {
-  total_comments: number;
-  enriched_comments: number;
-  position_counts: {
-    supportive: number;
-    neutral: number;
-    opposed: number;
-    mixed: number;
-    unclear: number;
-  };
-  top_topics: NoticeOverviewTopic[];
-}
 
 interface NoticeGroupItem {
   notice_key: string;
@@ -89,6 +72,11 @@ interface NoticeCommentsResponse {
     enriched_comments: number;
     pending_review_comments: number;
   };
+}
+
+interface DerivedNoticeGroupItem extends NoticeGroupItem {
+  visible_comments: NoticeCommentItem[];
+  visible_overview: NoticeOverview;
 }
 
 function fmt(value: number): string {
@@ -209,6 +197,12 @@ const OVERVIEW_POSITIONS: Array<{
   { key: "unclear", label: "Unclear", fill: "linear-gradient(90deg, rgba(148, 163, 184, 0.9), rgba(100, 116, 139, 0.82))" }
 ];
 
+const CONFIDENCE_VIEW_OPTIONS = [
+  { value: 0, label: "All Comments" },
+  { value: 0.5, label: "50%+ Confidence" },
+  { value: 0.7, label: "70%+ Confidence" }
+] as const;
+
 function pct(value: number, total: number): string {
   if (total <= 0) {
     return "0%";
@@ -229,6 +223,7 @@ export function NoticeCommentSection() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [familyFilter, setFamilyFilter] = useState("all");
+  const [minConfidence, setMinConfidence] = useState(0);
   const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
@@ -284,57 +279,94 @@ export function NoticeCommentSection() {
     }));
   }, [data]);
 
-  const filteredGroups = useMemo(() => {
+  const filteredGroups = useMemo<DerivedNoticeGroupItem[]>(() => {
     if (!data) {
       return [];
     }
 
     const token = deferredSearch.trim().toLowerCase();
 
-    return data.groups.filter((group) => {
-      if (familyFilter !== "all" && group.source_family !== familyFilter) {
-        return false;
-      }
+    return data.groups
+      .map((group) => {
+        const visibleComments = filterCommentsByConfidence(group.comments, minConfidence);
+        return {
+          ...group,
+          visible_comments: visibleComments,
+          visible_overview: minConfidence > 0 ? buildNoticeOverview(visibleComments) : group.overview
+        };
+      })
+      .filter((group) => {
+        if (familyFilter !== "all" && group.source_family !== familyFilter) {
+          return false;
+        }
 
-      if (!token) {
-        return true;
-      }
+        if (minConfidence > 0 && group.visible_comments.length === 0) {
+          return false;
+        }
 
-      const haystack = [
-        group.source_family_label,
-        group.group_type_label,
-        group.group_identifier_label,
-        group.group_identifier,
-        group.notice_number,
-        group.docket_id,
-        group.title,
-        group.summary,
-        group.published_at,
-        group.effective_date,
-        group.comment_deadline,
-        ...group.tags,
-        ...group.keywords,
-        ...group.comments.flatMap((comment) => [
-          comment.title,
-          comment.commenter_name,
-          comment.commenter_org,
-          comment.speaker,
-          comment.summary,
-          comment.comment_position.label,
-          comment.comment_position.rationale,
-          ...comment.tags,
-          ...comment.keywords
-        ])
-      ]
-        .join("\n")
-        .toLowerCase();
+        if (!token) {
+          return true;
+        }
 
-      return haystack.includes(token);
-    });
-  }, [data, deferredSearch, familyFilter]);
+        const haystack = [
+          group.source_family_label,
+          group.group_type_label,
+          group.group_identifier_label,
+          group.group_identifier,
+          group.notice_number,
+          group.docket_id,
+          group.title,
+          group.summary,
+          group.published_at,
+          group.effective_date,
+          group.comment_deadline,
+          ...group.tags,
+          ...group.keywords,
+          ...group.visible_comments.flatMap((comment) => [
+            comment.title,
+            comment.commenter_name,
+            comment.commenter_org,
+            comment.speaker,
+            comment.summary,
+            comment.comment_position.label,
+            comment.comment_position.rationale,
+            ...comment.tags,
+            ...comment.keywords
+          ])
+        ]
+          .join("\n")
+          .toLowerCase();
+
+        return haystack.includes(token);
+      });
+  }, [data, deferredSearch, familyFilter, minConfidence]);
 
   const filteredCommentCount = useMemo(
-    () => filteredGroups.reduce((sum, group) => sum + group.comments.length, 0),
+    () => filteredGroups.reduce((sum, group) => sum + group.visible_comments.length, 0),
+    [filteredGroups]
+  );
+
+  const filteredEnrichedCommentCount = useMemo(
+    () =>
+      filteredGroups.reduce(
+        (sum, group) => sum + group.visible_comments.filter((comment) => isEnrichedCommentStatus(comment.enrichment_status)).length,
+        0
+      ),
+    [filteredGroups]
+  );
+
+  const filteredPendingReviewCount = useMemo(
+    () =>
+      filteredGroups.reduce(
+        (sum, group) =>
+          sum +
+          group.visible_comments.filter(
+            (comment) =>
+              isEnrichedCommentStatus(comment.enrichment_status) &&
+              !["accepted", "edited", "rejected"].includes(comment.review_decision)
+          ).length,
+        0
+      ),
     [filteredGroups]
   );
 
@@ -361,35 +393,58 @@ export function NoticeCommentSection() {
             placeholder="Docket, notice number, title, commenter, tags, keywords..."
           />
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] ${
-                familyFilter === "all"
-                  ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.14)] text-[color:var(--ink)]"
-                  : "border-[color:var(--line)] text-[color:var(--ink-faint)]"
-              }`}
-              onClick={() => setFamilyFilter("all")}
-            >
-              All Sources
-            </button>
-            {familyOptions.map((option) => (
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Source Filter</p>
+            <div className="mt-2 flex flex-wrap gap-2">
               <button
-                key={option.value}
                 className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] ${
-                  familyFilter === option.value
+                  familyFilter === "all"
                     ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.14)] text-[color:var(--ink)]"
                     : "border-[color:var(--line)] text-[color:var(--ink-faint)]"
                 }`}
-                onClick={() => setFamilyFilter(option.value)}
+                onClick={() => setFamilyFilter("all")}
               >
-                {option.label} {option.groupCount}/{option.commentCount}
+                All Sources
               </button>
-            ))}
+              {familyOptions.map((option) => (
+                <button
+                  key={option.value}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] ${
+                    familyFilter === option.value
+                      ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.14)] text-[color:var(--ink)]"
+                      : "border-[color:var(--line)] text-[color:var(--ink-faint)]"
+                  }`}
+                  onClick={() => setFamilyFilter(option.value)}
+                >
+                  {option.label} {option.groupCount}/{option.commentCount}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Confidence View</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {CONFIDENCE_VIEW_OPTIONS.map((option) => (
+                <button
+                  key={option.label}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] ${
+                    minConfidence === option.value
+                      ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.14)] text-[color:var(--ink)]"
+                      : "border-[color:var(--line)] text-[color:var(--ink-faint)]"
+                  }`}
+                  onClick={() => setMinConfidence(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <p className="mt-3 text-sm text-[color:var(--ink-faint)]">
-            Comment position is estimated from enrichment when available. The page groups SEC by file number,
-            FINRA by notice, and Regulations.gov by docket/rule link.
+            Topic rankings are normalized into canonical buckets. Comment position is estimated from enrichment when
+            available, and the current view shows {confidenceFilterLabel(minConfidence).toLowerCase()}. SEC is grouped
+            by file number, FINRA by notice, and Regulations.gov by docket or rule link.
           </p>
         </article>
 
@@ -408,12 +463,12 @@ export function NoticeCommentSection() {
           </article>
           <article className="panel p-4">
             <p className="text-xs uppercase tracking-[0.1em]">Enriched Comments</p>
-            <p className="mt-1 text-2xl font-semibold">{loading ? "..." : fmt(data?.totals.enriched_comments || 0)}</p>
+            <p className="mt-1 text-2xl font-semibold">{loading ? "..." : `${fmt(filteredEnrichedCommentCount)} / ${fmt(data?.totals.enriched_comments || 0)}`}</p>
           </article>
           <article className="panel p-4">
             <p className="text-xs uppercase tracking-[0.1em]">Pending Review</p>
             <p className="mt-1 text-2xl font-semibold">
-              {loading ? "..." : fmt(data?.totals.pending_review_comments || 0)}
+              {loading ? "..." : `${fmt(filteredPendingReviewCount)} / ${fmt(data?.totals.pending_review_comments || 0)}`}
             </p>
           </article>
         </section>
@@ -443,7 +498,7 @@ export function NoticeCommentSection() {
                         {group.group_identifier_label}: {group.group_identifier}
                       </span>
                     ) : null}
-                    <span className="tone-chip">{group.comment_count} comments</span>
+                    <span className="tone-chip">{minConfidence > 0 ? `${fmt(group.visible_comments.length)} / ${fmt(group.comment_count)} shown` : `${fmt(group.comment_count)} comments`}</span>
                     <span className={statusClass(group.enrichment_status)}>{group.enrichment_status}</span>
                   </div>
                   <h2 className="text-2xl font-semibold leading-tight">{group.title || "Notice or Rulemaking"}</h2>
@@ -485,7 +540,7 @@ export function NoticeCommentSection() {
                 ) : null}
               </div>
 
-              {group.overview.total_comments > 0 ? (
+              {group.visible_overview.total_comments > 0 ? (
                 <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
                   <section className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -494,25 +549,25 @@ export function NoticeCommentSection() {
                           Comment Stance
                         </p>
                         <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
-                          {fmt(group.overview.enriched_comments)} of {fmt(group.overview.total_comments)} comments enriched
+                          {fmt(group.visible_overview.enriched_comments)} of {fmt(group.visible_overview.total_comments)} comments enriched
                         </p>
                       </div>
-                      <span className="tone-chip">{fmt(group.overview.total_comments)} comments</span>
+                      <span className="tone-chip">{fmt(group.visible_overview.total_comments)} comments</span>
                     </div>
                     <div className="mt-4 space-y-3">
                       {OVERVIEW_POSITIONS.map((item) => {
-                        const count = group.overview.position_counts[item.key];
+                        const count = group.visible_overview.position_counts[item.key];
                         return (
                           <div key={item.key} className="space-y-1.5">
                             <div className="flex items-center justify-between gap-3 text-xs text-[color:var(--ink-faint)]">
                               <span>{item.label}</span>
-                              <span>{fmt(count)} | {pct(count, group.overview.total_comments)}</span>
+                              <span>{fmt(count)} | {pct(count, group.visible_overview.total_comments)}</span>
                             </div>
                             <div className="h-2.5 overflow-hidden rounded-full bg-[color:rgba(148,163,184,0.16)]">
                               <div
                                 className="h-full rounded-full"
                                 style={{
-                                  width: barWidth(count, group.overview.total_comments),
+                                  width: barWidth(count, group.visible_overview.total_comments),
                                   minWidth: count > 0 ? "0.75rem" : "0",
                                   background: item.fill
                                 }}
@@ -531,32 +586,32 @@ export function NoticeCommentSection() {
                           Top Topics
                         </p>
                         <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
-                          Ranked by distinct comments mentioning each topic.
+                          Canonicalized from the displayed comments and ranked by distinct comments.
                         </p>
                       </div>
-                      <span className="tone-chip">Top {Math.min(5, group.overview.top_topics.length || 5)}</span>
+                      <span className="tone-chip">{confidenceFilterLabel(minConfidence)}</span>
                     </div>
-                    {group.overview.top_topics.length === 0 ? (
+                    {group.visible_overview.top_topics.length === 0 ? (
                       <p className="mt-4 text-sm text-[color:var(--ink-faint)]">
                         No reliable topics yet. Enrich more comments to populate this view.
                       </p>
                     ) : (
                       <div className="mt-4 space-y-3">
-                        {group.overview.top_topics.map((topic, index) => (
+                        {group.visible_overview.top_topics.map((topic, index) => (
                           <div key={topic.label} className="space-y-1.5">
                             <div className="flex items-center justify-between gap-3 text-sm">
                               <span className="text-[color:var(--ink)]">
                                 {index + 1}. {topic.label}
                               </span>
                               <span className="text-[color:var(--ink-faint)]">
-                                {fmt(topic.count)} | {pct(topic.count, group.overview.total_comments)}
+                                {fmt(topic.count)} | {pct(topic.count, group.visible_overview.total_comments)}
                               </span>
                             </div>
                             <div className="h-2 overflow-hidden rounded-full bg-[color:rgba(148,163,184,0.16)]">
                               <div
                                 className="h-full rounded-full bg-[linear-gradient(90deg,rgba(79,213,255,0.95),rgba(26,74,112,0.95))]"
                                 style={{
-                                  width: barWidth(topic.count, group.overview.total_comments),
+                                  width: barWidth(topic.count, group.visible_overview.total_comments),
                                   minWidth: topic.count > 0 ? "0.75rem" : "0"
                                 }}
                               />
@@ -588,11 +643,11 @@ export function NoticeCommentSection() {
 
               <div className="my-5 soft-divider" />
 
-              {group.comments.length === 0 ? (
-                <p className="text-sm text-[color:var(--ink-faint)]">No linked comments are associated with this group yet.</p>
+              {group.visible_comments.length === 0 ? (
+                <p className="text-sm text-[color:var(--ink-faint)]">{minConfidence > 0 ? `No comments meet the ${Math.round(minConfidence * 100)}% confidence threshold for this group.` : "No linked comments are associated with this group yet."}</p>
               ) : (
                 <div className="grid gap-3 lg:grid-cols-2">
-                  {group.comments.map((comment) => (
+                  {group.visible_comments.map((comment) => (
                     <article
                       key={comment.document_id}
                       className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4"
