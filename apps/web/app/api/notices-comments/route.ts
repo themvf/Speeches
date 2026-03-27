@@ -1,6 +1,6 @@
-import { loadCustomDocuments, loadEnrichmentState, parseComparableDate } from "@/lib/server/data-store";
+import { loadCustomDocuments, loadEnrichmentState, loadRuleSummaries, parseComparableDate } from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
-import type { CustomDocumentMetadata, CustomDocumentRecord, EnrichmentEntry } from "@/lib/server/types";
+import type { CustomDocumentMetadata, CustomDocumentRecord, EnrichmentEntry, RuleSummaryGroup, RuleSummariesPayload } from "@/lib/server/types";
 import { buildNoticeOverview, emptyNoticeOverview, isEnrichedCommentStatus, type NoticeOverview } from "@/lib/notices-overview";
 
 export const runtime = "nodejs";
@@ -914,12 +914,153 @@ function buildFallbackGroup(
   };
 }
 
+function normalizedSummaryOverview(group: RuleSummaryGroup): NoticeOverview {
+  const positionCounts = group.overview?.position_counts || {};
+  return {
+    total_comments: Number(group.overview?.total_comments || 0),
+    enriched_comments: Number(group.overview?.enriched_comments || 0),
+    position_counts: {
+      supportive: Number(positionCounts.supportive || 0),
+      neutral: Number(positionCounts.neutral || 0),
+      opposed: Number(positionCounts.opposed || 0),
+      mixed: Number(positionCounts.mixed || 0),
+      unclear: Number(positionCounts.unclear || 0)
+    },
+    top_topics: Array.isArray(group.overview?.top_topics)
+      ? group.overview.top_topics.map((item) => ({
+          label: normalizeText(item.label || ""),
+          count: Number(item.count || 0),
+          share: Number(item.share || 0)
+        }))
+      : []
+  };
+}
+
+function persistedSummaryIsFresh(
+  summaries: RuleSummariesPayload,
+  customPayload: { updated_at?: string },
+  enrichmentState: { updated_at?: string }
+): boolean {
+  return (
+    normalizeText(summaries.custom_documents_updated_at || "") === normalizeText(customPayload.updated_at || "") &&
+    normalizeText(summaries.enrichment_state_updated_at || "") === normalizeText(enrichmentState.updated_at || "")
+  );
+}
+
+function buildGroupFromSummary(group: RuleSummaryGroup): NoticeGroupItem {
+  return {
+    notice_key: normalizeText(group.notice_key || ""),
+    source_kind: normalizeText(group.source_kind || ""),
+    source_family: normalizeText(group.source_family || ""),
+    source_family_label: normalizeText(group.source_family_label || ""),
+    group_type_label: normalizeText(group.group_type_label || ""),
+    group_identifier_label: normalizeText(group.group_identifier_label || ""),
+    group_identifier: normalizeText(group.group_identifier || ""),
+    notice_document_id: normalizeText(group.notice_document_id || ""),
+    notice_number: normalizeText(group.notice_number || ""),
+    docket_id: normalizeText(group.docket_id || ""),
+    title: normalizeText(group.title || ""),
+    summary: normalizeText(group.summary || ""),
+    organization: normalizeText(group.organization || ""),
+    url: normalizeText(group.url || ""),
+    pdf_url: normalizeText(group.pdf_url || ""),
+    published_at: normalizeText(group.published_at || ""),
+    effective_date: normalizeText(group.effective_date || ""),
+    comment_deadline: normalizeText(group.comment_deadline || ""),
+    tags: Array.isArray(group.tags) ? group.tags.map((item) => normalizeText(item)).filter(Boolean) : [],
+    keywords: Array.isArray(group.keywords) ? group.keywords.map((item) => normalizeText(item)).filter(Boolean) : [],
+    enrichment_status: normalizeText(group.enrichment_status || ""),
+    review_decision: normalizeText(group.review_decision || ""),
+    comment_count: Number(group.comment_count || 0),
+    latest_comment_at: normalizeText(group.latest_comment_at || ""),
+    overview: normalizedSummaryOverview(group),
+    comments: []
+  };
+}
+
+function buildPersistedNoticeCommentsResponse(
+  summaries: RuleSummariesPayload,
+  customPayload: { documents?: CustomDocumentRecord[] },
+  enrichmentState: { entries?: Record<string, EnrichmentEntry> }
+): NoticeCommentsResponse | null {
+  const docMap = new Map<string, CustomDocumentRecord>();
+  for (const record of customPayload.documents || []) {
+    const docId = normalizeText(record.metadata?.document_id || "");
+    if (docId) {
+      docMap.set(docId, record);
+    }
+  }
+
+  const entries = enrichmentState.entries || {};
+  const groups = summaries.groups.map((group) => buildGroupFromSummary(group));
+  const groupMap = new Map(groups.map((group) => [group.notice_key, group]));
+
+  for (const summaryGroup of summaries.groups) {
+    const target = groupMap.get(summaryGroup.notice_key);
+    if (!target) {
+      return null;
+    }
+
+    for (const docId of summaryGroup.comment_document_ids || []) {
+      const record = docMap.get(docId);
+      if (!record) {
+        return null;
+      }
+      const metadata = record.metadata || ({} as CustomDocumentMetadata);
+      const entry = entries[docId];
+      const commentPresentation = resolvedCommentPresentation(record, metadata, entry);
+
+      target.comments.push({
+        document_id: docId,
+        source_kind: resolvedSourceKind(metadata),
+        source_family: sourceFamily(metadata),
+        title: commentPresentation.title,
+        commenter_name: commentPresentation.commenter_name,
+        commenter_org: commentPresentation.commenter_org,
+        speaker: commentPresentation.speaker,
+        url: normalizeText(metadata.url || metadata.comment_page_url || metadata.comment_url || ""),
+        comment_url: normalizeText(metadata.comment_page_url || metadata.comment_url || metadata.url || ""),
+        pdf_url: normalizeText(metadata.pdf_url || ""),
+        resolved_content_url: normalizeText(metadata.resolved_content_url || ""),
+        published_at: normalizeText(metadata.published_date || metadata.date || ""),
+        summary: commentPresentation.summary,
+        tags: buildNoticeTags(record, entry),
+        keywords: buildKeywords(entry),
+        enrichment_status: enrichmentStatus(entry),
+        review_decision: reviewDecision(entry),
+        comment_position: commentPosition(entry)
+      });
+    }
+  }
+
+  return {
+    groups,
+    totals: {
+      notices: Number(summaries.totals?.notices || 0),
+      comments: Number(summaries.totals?.comments || 0),
+      enriched_comments: Number(summaries.totals?.enriched_comments || 0),
+      pending_review_comments: Number(summaries.totals?.pending_review_comments || 0)
+    }
+  };
+}
+
 export async function GET() {
   const requestId = createRequestId();
 
   try {
-    const [customPayload, enrichmentState] = await Promise.all([loadCustomDocuments(), loadEnrichmentState()]);
+    const [customPayload, enrichmentState, ruleSummaries] = await Promise.all([
+      loadCustomDocuments(),
+      loadEnrichmentState(),
+      loadRuleSummaries()
+    ]);
     const entries = enrichmentState.entries || {};
+
+    if (persistedSummaryIsFresh(ruleSummaries, customPayload, enrichmentState)) {
+      const persistedPayload = buildPersistedNoticeCommentsResponse(ruleSummaries, customPayload, enrichmentState);
+      if (persistedPayload) {
+        return ok(persistedPayload, requestId);
+      }
+    }
 
     const groups = new Map<string, NoticeGroupItem>();
 

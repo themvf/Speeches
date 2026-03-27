@@ -1103,8 +1103,17 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
                 }
             )
 
+    rule_summaries_rebuilt = False
     if not args.dry_run and (saved_new or saved_updates):
         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
+        enrichment_state = core._load_enrichment_state(storage)
+        core._rebuild_rule_summaries(
+            storage,
+            custom_payload=custom_payload,
+            enrichment_state=enrichment_state,
+            require_remote=args.require_remote_persistence,
+        )
+        rule_summaries_rebuilt = True
 
     summary = {
         "mode": "extract",
@@ -1133,6 +1142,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "status_counts": status_counts,
         "discovery_debug": discovery_debug if isinstance(discovery_debug, dict) else {},
         "dry_run": bool(args.dry_run),
+        "rule_summaries_rebuilt": rule_summaries_rebuilt,
     }
     core._write_summary(args.summary_path, summary)
     return summary

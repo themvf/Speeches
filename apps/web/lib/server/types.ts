@@ -143,6 +143,63 @@ export interface NewsConnectorSettingsPayload {
   doj_usao_exclude_terms: string;
 }
 
+export interface RuleSummaryOverviewTopic {
+  label: string;
+  count: number;
+  share: number;
+}
+
+export interface RuleSummaryOverview {
+  total_comments: number;
+  enriched_comments: number;
+  position_counts: Record<string, number>;
+  top_topics: RuleSummaryOverviewTopic[];
+}
+
+export interface RuleSummaryGroup {
+  notice_key: string;
+  source_kind: string;
+  source_family: string;
+  source_family_label: string;
+  group_type_label: string;
+  group_identifier_label: string;
+  group_identifier: string;
+  notice_document_id: string;
+  notice_number: string;
+  docket_id: string;
+  title: string;
+  summary: string;
+  organization: string;
+  url: string;
+  pdf_url: string;
+  published_at: string;
+  effective_date: string;
+  comment_deadline: string;
+  tags: string[];
+  keywords: string[];
+  enrichment_status: string;
+  review_decision: string;
+  comment_count: number;
+  latest_comment_at: string;
+  overview: RuleSummaryOverview;
+  comment_document_ids: string[];
+}
+
+export interface RuleSummariesPayload {
+  version: number;
+  updated_at: string;
+  generated_at: string;
+  custom_documents_updated_at: string;
+  enrichment_state_updated_at: string;
+  totals: {
+    notices: number;
+    comments: number;
+    enriched_comments: number;
+    pending_review_comments: number;
+  };
+  groups: RuleSummaryGroup[];
+}
+
 export interface DocumentListItem {
   document_id: string;
   title: string;
@@ -265,4 +322,21 @@ export interface GraphResponseData {
   edges: GraphEdge[];
   summary: GraphSummary;
   facets: DocumentsFacets;
+}
+
+export interface Neo4jStatusResponseData {
+  configured: boolean;
+  database: string;
+  url: string;
+  missing_required_env: string[];
+}
+
+export interface Neo4jPathResponseData {
+  projection_key: string;
+  synced_node_count: number;
+  synced_edge_count: number;
+  path_found: boolean;
+  hops: number;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
 }

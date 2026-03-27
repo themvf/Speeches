@@ -11,13 +11,15 @@ import {
   type DocumentsFacets,
   type EnrichmentEntry,
   type EnrichmentStatePayload,
-  type NewsConnectorSettingsPayload
+  type NewsConnectorSettingsPayload,
+  type RuleSummariesPayload
 } from "@/lib/server/types";
 
 const SEC_SPEECHES_GCS_BLOB = "all_speeches.json";
 const SEC_SPEECHES_LOCAL_FILE = "all_speeches_final.json";
 const CUSTOM_DOCS_BLOB = "custom_documents.json";
 const ENRICHMENT_BLOB = "document_enrichment_state.json";
+const RULE_SUMMARIES_BLOB = "rule_summaries.json";
 const SETTINGS_BLOB = "news_connector_settings.json";
 
 const CACHE_TTL_MS = 15_000;
@@ -482,6 +484,102 @@ function normalizeNewsSettingsPayload(payload: unknown): NewsConnectorSettingsPa
   };
 }
 
+function normalizeRuleSummariesPayload(payload: unknown): RuleSummariesPayload {
+  if (!payload || typeof payload !== "object") {
+    return {
+      version: 1,
+      updated_at: "",
+      generated_at: "",
+      custom_documents_updated_at: "",
+      enrichment_state_updated_at: "",
+      totals: {
+        notices: 0,
+        comments: 0,
+        enriched_comments: 0,
+        pending_review_comments: 0
+      },
+      groups: []
+    };
+  }
+
+  const src = payload as Record<string, unknown>;
+  const totalsRaw = src.totals && typeof src.totals === "object" ? (src.totals as Record<string, unknown>) : {};
+  const groupsRaw = Array.isArray(src.groups) ? src.groups : [];
+
+  return {
+    version: Number.parseInt(String(src.version ?? "1"), 10) || 1,
+    updated_at: normalizeString(src.updated_at),
+    generated_at: normalizeString(src.generated_at),
+    custom_documents_updated_at: normalizeString(src.custom_documents_updated_at),
+    enrichment_state_updated_at: normalizeString(src.enrichment_state_updated_at),
+    totals: {
+      notices: normalizeWordCount(totalsRaw.notices),
+      comments: normalizeWordCount(totalsRaw.comments),
+      enriched_comments: normalizeWordCount(totalsRaw.enriched_comments),
+      pending_review_comments: normalizeWordCount(totalsRaw.pending_review_comments)
+    },
+    groups: groupsRaw
+      .filter((item) => item && typeof item === "object")
+      .map((item) => {
+        const group = item as Record<string, unknown>;
+        const overviewRaw = group.overview && typeof group.overview === "object" ? (group.overview as Record<string, unknown>) : {};
+        const positionCountsRaw =
+          overviewRaw.position_counts && typeof overviewRaw.position_counts === "object"
+            ? (overviewRaw.position_counts as Record<string, unknown>)
+            : {};
+        const topTopicsRaw = Array.isArray(overviewRaw.top_topics) ? overviewRaw.top_topics : [];
+        return {
+          notice_key: normalizeString(group.notice_key),
+          source_kind: normalizeString(group.source_kind),
+          source_family: normalizeString(group.source_family),
+          source_family_label: normalizeString(group.source_family_label),
+          group_type_label: normalizeString(group.group_type_label),
+          group_identifier_label: normalizeString(group.group_identifier_label),
+          group_identifier: normalizeString(group.group_identifier),
+          notice_document_id: normalizeString(group.notice_document_id),
+          notice_number: normalizeString(group.notice_number),
+          docket_id: normalizeString(group.docket_id),
+          title: normalizeString(group.title),
+          summary: normalizeString(group.summary),
+          organization: normalizeString(group.organization),
+          url: normalizeString(group.url),
+          pdf_url: normalizeString(group.pdf_url),
+          published_at: normalizeString(group.published_at),
+          effective_date: normalizeString(group.effective_date),
+          comment_deadline: normalizeString(group.comment_deadline),
+          tags: Array.isArray(group.tags) ? group.tags.map((value) => normalizeString(value)).filter(Boolean) : [],
+          keywords: Array.isArray(group.keywords) ? group.keywords.map((value) => normalizeString(value)).filter(Boolean) : [],
+          enrichment_status: normalizeString(group.enrichment_status),
+          review_decision: normalizeString(group.review_decision),
+          comment_count: normalizeWordCount(group.comment_count),
+          latest_comment_at: normalizeString(group.latest_comment_at),
+          overview: {
+            total_comments: normalizeWordCount(overviewRaw.total_comments),
+            enriched_comments: normalizeWordCount(overviewRaw.enriched_comments),
+            position_counts: Object.fromEntries(
+              Object.entries(positionCountsRaw).map(([key, value]) => [normalizeString(key), normalizeWordCount(value)])
+            ),
+            top_topics: topTopicsRaw
+              .filter((topic) => topic && typeof topic === "object")
+              .map((topic) => {
+                const itemRaw = topic as Record<string, unknown>;
+                return {
+                  label: normalizeString(itemRaw.label),
+                  count: normalizeWordCount(itemRaw.count),
+                  share: Number.parseFloat(String(itemRaw.share ?? "0")) || 0
+                };
+              })
+              .filter((topic) => topic.label)
+          },
+          comment_document_ids: Array.isArray(group.comment_document_ids)
+            ? group.comment_document_ids.map((value) => normalizeString(value)).filter(Boolean)
+            : []
+        };
+      })
+      .filter((group) => group.notice_key)
+  };
+}
+
 function findProjectRootWithData(startDir: string): string {
   let current = path.resolve(startDir);
   for (let i = 0; i < 7; i += 1) {
@@ -595,6 +693,29 @@ export async function loadEnrichmentState(): Promise<EnrichmentStatePayload> {
     localFileName: ENRICHMENT_BLOB,
     normalize: normalizeEnrichmentStatePayload,
     emptyFactory: () => ({ version: 1, pipeline_version: "v1", updated_at: "", entries: {} })
+  });
+}
+
+export async function loadRuleSummaries(): Promise<RuleSummariesPayload> {
+  return loadFromSource({
+    cacheKey: "rule_summaries",
+    gcsBlobName: RULE_SUMMARIES_BLOB,
+    localFileName: RULE_SUMMARIES_BLOB,
+    normalize: normalizeRuleSummariesPayload,
+    emptyFactory: () => ({
+      version: 1,
+      updated_at: "",
+      generated_at: "",
+      custom_documents_updated_at: "",
+      enrichment_state_updated_at: "",
+      totals: {
+        notices: 0,
+        comments: 0,
+        enriched_comments: 0,
+        pending_review_comments: 0
+      },
+      groups: []
+    })
   });
 }
 

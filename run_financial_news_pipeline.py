@@ -1,4 +1,4 @@
-﻿
+
 #!/usr/bin/env python3
 """Headless financial news ingest and enrichment pipeline."""
 
@@ -31,6 +31,7 @@ from comment_position import (
     infer_comment_position as shared_infer_comment_position,
     is_comment_position_document as shared_is_comment_position_document,
 )
+from rule_summaries import build_rule_summaries_payload
 
 try:
     from openai import OpenAI
@@ -48,6 +49,8 @@ NEWS_CONNECTOR_SETTINGS_BLOB_NAME = "news_connector_settings.json"
 NEWS_CONNECTOR_SETTINGS_LOCAL_PATH = DATA_DIR / "news_connector_settings.json"
 ENRICHMENT_STATE_BLOB_NAME = "document_enrichment_state.json"
 ENRICHMENT_STATE_LOCAL_PATH = DATA_DIR / "document_enrichment_state.json"
+RULE_SUMMARIES_BLOB_NAME = "rule_summaries.json"
+RULE_SUMMARIES_LOCAL_PATH = DATA_DIR / "rule_summaries.json"
 ENRICHMENT_PIPELINE_VERSION = "v1"
 
 NEWSAPI_DEFAULT_QUERY = (
@@ -185,20 +188,50 @@ def _nested_get(payload: Dict[str, Any], *keys: str) -> Any:
     return current
 
 
+def _sanitize_api_key(value: Any) -> str:
+    key = str(value or "").strip()
+    if not key:
+        return ""
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in {"'", '"'}:
+        key = key[1:-1].strip()
+    if key.lower().startswith("bearer "):
+        key = key[7:].strip()
+    return key
+
+
+def _key_fingerprint(value: str) -> str:
+    key = _sanitize_api_key(value)
+    if not key:
+        return ""
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+
+
+def _get_newsapi_api_key_source(secrets_payload: Dict[str, Any]) -> str:
+    env_key = _sanitize_api_key(os.getenv("NEWSAPI_API_KEY", ""))
+    if env_key:
+        return "env:NEWSAPI_API_KEY"
+
+    secret_key = _sanitize_api_key(_nested_get(secrets_payload, "newsapi", "api_key"))
+    if secret_key:
+        return "streamlit:newsapi.api_key"
+
+    return "missing"
+
+
 def _get_newsapi_api_key(secrets_payload: Dict[str, Any]) -> str:
-    return str(
+    return _sanitize_api_key(
         os.getenv("NEWSAPI_API_KEY", "")
         or _nested_get(secrets_payload, "newsapi", "api_key")
         or ""
-    ).strip()
+    )
 
 
 def _get_openai_api_key(secrets_payload: Dict[str, Any]) -> str:
-    return str(
+    return _sanitize_api_key(
         os.getenv("OPENAI_API_KEY", "")
         or _nested_get(secrets_payload, "openai", "api_key")
         or ""
-    ).strip()
+    )
 
 
 def _get_gcs_storage(secrets_payload: Dict[str, Any]) -> Tuple[Optional[GCSStorage], str]:
@@ -502,6 +535,89 @@ def _save_enrichment_state(
         normalize_fn=_normalize_enrichment_state,
         require_remote=require_remote,
     )
+
+def _empty_rule_summaries_payload() -> Dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": "",
+        "generated_at": "",
+        "custom_documents_updated_at": "",
+        "enrichment_state_updated_at": "",
+        "totals": {
+            "notices": 0,
+            "comments": 0,
+            "enriched_comments": 0,
+            "pending_review_comments": 0,
+        },
+        "groups": [],
+    }
+
+
+def _normalize_rule_summaries_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    base = _empty_rule_summaries_payload()
+    if not isinstance(payload, dict):
+        return base
+    groups = payload.get("groups", [])
+    if not isinstance(groups, list):
+        groups = []
+    totals = payload.get("totals", {})
+    if not isinstance(totals, dict):
+        totals = {}
+    return {
+        "version": int(payload.get("version", 1) or 1),
+        "updated_at": str(payload.get("updated_at", "") or ""),
+        "generated_at": str(payload.get("generated_at", "") or ""),
+        "custom_documents_updated_at": str(payload.get("custom_documents_updated_at", "") or ""),
+        "enrichment_state_updated_at": str(payload.get("enrichment_state_updated_at", "") or ""),
+        "totals": {
+            "notices": int(totals.get("notices", 0) or 0),
+            "comments": int(totals.get("comments", 0) or 0),
+            "enriched_comments": int(totals.get("enriched_comments", 0) or 0),
+            "pending_review_comments": int(totals.get("pending_review_comments", 0) or 0),
+        },
+        "groups": groups,
+    }
+
+
+def _load_rule_summaries(storage: Optional[GCSStorage]) -> Dict[str, Any]:
+    return _load_json_store(
+        storage=storage,
+        blob_name=RULE_SUMMARIES_BLOB_NAME,
+        local_path=RULE_SUMMARIES_LOCAL_PATH,
+        default_factory=_empty_rule_summaries_payload,
+        normalize_fn=_normalize_rule_summaries_payload,
+    )
+
+
+def _save_rule_summaries(
+    storage: Optional[GCSStorage],
+    payload: Dict[str, Any],
+    require_remote: bool = False,
+) -> None:
+    _save_json_store(
+        storage=storage,
+        blob_name=RULE_SUMMARIES_BLOB_NAME,
+        local_path=RULE_SUMMARIES_LOCAL_PATH,
+        payload=payload,
+        normalize_fn=_normalize_rule_summaries_payload,
+        require_remote=require_remote,
+    )
+
+
+def _rebuild_rule_summaries(
+    storage: Optional[GCSStorage],
+    custom_payload: Optional[Dict[str, Any]] = None,
+    enrichment_state: Optional[Dict[str, Any]] = None,
+    require_remote: bool = False,
+) -> Dict[str, Any]:
+    if custom_payload is None:
+        custom_payload = _load_custom_documents(storage)
+    if enrichment_state is None:
+        enrichment_state = _load_enrichment_state(storage)
+    payload = build_rule_summaries_payload(custom_payload, enrichment_state)
+    _save_rule_summaries(storage, payload, require_remote=require_remote)
+    return payload
+
 
 def _create_uploaded_document_record(
     text: str,
@@ -1192,6 +1308,8 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         raise RuntimeError(gcs_status)
 
     api_key = _get_newsapi_api_key(secrets_payload)
+    api_key_source = _get_newsapi_api_key_source(secrets_payload)
+    api_key_fingerprint = _key_fingerprint(api_key)
     if not api_key:
         raise RuntimeError("NewsAPI API key is not configured.")
 
@@ -1234,7 +1352,16 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
     discovery_debug = getattr(scraper, "last_discovery_debug", {}) if scraper is not None else {}
     discovery_errors = _extract_newsapi_discovery_errors(discovery_debug)
     if not discovered and discovery_errors:
-        raise RuntimeError(f"NewsAPI discovery failed: {discovery_errors[0]}")
+        first_error = discovery_errors[0]
+        if "NewsAPI request failed (401)" in first_error:
+            raise RuntimeError(
+                "NewsAPI discovery failed: "
+                f"{first_error}. Auth diagnostics: source={api_key_source}, "
+                f"key_len={len(api_key)}, key_fp={api_key_fingerprint}. "
+                "Confirm the GitHub secret NEWSAPI_API_KEY matches your working key exactly "
+                "(no surrounding quotes or `Bearer ` prefix)."
+            )
+        raise RuntimeError(f"NewsAPI discovery failed: {first_error}")
 
     custom_payload = _load_custom_documents(storage)
     existing_custom = {}
@@ -1355,8 +1482,17 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         except Exception as e:
             failed.append({"url": entry.get("url", ""), "title": entry.get("title", ""), "error": str(e)})
 
+    rule_summaries_rebuilt = False
     if not args.dry_run and (saved_new or saved_updates):
         _save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
+        enrichment_state = _load_enrichment_state(storage)
+        _rebuild_rule_summaries(
+            storage,
+            custom_payload=custom_payload,
+            enrichment_state=enrichment_state,
+            require_remote=args.require_remote_persistence,
+        )
+        rule_summaries_rebuilt = True
 
     trimmed_discovery_debug = _trim_newsapi_debug(discovery_debug)
     summary = {
@@ -1364,6 +1500,11 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         "ran_at": _utc_now_iso(),
         "require_remote_persistence": bool(args.require_remote_persistence),
         "remote_persistence": bool(storage is not None),
+        "newsapi_auth": {
+            "source": api_key_source,
+            "key_len": len(api_key),
+            "key_fp": api_key_fingerprint,
+        },
         "query": settings["query"],
         "lookback_days": int(settings["lookback_days"]),
         "domains": settings["domains"],
@@ -1390,6 +1531,7 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         "discovered_by_domain": dict(trimmed_discovery_debug.get("discovered_by_domain", {})),
         "discovery_debug": trimmed_discovery_debug,
         "dry_run": bool(args.dry_run),
+        "rule_summaries_rebuilt": rule_summaries_rebuilt,
     }
     _write_summary(args.summary_path, summary)
     return summary
@@ -1544,8 +1686,16 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         }
 
     enrichment_state["entries"] = entries
+    rule_summaries_rebuilt = False
     if not args.dry_run and targets:
         _save_enrichment_state(storage, enrichment_state, require_remote=args.require_remote_persistence)
+        _rebuild_rule_summaries(
+            storage,
+            custom_payload=custom_payload,
+            enrichment_state=enrichment_state,
+            require_remote=args.require_remote_persistence,
+        )
+        rule_summaries_rebuilt = True
 
     summary = {
         "mode": "enrich",
@@ -1562,6 +1712,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         "fallback_enriched_count": fallback_count,
         "used_models": used_models,
         "dry_run": bool(args.dry_run),
+        "rule_summaries_rebuilt": rule_summaries_rebuilt,
     }
     _write_summary(args.summary_path, summary)
     return summary
