@@ -290,6 +290,7 @@ def _save_custom_documents_local(payload):
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def _load_custom_documents():
     storage = _get_gcs_storage()
     if storage is not None:
@@ -311,6 +312,7 @@ def _save_custom_documents(payload):
     payload = _normalize_custom_docs_payload(payload)
     payload["updated_at"] = _utc_now_iso()
     _save_custom_documents_local(payload)
+    _load_custom_documents.clear()
 
     storage = _get_gcs_storage()
     if storage is None:
@@ -2996,8 +2998,13 @@ def _corpus_doc_id(speech):
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()[:24]
 
 
-def _build_enrichment_candidates(knowledge_data, org_key=None):
-    return _shared_build_enrichment_candidates(knowledge_data, org_key=org_key)
+def _build_enrichment_candidates(knowledge_data, org_key=None, include_full_text=True, allowed_doc_ids=None):
+    return _shared_build_enrichment_candidates(
+        knowledge_data,
+        org_key=org_key,
+        include_full_text=include_full_text,
+        allowed_doc_ids=allowed_doc_ids,
+    )
 
 
 def _extract_first_json_object(text):
@@ -3253,8 +3260,8 @@ def _heuristic_enrichment(doc):
 
 def _run_enrichment_agent(client, doc, model_name):
     text = str(doc.get("full_text", "") or "").strip()
-    if len(text) > 90000:
-        text = text[:45000] + "\n\n[...TRUNCATED FOR ENRICHMENT...]\n\n" + text[-30000:]
+    if len(text) > 60000:
+        text = text[:30000] + "\n\n[...TRUNCATED FOR ENRICHMENT...]\n\n" + text[-20000:]
 
     base_instruction = (
         "You are an enrichment agent for policy documents. "
@@ -11795,9 +11802,11 @@ elif page == "Enrichment Pipeline":
         scope_key = selected_org["key"]
         scope_label = selected_org["label"]
 
+    enrichment_org_key = None if scope_key == "__all__" else scope_key
     scoped_candidates_all = _build_enrichment_candidates(
         knowledge_data,
-        org_key=None if scope_key == "__all__" else scope_key,
+        org_key=enrichment_org_key,
+        include_full_text=False,
     )
     source_kind_options = sorted(
         {
@@ -11888,9 +11897,10 @@ elif page == "Enrichment Pipeline":
             "Docs To Process This Run",
             min_value=1,
             max_value=target_count,
-            value=min(25, target_count),
+            value=min(10, target_count),
         )
     st.caption(f"{target_count} documents currently match this run mode.")
+    st.caption("For Streamlit Cloud stability, batches of 5 to 10 documents are usually safer than larger runs.")
 
     available_models = []
     client = None
@@ -11920,43 +11930,64 @@ elif page == "Enrichment Pipeline":
         elif not _require_enrichment_persistence_ready():
             pass
         else:
-            run_progress = st.progress(0)
-            run_status = st.empty()
-
-            def _run_progress_cb(done, total, message):
-                if total <= 0:
-                    run_progress.progress(100)
-                    run_status.caption(message)
-                    return
-                safe_done = max(0, min(done, total))
-                pct = int((safe_done * 100) / total)
-                run_progress.progress(max(0, min(pct, 100)))
-                run_status.caption(f"{message} ({safe_done}/{total})")
-
-            with st.spinner(f"Running enrichment over {batch_limit} docs in {scope_label}..."):
-                result = _run_enrichment_batch(
-                    client=client,
-                    candidates=scoped_candidates,
-                    enrichment_state=enrichment_state,
-                    model_name=enrich_model,
-                    mode=mode_key,
-                    limit=batch_limit,
-                    progress_callback=_run_progress_cb,
-                    require_remote_persistence=True,
-                )
-            if result.get("aborted"):
-                st.error(
-                    "Enrichment run stopped because state could not be durably saved to GCS. "
-                    f"Processed {result.get('processed', 0)} docs before stopping. "
-                    f"{str(result.get('error', '') or '').strip()}"
-                )
+            run_doc_ids = [
+                str(doc.get("doc_id", "") or "").strip()
+                for doc in targets[:batch_limit]
+                if str(doc.get("doc_id", "") or "").strip()
+            ]
+            run_candidates = _build_enrichment_candidates(
+                knowledge_data,
+                org_key=enrichment_org_key,
+                include_full_text=True,
+                allowed_doc_ids=run_doc_ids,
+            )
+            run_candidates = [
+                doc
+                for doc in run_candidates
+                if not selected_source_kind_set
+                or (str(doc.get("source_kind", "") or "unknown").strip() or "unknown") in selected_source_kind_set
+            ]
+            run_candidates = sorted(run_candidates, key=_candidate_sort_key, reverse=True)
+            if not run_candidates:
+                st.error("No document text is available for the selected enrichment batch.")
             else:
-                st.success(
-                    f"Enrichment run complete. Processed {result.get('processed', 0)} "
-                    f"of {result.get('total_selected', 0)} matching docs."
-                )
-            enrichment_state = _load_enrichment_state()
-            scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
+                run_progress = st.progress(0)
+                run_status = st.empty()
+
+                def _run_progress_cb(done, total, message):
+                    if total <= 0:
+                        run_progress.progress(100)
+                        run_status.caption(message)
+                        return
+                    safe_done = max(0, min(done, total))
+                    pct = int((safe_done * 100) / total)
+                    run_progress.progress(max(0, min(pct, 100)))
+                    run_status.caption(f"{message} ({safe_done}/{total})")
+
+                with st.spinner(f"Running enrichment over {batch_limit} docs in {scope_label}..."):
+                    result = _run_enrichment_batch(
+                        client=client,
+                        candidates=run_candidates,
+                        enrichment_state=enrichment_state,
+                        model_name=enrich_model,
+                        mode=mode_key,
+                        limit=batch_limit,
+                        progress_callback=_run_progress_cb,
+                        require_remote_persistence=True,
+                    )
+                if result.get("aborted"):
+                    st.error(
+                        "Enrichment run stopped because state could not be durably saved to GCS. "
+                        f"Processed {result.get('processed', 0)} docs before stopping. "
+                        f"{str(result.get('error', '') or '').strip()}"
+                    )
+                else:
+                    st.success(
+                        f"Enrichment run complete. Processed {result.get('processed', 0)} "
+                        f"of {result.get('total_selected', 0)} matching docs."
+                    )
+                enrichment_state = _load_enrichment_state()
+                scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
 
     st.markdown("---")
     st.subheader("Targeted Re-Enrichment")
@@ -11994,39 +12025,51 @@ elif page == "Enrichment Pipeline":
                 elif not _require_enrichment_persistence_ready():
                     pass
                 else:
-                    re_progress = st.progress(0)
-                    re_status = st.empty()
-
-                    def _re_progress_cb(done, total, message):
-                        if total <= 0:
-                            re_progress.progress(100)
-                            re_status.caption(message)
-                            return
-                        safe_done = max(0, min(done, total))
-                        pct = int((safe_done * 100) / total)
-                        re_progress.progress(max(0, min(pct, 100)))
-                        re_status.caption(f"{message} ({safe_done}/{total})")
-
-                    with st.spinner("Re-enriching selected document..."):
-                        re_result = _run_enrichment_batch(
-                            client=client,
-                            candidates=[target_doc],
-                            enrichment_state=enrichment_state,
-                            model_name=enrich_model,
-                            mode="re_enrich_all",
-                            limit=1,
-                            progress_callback=_re_progress_cb,
-                            require_remote_persistence=True,
-                        )
-                    if re_result.get("aborted"):
-                        st.error(
-                            "Targeted re-enrichment stopped because state could not be durably saved to GCS. "
-                            f"{str(re_result.get('error', '') or '').strip()}"
-                        )
+                    target_run_candidates = _build_enrichment_candidates(
+                        knowledge_data,
+                        org_key=enrichment_org_key,
+                        include_full_text=True,
+                        allowed_doc_ids=[target_doc_id],
+                    )
+                    target_run_candidates = [
+                        doc for doc in target_run_candidates if str(doc.get("doc_id", "") or "").strip() == target_doc_id
+                    ]
+                    if not target_run_candidates:
+                        st.error("Selected document text is unavailable for enrichment.")
                     else:
-                        st.success("Selected document re-enriched.")
-                    enrichment_state = _load_enrichment_state()
-                    scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
+                        re_progress = st.progress(0)
+                        re_status = st.empty()
+
+                        def _re_progress_cb(done, total, message):
+                            if total <= 0:
+                                re_progress.progress(100)
+                                re_status.caption(message)
+                                return
+                            safe_done = max(0, min(done, total))
+                            pct = int((safe_done * 100) / total)
+                            re_progress.progress(max(0, min(pct, 100)))
+                            re_status.caption(f"{message} ({safe_done}/{total})")
+
+                        with st.spinner("Re-enriching selected document..."):
+                            re_result = _run_enrichment_batch(
+                                client=client,
+                                candidates=target_run_candidates,
+                                enrichment_state=enrichment_state,
+                                model_name=enrich_model,
+                                mode="re_enrich_all",
+                                limit=1,
+                                progress_callback=_re_progress_cb,
+                                require_remote_persistence=True,
+                            )
+                        if re_result.get("aborted"):
+                            st.error(
+                                "Targeted re-enrichment stopped because state could not be durably saved to GCS. "
+                                f"{str(re_result.get('error', '') or '').strip()}"
+                            )
+                        else:
+                            st.success("Selected document re-enriched.")
+                        enrichment_state = _load_enrichment_state()
+                        scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
     else:
         st.caption("No documents in scope for targeted re-enrichment.")
 

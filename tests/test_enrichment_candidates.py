@@ -114,6 +114,41 @@ class BuildEnrichmentCandidatesTests(unittest.TestCase):
         self.assertEqual(by_id["sec-rule-1"]["source_kind"], "sec_rule_release")
         self.assertEqual(by_id["sec-comment-1"]["source_kind"], "sec_rule_comment")
 
+    def test_lightweight_mode_can_filter_by_doc_id_without_copying_full_text(self):
+        knowledge_data = {
+            "speeches": [
+                {
+                    "metadata": {
+                        "document_id": "doc-1",
+                        "organization": "SEC",
+                        "title": "Doc 1",
+                        "source_kind": "sec_speech",
+                    },
+                    "content": {"full_text": "First body"},
+                },
+                {
+                    "metadata": {
+                        "document_id": "doc-2",
+                        "organization": "SEC",
+                        "title": "Doc 2",
+                        "source_kind": "sec_speech",
+                    },
+                    "content": {"full_text": "Second body"},
+                },
+            ]
+        }
+
+        candidates = build_enrichment_candidates(
+            knowledge_data,
+            org_key="sec",
+            include_full_text=False,
+            allowed_doc_ids=["doc-2"],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["doc_id"], "doc-2")
+        self.assertNotIn("full_text", candidates[0])
+
 
 if __name__ == "__main__":
     unittest.main()
