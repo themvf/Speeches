@@ -113,11 +113,21 @@ def corpus_doc_id(speech: Dict[str, Any]) -> str:
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()[:24]
 
 
-def build_enrichment_candidates(knowledge_data: Dict[str, Any], org_key: Optional[str] = None) -> List[Dict[str, Any]]:
+def build_enrichment_candidates(
+    knowledge_data: Dict[str, Any],
+    org_key: Optional[str] = None,
+    include_full_text: bool = True,
+    allowed_doc_ids: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     dedup: Dict[str, Dict[str, Any]] = {}
     speeches = knowledge_data.get("speeches", []) if isinstance(knowledge_data, dict) else []
     if not isinstance(speeches, list):
         speeches = []
+    allowed_ids = {
+        str(doc_id).strip()
+        for doc_id in (allowed_doc_ids or [])
+        if str(doc_id).strip()
+    }
 
     for speech in speeches:
         if not isinstance(speech, dict):
@@ -126,18 +136,22 @@ def build_enrichment_candidates(knowledge_data: Dict[str, Any], org_key: Optiona
         if org_key and org_key != "__all__" and candidate_org_key != org_key:
             continue
 
-        content = speech.get("content", {})
-        if not isinstance(content, dict):
-            content = {}
-        text = str(content.get("full_text", "") or "").strip()
-        if not text:
-            continue
-
         metadata = speech.get("metadata", {})
         if not isinstance(metadata, dict):
             metadata = {}
 
         doc_id = corpus_doc_id(speech)
+        if allowed_ids and doc_id not in allowed_ids:
+            continue
+
+        content = speech.get("content", {})
+        if not isinstance(content, dict):
+            content = {}
+        raw_text = content.get("full_text", "")
+        text = raw_text if isinstance(raw_text, str) else str(raw_text or "")
+        if not text.strip():
+            continue
+
         dedup[doc_id] = {
             "doc_id": doc_id,
             "organization": speech_org_label(speech),
@@ -149,8 +163,9 @@ def build_enrichment_candidates(knowledge_data: Dict[str, Any], org_key: Optiona
             "doc_type": str(metadata.get("doc_type", "Speech") or "Speech").strip(),
             "source_kind": infer_source_kind(metadata),
             "release_no": str(metadata.get("release_no", "") or "").strip(),
-            "full_text": text,
             "word_count": coerce_int(metadata.get("word_count", 0), default=0, min_value=0),
         }
+        if include_full_text:
+            dedup[doc_id]["full_text"] = text.strip()
 
     return list(dedup.values())
