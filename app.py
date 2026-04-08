@@ -261,16 +261,82 @@ def _empty_custom_docs_payload():
     }
 
 
-def _normalize_custom_docs_payload(payload):
+def _count_nonempty_text_lines(text):
+    return sum(1 for line in str(text or "").splitlines() if str(line).strip())
+
+
+def _normalize_custom_document_record(record):
+    if not isinstance(record, dict):
+        return {}, True
+
+    normalized = dict(record)
+    metadata = normalized.get("metadata", {}) if isinstance(normalized.get("metadata", {}), dict) else {}
+    metadata = dict(metadata)
+    content = normalized.get("content", {}) if isinstance(normalized.get("content", {}), dict) else {}
+    content = dict(content)
+
+    raw_full_text = content.get("full_text", "")
+    full_text = raw_full_text if isinstance(raw_full_text, str) else str(raw_full_text or "")
+    paragraphs = content.get("paragraphs", []) if isinstance(content.get("paragraphs", []), list) else []
+    sentences = content.get("sentences", []) if isinstance(content.get("sentences", []), list) else []
+
+    inferred_paragraph_count = len(paragraphs) if paragraphs else _count_nonempty_text_lines(full_text)
+    inferred_sentence_count = len(sentences)
+    paragraph_count = _coerce_int(
+        metadata.get("paragraph_count", inferred_paragraph_count),
+        default=inferred_paragraph_count,
+        min_value=0,
+    )
+    sentence_count = _coerce_int(
+        metadata.get("sentence_count", inferred_sentence_count),
+        default=inferred_sentence_count,
+        min_value=0,
+    )
+
+    compact_content = {
+        key: value
+        for key, value in content.items()
+        if key not in {"paragraphs", "sentences", "full_text"}
+    }
+    compact_content["full_text"] = full_text
+    metadata["paragraph_count"] = paragraph_count
+    metadata["sentence_count"] = sentence_count
+    normalized["metadata"] = metadata
+    normalized["content"] = compact_content
+
+    changed = (
+        normalized != record
+        or "paragraphs" in content
+        or "sentences" in content
+        or metadata.get("paragraph_count") != paragraph_count
+        or metadata.get("sentence_count") != sentence_count
+    )
+    return normalized, changed
+
+
+def _normalize_custom_docs_payload(payload, return_changed=False):
     if not isinstance(payload, dict):
         payload = {}
     docs = payload.get("documents", [])
     if not isinstance(docs, list):
         docs = []
-    return {
+    normalized_docs = []
+    changed = False
+    for item in docs:
+        if not isinstance(item, dict):
+            changed = True
+            continue
+        normalized_item, item_changed = _normalize_custom_document_record(item)
+        normalized_docs.append(normalized_item)
+        changed = changed or item_changed
+
+    normalized = {
         "updated_at": str(payload.get("updated_at", "") or ""),
-        "documents": docs,
+        "documents": normalized_docs,
     }
+    if return_changed:
+        return normalized, changed
+    return normalized
 
 
 def _load_custom_documents_local():
@@ -278,7 +344,10 @@ def _load_custom_documents_local():
         return _empty_custom_docs_payload()
     try:
         with open(CUSTOM_DOCS_LOCAL_PATH, "r", encoding="utf-8") as f:
-            return _normalize_custom_docs_payload(json.load(f))
+            payload, changed = _normalize_custom_docs_payload(json.load(f), return_changed=True)
+        if changed:
+            _save_custom_documents_local(payload)
+        return payload
     except Exception:
         return _empty_custom_docs_payload()
 
@@ -297,10 +366,20 @@ def _load_custom_documents():
         try:
             blob = storage.bucket.blob(CUSTOM_DOCS_BLOB_NAME)
             if blob.exists():
-                payload = _normalize_custom_docs_payload(
-                    json.loads(blob.download_as_text(encoding="utf-8"))
+                payload, changed = _normalize_custom_docs_payload(
+                    json.loads(blob.download_as_text(encoding="utf-8")),
+                    return_changed=True,
                 )
                 _save_custom_documents_local(payload)
+                if changed:
+                    try:
+                        blob.upload_from_string(
+                            json.dumps(payload, indent=2, ensure_ascii=False),
+                            content_type="application/json",
+                        )
+                    except Exception:
+                        # Best-effort compaction; reads should still succeed if rewrite fails.
+                        pass
                 return payload
         except Exception as e:
             st.session_state["_custom_docs_error"] = f"GCS custom-doc load failed: {e}"
@@ -822,7 +901,7 @@ def _create_uploaded_document_record(
     doc_id = hashlib.sha256(stable_seed.encode("utf-8")).hexdigest()[:24]
     canonical_url = source_url or f"uploaded://{_org_key_from_label(org_label)}/{doc_id}/{_safe_filename(source_filename)}"
 
-    paragraphs = [p.strip() for p in str(text).splitlines() if p.strip()]
+    paragraph_count = _count_nonempty_text_lines(text)
     word_count = len(str(text).split())
 
     return {
@@ -841,11 +920,11 @@ def _create_uploaded_document_record(
             "source_gcs_path": source_gcs_path,
             "tags": tags,
             "source_kind": str(source_kind or "uploaded"),
+            "paragraph_count": paragraph_count,
+            "sentence_count": 0,
         },
         "content": {
             "full_text": str(text),
-            "paragraphs": paragraphs,
-            "sentences": [],
         },
         "validation": {
             "completeness_score": 100 if word_count > 0 else 0,
@@ -5475,8 +5554,8 @@ def load_data(_cache_buster=None):
             "date": m.get("date", ""),
             "url": m.get("url", ""),
             "word_count": m.get("word_count", 0),
-            "paragraph_count": len(c.get("paragraphs", [])),
-            "sentence_count": len(c.get("sentences", [])),
+            "paragraph_count": m.get("paragraph_count", len(c.get("paragraphs", []))),
+            "sentence_count": m.get("sentence_count", len(c.get("sentences", []))),
             "completeness_score": v.get("completeness_score", 0),
         })
 
