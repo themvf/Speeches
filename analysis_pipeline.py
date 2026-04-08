@@ -60,8 +60,8 @@ class SpeechAnalysisPipeline:
                 "url": metadata.get("url", ""),
                 "word_count": metadata.get("word_count", 0),
                 "full_text": content.get("full_text", ""),
-                "paragraph_count": len(content.get("paragraphs", [])),
-                "sentence_count": len(content.get("sentences", [])),
+                "paragraph_count": metadata.get("paragraph_count", len(content.get("paragraphs", []))),
+                "sentence_count": metadata.get("sentence_count", len(content.get("sentences", []))),
                 "completeness_score": validation.get("completeness_score", 0),
                 "extraction_date": metadata.get("extraction_date", ""),
             }
