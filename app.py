@@ -2730,10 +2730,11 @@ def _ask_policy_brief_chat(client, question, model_name, context_text, instructi
     if instructions_text:
         system_text = f"{system_text}\n\n{instructions_text}"
 
-    user_text = (
-        f"Question:\n{question}\n\n"
-        f"Policy Delta Briefing Context:\n{context_text}\n\n"
-        "Use this context only."
+    user_text = _build_final_generation_user_message(
+        question,
+        context_label="Policy Delta Briefing Context",
+        context_text=context_text,
+        suffix_text="Use this context only.",
     )
     response = client.responses.create(
         model=model_name,
@@ -5216,6 +5217,44 @@ def _build_retrieval_context(results, max_items=20, max_chars=12000):
     return "\n".join(lines).strip()
 
 
+def _build_agent_user_style_primer():
+    return (
+        "Answer like a sharp, practical analyst.\n\n"
+        "Style:\n"
+        "* Clear, natural, and human - not robotic or scripted\n"
+        "* Concise but insightful\n"
+        "* Avoid filler or generic phrasing\n\n"
+        "Structure:\n"
+        "* Lead with the answer (bottom line first)\n"
+        "* Then explain only what adds value\n"
+        "* Use bullets or short paragraphs when helpful\n\n"
+        "Behavior:\n"
+        "* Synthesize information - do not quote or repeat text unnecessarily\n"
+        "* Focus on what matters, not everything that could be said\n"
+        "* If something is unclear or missing, say what is missing briefly\n\n"
+        "Do NOT say phrases like:\n"
+        "* \"based on the provided documents\"\n"
+        "* \"according to the text\"\n"
+        "* \"the context states\"\n\n"
+        "Write like you are explaining something to a smart colleague."
+    )
+
+
+def _build_final_generation_user_message(question, context_label="", context_text="", suffix_text=""):
+    parts = [f"Question:\n{str(question or '').strip()}"]
+    context_label = str(context_label or "").strip()
+    context_text = str(context_text or "").strip()
+    if context_label:
+        parts.append(f"{context_label}:\n{context_text or 'No retrieved evidence available.'}")
+    elif context_text:
+        parts.append(context_text)
+    suffix_text = str(suffix_text or "").strip()
+    if suffix_text:
+        parts.append(suffix_text)
+    parts.append(_build_agent_user_style_primer())
+    return "\n\n".join(part for part in parts if part).strip()
+
+
 def _run_file_search_call(client, model_name, question, vector_store_ids, instructions_text=None, max_num_results=8):
     payload = {
         "model": model_name,
@@ -5246,7 +5285,7 @@ def _ask_agent(client, vector_store_ids, question, model_name, instructions_text
     if not vector_store_ids:
         raise RuntimeError("No vector stores provided for retrieval.")
 
-    # Responses API file_search currently accepts at most 2 vector stores per request.
+    batched_results = []
     if len(vector_store_ids) <= 2:
         response = _run_file_search_call(
             client=client,
@@ -5256,22 +5295,18 @@ def _ask_agent(client, vector_store_ids, question, model_name, instructions_text
             instructions_text=instructions_text,
             max_num_results=8,
         )
-        return {
-            "answer": _extract_response_text(response),
-            "results": _extract_file_search_results(response),
-        }
-
-    batched_results = []
-    for vs_batch in _chunk_list(vector_store_ids, 2):
-        batch_response = _run_file_search_call(
-            client=client,
-            model_name=model_name,
-            question=question,
-            vector_store_ids=vs_batch,
-            instructions_text=instructions_text,
-            max_num_results=8,
-        )
-        batched_results.append(_extract_file_search_results(batch_response))
+        batched_results.append(_extract_file_search_results(response))
+    else:
+        for vs_batch in _chunk_list(vector_store_ids, 2):
+            batch_response = _run_file_search_call(
+                client=client,
+                model_name=model_name,
+                question=question,
+                vector_store_ids=vs_batch,
+                instructions_text=instructions_text,
+                max_num_results=8,
+            )
+            batched_results.append(_extract_file_search_results(batch_response))
 
     merged_results = _merge_file_search_results(batched_results, max_results=24)
     if not merged_results:
@@ -5290,10 +5325,10 @@ def _ask_agent(client, vector_store_ids, question, model_name, instructions_text
     )
     synthesis_payload = {
         "model": model_name,
-        "input": (
-            f"{question}\n\nEvidence Context:\n{evidence_context}"
-            if evidence_context
-            else question
+        "input": _build_final_generation_user_message(
+            question,
+            context_label="Evidence Context",
+            context_text=evidence_context,
         ),
         "instructions": " ".join(synthesis_instructions_parts).strip(),
     }
