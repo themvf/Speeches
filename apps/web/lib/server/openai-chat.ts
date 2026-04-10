@@ -268,6 +268,7 @@ function buildResponseInput(prompt: string, history: ChatHistoryMessage[], evide
     ? `${recentHistory.map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`).join("\n")}\n\n`
     : "";
   const stylePrimer = [
+    "Follow these instructions for your answer:",
     "Answer like a sharp, practical analyst.",
     "",
     "Style:",
@@ -292,7 +293,20 @@ function buildResponseInput(prompt: string, history: ChatHistoryMessage[], evide
     "",
     "Write like you are explaining something to a smart colleague."
   ].join("\n");
-  return `${historyText}Current question:\n${prompt}\n\nEvidence Context:\n${evidenceContext || "No retrieved evidence available."}\n\n${stylePrimer}`;
+  const baseMessage = `${historyText}Current question:\n${prompt}\n\nRelevant information:\n${evidenceContext || "No retrieved information available."}`;
+  return appendStylePrimer(baseMessage, stylePrimer);
+}
+
+function appendStylePrimer(message: string, primer: string): string {
+  const trimmedMessage = message.trim();
+  const trimmedPrimer = primer.trim();
+  if (!trimmedPrimer || trimmedMessage.includes(trimmedPrimer)) {
+    return trimmedMessage;
+  }
+  if (!trimmedMessage) {
+    return trimmedPrimer;
+  }
+  return `${trimmedMessage}\n\n---\n\n${trimmedPrimer}`;
 }
 
 function buildChatInstructions(latestIndexedDate?: string): string {

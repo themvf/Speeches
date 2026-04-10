@@ -2732,7 +2732,7 @@ def _ask_policy_brief_chat(client, question, model_name, context_text, instructi
 
     user_text = _build_final_generation_user_message(
         question,
-        context_label="Policy Delta Briefing Context",
+        context_label="Relevant information",
         context_text=context_text,
         suffix_text="Use this context only.",
     )
@@ -5219,6 +5219,7 @@ def _build_retrieval_context(results, max_items=20, max_chars=12000):
 
 def _build_agent_user_style_primer():
     return (
+        "Follow these instructions for your answer:\n"
         "Answer like a sharp, practical analyst.\n\n"
         "Style:\n"
         "* Clear, natural, and human - not robotic or scripted\n"
@@ -5240,19 +5241,28 @@ def _build_agent_user_style_primer():
     )
 
 
-def _build_final_generation_user_message(question, context_label="", context_text="", suffix_text=""):
-    parts = [f"Question:\n{str(question or '').strip()}"]
-    context_label = str(context_label or "").strip()
+def _append_style_primer(message, primer_text=None):
+    message = str(message or "").strip()
+    primer_text = str(primer_text or _build_agent_user_style_primer()).strip()
+    if not primer_text:
+        return message
+    if primer_text in message:
+        return message
+    if not message:
+        return primer_text
+    return f"{message}\n\n---\n\n{primer_text}".strip()
+
+
+def _build_final_generation_user_message(question, context_label="Relevant information", context_text="", suffix_text=""):
+    parts = [f"Current question:\n{str(question or '').strip()}"]
+    context_label = str(context_label or "Relevant information").strip()
     context_text = str(context_text or "").strip()
-    if context_label:
-        parts.append(f"{context_label}:\n{context_text or 'No retrieved evidence available.'}")
-    elif context_text:
-        parts.append(context_text)
+    parts.append(f"{context_label}:\n{context_text or 'No retrieved information available.'}")
     suffix_text = str(suffix_text or "").strip()
     if suffix_text:
         parts.append(suffix_text)
-    parts.append(_build_agent_user_style_primer())
-    return "\n\n".join(part for part in parts if part).strip()
+    base_message = "\n\n".join(part for part in parts if part).strip()
+    return _append_style_primer(base_message)
 
 
 def _run_file_search_call(client, model_name, question, vector_store_ids, instructions_text=None, max_num_results=8):
@@ -5327,7 +5337,7 @@ def _ask_agent(client, vector_store_ids, question, model_name, instructions_text
         "model": model_name,
         "input": _build_final_generation_user_message(
             question,
-            context_label="Evidence Context",
+            context_label="Relevant information",
             context_text=evidence_context,
         ),
         "instructions": " ".join(synthesis_instructions_parts).strip(),
