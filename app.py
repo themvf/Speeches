@@ -24,6 +24,14 @@ from comment_position import (
     is_comment_position_document as _shared_is_comment_position_document,
 )
 from enrichment_candidates import build_enrichment_candidates as _shared_build_enrichment_candidates
+from enrichment_run_state import (
+    abort_enrichment_run_state,
+    advance_enrichment_run_state,
+    complete_enrichment_run_state,
+    create_enrichment_run_state,
+    next_enrichment_run_doc_ids,
+    normalize_enrichment_run_state,
+)
 from speaker_utils import extract_speakers, format_speakers, primary_speaker
 
 
@@ -61,6 +69,9 @@ NEWSAPI_DEFAULT_TAGS = "news,financial-regulation,fraud,crypto,securities"
 AGENT_CHAT_QUALITY_BLOB_NAME = "agent_chat_quality_log.json"
 AGENT_CHAT_QUALITY_LOCAL_PATH = Path("data/agent_chat_quality_log.json")
 AGENT_CHAT_QUALITY_VERSION = "v1"
+ENRICHMENT_ACTIVE_RUN_SESSION_KEY = "_enrichment_active_run"
+ENRICHMENT_RUN_NOTICE_SESSION_KEY = "_enrichment_run_notice"
+ENRICHMENT_DOCS_PER_RERUN = 1
 
 
 # --- GCS helpers ---
@@ -3468,6 +3479,8 @@ def _run_enrichment_batch(
 
     total = len(targets)
     processed = 0
+    fallback_count = 0
+    checkpoint_every = 1 if require_remote_persistence else 10
 
     for doc in targets:
         if progress_callback is not None:
@@ -3486,6 +3499,7 @@ def _run_enrichment_batch(
             enrichment = _heuristic_enrichment(doc)
             status = "fallback_enriched"
             error_msg = str(e)
+            fallback_count += 1
 
         reward = _compute_reward(enrichment, decision, status=status)
         entries[doc_id] = {
@@ -3514,8 +3528,7 @@ def _run_enrichment_batch(
         }
         processed += 1
 
-        # checkpoint every 10 docs
-        if processed % 10 == 0:
+        if processed % checkpoint_every == 0:
             persisted = _save_enrichment_state(
                 enrichment_state,
                 require_remote=require_remote_persistence,
@@ -3524,6 +3537,7 @@ def _run_enrichment_batch(
                 return {
                     "processed": processed,
                     "total_selected": total,
+                    "fallback_count": fallback_count,
                     "aborted": True,
                     "error": str(st.session_state.get("_enrichment_error", "") or "").strip(),
                 }
@@ -3539,14 +3553,147 @@ def _run_enrichment_batch(
         return {
             "processed": processed,
             "total_selected": total,
+            "fallback_count": fallback_count,
             "aborted": True,
             "error": str(st.session_state.get("_enrichment_error", "") or "").strip(),
         }
     return {
         "processed": processed,
         "total_selected": total,
+        "fallback_count": fallback_count,
         "aborted": False,
     }
+
+
+def _set_enrichment_run_notice(level, message):
+    st.session_state[ENRICHMENT_RUN_NOTICE_SESSION_KEY] = {
+        "level": str(level or "info").strip().lower() or "info",
+        "message": str(message or "").strip(),
+    }
+
+
+def _pop_enrichment_run_notice():
+    notice = st.session_state.pop(ENRICHMENT_RUN_NOTICE_SESSION_KEY, None)
+    return notice if isinstance(notice, dict) else None
+
+
+def _get_active_enrichment_run():
+    return normalize_enrichment_run_state(st.session_state.get(ENRICHMENT_ACTIVE_RUN_SESSION_KEY))
+
+
+def _set_active_enrichment_run(state):
+    normalized = normalize_enrichment_run_state(state)
+    if normalized:
+        st.session_state[ENRICHMENT_ACTIVE_RUN_SESSION_KEY] = normalized
+    else:
+        st.session_state.pop(ENRICHMENT_ACTIVE_RUN_SESSION_KEY, None)
+
+
+def _format_enrichment_run_message(run_state, prefix):
+    processed = int(run_state.get("processed", 0) or 0)
+    total_selected = int(run_state.get("total_selected", 0) or 0)
+    fallback_count = int(run_state.get("fallback_count", 0) or 0)
+    skipped_count = int(run_state.get("skipped_count", 0) or 0)
+
+    parts = [f"{prefix} Processed {processed} of {total_selected} selected docs."]
+    if fallback_count > 0:
+        parts.append(f"Fallbacks: {fallback_count}.")
+    if skipped_count > 0:
+        parts.append(f"Skipped: {skipped_count}.")
+
+    error_text = str(run_state.get("error", "") or run_state.get("last_error", "") or "").strip()
+    if error_text:
+        parts.append(error_text)
+    return " ".join(parts).strip()
+
+
+def _process_active_enrichment_run(client, knowledge_data, run_state):
+    run_state = normalize_enrichment_run_state(run_state)
+    if not run_state:
+        return {"status": "idle", "state": {}}
+
+    scope_key = str(run_state.get("scope_key", "__all__") or "__all__").strip() or "__all__"
+    enrichment_org_key = None if scope_key == "__all__" else scope_key
+    step_doc_ids = next_enrichment_run_doc_ids(run_state, max_docs=ENRICHMENT_DOCS_PER_RERUN)
+    if not step_doc_ids:
+        completed_state = complete_enrichment_run_state(run_state)
+        return {
+            "status": "completed",
+            "state": completed_state,
+            "message": _format_enrichment_run_message(completed_state, "Enrichment run complete."),
+        }
+
+    step_candidates_raw = _build_enrichment_candidates(
+        knowledge_data,
+        org_key=enrichment_org_key,
+        include_full_text=True,
+        allowed_doc_ids=step_doc_ids,
+    )
+    step_candidate_by_id = {
+        str(doc.get("doc_id", "") or "").strip(): doc
+        for doc in step_candidates_raw
+        if str(doc.get("doc_id", "") or "").strip()
+    }
+    step_candidates = [step_candidate_by_id[doc_id] for doc_id in step_doc_ids if doc_id in step_candidate_by_id]
+    missing_doc_ids = [doc_id for doc_id in step_doc_ids if doc_id not in step_candidate_by_id]
+
+    if not step_candidates:
+        skipped_state = advance_enrichment_run_state(
+            run_state,
+            processed_doc_ids=step_doc_ids,
+            skipped_count=len(missing_doc_ids) or len(step_doc_ids),
+            last_doc_id=step_doc_ids[-1],
+            last_doc_title="",
+            last_error="Document text is unavailable for enrichment.",
+        )
+        if skipped_state.get("status") == "completed":
+            return {
+                "status": "completed",
+                "state": skipped_state,
+                "message": _format_enrichment_run_message(skipped_state, "Enrichment run complete."),
+            }
+        return {"status": "running", "state": skipped_state}
+
+    current_state = _load_enrichment_state()
+    result = _run_enrichment_batch(
+        client=client,
+        candidates=step_candidates,
+        enrichment_state=current_state,
+        model_name=str(run_state.get("model_name", "") or "").strip(),
+        mode="re_enrich_all",
+        limit=len(step_candidates),
+        require_remote_persistence=True,
+    )
+
+    last_candidate = step_candidates[-1]
+    updated_state = advance_enrichment_run_state(
+        run_state,
+        processed_doc_ids=step_doc_ids,
+        fallback_count=int(result.get("fallback_count", 0) or 0),
+        skipped_count=len(missing_doc_ids),
+        last_doc_id=str(last_candidate.get("doc_id", "") or "").strip(),
+        last_doc_title=str(last_candidate.get("title", "") or "").strip(),
+        last_error="",
+    )
+    if result.get("aborted"):
+        aborted_state = abort_enrichment_run_state(
+            updated_state,
+            str(result.get("error", "") or "Enrichment run aborted."),
+        )
+        return {
+            "status": "aborted",
+            "state": aborted_state,
+            "message": _format_enrichment_run_message(aborted_state, "Enrichment run stopped."),
+        }
+
+    if updated_state.get("status") == "completed":
+        return {
+            "status": "completed",
+            "state": updated_state,
+            "message": _format_enrichment_run_message(updated_state, "Enrichment run complete."),
+        }
+
+    return {"status": "running", "state": updated_state}
 
 
 def _normalize_auto_review_payload(payload):
@@ -3691,6 +3838,7 @@ def _run_auto_review_batch(
     approved = 0
     flagged = 0
     heuristic_fallbacks = 0
+    checkpoint_every = 1 if require_remote_persistence else 10
 
     for item in targets:
         if progress_callback is not None:
@@ -3753,7 +3901,7 @@ def _run_auto_review_batch(
         entries[doc_id] = current
 
         processed += 1
-        if processed % 10 == 0:
+        if processed % checkpoint_every == 0:
             persisted = _save_enrichment_state(
                 enrichment_state,
                 require_remote=require_remote_persistence,
@@ -5688,7 +5836,7 @@ else:
     st.sidebar.markdown(f"**{sec_word_count:,} SEC corpus words**")
     st.sidebar.caption("Uploaded-document corpus stats load on corpus and admin pages.")
 
-# GCS status indicator — with debug info
+# GCS status indicator â€” with debug info
 _gcs_debug = []
 try:
     _gcs_debug.append(f"secrets keys: {list(st.secrets.keys())}")
@@ -11937,6 +12085,63 @@ elif page == "Enrichment Pipeline":
     candidate_map = {str(d.get("doc_id", "") or ""): d for d in scoped_candidates}
     scoped_doc_ids = set(candidate_map.keys())
 
+    available_models = []
+    client = None
+    if _openai_key is not None:
+        client = _get_openai_client()
+        if client is not None:
+            available_models = _get_accessible_chat_models(client)
+    if not available_models:
+        available_models = _candidate_chat_models()
+    if not available_models:
+        available_models = ["gpt-4o-mini"]
+
+    default_enrich_model = "gpt-4o-mini" if "gpt-4o-mini" in available_models else available_models[0]
+
+    run_notice = _pop_enrichment_run_notice()
+    if run_notice:
+        notice_level = str(run_notice.get("level", "info") or "info").strip().lower()
+        notice_message = str(run_notice.get("message", "") or "").strip()
+        if notice_message:
+            if notice_level == "success":
+                st.success(notice_message)
+            elif notice_level == "warning":
+                st.warning(notice_message)
+            elif notice_level == "error":
+                st.error(notice_message)
+            else:
+                st.info(notice_message)
+
+    active_enrichment_run = _get_active_enrichment_run()
+    if active_enrichment_run and active_enrichment_run.get("status") == "running":
+        if client is None:
+            aborted_state = abort_enrichment_run_state(
+                active_enrichment_run,
+                str(st.session_state.get("_openai_error", "") or "OpenAI client is not configured."),
+            )
+            _set_active_enrichment_run({})
+            _set_enrichment_run_notice(
+                "error",
+                _format_enrichment_run_message(aborted_state, "Enrichment run stopped."),
+            )
+            st.rerun()
+
+        with st.spinner(
+            f"Continuing enrichment batch in {active_enrichment_run.get('scope_label', 'current scope')}..."
+        ):
+            run_step = _process_active_enrichment_run(client, knowledge_data, active_enrichment_run)
+
+        run_status = str(run_step.get("status", "") or "").strip().lower()
+        if run_status == "running":
+            _set_active_enrichment_run(run_step.get("state", {}))
+        else:
+            _set_active_enrichment_run({})
+            _set_enrichment_run_notice(
+                "success" if run_status == "completed" else "error",
+                str(run_step.get("message", "") or "").strip(),
+            )
+        st.rerun()
+
     scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
 
     total_scope_docs = len(scoped_candidates)
@@ -11987,18 +12192,6 @@ elif page == "Enrichment Pipeline":
     st.caption(f"{target_count} documents currently match this run mode.")
     st.caption("For Streamlit Cloud stability, batches of 5 to 10 documents are usually safer than larger runs.")
 
-    available_models = []
-    client = None
-    if _openai_key is not None:
-        client = _get_openai_client()
-        if client is not None:
-            available_models = _get_accessible_chat_models(client)
-    if not available_models:
-        available_models = _candidate_chat_models()
-    if not available_models:
-        available_models = ["gpt-4o-mini"]
-
-    default_enrich_model = "gpt-4o-mini" if "gpt-4o-mini" in available_models else available_models[0]
     enrich_model = st.selectbox(
         "Enrichment Model",
         available_models,
@@ -12023,7 +12216,7 @@ elif page == "Enrichment Pipeline":
             run_candidates = _build_enrichment_candidates(
                 knowledge_data,
                 org_key=enrichment_org_key,
-                include_full_text=True,
+                include_full_text=False,
                 allowed_doc_ids=run_doc_ids,
             )
             run_candidates = [
@@ -12036,43 +12229,31 @@ elif page == "Enrichment Pipeline":
             if not run_candidates:
                 st.error("No document text is available for the selected enrichment batch.")
             else:
-                run_progress = st.progress(0)
-                run_status = st.empty()
-
-                def _run_progress_cb(done, total, message):
-                    if total <= 0:
-                        run_progress.progress(100)
-                        run_status.caption(message)
-                        return
-                    safe_done = max(0, min(done, total))
-                    pct = int((safe_done * 100) / total)
-                    run_progress.progress(max(0, min(pct, 100)))
-                    run_status.caption(f"{message} ({safe_done}/{total})")
-
-                with st.spinner(f"Running enrichment over {batch_limit} docs in {scope_label}..."):
-                    result = _run_enrichment_batch(
-                        client=client,
-                        candidates=run_candidates,
-                        enrichment_state=enrichment_state,
-                        model_name=enrich_model,
-                        mode=mode_key,
-                        limit=batch_limit,
-                        progress_callback=_run_progress_cb,
-                        require_remote_persistence=True,
-                    )
-                if result.get("aborted"):
-                    st.error(
-                        "Enrichment run stopped because state could not be durably saved to GCS. "
-                        f"Processed {result.get('processed', 0)} docs before stopping. "
-                        f"{str(result.get('error', '') or '').strip()}"
-                    )
+                queued_doc_ids = [
+                    str(doc.get("doc_id", "") or "").strip()
+                    for doc in run_candidates
+                    if str(doc.get("doc_id", "") or "").strip()
+                ]
+                queued_state = create_enrichment_run_state(
+                    run_type="batch",
+                    doc_ids=queued_doc_ids,
+                    scope_key=scope_key,
+                    scope_label=scope_label,
+                    model_name=enrich_model,
+                    mode=mode_key,
+                )
+                if not queued_state:
+                    st.error("Unable to queue enrichment run. No valid documents were selected.")
                 else:
-                    st.success(
-                        f"Enrichment run complete. Processed {result.get('processed', 0)} "
-                        f"of {result.get('total_selected', 0)} matching docs."
+                    _set_active_enrichment_run(queued_state)
+                    _set_enrichment_run_notice(
+                        "info",
+                        (
+                            f"Queued enrichment for {queued_state.get('total_selected', 0)} "
+                            f"docs in {scope_label}. Progress is checkpointed after each document."
+                        ),
                     )
-                enrichment_state = _load_enrichment_state()
-                scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
+                    st.rerun()
 
     st.markdown("---")
     st.subheader("Targeted Re-Enrichment")
