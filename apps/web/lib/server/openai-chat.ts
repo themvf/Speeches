@@ -267,7 +267,46 @@ function buildResponseInput(prompt: string, history: ChatHistoryMessage[], evide
   const historyText = recentHistory.length
     ? `${recentHistory.map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`).join("\n")}\n\n`
     : "";
-  return `${historyText}Current question:\n${prompt}\n\nEvidence Context:\n${evidenceContext || "No retrieved evidence available."}`;
+  const stylePrimer = [
+    "Follow these instructions for your answer:",
+    "Answer like a sharp, practical analyst.",
+    "",
+    "Style:",
+    "* Clear, natural, and human - not robotic or scripted",
+    "* Concise but insightful",
+    "* Avoid filler or generic phrasing",
+    "",
+    "Structure:",
+    "* Lead with the answer (bottom line first)",
+    "* Then explain only what adds value",
+    "* Use bullets or short paragraphs when helpful",
+    "",
+    "Behavior:",
+    "* Synthesize information - do not quote or repeat text unnecessarily",
+    "* Focus on what matters, not everything that could be said",
+    "* If something is unclear or missing, say what is missing briefly",
+    "",
+    "Do NOT say phrases like:",
+    "* \"based on the provided documents\"",
+    "* \"according to the text\"",
+    "* \"the context states\"",
+    "",
+    "Write like you are explaining something to a smart colleague."
+  ].join("\n");
+  const baseMessage = `${historyText}Current question:\n${prompt}\n\nRelevant information:\n${evidenceContext || "No retrieved information available."}`;
+  return appendStylePrimer(baseMessage, stylePrimer);
+}
+
+function appendStylePrimer(message: string, primer: string): string {
+  const trimmedMessage = message.trim();
+  const trimmedPrimer = primer.trim();
+  if (!trimmedPrimer || trimmedMessage.includes(trimmedPrimer)) {
+    return trimmedMessage;
+  }
+  if (!trimmedMessage) {
+    return trimmedPrimer;
+  }
+  return `${trimmedMessage}\n\n---\n\n${trimmedPrimer}`;
 }
 
 function buildChatInstructions(latestIndexedDate?: string): string {
