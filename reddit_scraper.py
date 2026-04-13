@@ -104,10 +104,16 @@ def _build_full_text(post: Dict[str, Any]) -> str:
 
 class RedditScraper:
     """
-    Discovers Reddit posts matching keyword search terms using the public
-    JSON API. No authentication required.
+    Discovers Reddit posts matching keyword search terms.
 
-    Rate-limited to ~1 request/sec to stay within Reddit's anonymous limits.
+    Supports two modes:
+    - PRAW (preferred): requires client_id + client_secret from a Reddit app.
+      Works reliably from cloud servers. Set up at reddit.com/prefs/apps.
+    - JSON fallback: public Reddit JSON API, no credentials needed but blocked
+      by Reddit from cloud server IPs (AWS, GCP, etc.).
+
+    Errors from individual search terms are collected in self.errors and
+    surfaced to callers rather than being silently swallowed.
     """
 
     def __init__(
@@ -119,6 +125,9 @@ class RedditScraper:
         limit_per_term: int = 25,
         tags_csv: str = DEFAULT_TAGS,
         min_delay_seconds: float = 1.2,
+        client_id: str = "",
+        client_secret: str = "",
+        user_agent: str = "PolicyResearchHub/1.0",
     ):
         self.search_terms = search_terms if search_terms is not None else list(DEFAULT_SEARCH_TERMS)
         self.subreddits = subreddits or []
@@ -128,12 +137,34 @@ class RedditScraper:
         self.tags = [t.strip() for t in str(tags_csv or "").split(",") if t.strip()]
         self.min_delay_seconds = max(0.5, float(min_delay_seconds))
         self._last_request_ts = 0.0
+        self.errors: List[str] = []
+
+        self.client_id = str(client_id or "").strip()
+        self.client_secret = str(client_secret or "").strip()
+        self.user_agent = str(user_agent or "PolicyResearchHub/1.0").strip()
+
+        # Try to initialise PRAW if credentials provided
+        self._praw = None
+        if self.client_id and self.client_secret:
+            try:
+                import praw
+                self._praw = praw.Reddit(
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                    user_agent=self.user_agent,
+                )
+            except Exception as exc:
+                self.errors.append(f"PRAW init failed: {exc}")
 
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": "PolicyResearchHub/1.0 (financial regulatory research; contact via GitHub)",
+            "User-Agent": self.user_agent,
             "Accept": "application/json",
         })
+
+    @property
+    def using_praw(self) -> bool:
+        return self._praw is not None
 
     def _rate_limit(self) -> None:
         elapsed = time.time() - self._last_request_ts
@@ -141,10 +172,39 @@ class RedditScraper:
             time.sleep(self.min_delay_seconds - elapsed)
         self._last_request_ts = time.time()
 
-    def _fetch_search(self, term: str, after: str = "") -> Dict[str, Any]:
-        """Fetch one page of search results for a term."""
-        self._rate_limit()
+    def _fetch_search_praw(self, term: str) -> List[Dict[str, Any]]:
+        """Fetch posts via PRAW (authenticated)."""
+        import praw
+        results = []
+        if self.subreddits:
+            sub = self._praw.subreddit("+".join(self.subreddits))
+        else:
+            sub = self._praw.subreddit("all")
 
+        for post in sub.search(
+            term,
+            sort=self.sort,
+            time_filter=self.time_filter,
+            limit=self.limit_per_term,
+        ):
+            results.append({
+                "id": post.id,
+                "title": post.title,
+                "url": post.url,
+                "permalink": f"https://www.reddit.com{post.permalink}",
+                "subreddit_name_prefixed": f"r/{post.subreddit.display_name}",
+                "author": str(post.author) if post.author else "[deleted]",
+                "score": post.score,
+                "num_comments": post.num_comments,
+                "created_utc": post.created_utc,
+                "selftext": post.selftext,
+                "is_self": post.is_self,
+            })
+        return results
+
+    def _fetch_search_json(self, term: str) -> List[Dict[str, Any]]:
+        """Fetch posts via public JSON endpoint (no auth, may be blocked from cloud IPs)."""
+        self._rate_limit()
         params: Dict[str, Any] = {
             "q": term,
             "sort": self.sort,
@@ -152,42 +212,44 @@ class RedditScraper:
             "limit": self.limit_per_term,
             "type": "link",
         }
-        if after:
-            params["after"] = after
-
-        # Scope to specific subreddits if configured
         if self.subreddits:
-            sub_str = "+".join(self.subreddits)
-            url = f"https://www.reddit.com/r/{sub_str}/search.json"
+            url = f"https://www.reddit.com/r/{'+'.join(self.subreddits)}/search.json"
             params["restrict_sr"] = "1"
         else:
             url = REDDIT_SEARCH_URL
 
         response = self.session.get(url, params=params, timeout=30)
+        if response.status_code == 403:
+            raise RuntimeError(
+                f"HTTP 403 Forbidden — Reddit is blocking requests from this server's IP. "
+                "Add Reddit API credentials (client_id / client_secret) in Streamlit secrets to fix this."
+            )
+        if response.status_code == 429:
+            raise RuntimeError("HTTP 429 Too Many Requests — Reddit rate limit hit.")
         response.raise_for_status()
-        return response.json()
+        children = response.json().get("data", {}).get("children", [])
+        return [child.get("data", {}) for child in children]
 
     def discover_posts(self) -> List[Dict[str, Any]]:
         """
         Search for all configured terms and return deduplicated post metadata.
-
-        Returns a list of dicts with keys: post_id, title, url, permalink,
-        subreddit, author, score, num_comments, created_utc, selftext,
-        matched_terms, is_self.
+        Errors per term are collected in self.errors (not silently dropped).
         """
+        self.errors = []
         seen_ids: set[str] = set()
         posts: List[Dict[str, Any]] = []
 
         for term in self.search_terms:
             try:
-                payload = self._fetch_search(term)
+                if self.using_praw:
+                    raw_items = self._fetch_search_praw(term)
+                else:
+                    raw_items = self._fetch_search_json(term)
             except Exception as exc:
-                print(f"[reddit_scraper] Search failed for '{term}': {exc}")
+                self.errors.append(f"'{term}': {exc}")
                 continue
 
-            children = payload.get("data", {}).get("children", [])
-            for child in children:
-                data = child.get("data", {})
+            for data in raw_items:
                 post_id = str(data.get("id", "")).strip()
                 if not post_id or post_id in seen_ids:
                     continue

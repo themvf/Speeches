@@ -126,6 +126,18 @@ def _get_newsapi_api_key():
         return None
 
 
+def _get_reddit_credentials():
+    """Return (client_id, client_secret, user_agent) from Streamlit secrets, else ('', '', '')."""
+    try:
+        reddit = st.secrets["reddit"]
+        client_id = str(reddit.get("client_id", "") or "").strip()
+        client_secret = str(reddit.get("client_secret", "") or "").strip()
+        user_agent = str(reddit.get("user_agent", "") or "PolicyResearchHub/1.0").strip()
+        return client_id, client_secret, user_agent
+    except Exception:
+        return "", "", "PolicyResearchHub/1.0"
+
+
 def _get_regulations_gov_api_key():
     """Return Regulations.gov API key from Streamlit secrets, else DEMO_KEY."""
     try:
@@ -12407,6 +12419,17 @@ elif page == "Extraction":
         + (f"Scoped to: {', '.join('r/' + s for s in subreddit_list)}." if subreddit_list else "Searching all of Reddit.")
     )
 
+    reddit_client_id, reddit_client_secret, reddit_user_agent = _get_reddit_credentials()
+    reddit_has_creds = bool(reddit_client_id and reddit_client_secret)
+    if reddit_has_creds:
+        st.success("Reddit API credentials configured (PRAW). Cloud-safe authenticated access enabled.")
+    else:
+        st.warning(
+            "No Reddit API credentials found. The public JSON endpoint is blocked by Reddit from cloud server IPs. "
+            "To fix: create a Reddit app at **reddit.com/prefs/apps** (script type), then add to Streamlit secrets:\n"
+            "```toml\n[reddit]\nclient_id = \"your_client_id\"\nclient_secret = \"your_client_secret\"\nuser_agent = \"PolicyResearchHub/1.0\"\n```"
+        )
+
     reddit_btn_col1, reddit_btn_col2, reddit_btn_col3 = st.columns(3)
     with reddit_btn_col1:
         discover_reddit = st.button("Discover Reddit Posts", key="discover_reddit_posts", disabled=(not reddit_terms_list))
@@ -12461,8 +12484,16 @@ elif page == "Extraction":
                     time_filter=reddit_time_filter,
                     limit_per_term=reddit_limit_per_term,
                     tags_csv=reddit_tags_csv,
+                    client_id=reddit_client_id,
+                    client_secret=reddit_client_secret,
+                    user_agent=reddit_user_agent,
                 )
                 discovered_posts = scraper.discover_posts()
+
+            if scraper.errors:
+                with st.expander(f"Search errors ({len(scraper.errors)})", expanded=True):
+                    for err in scraper.errors:
+                        st.error(err)
 
             # Mark ingest status against existing corpus
             existing_reddit_ids = {
@@ -12545,6 +12576,9 @@ elif page == "Extraction":
                     time_filter=reddit_time_filter,
                     limit_per_term=reddit_limit_per_term,
                     tags_csv=reddit_tags_csv,
+                    client_id=reddit_client_id,
+                    client_secret=reddit_client_secret,
+                    user_agent=reddit_user_agent,
                 )
                 selected_posts = reddit_candidates[:reddit_ingest_limit]
                 documents = scraper.build_documents(posts=selected_posts, existing_ids=existing_doc_ids)
