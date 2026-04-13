@@ -24,6 +24,20 @@ from comment_position import (
     is_comment_position_document as _shared_is_comment_position_document,
 )
 from enrichment_candidates import build_enrichment_candidates as _shared_build_enrichment_candidates
+from enrichment_model_fallback import (
+    candidate_chat_models as _shared_candidate_chat_models,
+    get_accessible_chat_models as _shared_get_accessible_chat_models,
+    is_model_access_error as _shared_is_model_access_error,
+    run_with_model_fallback as _run_enrichment_with_model_fallback,
+)
+from enrichment_run_state import (
+    abort_enrichment_run_state,
+    advance_enrichment_run_state,
+    complete_enrichment_run_state,
+    create_enrichment_run_state,
+    next_enrichment_run_doc_ids,
+    normalize_enrichment_run_state,
+)
 from speaker_utils import extract_speakers, format_speakers, primary_speaker
 
 
@@ -43,6 +57,8 @@ FINRA_TOPIC_MAP_LOCAL_PATH = Path("data/finra_topic_map.json")
 FINRA_TOPIC_MAP_VERSION = "v1"
 ENRICHMENT_STATE_BLOB_NAME = "document_enrichment_state.json"
 ENRICHMENT_STATE_LOCAL_PATH = Path("data/document_enrichment_state.json")
+ENRICHMENT_ACTIVE_RUN_BLOB_NAME = "enrichment_active_run.json"
+ENRICHMENT_ACTIVE_RUN_LOCAL_PATH = Path("data/enrichment_active_run.json")
 ENRICHMENT_PIPELINE_VERSION = "v1"
 POLICY_BRIEFS_BLOB_NAME = "policy_delta_briefs.json"
 POLICY_BRIEFS_LOCAL_PATH = Path("data/policy_delta_briefs.json")
@@ -61,6 +77,10 @@ NEWSAPI_DEFAULT_TAGS = "news,financial-regulation,fraud,crypto,securities"
 AGENT_CHAT_QUALITY_BLOB_NAME = "agent_chat_quality_log.json"
 AGENT_CHAT_QUALITY_LOCAL_PATH = Path("data/agent_chat_quality_log.json")
 AGENT_CHAT_QUALITY_VERSION = "v1"
+ENRICHMENT_ACTIVE_RUN_SESSION_KEY = "_enrichment_active_run"
+ENRICHMENT_RUN_NOTICE_SESSION_KEY = "_enrichment_run_notice"
+ENRICHMENT_DOCS_PER_RERUN = 1
+ENRICHMENT_RUN_ERROR_SESSION_KEY = "_enrichment_run_error"
 
 
 # --- GCS helpers ---
@@ -1527,6 +1547,79 @@ def _check_enrichment_remote_persistence_ready():
         return False, msg
 
 
+def _load_active_enrichment_run_local():
+    if not ENRICHMENT_ACTIVE_RUN_LOCAL_PATH.exists():
+        return {}
+    try:
+        with open(ENRICHMENT_ACTIVE_RUN_LOCAL_PATH, "r", encoding="utf-8") as f:
+            return normalize_enrichment_run_state(json.load(f))
+    except Exception:
+        return {}
+
+
+def _save_active_enrichment_run_local(state):
+    normalized = normalize_enrichment_run_state(state)
+    if not normalized:
+        try:
+            ENRICHMENT_ACTIVE_RUN_LOCAL_PATH.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return
+
+    ENRICHMENT_ACTIVE_RUN_LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(ENRICHMENT_ACTIVE_RUN_LOCAL_PATH, "w", encoding="utf-8") as f:
+        json.dump(normalized, f, indent=2, ensure_ascii=False)
+
+
+def _load_persisted_active_enrichment_run():
+    storage = _get_gcs_storage()
+    if storage is not None:
+        try:
+            blob = storage.bucket.blob(ENRICHMENT_ACTIVE_RUN_BLOB_NAME)
+            if blob.exists():
+                state = normalize_enrichment_run_state(json.loads(blob.download_as_text(encoding="utf-8")))
+                _save_active_enrichment_run_local(state)
+                st.session_state[ENRICHMENT_RUN_ERROR_SESSION_KEY] = ""
+                if state.get("status") == "running":
+                    return state
+                _save_persisted_active_enrichment_run({})
+                return {}
+        except Exception as e:
+            st.session_state[ENRICHMENT_RUN_ERROR_SESSION_KEY] = f"GCS active-run load failed: {e}"
+
+    state = _load_active_enrichment_run_local()
+    if state.get("status") == "running":
+        return state
+    if state:
+        _save_active_enrichment_run_local({})
+    return {}
+
+
+def _save_persisted_active_enrichment_run(state):
+    normalized = normalize_enrichment_run_state(state)
+    _save_active_enrichment_run_local(normalized)
+
+    storage = _get_gcs_storage()
+    if storage is None:
+        return True
+
+    try:
+        blob = storage.bucket.blob(ENRICHMENT_ACTIVE_RUN_BLOB_NAME)
+        if normalized:
+            blob.upload_from_string(
+                json.dumps(normalized, indent=2, ensure_ascii=False),
+                content_type="application/json",
+            )
+        else:
+            if blob.exists():
+                blob.delete()
+        st.session_state[ENRICHMENT_RUN_ERROR_SESSION_KEY] = ""
+        return True
+    except Exception as e:
+        st.session_state[ENRICHMENT_RUN_ERROR_SESSION_KEY] = f"GCS active-run save failed: {e}"
+        return False
+
+
 def _empty_policy_briefs_payload():
     return {
         "version": POLICY_BRIEFING_VERSION,
@@ -1601,6 +1694,24 @@ def _save_policy_briefs(payload):
         st.session_state["_policy_briefs_error"] = f"GCS policy-brief save failed: {e}"
 
 
+REDDIT_DEFAULT_SEARCH_TERMS = "\n".join([
+    "stablecoins",
+    "tokenization",
+    "prediction markets",
+    "crypto regulation",
+    "digital assets SEC",
+    "DeFi regulation",
+    "SEC enforcement",
+    "securities fraud",
+    "insider trading",
+    "FINRA",
+    "money market funds",
+    "stablecoin regulation",
+    "crypto enforcement",
+])
+REDDIT_DEFAULT_TAGS = "reddit,social-media,financial-regulation,crypto,securities"
+
+
 def _empty_news_connector_settings():
     return {
         "updated_at": "",
@@ -1615,6 +1726,15 @@ def _empty_news_connector_settings():
         "exclude_domains": "",
         "tags_csv": NEWSAPI_DEFAULT_TAGS,
         "doj_usao_exclude_terms": "",
+        "reddit": {
+            "enabled": True,
+            "search_terms": REDDIT_DEFAULT_SEARCH_TERMS,
+            "subreddits": "",
+            "sort": "new",
+            "time_filter": "week",
+            "limit_per_term": 25,
+            "tags_csv": REDDIT_DEFAULT_TAGS,
+        },
     }
 
 
@@ -1634,6 +1754,27 @@ def _normalize_news_connector_settings(payload):
     if sort_by not in {"publishedAt", "relevancy", "popularity"}:
         sort_by = base["sort_by"]
 
+    # Normalize the reddit sub-dict, merging with defaults
+    base_reddit = base["reddit"]
+    raw_reddit = payload.get("reddit", {})
+    if not isinstance(raw_reddit, dict):
+        raw_reddit = {}
+    reddit_sort = str(raw_reddit.get("sort", base_reddit["sort"]) or base_reddit["sort"]).strip()
+    if reddit_sort not in {"new", "relevance", "hot", "top", "comments"}:
+        reddit_sort = base_reddit["sort"]
+    reddit_time = str(raw_reddit.get("time_filter", base_reddit["time_filter"]) or base_reddit["time_filter"]).strip()
+    if reddit_time not in {"hour", "day", "week", "month", "year", "all"}:
+        reddit_time = base_reddit["time_filter"]
+    normalized_reddit = {
+        "enabled": bool(raw_reddit.get("enabled", base_reddit["enabled"])),
+        "search_terms": str(raw_reddit.get("search_terms", base_reddit["search_terms"]) or base_reddit["search_terms"]).strip(),
+        "subreddits": str(raw_reddit.get("subreddits", base_reddit["subreddits"]) or "").strip(),
+        "sort": reddit_sort,
+        "time_filter": reddit_time,
+        "limit_per_term": _clamp_int(raw_reddit.get("limit_per_term", base_reddit["limit_per_term"]), base_reddit["limit_per_term"], 1, 100),
+        "tags_csv": str(raw_reddit.get("tags_csv", base_reddit["tags_csv"]) or "").strip() or base_reddit["tags_csv"],
+    }
+
     out = {
         "updated_at": str(payload.get("updated_at", "") or ""),
         "query": str(payload.get("query", base["query"]) or "").strip() or base["query"],
@@ -1649,6 +1790,7 @@ def _normalize_news_connector_settings(payload):
         "doj_usao_exclude_terms": str(
             payload.get("doj_usao_exclude_terms", base["doj_usao_exclude_terms"]) or ""
         ).strip(),
+        "reddit": normalized_reddit,
     }
     return out
 
@@ -2722,7 +2864,7 @@ def _select_policy_brief_context(
     return selected, "\n\n".join(context_blocks), sources
 
 
-def _ask_policy_brief_chat(client, question, model_name, context_text, instructions_text=None):
+def _ask_policy_brief_chat(client, question, model_name, context_text, instructions_text=None, conversation_history=None):
     system_text = (
         "You are a policy research assistant. Answer using only the provided policy delta briefing context. "
         "If context is insufficient, say so and ask for a narrower scope."
@@ -2740,6 +2882,7 @@ def _ask_policy_brief_chat(client, question, model_name, context_text, instructi
         model=model_name,
         input=[
             {"role": "system", "content": system_text},
+            *_trim_generation_history(conversation_history, max_turns=4, max_chars=5000),
             {"role": "user", "content": user_text},
         ],
         max_output_tokens=1600,
@@ -2747,7 +2890,15 @@ def _ask_policy_brief_chat(client, question, model_name, context_text, instructi
     return {"answer": _extract_response_text(response), "results": []}
 
 
-def _ask_policy_brief_chat_with_fallback(client, question, preferred_model, model_pool, context_text, instructions_text=None):
+def _ask_policy_brief_chat_with_fallback(
+    client,
+    question,
+    preferred_model,
+    model_pool,
+    context_text,
+    instructions_text=None,
+    conversation_history=None,
+):
     ordered = [preferred_model] + [m for m in model_pool if m != preferred_model]
     last_error = None
     for idx, model_name in enumerate(ordered):
@@ -2758,6 +2909,7 @@ def _ask_policy_brief_chat_with_fallback(client, question, preferred_model, mode
                 model_name=model_name,
                 context_text=context_text,
                 instructions_text=instructions_text,
+                conversation_history=conversation_history,
             )
             return {"result": result, "used_model": model_name, "fallback_used": idx > 0}
         except Exception as e:
@@ -3459,6 +3611,7 @@ def _run_enrichment_batch(
     model_name,
     mode,
     limit,
+    model_pool=None,
     progress_callback=None,
     require_remote_persistence=False,
 ):
@@ -3469,6 +3622,8 @@ def _run_enrichment_batch(
 
     total = len(targets)
     processed = 0
+    fallback_count = 0
+    checkpoint_every = 1 if require_remote_persistence else 10
 
     for doc in targets:
         if progress_callback is not None:
@@ -3481,12 +3636,22 @@ def _run_enrichment_batch(
 
         status = "enriched"
         error_msg = ""
+        model_used = str(model_name or "").strip()
         try:
-            enrichment = _run_enrichment_agent(client, doc, model_name)
+            outcome = _run_enrichment_with_model_fallback(
+                client=client,
+                doc=doc,
+                preferred_model=model_name,
+                accessible_models=model_pool or [],
+                run_agent=_run_enrichment_agent,
+            )
+            enrichment = outcome.get("enrichment", {})
+            model_used = str(outcome.get("model_used", "") or model_name).strip() or str(model_name or "").strip()
         except Exception as e:
             enrichment = _heuristic_enrichment(doc)
             status = "fallback_enriched"
             error_msg = str(e)
+            fallback_count += 1
 
         reward = _compute_reward(enrichment, decision, status=status)
         entries[doc_id] = {
@@ -3502,7 +3667,7 @@ def _run_enrichment_batch(
             "word_count": _coerce_int(doc.get("word_count", 0), default=0, min_value=0),
             "status": status,
             "error": error_msg,
-            "model": model_name,
+            "model": model_used,
             "pipeline_version": ENRICHMENT_PIPELINE_VERSION,
             "updated_at": _utc_now_iso(),
             "enrichment": enrichment,
@@ -3515,8 +3680,7 @@ def _run_enrichment_batch(
         }
         processed += 1
 
-        # checkpoint every 10 docs
-        if processed % 10 == 0:
+        if processed % checkpoint_every == 0:
             persisted = _save_enrichment_state(
                 enrichment_state,
                 require_remote=require_remote_persistence,
@@ -3525,6 +3689,7 @@ def _run_enrichment_batch(
                 return {
                     "processed": processed,
                     "total_selected": total,
+                    "fallback_count": fallback_count,
                     "aborted": True,
                     "error": str(st.session_state.get("_enrichment_error", "") or "").strip(),
                 }
@@ -3540,14 +3705,157 @@ def _run_enrichment_batch(
         return {
             "processed": processed,
             "total_selected": total,
+            "fallback_count": fallback_count,
             "aborted": True,
             "error": str(st.session_state.get("_enrichment_error", "") or "").strip(),
         }
     return {
         "processed": processed,
         "total_selected": total,
+        "fallback_count": fallback_count,
         "aborted": False,
     }
+
+
+def _set_enrichment_run_notice(level, message):
+    st.session_state[ENRICHMENT_RUN_NOTICE_SESSION_KEY] = {
+        "level": str(level or "info").strip().lower() or "info",
+        "message": str(message or "").strip(),
+    }
+
+
+def _pop_enrichment_run_notice():
+    notice = st.session_state.pop(ENRICHMENT_RUN_NOTICE_SESSION_KEY, None)
+    return notice if isinstance(notice, dict) else None
+
+
+def _get_active_enrichment_run():
+    in_memory = normalize_enrichment_run_state(st.session_state.get(ENRICHMENT_ACTIVE_RUN_SESSION_KEY))
+    if in_memory:
+        return in_memory
+
+    persisted = _load_persisted_active_enrichment_run()
+    if persisted:
+        st.session_state[ENRICHMENT_ACTIVE_RUN_SESSION_KEY] = persisted
+    return persisted
+
+
+def _set_active_enrichment_run(state):
+    normalized = normalize_enrichment_run_state(state)
+    if normalized:
+        st.session_state[ENRICHMENT_ACTIVE_RUN_SESSION_KEY] = normalized
+    else:
+        st.session_state.pop(ENRICHMENT_ACTIVE_RUN_SESSION_KEY, None)
+    _save_persisted_active_enrichment_run(normalized)
+
+
+def _format_enrichment_run_message(run_state, prefix):
+    processed = int(run_state.get("processed", 0) or 0)
+    total_selected = int(run_state.get("total_selected", 0) or 0)
+    fallback_count = int(run_state.get("fallback_count", 0) or 0)
+    skipped_count = int(run_state.get("skipped_count", 0) or 0)
+
+    parts = [f"{prefix} Processed {processed} of {total_selected} selected docs."]
+    if fallback_count > 0:
+        parts.append(f"Fallbacks: {fallback_count}.")
+    if skipped_count > 0:
+        parts.append(f"Skipped: {skipped_count}.")
+
+    error_text = str(run_state.get("error", "") or run_state.get("last_error", "") or "").strip()
+    if error_text:
+        parts.append(error_text)
+    return " ".join(parts).strip()
+
+
+def _process_active_enrichment_run(client, knowledge_data, run_state):
+    run_state = normalize_enrichment_run_state(run_state)
+    if not run_state:
+        return {"status": "idle", "state": {}}
+
+    scope_key = str(run_state.get("scope_key", "__all__") or "__all__").strip() or "__all__"
+    enrichment_org_key = None if scope_key == "__all__" else scope_key
+    step_doc_ids = next_enrichment_run_doc_ids(run_state, max_docs=ENRICHMENT_DOCS_PER_RERUN)
+    if not step_doc_ids:
+        completed_state = complete_enrichment_run_state(run_state)
+        return {
+            "status": "completed",
+            "state": completed_state,
+            "message": _format_enrichment_run_message(completed_state, "Enrichment run complete."),
+        }
+
+    step_candidates_raw = _build_enrichment_candidates(
+        knowledge_data,
+        org_key=enrichment_org_key,
+        include_full_text=True,
+        allowed_doc_ids=step_doc_ids,
+    )
+    step_candidate_by_id = {
+        str(doc.get("doc_id", "") or "").strip(): doc
+        for doc in step_candidates_raw
+        if str(doc.get("doc_id", "") or "").strip()
+    }
+    step_candidates = [step_candidate_by_id[doc_id] for doc_id in step_doc_ids if doc_id in step_candidate_by_id]
+    missing_doc_ids = [doc_id for doc_id in step_doc_ids if doc_id not in step_candidate_by_id]
+
+    if not step_candidates:
+        skipped_state = advance_enrichment_run_state(
+            run_state,
+            processed_doc_ids=step_doc_ids,
+            skipped_count=len(missing_doc_ids) or len(step_doc_ids),
+            last_doc_id=step_doc_ids[-1],
+            last_doc_title="",
+            last_error="Document text is unavailable for enrichment.",
+        )
+        if skipped_state.get("status") == "completed":
+            return {
+                "status": "completed",
+                "state": skipped_state,
+                "message": _format_enrichment_run_message(skipped_state, "Enrichment run complete."),
+            }
+        return {"status": "running", "state": skipped_state}
+
+    current_state = _load_enrichment_state()
+    model_pool = _get_accessible_chat_models(client) if client is not None else _candidate_chat_models()
+    result = _run_enrichment_batch(
+        client=client,
+        candidates=step_candidates,
+        enrichment_state=current_state,
+        model_name=str(run_state.get("model_name", "") or "").strip(),
+        model_pool=model_pool,
+        mode="re_enrich_all",
+        limit=len(step_candidates),
+        require_remote_persistence=True,
+    )
+
+    last_candidate = step_candidates[-1]
+    updated_state = advance_enrichment_run_state(
+        run_state,
+        processed_doc_ids=step_doc_ids,
+        fallback_count=int(result.get("fallback_count", 0) or 0),
+        skipped_count=len(missing_doc_ids),
+        last_doc_id=str(last_candidate.get("doc_id", "") or "").strip(),
+        last_doc_title=str(last_candidate.get("title", "") or "").strip(),
+        last_error="",
+    )
+    if result.get("aborted"):
+        aborted_state = abort_enrichment_run_state(
+            updated_state,
+            str(result.get("error", "") or "Enrichment run aborted."),
+        )
+        return {
+            "status": "aborted",
+            "state": aborted_state,
+            "message": _format_enrichment_run_message(aborted_state, "Enrichment run stopped."),
+        }
+
+    if updated_state.get("status") == "completed":
+        return {
+            "status": "completed",
+            "state": updated_state,
+            "message": _format_enrichment_run_message(updated_state, "Enrichment run complete."),
+        }
+
+    return {"status": "running", "state": updated_state}
 
 
 def _normalize_auto_review_payload(payload):
@@ -3692,6 +4000,7 @@ def _run_auto_review_batch(
     approved = 0
     flagged = 0
     heuristic_fallbacks = 0
+    checkpoint_every = 1 if require_remote_persistence else 10
 
     for item in targets:
         if progress_callback is not None:
@@ -3754,7 +4063,7 @@ def _run_auto_review_batch(
         entries[doc_id] = current
 
         processed += 1
-        if processed % 10 == 0:
+        if processed % checkpoint_every == 0:
             persisted = _save_enrichment_state(
                 enrichment_state,
                 require_remote=require_remote_persistence,
@@ -5265,6 +5574,65 @@ def _build_final_generation_user_message(question, context_label="Relevant infor
     return _append_style_primer(base_message)
 
 
+def _trim_generation_history(history_messages, max_turns=4, max_chars=5000):
+    filtered = []
+    for item in history_messages or []:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "") or "").strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+        content = str(item.get("content", "") or "").strip()
+        if not content:
+            continue
+        filtered.append({"role": role, "content": content})
+
+    max_messages = max(1, int(max_turns or 4) * 2)
+    recent = filtered[-max_messages:]
+    kept = []
+    used_chars = 0
+    for item in reversed(recent):
+        content = str(item.get("content", "") or "")
+        if used_chars + len(content) > max_chars and kept:
+            continue
+        kept.insert(0, item)
+        used_chars += len(content)
+    return kept
+
+
+def _build_generation_messages(
+    question,
+    context_label="Relevant information",
+    context_text="",
+    suffix_text="",
+    conversation_history=None,
+):
+    recent_history = _trim_generation_history(conversation_history, max_turns=4, max_chars=5000)
+    return recent_history + [
+        {
+            "role": "user",
+            "content": _build_final_generation_user_message(
+                question,
+                context_label=context_label,
+                context_text=context_text,
+                suffix_text=suffix_text,
+            ),
+        }
+    ]
+
+
+def _combine_generation_context(evidence_context="", extra_context_text="", extra_context_label=""):
+    blocks = []
+    evidence_context = str(evidence_context or "").strip()
+    extra_context_text = str(extra_context_text or "").strip()
+    extra_context_label = str(extra_context_label or "").strip() or "Additional context"
+    if evidence_context:
+        blocks.append(f"Retrieved corpus evidence:\n{evidence_context}")
+    if extra_context_text:
+        blocks.append(f"{extra_context_label}:\n{extra_context_text}")
+    return "\n\n".join(block for block in blocks if block).strip()
+
+
 def _run_file_search_call(client, model_name, question, vector_store_ids, instructions_text=None, max_num_results=8):
     payload = {
         "model": model_name,
@@ -5288,7 +5656,16 @@ def _run_file_search_call(client, model_name, question, vector_store_ids, instru
         return client.responses.create(**payload)
 
 
-def _ask_agent(client, vector_store_ids, question, model_name, instructions_text=None):
+def _ask_agent(
+    client,
+    vector_store_ids,
+    question,
+    model_name,
+    instructions_text=None,
+    conversation_history=None,
+    generation_context_text="",
+    generation_context_label="",
+):
     if isinstance(vector_store_ids, str):
         vector_store_ids = [vector_store_ids]
     vector_store_ids = [str(v).strip() for v in (vector_store_ids or []) if str(v).strip()]
@@ -5330,15 +5707,21 @@ def _ask_agent(client, vector_store_ids, question, model_name, instructions_text
     if instructions_text:
         synthesis_instructions_parts.append(instructions_text)
     synthesis_instructions_parts.append(
-        "Use only the Evidence Context provided in the user input. "
+        "Use only the relevant information provided in the user input. "
         "If evidence is insufficient, say what is missing instead of guessing."
     )
+    combined_context = _combine_generation_context(
+        evidence_context=evidence_context,
+        extra_context_text=generation_context_text,
+        extra_context_label=generation_context_label,
+    ) or evidence_context
     synthesis_payload = {
         "model": model_name,
-        "input": _build_final_generation_user_message(
+        "input": _build_generation_messages(
             question,
             context_label="Relevant information",
-            context_text=evidence_context,
+            context_text=combined_context,
+            conversation_history=conversation_history,
         ),
         "instructions": " ".join(synthesis_instructions_parts).strip(),
     }
@@ -5350,14 +5733,7 @@ def _ask_agent(client, vector_store_ids, question, model_name, instructions_text
 
 
 def _candidate_chat_models():
-    return [
-        "gpt-5.1",
-        "gpt-5-mini",
-        "gpt-4.1",
-        "gpt-4.1-mini",
-        "gpt-4o",
-        "gpt-4o-mini",
-    ]
+    return _shared_candidate_chat_models()
 
 
 def _list_project_models(client):
@@ -5369,27 +5745,24 @@ def _list_project_models(client):
 
 def _get_accessible_chat_models(client):
     """Return preferred chat models that are available to this project."""
-    candidates = _candidate_chat_models()
-    try:
-        ids = set(_list_project_models(client))
-        available = [m for m in candidates if m in ids]
-        if available:
-            return available
-    except Exception:
-        pass
-    return candidates
+    return _shared_get_accessible_chat_models(client)
 
 
 def _is_model_access_error(exc):
-    msg = str(exc).lower()
-    return (
-        "model_not_found" in msg
-        or "does not have access to model" in msg
-        or "access to model" in msg
-    )
+    return _shared_is_model_access_error(exc)
 
 
-def _ask_agent_with_fallback(client, vector_store_ids, question, preferred_model, model_pool, instructions_text=None):
+def _ask_agent_with_fallback(
+    client,
+    vector_store_ids,
+    question,
+    preferred_model,
+    model_pool,
+    instructions_text=None,
+    conversation_history=None,
+    generation_context_text="",
+    generation_context_label="",
+):
     """Try preferred model first, then fallback models on access errors."""
     ordered = [preferred_model] + [m for m in model_pool if m != preferred_model]
     last_error = None
@@ -5401,6 +5774,9 @@ def _ask_agent_with_fallback(client, vector_store_ids, question, preferred_model
                 question,
                 model_name,
                 instructions_text=instructions_text,
+                conversation_history=conversation_history,
+                generation_context_text=generation_context_text,
+                generation_context_label=generation_context_label,
             )
             return {
                 "result": result,
@@ -6405,6 +6781,7 @@ elif page == "Agent Chat":
     prompt_prefix = "SEC enforcement question" if domain_mode == "SEC Enforcement" else "question"
     user_prompt = st.chat_input(f"Ask a {prompt_prefix} about {chat_scope_label} documents...")
     if user_prompt:
+        recent_chat_history = _trim_generation_history(chat_messages, max_turns=4, max_chars=5000)
         chat_messages.append({"role": "user", "content": user_prompt, "created_at": _utc_now_iso()})
         with st.chat_message("user"):
             st.markdown(user_prompt)
@@ -6462,6 +6839,7 @@ elif page == "Agent Chat":
                                     model_pool=available_models,
                                     context_text=brief_context_text,
                                     instructions_text=instructions_text,
+                                    conversation_history=recent_chat_history,
                                 )
                                 result = agent_out.get("result", {})
                                 answer = result.get("answer", "No answer returned.")
@@ -6470,12 +6848,6 @@ elif page == "Agent Chat":
                                 fallback_used = agent_out.get("fallback_used", False)
                         elif discussion_mode == "Corpus + Policy Briefings":
                             if chat_vector_store_ids:
-                                question_text = str(user_prompt)
-                                if brief_context_text.strip():
-                                    question_text += (
-                                        "\n\nPolicy Delta Briefing Context (use this with retrieved corpus evidence):\n"
-                                        f"{brief_context_text}"
-                                    )
                                 hybrid_instructions = (
                                     f"{instructions_text} "
                                     "If policy briefing context is provided, treat it as analyst metadata and still "
@@ -6484,10 +6856,13 @@ elif page == "Agent Chat":
                                 agent_out = _ask_agent_with_fallback(
                                     client=client,
                                     vector_store_ids=chat_vector_store_ids,
-                                    question=question_text,
+                                    question=user_prompt,
                                     preferred_model=model_name,
                                     model_pool=available_models,
                                     instructions_text=hybrid_instructions,
+                                    conversation_history=recent_chat_history,
+                                    generation_context_text=brief_context_text,
+                                    generation_context_label="Policy delta briefing context",
                                 )
                                 result = agent_out.get("result", {})
                                 answer = result.get("answer", "No answer returned.")
@@ -6502,6 +6877,7 @@ elif page == "Agent Chat":
                                     model_pool=available_models,
                                     context_text=brief_context_text,
                                     instructions_text=instructions_text,
+                                    conversation_history=recent_chat_history,
                                 )
                                 result = agent_out.get("result", {})
                                 answer = result.get("answer", "No answer returned.")
@@ -6533,6 +6909,7 @@ elif page == "Agent Chat":
                                     preferred_model=model_name,
                                     model_pool=available_models,
                                     instructions_text=instructions_text,
+                                    conversation_history=recent_chat_history,
                                 )
                                 result = agent_out.get("result", {})
                                 answer = result.get("answer", "No answer returned.")
@@ -10290,6 +10667,8 @@ elif page == "Extraction":
                 except Exception as e:
                     st.error(f"CFTC ingest failed: {e}")
 
+        st.markdown("---")
+
     st.markdown("---")
     treasury_connector_configs = {
         "treasury_featured_story": {
@@ -10947,6 +11326,303 @@ elif page == "Extraction":
                         st.write(f"- {msg}")
             except Exception as e:
                 st.error(f"SIFMA ingest failed: {e}")
+
+    st.markdown("---")
+    st.subheader("Trade Media Connectors: JD Supra / InvestmentNews / Citywire")
+    st.caption(
+        "Discover and ingest trade-media articles directly from site feeds/listings."
+    )
+
+    trade_media_sources = {
+        "jdsupra_article": {
+            "label": "JD Supra",
+            "organization": "JD Supra",
+            "default_url": "https://www.jdsupra.com/legalnews/",
+            "tags_csv": "jdsupra,legal-analysis,regulatory-commentary",
+        },
+        "investmentnews_article": {
+            "label": "InvestmentNews",
+            "organization": "InvestmentNews",
+            "default_url": "https://www.investmentnews.com/",
+            "tags_csv": "investmentnews,wealth-management,industry-news",
+        },
+        "citywire_article": {
+            "label": "Citywire",
+            "organization": "Citywire",
+            "default_url": "https://citywire.com/us/news",
+            "tags_csv": "citywire,asset-management,industry-news",
+        },
+    }
+
+    trade_source_options = list(trade_media_sources.keys())
+    trade_source_key = st.selectbox(
+        "Trade Media Source",
+        trade_source_options,
+        index=0,
+        format_func=lambda k: trade_media_sources.get(k, {}).get("label", k),
+        key="trade_media_source_key",
+    )
+    trade_source_cfg = trade_media_sources.get(trade_source_key, trade_media_sources["jdsupra_article"])
+    trade_default_url = str(trade_source_cfg.get("default_url", "") or "").strip()
+    trade_url_state_key = f"trade_media_index_url_{trade_source_key}"
+    trade_index_url = st.text_input(
+        "Trade Media Index URL",
+        value=trade_default_url,
+        key=trade_url_state_key,
+    ).strip() or trade_default_url
+
+    trade_col1, trade_col2 = st.columns(2)
+    with trade_col1:
+        trade_max_pages = st.slider(
+            "Trade Media Listing Pages To Scan",
+            min_value=1,
+            max_value=10,
+            value=3,
+            key="trade_media_max_pages",
+        )
+    with trade_col2:
+        trade_include_rss = st.checkbox(
+            "Use RSS/Atom feed discovery when available",
+            value=True,
+            key="trade_media_include_rss",
+        )
+
+    trade_btn_col1, trade_btn_col2 = st.columns(2)
+    with trade_btn_col1:
+        discover_trade_media = st.button("Discover Trade Media Articles", key="discover_trade_media_articles")
+    with trade_btn_col2:
+        clear_trade_media = st.button("Clear Trade Media Results", key="clear_trade_media_articles")
+
+    trade_state_key = "trade_media_discovered"
+    trade_debug_key = "trade_media_discovery_debug"
+    if trade_state_key not in st.session_state:
+        st.session_state[trade_state_key] = []
+    if trade_debug_key not in st.session_state:
+        st.session_state[trade_debug_key] = {}
+    if clear_trade_media:
+        st.session_state[trade_state_key] = []
+        st.session_state[trade_debug_key] = {}
+
+    if discover_trade_media:
+        try:
+            from trade_media_scraper import TradeMediaScraper
+
+            with st.spinner(f"Discovering {trade_source_cfg.get('label', 'trade media')} articles..."):
+                trade_scraper = TradeMediaScraper()
+                trade_discovered = trade_scraper.discover_documents(
+                    source_key=trade_source_key,
+                    base_url=trade_index_url,
+                    max_pages=int(trade_max_pages),
+                    include_rss=trade_include_rss,
+                )
+                trade_debug_payload = getattr(trade_scraper, "last_discovery_debug", {})
+                if isinstance(trade_debug_payload, dict):
+                    st.session_state[trade_debug_key] = trade_debug_payload
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in trade_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                status = "new"
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(
+                        existing_meta.get("published_date")
+                        or existing_meta.get("date")
+                        or ""
+                    ).strip()
+                    incoming_date = str(entry.get("date", "") or "").strip()
+                    existing_title = str(existing_meta.get("title", "") or "").strip()
+                    incoming_title = str(entry.get("title", "") or "").strip()
+                    if (
+                        (incoming_date and existing_date and incoming_date != existing_date)
+                        or (incoming_title and existing_title and incoming_title != existing_title)
+                    ):
+                        status = "update_available"
+                    else:
+                        status = "existing"
+                elif key in existing_speech_urls:
+                    status = "existing_in_speeches"
+                entry["ingest_status"] = status
+                entry["source_key"] = trade_source_key
+
+            st.session_state[trade_state_key] = trade_discovered
+            new_count = sum(
+                1 for d in trade_discovered if d.get("ingest_status") in {"new", "update_available"}
+            )
+            st.success(
+                f"Discovered {len(trade_discovered)} {trade_source_cfg.get('label', 'trade media')} articles "
+                f"({new_count} new/update candidates)."
+            )
+        except Exception as e:
+            st.session_state[trade_debug_key] = {"error": str(e)}
+            st.error(f"Trade media discovery failed: {e}")
+
+    trade_discovered = st.session_state.get(trade_state_key, [])
+    trade_debug = st.session_state.get(trade_debug_key, {})
+    if isinstance(trade_debug, dict) and trade_debug:
+        with st.expander("Trade Media Discovery Debug", expanded=False):
+            if trade_debug.get("error"):
+                st.error(str(trade_debug.get("error", "")))
+            else:
+                st.json(trade_debug)
+
+    if trade_discovered:
+        trade_df = pd.DataFrame(trade_discovered)
+        trade_df = _sort_table_by_date(trade_df, date_col="date")
+        show_cols = [
+            c
+            for c in ["date", "source_name", "title", "ingest_status", "url"]
+            if c in trade_df.columns
+        ]
+        st.dataframe(
+            trade_df[show_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        trade_filter = st.selectbox(
+            "Trade Media Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="trade_media_ingest_filter",
+        )
+        if trade_filter == "New/Updates Only":
+            trade_candidates = [
+                d for d in trade_discovered if d.get("ingest_status") in {"new", "update_available"}
+            ]
+        else:
+            trade_candidates = list(trade_discovered)
+
+        trade_count = len(trade_candidates)
+        if trade_count <= 0:
+            trade_limit = 0
+            st.caption("No trade-media articles match the selected ingest filter.")
+        elif trade_count == 1:
+            trade_limit = 1
+            st.caption("1 trade-media article selected for ingest.")
+        else:
+            trade_limit = st.slider(
+                "Trade Media Articles To Ingest",
+                min_value=1,
+                max_value=trade_count,
+                value=min(20, trade_count),
+                key="trade_media_ingest_limit",
+            )
+        st.caption(f"{trade_count} trade-media articles currently match this ingest selection.")
+
+        if st.button("Run Trade Media Extraction", disabled=(trade_limit <= 0), key="ingest_trade_media_articles"):
+            try:
+                from trade_media_scraper import TradeMediaScraper
+
+                trade_scraper = TradeMediaScraper()
+                progress = st.progress(0, text="Starting trade-media ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = trade_candidates[:trade_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / trade_limit,
+                        text=f"Ingesting {idx}/{trade_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        source_key = str(entry.get("source_key", "") or trade_source_key).strip()
+                        source_cfg = trade_media_sources.get(source_key, trade_source_cfg)
+                        source_label = str(
+                            entry.get("source_name", "")
+                            or source_cfg.get("label", "Trade Media")
+                        ).strip()
+
+                        extracted = trade_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_description=entry.get("description", ""),
+                            fallback_source_name=source_label,
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 30:
+                            raise RuntimeError("Extracted text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        source_format = str(data.get("source_format", "") or "html").strip().lower()
+                        source_ext = ".pdf" if source_format == "pdf" else ".html"
+                        source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip()
+                        if not source_name:
+                            source_name = f"{source_key}-article-{idx}{source_ext}"
+                        elif "." not in source_name:
+                            source_name += source_ext
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        if pd.notna(parsed_date):
+                            doc_date_value = parsed_date.date()
+                        else:
+                            doc_date_value = date_text
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization=str(source_cfg.get("organization", source_label) or source_label),
+                            title=str(data.get("title", "") or entry.get("title", "")).strip() or "Article",
+                            speaker=source_label or "Trade Media",
+                            doc_date=doc_date_value,
+                            doc_type="Article",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=source_ext,
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv=str(source_cfg.get("tags_csv", "trade-media,industry-news")),
+                            source_kind=source_key,
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = source_key
+                        rm["source_index_url"] = trade_index_url
+                        rm["source_name"] = source_label
+                        rm["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+                        rm["description"] = str(data.get("description", "") or entry.get("description", "")).strip()
+                        rm["source_format"] = source_format
+                        rm["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+                        rm["feed_url"] = str(entry.get("feed_url", "") or "").strip()
+                        rm["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="Trade-media ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new trade-media docs and updated {saved_updates} existing trade-media docs."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} trade-media articles failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"Trade-media ingest failed: {e}")
 
     st.markdown("---")
     st.subheader("Congress Connector: CRS Products")
@@ -11649,6 +12325,266 @@ elif page == "Extraction":
                 st.error(f"News ingest failed: {e}")
 
     st.markdown("---")
+    st.subheader("Reddit Connector: Keyword Search")
+    st.caption(
+        "Discover and ingest Reddit posts matching financial/regulatory search terms. "
+        "Uses the public Reddit JSON API — no API key required."
+    )
+
+    reddit_settings_saved = _load_news_connector_settings().get("reddit", {})
+    if not isinstance(reddit_settings_saved, dict):
+        reddit_settings_saved = {}
+
+    reddit_search_terms_raw = str(
+        reddit_settings_saved.get("search_terms", REDDIT_DEFAULT_SEARCH_TERMS) or REDDIT_DEFAULT_SEARCH_TERMS
+    ).strip()
+
+    reddit_search_terms = st.text_area(
+        "Search Terms (one per line)",
+        value=reddit_search_terms_raw,
+        height=200,
+        key="reddit_search_terms",
+        help="Each term is searched independently. Posts are deduplicated by Reddit post ID.",
+    ).strip()
+
+    reddit_subreddits = st.text_input(
+        "Restrict to Subreddits (optional, comma-separated)",
+        value=str(reddit_settings_saved.get("subreddits", "") or ""),
+        key="reddit_subreddits",
+        help=(
+            "e.g. CryptoCurrency,ethereum,DeFi — leave blank to search all of Reddit. "
+            "Scoping to subreddits reduces noise significantly."
+        ),
+    ).strip()
+
+    reddit_col1, reddit_col2, reddit_col3 = st.columns(3)
+    with reddit_col1:
+        reddit_sort_options = ["new", "relevance", "hot", "top", "comments"]
+        reddit_sort_saved = str(reddit_settings_saved.get("sort", "new") or "new").strip()
+        reddit_sort_idx = reddit_sort_options.index(reddit_sort_saved) if reddit_sort_saved in reddit_sort_options else 0
+        reddit_sort = st.selectbox(
+            "Sort Order",
+            reddit_sort_options,
+            index=reddit_sort_idx,
+            key="reddit_sort",
+            help="'new' is recommended for scheduled runs to avoid re-ingesting old posts.",
+        )
+
+    with reddit_col2:
+        reddit_time_options = ["hour", "day", "week", "month", "year", "all"]
+        reddit_time_saved = str(reddit_settings_saved.get("time_filter", "week") or "week").strip()
+        reddit_time_idx = reddit_time_options.index(reddit_time_saved) if reddit_time_saved in reddit_time_options else 2
+        reddit_time_filter = st.selectbox(
+            "Time Filter",
+            reddit_time_options,
+            index=reddit_time_idx,
+            key="reddit_time_filter",
+            help="Match this to your run frequency — 'week' works well for weekly GitHub Actions runs.",
+        )
+
+    with reddit_col3:
+        reddit_limit_per_term = st.slider(
+            "Posts Per Search Term",
+            min_value=1,
+            max_value=100,
+            value=int(reddit_settings_saved.get("limit_per_term", 25) or 25),
+            key="reddit_limit_per_term",
+            help="Total posts discovered = terms × this limit (before dedup).",
+        )
+
+    reddit_tags_csv = st.text_input(
+        "Tags (comma-separated)",
+        value=str(reddit_settings_saved.get("tags_csv", REDDIT_DEFAULT_TAGS) or REDDIT_DEFAULT_TAGS),
+        key="reddit_tags_csv",
+    ).strip()
+
+    # Compute term list for display
+    reddit_terms_list = [t.strip() for t in reddit_search_terms.splitlines() if t.strip()]
+    subreddit_list = [s.strip().lstrip("r/") for s in reddit_subreddits.split(",") if s.strip()]
+    st.caption(
+        f"{len(reddit_terms_list)} search terms configured. "
+        f"Max ~{len(reddit_terms_list) * reddit_limit_per_term} posts before dedup. "
+        + (f"Scoped to: {', '.join('r/' + s for s in subreddit_list)}." if subreddit_list else "Searching all of Reddit.")
+    )
+
+    reddit_btn_col1, reddit_btn_col2, reddit_btn_col3 = st.columns(3)
+    with reddit_btn_col1:
+        discover_reddit = st.button("Discover Reddit Posts", key="discover_reddit_posts", disabled=(not reddit_terms_list))
+    with reddit_btn_col2:
+        save_reddit_settings = st.button("Save Reddit Settings", key="save_reddit_settings")
+    with reddit_btn_col3:
+        clear_reddit = st.button("Clear Reddit Results", key="clear_reddit_posts")
+
+    reddit_state_key = "reddit_discovered"
+    if reddit_state_key not in st.session_state:
+        st.session_state[reddit_state_key] = []
+
+    if clear_reddit:
+        st.session_state[reddit_state_key] = []
+
+    if save_reddit_settings:
+        current_settings = _load_news_connector_settings()
+        current_settings["reddit"] = {
+            "enabled": True,
+            "search_terms": reddit_search_terms,
+            "subreddits": reddit_subreddits,
+            "sort": reddit_sort,
+            "time_filter": reddit_time_filter,
+            "limit_per_term": reddit_limit_per_term,
+            "tags_csv": reddit_tags_csv,
+        }
+        _save_news_connector_settings(current_settings)
+        st.success("Saved Reddit connector settings.")
+
+    if discover_reddit:
+        try:
+            from reddit_scraper import RedditScraper
+
+            _save_news_connector_settings({
+                **_load_news_connector_settings(),
+                "reddit": {
+                    "enabled": True,
+                    "search_terms": reddit_search_terms,
+                    "subreddits": reddit_subreddits,
+                    "sort": reddit_sort,
+                    "time_filter": reddit_time_filter,
+                    "limit_per_term": reddit_limit_per_term,
+                    "tags_csv": reddit_tags_csv,
+                },
+            })
+
+            with st.spinner(f"Searching Reddit for {len(reddit_terms_list)} terms..."):
+                scraper = RedditScraper(
+                    search_terms=reddit_terms_list,
+                    subreddits=subreddit_list if subreddit_list else None,
+                    sort=reddit_sort,
+                    time_filter=reddit_time_filter,
+                    limit_per_term=reddit_limit_per_term,
+                    tags_csv=reddit_tags_csv,
+                )
+                discovered_posts = scraper.discover_posts()
+
+            # Mark ingest status against existing corpus
+            existing_reddit_ids = {
+                str(item.get("metadata", {}).get("reddit_post_id", "") or "")
+                for item in custom_docs
+                if item.get("metadata", {}).get("source_kind") == "reddit_post"
+            }
+            for post in discovered_posts:
+                post["ingest_status"] = "existing" if post["post_id"] in existing_reddit_ids else "new"
+
+            st.session_state[reddit_state_key] = discovered_posts
+            new_count = sum(1 for p in discovered_posts if p.get("ingest_status") == "new")
+            if discovered_posts:
+                st.success(
+                    f"Discovered {len(discovered_posts)} Reddit posts ({new_count} new)."
+                )
+            else:
+                st.warning("No posts found. Try broader search terms or a longer time filter.")
+        except Exception as e:
+            st.error(f"Reddit discovery failed: {e}")
+
+    reddit_discovered = st.session_state.get(reddit_state_key, [])
+    if reddit_discovered:
+        reddit_display = [
+            {
+                "subreddit": p.get("subreddit", ""),
+                "title": p.get("title", ""),
+                "score": p.get("score", 0),
+                "comments": p.get("num_comments", 0),
+                "ingest_status": p.get("ingest_status", "new"),
+                "permalink": p.get("permalink", ""),
+            }
+            for p in reddit_discovered
+        ]
+        st.dataframe(
+            pd.DataFrame(reddit_display),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        reddit_ingest_filter = st.selectbox(
+            "Reddit Ingest Selection",
+            ["New Only", "All Discovered"],
+            key="reddit_ingest_filter",
+        )
+        if reddit_ingest_filter == "New Only":
+            reddit_candidates = [p for p in reddit_discovered if p.get("ingest_status") == "new"]
+        else:
+            reddit_candidates = list(reddit_discovered)
+
+        reddit_count = len(reddit_candidates)
+        if reddit_count <= 0:
+            reddit_ingest_limit = 0
+            st.caption("No Reddit posts match the selected ingest filter.")
+        elif reddit_count == 1:
+            reddit_ingest_limit = 1
+            st.caption("1 Reddit post selected for ingest.")
+        else:
+            reddit_ingest_limit = st.slider(
+                "Reddit Posts To Ingest",
+                min_value=1,
+                max_value=reddit_count,
+                value=min(50, reddit_count),
+                key="reddit_ingest_limit",
+            )
+        st.caption(f"{reddit_count} Reddit posts currently match this ingest selection.")
+
+        if st.button("Run Reddit Ingest", disabled=(reddit_ingest_limit <= 0), key="ingest_reddit_posts"):
+            try:
+                from reddit_scraper import RedditScraper
+
+                existing_doc_ids = {
+                    str(item.get("metadata", {}).get("document_id", "") or "")
+                    for item in custom_docs
+                }
+                scraper = RedditScraper(
+                    search_terms=reddit_terms_list,
+                    subreddits=subreddit_list if subreddit_list else None,
+                    sort=reddit_sort,
+                    time_filter=reddit_time_filter,
+                    limit_per_term=reddit_limit_per_term,
+                    tags_csv=reddit_tags_csv,
+                )
+                selected_posts = reddit_candidates[:reddit_ingest_limit]
+                documents = scraper.build_documents(posts=selected_posts, existing_ids=existing_doc_ids)
+
+                progress = st.progress(0, text="Starting Reddit ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                for idx, doc in enumerate(documents, 1):
+                    progress.progress(
+                        idx / len(documents),
+                        text=f"Saving {idx}/{len(documents)}: {doc.get('metadata', {}).get('title', '')[:80]}",
+                    )
+                    try:
+                        replaced = _upsert_custom_document_record(custom_payload, doc)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+                    except Exception as e:
+                        failed.append(f"{doc.get('metadata', {}).get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="Reddit ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new Reddit posts and updated {saved_updates} existing posts."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} posts failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"Reddit ingest failed: {e}")
+
+    st.markdown("---")
     st.subheader("Knowledge Index (Vector Store)")
     st.caption(
         "After ingestion, build/sync the vector index used by Agent Chat retrieval."
@@ -11899,6 +12835,9 @@ elif page == "Enrichment Pipeline":
     enrichment_err = str(st.session_state.get("_enrichment_error", "") or "").strip()
     if enrichment_err:
         st.warning(enrichment_err)
+    enrichment_run_err = str(st.session_state.get(ENRICHMENT_RUN_ERROR_SESSION_KEY, "") or "").strip()
+    if enrichment_run_err:
+        st.warning(enrichment_run_err)
 
     def _require_enrichment_persistence_ready():
         ok, msg = _check_enrichment_remote_persistence_ready()
@@ -11982,6 +12921,63 @@ elif page == "Enrichment Pipeline":
     candidate_map = {str(d.get("doc_id", "") or ""): d for d in scoped_candidates}
     scoped_doc_ids = set(candidate_map.keys())
 
+    available_models = []
+    client = None
+    if _openai_key is not None:
+        client = _get_openai_client()
+        if client is not None:
+            available_models = _get_accessible_chat_models(client)
+    if not available_models:
+        available_models = _candidate_chat_models()
+    if not available_models:
+        available_models = ["gpt-4o-mini"]
+
+    default_enrich_model = "gpt-4o-mini" if "gpt-4o-mini" in available_models else available_models[0]
+
+    run_notice = _pop_enrichment_run_notice()
+    if run_notice:
+        notice_level = str(run_notice.get("level", "info") or "info").strip().lower()
+        notice_message = str(run_notice.get("message", "") or "").strip()
+        if notice_message:
+            if notice_level == "success":
+                st.success(notice_message)
+            elif notice_level == "warning":
+                st.warning(notice_message)
+            elif notice_level == "error":
+                st.error(notice_message)
+            else:
+                st.info(notice_message)
+
+    active_enrichment_run = _get_active_enrichment_run()
+    if active_enrichment_run and active_enrichment_run.get("status") == "running":
+        if client is None:
+            aborted_state = abort_enrichment_run_state(
+                active_enrichment_run,
+                str(st.session_state.get("_openai_error", "") or "OpenAI client is not configured."),
+            )
+            _set_active_enrichment_run({})
+            _set_enrichment_run_notice(
+                "error",
+                _format_enrichment_run_message(aborted_state, "Enrichment run stopped."),
+            )
+            st.rerun()
+
+        with st.spinner(
+            f"Continuing enrichment batch in {active_enrichment_run.get('scope_label', 'current scope')}..."
+        ):
+            run_step = _process_active_enrichment_run(client, knowledge_data, active_enrichment_run)
+
+        run_status = str(run_step.get("status", "") or "").strip().lower()
+        if run_status == "running":
+            _set_active_enrichment_run(run_step.get("state", {}))
+        else:
+            _set_active_enrichment_run({})
+            _set_enrichment_run_notice(
+                "success" if run_status == "completed" else "error",
+                str(run_step.get("message", "") or "").strip(),
+            )
+        st.rerun()
+
     scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
 
     total_scope_docs = len(scoped_candidates)
@@ -12032,18 +13028,6 @@ elif page == "Enrichment Pipeline":
     st.caption(f"{target_count} documents currently match this run mode.")
     st.caption("For Streamlit Cloud stability, batches of 5 to 10 documents are usually safer than larger runs.")
 
-    available_models = []
-    client = None
-    if _openai_key is not None:
-        client = _get_openai_client()
-        if client is not None:
-            available_models = _get_accessible_chat_models(client)
-    if not available_models:
-        available_models = _candidate_chat_models()
-    if not available_models:
-        available_models = ["gpt-4o-mini"]
-
-    default_enrich_model = "gpt-4o-mini" if "gpt-4o-mini" in available_models else available_models[0]
     enrich_model = st.selectbox(
         "Enrichment Model",
         available_models,
@@ -12068,7 +13052,7 @@ elif page == "Enrichment Pipeline":
             run_candidates = _build_enrichment_candidates(
                 knowledge_data,
                 org_key=enrichment_org_key,
-                include_full_text=True,
+                include_full_text=False,
                 allowed_doc_ids=run_doc_ids,
             )
             run_candidates = [
@@ -12081,43 +13065,31 @@ elif page == "Enrichment Pipeline":
             if not run_candidates:
                 st.error("No document text is available for the selected enrichment batch.")
             else:
-                run_progress = st.progress(0)
-                run_status = st.empty()
-
-                def _run_progress_cb(done, total, message):
-                    if total <= 0:
-                        run_progress.progress(100)
-                        run_status.caption(message)
-                        return
-                    safe_done = max(0, min(done, total))
-                    pct = int((safe_done * 100) / total)
-                    run_progress.progress(max(0, min(pct, 100)))
-                    run_status.caption(f"{message} ({safe_done}/{total})")
-
-                with st.spinner(f"Running enrichment over {batch_limit} docs in {scope_label}..."):
-                    result = _run_enrichment_batch(
-                        client=client,
-                        candidates=run_candidates,
-                        enrichment_state=enrichment_state,
-                        model_name=enrich_model,
-                        mode=mode_key,
-                        limit=batch_limit,
-                        progress_callback=_run_progress_cb,
-                        require_remote_persistence=True,
-                    )
-                if result.get("aborted"):
-                    st.error(
-                        "Enrichment run stopped because state could not be durably saved to GCS. "
-                        f"Processed {result.get('processed', 0)} docs before stopping. "
-                        f"{str(result.get('error', '') or '').strip()}"
-                    )
+                queued_doc_ids = [
+                    str(doc.get("doc_id", "") or "").strip()
+                    for doc in run_candidates
+                    if str(doc.get("doc_id", "") or "").strip()
+                ]
+                queued_state = create_enrichment_run_state(
+                    run_type="batch",
+                    doc_ids=queued_doc_ids,
+                    scope_key=scope_key,
+                    scope_label=scope_label,
+                    model_name=enrich_model,
+                    mode=mode_key,
+                )
+                if not queued_state:
+                    st.error("Unable to queue enrichment run. No valid documents were selected.")
                 else:
-                    st.success(
-                        f"Enrichment run complete. Processed {result.get('processed', 0)} "
-                        f"of {result.get('total_selected', 0)} matching docs."
+                    _set_active_enrichment_run(queued_state)
+                    _set_enrichment_run_notice(
+                        "info",
+                        (
+                            f"Queued enrichment for {queued_state.get('total_selected', 0)} "
+                            f"docs in {scope_label}. Progress is checkpointed after each document."
+                        ),
                     )
-                enrichment_state = _load_enrichment_state()
-                scoped_entries = _scoped_entries_from_state(enrichment_state, allowed_doc_ids=scoped_doc_ids)
+                    st.rerun()
 
     st.markdown("---")
     st.subheader("Targeted Re-Enrichment")
@@ -12186,6 +13158,7 @@ elif page == "Enrichment Pipeline":
                                 candidates=target_run_candidates,
                                 enrichment_state=enrichment_state,
                                 model_name=enrich_model,
+                                model_pool=available_models,
                                 mode="re_enrich_all",
                                 limit=1,
                                 progress_callback=_re_progress_cb,

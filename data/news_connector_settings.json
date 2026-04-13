@@ -1,0 +1,36 @@
+{
+  "updated_at": "2026-03-04T17:28:41Z",
+  "query": "(\"securities fraud\" OR \"wire fraud\" OR \"market manipulation\" OR \"insider trading\" OR \"ponzi\" OR \"crypto enforcement\" OR \"stablecoin regulation\" OR \"money laundering\" OR AML OR \"Generative AI\" OR \"Agentic AI\" OR \"private credit\" OR \"investors\") OR (SEC OR DOJ OR CFTC OR Treasury OR FinCEN OR Congress)",
+  "lookback_days": 4,
+  "max_pages": 6,
+  "page_size": 100,
+  "target_count": 100,
+  "sort_by": "publishedAt",
+  "organization_label": "Financial News",
+  "domains": "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com",
+  "exclude_domains": "",
+  "tags_csv": "news,financial-regulation,fraud,crypto,securities",
+  "reddit": {
+    "enabled": true,
+    "search_terms": [
+      "stablecoins",
+      "tokenization",
+      "prediction markets",
+      "crypto regulation",
+      "digital assets SEC",
+      "DeFi regulation",
+      "SEC enforcement",
+      "securities fraud",
+      "insider trading",
+      "FINRA",
+      "money market funds",
+      "stablecoin regulation",
+      "crypto enforcement"
+    ],
+    "subreddits": [],
+    "sort": "new",
+    "time_filter": "week",
+    "limit_per_term": 25,
+    "tags_csv": "reddit,social-media,financial-regulation,crypto,securities"
+  }
+}
