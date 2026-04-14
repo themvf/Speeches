@@ -149,7 +149,10 @@ def build_enrichment_candidates(
             content = {}
         raw_text = content.get("full_text", "")
         text = raw_text if isinstance(raw_text, str) else str(raw_text or "")
-        if not text.strip():
+        text_available = bool(text.strip()) or bool(content.get("full_text_available"))
+        if include_full_text and not text.strip():
+            continue
+        if not include_full_text and not text_available:
             continue
 
         dedup[doc_id] = {

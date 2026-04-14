@@ -371,6 +371,90 @@ def _normalize_custom_docs_payload(payload, return_changed=False):
     return normalized
 
 
+def _compact_speech_record(record, include_full_text=True):
+    if not isinstance(record, dict):
+        return {}
+
+    normalized = dict(record)
+    metadata = normalized.get("metadata", {}) if isinstance(normalized.get("metadata", {}), dict) else {}
+    metadata = dict(metadata)
+    content = normalized.get("content", {}) if isinstance(normalized.get("content", {}), dict) else {}
+    content = dict(content)
+
+    raw_full_text = content.get("full_text", "")
+    full_text = raw_full_text if isinstance(raw_full_text, str) else str(raw_full_text or "")
+    paragraphs = content.get("paragraphs", []) if isinstance(content.get("paragraphs", []), list) else []
+    sentences = content.get("sentences", []) if isinstance(content.get("sentences", []), list) else []
+
+    inferred_paragraph_count = len(paragraphs) if paragraphs else _count_nonempty_text_lines(full_text)
+    inferred_sentence_count = len(sentences)
+    metadata["paragraph_count"] = _coerce_int(
+        metadata.get("paragraph_count", inferred_paragraph_count),
+        default=inferred_paragraph_count,
+        min_value=0,
+    )
+    metadata["sentence_count"] = _coerce_int(
+        metadata.get("sentence_count", inferred_sentence_count),
+        default=inferred_sentence_count,
+        min_value=0,
+    )
+
+    compact_content = {
+        key: value
+        for key, value in content.items()
+        if key not in {"paragraphs", "sentences", "full_text", "full_text_available"}
+    }
+    if include_full_text:
+        compact_content["full_text"] = full_text
+    else:
+        compact_content["full_text_available"] = bool(full_text.strip()) or bool(content.get("full_text_available"))
+
+    normalized["metadata"] = metadata
+    normalized["content"] = compact_content
+    return normalized
+
+
+def _compact_custom_docs_payload(payload, include_full_text=True, allowed_doc_ids=None):
+    normalized = _normalize_custom_docs_payload(payload)
+    allowed_ids = {
+        str(doc_id or "").strip()
+        for doc_id in (allowed_doc_ids or [])
+        if str(doc_id or "").strip()
+    }
+
+    compact_docs = []
+    for item in normalized.get("documents", []):
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        doc_id = str(metadata.get("document_id", "") or "").strip()
+        if allowed_ids and doc_id not in allowed_ids:
+            continue
+        compact_docs.append(_compact_speech_record(item, include_full_text=include_full_text))
+
+    return {
+        "updated_at": str(normalized.get("updated_at", "") or ""),
+        "documents": compact_docs,
+    }
+
+
+def _compact_raw_data_for_memory(raw_data):
+    if not isinstance(raw_data, dict):
+        return {"speeches": []}
+
+    speeches = raw_data.get("speeches", [])
+    if not isinstance(speeches, list):
+        speeches = []
+
+    compact = dict(raw_data)
+    compact["speeches"] = [
+        _compact_speech_record(item, include_full_text=True)
+        for item in speeches
+        if isinstance(item, dict)
+    ]
+    return compact
+
+
 def _load_custom_documents_local():
     if not CUSTOM_DOCS_LOCAL_PATH.exists():
         return _empty_custom_docs_payload()
@@ -391,8 +475,7 @@ def _save_custom_documents_local(payload):
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _load_custom_documents():
+def _load_custom_documents_uncached():
     storage = _get_gcs_storage()
     if storage is not None:
         try:
@@ -419,11 +502,35 @@ def _load_custom_documents():
     return _load_custom_documents_local()
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_custom_documents():
+    return _load_custom_documents_uncached()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_custom_documents_catalog():
+    return _compact_custom_docs_payload(
+        _load_custom_documents_uncached(),
+        include_full_text=False,
+    )
+
+
+def _load_custom_documents_for_doc_ids(doc_ids):
+    if not isinstance(doc_ids, (list, tuple, set)):
+        return _empty_custom_docs_payload()
+    return _compact_custom_docs_payload(
+        _load_custom_documents_uncached(),
+        include_full_text=True,
+        allowed_doc_ids=doc_ids,
+    )
+
+
 def _save_custom_documents(payload):
     payload = _normalize_custom_docs_payload(payload)
     payload["updated_at"] = _utc_now_iso()
     _save_custom_documents_local(payload)
     _load_custom_documents.clear()
+    _load_custom_documents_catalog.clear()
 
     storage = _get_gcs_storage()
     if storage is None:
@@ -1123,6 +1230,41 @@ def _build_knowledge_data(sec_raw_data, custom_docs_payload):
     sec_speeches = sec_raw_data.get("speeches", []) if isinstance(sec_raw_data, dict) else []
     custom_speeches = _custom_docs_as_speeches(custom_docs_payload)
     return {"speeches": list(sec_speeches) + list(custom_speeches)}
+
+
+def _hydrate_knowledge_data_for_doc_ids(knowledge_data, doc_ids):
+    if not isinstance(doc_ids, (list, tuple, set)):
+        return knowledge_data
+
+    hydrated_payload = _load_custom_documents_for_doc_ids(doc_ids)
+    hydrated_docs = _custom_docs_as_speeches(hydrated_payload)
+    if not hydrated_docs:
+        return knowledge_data
+
+    replacements = {}
+    for item in hydrated_docs:
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        doc_id = str(metadata.get("document_id", "") or "").strip()
+        if doc_id:
+            replacements[doc_id] = item
+    if not replacements:
+        return knowledge_data
+
+    base_speeches = knowledge_data.get("speeches", []) if isinstance(knowledge_data, dict) else []
+    hydrated_speeches = []
+    for speech in base_speeches:
+        if not isinstance(speech, dict):
+            continue
+        replacement = replacements.pop(_corpus_doc_id(speech), None)
+        hydrated_speeches.append(replacement if replacement is not None else speech)
+    if replacements:
+        hydrated_speeches.extend(replacements.values())
+
+    hydrated_knowledge = dict(knowledge_data) if isinstance(knowledge_data, dict) else {}
+    hydrated_knowledge["speeches"] = hydrated_speeches
+    return hydrated_knowledge
 
 
 def _build_knowledge_df(knowledge_data):
@@ -3795,8 +3937,9 @@ def _process_active_enrichment_run(client, knowledge_data, run_state):
             "message": _format_enrichment_run_message(completed_state, "Enrichment run complete."),
         }
 
+    step_knowledge_data = _hydrate_knowledge_data_for_doc_ids(knowledge_data, step_doc_ids)
     step_candidates_raw = _build_enrichment_candidates(
-        knowledge_data,
+        step_knowledge_data,
         org_key=enrichment_org_key,
         include_full_text=True,
         allowed_doc_ids=step_doc_ids,
@@ -5974,6 +6117,7 @@ def _custom_payload_stats(payload):
 def load_data(_cache_buster=None):
     """Load and cache the speech dataset."""
     raw_data, _ = _load_raw_data()
+    raw_data = _compact_raw_data_for_memory(raw_data)
 
     rows = []
     for speech in raw_data.get("speeches", []):
@@ -6094,12 +6238,20 @@ custom_doc_count = 0
 custom_doc_words = 0
 
 if page in pages_needing_custom_docs:
-    custom_docs_payload = _load_custom_documents()
+    if page == "Enrichment Pipeline":
+        _load_custom_documents.clear()
+        custom_docs_payload = _load_custom_documents_catalog()
+    else:
+        custom_docs_payload = _load_custom_documents()
     custom_doc_count, custom_doc_words = _custom_payload_stats(custom_docs_payload)
 
 if page in pages_needing_knowledge_data:
     if custom_docs_payload is None:
-        custom_docs_payload = _load_custom_documents()
+        if page == "Enrichment Pipeline":
+            _load_custom_documents.clear()
+            custom_docs_payload = _load_custom_documents_catalog()
+        else:
+            custom_docs_payload = _load_custom_documents()
         custom_doc_count, custom_doc_words = _custom_payload_stats(custom_docs_payload)
     knowledge_data = _build_knowledge_data(raw_data, custom_docs_payload)
 
@@ -13161,8 +13313,12 @@ elif page == "Enrichment Pipeline":
                 elif not _require_enrichment_persistence_ready():
                     pass
                 else:
-                    target_run_candidates = _build_enrichment_candidates(
+                    target_run_knowledge_data = _hydrate_knowledge_data_for_doc_ids(
                         knowledge_data,
+                        [target_doc_id],
+                    )
+                    target_run_candidates = _build_enrichment_candidates(
+                        target_run_knowledge_data,
                         org_key=enrichment_org_key,
                         include_full_text=True,
                         allowed_doc_ids=[target_doc_id],

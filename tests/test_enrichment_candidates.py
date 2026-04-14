@@ -149,6 +149,31 @@ class BuildEnrichmentCandidatesTests(unittest.TestCase):
         self.assertEqual(candidates[0]["doc_id"], "doc-2")
         self.assertNotIn("full_text", candidates[0])
 
+    def test_lightweight_mode_keeps_metadata_only_docs_when_text_is_marked_available(self):
+        knowledge_data = {
+            "speeches": [
+                {
+                    "metadata": {
+                        "document_id": "doc-meta-1",
+                        "organization": "FINRA",
+                        "title": "Metadata Only Notice",
+                        "source_kind": "finra_regulatory_notice",
+                    },
+                    "content": {"full_text_available": True},
+                }
+            ]
+        }
+
+        candidates = build_enrichment_candidates(
+            knowledge_data,
+            org_key="finra",
+            include_full_text=False,
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["doc_id"], "doc-meta-1")
+        self.assertNotIn("full_text", candidates[0])
+
 
 if __name__ == "__main__":
     unittest.main()
