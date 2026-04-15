@@ -124,12 +124,20 @@ def _parse_date(raw: str) -> Optional[date]:
 
 def _load_gcs_json(storage: GCSStorage, blob_name: str) -> Any:
     try:
-        raw = storage.download_blob(blob_name)
-        if raw:
-            return json.loads(raw)
+        blob = storage.bucket.blob(blob_name)
+        if blob.exists():
+            return json.loads(blob.download_as_text(encoding="utf-8"))
     except Exception as exc:
         _stderr(f"[warn] failed to load {blob_name}: {exc}")
     return None
+
+
+def _save_gcs_json(storage: GCSStorage, blob_name: str, payload: Any) -> None:
+    blob = storage.bucket.blob(blob_name)
+    blob.upload_from_string(
+        json.dumps(payload, indent=2, default=str),
+        content_type="application/json",
+    )
 
 
 def _build_gcs_storage() -> Optional[GCSStorage]:
@@ -137,8 +145,27 @@ def _build_gcs_storage() -> Optional[GCSStorage]:
     creds_json = os.environ.get("GCS_CREDENTIALS_JSON", "")
     if not bucket:
         return None
+
+    credentials_info: Optional[Dict[str, Any]] = None
+
+    # Try parsing credentials from GCS_CREDENTIALS_JSON env var
+    if creds_json:
+        try:
+            credentials_info = json.loads(creds_json)
+        except json.JSONDecodeError:
+            try:
+                import base64
+                decoded = base64.b64decode(creds_json, validate=True).decode("utf-8")
+                credentials_info = json.loads(decoded.strip())
+            except Exception:
+                pass
+
+    if credentials_info is None:
+        _stderr("[warn] GCS credentials not parseable; falling back to local files")
+        return None
+
     try:
-        return GCSStorage(bucket_name=bucket, credentials_json=creds_json or None)
+        return GCSStorage(bucket, credentials_info)
     except Exception as exc:
         _stderr(f"[warn] GCS init failed: {exc}")
         return None
@@ -573,20 +600,19 @@ def main() -> None:
     _stderr(f"[info] Generated {payload['trend_count']} trends")
 
     # Write output
-    output_json = json.dumps(payload, indent=2, default=str)
-
     if storage and not args.dry_run and not args.local_output:
         _stderr(f"[info] Writing {TRENDS_BLOB} to GCS...")
         try:
-            storage.upload_blob(TRENDS_BLOB, output_json.encode("utf-8"), content_type="application/json")
+            _save_gcs_json(storage, TRENDS_BLOB, payload)
             _stderr("[info] GCS write complete")
         except Exception as exc:
             _stderr(f"[error] GCS write failed: {exc}; writing locally")
-            TRENDS_LOCAL_PATH.write_text(output_json, encoding="utf-8")
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            TRENDS_LOCAL_PATH.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     else:
         _stderr(f"[info] Writing {TRENDS_LOCAL_PATH}...")
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        TRENDS_LOCAL_PATH.write_text(output_json, encoding="utf-8")
+        TRENDS_LOCAL_PATH.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
     _stderr(f"[done] trend_count={payload['trend_count']}")
 
