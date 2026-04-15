@@ -41,8 +41,25 @@ TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini"
-COSINE_SIMILARITY_THRESHOLD = 0.85
+COSINE_SIMILARITY_THRESHOLD = 0.90
 DEFAULT_MIN_MENTIONS = 5
+
+# Tags that are too generic to be a canonical trend label.
+# They can still exist in clusters but won't be chosen as the headline.
+_GENERIC_TAGS: frozenset = frozenset({
+    "regulation", "regulations", "regulatory", "policy", "policies",
+    "enforcement", "compliance", "law", "laws", "legal", "legislation",
+    "crypto", "cryptocurrency", "cryptocurrencies", "blockchain",
+    "finance", "financial", "banking", "bank", "markets", "market",
+    "news", "update", "updates", "report", "analysis",
+    "securities", "stocks", "stock", "investing", "investment", "investments",
+    "risk", "risks", "oversight", "governance", "government",
+    "federal", "congress", "senate", "house", "politics", "political",
+    "litigation", "lawsuit", "court", "courts", "legal action",
+    "economy", "economic", "economics", "fiscal", "monetary",
+    "technology", "tech", "innovation", "digital", "data",
+    "fraud", "scam", "crime", "criminal",
+})
 SPARKLINE_DAYS = 30
 GROWTH_WINDOW_DAYS = 30
 GROWTH_BASELINE_DAYS = 60  # the 30 days before the growth window
@@ -394,8 +411,15 @@ def build_trends(
 
     trends = []
     for cluster in clusters:
-        # Canonical tag = most-mentioned tag in cluster
-        canonical = max(cluster, key=lambda t: qualifying_tags.get(t, 0))
+        # Canonical tag = most specific non-generic tag, falling back to most-mentioned.
+        # Specificity score: not in blocklist (+10), word count bonus, mention count tiebreak.
+        def _specificity(tag: str) -> tuple:
+            not_generic = tag not in _GENERIC_TAGS
+            words = len(tag.split())
+            mentions = qualifying_tags.get(tag, 0)
+            return (not_generic, words, mentions)
+
+        canonical = max(cluster, key=_specificity)
 
         # Aggregate all occurrences across cluster
         all_occurrences: List[Dict[str, Any]] = []
