@@ -40,8 +40,8 @@ TRENDS_BLOB = "trends_daily.json"
 TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 
 EMBEDDING_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-4o-mini"
-CHAT_MODEL_FALLBACKS = ["gpt-4o", "gpt-3.5-turbo"]
+CHAT_MODEL = "gpt-4o"
+CHAT_MODEL_FALLBACKS = ["gpt-4o-mini", "gpt-3.5-turbo"]
 COSINE_SIMILARITY_THRESHOLD = 0.90
 DEFAULT_MIN_MENTIONS = 5
 
