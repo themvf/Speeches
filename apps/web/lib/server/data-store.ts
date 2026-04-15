@@ -12,7 +12,9 @@ import {
   type EnrichmentEntry,
   type EnrichmentStatePayload,
   type NewsConnectorSettingsPayload,
-  type RuleSummariesPayload
+  type RuleSummariesPayload,
+  type TrendItem,
+  type TrendsPayload
 } from "@/lib/server/types";
 
 const SEC_SPEECHES_GCS_BLOB = "all_speeches.json";
@@ -21,6 +23,7 @@ const CUSTOM_DOCS_BLOB = "custom_documents.json";
 const ENRICHMENT_BLOB = "document_enrichment_state.json";
 const RULE_SUMMARIES_BLOB = "rule_summaries.json";
 const SETTINGS_BLOB = "news_connector_settings.json";
+const TRENDS_BLOB = "trends_daily.json";
 
 const CACHE_TTL_MS = 15_000;
 
@@ -891,4 +894,60 @@ export function parseComparableDate(value: string): number {
   const parsed = new Date(value);
   const ms = parsed.getTime();
   return Number.isNaN(ms) ? 0 : ms;
+}
+
+function normalizeTrendsPayload(payload: unknown): TrendsPayload {
+  if (!payload || typeof payload !== "object") {
+    return { version: 1, generated_at: "", trend_count: 0, trends: [] };
+  }
+  const src = payload as Record<string, unknown>;
+  const trendsRaw = Array.isArray(src.trends) ? src.trends : [];
+
+  const trends: TrendItem[] = trendsRaw
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const t = item as Record<string, unknown>;
+      const sparklineRaw = Array.isArray(t.sparkline) ? t.sparkline : [];
+      return {
+        id: normalizeString(t.id),
+        label: normalizeString(t.label),
+        canonical_tag: normalizeString(t.canonical_tag),
+        cluster_tags: Array.isArray(t.cluster_tags) ? t.cluster_tags.map((v) => normalizeString(v)).filter(Boolean) : [],
+        description: normalizeString(t.description),
+        total_mentions: Number.parseInt(String(t.total_mentions ?? "0"), 10) || 0,
+        recent_mentions: Number.parseInt(String(t.recent_mentions ?? "0"), 10) || 0,
+        growth_pct: Number.parseFloat(String(t.growth_pct ?? "0")) || 0,
+        first_seen: normalizeString(t.first_seen),
+        last_seen: normalizeString(t.last_seen),
+        sparkline: sparklineRaw
+          .filter((pt) => pt && typeof pt === "object")
+          .map((pt) => {
+            const p = pt as Record<string, unknown>;
+            return {
+              date: normalizeString(p.date),
+              count: Number.parseInt(String(p.count ?? "0"), 10) || 0
+            };
+          }),
+        top_doc_ids: Array.isArray(t.top_doc_ids) ? t.top_doc_ids.map((v) => normalizeString(v)).filter(Boolean) : [],
+        sources: Array.isArray(t.sources) ? t.sources.map((v) => normalizeString(v)).filter(Boolean) : []
+      };
+    })
+    .filter((t) => t.id);
+
+  return {
+    version: Number.parseInt(String(src.version ?? "1"), 10) || 1,
+    generated_at: normalizeString(src.generated_at),
+    trend_count: trends.length,
+    trends
+  };
+}
+
+export async function loadTrendsData(): Promise<TrendsPayload> {
+  return loadFromSource({
+    cacheKey: "trends_daily",
+    gcsBlobName: TRENDS_BLOB,
+    localFileName: TRENDS_BLOB,
+    normalize: normalizeTrendsPayload,
+    emptyFactory: () => ({ version: 1, generated_at: "", trend_count: 0, trends: [] })
+  });
 }

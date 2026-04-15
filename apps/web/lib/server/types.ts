@@ -331,6 +331,34 @@ export interface Neo4jStatusResponseData {
   missing_required_env: string[];
 }
 
+export interface TrendSparklinePoint {
+  date: string;
+  count: number;
+}
+
+export interface TrendItem {
+  id: string;
+  label: string;
+  canonical_tag: string;
+  cluster_tags: string[];
+  description: string;
+  total_mentions: number;
+  recent_mentions: number;
+  growth_pct: number;
+  first_seen: string;
+  last_seen: string;
+  sparkline: TrendSparklinePoint[];
+  top_doc_ids: string[];
+  sources: string[];
+}
+
+export interface TrendsPayload {
+  version: number;
+  generated_at: string;
+  trend_count: number;
+  trends: TrendItem[];
+}
+
 export interface Neo4jPathResponseData {
   projection_key: string;
   synced_node_count: number;
