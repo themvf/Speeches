@@ -12,8 +12,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import base64
-import binascii
 import json
 import math
 import os
@@ -24,12 +22,8 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-try:
-    import tomllib
-except ImportError:
-    tomllib = None
-
 from gcs_storage import GCSStorage
+import run_financial_news_pipeline as _core
 
 try:
     from openai import OpenAI
@@ -148,81 +142,11 @@ def _save_gcs_json(storage: GCSStorage, blob_name: str, payload: Any) -> None:
 
 
 def _build_gcs_storage() -> Optional[GCSStorage]:
-    """Build GCSStorage using the same credential-parsing logic as run_financial_news_pipeline.py."""
-    bucket = str(os.environ.get("GCS_BUCKET_NAME", "") or "").strip()
-    credentials_info: Optional[Dict[str, Any]] = None
-
-    raw_json = str(os.environ.get("GCS_CREDENTIALS_JSON", "") or "").strip()
-    if raw_json:
-        parse_errors: List[str] = []
-
-        def _try_parse_json_blob(blob_text: str) -> Dict[str, Any]:
-            parsed = json.loads(blob_text)
-            if isinstance(parsed, str):
-                parsed = json.loads(parsed)
-            if not isinstance(parsed, dict):
-                raise ValueError("Credentials payload is not a JSON object.")
-            return parsed
-
-        candidates = [raw_json]
-        if len(raw_json) >= 2 and raw_json[0] == raw_json[-1] and raw_json[0] in {"'", '"'}:
-            candidates.append(raw_json[1:-1].strip())
-
-        for candidate in candidates:
-            if not candidate:
-                continue
-            try:
-                credentials_info = _try_parse_json_blob(candidate)
-                break
-            except Exception as exc:
-                parse_errors.append(f"json:{exc}")
-
-        if credentials_info is None:
-            try:
-                decoded = base64.b64decode(raw_json, validate=True).decode("utf-8")
-                credentials_info = _try_parse_json_blob(decoded.strip())
-            except (binascii.Error, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-                parse_errors.append(f"base64:{exc}")
-
-        if credentials_info is None and tomllib is not None:
-            try:
-                toml_payload = tomllib.loads(raw_json)
-                if isinstance(toml_payload, dict):
-                    if isinstance(toml_payload.get("gcs"), dict):
-                        credentials_info = {k: v for k, v in toml_payload["gcs"].items() if k != "bucket_name"}
-                        if not bucket:
-                            bucket = str(toml_payload["gcs"].get("bucket_name", "") or "").strip()
-                    else:
-                        credentials_info = {k: v for k, v in toml_payload.items() if k != "bucket_name"}
-                        if not bucket:
-                            bucket = str(toml_payload.get("bucket_name", "") or "").strip()
-            except Exception as exc:
-                parse_errors.append(f"toml:{exc}")
-
-        if credentials_info is None:
-            _stderr(f"[warn] GCS credentials not parseable ({' | '.join(parse_errors[:3])}); falling back to local files")
-            return None
-    else:
-        creds_path = str(
-            os.environ.get("GCS_CREDENTIALS_PATH", "") or
-            os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "") or ""
-        ).strip()
-        if creds_path:
-            try:
-                credentials_info = json.loads(Path(creds_path).read_text(encoding="utf-8"))
-            except Exception as exc:
-                _stderr(f"[warn] GCS credentials file unreadable: {exc}")
-                return None
-
-    if not bucket or not isinstance(credentials_info, dict) or not credentials_info:
-        _stderr("[warn] GCS bucket or credentials not configured")
-        return None
-
-    try:
-        return GCSStorage(bucket, credentials_info)
-    except Exception as exc:
-        _stderr(f"[warn] GCS init failed: {exc}")
-        return None
+    """Build GCSStorage using the same credential-parsing logic as the other pipelines."""
+    storage, error = _core._get_gcs_storage({})
+    if storage is None:
+        _stderr(f"[warn] GCS not configured: {error}")
+    return storage
 
 
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
