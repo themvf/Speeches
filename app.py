@@ -7955,9 +7955,17 @@ elif page == "Extraction":
                 )
 
             existing_custom = {}
+            existing_trade_identity = {}
             for item in custom_docs:
                 m = item.get("metadata", {})
                 existing_custom[_url_match_key(m.get("url", ""))] = m
+                identity_key = (
+                    str(m.get("source_kind", "") or "").strip().lower(),
+                    re.sub(r"\s+", " ", str(m.get("title", "") or "").strip()).lower(),
+                    str(m.get("published_date") or m.get("date") or "").strip(),
+                )
+                if identity_key[0] and identity_key[1]:
+                    existing_trade_identity[identity_key] = m
 
             existing_speech_urls = {
                 _url_match_key(s.get("metadata", {}).get("url", ""))
@@ -11501,20 +11509,23 @@ elif page == "Extraction":
         "jdsupra_article": {
             "label": "JD Supra",
             "organization": "JD Supra",
-            "default_url": "https://www.jdsupra.com/legalnews/",
+            "default_url": "https://www.jdsupra.com/",
             "tags_csv": "jdsupra,legal-analysis,regulatory-commentary",
+            "default_search_query": "SEC OR FINRA OR CFTC OR Treasury OR DOJ OR Congress",
         },
         "investmentnews_article": {
             "label": "InvestmentNews",
             "organization": "InvestmentNews",
             "default_url": "https://www.investmentnews.com/",
             "tags_csv": "investmentnews,wealth-management,industry-news",
+            "default_search_query": "SEC OR FINRA OR CFTC OR Treasury OR DOJ OR Congress",
         },
         "citywire_article": {
             "label": "Citywire",
             "organization": "Citywire",
             "default_url": "https://citywire.com/us/news",
             "tags_csv": "citywire,asset-management,industry-news",
+            "default_search_query": "SEC OR FINRA OR CFTC OR Treasury OR DOJ OR Congress",
         },
     }
 
@@ -11534,6 +11545,16 @@ elif page == "Extraction":
         value=trade_default_url,
         key=trade_url_state_key,
     ).strip() or trade_default_url
+    trade_search_state_key = f"trade_media_search_query_{trade_source_key}"
+    trade_search_query = st.text_input(
+        "Trade Media Search Query",
+        value=str(trade_source_cfg.get("default_search_query", "") or ""),
+        key=trade_search_state_key,
+        help=(
+            "Optional. Used for Google News fallback when direct site feeds/listings are unavailable. "
+            "Defaults to a regulatory query so blocked sources still return results."
+        ),
+    ).strip()
 
     trade_col1, trade_col2 = st.columns(2)
     with trade_col1:
@@ -11578,6 +11599,7 @@ elif page == "Extraction":
                     base_url=trade_index_url,
                     max_pages=int(trade_max_pages),
                     include_rss=trade_include_rss,
+                    search_query=trade_search_query,
                 )
                 trade_debug_payload = getattr(trade_scraper, "last_discovery_debug", {})
                 if isinstance(trade_debug_payload, dict):
@@ -11594,9 +11616,16 @@ elif page == "Extraction":
             }
 
             for entry in trade_discovered:
-                key = _url_match_key(entry.get("url", ""))
+                key = _url_match_key(entry.get("source_url", "") or entry.get("url", ""))
                 status = "new"
                 existing_meta = existing_custom.get(key)
+                if not existing_meta:
+                    identity_key = (
+                        str(trade_source_key or "").strip().lower(),
+                        re.sub(r"\s+", " ", str(entry.get("title", "") or "").strip()).lower(),
+                        str(entry.get("date", "") or "").strip(),
+                    )
+                    existing_meta = existing_trade_identity.get(identity_key)
                 if existing_meta:
                     existing_date = str(
                         existing_meta.get("published_date")
@@ -11707,7 +11736,7 @@ elif page == "Extraction":
                         ).strip()
 
                         extracted = trade_scraper.extract_document(
-                            entry.get("url", ""),
+                            entry.get("source_url", "") or entry.get("url", ""),
                             fallback_title=entry.get("title", ""),
                             fallback_date=entry.get("date", ""),
                             fallback_description=entry.get("description", ""),

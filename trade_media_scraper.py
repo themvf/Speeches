@@ -8,6 +8,7 @@ an HTML listing fallback, then extracts full text from article pages.
 
 from __future__ import annotations
 
+import json
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -20,11 +21,14 @@ import requests
 from bs4 import BeautifulSoup
 
 
+TRADE_MEDIA_DEFAULT_SEARCH_QUERY = "SEC OR FINRA OR CFTC OR Treasury OR DOJ OR Congress"
+
+
 TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
     "jdsupra_article": {
         "label": "JD Supra",
         "organization": "JD Supra",
-        "default_url": "https://www.jdsupra.com/legalnews/",
+        "default_url": "https://www.jdsupra.com/",
         "tags_csv": "jdsupra,legal-analysis,regulatory-commentary",
         "rss_candidates": [
             "https://www.jdsupra.com/legalnews/rss-law-feeds.aspx",
@@ -32,6 +36,8 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
             "https://www.jdsupra.com/rss/",
         ],
         "article_path_keywords": ["legalnews"],
+        "search_domain": "jdsupra.com",
+        "default_search_query": TRADE_MEDIA_DEFAULT_SEARCH_QUERY,
     },
     "investmentnews_article": {
         "label": "InvestmentNews",
@@ -44,6 +50,8 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
             "https://www.investmentnews.com/rss.xml",
         ],
         "article_path_keywords": ["investmentnews"],
+        "search_domain": "investmentnews.com",
+        "default_search_query": TRADE_MEDIA_DEFAULT_SEARCH_QUERY,
     },
     "citywire_article": {
         "label": "Citywire",
@@ -56,6 +64,8 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
             "https://citywire.com/us/news/rss",
         ],
         "article_path_keywords": ["news", "article"],
+        "search_domain": "citywire.com",
+        "default_search_query": TRADE_MEDIA_DEFAULT_SEARCH_QUERY,
     },
 }
 
@@ -170,6 +180,17 @@ def _title_from_url(url: str, fallback: str = "Article") -> str:
     return " ".join(words[:18]).strip().title()
 
 
+def _strip_source_suffix(title: str, source_name: str) -> str:
+    raw_title = _normalize_space(title)
+    raw_source = _normalize_space(source_name)
+    if not raw_title or not raw_source:
+        return raw_title
+    suffix = f" - {raw_source}"
+    if raw_title.lower().endswith(suffix.lower()):
+        return raw_title[: -len(suffix)].strip()
+    return raw_title
+
+
 def _looks_like_article_url(url: str, source_url: str, path_keywords: List[str]) -> bool:
     parsed = urlparse(str(url or "").strip())
     if not parsed.scheme.startswith("http"):
@@ -218,6 +239,25 @@ def _looks_like_article_url(url: str, source_url: str, path_keywords: List[str])
     return len(segments[-1]) >= 12
 
 
+def _looks_like_access_challenge(html_text: str, final_url: str = "") -> bool:
+    blob = " ".join([str(final_url or ""), str(html_text or "")]).lower()
+    if not blob.strip():
+        return False
+    markers = (
+        "attention required! | cloudflare",
+        "cf-chl-",
+        "challenge-platform",
+        "__cf_bm",
+        "_incapsula_resource",
+        "incapsula incident id",
+        "request unsuccessful",
+        "access denied",
+        "please enable cookies",
+        "captcha",
+    )
+    return any(marker in blob for marker in markers)
+
+
 class TradeMediaScraper:
     def __init__(self, min_delay_seconds: float = 0.7):
         self.session = requests.Session()
@@ -255,6 +295,141 @@ class TradeMediaScraper:
         if not isinstance(cfg, dict):
             raise ValueError(f"Unsupported trade-media source: {source_key}")
         return cfg
+
+    def _decode_google_news_url(self, source_url: str) -> str:
+        target = str(source_url or "").strip()
+        if not target:
+            return ""
+
+        parsed = urlparse(target)
+        path = [part for part in parsed.path.split("/") if part]
+        if parsed.hostname != "news.google.com" or len(path) < 2 or path[-2] not in {"articles", "read"}:
+            return target
+
+        base64_id = path[-1]
+        try:
+            decode_page = self._fetch(f"https://news.google.com/articles/{base64_id}", timeout=45)
+            soup = BeautifulSoup(decode_page.text, "html.parser")
+            node = soup.select_one("c-wiz > div[jscontroller]")
+            signature = str(node.get("data-n-a-sg", "") or "").strip() if node else ""
+            timestamp = str(node.get("data-n-a-ts", "") or "").strip() if node else ""
+            if not signature or not timestamp:
+                return ""
+
+            payload = [[[
+                "Fbv4je",
+                (
+                    f'["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,'
+                    f'null,null,0,1],"X","X",1,[1,1,1],1,1,null,0,0,null,0],"{base64_id}",{timestamp},"{signature}"]'
+                ),
+            ]]]
+            response = self.session.post(
+                "https://news.google.com/_/DotsSplashUi/data/batchexecute",
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                    "User-Agent": str(self.session.headers.get("User-Agent", "") or ""),
+                    "Referer": "https://news.google.com/",
+                },
+                data={"f.req": json.dumps(payload)},
+                timeout=45,
+            )
+            response.raise_for_status()
+
+            body = str(response.text or "")
+            if "\n\n" not in body:
+                return ""
+            parsed_payload = json.loads(body.split("\n\n", 1)[1])[:-2]
+            if not parsed_payload:
+                return ""
+            decoded_url = json.loads(parsed_payload[0][2])[1]
+            return str(decoded_url or "").strip()
+        except Exception:
+            return ""
+
+    def _build_google_news_query(self, source_key: str, source_url: str, search_query: str = "") -> str:
+        cfg = self._source_config(source_key)
+        domain = str(cfg.get("search_domain", "") or "").strip() or _canonical_host(source_url)
+        base_query = f"site:{domain}" if domain else str(source_url or "").strip()
+        extra_query = _normalize_space(search_query) or _normalize_space(cfg.get("default_search_query", ""))
+        if extra_query:
+            return f"{base_query} {extra_query}".strip()
+        return base_query.strip()
+
+    def _discover_from_google_news_search(
+        self,
+        source_key: str,
+        source_label: str,
+        source_url: str,
+        search_query: str = "",
+        max_results: int = 50,
+    ) -> List[Dict[str, str]]:
+        query = self._build_google_news_query(source_key, source_url, search_query)
+        if not query:
+            return []
+
+        rss_url = (
+            "https://news.google.com/rss/search"
+            f"?q={requests.utils.quote(query)}&hl=en-US&gl=US&ceid=US:en"
+        )
+        response = self._fetch(rss_url, timeout=45)
+        root = ET.fromstring(str(response.text or "").lstrip("\ufeff").strip())
+
+        cfg = self._source_config(source_key)
+        search_domain = str(cfg.get("search_domain", "") or "").strip() or _canonical_host(source_url)
+        out: List[Dict[str, str]] = []
+        seen: set[str] = set()
+        for node in root.iter():
+            if _xml_local_name(node.tag).lower() != "item":
+                continue
+
+            google_link = _normalize_space(node.findtext("link", ""))
+            decoded_url = self._decode_google_news_url(google_link)
+            if decoded_url and search_domain and not _host_matches(decoded_url, search_domain):
+                continue
+
+            candidate_url = decoded_url or google_link
+            if not candidate_url:
+                continue
+
+            key = _url_key(candidate_url)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+
+            raw_title = _normalize_space(node.findtext("title", ""))
+            title = _strip_source_suffix(raw_title, source_label) or _title_from_url(
+                decoded_url or google_link,
+                fallback=f"{source_label} Article",
+            )
+            date_text = _date_to_display(node.findtext("pubDate", ""))
+            description_html = node.findtext("description", "")
+            description_text = _normalize_space(
+                BeautifulSoup(str(description_html or ""), "html.parser").get_text(" ", strip=True)
+            )
+            if description_text:
+                description_text = description_text.replace(source_label, "").strip(" -\u2013")
+                if description_text.lower() == title.lower():
+                    description_text = ""
+
+            source_name = _normalize_space(node.findtext("source", "")) or source_label
+            out.append(
+                {
+                    "url": candidate_url,
+                    "title": title,
+                    "date": date_text,
+                    "source_name": source_name,
+                    "source_key": source_key,
+                    "description": description_text,
+                    "source_format": "snippet",
+                    "discovery_source": "google_news_search",
+                    "google_news_url": google_link,
+                    "source_url": decoded_url,
+                    "search_query": query,
+                }
+            )
+            if len(out) >= max(1, int(max_results or 1)):
+                break
+        return out
 
     @staticmethod
     def _extract_feed_urls_from_html(soup: BeautifulSoup, base_url: str) -> List[str]:
@@ -429,6 +604,7 @@ class TradeMediaScraper:
         base_url: str = "",
         max_pages: int = 3,
         include_rss: bool = True,
+        search_query: str = "",
     ) -> List[Dict[str, str]]:
         cfg = self._source_config(source_key)
         source_label = str(cfg.get("label", "Trade Media")).strip() or "Trade Media"
@@ -446,6 +622,9 @@ class TradeMediaScraper:
             "feed_urls_attempted": [],
             "feed_urls_succeeded": [],
             "listing_used": False,
+            "google_news_query": "",
+            "google_news_used": False,
+            "google_news_count": 0,
             "discovered_count": 0,
         }
 
@@ -496,6 +675,28 @@ class TradeMediaScraper:
                 max_pages=max_pages,
             )
             for item in listing_docs:
+                key = _url_key(item.get("url", ""))
+                if not key:
+                    continue
+                existing = merged.get(key, {})
+                combined = dict(existing)
+                combined.update({k: v for k, v in item.items() if str(v or "").strip()})
+                merged[key] = combined
+
+        if not merged:
+            google_query = self._build_google_news_query(source_key, source_url, search_query)
+            debug["google_news_query"] = google_query
+            google_docs = self._discover_from_google_news_search(
+                source_key=source_key,
+                source_label=source_label,
+                source_url=source_url,
+                search_query=search_query,
+                max_results=max(10, min(100, int(max_pages or 1) * 25)),
+            )
+            if google_docs:
+                debug["google_news_used"] = True
+                debug["google_news_count"] = len(google_docs)
+            for item in google_docs:
                 key = _url_key(item.get("url", ""))
                 if not key:
                     continue
@@ -597,14 +798,33 @@ class TradeMediaScraper:
         }
 
     @staticmethod
-    def _fallback_text(title: str, description: str) -> str:
+    def _fallback_text(
+        title: str,
+        description: str,
+        source_name: str = "",
+        published_date: str = "",
+        source_url: str = "",
+    ) -> str:
         parts: List[str] = []
         clean_title = _normalize_space(title)
         clean_desc = _normalize_space(description)
+        clean_source = _normalize_space(source_name)
+        clean_date = _normalize_space(published_date)
+        clean_url = _normalize_space(source_url)
         if clean_title:
             parts.append(f"Title: {clean_title}")
         if clean_desc:
             parts.append(f"Summary: {clean_desc}")
+        if clean_source:
+            parts.append(f"Source: {clean_source}")
+        if clean_date:
+            parts.append(f"Published: {clean_date}")
+        if clean_url:
+            parts.append(f"URL: {clean_url}")
+        parts.append(
+            "Direct extraction from the source site was blocked or returned a protection page during ingest, "
+            "so this record preserves search discovery metadata only."
+        )
         return "\n".join(parts).strip()
 
     def extract_document(
@@ -619,7 +839,41 @@ class TradeMediaScraper:
         if not target:
             raise ValueError("URL is required")
 
-        fallback_text = self._fallback_text(fallback_title, fallback_description)
+        original_target = target
+        parsed_target = urlparse(target)
+        if parsed_target.hostname == "news.google.com":
+            decoded_target = self._decode_google_news_url(target)
+            if decoded_target:
+                target = decoded_target
+            else:
+                fallback_text = self._fallback_text(
+                    fallback_title,
+                    fallback_description,
+                    source_name=fallback_source_name,
+                    published_date=fallback_date,
+                    source_url=original_target,
+                )
+                return {
+                    "success": True,
+                    "data": {
+                        "url": original_target,
+                        "title": str(fallback_title or "").strip() or "Trade Media Article",
+                        "date": _date_to_display(fallback_date),
+                        "source_name": str(fallback_source_name or "").strip(),
+                        "description": str(fallback_description or "").strip(),
+                        "full_text": fallback_text,
+                        "word_count": len(fallback_text.split()),
+                        "source_format": "snippet",
+                    },
+                }
+
+        fallback_text = self._fallback_text(
+            fallback_title,
+            fallback_description,
+            source_name=fallback_source_name,
+            published_date=fallback_date,
+            source_url=target,
+        )
 
         try:
             response = self._fetch(target, timeout=60)
@@ -644,6 +898,23 @@ class TradeMediaScraper:
         final_url = str(getattr(response, "url", target) or target)
         content_type = str(response.headers.get("Content-Type", "") or "").lower()
         is_pdf = final_url.lower().endswith(".pdf") or "application/pdf" in content_type
+        if not is_pdf and _looks_like_access_challenge(response.text, final_url=final_url):
+            if not fallback_text:
+                raise RuntimeError("Source site returned an access challenge page.")
+            doc_date = _date_to_display(fallback_date)
+            return {
+                "success": True,
+                "data": {
+                    "url": target,
+                    "title": str(fallback_title or "").strip() or "Trade Media Article",
+                    "date": doc_date,
+                    "source_name": str(fallback_source_name or "").strip(),
+                    "description": str(fallback_description or "").strip(),
+                    "full_text": fallback_text,
+                    "word_count": len(fallback_text.split()),
+                    "source_format": "snippet",
+                },
+            }
 
         source_format = "html"
         doc_title = ""
