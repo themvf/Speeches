@@ -41,6 +41,7 @@ TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini"
+CHAT_MODEL_FALLBACKS = ["gpt-4o", "gpt-3.5-turbo"]
 COSINE_SIMILARITY_THRESHOLD = 0.90
 DEFAULT_MIN_MENTIONS = 5
 
@@ -273,17 +274,26 @@ def _generate_description(
         f"Write exactly 2 concise sentences describing what is happening with this trend in the "
         f"regulatory and financial landscape. Be specific and authoritative. Do not use hedging language."
     )
-    try:
-        resp = client.chat.completions.create(
-            model=CHAT_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=120,
-            temperature=0.3,
-        )
-        return resp.choices[0].message.content.strip()
-    except Exception as exc:
-        _stderr(f"[warn] description generation failed for '{trend_label}': {exc}")
-        return f"Active regulatory focus on {trend_label} across multiple document sources."
+    models_to_try = [CHAT_MODEL] + CHAT_MODEL_FALLBACKS
+    for model in models_to_try:
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=120,
+                temperature=0.3,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as exc:
+            err_str = str(exc)
+            # Only fall through to next model on access/not-found errors
+            if "model_not_found" in err_str or "access" in err_str.lower() or "not have access" in err_str:
+                _stderr(f"[warn] model {model} unavailable, trying next fallback")
+                continue
+            _stderr(f"[warn] description generation failed for '{trend_label}': {exc}")
+            return f"Active regulatory focus on {trend_label} across multiple document sources."
+    _stderr(f"[warn] all models failed for '{trend_label}'")
+    return f"Active regulatory focus on {trend_label} across multiple document sources."
 
 
 def _date_to_str(d: date) -> str:
