@@ -42,25 +42,193 @@ TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-5.1"
 CHAT_MODEL_FALLBACKS = ["gpt-4o", "gpt-4o-mini"]
-COSINE_SIMILARITY_THRESHOLD = 0.90
 DEFAULT_MIN_MENTIONS = 5
+TAXONOMY_MATCH_THRESHOLD = 0.28  # minimum cosine similarity to assign a tag to a category
 
-# Tags that are too generic to be a canonical trend label.
-# They can still exist in clusters but won't be chosen as the headline.
-_GENERIC_TAGS: frozenset = frozenset({
-    "regulation", "regulations", "regulatory", "policy", "policies",
-    "enforcement", "compliance", "law", "laws", "legal", "legislation",
-    "crypto", "cryptocurrency", "cryptocurrencies", "blockchain",
-    "finance", "financial", "banking", "bank", "markets", "market",
-    "news", "update", "updates", "report", "analysis",
-    "securities", "stocks", "stock", "investing", "investment", "investments",
-    "risk", "risks", "oversight", "governance", "government",
-    "federal", "congress", "senate", "house", "politics", "political",
-    "litigation", "lawsuit", "court", "courts", "legal action",
-    "economy", "economic", "economics", "fiscal", "monetary",
-    "technology", "tech", "innovation", "digital", "data",
-    "fraud", "scam", "crime", "criminal",
-})
+# Fixed taxonomy of top-level regulatory/financial trend categories.
+# Each description is keyword-rich so embeddings land in the right semantic neighborhood.
+TAXONOMY: List[Dict[str, str]] = [
+    {
+        "id": "crypto-digital-assets",
+        "label": "Crypto & Digital Assets",
+        "description": (
+            "cryptocurrency bitcoin ethereum blockchain DeFi decentralized finance NFT "
+            "non-fungible token stablecoin CBDC central bank digital currency digital asset "
+            "token offering crypto exchange virtual currency Web3 crypto lending digital securities"
+        ),
+    },
+    {
+        "id": "artificial-intelligence-technology",
+        "label": "Artificial Intelligence & Technology",
+        "description": (
+            "artificial intelligence AI machine learning large language model LLM fintech "
+            "algorithmic trading automated trading robo-advisor technology risk AI governance "
+            "predictive analytics natural language processing generative AI AI regulation"
+        ),
+    },
+    {
+        "id": "private-credit-alternative-lending",
+        "label": "Private Credit & Alternative Lending",
+        "description": (
+            "private credit direct lending leveraged loans CLO collateralized loan obligation "
+            "middle market lending business development company BDC private debt credit fund "
+            "alternative credit non-bank lending syndicated loans"
+        ),
+    },
+    {
+        "id": "securities-fraud-manipulation",
+        "label": "Securities Fraud & Manipulation",
+        "description": (
+            "insider trading Ponzi scheme market manipulation front running pump and dump "
+            "securities fraud accounting fraud misrepresentation material non-public information "
+            "MNPI stock fraud investment fraud spoofing layering wash trading"
+        ),
+    },
+    {
+        "id": "investment-advisers-asset-management",
+        "label": "Investment Advisers & Asset Management",
+        "description": (
+            "investment adviser hedge fund private equity registered investment adviser RIA "
+            "mutual fund registered fund asset management fiduciary duty advisory fees "
+            "conflicts of interest fund governance custody rule"
+        ),
+    },
+    {
+        "id": "market-structure-trading",
+        "label": "Market Structure & Trading",
+        "description": (
+            "exchange regulation dark pool order routing payment for order flow PFOF market maker "
+            "high frequency trading HFT equities market liquidity trading venue ATS alternative "
+            "trading system best execution national market system decimalization"
+        ),
+    },
+    {
+        "id": "esg-sustainable-finance",
+        "label": "ESG & Sustainable Finance",
+        "description": (
+            "ESG environmental social governance climate risk greenwashing sustainable investing "
+            "climate disclosure net zero carbon emissions climate change sustainability reporting "
+            "TCFD transition risk physical risk green finance"
+        ),
+    },
+    {
+        "id": "corporate-disclosure-reporting",
+        "label": "Corporate Disclosure & Reporting",
+        "description": (
+            "financial reporting GAAP earnings guidance material disclosure restatement 10-K 10-Q "
+            "annual report quarterly report financial statement audit transparency Regulation S-K "
+            "non-GAAP measures earnings management forward-looking statements"
+        ),
+    },
+    {
+        "id": "derivatives-structured-products",
+        "label": "Derivatives & Structured Products",
+        "description": (
+            "derivatives swaps futures options structured products securitization ABS MBS "
+            "collateralized debt obligation CDO interest rate swap credit default swap CDS "
+            "commodity derivatives swap dealer margin requirements"
+        ),
+    },
+    {
+        "id": "retail-investor-protection",
+        "label": "Retail Investor Protection",
+        "description": (
+            "retail investors Regulation Best Interest Reg BI suitability standard payment for "
+            "order flow investor protection investor education best execution retail brokerage "
+            "Robinhood gamification meme stocks main street investor"
+        ),
+    },
+    {
+        "id": "cybersecurity-operational-risk",
+        "label": "Cybersecurity & Operational Risk",
+        "description": (
+            "cybersecurity cyber incident ransomware data breach operational resilience third party "
+            "risk vendor risk incident response cyber attack information security DORA "
+            "cyber disclosure rules cloud risk outsourcing risk"
+        ),
+    },
+    {
+        "id": "capital-formation-ipos",
+        "label": "Capital Formation & IPOs",
+        "description": (
+            "IPO initial public offering SPAC special purpose acquisition company Reg A "
+            "Regulation CF crowdfunding capital raising blank check company going public "
+            "secondary offering direct listing de-SPAC transaction"
+        ),
+    },
+    {
+        "id": "fixed-income-rates",
+        "label": "Fixed Income & Interest Rates",
+        "description": (
+            "bonds treasuries interest rates fixed income credit spreads SOFR duration yield curve "
+            "municipal bonds corporate bonds government securities bond market rate hikes "
+            "Federal Reserve monetary policy quantitative tightening"
+        ),
+    },
+    {
+        "id": "aml-financial-crime",
+        "label": "AML & Financial Crime",
+        "description": (
+            "anti-money laundering AML know your customer KYC sanctions OFAC financial crime "
+            "FinCEN Bank Secrecy Act suspicious activity reporting SAR beneficial ownership "
+            "customer due diligence terrorist financing"
+        ),
+    },
+    {
+        "id": "broker-dealer-regulation",
+        "label": "Broker-Dealer Regulation",
+        "description": (
+            "broker dealer FINRA clearing settlement custody prime brokerage net capital rule "
+            "margin lending securities lending broker regulation registered representative "
+            "SIPC protection broker supervision"
+        ),
+    },
+    {
+        "id": "corporate-governance",
+        "label": "Corporate Governance",
+        "description": (
+            "board of directors corporate governance proxy voting shareholder activism "
+            "executive compensation say on pay director independence audit committee "
+            "board diversity dual class shares shareholder rights"
+        ),
+    },
+    {
+        "id": "global-cross-border-regulation",
+        "label": "Global & Cross-Border Regulation",
+        "description": (
+            "cross border regulation IOSCO foreign private issuer PCAOB Basel III international "
+            "regulatory cooperation extraterritorial jurisdiction foreign exchange EU regulation "
+            "MiFID EMIR global financial standards"
+        ),
+    },
+    {
+        "id": "banking-systemic-risk",
+        "label": "Banking & Systemic Risk",
+        "description": (
+            "bank regulation capital requirements systemic risk stress testing FDIC FSOC "
+            "too big to fail bank failure deposit insurance Federal Reserve banking supervision "
+            "Basel capital liquidity coverage ratio"
+        ),
+    },
+    {
+        "id": "sec-rulemaking-policy",
+        "label": "SEC Rulemaking & Policy",
+        "description": (
+            "SEC rulemaking proposed rule final rule comment period regulatory reform "
+            "Securities Exchange Act Investment Company Act Dodd-Frank rulemaking agenda "
+            "regulatory agenda SEC agenda administrative law"
+        ),
+    },
+    {
+        "id": "enforcement-actions",
+        "label": "Enforcement Actions & Penalties",
+        "description": (
+            "SEC enforcement action cease and desist disgorgement civil penalty settled charges "
+            "administrative proceeding DOJ enforcement CFTC enforcement regulatory penalty "
+            "whistleblower deferred prosecution agreement"
+        ),
+    },
+]
 SPARKLINE_DAYS = 30
 GROWTH_WINDOW_DAYS = 30
 GROWTH_BASELINE_DAYS = 60  # the 30 days before the growth window
@@ -199,44 +367,39 @@ def _embed_tags(client: Any, tags: List[str]) -> Dict[str, List[float]]:
     return embeddings
 
 
-def _cluster_tags(
+def _map_to_taxonomy(
     tag_counts: Dict[str, int],
-    embeddings: Dict[str, List[float]],
-    threshold: float,
-) -> List[List[str]]:
-    """Group tags into clusters using greedy cosine similarity.
+    tag_embeddings: Dict[str, List[float]],
+    taxonomy_embeddings: Dict[str, List[float]],
+    threshold: float = TAXONOMY_MATCH_THRESHOLD,
+) -> Dict[str, List[str]]:
+    """Assign each tag to its best-matching taxonomy category.
 
-    Returns a list of clusters, each a list of tag strings.
-    Clusters are sorted by total mentions descending.
+    Returns dict mapping taxonomy_id -> list of tags assigned to it.
+    Tags whose best match falls below threshold are dropped.
     """
-    # Sort tags by count descending so the most-mentioned tag becomes the centroid
-    sorted_tags = sorted(tag_counts.keys(), key=lambda t: -tag_counts[t])
-    clusters: List[List[str]] = []
-    assigned: set = set()
+    mapping: Dict[str, List[str]] = defaultdict(list)
 
-    for tag in sorted_tags:
-        if tag in assigned:
-            continue
-        if tag not in embeddings:
-            clusters.append([tag])
-            assigned.add(tag)
+    for tag in tag_counts:
+        tag_vec = tag_embeddings.get(tag)
+        if not tag_vec:
             continue
 
-        cluster = [tag]
-        assigned.add(tag)
-        vec_a = embeddings[tag]
+        best_id: Optional[str] = None
+        best_sim = threshold  # must beat this to qualify
 
-        for other in sorted_tags:
-            if other in assigned or other not in embeddings:
+        for tax_id, tax_vec in taxonomy_embeddings.items():
+            if not tax_vec:
                 continue
-            sim = _cosine_similarity(vec_a, embeddings[other])
-            if sim >= threshold:
-                cluster.append(other)
-                assigned.add(other)
+            sim = _cosine_similarity(tag_vec, tax_vec)
+            if sim > best_sim:
+                best_sim = sim
+                best_id = tax_id
 
-        clusters.append(cluster)
+        if best_id:
+            mapping[best_id].append(tag)
 
-    return clusters
+    return mapping
 
 
 def _tag_label(canonical_tag: str) -> str:
@@ -415,21 +578,36 @@ def build_trends(
         embeddings = _embed_tags(client, tag_list)
     _stderr(f"[info] Got embeddings for {len(embeddings)} tags")
 
-    # Cluster tags
-    clusters = _cluster_tags(qualifying_tags, embeddings, COSINE_SIMILARITY_THRESHOLD)
-    _stderr(f"[info] Formed {len(clusters)} clusters")
+    # Embed taxonomy category descriptions
+    _stderr(f"[info] Embedding {len(TAXONOMY)} taxonomy categories...")
+    if dry_run:
+        taxonomy_embeddings: Dict[str, List[float]] = {}
+    else:
+        tax_texts = [tax["description"] for tax in TAXONOMY]
+        tax_text_embeddings = _embed_tags(client, tax_texts)
+        taxonomy_embeddings = {
+            tax["id"]: tax_text_embeddings.get(tax["description"], [])
+            for tax in TAXONOMY
+        }
+
+    # Map tags to taxonomy categories
+    taxonomy_map = _map_to_taxonomy(qualifying_tags, embeddings, taxonomy_embeddings)
+    _stderr(f"[info] Tags mapped to {len(taxonomy_map)} taxonomy categories")
+
+    # In dry_run (no embeddings), fall back to assigning all tags to one bucket
+    if dry_run and not taxonomy_map:
+        taxonomy_map = {"sec-rulemaking-policy": list(qualifying_tags.keys())[:20]}
+
+    taxonomy_by_id = {tax["id"]: tax for tax in TAXONOMY}
 
     trends = []
-    for cluster in clusters:
-        # Canonical tag = most specific non-generic tag, falling back to most-mentioned.
-        # Specificity score: not in blocklist (+10), word count bonus, mention count tiebreak.
-        def _specificity(tag: str) -> tuple:
-            not_generic = tag not in _GENERIC_TAGS
-            words = len(tag.split())
-            mentions = qualifying_tags.get(tag, 0)
-            return (not_generic, words, mentions)
+    for tax_id, cluster in taxonomy_map.items():
+        tax = taxonomy_by_id.get(tax_id)
+        if not tax or not cluster:
+            continue
 
-        canonical = max(cluster, key=_specificity)
+        # Canonical tag = most-mentioned tag in this category
+        canonical = max(cluster, key=lambda t: qualifying_tags.get(t, 0))
 
         # Aggregate all occurrences across cluster
         all_occurrences: List[Dict[str, Any]] = []
@@ -492,8 +670,8 @@ def build_trends(
             if len(summaries_for_desc) >= 3:
                 break
 
-        label = _tag_label(canonical)
-        trend_id = _trend_id(canonical)
+        label = tax["label"]
+        trend_id = tax["id"]
 
         # Generate LLM description
         if dry_run:

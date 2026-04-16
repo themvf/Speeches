@@ -50,7 +50,7 @@ jobs:
       - name: Run Trend Aggregation
         run: |
           set -euo pipefail
-          args=(--min-mentions "${MIN_MENTIONS}")
+          args=(--min-mentions "${MIN_MENTIONS}" --limit 20)
           if [ "${DRY_RUN}" = "true" ]; then
             args+=(--dry-run)
           fi
