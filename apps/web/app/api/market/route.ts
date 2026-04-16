@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getTickerConfig } from "@/app/api/admin/ticker/route";
+import { getTickerConfig } from "@/lib/ticker-config";
 
 export const revalidate = 60;
 
