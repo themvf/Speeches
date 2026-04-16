@@ -14,6 +14,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "ok" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [input, setInput] = useState("");
   const [validating, setValidating] = useState(false);
@@ -70,14 +71,22 @@ export default function AdminPage() {
   async function handleSave() {
     setSaving(true);
     setSaveStatus("idle");
+    setSaveError(null);
     try {
       const res = await fetch("/api/admin/ticker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tickers),
       });
-      setSaveStatus(res.ok ? "ok" : "error");
-    } catch {
+      if (res.ok) {
+        setSaveStatus("ok");
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setSaveError(body?.error ?? `HTTP ${res.status}`);
+        setSaveStatus("error");
+      }
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Network error");
       setSaveStatus("error");
     } finally {
       setSaving(false);
@@ -211,7 +220,9 @@ export default function AdminPage() {
           <span className="text-sm text-[color:var(--ok)]">Saved — ticker bar will update within 60 s</span>
         )}
         {saveStatus === "error" && (
-          <span className="text-sm text-[color:var(--danger)]">Save failed — try again</span>
+          <span className="text-sm text-[color:var(--danger)]">
+            Save failed{saveError ? `: ${saveError}` : " — try again"}
+          </span>
         )}
       </div>
     </div>

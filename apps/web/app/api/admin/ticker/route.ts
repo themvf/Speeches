@@ -15,6 +15,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Expected an array" }, { status: 400 });
   }
   const tickers = (body as TickerEntry[]).slice(0, MAX_TICKERS);
-  await setTickerConfig(tickers);
+  try {
+    await setTickerConfig(tickers);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }
