@@ -40,6 +40,7 @@ TRENDS_BLOB = "trends_daily.json"
 TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 
 EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_MODEL_FALLBACKS = ["text-embedding-ada-002", "text-embedding-3-large"]
 CHAT_MODEL = "gpt-5.1"
 CHAT_MODEL_FALLBACKS = ["gpt-4o", "gpt-4o-mini"]
 DEFAULT_MIN_MENTIONS = 5
@@ -346,20 +347,36 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
 
 
 def _embed_tags(client: Any, tags: List[str]) -> Dict[str, List[float]]:
-    """Embed a list of tag strings using text-embedding-3-small.
+    """Embed a list of tag strings, trying models in order until one works.
 
     Returns a dict mapping tag -> embedding vector.
     """
     if not tags or client is None:
         return {}
 
-    # Batch in chunks of 100
+    models_to_try = [EMBEDDING_MODEL] + EMBEDDING_MODEL_FALLBACKS
+    active_model: Optional[str] = None
+
+    # Probe with a single item to find a working model
+    for model in models_to_try:
+        try:
+            client.embeddings.create(model=model, input=["probe"])
+            active_model = model
+            _stderr(f"[info] Using embedding model: {model}")
+            break
+        except Exception as exc:
+            _stderr(f"[warn] Embedding model {model} unavailable: {exc}")
+
+    if active_model is None:
+        _stderr("[error] No embedding model available — trends will be empty")
+        return {}
+
     embeddings: Dict[str, List[float]] = {}
     batch_size = 100
     for i in range(0, len(tags), batch_size):
         batch = tags[i : i + batch_size]
         try:
-            response = client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+            response = client.embeddings.create(model=active_model, input=batch)
             for j, item in enumerate(response.data):
                 embeddings[batch[j]] = item.embedding
         except Exception as exc:
