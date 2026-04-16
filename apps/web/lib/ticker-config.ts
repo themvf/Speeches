@@ -16,10 +16,21 @@ export const DEFAULT_TICKERS: TickerEntry[] = [
 ];
 
 function getRedis() {
-  return new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-  });
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL ??
+    process.env.KV_REST_API_URL;
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN ??
+    process.env.KV_REST_API_TOKEN;
+
+  if (!url || !token) {
+    throw new Error(
+      "Redis env vars not set. Expected UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN " +
+      "(or KV_REST_API_URL + KV_REST_API_TOKEN)."
+    );
+  }
+
+  return new Redis({ url, token });
 }
 
 export async function getTickerConfig(): Promise<TickerEntry[]> {
