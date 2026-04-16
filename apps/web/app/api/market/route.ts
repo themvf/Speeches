@@ -1,22 +1,9 @@
 import { NextResponse } from "next/server";
+import { getTickerConfig } from "@/app/api/admin/ticker/route";
 
 export const revalidate = 60;
 
-// ETFs are used for reliable free-tier support on Finnhub.
-// ^GSPC / ^DJI / ^IXIC / ^N225 / ^FTSE return null on many free accounts.
-const INDICES = [
-  { symbol: "SPY", name: "S&P 500" },
-  { symbol: "DIA", name: "Dow Jones" },
-  { symbol: "QQQ", name: "Nasdaq 100" },
-  { symbol: "EWJ", name: "Nikkei (EWJ)" },
-  { symbol: "EWU", name: "FTSE (EWU)" },
-];
-
-type FinnhubQuote = {
-  c: number | null;
-  d: number | null;
-  dp: number | null;
-};
+type FinnhubQuote = { c: number | null; d: number | null; dp: number | null };
 
 type QuoteResult = {
   symbol: string;
@@ -33,8 +20,10 @@ export async function GET() {
     return NextResponse.json({ error: "FINNHUB_API_KEY not set" }, { status: 500 });
   }
 
+  const indices = await getTickerConfig();
+
   const settled = await Promise.allSettled(
-    INDICES.map(async ({ symbol, name }) => {
+    indices.map(async ({ symbol, name }) => {
       const res = await fetch(
         `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`,
         { next: { revalidate: 60 } }
