@@ -2,18 +2,20 @@ import { NextResponse } from "next/server";
 
 export const revalidate = 60;
 
+// ETFs are used for reliable free-tier support on Finnhub.
+// ^GSPC / ^DJI / ^IXIC / ^N225 / ^FTSE return null on many free accounts.
 const INDICES = [
-  { symbol: "^GSPC", name: "S&P 500" },
-  { symbol: "^DJI", name: "Dow Jones" },
-  { symbol: "^IXIC", name: "Nasdaq" },
-  { symbol: "^N225", name: "Nikkei 225" },
-  { symbol: "^FTSE", name: "FTSE 100" },
+  { symbol: "SPY", name: "S&P 500" },
+  { symbol: "DIA", name: "Dow Jones" },
+  { symbol: "QQQ", name: "Nasdaq 100" },
+  { symbol: "EWJ", name: "Nikkei (EWJ)" },
+  { symbol: "EWU", name: "FTSE (EWU)" },
 ];
 
 type FinnhubQuote = {
-  c: number;
-  d: number;
-  dp: number;
+  c: number | null;
+  d: number | null;
+  dp: number | null;
 };
 
 export async function GET() {
@@ -22,26 +24,28 @@ export async function GET() {
     return NextResponse.json({ error: "FINNHUB_API_KEY not set" }, { status: 500 });
   }
 
-  try {
-    const results = await Promise.all(
-      INDICES.map(async ({ symbol, name }) => {
-        const res = await fetch(
-          `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`,
-          { next: { revalidate: 60 } }
-        );
-        const data: FinnhubQuote = await res.json();
-        return {
-          symbol,
-          name,
-          price: data.c,
-          change: data.d,
-          pct: data.dp,
-          up: data.d >= 0,
-        };
-      })
-    );
-    return NextResponse.json(results);
-  } catch {
-    return NextResponse.json({ error: "Failed to fetch market data" }, { status: 500 });
-  }
+  const settled = await Promise.allSettled(
+    INDICES.map(async ({ symbol, name }) => {
+      const res = await fetch(
+        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`,
+        { next: { revalidate: 60 } }
+      );
+      const data: FinnhubQuote = await res.json();
+      if (!data.c) throw new Error(`No price for ${symbol}`);
+      return {
+        symbol,
+        name,
+        price: data.c,
+        change: data.d ?? 0,
+        pct: data.dp ?? 0,
+        up: (data.d ?? 0) >= 0,
+      };
+    })
+  );
+
+  const results = settled
+    .filter((r) => r.status === "fulfilled")
+    .map((r) => (r as PromiseFulfilledResult<typeof results[0]>).value);
+
+  return NextResponse.json(results);
 }

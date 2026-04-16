@@ -32,10 +32,11 @@ export function TickerBar() {
     return () => clearInterval(id);
   }, []);
 
-  if (quotes.length === 0) return null;
+  const valid = quotes.filter((q) => q.price);
+  if (valid.length === 0) return null;
 
   // Duplicate items so the scroll loops seamlessly
-  const items = [...quotes, ...quotes];
+  const items = [...valid, ...valid];
 
   return (
     <div className="ticker-bar fixed bottom-0 left-0 right-0 z-40 overflow-hidden border-t border-[color:var(--line-soft)] bg-[color:rgba(4,11,20,0.9)] backdrop-blur-sm">
@@ -58,7 +59,7 @@ export function TickerBar() {
               >
                 <span className="font-semibold text-[color:var(--ink-faint)]">{q.name}</span>
                 <span className="font-mono font-bold text-[color:var(--ink)]">
-                  {q.price.toLocaleString("en-US", {
+                  {(q.price ?? 0).toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
@@ -68,8 +69,8 @@ export function TickerBar() {
                     q.up ? "text-[color:var(--ok)]" : "text-[color:var(--danger)]"
                   }`}
                 >
-                  {q.up ? "▲" : "▼"} {Math.abs(q.change).toFixed(2)} (
-                  {Math.abs(q.pct).toFixed(2)}%)
+                  {q.up ? "▲" : "▼"} {Math.abs(q.change ?? 0).toFixed(2)} (
+                  {Math.abs(q.pct ?? 0).toFixed(2)}%)
                 </span>
                 <span className="text-[color:var(--line-strong)]" aria-hidden>
                   ·
