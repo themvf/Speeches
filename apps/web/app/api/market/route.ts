@@ -18,6 +18,15 @@ type FinnhubQuote = {
   dp: number | null;
 };
 
+type QuoteResult = {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  pct: number;
+  up: boolean;
+};
+
 export async function GET() {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) {
@@ -45,7 +54,7 @@ export async function GET() {
 
   const results = settled
     .filter((r) => r.status === "fulfilled")
-    .map((r) => (r as PromiseFulfilledResult<typeof results[0]>).value);
+    .map((r) => (r as PromiseFulfilledResult<QuoteResult>).value);
 
   return NextResponse.json(results);
 }
