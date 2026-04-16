@@ -57,7 +57,10 @@ export function TickerBar() {
                 key={`${q.symbol}-${i}`}
                 className="flex items-center gap-1.5 text-[11px]"
               >
-                <span className="font-semibold text-[color:var(--ink-faint)]">{q.name}</span>
+                <span className="font-mono font-bold text-[color:var(--accent)]">{q.symbol}</span>
+                {q.name && q.name !== q.symbol && (
+                  <span className="text-[10px] text-[color:var(--ink-faint)]">{q.name}</span>
+                )}
                 <span className="font-mono font-bold text-[color:var(--ink)]">
                   {(q.price ?? 0).toLocaleString("en-US", {
                     minimumFractionDigits: 2,

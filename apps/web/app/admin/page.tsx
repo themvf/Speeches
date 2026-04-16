@@ -57,6 +57,11 @@ export default function AdminPage() {
     }
   }
 
+  function handleRename(symbol: string, name: string) {
+    setTickers((prev) => prev.map((t) => (t.symbol === symbol ? { ...t, name } : t)));
+    setSaveStatus("idle");
+  }
+
   function handleRemove(symbol: string) {
     setTickers((prev) => prev.filter((t) => t.symbol !== symbol));
     setSaveStatus("idle");
@@ -106,18 +111,22 @@ export default function AdminPage() {
             {tickers.map((t) => (
               <li
                 key={t.symbol}
-                className="flex items-center justify-between rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-3"
+                className="flex items-center gap-3 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-3"
               >
-                <div>
-                  <span className="font-mono text-sm font-bold text-[color:var(--ink)]">
-                    {t.symbol}
-                  </span>
-                  <span className="ml-2 text-sm text-[color:var(--ink-faint)]">{t.name}</span>
-                </div>
+                <span className="w-14 flex-shrink-0 font-mono text-sm font-bold text-[color:var(--accent)]">
+                  {t.symbol}
+                </span>
+                <input
+                  type="text"
+                  value={t.name}
+                  onChange={(e) => handleRename(t.symbol, e.target.value)}
+                  placeholder="Display name"
+                  className="form-control min-w-0 flex-1 px-2 py-1 text-sm"
+                />
                 <button
                   type="button"
                   onClick={() => handleRemove(t.symbol)}
-                  className="ml-4 rounded-lg border border-[color:rgba(255,107,127,0.4)] bg-[color:rgba(255,107,127,0.1)] px-3 py-1 text-xs font-semibold text-[color:var(--danger)] transition hover:bg-[color:rgba(255,107,127,0.2)]"
+                  className="flex-shrink-0 rounded-lg border border-[color:rgba(255,107,127,0.4)] bg-[color:rgba(255,107,127,0.1)] px-3 py-1 text-xs font-semibold text-[color:var(--danger)] transition hover:bg-[color:rgba(255,107,127,0.2)]"
                 >
                   Remove
                 </button>
