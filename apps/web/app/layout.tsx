@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 import { AppNav } from "@/components/app-nav";
+import { TickerBar } from "@/components/ticker-bar";
 import "./globals.css";
 
 const bodyFont = IBM_Plex_Sans({
@@ -29,7 +30,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         </a>
         <div className="min-h-screen">
           <AppNav />
-          <main id="main-content">{children}</main>
+          <main id="main-content" className="pb-8">{children}</main>
+          <TickerBar />
         </div>
       </body>
     </html>

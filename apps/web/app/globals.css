@@ -510,6 +510,23 @@ textarea:focus-visible {
   filter: brightness(1.08);
 }
 
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-bar .ticker-track {
+  animation: ticker-scroll 50s linear infinite;
+}
+
+.ticker-bar .ticker-track:hover {
+  animation-play-state: paused;
+}
+
 @keyframes float-up {
   from {
     opacity: 0;
