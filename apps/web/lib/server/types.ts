@@ -336,6 +336,15 @@ export interface TrendSparklinePoint {
   count: number;
 }
 
+export interface TrendDocItem {
+  id: string;
+  title: string;
+  date: string;
+  source_kind: string;
+  url: string;
+  summary: string;
+}
+
 export interface TrendItem {
   id: string;
   label: string;
@@ -349,6 +358,7 @@ export interface TrendItem {
   last_seen: string;
   sparkline: TrendSparklinePoint[];
   top_doc_ids: string[];
+  top_docs: TrendDocItem[];
   sources: string[];
 }
 

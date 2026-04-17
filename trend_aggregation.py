@@ -622,26 +622,47 @@ def build_trends(
             day_str = _date_to_str(day)
             sparkline.append({"date": day_str, "count": sparkline_map.get(day_str, 0)})
 
-        # Top doc_ids: pick up to 5 most recent docs
+        # Top docs: pick up to 10 most recent, with enriched metadata
         sorted_occs = sorted(all_occurrences, key=lambda o: o["date"], reverse=True)
         seen_ids: set = set()
-        top_doc_ids: List[str] = []
+        top_docs: List[Dict[str, Any]] = []
+        summaries_for_desc: List[str] = []
+
         for occ in sorted_occs:
             doc_id = occ["doc_id"]
-            if doc_id not in seen_ids:
-                seen_ids.add(doc_id)
-                top_doc_ids.append(doc_id)
-            if len(top_doc_ids) >= 5:
+            if doc_id in seen_ids:
+                continue
+            seen_ids.add(doc_id)
+
+            # Resolve title and URL from enrichment entry then doc metadata
+            entry = entries.get(doc_id, {})
+            doc_meta = doc_by_id.get(doc_id, {}).get("metadata", {})
+            title = (
+                entry.get("title", "")
+                or doc_meta.get("title", "")
+                or doc_meta.get("notice_title", "")
+                or doc_id
+            )
+            url = entry.get("url", "") or doc_meta.get("url", "") or doc_meta.get("document_url", "")
+            summary = occ.get("summary", "") or entry.get("enrichment", {}).get("summary", "")
+            sk = occ.get("source_kind", "") or doc_meta.get("source_kind", "")
+
+            top_docs.append({
+                "id": doc_id,
+                "title": title,
+                "date": _date_to_str(occ["date"]),
+                "source_kind": sk,
+                "url": url,
+                "summary": summary[:300] if summary else "",
+            })
+
+            if len(summaries_for_desc) < 3 and summary:
+                summaries_for_desc.append(summary)
+
+            if len(top_docs) >= 10:
                 break
 
-        # Collect summaries for description generation (most recent 3 docs with summaries)
-        summaries_for_desc: List[str] = []
-        for occ in sorted_occs:
-            s = occ.get("summary", "")
-            if s and len(summaries_for_desc) < 3:
-                summaries_for_desc.append(s)
-            if len(summaries_for_desc) >= 3:
-                break
+        top_doc_ids = [d["id"] for d in top_docs]
 
         label = tax["label"]
         trend_id = tax["id"]
@@ -665,6 +686,7 @@ def build_trends(
             "last_seen": _date_to_str(last_seen),
             "sparkline": sparkline,
             "top_doc_ids": top_doc_ids,
+            "top_docs": top_docs,
             "sources": sources,
         })
 

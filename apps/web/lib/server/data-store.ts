@@ -929,6 +929,19 @@ function normalizeTrendsPayload(payload: unknown): TrendsPayload {
             };
           }),
         top_doc_ids: Array.isArray(t.top_doc_ids) ? t.top_doc_ids.map((v) => normalizeString(v)).filter(Boolean) : [],
+        top_docs: Array.isArray(t.top_docs)
+          ? t.top_docs.map((d) => {
+              const doc = d as Record<string, unknown>;
+              return {
+                id: normalizeString(doc.id),
+                title: normalizeString(doc.title),
+                date: normalizeString(doc.date),
+                source_kind: normalizeString(doc.source_kind),
+                url: normalizeString(doc.url),
+                summary: normalizeString(doc.summary),
+              };
+            }).filter((d) => d.id)
+          : [],
         sources: Array.isArray(t.sources) ? t.sources.map((v) => normalizeString(v)).filter(Boolean) : []
       };
     })

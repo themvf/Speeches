@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SparklineChart } from "@/components/sparkline-chart";
-import type { TrendItem, TrendsPayload } from "@/lib/server/types";
+import type { TrendDocItem, TrendItem, TrendsPayload } from "@/lib/server/types";
 
 interface ApiEnvelope<T> {
   ok: boolean;
@@ -83,6 +83,36 @@ function SizeBadge({ count }: { count: number }) {
   );
 }
 
+function RelatedDoc({ doc }: { doc: TrendDocItem }) {
+  const inner = (
+    <div className="rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(9,21,34,0.6)] px-3 py-2 transition-colors hover:border-[color:var(--line)] hover:bg-[color:rgba(15,34,54,0.7)]">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium leading-snug text-[color:var(--ink)] line-clamp-2">
+          {doc.title || doc.id}
+        </p>
+        <span className="shrink-0 text-[10px] text-[color:var(--ink-faint)]">{fmtDate(doc.date)}</span>
+      </div>
+      {doc.summary && (
+        <p className="mt-1 text-[11px] leading-snug text-[color:var(--ink-faint)] line-clamp-2">
+          {doc.summary}
+        </p>
+      )}
+    </div>
+  );
+
+  return (
+    <li>
+      {doc.url ? (
+        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="block">
+          {inner}
+        </a>
+      ) : (
+        inner
+      )}
+    </li>
+  );
+}
+
 function TrendRow({ trend, expanded, onToggle }: { trend: TrendItem; expanded: boolean; onToggle: () => void }) {
   return (
     <div className="border-b border-[color:var(--line)] last:border-b-0">
@@ -149,6 +179,20 @@ function TrendRow({ trend, expanded, onToggle }: { trend: TrendItem; expanded: b
                     {tag}
                   </span>
                 ))}
+            </div>
+          )}
+
+          {/* Related documents */}
+          {trend.top_docs.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.07em] text-[color:var(--ink-faint)]">
+                Related Content
+              </p>
+              <ul className="space-y-1.5">
+                {trend.top_docs.map((doc) => (
+                  <RelatedDoc key={doc.id} doc={doc} />
+                ))}
+              </ul>
             </div>
           )}
 
