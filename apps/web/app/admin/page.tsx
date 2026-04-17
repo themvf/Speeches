@@ -29,6 +29,7 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "sec_tm_faq", label: "SEC TM FAQ" },
       { value: "sec_enforcement_litigation", label: "SEC Enforcement Litigation" },
       { value: "finra_regulatory_notice", label: "FINRA Regulatory Notice" },
+      { value: "finra_awc", label: "FINRA AWC (Disciplinary Actions)" },
       { value: "finra_key_topic", label: "FINRA Key Topic" },
       { value: "doj_usao_press_release", label: "DOJ USAO Press Release" },
       { value: "federal_reserve_speech_testimony", label: "Federal Reserve Speech / Testimony" },

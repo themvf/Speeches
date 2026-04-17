@@ -12,6 +12,7 @@ on:
           - sec_tm_faq
           - sec_enforcement_litigation
           - finra_regulatory_notice
+          - finra_awc
           - finra_key_topic
           - doj_usao_press_release
           - federal_reserve_speech_testimony

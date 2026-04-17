@@ -17,6 +17,7 @@ SEC_LIT_DEFAULT_URL = "https://www.sec.gov/enforcement-litigation/litigation-rel
 SEC_SPEECH_DEFAULT_URL = "https://www.sec.gov/newsroom/speeches-statements"
 FINRA_NOTICE_DEFAULT_URL = "https://www.finra.org/rules-guidance/notices"
 FINRA_TOPIC_DEFAULT_URL = "https://www.finra.org/rules-guidance/key-topics"
+FINRA_AWC_DEFAULT_URL = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
 DOJ_DEFAULT_URL = "https://www.justice.gov/usao/pressreleases"
 FED_DEFAULT_URL = "https://www.federalreserve.gov/newsevents/speeches-testimony.htm"
 CFTC_PRESS_RELEASE_DEFAULT_URL = "https://www.cftc.gov/PressRoom/PressReleases"
@@ -34,6 +35,7 @@ SUPPORTED_CONNECTORS = {
     "finra_regulatory_notice",
     "finra_comment_letter",
     "finra_key_topic",
+    "finra_awc",
     "doj_usao_press_release",
     "federal_reserve_speech_testimony",
     "cftc_press_release",
@@ -57,6 +59,8 @@ def _default_base_url(connector: str) -> str:
         return FINRA_NOTICE_DEFAULT_URL
     if connector == "finra_comment_letter":
         return ""
+    if connector == "finra_awc":
+        return FINRA_AWC_DEFAULT_URL
     if connector == "finra_key_topic":
         return FINRA_TOPIC_DEFAULT_URL
     if connector == "doj_usao_press_release":
@@ -217,6 +221,18 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector == "finra_awc":
+        existing_case_id = _normalize_space(existing_meta.get("case_id", ""))
+        incoming_case_id = _normalize_space(entry.get("case_id", ""))
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        if (
+            (incoming_case_id and existing_case_id and incoming_case_id != existing_case_id)
+            or (incoming_date and existing_date and incoming_date != existing_date)
+        ):
+            return "update_available"
+        return "existing"
+
     if connector == "finra_comment_letter":
         existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
         incoming_date = _normalize_space(entry.get("date", ""))
@@ -320,6 +336,13 @@ def _discover_connector(connector: str, base_url: str, max_pages: int, include_p
 
         scraper = FINRARegulatoryNoticeScraper()
         docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages, include_rss=include_rss)
+        return scraper, docs, {}
+
+    if connector == "finra_awc":
+        from finra_awc_scraper import FINRAAWCScraper
+
+        scraper = FINRAAWCScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
         return scraper, docs, {}
 
     if connector == "finra_comment_letter":
@@ -572,6 +595,55 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["effective_date"] = str(data.get("effective_date", "") or entry.get("effective_date", "")).strip()
         metadata["comment_deadline"] = str(data.get("comment_deadline", "") or entry.get("comment_deadline", "")).strip()
         metadata["pdf_url"] = str(data.get("pdf_url", "") or "").strip()
+        metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+        return record
+
+    if connector == "finra_awc":
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_case_id=entry.get("case_id", ""),
+            fallback_subject=entry.get("subject_text", ""),
+            fallback_case_summary=entry.get("case_summary", ""),
+            fallback_sanctions=entry.get("sanctions_text", ""),
+        )
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 30:
+            raise RuntimeError("Extracted AWC text appears too short.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        pdf_url = str(data.get("pdf_url", "") or entry.get("pdf_url", "")).strip()
+        source_ext = ".pdf" if pdf_url else ".html"
+        source_name = _safe_source_name(src_url, f"finra-awc-{idx}", source_ext)
+        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
+        case_id = str(data.get("case_id", "") or entry.get("case_id", "")).strip()
+        subject_text = str(data.get("subject_text", "") or entry.get("subject_text", "")).strip()
+        sanctions_text = str(data.get("sanctions_text", "") or entry.get("sanctions_text", "")).strip()
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="FINRA",
+            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            speaker="FINRA",
+            doc_date=doc_date,
+            doc_type="AWC",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=source_ext,
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="finra,awc,enforcement,disciplinary-action,acceptance-waiver-consent",
+            source_kind="finra_awc",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "finra_awc"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+        metadata["case_id"] = case_id
+        metadata["subject_text"] = subject_text
+        metadata["sanctions_text"] = sanctions_text
+        metadata["pdf_url"] = pdf_url
         metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
         return record
 

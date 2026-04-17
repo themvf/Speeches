@@ -30,6 +30,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   sec_speech: "SEC",
   sec_enforcement_litigation: "SEC Enforcement",
   finra_regulatory_notice: "FINRA",
+  finra_awc: "FINRA AWC",
   finra_comment_letter: "FINRA",
   doj_usao_press_release: "DOJ",
   cftc_press_release: "CFTC",
