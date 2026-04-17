@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+/* ─── Ticker types ─────────────────────────────────────────────────── */
 type TickerEntry = { symbol: string; name: string };
 type ValidationResult =
   | { valid: false; error: string }
@@ -9,6 +10,233 @@ type ValidationResult =
 
 const MAX = 10;
 
+/* ─── Workflow field types ─────────────────────────────────────────── */
+type FieldDef =
+  | { name: string; label: string; type: "text"; default?: string; placeholder?: string }
+  | { name: string; label: string; type: "number"; default?: string; placeholder?: string }
+  | { name: string; label: string; type: "select"; default?: string; options: { value: string; label: string }[] }
+  | { name: string; label: string; type: "boolean"; default?: "true" | "false" };
+
+/* ─── Workflow definitions ─────────────────────────────────────────── */
+const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
+  {
+    name: "connector",
+    label: "Connector",
+    type: "select",
+    default: "sec_enforcement_litigation",
+    options: [
+      { value: "sec_speech", label: "SEC Speech" },
+      { value: "sec_tm_faq", label: "SEC TM FAQ" },
+      { value: "sec_enforcement_litigation", label: "SEC Enforcement Litigation" },
+      { value: "finra_regulatory_notice", label: "FINRA Regulatory Notice" },
+      { value: "finra_key_topic", label: "FINRA Key Topic" },
+      { value: "doj_usao_press_release", label: "DOJ USAO Press Release" },
+      { value: "federal_reserve_speech_testimony", label: "Federal Reserve Speech / Testimony" },
+      { value: "cftc_press_release", label: "CFTC Press Release" },
+      { value: "cftc_public_statement_remark", label: "CFTC Public Statement / Remark" },
+      { value: "congress_crs_product", label: "Congress CRS Product" },
+    ],
+  },
+  {
+    name: "selection",
+    label: "Selection",
+    type: "select",
+    default: "new_or_updated",
+    options: [
+      { value: "new_or_updated", label: "New or Updated" },
+      { value: "all", label: "All (re-extract)" },
+    ],
+  },
+  { name: "extraction_limit", label: "Extraction limit", type: "number", default: "25" },
+  { name: "max_pages", label: "Listing pages to scan", type: "number", default: "5" },
+  { name: "exclude_terms", label: "Exclude terms", type: "text", placeholder: "Comma-separated phrases (DOJ only)" },
+  { name: "base_url", label: "Override index URL", type: "text", placeholder: "Optional" },
+  { name: "include_pdfs", label: "Include PDFs (SEC TM FAQ)", type: "boolean", default: "true" },
+  { name: "include_rss", label: "Use RSS supplement (FINRA)", type: "boolean", default: "true" },
+];
+
+const NEWS_INGEST_FIELDS: FieldDef[] = [
+  { name: "ingest_limit", label: "Max articles to ingest", type: "number", default: "10" },
+  { name: "lookback_days", label: "Lookback days override", type: "number", placeholder: "Leave blank for default" },
+  {
+    name: "selection",
+    label: "Selection",
+    type: "select",
+    default: "new_or_updated",
+    options: [
+      { value: "new_or_updated", label: "New or Updated" },
+      { value: "all", label: "All" },
+    ],
+  },
+];
+
+const NEWS_ENRICH_FIELDS: FieldDef[] = [
+  { name: "enrich_limit", label: "Max articles to enrich", type: "number", default: "25" },
+  {
+    name: "mode",
+    label: "Enrichment mode",
+    type: "select",
+    default: "only_missing_or_failed",
+    options: [
+      { value: "only_missing_or_failed", label: "Missing / Failed only" },
+      { value: "all", label: "All (re-enrich)" },
+    ],
+  },
+  { name: "source_kind", label: "Source kind", type: "text", default: "newsapi_article" },
+  { name: "model", label: "Model override", type: "text", placeholder: "e.g. gpt-4o (leave blank for default)" },
+  { name: "heuristic_only", label: "Skip OpenAI (heuristic only)", type: "boolean", default: "false" },
+];
+
+const TRENDS_FIELDS: FieldDef[] = [
+  { name: "min_mentions", label: "Min tag mentions", type: "number", default: "5" },
+  { name: "dry_run", label: "Dry run (skip OpenAI calls)", type: "boolean", default: "false" },
+];
+
+/* ─── WorkflowPanel component ──────────────────────────────────────── */
+function WorkflowPanel({
+  title,
+  description,
+  workflowFile,
+  fields,
+}: {
+  title: string;
+  description: string;
+  workflowFile: string;
+  fields: FieldDef[];
+}) {
+  const [values, setValues] = useState<Record<string, string>>(
+    Object.fromEntries(fields.map((f) => [f.name, f.default ?? ""]))
+  );
+  const [running, setRunning] = useState(false);
+  const [status, setStatus] = useState<"idle" | "ok" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  function setValue(name: string, val: string) {
+    setValues((prev) => ({ ...prev, [name]: val }));
+    setStatus("idle");
+  }
+
+  async function handleRun() {
+    setRunning(true);
+    setStatus("idle");
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflow: workflowFile, inputs: values }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setStatus("ok");
+      } else {
+        setError(data.error ?? `HTTP ${res.status}`);
+        setStatus("error");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+      setStatus("error");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const regularFields = fields.filter((f) => f.type !== "boolean");
+  const booleanFields = fields.filter((f) => f.type === "boolean");
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
+        {title}
+      </h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">{description}</p>
+
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        {/* Regular fields */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {regularFields.map((field) => (
+            <div key={field.name} className="flex flex-col gap-1">
+              <label className="text-xs text-[color:var(--ink-faint)]">{field.label}</label>
+              {field.type === "select" ? (
+                <select
+                  value={values[field.name]}
+                  onChange={(e) => setValue(field.name, e.target.value)}
+                  className="form-control px-2 py-1.5 text-sm"
+                >
+                  {field.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={field.type === "number" ? "number" : "text"}
+                  value={values[field.name]}
+                  onChange={(e) => setValue(field.name, e.target.value)}
+                  placeholder={"placeholder" in field ? field.placeholder : undefined}
+                  className="form-control px-2 py-1.5 text-sm"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Boolean toggles */}
+        {booleanFields.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-5">
+            {booleanFields.map((field) => (
+              <label key={field.name} className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={values[field.name] === "true"}
+                  onChange={(e) => setValue(field.name, e.target.checked ? "true" : "false")}
+                  className="h-4 w-4 rounded accent-[color:var(--accent)]"
+                />
+                <span className="text-xs text-[color:var(--ink-faint)]">{field.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {/* Run button + status */}
+        <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-[color:var(--line)] pt-4">
+          <button
+            type="button"
+            onClick={handleRun}
+            disabled={running}
+            className="btn-solid rounded-xl px-5 py-2 text-sm font-semibold disabled:opacity-40"
+          >
+            {running ? "Dispatching…" : "Run Workflow"}
+          </button>
+          {status === "ok" && (
+            <span className="text-sm text-[color:var(--ok)]">
+              Dispatched — check GitHub Actions for progress
+            </span>
+          )}
+          {status === "error" && (
+            <span className="text-sm text-[color:var(--danger)]">
+              Failed{error ? `: ${error}` : " — try again"}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─── Divider ──────────────────────────────────────────────────────── */
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="mb-8 flex items-center gap-3">
+      <div className="h-px flex-1 bg-[color:var(--line)]" />
+      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">{label}</span>
+      <div className="h-px flex-1 bg-[color:var(--line)]" />
+    </div>
+  );
+}
+
+/* ─── Main page ────────────────────────────────────────────────────── */
 export default function AdminPage() {
   const [tickers, setTickers] = useState<TickerEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,13 +322,13 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-12">
-      <p className="mb-1 text-xs font-bold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-        Admin
-      </p>
-      <h1 className="mb-8 text-2xl font-bold text-[color:var(--ink)]">Ticker Bar Configuration</h1>
+    <div className="mx-auto max-w-3xl px-4 py-12">
+      <p className="mb-1 text-xs font-bold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Admin</p>
+      <h1 className="mb-10 text-2xl font-bold text-[color:var(--ink)]">Pipeline Controls</h1>
 
-      {/* Current tickers */}
+      {/* ── Ticker bar ─────────────────────────────────────────────── */}
+      <SectionDivider label="Ticker Bar" />
+
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
@@ -145,7 +373,6 @@ export default function AdminPage() {
         )}
       </section>
 
-      {/* Add ticker */}
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
           Add Ticker
@@ -178,7 +405,6 @@ export default function AdminPage() {
           <p className="mt-2 text-xs text-[color:var(--warn)]">Maximum of {MAX} tickers reached.</p>
         )}
 
-        {/* Validation result */}
         {preview && (
           <div
             className={`mt-3 rounded-xl border px-4 py-3 text-sm ${
@@ -189,7 +415,7 @@ export default function AdminPage() {
           >
             {preview.valid ? (
               <span>
-                <strong>{preview.symbol}</strong> — {preview.name} &nbsp;
+                <strong>{preview.symbol}</strong> — {preview.name}&nbsp;
                 <span className="font-mono">
                   ${preview.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
@@ -206,8 +432,7 @@ export default function AdminPage() {
         )}
       </section>
 
-      {/* Save */}
-      <div className="flex items-center gap-4">
+      <div className="mb-12 flex items-center gap-4">
         <button
           type="button"
           onClick={handleSave}
@@ -225,6 +450,37 @@ export default function AdminPage() {
           </span>
         )}
       </div>
+
+      {/* ── Workflows ──────────────────────────────────────────────── */}
+      <SectionDivider label="GitHub Actions" />
+
+      <WorkflowPanel
+        title="Policy Extraction"
+        description="Crawl a regulatory source and extract new or updated documents into GCS."
+        workflowFile="policy-extraction.yml"
+        fields={POLICY_EXTRACTION_FIELDS}
+      />
+
+      <WorkflowPanel
+        title="Financial News Ingest"
+        description="Fetch new financial news articles from NewsAPI and save them to GCS."
+        workflowFile="financial-news-ingest.yml"
+        fields={NEWS_INGEST_FIELDS}
+      />
+
+      <WorkflowPanel
+        title="Financial News Enrich"
+        description="Run OpenAI enrichment on ingested news articles (tags, summary, stance)."
+        workflowFile="financial-news-enrich.yml"
+        fields={NEWS_ENRICH_FIELDS}
+      />
+
+      <WorkflowPanel
+        title="Trends Aggregation"
+        description="Recompute the daily trends report from all enriched documents and save to GCS."
+        workflowFile="trends-daily.yml"
+        fields={TRENDS_FIELDS}
+      />
     </div>
   );
 }
