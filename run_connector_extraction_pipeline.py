@@ -17,7 +17,7 @@ SEC_LIT_DEFAULT_URL = "https://www.sec.gov/enforcement-litigation/litigation-rel
 SEC_SPEECH_DEFAULT_URL = "https://www.sec.gov/newsroom/speeches-statements"
 FINRA_NOTICE_DEFAULT_URL = "https://www.finra.org/rules-guidance/notices"
 FINRA_TOPIC_DEFAULT_URL = "https://www.finra.org/rules-guidance/key-topics"
-FINRA_AWC_DEFAULT_URL = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
+FINRA_AWC_DEFAULT_URL = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions?field_fda_document_type_tax=AWC"
 DOJ_DEFAULT_URL = "https://www.justice.gov/usao/pressreleases"
 FED_DEFAULT_URL = "https://www.federalreserve.gov/newsevents/speeches-testimony.htm"
 CFTC_PRESS_RELEASE_DEFAULT_URL = "https://www.cftc.gov/PressRoom/PressReleases"
