@@ -2,11 +2,9 @@
 """
 FINRA AWC (Acceptance, Waiver & Consent) scraper.
 
-Discovers AWC enforcement documents from FINRA's public disciplinary actions
-search API (EFTS) and extracts full text from the associated PDF documents.
-
-Discovery:  FINRA EFTS JSON API — returns structured metadata per AWC
-Extraction: Download PDF from FINRA CDN, parse text with pypdf
+Discovery:  Scrapes FINRA's public disciplinary actions listing pages (HTML),
+            collecting PDF links for AWC documents.
+Extraction: Downloads each AWC PDF from FINRA's CDN and parses text via pypdf.
 """
 
 from __future__ import annotations
@@ -14,24 +12,20 @@ from __future__ import annotations
 import io
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
+from bs4 import BeautifulSoup
 
 
-# FINRA EFTS (Enterprise Full-Text Search) disciplinary actions API
-FINRA_AWC_API_URL = "https://efts.finra.org/EFTS/v2/broker-dealer/disciplinary-actions"
+FINRA_AWC_INDEX_URL = (
+    "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
+)
 
-# Human-readable landing page (used as base_url sentinel / default)
-FINRA_AWC_INDEX_URL = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
-
-# Base URL for FINRA-hosted PDFs
-FINRA_PDF_CDN = "https://www.finra.org/sites/default/files"
-
-DEFAULT_LOOKBACK_DAYS = 90
-API_PAGE_SIZE = 20  # FINRA API practical maximum per page
+# PDF CDN base — individual AWC docs live here
+FINRA_PDF_CDN = "https://www.finra.org"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -55,7 +49,16 @@ def _parse_date(value: Any) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
         return None
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%B %d, %Y", "%b %d, %Y"):
+    text = (
+        text.replace("Jan.", "Jan").replace("Feb.", "Feb").replace("Mar.", "Mar")
+        .replace("Apr.", "Apr").replace("Jun.", "Jun").replace("Jul.", "Jul")
+        .replace("Aug.", "Aug").replace("Sep.", "Sep").replace("Sept.", "Sep")
+        .replace("Oct.", "Oct").replace("Nov.", "Nov").replace("Dec.", "Dec")
+    )
+    for fmt in (
+        "%B %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%Y-%m-%d",
+        "%B %Y", "%b %Y",
+    ):
         try:
             return datetime.strptime(text, fmt)
         except ValueError:
@@ -76,6 +79,19 @@ def _url_key(url: str) -> str:
     return f"{(p.scheme or 'https').lower()}://{p.netloc.lower()}{p.path.rstrip('/') or '/'}"
 
 
+def _is_awc_url(href: str, text: str) -> bool:
+    """Heuristic: does this link look like an AWC document?"""
+    h = href.lower()
+    t = text.lower()
+    # Explicit AWC signals in URL or link text
+    if "awc" in h or "awc" in t:
+        return True
+    # FINRA PDF document paths commonly contain fda_documents or disciplinary
+    if "fda_documents" in h or "disciplinary" in h:
+        return True
+    return False
+
+
 def _pdf_text(content: bytes) -> str:
     """Extract all text pages from a PDF byte blob via pypdf."""
     try:
@@ -92,60 +108,20 @@ def _pdf_text(content: bytes) -> str:
     return "\n\n".join(pages)
 
 
-def _build_pdf_url(source: Dict[str, Any]) -> str:
-    """
-    Attempt to reconstruct the AWC PDF URL from the EFTS API _source dict.
-    FINRA has changed its CDN structure over time, so we try several patterns.
-    """
-    # Direct URL fields
-    for key in ("Document URL", "document_url", "URL", "url", "PDF URL", "pdf_url"):
-        val = str(source.get(key, "") or "").strip()
-        if val:
-            return val if val.startswith("http") else f"https://www.finra.org{val}"
-
-    # AWS S3 filename + year
-    s3_name = str(source.get("AWS S3 Filename", "") or source.get("S3Filename", "") or "").strip()
-    if s3_name:
-        issue = str(source.get("Issue Date", "") or "").strip()
-        dt = _parse_date(issue)
-        year = str(dt.year) if dt else ""
-        if year:
-            return f"{FINRA_PDF_CDN}/{year}/{s3_name}"
-        return f"{FINRA_PDF_CDN}/{s3_name}"
-
-    # Nested Document object
-    doc = source.get("Document", {})
-    if isinstance(doc, dict):
-        fp = str(doc.get("FilePath", "") or doc.get("FileName", "") or "").strip()
-        if fp:
-            return f"https://www.finra.org/{fp.lstrip('/')}"
-
-    return ""
-
-
-def _sanctions_summary(sanctions: Any) -> str:
-    if not isinstance(sanctions, list):
-        return ""
-    parts: List[str] = []
-    for s in sanctions:
-        if isinstance(s, dict):
-            kind = str(s.get("Sanction Type", "") or s.get("type", "") or "").strip()
-            amount = str(s.get("Fine Amount", "") or s.get("amount", "") or "").strip()
-            desc = str(s.get("Description", "") or s.get("description", "") or "").strip()
-            piece = kind
-            if amount:
-                piece += f": ${amount}" if not amount.startswith("$") else f": {amount}"
-            if desc:
-                piece += f" — {desc}"
-            if piece:
-                parts.append(piece)
-        elif isinstance(s, str) and s.strip():
-            parts.append(s.strip())
-    return "; ".join(parts)
+def _title_from_pdf_url(url: str, fallback: str = "") -> str:
+    """Derive a human-readable title from a PDF filename."""
+    raw = str(url or "").strip()
+    if not raw:
+        return fallback or "FINRA AWC"
+    filename = raw.rsplit("/", 1)[-1]
+    stem = re.sub(r"\.pdf$", "", filename, flags=re.IGNORECASE)
+    # e.g. "2026001234301" → keep as-is; "2026smith_awc" → pretty-print
+    pretty = re.sub(r"[_\-]+", " ", stem).strip().title()
+    return f"FINRA AWC — {pretty}" if pretty else (fallback or "FINRA AWC")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Scraper class
+# Scraper
 # ──────────────────────────────────────────────────────────────────────────────
 
 class FINRAAWCScraper:
@@ -157,16 +133,12 @@ class FINRAAWCScraper:
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
                 ),
-                "Accept": "application/json, text/plain, */*",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
-                "Origin": "https://www.finra.org",
-                "Referer": "https://www.finra.org/",
             }
         )
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
         self._last_request_ts = 0.0
-
-    # ── Internal HTTP ──────────────────────────────────────────────────────
 
     def _rate_limit(self) -> None:
         elapsed = time.time() - self._last_request_ts
@@ -174,161 +146,183 @@ class FINRAAWCScraper:
             time.sleep(self.min_delay_seconds - elapsed)
         self._last_request_ts = time.time()
 
-    def _get_json(self, url: str, params: Optional[Dict] = None, timeout: int = 45) -> Any:
+    def _fetch(self, url: str, timeout: int = 60) -> requests.Response:
         self._rate_limit()
-        resp = self.session.get(url, params=params, timeout=timeout, allow_redirects=True)
+        resp = self.session.get(url, timeout=timeout, allow_redirects=True)
         resp.raise_for_status()
-        return resp.json()
+        return resp
 
-    def _get_bytes(self, url: str, timeout: int = 120) -> bytes:
+    def _fetch_bytes(self, url: str, timeout: int = 120) -> bytes:
         self._rate_limit()
         resp = self.session.get(url, timeout=timeout, allow_redirects=True)
         resp.raise_for_status()
         return resp.content
+
+    @staticmethod
+    def _page_url(base: str, page: int) -> str:
+        if page == 0:
+            return base
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}page={page}"
 
     # ── Discovery ─────────────────────────────────────────────────────────
 
     def discover_documents(
         self,
         base_url: str = FINRA_AWC_INDEX_URL,
-        max_pages: int = 3,
-        lookback_days: int = DEFAULT_LOOKBACK_DAYS,
-        start_date: str = "",
-        end_date: str = "",
+        max_pages: int = 5,
+        **_kwargs: Any,  # absorbs lookback_days / start_date / end_date if passed
     ) -> List[Dict[str, Any]]:
         """
-        Query FINRA's EFTS API for recent AWC documents.
+        Scrape the FINRA disciplinary actions listing pages for AWC PDF links.
 
-        Args:
-            base_url:     Ignored if it's the human-facing page; API URL is used.
-            max_pages:    How many paginated API pages to fetch (20 docs each).
-            lookback_days: How far back to search when no explicit dates given.
-            start_date:   ISO date override (YYYY-MM-DD).
-            end_date:     ISO date override (YYYY-MM-DD).
+        The listing at finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions
+        is paginated HTML with Drupal views table rows. Each row contains a date and
+        a link to an individual AWC PDF stored on FINRA's CDN.
 
         Returns:
-            List of discovery dicts, sorted newest-first.
+            List of discovery dicts, newest first.
         """
-        now = datetime.now(timezone.utc)
-        if not end_date:
-            end_date = now.strftime("%Y-%m-%d")
-        if not start_date:
-            start_date = (now - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-
-        # Normalise: if caller passed the human-readable page, use the API URL
-        api_url = str(base_url or FINRA_AWC_INDEX_URL).strip()
-        if "rules-guidance" in api_url or "disciplinary-actions" in api_url and "efts" not in api_url:
-            api_url = FINRA_AWC_API_URL
-
+        index_url = str(base_url or FINRA_AWC_INDEX_URL).strip() or FINRA_AWC_INDEX_URL
         out: List[Dict[str, Any]] = []
         seen: set[str] = set()
 
         for page_num in range(max_pages):
-            skip = page_num * API_PAGE_SIZE
-            params = {
-                "q": "",
-                "dateRange": "custom",
-                "startDate": start_date,
-                "endDate": end_date,
-                "firms": "",
-                "individuals": "",
-                "skip": skip,
-                "limit": API_PAGE_SIZE,
-                "action": "AWC",
-            }
-
+            page_url = self._page_url(index_url, page_num)
             try:
-                data = self._get_json(api_url, params=params)
+                resp = self._fetch(page_url, timeout=45)
             except Exception as exc:
-                raise RuntimeError(f"FINRA AWC API request failed (page {page_num}): {exc}") from exc
+                if page_num == 0:
+                    raise RuntimeError(f"Failed to fetch FINRA AWC listing page: {exc}") from exc
+                break  # Subsequent pages are optional; stop gracefully
 
-            hits_block = data.get("hits", {}) if isinstance(data, dict) else {}
-            hits = hits_block.get("hits", []) if isinstance(hits_block, dict) else []
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup.find_all(["script", "style", "noscript"]):
+                tag.decompose()
 
-            if not hits:
-                break
+            found_on_page = 0
 
-            for hit in hits:
-                if not isinstance(hit, dict):
-                    continue
-                source = hit.get("_source", {})
-                if not isinstance(source, dict):
-                    continue
-
-                doc_id = _normalize_space(source.get("Document ID", "") or hit.get("_id", ""))
-                doc_type = _normalize_space(source.get("Document Type", "AWC"))
-                issue_date = _normalize_space(
-                    source.get("Issue Date", "") or source.get("Resolution Date", "")
+            # ── Strategy 1: Drupal views-table rows (same structure as regulatory notices) ──
+            rows = (
+                soup.select("table.views-table tbody tr")
+                or soup.select("div.view-content table tbody tr")
+            )
+            for row in rows:
+                date_cell = (
+                    row.select_one("td.views-field-field-core-official-dt")
+                    or row.select_one("td.views-field-field-fda-action-date")
+                    or row.select_one("td[class*='date']")
                 )
-
-                pdf_url = _build_pdf_url(source)
-
-                # Canonical URL: PDF if available, otherwise a fragment anchor
-                canonical_url = pdf_url
-                if not canonical_url and doc_id:
-                    canonical_url = f"{FINRA_AWC_INDEX_URL}#{doc_id}"
-                if not canonical_url:
+                title_cell = row.select_one("td a[href]") or row.select_one("a[href]")
+                if title_cell is None:
                     continue
 
-                key = _url_key(canonical_url)
+                href = str(title_cell.get("href", "") or "").strip()
+                link_text = _normalize_space(title_cell.get_text(" ", strip=True))
+
+                if not href:
+                    continue
+
+                # Only AWC entries (skip Complaints, Decisions, etc.)
+                if not _is_awc_url(href, link_text):
+                    row_text = _normalize_space(row.get_text(" ", strip=True)).lower()
+                    if "awc" not in row_text and "acceptance" not in row_text:
+                        continue
+
+                abs_url = urljoin(page_url, href)
+                key = _url_key(abs_url)
                 if key in seen:
                     continue
                 seen.add(key)
+                found_on_page += 1
 
-                # Build subject string from firms + individuals
-                firms = source.get("Firms", [])
-                individuals = source.get("Individuals", [])
-                subject_parts: List[str] = []
-                if isinstance(firms, list):
-                    subject_parts += [
-                        _normalize_space(f.get("Name", "") if isinstance(f, dict) else str(f))
-                        for f in firms
-                        if f
-                    ]
-                if isinstance(individuals, list):
-                    subject_parts += [
-                        _normalize_space(i.get("Name", "") if isinstance(i, dict) else str(i))
-                        for i in individuals
-                        if i
-                    ]
-                subject_text = "; ".join(s for s in subject_parts if s)
+                date_text = ""
+                if date_cell:
+                    time_el = date_cell.find("time")
+                    if time_el and time_el.get("datetime"):
+                        date_text = _date_display(time_el.get("datetime", ""))
+                    if not date_text:
+                        date_text = _date_display(date_cell.get_text(" ", strip=True))
 
-                case_summary = _normalize_space(source.get("Case Summary", ""))
-                sanctions_text = _sanctions_summary(source.get("Sanctions", []))
-                case_id = _normalize_space(
-                    source.get("Case ID", "") or source.get("Case Number", "") or doc_id
-                )
-
-                title = (
-                    f"FINRA AWC — {subject_text}" if subject_text else f"FINRA AWC {doc_id or case_id}"
-                )
+                is_pdf = abs_url.lower().endswith(".pdf")
+                title = link_text or _title_from_pdf_url(abs_url if is_pdf else "")
 
                 out.append(
                     {
-                        "url": canonical_url,
-                        "pdf_url": pdf_url,
-                        "title": title,
-                        "date": _date_display(issue_date),
-                        "doc_id": doc_id,
-                        "case_id": case_id,
-                        "doc_type": doc_type,
-                        "subject_text": subject_text,
-                        "case_summary": case_summary,
-                        "sanctions_text": sanctions_text,
-                        "source_format": "pdf" if pdf_url else "html",
-                        "discovery_source": "api",
+                        "url": abs_url,
+                        "pdf_url": abs_url if is_pdf else "",
+                        "title": title or "FINRA AWC",
+                        "date": date_text,
+                        "case_id": "",
+                        "subject_text": "",
+                        "case_summary": "",
+                        "sanctions_text": "",
+                        "source_format": "pdf" if is_pdf else "html",
+                        "discovery_source": "html_table",
+                        "listing_page": page_url,
                     }
                 )
 
-            # Pagination check
-            total_block = hits_block.get("total", {})
-            if isinstance(total_block, dict):
-                total_count = int(total_block.get("value", 0) or 0)
-            else:
-                total_count = int(total_block or 0)
-            if skip + API_PAGE_SIZE >= total_count:
+            # ── Strategy 2: Scan ALL PDF anchors on the page for AWC documents ──
+            # (catches layouts that don't use a views-table)
+            if found_on_page == 0:
+                for anchor in soup.select("a[href]"):
+                    href = str(anchor.get("href", "") or "").strip()
+                    if not href.lower().endswith(".pdf"):
+                        continue
+                    link_text = _normalize_space(anchor.get_text(" ", strip=True))
+                    if not _is_awc_url(href, link_text):
+                        continue
+
+                    abs_url = urljoin(page_url, href)
+                    key = _url_key(abs_url)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    found_on_page += 1
+
+                    # Try to find a nearby date
+                    date_text = ""
+                    parent = anchor.parent
+                    for _ in range(4):
+                        if parent is None:
+                            break
+                        time_el = parent.find("time")
+                        if time_el:
+                            date_text = _date_display(
+                                time_el.get("datetime", "") or time_el.get_text()
+                            )
+                            break
+                        parent = parent.parent
+
+                    out.append(
+                        {
+                            "url": abs_url,
+                            "pdf_url": abs_url,
+                            "title": link_text or _title_from_pdf_url(abs_url),
+                            "date": date_text,
+                            "case_id": "",
+                            "subject_text": "",
+                            "case_summary": "",
+                            "sanctions_text": "",
+                            "source_format": "pdf",
+                            "discovery_source": "html_anchor_scan",
+                            "listing_page": page_url,
+                        }
+                    )
+
+            # If neither strategy found anything on page 0, the URL/structure is wrong
+            if page_num == 0 and found_on_page == 0:
+                raise RuntimeError(
+                    f"No AWC documents found on FINRA listing page: {page_url}\n"
+                    "The page structure may have changed. Check the URL and HTML selectors."
+                )
+
+            # If this page had no results, stop paginating
+            if found_on_page == 0:
                 break
 
+        # Sort newest-first by parsed date, fall back to list order
         out.sort(
             key=lambda x: _parse_date(x.get("date", "")) or datetime.min,
             reverse=True,
@@ -348,26 +342,46 @@ class FINRAAWCScraper:
         fallback_sanctions: str = "",
     ) -> Dict[str, Any]:
         """
-        Download a FINRA AWC PDF and extract its full text.
-
-        Returns:
-            {'success': True, 'data': {...}} or raises RuntimeError on failure.
+        Download a FINRA AWC PDF (or HTML page) and return its full text.
         """
         target = str(url or "").strip()
         if not target:
             raise ValueError("URL is required")
 
-        is_pdf = target.lower().endswith(".pdf") or "sites/default/files" in target.lower()
-
+        is_pdf = target.lower().endswith(".pdf") or "/fda_documents/" in target.lower()
         full_text = ""
-        if is_pdf:
-            content = self._get_bytes(target, timeout=120)
-            full_text = _pdf_text(content)
 
-        title = str(fallback_title or "").strip() or "FINRA AWC"
+        if is_pdf:
+            content = self._fetch_bytes(target, timeout=120)
+            full_text = _pdf_text(content)
+        else:
+            # Attempt HTML extraction as fallback (e.g. a detail page)
+            resp = self._fetch(target, timeout=60)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup.find_all(["script", "style", "noscript"]):
+                tag.decompose()
+            article = soup.find("article") or soup.find("main") or soup
+            full_text = _clean_multiline(article.get_text("\n"))
+
+            # Look for a PDF link on the detail page and prefer that
+            for anchor in soup.select("a[href]"):
+                href = str(anchor.get("href", "") or "").strip()
+                if href.lower().endswith(".pdf"):
+                    pdf_abs = urljoin(target, href)
+                    try:
+                        content = self._fetch_bytes(pdf_abs, timeout=120)
+                        pdf_extracted = _pdf_text(content)
+                        if pdf_extracted:
+                            full_text = pdf_extracted
+                            target = pdf_abs
+                            is_pdf = True
+                    except Exception:
+                        pass
+                    break
+
+        title = str(fallback_title or "").strip() or _title_from_pdf_url(target, "FINRA AWC")
         display_date = _date_display(fallback_date)
 
-        # Structured header block that enrichment can use even if PDF parsing fails
         header_parts = [
             "Document Type: AWC (Acceptance, Waiver & Consent)",
             f"Title: {title}",
@@ -379,7 +393,6 @@ class FINRAAWCScraper:
             f"Source URL: {target}",
         ]
         header = "\n".join(p for p in header_parts if p)
-
         combined = f"{header}\n\n--- Document Text ---\n\n{full_text}".strip() if full_text else header
 
         return {
