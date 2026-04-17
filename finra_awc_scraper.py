@@ -3,8 +3,9 @@
 FINRA AWC (Acceptance, Waiver & Consent) scraper.
 
 Discovery:  Scrapes FINRA's public disciplinary actions listing page (HTML),
-            parsing the Drupal views table for rich metadata (case ID, summary,
-            firms/individuals, date) plus the linked PDF URL per row.
+            finding PDF links per row.  Metadata (case ID, subject, doc type)
+            is parsed directly from the PDF filename, which FINRA encodes as:
+              {case_id} {subject_name} CRD {crd_number} {doc_type} {initials}.pdf
 Extraction: Downloads each AWC PDF and extracts text via pypdf.
 """
 
@@ -15,7 +16,7 @@ import re
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin, urlparse, urlencode, urlunparse, parse_qs, urlparse
+from urllib.parse import urljoin, urlparse, unquote
 
 import requests as std_requests
 from curl_cffi import requests as cffi_requests
@@ -75,6 +76,54 @@ def _url_key(url: str) -> str:
     return f"{(p.scheme or 'https').lower()}://{p.netloc.lower()}{p.path.rstrip('/') or '/'}"
 
 
+def _parse_pdf_filename(pdf_url: str) -> Dict[str, str]:
+    """
+    Extract metadata from a FINRA disciplinary-action PDF filename.
+
+    FINRA encodes filenames as:
+      {case_id} {subject_name} CRD {crd_number} {doc_type} {initials}.pdf
+
+    Examples:
+      2022076873501 Peter M. Rosten CRD 2973115 AWC vrp.pdf
+      2023077012601 Brentwood Capital Advisors LLC CRD 118712 AWC lp.pdf
+      2018056490315 Shadi T Barakat CRD 5031281 OHO Decision df.pdf
+
+    Returns a dict with keys: case_id, subject_text, crd_number, doc_type.
+    Returns {} if the filename does not match the expected pattern.
+    """
+    if not pdf_url:
+        return {}
+    filename = unquote(pdf_url.rstrip("/").split("/")[-1])
+    if not filename.lower().endswith(".pdf"):
+        return {}
+    stem = filename[:-4]
+
+    # Pattern: digits  subject  CRD  digits  doc_type_words  initials(lowercase)
+    m = re.match(
+        r"^(\d+)\s+"           # case_id
+        r"(.+?)\s+"            # subject (non-greedy, stops before CRD keyword)
+        r"CRD\s+"              # literal "CRD"
+        r"(\d+)\s+"            # crd_number
+        r"(.+?)\s+"            # doc_type (non-greedy; may be multi-word, e.g. "OHO Decision")
+        r"([a-z]{2,6})$",      # initials (always lowercase, e.g. "vrp", "lp", "jhjr")
+        stem,
+    )
+    if m:
+        return {
+            "case_id": m.group(1),
+            "subject_text": m.group(2).strip(),
+            "crd_number": m.group(3),
+            "doc_type": m.group(4).strip(),
+        }
+
+    # Fallback: at minimum extract case_id from the leading digits
+    m2 = re.match(r"^(\d+)", stem)
+    if m2:
+        return {"case_id": m2.group(1)}
+
+    return {}
+
+
 def _cell_text(row: Tag, *partial_classes: str) -> str:
     """Return stripped text from the first <td> whose class contains any of the partial strings."""
     for partial in partial_classes:
@@ -111,8 +160,6 @@ def _row_detail_url(row: Tag, page_url: str) -> str:
         if href:
             return urljoin(page_url, href)
     return ""
-
-
 
 
 def _pdf_text(content: bytes) -> str:
@@ -169,7 +216,6 @@ class FINRAAWCScraper:
             except Exception as exc:
                 last_exc = exc
                 if attempt == retries:
-                    # Final attempt: try plain requests
                     try:
                         return self._fetch_plain(url, timeout)
                     except Exception as plain_exc:
@@ -218,14 +264,11 @@ class FINRAAWCScraper:
         """
         Scrape the FINRA disciplinary actions listing page for AWC documents.
 
-        Each table row provides:
-          - Case ID (field_fda_case_id_txt column)
-          - Case Summary (text description of the violation)
-          - Firms / Individuals subject to the action
-          - Action Date (field_core_official_dt column)
-          - PDF link (direct download of the AWC document)
+        Metadata (case ID, firm/individual name, doc type) is parsed from the
+        PDF filename, which FINRA encodes with all key fields.  HTML table
+        columns are used only for the action date and case summary.
 
-        The AWC type filter is appended to the URL automatically.
+        Only rows whose doc_type resolves to "AWC" are returned.
         Returns a list of discovery dicts, newest first.
         """
         index_url = str(base_url or FINRA_AWC_INDEX_URL).strip()
@@ -261,41 +304,30 @@ class FINRAAWCScraper:
 
             found_on_page = 0
             for row in rows:
-                # ── Extract metadata columns ──────────────────────────────
-                # Case ID — Drupal class: views-field-field-fda-case-id-txt
-                case_id = _cell_text(row, "fda-case-id-txt", "fda-case-id", "case-id")
-
-                # Case Summary — Drupal class: views-field-field-fda-case-summary
-                case_summary = _cell_text(row, "fda-case-summary", "case-summary", "fda-summary")
-
-                # Firms / Individuals — combined entity column
-                subject_text = _cell_text(
-                    row,
-                    "fda-firms-individuals",
-                    "fda-entities",
-                    "fda-firms",
-                    "fda-individuals",
-                    "firms-individuals",
-                )
-
-                # Action date
-                date_raw = _cell_text(row, "field-core-official-dt", "official-dt", "action-date")
-
-                # Document type (should be AWC, but capture for completeness)
-                doc_type = _cell_text(
-                    row, "field-fda-document-type", "fda-document-type", "document-type"
-                ) or "AWC"
-
-                # ── Find the PDF URL ──────────────────────────────────────
+                # ── Find the PDF URL first (primary metadata source) ──────
                 pdf_url = _row_pdf_url(row, page_url)
 
-                # ── Find detail page link as fallback ─────────────────────
+                # ── Parse metadata from PDF filename ──────────────────────
+                file_meta = _parse_pdf_filename(pdf_url)
+
+                # Skip non-AWC documents (OHO Decisions, SC Orders, etc.)
+                doc_type_from_file = file_meta.get("doc_type", "")
+                if pdf_url and doc_type_from_file and doc_type_from_file.upper() != "AWC":
+                    continue
+
+                case_id = file_meta.get("case_id", "")
+                subject_text = file_meta.get("subject_text", "")
+
+                # ── HTML table: date and summary (these selectors work) ───
+                date_raw = _cell_text(row, "field-core-official-dt", "official-dt", "action-date")
+                case_summary = _cell_text(row, "fda-case-summary", "case-summary", "fda-summary")
+
+                # ── Detail page link ──────────────────────────────────────
                 detail_url = _row_detail_url(row, page_url)
 
                 # Primary URL for this document
                 canonical_url = pdf_url or detail_url
                 if not canonical_url:
-                    # Last-resort: any link in the row
                     a = row.find("a", href=True)
                     if a:
                         canonical_url = urljoin(page_url, str(a["href"]).strip())
@@ -308,7 +340,7 @@ class FINRAAWCScraper:
                 seen.add(key)
                 found_on_page += 1
 
-                # Build a descriptive title — source badge handles the "FINRA AWC" label
+                # Title: "Firm/Individual Name (CaseID)"
                 if subject_text and case_id:
                     title = f"{subject_text} ({case_id})"
                 elif subject_text:
@@ -328,9 +360,9 @@ class FINRAAWCScraper:
                         "case_id": case_id,
                         "subject_text": subject_text,
                         "case_summary": case_summary[:500] if case_summary else "",
-                        "doc_type": _normalize_space(doc_type),
+                        "doc_type": "AWC",
                         "source_format": "pdf" if pdf_url else "html",
-                        "discovery_source": "html_table",
+                        "discovery_source": "pdf_filename",
                         "listing_page": page_url,
                     }
                 )
@@ -340,7 +372,7 @@ class FINRAAWCScraper:
                 raise RuntimeError(
                     f"No AWC rows found on FINRA listing page: {page_url}\n"
                     "The page HTML structure may have changed. "
-                    "Inspect the page and update CSS selectors in finra_awc_scraper.py."
+                    "Inspect the page and update selectors in finra_awc_scraper.py."
                 )
 
             if found_on_page == 0:
@@ -412,7 +444,16 @@ class FINRAAWCScraper:
                 article = soup.find("article") or soup.find("main") or soup
                 full_text = _clean_multiline(article.get_text("\n"))
 
-        title = str(fallback_title or "").strip() or fallback_case_id or "AWC"
+        # If no fallback metadata, try parsing from the URL itself
+        if not fallback_case_id or not fallback_subject:
+            file_meta = _parse_pdf_filename(target)
+            fallback_case_id = fallback_case_id or file_meta.get("case_id", "")
+            fallback_subject = fallback_subject or file_meta.get("subject_text", "")
+
+        title = str(fallback_title or "").strip() or (
+            f"{fallback_subject} ({fallback_case_id})" if fallback_subject and fallback_case_id
+            else fallback_subject or fallback_case_id or "AWC"
+        )
         display_date = _date_display(fallback_date)
 
         header_parts = [
