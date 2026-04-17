@@ -98,7 +98,8 @@ def _parse_pdf_filename(pdf_url: str) -> Dict[str, str]:
         return {}
     stem = filename[:-4]
 
-    # Pattern: digits  subject  CRD  digits  doc_type_words  initials(lowercase)
+    # Space-separated format (most common):
+    #   {case_id} {subject} CRD {crd_number} {doc_type} {initials}
     m = re.match(
         r"^(\d+)\s+"           # case_id
         r"(.+?)\s+"            # subject (non-greedy, stops before CRD keyword)
@@ -114,6 +115,24 @@ def _parse_pdf_filename(pdf_url: str) -> Dict[str, str]:
             "subject_text": m.group(2).strip(),
             "crd_number": m.group(3),
             "doc_type": m.group(4).strip(),
+        }
+
+    # Underscore-separated format (used by some NAC decisions):
+    #   {case_id}_{subject}_{crd_number}_{doc_type}_{initials}
+    m = re.match(
+        r"^(\d+)_"             # case_id
+        r"(.+?)_"              # subject
+        r"(\d+)_"              # crd_number
+        r"(.+?)_"              # doc_type
+        r"([a-z]{2,6})$",      # initials
+        stem,
+    )
+    if m:
+        return {
+            "case_id": m.group(1),
+            "subject_text": m.group(2).replace("_", " ").strip(),
+            "crd_number": m.group(3),
+            "doc_type": m.group(4).replace("_", " ").strip(),
         }
 
     # Fallback: at minimum extract case_id from the leading digits
@@ -310,11 +329,6 @@ class FINRAAWCScraper:
                 # ── Parse metadata from PDF filename ──────────────────────
                 file_meta = _parse_pdf_filename(pdf_url)
 
-                # Skip non-AWC documents (OHO Decisions, SC Orders, etc.)
-                doc_type_from_file = file_meta.get("doc_type", "")
-                if pdf_url and doc_type_from_file and doc_type_from_file.upper() != "AWC":
-                    continue
-
                 case_id = file_meta.get("case_id", "")
                 subject_text = file_meta.get("subject_text", "")
 
@@ -360,7 +374,7 @@ class FINRAAWCScraper:
                         "case_id": case_id,
                         "subject_text": subject_text,
                         "case_summary": case_summary[:500] if case_summary else "",
-                        "doc_type": "AWC",
+                        "doc_type": file_meta.get("doc_type", "AWC"),
                         "source_format": "pdf" if pdf_url else "html",
                         "discovery_source": "pdf_filename",
                         "listing_page": page_url,
