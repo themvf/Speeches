@@ -22,12 +22,7 @@ from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup, Tag
 
 
-# Base listing URL — type filter restricts to AWC documents only
 FINRA_AWC_INDEX_URL = (
-    "https://www.finra.org/rules-guidance/oversight-enforcement/"
-    "finra-disciplinary-actions?field_fda_document_type_tax=AWC"
-)
-FINRA_AWC_BASE = (
     "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
 )
 

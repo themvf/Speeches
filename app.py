@@ -9386,7 +9386,7 @@ elif page == "Extraction":
         "Each AWC is a PDF document detailing disciplinary actions against firms and individuals."
     )
 
-    finra_awc_index_default = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions?field_fda_document_type_tax=AWC"
+    finra_awc_index_default = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
     finra_awc_index_url = st.text_input(
         "FINRA AWC Listing URL",
         value=finra_awc_index_default,
