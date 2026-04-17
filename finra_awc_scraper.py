@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
-import requests
+from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 
 
@@ -126,17 +126,8 @@ def _title_from_pdf_url(url: str, fallback: str = "") -> str:
 
 class FINRAAWCScraper:
     def __init__(self, min_delay_seconds: float = 1.0):
-        self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-                ),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-            }
-        )
+        # curl_cffi impersonates a real Chrome TLS fingerprint, bypassing Cloudflare
+        self.session = cffi_requests.Session(impersonate="chrome")
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
         self._last_request_ts = 0.0
 
