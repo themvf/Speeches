@@ -280,13 +280,15 @@ class FINRAAWCScraper:
                 seen.add(key)
                 found_on_page += 1
 
-                # Build a descriptive title
-                if subject_text:
-                    title = f"FINRA AWC — {subject_text}"
+                # Build a descriptive title — source badge handles the "FINRA AWC" label
+                if subject_text and case_id:
+                    title = f"{subject_text} ({case_id})"
+                elif subject_text:
+                    title = subject_text
                 elif case_id:
-                    title = f"FINRA AWC {case_id}"
+                    title = case_id
                 else:
-                    title = "FINRA AWC"
+                    title = "AWC"
 
                 out.append(
                     {
@@ -382,7 +384,7 @@ class FINRAAWCScraper:
                 article = soup.find("article") or soup.find("main") or soup
                 full_text = _clean_multiline(article.get_text("\n"))
 
-        title = str(fallback_title or "").strip() or "FINRA AWC"
+        title = str(fallback_title or "").strip() or fallback_case_id or "AWC"
         display_date = _date_display(fallback_date)
 
         header_parts = [
