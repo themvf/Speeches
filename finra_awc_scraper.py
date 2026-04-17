@@ -113,15 +113,6 @@ def _row_detail_url(row: Tag, page_url: str) -> str:
     return ""
 
 
-def _ensure_awc_filter(url: str) -> str:
-    """Add ?field_fda_document_type_tax=AWC if not already present."""
-    raw = str(url or "").strip()
-    if not raw:
-        return FINRA_AWC_INDEX_URL
-    if "field_fda_document_type_tax" not in raw:
-        sep = "&" if "?" in raw else "?"
-        raw = f"{raw}{sep}field_fda_document_type_tax=AWC"
-    return raw
 
 
 def _pdf_text(content: bytes) -> str:
@@ -237,7 +228,7 @@ class FINRAAWCScraper:
         The AWC type filter is appended to the URL automatically.
         Returns a list of discovery dicts, newest first.
         """
-        index_url = _ensure_awc_filter(str(base_url or FINRA_AWC_INDEX_URL).strip())
+        index_url = str(base_url or FINRA_AWC_INDEX_URL).strip()
         out: List[Dict[str, Any]] = []
         seen: set[str] = set()
 
