@@ -9380,6 +9380,217 @@ elif page == "Extraction":
                 st.error(f"FINRA comment-letter ingest failed: {e}")
 
     st.markdown("---")
+    st.subheader("FINRA Connector: AWC Disciplinary Actions")
+    st.caption(
+        "Discover and ingest FINRA Acceptance, Waiver & Consent (AWC) enforcement orders. "
+        "Each AWC is a PDF document detailing disciplinary actions against firms and individuals."
+    )
+
+    finra_awc_index_default = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
+    finra_awc_index_url = st.text_input(
+        "FINRA AWC Listing URL",
+        value=finra_awc_index_default,
+        key="finra_awc_index_url",
+    ).strip() or finra_awc_index_default
+    finra_awc_pages = st.slider(
+        "FINRA AWC Pages To Scan",
+        min_value=1,
+        max_value=20,
+        value=5,
+        key="finra_awc_pages",
+    )
+
+    finra_awc_col1, finra_awc_col2 = st.columns(2)
+    with finra_awc_col1:
+        discover_finra_awc = st.button("Discover FINRA AWC Documents", key="discover_finra_awc")
+    with finra_awc_col2:
+        clear_finra_awc = st.button("Clear FINRA AWC Results", key="clear_finra_awc")
+
+    finra_awc_state_key = "finra_awc_discovered"
+    if finra_awc_state_key not in st.session_state:
+        st.session_state[finra_awc_state_key] = []
+    if clear_finra_awc:
+        st.session_state[finra_awc_state_key] = []
+
+    if discover_finra_awc:
+        try:
+            from finra_awc_scraper import FINRAAWCScraper
+
+            with st.spinner("Discovering FINRA AWC documents..."):
+                finra_awc_scraper = FINRAAWCScraper()
+                finra_awc_discovered = finra_awc_scraper.discover_documents(
+                    base_url=finra_awc_index_url,
+                    max_pages=finra_awc_pages,
+                )
+
+            existing_custom = {}
+            for item in custom_docs:
+                m = item.get("metadata", {})
+                existing_custom[_url_match_key(m.get("url", ""))] = m
+
+            for entry in finra_awc_discovered:
+                key = _url_match_key(entry.get("url", ""))
+                existing_meta = existing_custom.get(key)
+                if existing_meta:
+                    existing_date = str(
+                        existing_meta.get("published_date") or existing_meta.get("date") or ""
+                    ).strip()
+                    incoming_date = str(entry.get("date", "") or "").strip()
+                    if incoming_date and existing_date and incoming_date != existing_date:
+                        entry["ingest_status"] = "update_available"
+                    else:
+                        entry["ingest_status"] = "existing"
+                else:
+                    entry["ingest_status"] = "new"
+
+            st.session_state[finra_awc_state_key] = finra_awc_discovered
+            new_count = sum(
+                1 for d in finra_awc_discovered
+                if d.get("ingest_status") in {"new", "update_available"}
+            )
+            st.success(
+                f"Discovered {len(finra_awc_discovered)} FINRA AWC documents "
+                f"({new_count} new/update candidates)."
+            )
+        except Exception as e:
+            st.error(f"FINRA AWC discovery failed: {e}")
+
+    finra_awc_discovered = st.session_state.get(finra_awc_state_key, [])
+    if finra_awc_discovered:
+        finra_awc_df = pd.DataFrame(finra_awc_discovered)
+        finra_awc_df = _sort_table_by_date(finra_awc_df, date_col="date")
+        show_cols = [
+            c for c in ["date", "title", "case_id", "subject_text", "sanctions_text", "ingest_status", "url"]
+            if c in finra_awc_df.columns
+        ]
+        st.dataframe(finra_awc_df[show_cols], use_container_width=True, hide_index=True)
+
+        finra_awc_filter = st.selectbox(
+            "FINRA AWC Ingest Selection",
+            ["New/Updates Only", "All Discovered"],
+            key="finra_awc_ingest_filter",
+        )
+        if finra_awc_filter == "New/Updates Only":
+            finra_awc_candidates = [
+                d for d in finra_awc_discovered
+                if d.get("ingest_status") in {"new", "update_available"}
+            ]
+        else:
+            finra_awc_candidates = list(finra_awc_discovered)
+
+        finra_awc_count = len(finra_awc_candidates)
+        if finra_awc_count <= 0:
+            finra_awc_limit = 0
+            st.caption("No FINRA AWC documents match the selected ingest filter.")
+        elif finra_awc_count == 1:
+            finra_awc_limit = 1
+            st.caption("1 FINRA AWC document selected for ingest.")
+        else:
+            finra_awc_limit = st.slider(
+                "FINRA AWC Documents To Ingest",
+                min_value=1,
+                max_value=finra_awc_count,
+                value=min(10, finra_awc_count),
+                key="finra_awc_ingest_limit",
+            )
+        st.caption(f"{finra_awc_count} FINRA AWC documents currently match this ingest selection.")
+
+        if st.button("Run FINRA AWC Extraction", disabled=(finra_awc_limit <= 0), key="ingest_finra_awc"):
+            try:
+                from finra_awc_scraper import FINRAAWCScraper
+
+                finra_awc_scraper = FINRAAWCScraper()
+                progress = st.progress(0, text="Starting FINRA AWC ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+
+                selected = finra_awc_candidates[:finra_awc_limit]
+                for idx, entry in enumerate(selected, 1):
+                    progress.progress(
+                        idx / finra_awc_limit,
+                        text=f"Ingesting {idx}/{finra_awc_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = finra_awc_scraper.extract_document(
+                            entry.get("url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_case_id=entry.get("case_id", ""),
+                            fallback_subject=entry.get("subject_text", ""),
+                            fallback_case_summary=entry.get("case_summary", ""),
+                            fallback_sanctions=entry.get("sanctions_text", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 30:
+                            raise RuntimeError("Extracted AWC text appears too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                        pdf_url = str(data.get("pdf_url", "") or entry.get("pdf_url", "")).strip()
+                        source_ext = ".pdf" if pdf_url else ".html"
+                        case_id = str(data.get("case_id", "") or entry.get("case_id", "")).strip()
+                        source_name = case_id or urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"finra-awc-{idx}"
+                        if "." not in source_name:
+                            source_name += source_ext
+
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        doc_date_value = parsed_date.date() if pd.notna(parsed_date) else date_text
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization="FINRA",
+                            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                            speaker="FINRA",
+                            doc_date=doc_date_value,
+                            doc_type="AWC",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=source_ext,
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv="finra,awc,enforcement,disciplinary-action,acceptance-waiver-consent",
+                            source_kind="finra_awc",
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "finra_awc"
+                        rm["source_index_url"] = finra_awc_index_url
+                        rm["published_date"] = date_text
+                        rm["case_id"] = case_id
+                        rm["subject_text"] = str(data.get("subject_text", "") or entry.get("subject_text", "")).strip()
+                        rm["sanctions_text"] = str(data.get("sanctions_text", "") or entry.get("sanctions_text", "")).strip()
+                        rm["pdf_url"] = pdf_url
+                        rm["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="FINRA AWC ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    st.success(
+                        f"Saved {saved_new} new FINRA AWC docs and updated {saved_updates} existing."
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} FINRA AWC documents failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"FINRA AWC ingest failed: {e}")
+
+    st.markdown("---")
     st.subheader("Regulations.gov Connector: Manual Rule + Selected Comments (BETA)")
     st.caption(
         "Ingest one docket/rule URL plus a curated list of comment-page or direct PDF URLs. "
