@@ -87,9 +87,16 @@ function RelatedDoc({ doc }: { doc: TrendDocItem }) {
   const inner = (
     <div className="rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(9,21,34,0.6)] px-3 py-2 transition-colors hover:border-[color:var(--line)] hover:bg-[color:rgba(15,34,54,0.7)]">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium leading-snug text-[color:var(--ink)] line-clamp-2">
-          {doc.title || doc.id}
-        </p>
+        <div className="flex flex-wrap items-baseline gap-1.5 min-w-0">
+          <p className="text-xs font-medium leading-snug text-[color:var(--ink)] line-clamp-2">
+            {doc.title || doc.id}
+          </p>
+          {doc.source_kind && (
+            <span className="shrink-0 rounded-full border border-[color:var(--line)] px-1.5 py-0.5 text-[10px] text-[color:var(--ink-faint)]">
+              {sourceLabel(doc.source_kind)}
+            </span>
+          )}
+        </div>
         <span className="shrink-0 text-[10px] text-[color:var(--ink-faint)]">{fmtDate(doc.date)}</span>
       </div>
       {doc.summary && (
