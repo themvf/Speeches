@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import re
 import sys
@@ -39,195 +38,214 @@ SEC_SPEECHES_BLOB = "all_speeches.json"
 TRENDS_BLOB = "trends_daily.json"
 TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_MODEL_FALLBACKS = ["text-embedding-ada-002", "text-embedding-3-large"]
 CHAT_MODEL = "gpt-5.1"
 CHAT_MODEL_FALLBACKS = ["gpt-4o", "gpt-4o-mini"]
 DEFAULT_MIN_MENTIONS = 5
-TAXONOMY_MATCH_THRESHOLD = 0.28  # minimum cosine similarity to assign a tag to a category
 
 # Fixed taxonomy of top-level regulatory/financial trend categories.
-# Each description is keyword-rich so embeddings land in the right semantic neighborhood.
-TAXONOMY: List[Dict[str, str]] = [
+# Keywords are matched via substring (multi-word) or whole-word (single-word) against tags.
+# Longer phrase matches score higher, so "credit default swap" beats "swap" for specificity.
+TAXONOMY: List[Dict] = [
     {
         "id": "crypto-digital-assets",
         "label": "Crypto & Digital Assets",
-        "description": (
-            "cryptocurrency bitcoin ethereum blockchain DeFi decentralized finance NFT "
-            "non-fungible token stablecoin CBDC central bank digital currency digital asset "
-            "token offering crypto exchange virtual currency Web3 crypto lending digital securities"
-        ),
+        "keywords": [
+            "crypto", "cryptocurrency", "bitcoin", "ethereum", "blockchain",
+            "defi", "decentralized finance", "nft", "non-fungible", "stablecoin",
+            "cbdc", "central bank digital", "digital asset", "token offering",
+            "virtual currency", "web3", "crypto exchange", "digital currency",
+            "binance", "coinbase", "tether", "ripple",
+        ],
     },
     {
         "id": "artificial-intelligence-technology",
         "label": "Artificial Intelligence & Technology",
-        "description": (
-            "artificial intelligence AI machine learning large language model LLM fintech "
-            "algorithmic trading automated trading robo-advisor technology risk AI governance "
-            "predictive analytics natural language processing generative AI AI regulation"
-        ),
+        "keywords": [
+            "artificial intelligence", "machine learning", "large language model",
+            "generative ai", "fintech", "algorithmic trading", "robo-advisor",
+            "ai governance", "ai regulation", "technology risk", "ai-powered",
+            "predictive analytics", "automation", "ai model", "llm",
+        ],
     },
     {
         "id": "private-credit-alternative-lending",
         "label": "Private Credit & Alternative Lending",
-        "description": (
-            "private credit direct lending leveraged loans CLO collateralized loan obligation "
-            "middle market lending business development company BDC private debt credit fund "
-            "alternative credit non-bank lending syndicated loans"
-        ),
+        "keywords": [
+            "private credit", "direct lending", "leveraged loan",
+            "collateralized loan", "clo", "middle market lending",
+            "business development company", "bdc", "private debt",
+            "alternative credit", "non-bank lending", "syndicated loan",
+        ],
     },
     {
         "id": "securities-fraud-manipulation",
         "label": "Securities Fraud & Manipulation",
-        "description": (
-            "insider trading Ponzi scheme market manipulation front running pump and dump "
-            "securities fraud accounting fraud misrepresentation material non-public information "
-            "MNPI stock fraud investment fraud spoofing layering wash trading"
-        ),
+        "keywords": [
+            "insider trading", "ponzi", "market manipulation",
+            "front-running", "front running", "pump and dump",
+            "securities fraud", "accounting fraud", "misrepresentation",
+            "material non-public", "mnpi", "stock fraud",
+            "investment fraud", "spoofing", "layering", "wash trading",
+        ],
     },
     {
         "id": "investment-advisers-asset-management",
         "label": "Investment Advisers & Asset Management",
-        "description": (
-            "investment adviser hedge fund private equity registered investment adviser RIA "
-            "mutual fund registered fund asset management fiduciary duty advisory fees "
-            "conflicts of interest fund governance custody rule"
-        ),
+        "keywords": [
+            "investment adviser", "hedge fund", "private equity",
+            "registered investment", "mutual fund", "asset management",
+            "fiduciary", "advisory fee", "conflicts of interest",
+            "fund governance", "custody rule", "registered fund",
+        ],
     },
     {
         "id": "market-structure-trading",
         "label": "Market Structure & Trading",
-        "description": (
-            "exchange regulation dark pool order routing payment for order flow PFOF market maker "
-            "high frequency trading HFT equities market liquidity trading venue ATS alternative "
-            "trading system best execution national market system decimalization"
-        ),
+        "keywords": [
+            "market structure", "dark pool", "order routing",
+            "payment for order flow", "pfof", "market maker",
+            "high frequency trading", "hft", "alternative trading system",
+            "best execution", "national market system", "trading venue",
+        ],
     },
     {
         "id": "esg-sustainable-finance",
         "label": "ESG & Sustainable Finance",
-        "description": (
-            "ESG environmental social governance climate risk greenwashing sustainable investing "
-            "climate disclosure net zero carbon emissions climate change sustainability reporting "
-            "TCFD transition risk physical risk green finance"
-        ),
+        "keywords": [
+            "esg", "environmental social", "climate risk", "greenwashing",
+            "sustainable investing", "climate disclosure", "net zero",
+            "carbon emission", "climate change", "sustainability report",
+            "tcfd", "green finance", "transition risk",
+        ],
     },
     {
         "id": "corporate-disclosure-reporting",
         "label": "Corporate Disclosure & Reporting",
-        "description": (
-            "financial reporting GAAP earnings guidance material disclosure restatement 10-K 10-Q "
-            "annual report quarterly report financial statement audit transparency Regulation S-K "
-            "non-GAAP measures earnings management forward-looking statements"
-        ),
+        "keywords": [
+            "financial reporting", "gaap", "earnings guidance",
+            "material disclosure", "restatement", "annual report",
+            "quarterly report", "financial statement", "non-gaap",
+            "earnings management", "forward-looking", "regulation s-k",
+        ],
     },
     {
         "id": "derivatives-structured-products",
         "label": "Derivatives & Structured Products",
-        "description": (
-            "derivatives swaps futures options structured products securitization ABS MBS "
-            "collateralized debt obligation CDO interest rate swap credit default swap CDS "
-            "commodity derivatives swap dealer margin requirements"
-        ),
+        "keywords": [
+            "derivative", "interest rate swap", "credit default swap",
+            "futures contract", "structured product", "securitization",
+            "collateralized debt", "cdo", "swap dealer",
+            "margin requirement", "commodity derivative",
+        ],
     },
     {
         "id": "retail-investor-protection",
         "label": "Retail Investor Protection",
-        "description": (
-            "retail investors Regulation Best Interest Reg BI suitability standard payment for "
-            "order flow investor protection investor education best execution retail brokerage "
-            "Robinhood gamification meme stocks main street investor"
-        ),
+        "keywords": [
+            "retail investor", "regulation best interest", "reg bi",
+            "suitability", "investor protection", "investor education",
+            "main street investor", "gamification", "meme stock",
+            "robinhood", "fractional share",
+        ],
     },
     {
         "id": "cybersecurity-operational-risk",
         "label": "Cybersecurity & Operational Risk",
-        "description": (
-            "cybersecurity cyber incident ransomware data breach operational resilience third party "
-            "risk vendor risk incident response cyber attack information security DORA "
-            "cyber disclosure rules cloud risk outsourcing risk"
-        ),
+        "keywords": [
+            "cybersecurity", "cyber incident", "ransomware", "data breach",
+            "operational resilience", "third party risk", "vendor risk",
+            "cyber attack", "information security", "cloud risk",
+            "cyber disclosure", "outsourcing risk",
+        ],
     },
     {
         "id": "capital-formation-ipos",
         "label": "Capital Formation & IPOs",
-        "description": (
-            "IPO initial public offering SPAC special purpose acquisition company Reg A "
-            "Regulation CF crowdfunding capital raising blank check company going public "
-            "secondary offering direct listing de-SPAC transaction"
-        ),
+        "keywords": [
+            "initial public offering", "ipo", "spac",
+            "special purpose acquisition", "regulation a", "regulation cf",
+            "crowdfunding", "capital raising", "blank check",
+            "direct listing", "de-spac", "secondary offering",
+        ],
     },
     {
         "id": "fixed-income-rates",
         "label": "Fixed Income & Interest Rates",
-        "description": (
-            "bonds treasuries interest rates fixed income credit spreads SOFR duration yield curve "
-            "municipal bonds corporate bonds government securities bond market rate hikes "
-            "Federal Reserve monetary policy quantitative tightening"
-        ),
+        "keywords": [
+            "fixed income", "interest rate", "credit spread", "sofr",
+            "yield curve", "municipal bond", "corporate bond",
+            "treasury bond", "bond market", "quantitative tightening",
+            "rate hike", "duration risk",
+        ],
     },
     {
         "id": "aml-financial-crime",
         "label": "AML & Financial Crime",
-        "description": (
-            "anti-money laundering AML know your customer KYC sanctions OFAC financial crime "
-            "FinCEN Bank Secrecy Act suspicious activity reporting SAR beneficial ownership "
-            "customer due diligence terrorist financing"
-        ),
+        "keywords": [
+            "anti-money laundering", "aml", "know your customer", "kyc",
+            "sanctions", "ofac", "financial crime", "fincen",
+            "bank secrecy", "suspicious activity", "beneficial ownership",
+            "customer due diligence", "terrorist financing",
+        ],
     },
     {
         "id": "broker-dealer-regulation",
         "label": "Broker-Dealer Regulation",
-        "description": (
-            "broker dealer FINRA clearing settlement custody prime brokerage net capital rule "
-            "margin lending securities lending broker regulation registered representative "
-            "SIPC protection broker supervision"
-        ),
+        "keywords": [
+            "broker-dealer", "broker dealer", "finra",
+            "prime brokerage", "net capital", "margin lending",
+            "securities lending", "registered representative",
+            "broker supervision", "clearing", "settlement",
+        ],
     },
     {
         "id": "corporate-governance",
         "label": "Corporate Governance",
-        "description": (
-            "board of directors corporate governance proxy voting shareholder activism "
-            "executive compensation say on pay director independence audit committee "
-            "board diversity dual class shares shareholder rights"
-        ),
+        "keywords": [
+            "corporate governance", "board of directors", "proxy voting",
+            "shareholder activism", "executive compensation",
+            "say on pay", "director independence", "audit committee",
+            "board diversity", "dual class shares", "shareholder rights",
+        ],
     },
     {
         "id": "global-cross-border-regulation",
         "label": "Global & Cross-Border Regulation",
-        "description": (
-            "cross border regulation IOSCO foreign private issuer PCAOB Basel III international "
-            "regulatory cooperation extraterritorial jurisdiction foreign exchange EU regulation "
-            "MiFID EMIR global financial standards"
-        ),
+        "keywords": [
+            "cross-border", "cross border", "iosco", "foreign private issuer",
+            "pcaob", "basel", "international regulatory", "extraterritorial",
+            "mifid", "emir", "eu regulation", "global financial",
+        ],
     },
     {
         "id": "banking-systemic-risk",
         "label": "Banking & Systemic Risk",
-        "description": (
-            "bank regulation capital requirements systemic risk stress testing FDIC FSOC "
-            "too big to fail bank failure deposit insurance Federal Reserve banking supervision "
-            "Basel capital liquidity coverage ratio"
-        ),
+        "keywords": [
+            "bank regulation", "capital requirement", "systemic risk",
+            "stress test", "fdic", "fsoc", "too big to fail",
+            "bank failure", "deposit insurance", "banking supervision",
+            "liquidity coverage", "basel capital",
+        ],
     },
     {
         "id": "sec-rulemaking-policy",
         "label": "SEC Rulemaking & Policy",
-        "description": (
-            "SEC rulemaking proposed rule final rule comment period regulatory reform "
-            "Securities Exchange Act Investment Company Act Dodd-Frank rulemaking agenda "
-            "regulatory agenda SEC agenda administrative law"
-        ),
+        "keywords": [
+            "sec rulemaking", "proposed rule", "final rule",
+            "comment period", "regulatory reform",
+            "securities exchange act", "investment company act",
+            "dodd-frank", "rulemaking agenda", "sec agenda",
+        ],
     },
     {
         "id": "enforcement-actions",
         "label": "Enforcement Actions & Penalties",
-        "description": (
-            "SEC enforcement action cease and desist disgorgement civil penalty settled charges "
-            "administrative proceeding DOJ enforcement CFTC enforcement regulatory penalty "
-            "whistleblower deferred prosecution agreement"
-        ),
+        "keywords": [
+            "enforcement action", "cease and desist", "disgorgement",
+            "civil penalty", "settled charges", "administrative proceeding",
+            "doj enforcement", "cftc enforcement", "regulatory penalty",
+            "whistleblower", "deferred prosecution", "consent order",
+        ],
     },
 ]
 SPARKLINE_DAYS = 30
@@ -336,82 +354,45 @@ def _build_gcs_storage() -> Optional[GCSStorage]:
     return storage
 
 
-def _cosine_similarity(a: List[float], b: List[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
 
+def _score_tag_for_category(tag_lower: str, keywords: List[str]) -> float:
+    """Score a tag against a category's keyword list.
 
-def _embed_tags(client: Any, tags: List[str]) -> Dict[str, List[float]]:
-    """Embed a list of tag strings, trying models in order until one works.
-
-    Returns a dict mapping tag -> embedding vector.
+    Multi-word phrases score by their word count (longer = more specific).
+    Single-word keywords require a whole-word match to avoid false positives.
     """
-    if not tags or client is None:
-        return {}
-
-    models_to_try = [EMBEDDING_MODEL] + EMBEDDING_MODEL_FALLBACKS
-    active_model: Optional[str] = None
-
-    # Probe with a single item to find a working model
-    for model in models_to_try:
-        try:
-            client.embeddings.create(model=model, input=["probe"])
-            active_model = model
-            _stderr(f"[info] Using embedding model: {model}")
-            break
-        except Exception as exc:
-            _stderr(f"[warn] Embedding model {model} unavailable: {exc}")
-
-    if active_model is None:
-        _stderr("[error] No embedding model available — trends will be empty")
-        return {}
-
-    embeddings: Dict[str, List[float]] = {}
-    batch_size = 100
-    for i in range(0, len(tags), batch_size):
-        batch = tags[i : i + batch_size]
-        try:
-            response = client.embeddings.create(model=active_model, input=batch)
-            for j, item in enumerate(response.data):
-                embeddings[batch[j]] = item.embedding
-        except Exception as exc:
-            _stderr(f"[warn] embedding batch {i//batch_size} failed: {exc}")
-    return embeddings
+    score = 0.0
+    for kw in keywords:
+        if " " in kw:
+            if kw in tag_lower:
+                score += len(kw.split())
+        else:
+            if re.search(r"\b" + re.escape(kw) + r"\b", tag_lower):
+                score += 1.0
+    return score
 
 
 def _map_to_taxonomy(
     tag_counts: Dict[str, int],
-    tag_embeddings: Dict[str, List[float]],
-    taxonomy_embeddings: Dict[str, List[float]],
-    threshold: float = TAXONOMY_MATCH_THRESHOLD,
+    taxonomy: List[Dict],
 ) -> Dict[str, List[str]]:
-    """Assign each tag to its best-matching taxonomy category.
+    """Assign each tag to its best-matching taxonomy category via keyword scoring.
 
-    Returns dict mapping taxonomy_id -> list of tags assigned to it.
-    Tags whose best match falls below threshold are dropped.
+    No embeddings required. Returns dict mapping taxonomy_id -> list of tags.
+    Tags with zero score across all categories are dropped.
     """
     mapping: Dict[str, List[str]] = defaultdict(list)
 
     for tag in tag_counts:
-        tag_vec = tag_embeddings.get(tag)
-        if not tag_vec:
-            continue
-
+        tag_lower = tag.lower()
         best_id: Optional[str] = None
-        best_sim = threshold  # must beat this to qualify
+        best_score = 0.0
 
-        for tax_id, tax_vec in taxonomy_embeddings.items():
-            if not tax_vec:
-                continue
-            sim = _cosine_similarity(tag_vec, tax_vec)
-            if sim > best_sim:
-                best_sim = sim
-                best_id = tax_id
+        for tax in taxonomy:
+            score = _score_tag_for_category(tag_lower, tax["keywords"])
+            if score > best_score:
+                best_score = score
+                best_id = tax["id"]
 
         if best_id:
             mapping[best_id].append(tag)
@@ -586,34 +567,9 @@ def build_trends(
             "trends": [],
         }
 
-    # Embed qualifying tags
-    tag_list = sorted(qualifying_tags.keys())
-    _stderr(f"[info] Embedding {len(tag_list)} tags...")
-    if dry_run:
-        embeddings: Dict[str, List[float]] = {}
-    else:
-        embeddings = _embed_tags(client, tag_list)
-    _stderr(f"[info] Got embeddings for {len(embeddings)} tags")
-
-    # Embed taxonomy category descriptions
-    _stderr(f"[info] Embedding {len(TAXONOMY)} taxonomy categories...")
-    if dry_run:
-        taxonomy_embeddings: Dict[str, List[float]] = {}
-    else:
-        tax_texts = [tax["description"] for tax in TAXONOMY]
-        tax_text_embeddings = _embed_tags(client, tax_texts)
-        taxonomy_embeddings = {
-            tax["id"]: tax_text_embeddings.get(tax["description"], [])
-            for tax in TAXONOMY
-        }
-
-    # Map tags to taxonomy categories
-    taxonomy_map = _map_to_taxonomy(qualifying_tags, embeddings, taxonomy_embeddings)
+    # Map tags to taxonomy categories via keyword matching (no embeddings needed)
+    taxonomy_map = _map_to_taxonomy(qualifying_tags, TAXONOMY)
     _stderr(f"[info] Tags mapped to {len(taxonomy_map)} taxonomy categories")
-
-    # In dry_run (no embeddings), fall back to assigning all tags to one bucket
-    if dry_run and not taxonomy_map:
-        taxonomy_map = {"sec-rulemaking-policy": list(qualifying_tags.keys())[:20]}
 
     taxonomy_by_id = {tax["id"]: tax for tax in TAXONOMY}
 
