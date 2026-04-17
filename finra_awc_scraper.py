@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse, urlencode, urlunparse, parse_qs, urlparse
 
+import requests as std_requests
 from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup, Tag
 
@@ -160,9 +161,50 @@ class FINRAAWCScraper:
             time.sleep(self.min_delay_seconds - elapsed)
         self._last_request_ts = time.time()
 
-    def _fetch(self, url: str, timeout: int = 60) -> Any:
-        self._rate_limit()
-        resp = self.session.get(url, timeout=timeout)
+    def _fetch(self, url: str, timeout: int = 60, retries: int = 3) -> Any:
+        """
+        Fetch a URL with retry/backoff.
+        Tries curl_cffi first (Chrome TLS fingerprint); on 5xx falls back to
+        plain requests with a standard browser User-Agent.
+        """
+        last_exc: Exception = RuntimeError("No attempts made")
+        for attempt in range(1, retries + 1):
+            self._rate_limit()
+            try:
+                resp = self.session.get(url, timeout=timeout)
+                if resp.status_code < 500:
+                    resp.raise_for_status()
+                    return resp
+                # 5xx — try plain requests as fallback on last attempt
+                if attempt == retries:
+                    return self._fetch_plain(url, timeout)
+                # back off before retry
+                time.sleep(2 ** attempt)
+            except Exception as exc:
+                last_exc = exc
+                if attempt == retries:
+                    # Final attempt: try plain requests
+                    try:
+                        return self._fetch_plain(url, timeout)
+                    except Exception as plain_exc:
+                        raise RuntimeError(
+                            f"HTTP Error {plain_exc}"
+                        ) from plain_exc
+                time.sleep(2 ** attempt)
+        raise last_exc
+
+    def _fetch_plain(self, url: str, timeout: int = 60) -> Any:
+        """Fallback fetch using plain requests with a browser User-Agent."""
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        resp = std_requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
         resp.raise_for_status()
         return resp
 
