@@ -9692,7 +9692,7 @@ elif page == "Extraction":
                         )
                         rm = record.setdefault("metadata", {})
                         rm["source_family"] = "finra_awc"
-                        rm["source_index_url"] = finra_awc_index_url
+                        rm["source_index_url"] = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
                         rm["published_date"] = date_text
                         rm["case_id"] = case_id
                         rm["subject_text"] = str(data.get("subject_text", "") or entry.get("subject_text", "")).strip()
