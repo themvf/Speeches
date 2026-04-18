@@ -135,6 +135,22 @@ def _parse_pdf_filename(pdf_url: str) -> Dict[str, str]:
             "doc_type": m.group(4).replace("_", " ").strip(),
         }
 
+    # Space-separated without CRD number (older FINRA naming):
+    #   {case_id} {subject} {doc_type} {initials}
+    m = re.match(
+        r"^(\d+)\s+"
+        r"(.+?)\s+"
+        r"(AWC|OHO\s+Decision|OHO|NAC|SC|Settlement)\s+"
+        r"([a-z]{2,6})$",
+        stem,
+    )
+    if m:
+        return {
+            "case_id": m.group(1),
+            "subject_text": m.group(2).strip(),
+            "doc_type": m.group(3).strip(),
+        }
+
     # Fallback: at minimum extract case_id from the leading digits
     m2 = re.match(r"^(\d+)", stem)
     if m2:
