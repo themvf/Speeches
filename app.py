@@ -9386,40 +9386,43 @@ elif page == "Extraction":
         "Each AWC is a PDF document detailing disciplinary actions against firms and individuals."
     )
 
-    finra_awc_index_default = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
-    finra_awc_index_url = finra_awc_index_default
-
-    finra_awc_pages = st.slider(
-        "FINRA AWC Pages To Scan",
-        min_value=1,
-        max_value=100,
-        value=5,
-        key="finra_awc_pages",
-    )
+    # ── Filter controls ───────────────────────────────────────────────────
+    _fa_col1, _fa_col2, _fa_col3 = st.columns([2, 2, 1])
+    with _fa_col1:
+        finra_awc_doc_type = st.selectbox(
+            "Document Type",
+            options=["AWC", "OHO", "NAC", "SC", "Settlement", ""],
+            index=0,
+            format_func=lambda x: x if x else "All types",
+            key="finra_awc_doc_type",
+        )
+    with _fa_col2:
+        _fa_date_col1, _fa_date_col2 = st.columns(2)
+        with _fa_date_col1:
+            finra_awc_date_min = st.text_input("Date from (YYYY-MM-DD)", value="", key="finra_awc_date_min", placeholder="e.g. 2024-01-01")
+        with _fa_date_col2:
+            finra_awc_date_max = st.text_input("Date to (YYYY-MM-DD)", value="", key="finra_awc_date_max", placeholder="e.g. 2025-12-31")
+    with _fa_col3:
+        finra_awc_pages = st.number_input("Pages", min_value=1, max_value=1300, value=5, step=5, key="finra_awc_pages")
 
     finra_awc_col1, finra_awc_col2 = st.columns(2)
     with finra_awc_col1:
-        discover_finra_awc = st.button("Discover FINRA AWC Documents", key="discover_finra_awc")
+        discover_finra_awc = st.button("Discover FINRA Documents", key="discover_finra_awc")
     with finra_awc_col2:
-        clear_finra_awc = st.button("Clear FINRA AWC Results", key="clear_finra_awc")
+        clear_finra_awc = st.button("Clear FINRA Results", key="clear_finra_awc")
 
-    # ── Manual import ─────────────────────────────────────────────────────
-    with st.expander("Import from browser (bypass listing-page block)", expanded=False):
-        st.markdown(
-            "**FINRA blocks filtered/paginated URLs from scripts.** "
-            "Work around it by copying the page directly from Chrome:\n\n"
-            "1. Open the FINRA listing page in Chrome (any filter/page works)\n"
-            "2. Press **Ctrl + U** (View Page Source)\n"
-            "3. **Select All → Copy** and paste below\n\n"
-            "Repeat for as many listing pages as you need — all PDFs are extracted and merged."
-        )
+    # ── Manual paste fallback ─────────────────────────────────────────────
+    with st.expander("Paste page source manually (optional fallback)", expanded=False):
+        st.markdown("If automatic discovery fails, open the FINRA listing page in Chrome, press **Ctrl+U**, Select All → Copy, and paste below.")
         finra_awc_paste_html = st.text_area(
             "Paste page source HTML here",
             placeholder="<!DOCTYPE html>...",
-            height=160,
+            height=120,
             key="finra_awc_paste_html",
         )
         import_pasted_awc = st.button("Extract PDFs from pasted HTML", key="import_finra_awc_urls")
+    fetch_via_chrome = False
+    finra_awc_fetch_url = ""
 
     finra_awc_state_key = "finra_awc_discovered"
     if finra_awc_state_key not in st.session_state:
@@ -9427,16 +9430,17 @@ elif page == "Extraction":
     if clear_finra_awc:
         st.session_state[finra_awc_state_key] = []
 
-    if import_pasted_awc and finra_awc_paste_html.strip():
+    def _ingest_finra_html(html: str, discovery_source: str) -> tuple:
+        """Parse FINRA listing HTML, merge new PDF entries into session state.
+        Returns (added, skipped, found_any_pdfs).
+        """
         from bs4 import BeautifulSoup as _BS
         from finra_awc_scraper import _parse_pdf_filename, _row_pdf_url, _cell_text
 
-        _html = finra_awc_paste_html.strip()
-        _soup = _BS(_html, "html.parser")
+        _soup = _BS(html, "html.parser")
         for _tag in _soup.find_all(["script", "style", "noscript"]):
             _tag.decompose()
 
-        # Collect all PDF hrefs anywhere in the page
         FINRA_BASE = "https://www.finra.org"
         _pdf_urls = []
         for _a in _soup.find_all("a", href=True):
@@ -9446,7 +9450,6 @@ elif page == "Extraction":
                     _href = FINRA_BASE + _href
                 _pdf_urls.append(_href)
 
-        # Also try row-level date extraction (best-effort)
         _table = (
             _soup.select_one("table.views-table")
             or _soup.select_one("div.view-content table")
@@ -9502,29 +9505,57 @@ elif page == "Extraction":
                 "case_summary": "",
                 "doc_type": _doc_type,
                 "source_format": "pdf",
-                "discovery_source": "html_paste",
+                "discovery_source": discovery_source,
                 "listing_page": "",
                 "ingest_status": _ingest_status,
             })
             added += 1
 
-        parts = [f"{added} document(s) extracted from pasted HTML"]
-        if skipped:
-            parts.append(f"{skipped} duplicate(s) skipped")
-        if not _pdf_urls:
+        return added, skipped, bool(_pdf_urls)
+
+    if fetch_via_chrome and finra_awc_fetch_url.strip():
+        from finra_awc_scraper import fetch_page_with_browser
+        _target_url = finra_awc_fetch_url.strip()
+        with st.spinner(f"Launching headless Chrome → {_target_url} …"):
+            try:
+                _fetched_html = fetch_page_with_browser(_target_url)
+                _added, _skipped, _found = _ingest_finra_html(_fetched_html, "chrome_fetch")
+                _parts = [f"{_added} document(s) fetched from Chrome"]
+                if _skipped:
+                    _parts.append(f"{_skipped} duplicate(s) skipped")
+                if not _found:
+                    st.warning(
+                        "Chrome fetched the page but found no PDF links. "
+                        "The page may have rendered a CAPTCHA or access-denied screen — "
+                        "try the manual paste fallback below."
+                    )
+                else:
+                    st.success(" · ".join(_parts))
+            except Exception as _chrome_err:
+                st.error(f"Chrome fetch failed: {_chrome_err}")
+
+    if import_pasted_awc and finra_awc_paste_html.strip():
+        _added, _skipped, _found = _ingest_finra_html(finra_awc_paste_html.strip(), "html_paste")
+        _parts = [f"{_added} document(s) extracted from pasted HTML"]
+        if _skipped:
+            _parts.append(f"{_skipped} duplicate(s) skipped")
+        if not _found:
             st.warning("No PDF links found in the pasted HTML. Make sure you copied the full page source (Ctrl+U → Select All → Copy).")
         else:
-            st.success(" · ".join(parts))
+            st.success(" · ".join(_parts))
 
     if discover_finra_awc:
         try:
             from finra_awc_scraper import FINRAAWCScraper
 
-            with st.spinner("Discovering FINRA AWC documents..."):
+            _dtype_label = finra_awc_doc_type or "all types"
+            with st.spinner(f"Discovering FINRA {_dtype_label} documents ({finra_awc_pages} pages)…"):
                 finra_awc_scraper = FINRAAWCScraper()
                 finra_awc_discovered = finra_awc_scraper.discover_documents(
-                    base_url=finra_awc_index_url,
-                    max_pages=finra_awc_pages,
+                    max_pages=int(finra_awc_pages),
+                    doc_type=finra_awc_doc_type or "AWC",
+                    date_min=finra_awc_date_min.strip(),
+                    date_max=finra_awc_date_max.strip(),
                 )
 
             existing_custom = {}
@@ -9553,7 +9584,7 @@ elif page == "Extraction":
                 if d.get("ingest_status") in {"new", "update_available"}
             )
             st.success(
-                f"Discovered {len(finra_awc_discovered)} FINRA AWC documents "
+                f"Discovered {len(finra_awc_discovered)} FINRA {_dtype_label} documents "
                 f"({new_count} new/update candidates)."
             )
         except Exception as e:

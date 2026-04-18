@@ -98,21 +98,25 @@ def _parse_pdf_filename(pdf_url: str) -> Dict[str, str]:
         return {}
     stem = filename[:-4]
 
+    # Strip trailing parenthetical timestamp, e.g. " (2025-1738282793208)"
+    stem = re.sub(r"\s*\(\d{4}-\d+\)\s*$", "", stem).strip()
+
     # Space-separated format (most common):
-    #   {case_id} {subject} CRD {crd_number} {doc_type} {initials}
+    #   {case_id} {subject} CRD [No.] {crd_number} {doc_type} {initials}
+    # Subject may end with a comma: "LaBarbara, CRD …" → strip trailing comma from subject.
     m = re.match(
-        r"^(\d+)\s+"           # case_id
-        r"(.+?)\s+"            # subject (non-greedy, stops before CRD keyword)
-        r"CRD\s+"              # literal "CRD"
-        r"(\d+)\s+"            # crd_number
-        r"(.+?)\s+"            # doc_type (non-greedy; may be multi-word, e.g. "OHO Decision")
-        r"([a-z]{2,6})$",      # initials (always lowercase, e.g. "vrp", "lp", "jhjr")
+        r"^(\d+)\s+"                    # case_id
+        r"(.+?),?\s+"                   # subject (optional trailing comma)
+        r"CRD(?:\s+No\.?)?\s+"          # "CRD", "CRD No.", or "CRD No"
+        r"(\d+)\s+"                     # crd_number
+        r"(.+?)\s+"                     # doc_type (may be multi-word e.g. "OHO Decision")
+        r"([a-z]{2,6})$",               # initials
         stem,
     )
     if m:
         return {
             "case_id": m.group(1),
-            "subject_text": m.group(2).strip(),
+            "subject_text": m.group(2).rstrip(",").strip(),
             "crd_number": m.group(3),
             "doc_type": m.group(4).strip(),
         }
@@ -120,11 +124,11 @@ def _parse_pdf_filename(pdf_url: str) -> Dict[str, str]:
     # Underscore-separated format (used by some NAC decisions):
     #   {case_id}_{subject}_{crd_number}_{doc_type}_{initials}
     m = re.match(
-        r"^(\d+)_"             # case_id
-        r"(.+?)_"              # subject
-        r"(\d+)_"              # crd_number
-        r"(.+?)_"              # doc_type
-        r"([a-z]{2,6})$",      # initials
+        r"^(\d+)_"
+        r"(.+?)_"
+        r"(\d+)_"
+        r"(.+?)_"
+        r"([a-z]{2,6})$",
         stem,
     )
     if m:
@@ -195,6 +199,37 @@ def _row_detail_url(row: Tag, page_url: str) -> str:
         if href:
             return urljoin(page_url, href)
     return ""
+
+
+def fetch_page_with_browser(url: str, headless: bool = True, wait_seconds: int = 4) -> str:
+    """Fetch *url* using a real Chrome instance so FINRA WAF/JS challenges pass.
+
+    Uses Selenium with Chrome's built-in chromedriver manager (Selenium 4.6+).
+    Returns the rendered page HTML (``driver.page_source``).
+    """
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+
+    opts = Options()
+    if headless:
+        opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
+
+    driver = webdriver.Chrome(options=opts)
+    try:
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"},
+        )
+        driver.get(url)
+        time.sleep(wait_seconds)
+        return driver.page_source
+    finally:
+        driver.quit()
 
 
 def _pdf_text(content: bytes) -> str:
@@ -290,27 +325,67 @@ class FINRAAWCScraper:
 
     # ── Discovery ─────────────────────────────────────────────────────────
 
-    def _resolve_index_url(self, base: str) -> str:
-        """
-        Return the URL to use for discovery pagination.
+    # Drupal taxonomy term IDs for the document-type filter
+    DOC_TYPE_TERM_IDS: Dict[str, str] = {
+        "AWC": "4610",
+        "Complaints": "4611",
+        "Court of Appeals": "4612",
+        "NAC": "4613",
+        "OHO": "4614",
+        "Settlement": "4615",
+        "SEC": "4616",
+        "SC": "4617",
+    }
 
-        FINRA blocks any URL that carries query parameters (type filters, date
-        ranges, etc.) from non-browser sessions — even after a warm-up request.
-        The only reliably accessible URL is the plain base listing page.
+    def _build_filter_url(
+        self,
+        page: int = 0,
+        doc_type: str = "AWC",
+        date_min: str = "",
+        date_max: str = "",
+    ) -> str:
+        """Build a FINRA disciplinary-actions listing URL with Drupal Views
+        filter parameters.
 
-        We always return the base URL here; discover_documents() will
-        automatically fall back to it if a caller-supplied filtered URL 403s.
+        FINRA's filter params require the Drupal taxonomy *term ID* for the
+        document type (e.g. 4610 for AWC), not the human-readable label.
+        Date values should be in YYYY-MM-DD format.
         """
-        return base
+        from urllib.parse import urlencode, quote
+
+        params: dict[str, str] = {}
+        term_id = self.DOC_TYPE_TERM_IDS.get(doc_type, "") if doc_type else ""
+        if term_id:
+            params["field_fda_document_type_tax"] = term_id
+        if date_min:
+            params["field_core_official_dt[min]"] = date_min
+        if date_max:
+            params["field_core_official_dt[max]"] = date_max
+        if page > 0:
+            params["page"] = str(page)
+
+        if params:
+            qs = urlencode(params)
+            return f"{FINRA_AWC_INDEX_URL}?{qs}"
+        return FINRA_AWC_INDEX_URL
 
     def discover_documents(
         self,
         base_url: str = FINRA_AWC_INDEX_URL,
         max_pages: int = 5,
+        doc_type: str = "AWC",
+        date_min: str = "",
+        date_max: str = "",
         **_kwargs: Any,
     ) -> List[Dict[str, Any]]:
         """
-        Scrape the FINRA disciplinary actions listing page for AWC documents.
+        Scrape the FINRA disciplinary actions listing page for documents.
+
+        The filter uses Drupal taxonomy term IDs via GET query parameters
+        (e.g. ``?field_fda_document_type_tax=4610`` for AWC).  Pagination
+        appends ``&page=N``.  Both work reliably with curl_cffi Chrome
+        impersonation — only the human-readable string form of the filter
+        (e.g. ``?field_fda_document_type_tax=AWC``) returns 503.
 
         Metadata (case ID, firm/individual name, doc type) is parsed from the
         PDF filename, which FINRA encodes with all key fields.  HTML table
@@ -318,68 +393,34 @@ class FINRAAWCScraper:
 
         Returns a list of discovery dicts, newest first.
         """
-        base = str(base_url or FINRA_AWC_INDEX_URL).strip()
-        index_url = self._resolve_index_url(base)
         out: List[Dict[str, Any]] = []
         seen: set[str] = set()
 
-        for page_num in range(max_pages):
-            page_url = self._page_url(index_url, page_num)
-            try:
-                resp = self._fetch(page_url, timeout=45)
-            except Exception as exc:
-                if page_num == 0 and "?" in index_url:
-                    # Filtered URL blocked — strip all params and retry bare
-                    index_url = index_url.split("?")[0]
-                    page_url = index_url
-                    try:
-                        resp = self._fetch(page_url, timeout=45)
-                    except Exception as exc2:
-                        raise RuntimeError(
-                            f"Failed to fetch FINRA AWC listing page: {exc2}"
-                        ) from exc2
-                elif page_num == 0:
-                    raise RuntimeError(
-                        f"Failed to fetch FINRA AWC listing page: {exc}"
-                    ) from exc
-                else:
-                    break
-
-            soup = BeautifulSoup(resp.text, "html.parser")
+        def _process_page(page_url: str, resp_obj: Any) -> int:
+            nonlocal out
+            soup = BeautifulSoup(resp_obj.text, "html.parser")
             for tag in soup.find_all(["script", "style", "noscript"]):
                 tag.decompose()
 
-            # ── Find the views table ──────────────────────────────────────
             table = (
                 soup.select_one("table.views-table")
                 or soup.select_one("div.view-content table")
                 or soup.find("table")
             )
             rows = table.select("tbody tr") if table else []
-
-            # ── Fallback: div-based views rows ────────────────────────────
             if not rows:
                 rows = soup.select("div.views-row")  # type: ignore[assignment]
 
-            found_on_page = 0
+            found = 0
             for row in rows:
-                # ── Find the PDF URL first (primary metadata source) ──────
                 pdf_url = _row_pdf_url(row, page_url)
-
-                # ── Parse metadata from PDF filename ──────────────────────
                 file_meta = _parse_pdf_filename(pdf_url)
-
                 case_id = file_meta.get("case_id", "")
                 subject_text = file_meta.get("subject_text", "")
-
-                # ── HTML table: date and summary (these selectors work) ───
                 date_raw = _cell_text(row, "field-core-official-dt", "official-dt", "action-date")
                 case_summary = _cell_text(row, "fda-case-summary", "case-summary", "fda-summary")
-
-                # ── Detail page link ──────────────────────────────────────
                 detail_url = _row_detail_url(row, page_url)
 
-                # Primary URL for this document
                 canonical_url = pdf_url or detail_url
                 if not canonical_url:
                     a = row.find("a", href=True)
@@ -392,9 +433,8 @@ class FINRAAWCScraper:
                 if key in seen:
                     continue
                 seen.add(key)
-                found_on_page += 1
+                found += 1
 
-                # Title: "Firm/Individual Name (CaseID)"
                 if subject_text and case_id:
                     title = f"{subject_text} ({case_id})"
                 elif subject_text:
@@ -402,7 +442,7 @@ class FINRAAWCScraper:
                 elif case_id:
                     title = case_id
                 else:
-                    title = "AWC"
+                    title = doc_type or "AWC"
 
                 out.append(
                     {
@@ -414,23 +454,35 @@ class FINRAAWCScraper:
                         "case_id": case_id,
                         "subject_text": subject_text,
                         "case_summary": case_summary[:500] if case_summary else "",
-                        "doc_type": file_meta.get("doc_type", "AWC"),
+                        "doc_type": file_meta.get("doc_type", doc_type or "AWC"),
                         "source_format": "pdf" if pdf_url else "html",
-                        "discovery_source": "pdf_filename",
+                        "discovery_source": "listing_get",
                         "listing_page": page_url,
                     }
                 )
+            return found
 
-            # If page 0 found nothing, raise a clear error for debugging
-            if page_num == 0 and found_on_page == 0:
+        for page_num in range(max_pages):
+            page_url = self._build_filter_url(
+                page=page_num, doc_type=doc_type,
+                date_min=date_min, date_max=date_max,
+            )
+            try:
+                resp = self._fetch(page_url, timeout=45)
+            except Exception as exc:
+                if page_num == 0:
+                    raise RuntimeError(f"Failed to fetch FINRA listing page: {exc}") from exc
+                break
+
+            found = _process_page(page_url, resp)
+
+            if page_num == 0 and found == 0:
                 raise RuntimeError(
-                    f"No AWC rows found on FINRA listing page: {page_url}\n"
-                    "The page HTML structure may have changed. "
-                    "Inspect the page and update selectors in finra_awc_scraper.py."
+                    f"No rows found on FINRA listing page: {page_url}\n"
+                    "The page structure may have changed — inspect and update selectors."
                 )
-
-            if found_on_page == 0:
-                break  # No more pages
+            if found == 0:
+                break
 
         out.sort(
             key=lambda x: _parse_date(x.get("date", "")) or datetime.min,
