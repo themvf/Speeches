@@ -9387,28 +9387,7 @@ elif page == "Extraction":
     )
 
     finra_awc_index_default = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
-
-    import datetime as _dt
-    _current_year = _dt.date.today().year
-    _awc_years = ["All (recent)"] + [str(y) for y in range(_current_year, 2012, -1)]
-    finra_awc_year = st.selectbox(
-        "Filter by Year (for historical data)",
-        options=_awc_years,
-        index=0,
-        key="finra_awc_year",
-        help="Select a specific year to retrieve AWC documents from that period. "
-             "Use 'All (recent)' for the latest actions.",
-    )
-
-    # Build the effective listing URL with optional year + AWC type filters
-    _awc_base = finra_awc_index_default
-    _awc_params = ["field_fda_document_type_tax=AWC"]
-    if finra_awc_year != "All (recent)":
-        _awc_params.append(f"field_core_official_dt[min]={finra_awc_year}-01-01")
-        _awc_params.append(f"field_core_official_dt[max]={finra_awc_year}-12-31")
-    finra_awc_index_url = _awc_base + "?" + "&".join(_awc_params)
-
-    st.caption(f"Discovery URL: `{finra_awc_index_url}`")
+    finra_awc_index_url = finra_awc_index_default
 
     finra_awc_pages = st.slider(
         "FINRA AWC Pages To Scan",

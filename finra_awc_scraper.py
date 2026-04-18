@@ -292,38 +292,16 @@ class FINRAAWCScraper:
 
     def _resolve_index_url(self, base: str) -> str:
         """
-        Ensure the index URL uses the AWC type filter for full pagination depth.
+        Return the URL to use for discovery pagination.
 
-        The unfiltered FINRA listing shows all document types and Drupal stops
-        paginating after ~20 pages.  A filtered URL (with
-        field_fda_document_type_tax=AWC, optionally plus date-range params)
-        unlocks AWC-only history but requires Drupal/Cloudflare session cookies
-        to be established first.
+        FINRA blocks any URL that carries query parameters (type filters, date
+        ranges, etc.) from non-browser sessions — even after a warm-up request.
+        The only reliably accessible URL is the plain base listing page.
 
-        If the caller already built a URL with filters, use it directly (after
-        warm-up).  Otherwise auto-append the AWC type filter and probe.
+        We always return the base URL here; discover_documents() will
+        automatically fall back to it if a caller-supplied filtered URL 403s.
         """
-        bare_base = base.split("?")[0]  # URL without any query string
-
-        if "?" in base:
-            # Caller supplied explicit filters — warm up then use as-is
-            try:
-                self._fetch(bare_base, timeout=30, retries=1)
-            except Exception:
-                pass
-            return base
-
-        # No filters supplied — try to auto-add AWC type filter after warm-up
-        filtered = f"{base}?field_fda_document_type_tax=AWC"
-        try:
-            self._fetch(bare_base, timeout=30, retries=1)
-            self._rate_limit()
-            probe = self.session.get(filtered, timeout=30)
-            if probe.status_code == 200:
-                return filtered
-        except Exception:
-            pass
-        return base  # graceful fallback to unfiltered
+        return base
 
     def discover_documents(
         self,
@@ -350,11 +328,22 @@ class FINRAAWCScraper:
             try:
                 resp = self._fetch(page_url, timeout=45)
             except Exception as exc:
-                if page_num == 0:
+                if page_num == 0 and "?" in index_url:
+                    # Filtered URL blocked — strip all params and retry bare
+                    index_url = index_url.split("?")[0]
+                    page_url = index_url
+                    try:
+                        resp = self._fetch(page_url, timeout=45)
+                    except Exception as exc2:
+                        raise RuntimeError(
+                            f"Failed to fetch FINRA AWC listing page: {exc2}"
+                        ) from exc2
+                elif page_num == 0:
                     raise RuntimeError(
                         f"Failed to fetch FINRA AWC listing page: {exc}"
                     ) from exc
-                break
+                else:
+                    break
 
             soup = BeautifulSoup(resp.text, "html.parser")
             for tag in soup.find_all(["script", "style", "noscript"]):
