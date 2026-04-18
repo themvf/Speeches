@@ -13523,6 +13523,16 @@ elif page == "Enrichment Pipeline":
             )
             st.rerun()
 
+        _stop_col, _spinner_col = st.columns([1, 4])
+        with _stop_col:
+            if st.button("Stop Enrichment", key="_stop_enrichment_run", type="secondary"):
+                aborted = abort_enrichment_run_state(active_enrichment_run, "Stopped by user.")
+                _set_active_enrichment_run({})
+                _set_enrichment_run_notice("error", _format_enrichment_run_message(aborted, "Enrichment run stopped by user."))
+                st.rerun()
+        with _spinner_col:
+            st.spinner(f"Continuing enrichment batch in {active_enrichment_run.get('scope_label', 'current scope')}...")
+
         with st.spinner(
             f"Continuing enrichment batch in {active_enrichment_run.get('scope_label', 'current scope')}..."
         ):
