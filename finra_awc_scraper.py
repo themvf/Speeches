@@ -290,6 +290,35 @@ class FINRAAWCScraper:
 
     # ── Discovery ─────────────────────────────────────────────────────────
 
+    def _resolve_index_url(self, base: str) -> str:
+        """
+        Try to use the AWC-type-filtered URL for deeper pagination coverage.
+
+        The unfiltered FINRA listing shows all document types and Drupal stops
+        paginating after ~20 pages.  The filtered URL
+        (?field_fda_document_type_tax=AWC) only works when the Drupal/
+        Cloudflare session is warm (established via a prior request to the base
+        page).  Strategy:
+          1. Fetch the base page to set session cookies.
+          2. Attempt the filtered URL — if it returns 200, use it.
+          3. Otherwise fall back to the unfiltered base URL.
+        """
+        if "field_fda_document_type_tax" in base:
+            return base  # caller already specified a filter
+
+        filtered = f"{base}?field_fda_document_type_tax=AWC"
+        try:
+            # Warm-up: establishes Cloudflare + Drupal session cookies
+            self._fetch(base, timeout=30, retries=1)
+            # Now probe the filtered URL using the same session (cookies intact)
+            self._rate_limit()
+            probe = self.session.get(filtered, timeout=30)
+            if probe.status_code == 200:
+                return filtered
+        except Exception:
+            pass
+        return base  # graceful fallback
+
     def discover_documents(
         self,
         base_url: str = FINRA_AWC_INDEX_URL,
@@ -303,10 +332,10 @@ class FINRAAWCScraper:
         PDF filename, which FINRA encodes with all key fields.  HTML table
         columns are used only for the action date and case summary.
 
-        Only rows whose doc_type resolves to "AWC" are returned.
         Returns a list of discovery dicts, newest first.
         """
-        index_url = str(base_url or FINRA_AWC_INDEX_URL).strip()
+        base = str(base_url or FINRA_AWC_INDEX_URL).strip()
+        index_url = self._resolve_index_url(base)
         out: List[Dict[str, Any]] = []
         seen: set[str] = set()
 
