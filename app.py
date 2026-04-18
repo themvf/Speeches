@@ -9395,7 +9395,7 @@ elif page == "Extraction":
     finra_awc_pages = st.slider(
         "FINRA AWC Pages To Scan",
         min_value=1,
-        max_value=20,
+        max_value=100,
         value=5,
         key="finra_awc_pages",
     )
