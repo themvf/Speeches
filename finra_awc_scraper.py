@@ -292,32 +292,38 @@ class FINRAAWCScraper:
 
     def _resolve_index_url(self, base: str) -> str:
         """
-        Try to use the AWC-type-filtered URL for deeper pagination coverage.
+        Ensure the index URL uses the AWC type filter for full pagination depth.
 
         The unfiltered FINRA listing shows all document types and Drupal stops
-        paginating after ~20 pages.  The filtered URL
-        (?field_fda_document_type_tax=AWC) only works when the Drupal/
-        Cloudflare session is warm (established via a prior request to the base
-        page).  Strategy:
-          1. Fetch the base page to set session cookies.
-          2. Attempt the filtered URL — if it returns 200, use it.
-          3. Otherwise fall back to the unfiltered base URL.
-        """
-        if "field_fda_document_type_tax" in base:
-            return base  # caller already specified a filter
+        paginating after ~20 pages.  A filtered URL (with
+        field_fda_document_type_tax=AWC, optionally plus date-range params)
+        unlocks AWC-only history but requires Drupal/Cloudflare session cookies
+        to be established first.
 
+        If the caller already built a URL with filters, use it directly (after
+        warm-up).  Otherwise auto-append the AWC type filter and probe.
+        """
+        bare_base = base.split("?")[0]  # URL without any query string
+
+        if "?" in base:
+            # Caller supplied explicit filters — warm up then use as-is
+            try:
+                self._fetch(bare_base, timeout=30, retries=1)
+            except Exception:
+                pass
+            return base
+
+        # No filters supplied — try to auto-add AWC type filter after warm-up
         filtered = f"{base}?field_fda_document_type_tax=AWC"
         try:
-            # Warm-up: establishes Cloudflare + Drupal session cookies
-            self._fetch(base, timeout=30, retries=1)
-            # Now probe the filtered URL using the same session (cookies intact)
+            self._fetch(bare_base, timeout=30, retries=1)
             self._rate_limit()
             probe = self.session.get(filtered, timeout=30)
             if probe.status_code == 200:
                 return filtered
         except Exception:
             pass
-        return base  # graceful fallback
+        return base  # graceful fallback to unfiltered
 
     def discover_documents(
         self,
