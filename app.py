@@ -9403,11 +9403,118 @@ elif page == "Extraction":
     with finra_awc_col2:
         clear_finra_awc = st.button("Clear FINRA AWC Results", key="clear_finra_awc")
 
+    # ── Manual import ─────────────────────────────────────────────────────
+    with st.expander("Import from browser (bypass listing-page block)", expanded=False):
+        st.markdown(
+            "**FINRA blocks filtered/paginated URLs from scripts.** "
+            "Work around it by copying the page directly from Chrome:\n\n"
+            "1. Open the FINRA listing page in Chrome (any filter/page works)\n"
+            "2. Press **Ctrl + U** (View Page Source)\n"
+            "3. **Select All → Copy** and paste below\n\n"
+            "Repeat for as many listing pages as you need — all PDFs are extracted and merged."
+        )
+        finra_awc_paste_html = st.text_area(
+            "Paste page source HTML here",
+            placeholder="<!DOCTYPE html>...",
+            height=160,
+            key="finra_awc_paste_html",
+        )
+        import_pasted_awc = st.button("Extract PDFs from pasted HTML", key="import_finra_awc_urls")
+
     finra_awc_state_key = "finra_awc_discovered"
     if finra_awc_state_key not in st.session_state:
         st.session_state[finra_awc_state_key] = []
     if clear_finra_awc:
         st.session_state[finra_awc_state_key] = []
+
+    if import_pasted_awc and finra_awc_paste_html.strip():
+        from bs4 import BeautifulSoup as _BS
+        from finra_awc_scraper import _parse_pdf_filename, _row_pdf_url, _cell_text
+
+        _html = finra_awc_paste_html.strip()
+        _soup = _BS(_html, "html.parser")
+        for _tag in _soup.find_all(["script", "style", "noscript"]):
+            _tag.decompose()
+
+        # Collect all PDF hrefs anywhere in the page
+        FINRA_BASE = "https://www.finra.org"
+        _pdf_urls = []
+        for _a in _soup.find_all("a", href=True):
+            _href = str(_a["href"]).strip()
+            if _href.lower().endswith(".pdf"):
+                if _href.startswith("/"):
+                    _href = FINRA_BASE + _href
+                _pdf_urls.append(_href)
+
+        # Also try row-level date extraction (best-effort)
+        _table = (
+            _soup.select_one("table.views-table")
+            or _soup.select_one("div.view-content table")
+            or _soup.find("table")
+        )
+        _rows = _table.select("tbody tr") if _table else []
+        _date_by_pdf: dict = {}
+        for _row in _rows:
+            _pdf = _row_pdf_url(_row, FINRA_BASE)
+            if _pdf:
+                _date_raw = _cell_text(_row, "field-core-official-dt", "official-dt", "action-date")
+                if _date_raw:
+                    _date_by_pdf[_url_match_key(_pdf)] = _date_raw
+
+        existing_custom = {
+            _url_match_key(item.get("metadata", {}).get("url", "")): item.get("metadata", {})
+            for item in custom_docs
+        }
+        already_in_state = {
+            _url_match_key(e.get("url", ""))
+            for e in st.session_state[finra_awc_state_key]
+        }
+
+        added = 0
+        skipped = 0
+        for _url in _pdf_urls:
+            _key = _url_match_key(_url)
+            if _key in already_in_state:
+                skipped += 1
+                continue
+            already_in_state.add(_key)
+
+            _meta = _parse_pdf_filename(_url)
+            _case_id = _meta.get("case_id", "")
+            _subject = _meta.get("subject_text", "")
+            _doc_type = _meta.get("doc_type", "AWC")
+            _date = _date_by_pdf.get(_key, "")
+
+            _title = (
+                f"{_subject} ({_case_id})" if _subject and _case_id
+                else _subject or _case_id or "AWC"
+            )
+            _ingest_status = "existing" if _key in existing_custom else "new"
+
+            st.session_state[finra_awc_state_key].append({
+                "url": _url,
+                "pdf_url": _url,
+                "detail_url": "",
+                "title": _title,
+                "date": _date,
+                "case_id": _case_id,
+                "subject_text": _subject,
+                "case_summary": "",
+                "doc_type": _doc_type,
+                "source_format": "pdf",
+                "discovery_source": "html_paste",
+                "listing_page": "",
+                "ingest_status": _ingest_status,
+            })
+            added += 1
+
+        parts = [f"{added} document(s) extracted from pasted HTML"]
+        if skipped:
+            parts.append(f"{skipped} duplicate(s) skipped")
+        if not _pdf_urls:
+            st.warning("No PDF links found in the pasted HTML. Make sure you copied the full page source (Ctrl+U → Select All → Copy).")
+        else:
+            st.success(" · ".join(parts))
 
     if discover_finra_awc:
         try:
