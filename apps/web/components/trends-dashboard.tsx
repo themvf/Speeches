@@ -10,14 +10,82 @@ interface ApiEnvelope<T> {
   error?: string;
 }
 
-type GrowthFilter = "all" | "rising" | "surging" | "new";
+type CategoryFilter =
+  | "all"
+  | "crypto"
+  | "ai_tech"
+  | "enforcement"
+  | "aml"
+  | "capital_formation"
+  | "securities_regulation";
+
 type RangeFilter = "30d" | "7d" | "90d";
 
-const GROWTH_FILTERS: { value: GrowthFilter; label: string }[] = [
-  { value: "all", label: "All Trends" },
-  { value: "rising", label: "Rising (>10%)" },
-  { value: "surging", label: "Surging (>50%)" },
-  { value: "new", label: "New (100%+)" },
+interface CategoryDef {
+  value: CategoryFilter;
+  label: string;
+  keywords: string[];
+}
+
+const CATEGORIES: CategoryDef[] = [
+  { value: "all", label: "All", keywords: [] },
+  {
+    value: "crypto",
+    label: "Crypto Assets",
+    keywords: [
+      "crypto", "bitcoin", "ethereum", "blockchain", "token", "stablecoin",
+      "defi", "digital asset", "digital-asset", "nft", "web3", "cryptocurrency",
+      "crypto-asset", "crypto asset", "digital_asset",
+    ],
+  },
+  {
+    value: "ai_tech",
+    label: "AI & Tech",
+    keywords: [
+      "artificial intelligence", "machine learning", "ai", "technology", "fintech",
+      "cybersecurity", "cyber", "innovation", "algorithm", "automated", "automation",
+      "predictive", "large language model", "llm",
+    ],
+  },
+  {
+    value: "enforcement",
+    label: "Enforcement",
+    keywords: [
+      "enforcement", "litigation", "fraud", "sanction", "penalty", "settlement",
+      "complaint", "violation", "misconduct", "fine", "cease-and-desist", "awc",
+      "disciplinary", "conviction", "prosecution", "insider trading", "market manipulation",
+    ],
+  },
+  {
+    value: "aml",
+    label: "AML",
+    keywords: [
+      "anti-money laundering", "aml", "bank secrecy", "bsa", "financial crime",
+      "terrorist financing", "suspicious activity", "kyc", "know your customer",
+      "fatf", "money laundering", "illicit finance", "sanctions",
+    ],
+  },
+  {
+    value: "capital_formation",
+    label: "Capital Formation",
+    keywords: [
+      "capital formation", "capital-formation", "ipo", "spac", "private offering",
+      "regulation a", "regulation crowdfunding", "small business", "emerging growth",
+      "startup", "venture", "private market", "private-market", "fundraising",
+      "public offering", "exempt offering",
+    ],
+  },
+  {
+    value: "securities_regulation",
+    label: "Securities Regulation",
+    keywords: [
+      "securities regulation", "securities-regulation", "disclosure", "rulemaking",
+      "regulation nms", "market structure", "equity market", "best execution",
+      "broker-dealer", "investment adviser", "fiduciary", "suitability", "proxy",
+      "shareholder", "corporate governance", "form pf", "edgar", "reporting",
+      "registration", "investment company",
+    ],
+  },
 ];
 
 const RANGE_FILTERS: { value: RangeFilter; label: string }[] = [
@@ -214,18 +282,26 @@ function TrendRow({ trend, expanded, onToggle }: { trend: TrendItem; expanded: b
   );
 }
 
-function applyGrowthFilter(trends: TrendItem[], filter: GrowthFilter): TrendItem[] {
-  if (filter === "rising") return trends.filter((t) => t.growth_pct > 10);
-  if (filter === "surging") return trends.filter((t) => t.growth_pct > 50);
-  if (filter === "new") return trends.filter((t) => t.growth_pct >= 100);
-  return trends;
+function matchesCategory(trend: TrendItem, cat: CategoryDef): boolean {
+  if (cat.value === "all") return true;
+  const haystack = [trend.canonical_tag, ...trend.cluster_tags]
+    .join(" ")
+    .toLowerCase();
+  return cat.keywords.some((kw) => haystack.includes(kw));
+}
+
+function applyCategoryFilter(trends: TrendItem[], filter: CategoryFilter): TrendItem[] {
+  if (filter === "all") return trends;
+  const def = CATEGORIES.find((c) => c.value === filter);
+  if (!def) return trends;
+  return trends.filter((t) => matchesCategory(t, def));
 }
 
 export function TrendsDashboard() {
   const [payload, setPayload] = useState<TrendsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [growthFilter, setGrowthFilter] = useState<GrowthFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [rangeFilter, setRangeFilter] = useState<RangeFilter>("30d");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -248,8 +324,8 @@ export function TrendsDashboard() {
 
   const filteredTrends = useMemo(() => {
     if (!payload) return [];
-    return applyGrowthFilter(payload.trends, growthFilter);
-  }, [payload, growthFilter]);
+    return applyCategoryFilter(payload.trends, categoryFilter);
+  }, [payload, categoryFilter]);
 
   const generatedAt = payload?.generated_at
     ? new Date(payload.generated_at).toLocaleString("en-US", {
@@ -264,46 +340,46 @@ export function TrendsDashboard() {
   return (
     <div className="space-y-4">
       {/* Filters bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Range filter */}
-        <div className="flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] p-1">
-          {RANGE_FILTERS.map((f) => (
+      <div className="space-y-2">
+        {/* Category tabs */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {CATEGORIES.map((cat) => (
             <button
-              key={f.value}
+              key={cat.value}
               type="button"
-              onClick={() => setRangeFilter(f.value)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                rangeFilter === f.value
-                  ? "bg-[color:rgba(79,213,255,0.18)] text-[color:var(--ink)]"
-                  : "text-[color:var(--ink-faint)] hover:text-[color:var(--ink)]"
+              onClick={() => { setCategoryFilter(cat.value); setExpandedId(null); }}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                categoryFilter === cat.value
+                  ? "border-[color:rgba(79,213,255,0.4)] bg-[color:rgba(79,213,255,0.15)] text-[color:var(--ink)]"
+                  : "border-[color:var(--line)] bg-transparent text-[color:var(--ink-faint)] hover:border-[color:var(--line-strong)] hover:text-[color:var(--ink)]"
               }`}
             >
-              {f.label}
+              {cat.label}
             </button>
           ))}
         </div>
 
-        {/* Growth filter */}
-        <div className="flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] p-1">
-          {GROWTH_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => setGrowthFilter(f.value)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                growthFilter === f.value
-                  ? "bg-[color:rgba(79,213,255,0.18)] text-[color:var(--ink)]"
-                  : "text-[color:var(--ink-faint)] hover:text-[color:var(--ink)]"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Metadata */}
-        <div className="ml-auto text-xs text-[color:var(--ink-faint)]">
-          {generatedAt && <span>Updated {generatedAt}</span>}
+        {/* Range + metadata row */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] p-1">
+            {RANGE_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setRangeFilter(f.value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  rangeFilter === f.value
+                    ? "bg-[color:rgba(79,213,255,0.18)] text-[color:var(--ink)]"
+                    : "text-[color:var(--ink-faint)] hover:text-[color:var(--ink)]"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto text-xs text-[color:var(--ink-faint)]">
+            {generatedAt && <span>Updated {generatedAt}</span>}
+          </div>
         </div>
       </div>
 
@@ -323,13 +399,10 @@ export function TrendsDashboard() {
       {!loading && !error && filteredTrends.length === 0 && (
         <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] p-8 text-center">
           <p className="text-sm text-[color:var(--ink-faint)]">
-            No trends found for the selected filters.
+            {payload && payload.trend_count > 0
+              ? "No trends matched this category in the selected time window."
+              : "The trends pipeline may not have run yet. Check back after the daily cron completes."}
           </p>
-          {payload && payload.trend_count === 0 && (
-            <p className="mt-2 text-xs text-[color:var(--ink-faint)]">
-              The trends pipeline may not have run yet. Check back after the daily cron completes.
-            </p>
-          )}
         </div>
       )}
 
@@ -339,6 +412,11 @@ export function TrendsDashboard() {
           <div className="flex items-center justify-between px-4 py-2 border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)]">
             <span className="text-xs text-[color:var(--ink-faint)]">
               {filteredTrends.length} trend{filteredTrends.length !== 1 ? "s" : ""}
+              {categoryFilter !== "all" && (
+                <span className="ml-1 text-[color:var(--accent)]">
+                  · {CATEGORIES.find((c) => c.value === categoryFilter)?.label}
+                </span>
+              )}
             </span>
           </div>
 
