@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { TrendDocItem, TrendItem, TrendsPayload } from "@/lib/server/types";
+import type { TrendDocItem, TrendItem, TrendSparklinePoint, TrendsPayload } from "@/lib/server/types";
 
 interface ApiEnvelope<T> {
   ok: boolean;
@@ -192,6 +192,37 @@ function getMomentum(pct: number): Momentum {
   };
 }
 
+/* ── MiniSparkline ────────────────────────────────────────────────────── */
+
+function MiniSparkline({ points, color }: { points: TrendSparklinePoint[]; color: string }) {
+  if (points.length < 2) return null;
+
+  const W = 64;
+  const H = 24;
+  const counts = points.map((p) => p.count);
+  const min = Math.min(...counts);
+  const max = Math.max(...counts);
+  const range = max - min || 1;
+
+  const xs = points.map((_, i) => (i / (points.length - 1)) * W);
+  const ys = counts.map((c) => H - ((c - min) / range) * (H - 2) - 1);
+
+  return (
+    <svg width={W} height={H} className="shrink-0 overflow-visible" aria-hidden>
+      <polyline
+        points={xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ")}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        opacity="0.7"
+      />
+      <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="2" fill={color} opacity="0.9" />
+    </svg>
+  );
+}
+
 /* ── MoverCard ────────────────────────────────────────────────────────── */
 
 function MoverCard({ trend, type }: { trend: ScoredTrend; type: "rising" | "declining" }) {
@@ -335,13 +366,18 @@ function TrendRow({
             )}
           </div>
 
-          {/* Chevron */}
-          <span
-            className={`ml-2 mt-0.5 shrink-0 text-xs text-[color:var(--ink-faint)] transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-            aria-hidden="true"
-          >
-            ▾
-          </span>
+          {/* Sparkline + chevron */}
+          <div className="flex items-center gap-2 shrink-0 mt-0.5">
+            {trend.sparkline.length >= 2 && (
+              <MiniSparkline points={trend.sparkline} color={momentum.dotColor} />
+            )}
+            <span
+              className={`text-xs text-[color:var(--ink-faint)] transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            >
+              ▾
+            </span>
+          </div>
         </div>
       </button>
 
@@ -398,6 +434,7 @@ export function TrendsDashboard() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [rangeFilter, setRangeFilter] = useState<RangeFilter>("30d");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -416,13 +453,22 @@ export function TrendsDashboard() {
       .finally(() => setLoading(false));
   }, [rangeFilter]);
 
-  // Scored + sorted by trend score (category filter applied)
+  // Scored + sorted by trend score (category + search filter applied)
   const scoredTrends = useMemo<ScoredTrend[]>(() => {
     if (!payload) return [];
+    const q = search.trim().toLowerCase();
     return applyCategoryFilter(payload.trends, categoryFilter)
+      .filter((t) => {
+        if (!q) return true;
+        return (
+          t.label.toLowerCase().includes(q) ||
+          t.description?.toLowerCase().includes(q) ||
+          t.cluster_tags.some((tag) => tag.toLowerCase().includes(q))
+        );
+      })
       .map((t) => ({ ...t, _score: computeTrendScore(t) }))
       .sort((a, b) => b._score - a._score);
-  }, [payload, categoryFilter]);
+  }, [payload, categoryFilter, search]);
 
   // Top movers (sorted separately from the main list)
   const topRisers = useMemo<ScoredTrend[]>(() =>
@@ -463,6 +509,25 @@ export function TrendsDashboard() {
               {cat.label}
             </button>
           ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative">
+          <svg
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[color:var(--ink-faint)]"
+            viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"
+            aria-hidden
+          >
+            <circle cx="6.5" cy="6.5" r="4.5" />
+            <line x1="10" y1="10" x2="14" y2="14" />
+          </svg>
+          <input
+            type="search"
+            placeholder="Search trends…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setExpandedId(null); }}
+            className="w-full rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] py-1.5 pl-8 pr-3 text-xs text-[color:var(--ink)] placeholder-[color:var(--ink-faint)] outline-none focus:border-[color:rgba(79,213,255,0.35)] focus:ring-0"
+          />
         </div>
 
         {/* Range + metadata */}

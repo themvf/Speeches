@@ -369,6 +369,107 @@ export interface TrendsPayload {
   trends: TrendItem[];
 }
 
+/* ── Market page types ──────────────────────────────────────────────────── */
+
+export type MarketStatus = "OPEN" | "CLOSED" | "PRE" | "AFTER";
+export type FearGreedLabel = "GREED" | "CALM" | "CONCERN" | "PANIC";
+
+export interface MarketIndexQuote {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  pct: number;
+  up: boolean;
+  status: MarketStatus;
+}
+
+export interface VixQuote {
+  value: number;
+  change: number;
+  pct: number;
+  label: FearGreedLabel;
+  gradientPct: number;
+}
+
+export interface MarketOverviewData {
+  indices: MarketIndexQuote[];
+  vix: VixQuote | null;
+  globalIndices: MarketIndexQuote[];
+  generatedAt: string;
+}
+
+export interface SectorStock {
+  symbol: string;
+  name: string;
+  price: number;
+  pct: number;
+  change: number;
+  up: boolean;
+}
+
+export interface SectorData {
+  name: string;
+  pct: number;
+  up: boolean;
+  stocks: SectorStock[];
+}
+
+export interface MarketSectorsData {
+  sectors: SectorData[];
+  generatedAt: string;
+}
+
+export interface MoverQuote {
+  rank: number;
+  symbol: string;
+  name: string;
+  price: number;
+  pct: number;
+  change: number;
+  up: boolean;
+}
+
+export interface MarketMoversData {
+  gainers: MoverQuote[];
+  losers: MoverQuote[];
+  generatedAt: string;
+}
+
+export interface CryptoCoin {
+  rank: number;
+  id: string;
+  symbol: string;
+  name: string;
+  price: number;
+  pct24h: number;
+  marketCap: number;
+  volume24h: number;
+  up: boolean;
+}
+
+export interface MarketCryptoData {
+  coins: CryptoCoin[];
+  generatedAt: string;
+}
+
+export interface ExchangeInfo {
+  code: string;
+  name: string;
+  timezone: string;
+  status: MarketStatus;
+}
+
+export interface ExchangeRegionGroup {
+  region: "Americas" | "Europe" | "Asia Pacific";
+  exchanges: ExchangeInfo[];
+}
+
+export interface MarketExchangesData {
+  regions: ExchangeRegionGroup[];
+  generatedAt: string;
+}
+
 export interface Neo4jPathResponseData {
   projection_key: string;
   synced_node_count: number;

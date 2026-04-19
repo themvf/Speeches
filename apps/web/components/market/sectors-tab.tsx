@@ -1,0 +1,151 @@
+"use client";
+
+import { useState } from "react";
+import type { MarketSectorsData, SectorData, SectorStock } from "@/lib/server/types";
+
+interface Props {
+  data: MarketSectorsData | null;
+  loading: boolean;
+  error: string | null;
+}
+
+function fmtPct(n: number): string {
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+}
+
+function PctBar({ pct, maxAbs }: { pct: number; maxAbs: number }) {
+  const w = Math.round((Math.abs(pct) / maxAbs) * 80);
+  const color = pct >= 0 ? "#41d39d" : "#f87171";
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      <span className="tabular-nums text-xs font-semibold" style={{ color }}>{fmtPct(pct)}</span>
+      <div className="h-3 rounded-sm shrink-0" style={{ width: w, backgroundColor: color, opacity: 0.7 }} />
+    </div>
+  );
+}
+
+function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
+  const color = stock.up ? "#41d39d" : "#f87171";
+  const sign = stock.pct >= 0 ? "+" : "";
+  const barW = Math.round((Math.abs(stock.pct) / maxAbs) * 60);
+
+  return (
+    <tr className="border-b border-[color:var(--line)] last:border-0 hover:bg-[color:rgba(79,213,255,0.03)]">
+      <td className="pl-10 pr-2 py-2 w-16">
+        <span className="text-xs font-bold text-[color:var(--accent)]">{stock.symbol}</span>
+      </td>
+      <td className="px-2 py-2 text-xs text-[color:var(--ink-faint)]">{stock.name}</td>
+      <td className="px-2 py-2 tabular-nums text-xs text-right text-[color:var(--ink)]">
+        ${stock.price.toFixed(2)}
+      </td>
+      <td className="px-2 py-2 tabular-nums text-xs text-right font-semibold" style={{ color }}>
+        {sign}{stock.pct.toFixed(2)}%
+      </td>
+      <td className="pl-2 pr-4 py-2 w-20">
+        <div className="flex justify-end">
+          <div className="h-2.5 rounded-sm" style={{ width: barW, backgroundColor: color, opacity: 0.7 }} />
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function SectorRow({
+  sector,
+  expanded,
+  onToggle,
+  maxAbs,
+}: {
+  sector: SectorData;
+  expanded: boolean;
+  onToggle: () => void;
+  maxAbs: number;
+}) {
+  const stockMax = sector.stocks.length > 0
+    ? Math.max(...sector.stocks.map((s) => Math.abs(s.pct)), 1)
+    : 1;
+
+  return (
+    <>
+      <tr
+        className="border-b border-[color:var(--line)] cursor-pointer hover:bg-[color:rgba(79,213,255,0.04)] transition-colors"
+        onClick={onToggle}
+      >
+        <td className="px-4 py-3 text-xs font-semibold text-[color:var(--ink)]">
+          <span className="mr-2 text-[color:var(--ink-faint)]">{expanded ? "[-]" : "[+]"}</span>
+          {sector.name}
+        </td>
+        <td className="px-4 py-3 text-right">
+          <PctBar pct={sector.pct} maxAbs={maxAbs} />
+        </td>
+      </tr>
+      {expanded && sector.stocks.length > 0 && (
+        <tr>
+          <td colSpan={2} className="p-0 bg-[color:rgba(9,21,34,0.3)]">
+            <table className="w-full">
+              <tbody>
+                {sector.stocks.map((s) => (
+                  <StockRow key={s.symbol} stock={s} maxAbs={stockMax} />
+                ))}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+export function SectorsTab({ data, loading, error }: Props) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (loading && !data) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">
+        Loading sectors…
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+        {error}
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const maxAbs = Math.max(...data.sectors.map((s) => Math.abs(s.pct)), 1);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+          Market Sectors
+        </p>
+        <span className="text-xs text-[color:var(--ink-faint)]">
+          {new Date(data.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+        </span>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
+        <table className="w-full">
+          <tbody>
+            {data.sectors.map((sector) => (
+              <SectorRow
+                key={sector.name}
+                sector={sector}
+                expanded={expandedId === sector.name}
+                onToggle={() => setExpandedId((prev) => prev === sector.name ? null : sector.name)}
+                maxAbs={maxAbs}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
