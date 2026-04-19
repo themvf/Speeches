@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type NavItem = {
-  href: "/" | "/timeline" | "/graph" | "/analytics" | "/chats" | "/notices" | "/trends" | "/finra";
+  href: "/" | "/timeline" | "/graph" | "/analytics" | "/chats" | "/notices" | "/trends" | "/enforcement";
   label: string;
   prefetch?: boolean;
 };
@@ -16,7 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/graph", label: "Graph", prefetch: true },
   { href: "/notices", label: "Rulemakings & Comments", prefetch: true },
   { href: "/trends", label: "Trends", prefetch: true },
-  { href: "/finra", label: "FINRA", prefetch: true },
+  { href: "/enforcement", label: "Enforcement", prefetch: true },
   { href: "/analytics", label: "Analytics", prefetch: true },
   { href: "/chats", label: "Agentic Chats", prefetch: true }
 ];
