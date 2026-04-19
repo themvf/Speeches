@@ -1,11 +1,18 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
-import type { MarketSectorsData, SectorData, SectorStock } from "@/lib/server/types";
+import type { MarketSectorsData, SectorData, SectorPcts, SectorStock } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 export const revalidate = 300;
 
 type FinnhubQuote = { c: number | null; d: number | null; dp: number | null };
-type FinnhubSectorPerf = { sector: string; changesPercentage: string };
+type FinnhubSectorPerf = {
+  sector: string;
+  changesPercentage: string;
+  d1?: string;
+  m1?: string;
+  m3?: string;
+  ytd?: string;
+};
 
 // Finnhub sector names → display names
 const SECTOR_NAME_MAP: Record<string, string> = {
@@ -135,7 +142,17 @@ export async function GET() {
     if (res.ok) sectorPerf = await res.json();
   } catch { /* fall through — stocks will show pct 0 for sector header */ }
 
-  const perfMap = new Map(sectorPerf.map((s) => [s.sector, parsePct(s.changesPercentage)]));
+  const perfMap = new Map(
+    sectorPerf.map((s) => [
+      s.sector,
+      {
+        d1:  parsePct(s.d1  ?? s.changesPercentage),
+        m1:  parsePct(s.m1  ?? "0"),
+        m3:  parsePct(s.m3  ?? "0"),
+        ytd: parsePct(s.ytd ?? "0"),
+      } satisfies SectorPcts,
+    ])
+  );
 
   // Gather all stocks to quote in one parallel batch
   const allStocks: { finnhubKey: string; symbol: string; name: string }[] = [];
@@ -155,9 +172,11 @@ export async function GET() {
   }));
 
   // Build sectors
+  const defaultPcts: SectorPcts = { d1: 0, m1: 0, m3: 0, ytd: 0 };
+
   const sectors: SectorData[] = Object.entries(SECTOR_STOCKS).map(([finnhubKey, stockDefs]) => {
     const displayName = SECTOR_NAME_MAP[finnhubKey] ?? finnhubKey;
-    const sectorPct = perfMap.get(finnhubKey) ?? 0;
+    const pcts = perfMap.get(finnhubKey) ?? defaultPcts;
 
     const stocks: SectorStock[] = stockDefs
       .map((def) => {
@@ -174,15 +193,10 @@ export async function GET() {
       })
       .filter((s): s is SectorStock => s !== null);
 
-    return {
-      name: displayName,
-      pct: sectorPct,
-      up: sectorPct >= 0,
-      stocks,
-    };
+    return { name: displayName, pcts, stocks };
   });
 
-  sectors.sort((a, b) => b.pct - a.pct);
+  sectors.sort((a, b) => b.pcts.d1 - a.pcts.d1);
 
   const data: MarketSectorsData = { sectors, generatedAt: new Date().toISOString() };
   return ok(data, requestId);

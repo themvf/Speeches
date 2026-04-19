@@ -51,6 +51,14 @@ export interface CustomDocumentMetadata {
   effective_date?: string;
   comment_deadline?: string;
   pdf_url?: string;
+  release_no?: string;
+  action_type?: string;
+  forum?: string;
+  outcome_status?: string;
+  alleged_violations?: string[];
+  entities?: string[];
+  respondents?: string[];
+  sanctions?: string[];
   discovery_source?: string;
   input_url?: string;
   docket_id?: string;
@@ -408,10 +416,16 @@ export interface SectorStock {
   up: boolean;
 }
 
+export interface SectorPcts {
+  d1: number;
+  m1: number;
+  m3: number;
+  ytd: number;
+}
+
 export interface SectorData {
   name: string;
-  pct: number;
-  up: boolean;
+  pcts: SectorPcts;
   stocks: SectorStock[];
 }
 

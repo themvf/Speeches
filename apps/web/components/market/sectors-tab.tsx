@@ -9,6 +9,15 @@ interface Props {
   error: string | null;
 }
 
+type RangeId = "d1" | "m1" | "m3" | "ytd";
+
+const RANGES: { id: RangeId; label: string }[] = [
+  { id: "d1",  label: "1D" },
+  { id: "m1",  label: "1M" },
+  { id: "m3",  label: "3M" },
+  { id: "ytd", label: "YTD" },
+];
+
 function fmtPct(n: number): string {
   const sign = n >= 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
@@ -53,15 +62,18 @@ function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
 
 function SectorRow({
   sector,
+  range,
   expanded,
   onToggle,
   maxAbs,
 }: {
   sector: SectorData;
+  range: RangeId;
   expanded: boolean;
   onToggle: () => void;
   maxAbs: number;
 }) {
+  const pct = sector.pcts[range];
   const stockMax = sector.stocks.length > 0
     ? Math.max(...sector.stocks.map((s) => Math.abs(s.pct)), 1)
     : 1;
@@ -77,7 +89,7 @@ function SectorRow({
           {sector.name}
         </td>
         <td className="px-4 py-3 text-right">
-          <PctBar pct={sector.pct} maxAbs={maxAbs} />
+          <PctBar pct={pct} maxAbs={maxAbs} />
         </td>
       </tr>
       {expanded && sector.stocks.length > 0 && (
@@ -99,6 +111,7 @@ function SectorRow({
 
 export function SectorsTab({ data, loading, error }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [range, setRange] = useState<RangeId>("d1");
 
   if (loading && !data) {
     return (
@@ -118,26 +131,49 @@ export function SectorsTab({ data, loading, error }: Props) {
 
   if (!data) return null;
 
-  const maxAbs = Math.max(...data.sectors.map((s) => Math.abs(s.pct)), 1);
+  const sorted = [...data.sectors].sort((a, b) => b.pcts[range] - a.pcts[range]);
+  const maxAbs = Math.max(...sorted.map((s) => Math.abs(s.pcts[range])), 1);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
           Market Sectors
         </p>
-        <span className="text-xs text-[color:var(--ink-faint)]">
-          {new Date(data.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-        </span>
+
+        <div className="flex items-center gap-2">
+          {/* Range selector */}
+          <div className="flex items-center gap-0.5 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] p-1">
+            {RANGES.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setRange(id)}
+                className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                  range === id
+                    ? "bg-[color:rgba(79,213,255,0.18)] text-[color:var(--ink)]"
+                    : "text-[color:var(--ink-faint)] hover:text-[color:var(--ink)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <span className="text-xs text-[color:var(--ink-faint)]">
+            {new Date(data.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          </span>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
         <table className="w-full">
           <tbody>
-            {data.sectors.map((sector) => (
+            {sorted.map((sector) => (
               <SectorRow
                 key={sector.name}
                 sector={sector}
+                range={range}
                 expanded={expandedId === sector.name}
                 onToggle={() => setExpandedId((prev) => prev === sector.name ? null : sector.name)}
                 maxAbs={maxAbs}
@@ -146,6 +182,12 @@ export function SectorsTab({ data, loading, error }: Props) {
           </tbody>
         </table>
       </div>
+
+      {range !== "d1" && (
+        <p className="text-right text-[11px] text-[color:var(--ink-faint)]">
+          Sector % shown for {RANGES.find((r) => r.id === range)?.label}. Individual stock % is always 1D.
+        </p>
+      )}
     </div>
   );
 }
