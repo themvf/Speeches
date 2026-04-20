@@ -263,6 +263,27 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     effective_date: normalizeString(metadataRaw.effective_date),
     comment_deadline: normalizeString(metadataRaw.comment_deadline),
     pdf_url: normalizeString(metadataRaw.pdf_url),
+    release_no: normalizeString(metadataRaw.release_no),
+    case_id: normalizeString(metadataRaw.case_id),
+    subject_text: normalizeString(metadataRaw.subject_text),
+    case_summary: normalizeString(metadataRaw.case_summary),
+    action_type: normalizeString(metadataRaw.action_type),
+    forum: normalizeString(metadataRaw.forum),
+    outcome_status: normalizeString(metadataRaw.outcome_status),
+    alleged_violations: Array.isArray(metadataRaw.alleged_violations)
+      ? metadataRaw.alleged_violations.map((item) => normalizeString(item)).filter(Boolean)
+      : splitCsv(normalizeString(metadataRaw.alleged_violations)),
+    entities: Array.isArray(metadataRaw.entities)
+      ? metadataRaw.entities.map((item) => normalizeString(item)).filter(Boolean)
+      : splitCsv(normalizeString(metadataRaw.entities)),
+    respondents: Array.isArray(metadataRaw.respondents)
+      ? metadataRaw.respondents.map((item) => normalizeString(item)).filter(Boolean)
+      : splitCsv(normalizeString(metadataRaw.respondents)),
+    sanctions: Array.isArray(metadataRaw.sanctions)
+      ? metadataRaw.sanctions.map((item) => normalizeString(item)).filter(Boolean)
+      : splitCsv(normalizeString(metadataRaw.sanctions)),
+    sanctions_text: normalizeString(metadataRaw.sanctions_text),
+    detail_url: normalizeString(metadataRaw.detail_url),
     discovery_source: normalizeString(metadataRaw.discovery_source),
     input_url: normalizeString(metadataRaw.input_url),
     docket_id: normalizeString(metadataRaw.docket_id),

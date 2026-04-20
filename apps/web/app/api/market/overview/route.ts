@@ -105,13 +105,13 @@ export async function GET() {
     Promise.allSettled(GLOBAL_INDICES.map(({ symbol }) => fetchQuote(symbol, apiKey))),
   ]);
 
-  const indices: MarketIndexQuote[] = US_INDICES.map(({ symbol, name }, i) => {
+  const indices = US_INDICES.map(({ symbol, name }, i) => {
     const q = usQuotes[i].status === "fulfilled" ? usQuotes[i].value : null;
     const c = usCandles[i].status === "fulfilled" ? usCandles[i].value : null;
     const price  = q?.c ?? 0;
     const d1     = q?.dp ?? 0;
     const pcts   = c && price > 0 ? computeIndexPcts(c, d1, price) : { d1, w1: 0, m1: 0, ytd: 0 };
-    const sparkline = c ? c.c.slice(-30) : [];
+    const sparkline: number[] = c ? c.c.slice(-30) : [];
     return {
       symbol, name, price,
       change: q?.d ?? 0,
@@ -135,7 +135,7 @@ export async function GET() {
     };
   }
 
-  const globalIndices: MarketIndexQuote[] = GLOBAL_INDICES.map(({ symbol, name }, i) => {
+  const globalIndices = GLOBAL_INDICES.map(({ symbol, name }, i) => {
     const q = globalQuotes[i].status === "fulfilled" ? globalQuotes[i].value : null;
     if (!q) return null;
     return {
@@ -144,7 +144,7 @@ export async function GET() {
       change: q.d ?? 0,
       pct: q.dp ?? 0,
       pcts: { d1: q.dp ?? 0, w1: 0, m1: 0, ytd: 0 },
-      sparkline: [],
+      sparkline: [] as number[],
       up: (q.d ?? 0) >= 0,
       status: deriveStatus(q),
     };
