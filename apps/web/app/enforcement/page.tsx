@@ -1,47 +1,34 @@
 import type { Metadata } from "next";
-import { EnforcementDashboard } from "@/components/enforcement-dashboard";
+import { EnforcementBetaDashboard } from "@/components/enforcement-beta-dashboard";
 
 export const metadata: Metadata = {
-  title: "Enforcement Trends | Policy Research Hub",
-  description:
-    "Unified FINRA and SEC enforcement heatmap — rule violation trends across AWC, OHO, NAC, and Litigation Releases.",
+  title: "Enforcement | Policy Research Hub",
+  description: "Combined SEC and FINRA enforcement research view with citation heatmaps and a filterable action feed."
 };
 
 export default function EnforcementPage() {
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 md:px-8">
-      <div className="mb-6">
-        <div className="flex items-center gap-2">
-          <span
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]"
-            style={{
-              background: "rgba(79,213,255,0.08)",
-              color: "var(--accent)",
-              border: "1px solid rgba(79,213,255,0.18)",
-            }}
-          >
-            FINRA
-          </span>
-          <span
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]"
-            style={{
-              background: "rgba(255,80,80,0.08)",
-              color: "#ff5050",
-              border: "1px solid rgba(255,80,80,0.18)",
-            }}
-          >
-            SEC
-          </span>
-          <h1 className="text-xl font-semibold text-[color:var(--ink)]">
-            Enforcement Trends
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full border border-[color:rgba(255,107,127,0.24)] bg-[color:rgba(255,107,127,0.1)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:#ff6b7f]">
+              SEC
+            </span>
+            <span className="inline-flex items-center rounded-full border border-[color:rgba(79,213,255,0.22)] bg-[color:rgba(79,213,255,0.1)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--accent)]">
+              FINRA
+            </span>
+          </div>
+          <h1 className="mt-3 text-2xl font-semibold text-[color:var(--ink)]" style={{ letterSpacing: 0 }}>
+            Enforcement
           </h1>
+          <p className="mt-1.5 max-w-3xl text-sm text-[color:var(--ink-faint)]">
+            Combined enforcement research view with agency modes, citation coverage, heatmaps, and a filterable action feed.
+          </p>
         </div>
-        <p className="mt-1.5 text-sm text-[color:var(--ink-faint)]">
-          Rule violation heatmaps across FINRA disciplinary actions and SEC litigation releases
-        </p>
       </div>
 
-      <EnforcementDashboard />
+      <EnforcementBetaDashboard />
     </main>
   );
 }

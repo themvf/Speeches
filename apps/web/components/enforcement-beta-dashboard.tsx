@@ -639,7 +639,7 @@ export function EnforcementBetaDashboard() {
   if (loading) {
     return (
       <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.55)] p-8 text-sm text-[color:var(--ink-faint)]">
-        Loading Enforcement Beta...
+        Loading Enforcement...
       </div>
     );
   }
@@ -647,7 +647,7 @@ export function EnforcementBetaDashboard() {
   if (error || !payload) {
     return (
       <div className="rounded-xl border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-200">
-        {error || "Enforcement Beta data is unavailable."}
+        {error || "Enforcement data is unavailable."}
       </div>
     );
   }
