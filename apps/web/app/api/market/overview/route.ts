@@ -1,4 +1,4 @@
-import { createRequestId, fail, ok } from "@/lib/server/api-utils";
+import { createRequestId, ok } from "@/lib/server/api-utils";
 import type {
   FearGreedLabel,
   IndexPcts,
@@ -11,55 +11,70 @@ import type {
 export const runtime = "nodejs";
 export const revalidate = 60;
 
-type FinnhubQuote  = { c: number | null; d: number | null; dp: number | null; t?: number };
-type YahooCandle   = { t: number[]; c: number[] };
+type YahooCandle = { t: number[]; c: number[] };
 
 const US_INDICES = [
-  { symbol: "SPY", name: "S&P 500" },
-  { symbol: "DIA", name: "Dow Jones" },
-  { symbol: "QQQ", name: "NASDAQ" },
-  { symbol: "IWM", name: "Russell 2000" },
+  { symbol: "^GSPC", name: "S&P 500" },
+  { symbol: "^DJI",  name: "Dow Jones" },
+  { symbol: "^IXIC", name: "NASDAQ" },
+  { symbol: "^RUT",  name: "Russell 2000" },
 ];
 
 const GLOBAL_INDICES = [
-  { symbol: "EWU", name: "FTSE 100" },
-  { symbol: "EWG", name: "DAX" },
-  { symbol: "EWJ", name: "Nikkei 225" },
-  { symbol: "EWH", name: "Hang Seng" },
-  { symbol: "EWA", name: "ASX 200" },
-  { symbol: "EWQ", name: "CAC 40" },
+  { symbol: "^FTSE",  name: "FTSE 100" },
+  { symbol: "^GDAXI", name: "DAX" },
+  { symbol: "^N225",  name: "Nikkei 225" },
+  { symbol: "^HSI",   name: "Hang Seng" },
+  { symbol: "^AXJO",  name: "ASX 200" },
+  { symbol: "^FCHI",  name: "CAC 40" },
 ];
 
-async function fetchQuote(symbol: string, apiKey: string, rv = 60): Promise<FinnhubQuote | null> {
+const YH = { "User-Agent": "Mozilla/5.0 (compatible; market-data/1.0)" };
+
+function mapMarketState(state?: string): MarketStatus {
+  if (!state) return "CLOSED";
+  if (state === "REGULAR") return "OPEN";
+  if (state.startsWith("PRE")) return "PRE";
+  if (state === "POST" || state === "POSTPOST") return "AFTER";
+  return "CLOSED";
+}
+
+async function fetchYahooQuote(symbol: string, rv = 60): Promise<{
+  price: number; change: number; changePct: number; status: MarketStatus;
+} | null> {
   try {
     const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`,
-      { next: { revalidate: rv } }
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`,
+      { next: { revalidate: rv }, headers: YH }
     );
     if (!res.ok) return null;
-    const data: FinnhubQuote = await res.json();
-    return data.c != null ? data : null;
+    const json = await res.json();
+    const meta = json?.chart?.result?.[0]?.meta;
+    if (!meta?.regularMarketPrice) return null;
+    const price = meta.regularMarketPrice as number;
+    const prev  = (meta.chartPreviousClose ?? meta.previousClose ?? price) as number;
+    const change    = (meta.regularMarketChange    ?? (price - prev)) as number;
+    const changePct = (meta.regularMarketChangePercent ?? (prev ? ((price - prev) / prev) * 100 : 0)) as number;
+    return { price, change, changePct, status: mapMarketState(meta.marketState as string) };
   } catch { return null; }
 }
 
 async function fetchYahooCandles(symbol: string): Promise<YahooCandle | null> {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d&includeAdjustedClose=true`;
-    const res = await fetch(url, {
-      next: { revalidate: 3600 },
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; market-data/1.0)" },
-    });
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`,
+      { next: { revalidate: 3600 }, headers: YH }
+    );
     if (!res.ok) return null;
     const json = await res.json();
     const result = json?.chart?.result?.[0];
     if (!result?.timestamp?.length) return null;
     const closes: (number | null)[] =
       result.indicators?.adjclose?.[0]?.adjclose ??
-      result.indicators?.quote?.[0]?.close ??
-      [];
+      result.indicators?.quote?.[0]?.close ?? [];
     const t: number[] = [];
     const c: number[] = [];
-    (result.timestamp as number[]).forEach((ts, i) => {
+    (result.timestamp as number[]).forEach((ts: number, i: number) => {
       const price = closes[i];
       if (price != null && price > 0) { t.push(ts); c.push(price); }
     });
@@ -91,11 +106,6 @@ function computeIndexPcts(candle: YahooCandle, d1: number, current: number): Ind
   };
 }
 
-function deriveStatus(q: FinnhubQuote): MarketStatus {
-  if (!q.t) return "CLOSED";
-  return (Date.now() / 1000 - q.t) < 1200 ? "OPEN" : "CLOSED";
-}
-
 function fearGreedLabel(vix: number): FearGreedLabel {
   if (vix < 15) return "GREED";
   if (vix < 25) return "CALM";
@@ -105,41 +115,39 @@ function fearGreedLabel(vix: number): FearGreedLabel {
 
 export async function GET() {
   const requestId = createRequestId();
-  const apiKey = process.env.FINNHUB_API_KEY;
-  if (!apiKey) return fail("FINNHUB_API_KEY not set", "NO_API_KEY", 500, requestId);
 
   const [usQuotes, usCandles, vixQuote, globalQuotes] = await Promise.all([
-    Promise.allSettled(US_INDICES.map(({ symbol }) => fetchQuote(symbol, apiKey))),
+    Promise.allSettled(US_INDICES.map(({ symbol }) => fetchYahooQuote(symbol))),
     Promise.allSettled(US_INDICES.map(({ symbol }) => fetchYahooCandles(symbol))),
-    fetchQuote("^VIX", apiKey),
-    Promise.allSettled(GLOBAL_INDICES.map(({ symbol }) => fetchQuote(symbol, apiKey))),
+    fetchYahooQuote("^VIX"),
+    Promise.allSettled(GLOBAL_INDICES.map(({ symbol }) => fetchYahooQuote(symbol))),
   ]);
 
   const indices = US_INDICES.map(({ symbol, name }, i) => {
     const q = usQuotes[i].status === "fulfilled" ? usQuotes[i].value : null;
     const c = usCandles[i].status === "fulfilled" ? usCandles[i].value : null;
-    const price  = q?.c ?? 0;
-    const d1     = q?.dp ?? 0;
+    const price  = q?.price ?? 0;
+    const d1     = q?.changePct ?? 0;
     const pcts   = c && price > 0 ? computeIndexPcts(c, d1, price) : { d1, w1: 0, m1: 0, ytd: 0 };
     const sparkline: number[] = c ? c.c.slice(-30) : [];
     return {
       symbol, name, price,
-      change: q?.d ?? 0,
+      change: q?.change ?? 0,
       pct: d1,
       pcts,
       sparkline,
-      up: (q?.d ?? 0) >= 0,
-      status: q ? deriveStatus(q) : ("CLOSED" as MarketStatus),
+      up: (q?.change ?? 0) >= 0,
+      status: q?.status ?? ("CLOSED" as MarketStatus),
     };
   }).filter((q) => q.price > 0);
 
   let vix: VixQuote | null = null;
-  if (vixQuote?.c) {
-    const v = vixQuote.c;
+  if (vixQuote?.price) {
+    const v = vixQuote.price;
     vix = {
       value: v,
-      change: vixQuote.d ?? 0,
-      pct: vixQuote.dp ?? 0,
+      change: vixQuote.change,
+      pct: vixQuote.changePct,
       label: fearGreedLabel(v),
       gradientPct: Math.min(100, Math.max(0, ((v - 10) / 35) * 100)),
     };
@@ -150,13 +158,13 @@ export async function GET() {
     if (!q) return null;
     return {
       symbol, name,
-      price: q.c ?? 0,
-      change: q.d ?? 0,
-      pct: q.dp ?? 0,
-      pcts: { d1: q.dp ?? 0, w1: 0, m1: 0, ytd: 0 },
+      price: q.price,
+      change: q.change,
+      pct: q.changePct,
+      pcts: { d1: q.changePct, w1: 0, m1: 0, ytd: 0 },
       sparkline: [] as number[],
-      up: (q.d ?? 0) >= 0,
-      status: deriveStatus(q),
+      up: q.change >= 0,
+      status: q.status,
     };
   }).filter((q): q is MarketIndexQuote => q !== null && q.price > 0);
 
