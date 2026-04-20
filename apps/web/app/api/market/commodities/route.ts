@@ -39,7 +39,7 @@ export async function GET() {
     COMMODITIES.map(({ symbol }) => fetchQuote(symbol, apiKey))
   );
 
-  const commodities: CommodityQuote[] = COMMODITIES.map(({ symbol, name, category }, i) => {
+  const commodities = COMMODITIES.map(({ symbol, name, category }, i) => {
     const q = settled[i].status === "fulfilled" ? settled[i].value : null;
     if (!q) return null;
     return {
