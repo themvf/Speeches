@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export const revalidate = 60;
 
 type FinnhubQuote  = { c: number | null; d: number | null; dp: number | null; t?: number };
-type FinnhubCandle = { c: number[]; t: number[]; s: string };
+type YahooCandle   = { t: number[]; c: number[] };
 
 const US_INDICES = [
   { symbol: "SPY", name: "S&P 500" },
@@ -42,21 +42,32 @@ async function fetchQuote(symbol: string, apiKey: string, rv = 60): Promise<Finn
   } catch { return null; }
 }
 
-async function fetchCandles(symbol: string, apiKey: string): Promise<FinnhubCandle | null> {
-  const to   = Math.floor(Date.now() / 1000);
-  const from = to - 400 * 86400;
+async function fetchYahooCandles(symbol: string): Promise<YahooCandle | null> {
   try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${to}&token=${apiKey}`,
-      { next: { revalidate: 3600 } }
-    );
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d&includeAdjustedClose=true`;
+    const res = await fetch(url, {
+      next: { revalidate: 3600 },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; market-data/1.0)" },
+    });
     if (!res.ok) return null;
-    const data: FinnhubCandle = await res.json();
-    return data.s === "ok" && data.c?.length ? data : null;
+    const json = await res.json();
+    const result = json?.chart?.result?.[0];
+    if (!result?.timestamp?.length) return null;
+    const closes: (number | null)[] =
+      result.indicators?.adjclose?.[0]?.adjclose ??
+      result.indicators?.quote?.[0]?.close ??
+      [];
+    const t: number[] = [];
+    const c: number[] = [];
+    (result.timestamp as number[]).forEach((ts, i) => {
+      const price = closes[i];
+      if (price != null && price > 0) { t.push(ts); c.push(price); }
+    });
+    return t.length ? { t, c } : null;
   } catch { return null; }
 }
 
-function priceAt(candle: FinnhubCandle, targetUnix: number): number | null {
+function priceAt(candle: YahooCandle, targetUnix: number): number | null {
   let best: number | null = null;
   let bestDiff = Infinity;
   for (let i = 0; i < candle.t.length; i++) {
@@ -67,8 +78,8 @@ function priceAt(candle: FinnhubCandle, targetUnix: number): number | null {
   return best;
 }
 
-function computeIndexPcts(candle: FinnhubCandle, d1: number, current: number): IndexPcts {
-  const now  = Date.now() / 1000;
+function computeIndexPcts(candle: YahooCandle, d1: number, current: number): IndexPcts {
+  const now = Date.now() / 1000;
   const ytdStart = new Date(new Date().getFullYear(), 0, 1).getTime() / 1000;
   const pct = (ref: number | null) =>
     ref && ref > 0 ? ((current - ref) / ref) * 100 : 0;
@@ -97,10 +108,9 @@ export async function GET() {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) return fail("FINNHUB_API_KEY not set", "NO_API_KEY", 500, requestId);
 
-  // Fetch US index quotes + candles + VIX + global quotes — all in parallel
   const [usQuotes, usCandles, vixQuote, globalQuotes] = await Promise.all([
     Promise.allSettled(US_INDICES.map(({ symbol }) => fetchQuote(symbol, apiKey))),
-    Promise.allSettled(US_INDICES.map(({ symbol }) => fetchCandles(symbol, apiKey))),
+    Promise.allSettled(US_INDICES.map(({ symbol }) => fetchYahooCandles(symbol))),
     fetchQuote("^VIX", apiKey),
     Promise.allSettled(GLOBAL_INDICES.map(({ symbol }) => fetchQuote(symbol, apiKey))),
   ]);
@@ -119,7 +129,7 @@ export async function GET() {
       pcts,
       sparkline,
       up: (q?.d ?? 0) >= 0,
-      status: q ? deriveStatus(q) : "CLOSED",
+      status: q ? deriveStatus(q) : ("CLOSED" as MarketStatus),
     };
   }).filter((q) => q.price > 0);
 
