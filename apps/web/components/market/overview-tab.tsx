@@ -165,36 +165,61 @@ function IndexCard({ q, range }: { q: MarketIndexQuote; range: IndexRange }) {
   );
 }
 
-/* ── VixMeter ───────────────────────────────────────────────────────── */
+/* ── FearGauge ──────────────────────────────────────────────────────── */
 
-function VixMeter({ vix }: { vix: VixQuote }) {
-  const labelColor: Record<string, string> = {
-    GREED: "#41d39d", CALM: "#4fd5ff", CONCERN: "#f2ab43", PANIC: "#f87171",
+function FearGauge({ vix }: { vix: VixQuote }) {
+  const cx = 100, cy = 90, r = 72, sw = 13, nl = 56;
+  const rad = (d: number) => (d * Math.PI) / 180;
+
+  const arcD = (from: number, to: number) => {
+    const sx = (cx + r * Math.cos(rad(from))).toFixed(2);
+    const sy = (cy - r * Math.sin(rad(from))).toFixed(2);
+    const ex = (cx + r * Math.cos(rad(to))).toFixed(2);
+    const ey = (cy - r * Math.sin(rad(to))).toFixed(2);
+    return `M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}`;
   };
+
+  const needleDeg = 180 - (vix.gradientPct / 100) * 180;
+  const nx = (cx + nl * Math.cos(rad(needleDeg))).toFixed(2);
+  const ny = (cy - nl * Math.sin(rad(needleDeg))).toFixed(2);
+
+  const lc = ({ GREED: "#41d39d", CALM: "#4fd5ff", CONCERN: "#f2ab43", PANIC: "#f87171" } as Record<string, string>)[vix.label] ?? "#fff";
+
+  const SEGS = [
+    { from: 180, to: 135, color: "#41d39d" },
+    { from: 135, to: 90,  color: "#4fd5ff" },
+    { from: 90,  to: 45,  color: "#f2ab43" },
+    { from: 45,  to: 0,   color: "#f87171" },
+  ];
+
   return (
-    <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
-      <BoxHeader title="VIX — Fear & Greed" />
-      <div className="p-4">
-        <div className="flex items-baseline gap-3 mb-4">
-          <span className="text-3xl font-bold tabular-nums text-[color:var(--ink)]">{vix.value.toFixed(2)}</span>
-          <span className="text-sm tabular-nums" style={{ color: vix.pct >= 0 ? "#f87171" : "#41d39d" }}>
-            {fmtPct(vix.pct)}
-          </span>
-          <span className="ml-auto text-xs font-bold tracking-[0.1em]" style={{ color: labelColor[vix.label] }}>
-            {vix.label}
-          </span>
-        </div>
-        <div
-          className="relative h-2.5 w-full rounded-full overflow-hidden"
-          style={{ background: "linear-gradient(to right, #41d39d 0%, #4fd5ff 30%, #f2ab43 65%, #f87171 100%)" }}
-        >
-          <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-1.5 rounded-full bg-white shadow-md"
-            style={{ left: `${vix.gradientPct}%` }}
-          />
-        </div>
-        <div className="flex justify-between mt-1.5 text-[10px] text-[color:var(--ink-faint)]">
-          <span>GREED</span><span>CALM</span><span>PANIC</span>
+    <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] flex flex-col">
+      <BoxHeader title="Fear & Greed — VIX" />
+      <div className="flex flex-col items-center px-4 pt-3 pb-4 flex-1">
+        <svg viewBox="0 0 200 100" className="w-full max-w-[230px]" aria-hidden>
+          {/* Background track */}
+          <path d={arcD(180, 0)} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={sw} strokeLinecap="round" />
+          {/* Colored segments */}
+          {SEGS.map((s) => (
+            <path key={s.from} d={arcD(s.from, s.to)} fill="none" stroke={s.color}
+              strokeWidth={sw} strokeLinecap="butt" opacity={0.8} />
+          ))}
+          {/* Needle */}
+          <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+          <circle cx={cx} cy={cy} r="5" fill={lc} />
+          {/* Edge labels */}
+          <text x="16" y={cy + 14} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.35)" fontFamily="system-ui">GREED</text>
+          <text x="184" y={cy + 14} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.35)" fontFamily="system-ui">PANIC</text>
+        </svg>
+        {/* Value below gauge */}
+        <div className="text-center -mt-1">
+          <div className="text-3xl font-bold tabular-nums text-white leading-none">{vix.value.toFixed(2)}</div>
+          <div className="text-[11px] font-bold tracking-widest mt-1" style={{ color: lc }}>{vix.label}</div>
+          <div className="text-xs tabular-nums mt-1 text-[color:var(--ink-faint)]">
+            <span style={{ color: vix.pct >= 0 ? "#f87171" : "#41d39d" }}>
+              {vix.change >= 0 ? "+" : ""}{vix.change.toFixed(2)} ({fmtPct(vix.pct)})
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -349,8 +374,11 @@ export function OverviewTab({ data, loading, error, commodities, bonds }: Props)
         </div>
       </div>
 
-      {/* ── VIX ─────────────────────────────────────────────────── */}
-      {data.vix && <VixMeter vix={data.vix} />}
+      {/* ── Fear Gauge + Global Indices ─────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {data.vix && <FearGauge vix={data.vix} />}
+        {data.globalIndices.length > 0 && <GlobalIndicesBox indices={data.globalIndices} />}
+      </div>
 
       {/* ── 2×2 grid: Metals | Energy / Agriculture | Bonds ──── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -366,11 +394,6 @@ export function OverviewTab({ data, loading, error, commodities, bonds }: Props)
       )}
       {bonds.loading && !bonds.data && (
         <div className="py-4 text-center text-xs text-[color:var(--ink-faint)]">Loading bonds…</div>
-      )}
-
-      {/* ── Global Indices ───────────────────────────────────────── */}
-      {data.globalIndices.length > 0 && (
-        <GlobalIndicesBox indices={data.globalIndices} />
       )}
 
       <p className="text-right text-[11px] text-[color:var(--ink-faint)]">

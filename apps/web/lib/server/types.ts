@@ -472,6 +472,8 @@ export interface CryptoCoin {
   name: string;
   price: number;
   pct24h: number;
+  pct7d: number;
+  pct30d: number;
   marketCap: number;
   volume24h: number;
   up: boolean;

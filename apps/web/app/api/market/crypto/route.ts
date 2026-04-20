@@ -10,6 +10,8 @@ interface CoinGeckoMarket {
   name: string;
   current_price: number;
   price_change_percentage_24h: number | null;
+  price_change_percentage_7d_in_currency: number | null;
+  price_change_percentage_30d_in_currency: number | null;
   market_cap: number;
   total_volume: number;
   market_cap_rank: number;
@@ -22,7 +24,7 @@ export async function GET(request: Request) {
 
   try {
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${limit}&page=1&sparkline=false`,
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${limit}&page=1&sparkline=false&price_change_percentage=7d%2C30d`,
       { next: { revalidate: 120 } }
     );
 
@@ -39,7 +41,9 @@ export async function GET(request: Request) {
       symbol: c.symbol.toUpperCase(),
       name: c.name,
       price: c.current_price,
-      pct24h: c.price_change_percentage_24h ?? 0,
+      pct24h:  c.price_change_percentage_24h ?? 0,
+      pct7d:   c.price_change_percentage_7d_in_currency  ?? 0,
+      pct30d:  c.price_change_percentage_30d_in_currency ?? 0,
       marketCap: c.market_cap,
       volume24h: c.total_volume,
       up: (c.price_change_percentage_24h ?? 0) >= 0,
