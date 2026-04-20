@@ -9,14 +9,23 @@ type Agency = "SEC" | "FINRA";
 type AgencyKey = "sec" | "finra";
 
 const FINRA_RULE_LABELS: Record<string, string> = {
-  "2010": "Standards of Commercial Honor",
-  "2020": "Manipulative and Deceptive Devices",
+  "2010": "Commercial Honor / Just and Equitable Principles",
+  "2020": "Manipulative / Deceptive Devices",
   "2040": "Payments to Unregistered Persons",
   "2111": "Suitability",
   "2232": "Customer Confirmations",
   "2310": "Recommendations to Customers",
   "2330": "Investment Analysis Tools",
   "2360": "Options",
+  "8210": "Information and Testimony Requests",
+  "8211": "Automated Trading Data Requests",
+  "8213": "OTC Trading Data Requests",
+  "8310": "Sanctions",
+  "8311": "Effect of Suspension / Bar",
+  "8313": "Disciplinary Release / Public Disclosure",
+  "9143": "Ex Parte Communications",
+  "9144": "Separation of Functions",
+  "9216": "AWC / Minor Rule Violation Procedure",
   "3110": "Supervision",
   "3120": "Supervisory Control System",
   "3270": "Outside Business Activities",
@@ -32,24 +41,30 @@ const FINRA_RULE_LABELS: Record<string, string> = {
 };
 
 const SEC_RULE_LABELS: Record<string, string> = {
-  "Rule 10b-5": "Anti-Fraud Rule 10b-5",
-  "Rule 13b2-1": "Books and Records Falsification",
-  "Rule 13b2-2": "Officer Certification Fraud",
-  "Rule 206(4)-7": "Advisers Act Compliance Rule",
-  "Rule 206(4)-8": "Private Fund Anti-Fraud Rule",
+  "Rule 10b-5": "Manipulative / Deceptive Devices",
+  "Rule 13b2-1": "Falsification of Accounting Records",
+  "Rule 13b2-2": "False Statements / Audit Influence",
+  "Rule 206(4)-7": "Compliance Procedures and Practices",
+  "Rule 206(4)-8": "Pooled Investment Vehicle Anti-Fraud",
   "Rule 15c3-1": "Net Capital Rule",
   "Rule 15c3-3": "Customer Protection Rule",
   "Exchange Act 10(b)": "Exchange Act Section 10(b)",
   "Exchange Act 13(a)": "Exchange Act Section 13(a)",
-  "Exchange Act 15(a)": "Exchange Act Section 15(a)",
+  "Exchange Act 15(a)": "Broker-Dealer Registration",
+  "Exchange Act 15(b)": "Broker-Dealer Registration / Discipline",
+  "Exchange Act 15B": "Municipal Securities Dealers",
+  "Exchange Act 17A": "Clearance and Settlement",
   "Exchange Act 21C": "Cease-and-Desist Authority",
   "Securities Act 17(a)": "Securities Act Section 17(a)",
   "Advisers Act 204(a)": "Advisers Act Section 204(a)",
+  "Advisers Act 204A": "MNPI Policies / Misuse of Nonpublic Information",
   "Advisers Act 206(1)": "Advisers Act Section 206(1)",
   "Advisers Act 206(2)": "Advisers Act Section 206(2)",
   "Advisers Act 206(4)": "Advisers Act Section 206(4)",
-  "Advisers Act 207": "Advisers Act Section 207"
+  "Advisers Act 207": "False Adviser Filings"
 };
+
+const FINRA_RULE_DENYLIST = new Set(["2023"]);
 
 const FINRA_RULE_BLOCK_RE =
   /\b(?:FINRA|NASD)\s+(?:Conduct\s+)?Rules?\s+([0-9A-Z,\sand\/.-]{3,120})/gi;
@@ -289,6 +304,36 @@ function normalizeSectionToken(raw: string): string {
   return raw.replace(/\s+/g, "").replace(/[.,;:]+$/g, "");
 }
 
+function normalizeSecCitation(citation: string): string {
+  const clean = citation.replace(/\s+/g, " ").trim();
+  const ruleMatch = clean.match(
+    /^Rule\s+(10b-5[a-c]?|13b2-[12]|206\(4\)-[0-9]+|15c3-[0-9]+|17a-[0-9]+|17ad-[0-9]+)$/i
+  );
+  if (ruleMatch) {
+    const rule = ruleMatch[1].toLowerCase().replace(/^17ad/, "17Ad");
+    return `Rule ${rule}`;
+  }
+
+  const [act, section] = clean.split(/ (?=\S+$)/);
+
+  if (/^(?:SEC|Exchange Act|Advisers Act|Securities Act) 10b-5$/i.test(clean)) {
+    return "Rule 10b-5";
+  }
+  if (act === "Exchange Act" && section === "15B") {
+    return "Exchange Act 15B";
+  }
+  if (act === "Exchange Act" && section === "15b") {
+    return "Exchange Act 15(b)";
+  }
+  if (act === "Exchange Act" && /^17A$/i.test(section ?? "")) {
+    return "Exchange Act 17A";
+  }
+  if (act === "Advisers Act" && /^204A$/i.test(section ?? "")) {
+    return "Advisers Act 204A";
+  }
+  return clean;
+}
+
 function secLabel(citation: string): string {
   if (SEC_RULE_LABELS[citation]) {
     return SEC_RULE_LABELS[citation];
@@ -302,12 +347,16 @@ function secLabel(citation: string): string {
 
 function extractSecCitations(fullText: string): EnforcementBetaCitation[] {
   const citations: EnforcementBetaCitation[] = [];
+  const addCitation = (rawCitation: string) => {
+    const citation = normalizeSecCitation(rawCitation);
+    citations.push({ citation, label: secLabel(citation), agency: "SEC" });
+  };
 
   SEC_RULE_RE.lastIndex = 0;
   let ruleMatch: RegExpExecArray | null;
   while ((ruleMatch = SEC_RULE_RE.exec(fullText)) !== null) {
     const rule = `Rule ${ruleMatch[1]}`;
-    citations.push({ citation: rule, label: secLabel(rule), agency: "SEC" });
+    addCitation(rule);
   }
 
   SEC_SECTION_BLOCK_RE.lastIndex = 0;
@@ -323,7 +372,7 @@ function extractSecCitations(fullText: string): EnforcementBetaCitation[] {
         continue;
       }
       const citation = `${act} ${section}`;
-      citations.push({ citation, label: secLabel(citation), agency: "SEC" });
+      addCitation(citation);
     }
   }
 
@@ -333,7 +382,7 @@ function extractSecCitations(fullText: string): EnforcementBetaCitation[] {
     const section = normalizeSectionToken(sectionMatch[1]);
     const act = section.startsWith("206") || section === "204(a)" || section === "207" ? "Advisers Act" : "SEC";
     const citation = `${act} ${section}`;
-    citations.push({ citation, label: secLabel(citation), agency: "SEC" });
+    addCitation(citation);
   }
 
   return dedupeByKey(citations, (citation) => citation.citation);
@@ -347,6 +396,9 @@ function extractFinraCitations(fullText: string): EnforcementBetaCitation[] {
     let tokenMatch: RegExpExecArray | null;
     while ((tokenMatch = FINRA_RULE_TOKEN_RE.exec(block)) !== null) {
       const rule = tokenMatch[0].toUpperCase();
+      if (FINRA_RULE_DENYLIST.has(rule)) {
+        continue;
+      }
       citations.push({
         citation: `FINRA Rule ${rule}`,
         label: FINRA_RULE_LABELS[rule] ?? `FINRA Rule ${rule}`,
