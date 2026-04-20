@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  MarketBondsData,
+  MarketCommoditiesData,
   MarketCryptoData,
   MarketExchangesData,
   MarketMoversData,
@@ -24,14 +26,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "exchanges", label: "Exchanges" },
 ];
 
-const POLL_MS: Record<TabId, number> = {
-  overview:  60_000,
-  sectors:   300_000,
-  movers:    120_000,
-  crypto:    120_000,
-  exchanges: 60_000,
-};
-
 interface TabState<T> {
   data: T | null;
   loading: boolean;
@@ -42,6 +36,7 @@ function useTabData<T>(
   thisTab: TabId,
   activeTab: TabId,
   endpoint: string,
+  pollMs: number,
 ): TabState<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,13 +58,10 @@ function useTabData<T>(
 
   useEffect(() => {
     if (activeTab !== thisTab) return;
-    if (!loadedRef.current) {
-      loadedRef.current = true;
-      load();
-    }
-    const id = setInterval(load, POLL_MS[thisTab]);
+    if (!loadedRef.current) { loadedRef.current = true; load(); }
+    const id = setInterval(load, pollMs);
     return () => clearInterval(id);
-  }, [activeTab, thisTab, load]);
+  }, [activeTab, thisTab, load, pollMs]);
 
   return { data, loading, error };
 }
@@ -77,11 +69,15 @@ function useTabData<T>(
 export function MarketDashboard() {
   const [tab, setTab] = useState<TabId>("overview");
 
-  const overview  = useTabData<MarketOverviewData> ("overview",  tab, "/api/market/overview");
-  const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors");
-  const movers    = useTabData<MarketMoversData>   ("movers",    tab, "/api/market/movers");
-  const crypto    = useTabData<MarketCryptoData>   ("crypto",    tab, "/api/market/crypto");
-  const exchanges = useTabData<MarketExchangesData>("exchanges", tab, "/api/market/exchanges");
+  // Overview sub-feeds (all keyed to "overview" tab)
+  const overview    = useTabData<MarketOverviewData>   ("overview", tab, "/api/market/overview",    60_000);
+  const commodities = useTabData<MarketCommoditiesData>("overview", tab, "/api/market/commodities", 120_000);
+  const bonds       = useTabData<MarketBondsData>      ("overview", tab, "/api/market/bonds",       3_600_000);
+
+  const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors",   300_000);
+  const movers    = useTabData<MarketMoversData>   ("movers",    tab, "/api/market/movers",    120_000);
+  const crypto    = useTabData<MarketCryptoData>   ("crypto",    tab, "/api/market/crypto",    120_000);
+  const exchanges = useTabData<MarketExchangesData>("exchanges", tab, "/api/market/exchanges",  60_000);
 
   return (
     <div className="space-y-6">
@@ -103,8 +99,7 @@ export function MarketDashboard() {
         ))}
       </div>
 
-      {/* Tab panels */}
-      {tab === "overview"  && <OverviewTab  {...overview} />}
+      {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "movers"    && <MoversTab    {...movers} />}
       {tab === "crypto"    && <CryptoTab    {...crypto} />}

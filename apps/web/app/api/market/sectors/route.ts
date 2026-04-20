@@ -5,113 +5,50 @@ export const runtime = "nodejs";
 export const revalidate = 300;
 
 type FinnhubQuote = { c: number | null; d: number | null; dp: number | null };
-type FinnhubSectorPerf = {
-  sector: string;
-  changesPercentage: string;
-  d1?: string;
-  m1?: string;
-  m3?: string;
-  ytd?: string;
+type FinnhubCandle = { c: number[]; t: number[]; s: string };
+
+// Sector ETFs for accurate multi-period returns (candle data)
+const SECTOR_ETFS: Record<string, string> = {
+  "Technology":             "XLK",
+  "Communication Services": "XLC",
+  "Consumer Cyclical":      "XLY",
+  "Consumer Defensive":     "XLP",
+  "Energy":                 "XLE",
+  "Financial Services":     "XLF",
+  "Healthcare":             "XLV",
+  "Industrials":            "XLI",
+  "Basic Materials":        "XLB",
+  "Real Estate":            "XLRE",
+  "Utilities":              "XLU",
 };
 
-// Finnhub sector names → display names
 const SECTOR_NAME_MAP: Record<string, string> = {
-  "Technology": "Technology",
+  "Technology":             "Technology",
   "Communication Services": "Communication Services",
-  "Consumer Cyclical": "Consumer Discretionary",
-  "Consumer Defensive": "Consumer Staples",
-  "Energy": "Energy",
-  "Financial Services": "Financials",
-  "Healthcare": "Healthcare",
-  "Industrials": "Industrials",
-  "Basic Materials": "Materials",
-  "Real Estate": "Real Estate",
-  "Utilities": "Utilities",
+  "Consumer Cyclical":      "Consumer Discretionary",
+  "Consumer Defensive":     "Consumer Staples",
+  "Energy":                 "Energy",
+  "Financial Services":     "Financials",
+  "Healthcare":             "Healthcare",
+  "Industrials":            "Industrials",
+  "Basic Materials":        "Materials",
+  "Real Estate":            "Real Estate",
+  "Utilities":              "Utilities",
 };
 
 const SECTOR_STOCKS: Record<string, { symbol: string; name: string }[]> = {
-  "Technology": [
-    { symbol: "AAPL", name: "Apple Inc." },
-    { symbol: "MSFT", name: "Microsoft Corp." },
-    { symbol: "NVDA", name: "Nvidia Corp." },
-    { symbol: "AMD", name: "Advanced Micro Devices" },
-    { symbol: "INTC", name: "Intel Corp." },
-  ],
-  "Communication Services": [
-    { symbol: "GOOGL", name: "Alphabet Inc." },
-    { symbol: "META", name: "Meta Platforms" },
-    { symbol: "NFLX", name: "Netflix Inc." },
-    { symbol: "DIS", name: "Walt Disney Co." },
-    { symbol: "T", name: "AT&T Inc." },
-  ],
-  "Consumer Cyclical": [
-    { symbol: "AMZN", name: "Amazon.com" },
-    { symbol: "TSLA", name: "Tesla Inc." },
-    { symbol: "HD", name: "Home Depot" },
-    { symbol: "MCD", name: "McDonald's Corp." },
-    { symbol: "NKE", name: "Nike Inc." },
-  ],
-  "Consumer Defensive": [
-    { symbol: "WMT", name: "Walmart Inc." },
-    { symbol: "PG", name: "Procter & Gamble" },
-    { symbol: "KO", name: "Coca-Cola Co." },
-    { symbol: "PEP", name: "PepsiCo Inc." },
-    { symbol: "SBUX", name: "Starbucks Corp." },
-  ],
-  "Energy": [
-    { symbol: "XOM", name: "Exxon Mobil" },
-    { symbol: "CVX", name: "Chevron Corp." },
-    { symbol: "COP", name: "ConocoPhillips" },
-    { symbol: "SLB", name: "SLB (Schlumberger)" },
-    { symbol: "OXY", name: "Occidental Petroleum" },
-  ],
-  "Financial Services": [
-    { symbol: "JPM", name: "JPMorgan Chase" },
-    { symbol: "BAC", name: "Bank of America" },
-    { symbol: "GS", name: "Goldman Sachs" },
-    { symbol: "MS", name: "Morgan Stanley" },
-    { symbol: "WFC", name: "Wells Fargo" },
-  ],
-  "Healthcare": [
-    { symbol: "JNJ", name: "Johnson & Johnson" },
-    { symbol: "PFE", name: "Pfizer Inc." },
-    { symbol: "MRNA", name: "Moderna Inc." },
-    { symbol: "UNH", name: "UnitedHealth Group" },
-    { symbol: "ABBV", name: "AbbVie Inc." },
-  ],
-  "Industrials": [
-    { symbol: "BA", name: "Boeing Co." },
-    { symbol: "LMT", name: "Lockheed Martin" },
-    { symbol: "UPS", name: "United Parcel Service" },
-    { symbol: "CAT", name: "Caterpillar Inc." },
-    { symbol: "RTX", name: "RTX Corp." },
-  ],
-  "Basic Materials": [
-    { symbol: "LIN", name: "Linde plc" },
-    { symbol: "APD", name: "Air Products" },
-    { symbol: "NEM", name: "Newmont Corp." },
-    { symbol: "FCX", name: "Freeport-McMoRan" },
-    { symbol: "ALB", name: "Albemarle Corp." },
-  ],
-  "Real Estate": [
-    { symbol: "PLD", name: "Prologis Inc." },
-    { symbol: "AMT", name: "American Tower" },
-    { symbol: "EQIX", name: "Equinix Inc." },
-    { symbol: "SPG", name: "Simon Property Group" },
-    { symbol: "O", name: "Realty Income Corp." },
-  ],
-  "Utilities": [
-    { symbol: "NEE", name: "NextEra Energy" },
-    { symbol: "DUK", name: "Duke Energy" },
-    { symbol: "SO", name: "Southern Co." },
-    { symbol: "D", name: "Dominion Energy" },
-    { symbol: "AEP", name: "American Electric Power" },
-  ],
+  "Technology":             [{ symbol: "AAPL", name: "Apple Inc." }, { symbol: "MSFT", name: "Microsoft" }, { symbol: "NVDA", name: "Nvidia" }],
+  "Communication Services": [{ symbol: "GOOGL", name: "Alphabet" }, { symbol: "META", name: "Meta Platforms" }, { symbol: "NFLX", name: "Netflix" }],
+  "Consumer Cyclical":      [{ symbol: "AMZN", name: "Amazon" }, { symbol: "TSLA", name: "Tesla" }, { symbol: "HD", name: "Home Depot" }],
+  "Consumer Defensive":     [{ symbol: "WMT", name: "Walmart" }, { symbol: "PG", name: "Procter & Gamble" }, { symbol: "KO", name: "Coca-Cola" }],
+  "Energy":                 [{ symbol: "XOM", name: "Exxon Mobil" }, { symbol: "CVX", name: "Chevron" }, { symbol: "COP", name: "ConocoPhillips" }],
+  "Financial Services":     [{ symbol: "JPM", name: "JPMorgan Chase" }, { symbol: "BAC", name: "Bank of America" }, { symbol: "GS", name: "Goldman Sachs" }],
+  "Healthcare":             [{ symbol: "JNJ", name: "J&J" }, { symbol: "UNH", name: "UnitedHealth" }, { symbol: "PFE", name: "Pfizer" }],
+  "Industrials":            [{ symbol: "BA", name: "Boeing" }, { symbol: "CAT", name: "Caterpillar" }, { symbol: "UPS", name: "UPS" }],
+  "Basic Materials":        [{ symbol: "LIN", name: "Linde" }, { symbol: "FCX", name: "Freeport-McMoRan" }, { symbol: "NEM", name: "Newmont" }],
+  "Real Estate":            [{ symbol: "PLD", name: "Prologis" }, { symbol: "AMT", name: "American Tower" }, { symbol: "EQIX", name: "Equinix" }],
+  "Utilities":              [{ symbol: "NEE", name: "NextEra Energy" }, { symbol: "DUK", name: "Duke Energy" }, { symbol: "SO", name: "Southern Co." }],
 };
-
-function parsePct(s: string): number {
-  return parseFloat(s.replace(/[^0-9.\-]/g, "")) || 0;
-}
 
 async function fetchQuote(symbol: string, apiKey: string): Promise<FinnhubQuote | null> {
   try {
@@ -122,9 +59,56 @@ async function fetchQuote(symbol: string, apiKey: string): Promise<FinnhubQuote 
     if (!res.ok) return null;
     const data: FinnhubQuote = await res.json();
     return data.c != null ? data : null;
-  } catch {
-    return null;
+  } catch { return null; }
+}
+
+async function fetchCandles(symbol: string, apiKey: string): Promise<FinnhubCandle | null> {
+  const to = Math.floor(Date.now() / 1000);
+  const from = to - 400 * 86400; // 13+ months back (covers YTD + 3M)
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${to}&token=${apiKey}`,
+      { next: { revalidate: 3600 } }
+    );
+    if (!res.ok) return null;
+    const data: FinnhubCandle = await res.json();
+    return data.s === "ok" && data.c?.length ? data : null;
+  } catch { return null; }
+}
+
+function priceAtTarget(candle: FinnhubCandle, targetUnix: number): number | null {
+  let best: number | null = null;
+  let bestDiff = Infinity;
+  for (let i = 0; i < candle.t.length; i++) {
+    const diff = Math.abs(candle.t[i] - targetUnix);
+    if (diff < bestDiff && candle.t[i] <= targetUnix + 86400) {
+      bestDiff = diff;
+      best = candle.c[i];
+    }
   }
+  return best;
+}
+
+function computePcts(candle: FinnhubCandle, currentPrice: number): SectorPcts {
+  const now = Date.now() / 1000;
+  const today = new Date();
+  const ytdStart = new Date(today.getFullYear(), 0, 1).getTime() / 1000;
+
+  const p1w  = priceAtTarget(candle, now - 7 * 86400);
+  const p1m  = priceAtTarget(candle, now - 30 * 86400);
+  const p3m  = priceAtTarget(candle, now - 90 * 86400);
+  const pYtd = priceAtTarget(candle, ytdStart);
+
+  const pct = (ref: number | null) =>
+    ref && ref > 0 ? ((currentPrice - ref) / ref) * 100 : 0;
+
+  return {
+    d1:  0, // filled from quote below
+    w1:  pct(p1w),
+    m1:  pct(p1m),
+    m3:  pct(p3m),
+    ytd: pct(pYtd),
+  };
 }
 
 export async function GET() {
@@ -132,63 +116,46 @@ export async function GET() {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) return fail("FINNHUB_API_KEY not set", "NO_API_KEY", 500, requestId);
 
-  // Fetch sector-level performance
-  let sectorPerf: FinnhubSectorPerf[] = [];
-  try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/stock/sector-performance?token=${apiKey}`,
-      { next: { revalidate: 300 } }
-    );
-    if (res.ok) sectorPerf = await res.json();
-  } catch { /* fall through — stocks will show pct 0 for sector header */ }
+  const sectorKeys = Object.keys(SECTOR_STOCKS);
 
-  const perfMap = new Map(
-    sectorPerf.map((s) => [
-      s.sector,
-      {
-        d1:  parsePct(s.d1  ?? s.changesPercentage),
-        m1:  parsePct(s.m1  ?? "0"),
-        m3:  parsePct(s.m3  ?? "0"),
-        ytd: parsePct(s.ytd ?? "0"),
-      } satisfies SectorPcts,
-    ])
+  // Fetch sector ETF quotes + candles in parallel (22 calls total)
+  const [etfQuotes, etfCandles] = await Promise.all([
+    Promise.allSettled(sectorKeys.map((key) => fetchQuote(SECTOR_ETFS[key], apiKey))),
+    Promise.allSettled(sectorKeys.map((key) => fetchCandles(SECTOR_ETFS[key], apiKey))),
+  ]);
+
+  // Fetch all stock quotes in parallel
+  const allStocks = sectorKeys.flatMap((key) =>
+    SECTOR_STOCKS[key].map((s) => ({ ...s, sectorKey: key }))
   );
-
-  // Gather all stocks to quote in one parallel batch
-  const allStocks: { finnhubKey: string; symbol: string; name: string }[] = [];
-  for (const [finnhubKey, stocks] of Object.entries(SECTOR_STOCKS)) {
-    for (const s of stocks) {
-      allStocks.push({ finnhubKey, ...s });
-    }
-  }
-
-  const settled = await Promise.allSettled(
+  const stockSettled = await Promise.allSettled(
     allStocks.map(({ symbol }) => fetchQuote(symbol, apiKey))
   );
 
-  const stockQuotes = settled.map((r, i) => ({
-    ...allStocks[i],
-    q: r.status === "fulfilled" ? r.value : null,
-  }));
-
-  // Build sectors
-  const defaultPcts: SectorPcts = { d1: 0, m1: 0, m3: 0, ytd: 0 };
-
-  const sectors: SectorData[] = Object.entries(SECTOR_STOCKS).map(([finnhubKey, stockDefs]) => {
+  const sectors: SectorData[] = sectorKeys.map((finnhubKey, i) => {
     const displayName = SECTOR_NAME_MAP[finnhubKey] ?? finnhubKey;
-    const pcts = perfMap.get(finnhubKey) ?? defaultPcts;
+    const quote  = etfQuotes[i].status === "fulfilled" ? etfQuotes[i].value : null;
+    const candle = etfCandles[i].status === "fulfilled" ? etfCandles[i].value : null;
 
-    const stocks: SectorStock[] = stockDefs
+    const currentPrice = quote?.c ?? 0;
+    const pcts: SectorPcts = candle && currentPrice > 0
+      ? { ...computePcts(candle, currentPrice), d1: quote?.dp ?? 0 }
+      : { d1: quote?.dp ?? 0, w1: 0, m1: 0, m3: 0, ytd: 0 };
+
+    const stocks: SectorStock[] = SECTOR_STOCKS[finnhubKey]
       .map((def) => {
-        const found = stockQuotes.find((sq) => sq.symbol === def.symbol && sq.finnhubKey === finnhubKey);
-        if (!found?.q) return null;
+        const idx = allStocks.findIndex((s) => s.symbol === def.symbol && s.sectorKey === finnhubKey);
+        const q = idx >= 0 && stockSettled[idx].status === "fulfilled"
+          ? stockSettled[idx].value
+          : null;
+        if (!q) return null;
         return {
           symbol: def.symbol,
           name: def.name,
-          price: found.q.c ?? 0,
-          pct: found.q.dp ?? 0,
-          change: found.q.d ?? 0,
-          up: (found.q.d ?? 0) >= 0,
+          price: q.c ?? 0,
+          pct: q.dp ?? 0,
+          change: q.d ?? 0,
+          up: (q.d ?? 0) >= 0,
         };
       })
       .filter((s): s is SectorStock => s !== null);

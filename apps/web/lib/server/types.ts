@@ -52,6 +52,9 @@ export interface CustomDocumentMetadata {
   comment_deadline?: string;
   pdf_url?: string;
   release_no?: string;
+  case_id?: string;
+  subject_text?: string;
+  case_summary?: string;
   action_type?: string;
   forum?: string;
   outcome_status?: string;
@@ -59,6 +62,8 @@ export interface CustomDocumentMetadata {
   entities?: string[];
   respondents?: string[];
   sanctions?: string[];
+  sanctions_text?: string;
+  detail_url?: string;
   discovery_source?: string;
   input_url?: string;
   docket_id?: string;
@@ -382,12 +387,21 @@ export interface TrendsPayload {
 export type MarketStatus = "OPEN" | "CLOSED" | "PRE" | "AFTER";
 export type FearGreedLabel = "GREED" | "CALM" | "CONCERN" | "PANIC";
 
+export interface IndexPcts {
+  d1: number;
+  w1: number;
+  m1: number;
+  ytd: number;
+}
+
 export interface MarketIndexQuote {
   symbol: string;
   name: string;
   price: number;
   change: number;
   pct: number;
+  pcts: IndexPcts;
+  sparkline: number[];
   up: boolean;
   status: MarketStatus;
 }
@@ -418,6 +432,7 @@ export interface SectorStock {
 
 export interface SectorPcts {
   d1: number;
+  w1: number;
   m1: number;
   m3: number;
   ytd: number;
@@ -481,6 +496,37 @@ export interface ExchangeRegionGroup {
 
 export interface MarketExchangesData {
   regions: ExchangeRegionGroup[];
+  generatedAt: string;
+}
+
+export type CommodityCategory = "metals" | "energy" | "agriculture";
+
+export interface CommodityQuote {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  pct: number;
+  up: boolean;
+  category: CommodityCategory;
+}
+
+export interface MarketCommoditiesData {
+  commodities: CommodityQuote[];
+  generatedAt: string;
+}
+
+export interface TreasuryYield {
+  label: string;
+  rate: number;
+  change: number;
+  pct: number;
+  up: boolean;
+}
+
+export interface MarketBondsData {
+  yields: TreasuryYield[];
+  dxy: { price: number; change: number; pct: number; up: boolean } | null;
   generatedAt: string;
 }
 

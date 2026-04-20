@@ -9,10 +9,11 @@ interface Props {
   error: string | null;
 }
 
-type RangeId = "d1" | "m1" | "m3" | "ytd";
+type RangeId = "d1" | "w1" | "m1" | "m3" | "ytd";
 
 const RANGES: { id: RangeId; label: string }[] = [
   { id: "d1",  label: "1D" },
+  { id: "w1",  label: "1W" },
   { id: "m1",  label: "1M" },
   { id: "m3",  label: "3M" },
   { id: "ytd", label: "YTD" },
