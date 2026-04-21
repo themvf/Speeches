@@ -19,6 +19,8 @@ export type IntelligenceEvidenceArticle = {
   impact: number;
 };
 
+export type IntelligenceEvidenceSource = "seed" | "gdelt-doc" | "gdelt-gkg";
+
 export type IntelligenceEvidenceCluster = {
   id: string;
   title: string;
@@ -71,7 +73,7 @@ export type NarrativeRank = {
 
 export type IntelligenceSignalsData = {
   generatedAt: string;
-  source: "seed" | "gdelt-doc";
+  source: IntelligenceEvidenceSource;
   systemTrends: SystemTrend[];
   whatChanged: string[];
   narrativeLeaderboard: NarrativeRank[];

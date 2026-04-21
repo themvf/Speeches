@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
 import { buildGdeltDocQueries, buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
+import { buildGdeltGkgArchiveUrls, parseGdeltGkgCsv, parseGdeltGkgManifest } from "./server/gdelt-gkg.ts";
 import { parseRawThemes, scoreThemeArticle } from "./theme-intelligence.ts";
 
 test("maps raw GDELT themes to deduplicated normalized themes", () => {
@@ -202,4 +203,49 @@ test("maps GDELT DOC articles to evidence with real URLs", () => {
   assert.equal(evidence[0].source, "reuters.com");
   assert.ok(evidence[0].relatedThemes.includes("INFLATION"));
   assert.ok(evidence[0].relatedThemes.includes("ENERGY"));
+});
+
+test("parses GDELT GKG manifest and maps live rows through normalized themes", () => {
+  const manifest = [
+    "97681 hash http://data.gdeltproject.org/gdeltv2/20260421211500.export.CSV.zip",
+    "171911 hash http://data.gdeltproject.org/gdeltv2/20260421211500.mentions.CSV.zip",
+    "7716254 hash http://data.gdeltproject.org/gdeltv2/20260421211500.gkg.csv.zip"
+  ].join("\n");
+
+  const latestArchive = parseGdeltGkgManifest(manifest);
+  assert.equal(latestArchive, "http://data.gdeltproject.org/gdeltv2/20260421211500.gkg.csv.zip");
+  assert.deepEqual(buildGdeltGkgArchiveUrls(latestArchive!, 2), [
+    "http://data.gdeltproject.org/gdeltv2/20260421211500.gkg.csv.zip",
+    "http://data.gdeltproject.org/gdeltv2/20260421210000.gkg.csv.zip"
+  ]);
+
+  const rows = [
+    [
+      "20260421211500-1",
+      "20260421211500",
+      "1",
+      "reuters.com",
+      "https://www.reuters.com/markets/commodities/oil-prices-rise-2026-04-21/",
+      "",
+      "",
+      "ECON_INFLATION;OIL;CENTRAL_BANK;",
+      "ECON_INFLATION,23;OIL,44;CENTRAL_BANK,71;"
+    ].join("\t"),
+    [
+      "20260421211500-2",
+      "20260421211500",
+      "1",
+      "example.com",
+      "https://example.com/local/soil-samples/",
+      "",
+      "",
+      "ENV_SOIL;",
+      "ENV_SOIL,12;"
+    ].join("\t")
+  ].join("\n");
+
+  const records = parseGdeltGkgCsv(rows);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].url, "https://www.reuters.com/markets/commodities/oil-prices-rise-2026-04-21/");
+  assert.deepEqual(records[0].normalizedThemes, ["CENTRAL_BANK", "ENERGY", "INFLATION"]);
 });

@@ -1,5 +1,5 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
-import { fetchGdeltEvidenceForProfile } from "@/lib/server/gdelt-doc";
+import { fetchGdeltGkgEvidenceForProfile } from "@/lib/server/gdelt-gkg";
 import { buildIntelligenceSignalsData } from "@/lib/server/intelligence-signals";
 import type { IntelligenceEvidenceArticle } from "@/lib/intelligence-types";
 
@@ -28,9 +28,15 @@ export async function GET(request: Request) {
     return fail("Unknown intelligence profile.", "UNKNOWN_PROFILE", 404, requestId);
   }
 
-  const gdeltEvidence = await fetchGdeltEvidenceForProfile(profile);
-  const evidence = gdeltEvidence.length > 0 ? gdeltEvidence : profile.evidence;
-  const source = gdeltEvidence.length > 0 ? "gdelt-doc" : "seed";
+  let liveEvidence: IntelligenceEvidenceArticle[] = [];
+  try {
+    liveEvidence = await fetchGdeltGkgEvidenceForProfile(profile);
+  } catch {
+    liveEvidence = [];
+  }
+
+  const evidence = liveEvidence.length > 0 ? liveEvidence : profile.evidence;
+  const source = liveEvidence.length > 0 ? "gdelt-gkg" : "seed";
 
   return ok({
     profileId,

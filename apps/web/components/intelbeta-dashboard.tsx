@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SparklineChart } from "@/components/sparkline-chart";
-import type { IntelligenceEvidenceArticle, IntelligenceProfile, IntelligenceSignalsData } from "@/lib/intelligence-types";
+import type {
+  IntelligenceEvidenceArticle,
+  IntelligenceEvidenceSource,
+  IntelligenceProfile,
+  IntelligenceSignalsData
+} from "@/lib/intelligence-types";
 import type { TrendItem, TrendsPayload } from "@/lib/server/types";
 import {
   THEME_MAPPING,
@@ -21,7 +26,7 @@ type ScoredTrend = TrendItem & {
 type CommandCategory = ThemeCategory | "ALL";
 type SeverityFilter = ThemeSeverity | "ALL";
 type LiveEvidenceMeta = {
-  source: "seed" | "gdelt-doc";
+  source: IntelligenceEvidenceSource;
   coverage: {
     totalArticles: number;
     sourceCount: number;
@@ -33,7 +38,7 @@ type GdeltEvidenceApiResponse =
       ok: true;
       data: {
         profileId: string;
-        source: "seed" | "gdelt-doc";
+        source: IntelligenceEvidenceSource;
         evidence: IntelligenceEvidenceArticle[];
         coverage: {
           totalArticles: number;
@@ -501,7 +506,7 @@ export function IntelBetaDashboard({
     : selectedSignal?.signal.primary_driver;
   const selectedProfileEvidence = selectedSignal ? evidenceByProfile[selectedSignal.id] ?? selectedSignal.evidence : [];
   const selectedEvidenceMeta = selectedSignal ? evidenceMetaByProfile[selectedSignal.id] : undefined;
-  const hasLiveEvidence = selectedEvidenceMeta?.source === "gdelt-doc";
+  const hasLiveEvidence = selectedEvidenceMeta?.source === "gdelt-doc" || selectedEvidenceMeta?.source === "gdelt-gkg";
   const evidence = selectedSignal
     ? evidenceForArticles(selectedProfileEvidence, selectedSignal.evidence, selectedTheme ?? selectedDriver?.normalized_theme).slice(0, 30)
     : [];
@@ -915,7 +920,9 @@ export function IntelBetaDashboard({
               {isLoadingEvidence
                 ? "Loading live GDELT article links..."
                 : hasLiveEvidence
-                  ? "Live GDELT DOC 2.0 articles with source URLs."
+                  ? selectedEvidenceMeta?.source === "gdelt-gkg"
+                    ? "Live GDELT GKG articles with source URLs."
+                    : "Live GDELT DOC 2.0 articles with source URLs."
                   : evidenceLoadError
                     ? `Seed evidence shown; GDELT issue: ${evidenceLoadError}`
                     : "Seed evidence shown until live GDELT links load."}
