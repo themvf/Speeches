@@ -26,25 +26,7 @@ export default async function IntelBetaPage() {
   ]);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8 md:px-8">
-      <div className="mb-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded-full border border-[color:rgba(79,213,255,0.22)] bg-[color:rgba(79,213,255,0.1)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--accent)]">
-            Beta
-          </span>
-          <span className="inline-flex items-center rounded-full border border-[color:rgba(242,171,67,0.26)] bg-[color:rgba(242,171,67,0.1)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--warn)]">
-            Trends + Intelligence
-          </span>
-        </div>
-        <h1 className="mt-3 text-2xl font-semibold text-[color:var(--ink)]" style={{ letterSpacing: 0 }}>
-          Intel Beta
-        </h1>
-        <p className="mt-1.5 max-w-3xl text-sm text-[color:var(--ink-faint)]">
-          Explore a combined workflow where system-level trend detection selects the signal, then the
-          evidence layer explains drivers, coverage, articles, and market read-through.
-        </p>
-      </div>
-
+    <main className="mx-auto w-full max-w-[1800px] px-3 py-4 md:px-5">
       <IntelBetaDashboard initialSignals={initialSignals} initialTrends={initialTrends} />
     </main>
   );
