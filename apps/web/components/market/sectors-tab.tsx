@@ -119,6 +119,7 @@ function SectorRow({
                   type="yahoo"
                   name={sector.name}
                   up={sector.pcts[range] >= 0}
+                  label={`${SECTOR_ETF[sector.name]} ETF`}
                 />
               </div>
             )}

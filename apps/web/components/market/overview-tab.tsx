@@ -253,7 +253,7 @@ function CommodityBox({ title, items }: { title: string; items: CommodityQuote[]
                 {isExp && (
                   <tr key={`${c.symbol}-chart`}>
                     <td colSpan={4} className="p-4 bg-[color:rgba(9,21,34,0.3)] border-b border-[color:var(--line)]">
-                      <InlineChart symbol={c.symbol} type="yahoo" name={c.name} up={c.up} />
+                      <InlineChart symbol={c.symbol} type="yahoo" name={c.name} up={c.up} label={`${c.symbol} Futures`} />
                     </td>
                   </tr>
                 )}
@@ -368,7 +368,7 @@ function GlobalIndicesBox({ indices }: { indices: MarketIndexQuote[] }) {
                 {isExp && (
                   <tr key={`${q.symbol}-chart`}>
                     <td colSpan={4} className="p-4 bg-[color:rgba(9,21,34,0.3)] border-b border-[color:var(--line)]">
-                      <InlineChart symbol={q.symbol} type="yahoo" name={q.name} up={q.up} />
+                      <InlineChart symbol={q.symbol} type="yahoo" name={q.name} up={q.up} label={q.symbol} />
                     </td>
                   </tr>
                 )}

@@ -63,10 +63,12 @@ export function PriceChart({
   prices,
   up,
   defaultRange = "3M",
+  label,
 }: {
   prices: ChartPoint[];
   up: boolean;
   defaultRange?: ChartRange;
+  label?: string;
 }) {
   const [range, setRange] = useState<ChartRange>(defaultRange);
   const uid = useId().replace(/:/g, "");
@@ -76,7 +78,13 @@ export function PriceChart({
 
   return (
     <div>
-      <div className="flex justify-end gap-0.5 mb-2">
+      <div className="flex items-center justify-between mb-2">
+        {label ? (
+          <span className="rounded border border-[color:rgba(79,213,255,0.2)] bg-[color:rgba(79,213,255,0.08)] px-2 py-0.5 text-[10px] font-bold tracking-wider text-[color:var(--accent)]">
+            {label}
+          </span>
+        ) : <span />}
+        <div className="flex gap-0.5">
         {RANGES.map((r) => (
           <button
             key={r}
@@ -91,6 +99,7 @@ export function PriceChart({
             {r}
           </button>
         ))}
+        </div>
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <AreaChart data={filtered} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
@@ -140,11 +149,13 @@ export function InlineChart({
   type = "yahoo",
   name,
   up,
+  label,
 }: {
   symbol: string;
   type?: "yahoo" | "crypto";
   name: string;
   up: boolean;
+  label?: string;
 }) {
   const [prices, setPrices] = useState<ChartPoint[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -186,5 +197,5 @@ export function InlineChart({
       </div>
     );
   }
-  return <PriceChart prices={prices} up={up} />;
+  return <PriceChart prices={prices} up={up} label={label} />;
 }
