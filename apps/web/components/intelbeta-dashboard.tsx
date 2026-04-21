@@ -82,6 +82,17 @@ function sourceLabel(kind: string): string {
   return SOURCE_KIND_LABELS[kind] ?? kind.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function articleHref(article: IntelligenceEvidenceArticle): string {
+  if (article.url) {
+    return article.url;
+  }
+  return `https://www.google.com/search?tbm=nws&q=${encodeURIComponent(`${article.source} ${article.headline}`)}`;
+}
+
+function articleLinkLabel(article: IntelligenceEvidenceArticle): string {
+  return article.url ? "Open Source" : "Search Source";
+}
+
 function computeTrendScore(trend: TrendItem): number {
   const growthNorm = (Math.min(Math.max(trend.growth_pct, -100), 300) + 100) / 400;
   const mentionNorm = Math.min(Math.log10(Math.max(trend.total_mentions, 1)) / 4, 1);
@@ -408,12 +419,15 @@ function EvidenceStreamItem({
   active: boolean;
   onSelect: () => void;
 }) {
+  const href = articleHref(article);
+
   return (
-    <button
-      type="button"
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
       onClick={onSelect}
-      aria-pressed={active}
-      className={`w-full border-l-2 px-4 py-3 text-left transition-colors ${
+      className={`block w-full border-l-2 px-4 py-3 text-left transition-colors ${
         active
           ? "border-l-[#4fd5ff] bg-[#121722]"
           : "border-l-transparent bg-transparent hover:border-l-[#515766] hover:bg-[#10131a]"
@@ -424,9 +438,12 @@ function EvidenceStreamItem({
         <span>{article.source}</span>
         <span className="ml-auto normal-case tracking-normal">{article.timestamp}</span>
       </div>
-      <p className="mt-2 line-clamp-2 text-xs font-bold leading-5 text-[#f0f1f5]">{article.headline}</p>
-      <p className="mt-1 line-clamp-1 text-[11px] text-[#4fd5ff]">-&gt; {article.explanation}</p>
-    </button>
+      <p className="mt-2 line-clamp-2 text-xs font-bold leading-5 text-[#f0f1f5] underline-offset-2 hover:underline">{article.headline}</p>
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <p className="line-clamp-1 text-[11px] text-[#4fd5ff]">-&gt; {article.explanation}</p>
+        <span className="shrink-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[#7a8190]">{articleLinkLabel(article)}</span>
+      </div>
+    </a>
   );
 }
 
@@ -771,14 +788,14 @@ export function IntelBetaDashboard({
                   <p className="mt-3 text-sm text-[#9aa1af]">No evidence is available for this signal.</p>
                 )}
               </div>
-              {selectedArticle?.url ? (
+              {selectedArticle ? (
                 <a
-                  href={selectedArticle.url}
+                  href={articleHref(selectedArticle)}
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-sm border border-[#272b36] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#f2f2f2] hover:border-[#4fd5ff]"
                 >
-                  Open Source
+                  {articleLinkLabel(selectedArticle)}
                 </a>
               ) : null}
             </div>
