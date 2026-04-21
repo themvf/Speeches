@@ -2,6 +2,21 @@
 
 import { useState } from "react";
 import type { MarketSectorsData, SectorData, SectorStock } from "@/lib/server/types";
+import { InlineChart } from "./price-chart";
+
+const SECTOR_ETF: Record<string, string> = {
+  "Technology":              "XLK",
+  "Communication Services":  "XLC",
+  "Consumer Discretionary":  "XLY",
+  "Consumer Staples":        "XLP",
+  "Energy":                  "XLE",
+  "Financials":              "XLF",
+  "Healthcare":              "XLV",
+  "Industrials":             "XLI",
+  "Materials":               "XLB",
+  "Real Estate":             "XLRE",
+  "Utilities":               "XLU",
+};
 
 interface Props {
   data: MarketSectorsData | null;
@@ -93,16 +108,30 @@ function SectorRow({
           <PctBar pct={pct} maxAbs={maxAbs} />
         </td>
       </tr>
-      {expanded && sector.stocks.length > 0 && (
+      {expanded && (
         <tr>
           <td colSpan={2} className="p-0 bg-[color:rgba(9,21,34,0.3)]">
-            <table className="w-full">
-              <tbody>
-                {sector.stocks.map((s) => (
-                  <StockRow key={s.symbol} stock={s} maxAbs={stockMax} />
-                ))}
-              </tbody>
-            </table>
+            {/* ETF price chart */}
+            {SECTOR_ETF[sector.name] && (
+              <div className="px-4 pt-4 pb-3 border-b border-[color:var(--line)]">
+                <InlineChart
+                  symbol={SECTOR_ETF[sector.name]}
+                  type="yahoo"
+                  name={sector.name}
+                  up={sector.pcts[range] >= 0}
+                />
+              </div>
+            )}
+            {/* Top stocks */}
+            {sector.stocks.length > 0 && (
+              <table className="w-full">
+                <tbody>
+                  {sector.stocks.map((s) => (
+                    <StockRow key={s.symbol} stock={s} maxAbs={stockMax} />
+                  ))}
+                </tbody>
+              </table>
+            )}
           </td>
         </tr>
       )}

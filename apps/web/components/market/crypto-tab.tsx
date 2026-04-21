@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { CryptoCoin, MarketCryptoData } from "@/lib/server/types";
+import { InlineChart } from "./price-chart";
 
 type CryptoRange = "24h" | "7d" | "30d";
 
@@ -36,41 +37,62 @@ function getPct(coin: CryptoCoin, range: CryptoRange): number {
   return coin.pct24h;
 }
 
-function CryptoRow({ coin, range }: { coin: CryptoCoin; range: CryptoRange }) {
+function CryptoRow({
+  coin, range, expanded, onToggle,
+}: { coin: CryptoCoin; range: CryptoRange; expanded: boolean; onToggle: () => void }) {
   const pct   = getPct(coin, range);
   const up    = pct >= 0;
   const color = up ? "#41d39d" : "#f87171";
   const sign  = pct >= 0 ? "+" : "";
   const barW  = Math.min(48, Math.round(Math.abs(pct) * 2));
+  const COLS  = 8;
 
   return (
-    <tr className="border-b border-[color:var(--line)] last:border-0 hover:bg-[color:rgba(79,213,255,0.04)] transition-colors">
-      <td className="pl-4 pr-2 py-2.5 w-8 tabular-nums text-xs text-[color:var(--ink-faint)]">{coin.rank}</td>
-      <td className="px-2 py-2.5 w-14">
-        <span className="text-xs font-bold text-[color:var(--accent)]">{coin.symbol}</span>
-      </td>
-      <td className="px-2 py-2.5 text-xs text-[color:var(--ink-faint)] max-w-[120px] truncate">{coin.name}</td>
-      <td className="px-2 py-2.5 tabular-nums text-xs text-right text-[color:var(--ink)]">${fmtPrice(coin.price)}</td>
-      <td className="px-2 py-2.5 tabular-nums text-xs text-right font-semibold" style={{ color }}>
-        {sign}{pct.toFixed(2)}%
-      </td>
-      <td className="hidden sm:table-cell px-2 py-2.5 tabular-nums text-xs text-right text-[color:var(--ink-faint)]">
-        {fmtLarge(coin.marketCap)}
-      </td>
-      <td className="hidden sm:table-cell px-2 py-2.5 tabular-nums text-xs text-right text-[color:var(--ink-faint)]">
-        {fmtLarge(coin.volume24h)}
-      </td>
-      <td className="pl-2 pr-4 py-2.5 w-16">
-        <div className="flex justify-end">
-          <div className="h-3 rounded-sm" style={{ width: barW, backgroundColor: color, opacity: 0.7 }} />
-        </div>
-      </td>
-    </tr>
+    <>
+      <tr
+        className={`border-b border-[color:var(--line)] cursor-pointer transition-colors ${
+          expanded ? "bg-[color:rgba(79,213,255,0.06)]" : "hover:bg-[color:rgba(79,213,255,0.04)]"
+        }`}
+        onClick={onToggle}
+      >
+        <td className="pl-4 pr-2 py-2.5 w-8 tabular-nums text-xs text-[color:var(--ink-faint)]">{coin.rank}</td>
+        <td className="px-2 py-2.5 w-14">
+          <span className="text-xs font-bold text-[color:var(--accent)]">{coin.symbol}</span>
+        </td>
+        <td className="px-2 py-2.5 text-xs text-[color:var(--ink-faint)] max-w-[120px] truncate">
+          <span className="mr-1 text-[color:var(--ink-faint)]">{expanded ? "▾" : "▸"}</span>
+          {coin.name}
+        </td>
+        <td className="px-2 py-2.5 tabular-nums text-xs text-right text-[color:var(--ink)]">${fmtPrice(coin.price)}</td>
+        <td className="px-2 py-2.5 tabular-nums text-xs text-right font-semibold" style={{ color }}>
+          {sign}{pct.toFixed(2)}%
+        </td>
+        <td className="hidden sm:table-cell px-2 py-2.5 tabular-nums text-xs text-right text-[color:var(--ink-faint)]">
+          {fmtLarge(coin.marketCap)}
+        </td>
+        <td className="hidden sm:table-cell px-2 py-2.5 tabular-nums text-xs text-right text-[color:var(--ink-faint)]">
+          {fmtLarge(coin.volume24h)}
+        </td>
+        <td className="pl-2 pr-4 py-2.5 w-16">
+          <div className="flex justify-end">
+            <div className="h-3 rounded-sm" style={{ width: barW, backgroundColor: color, opacity: 0.7 }} />
+          </div>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={COLS} className="p-4 bg-[color:rgba(9,21,34,0.3)] border-b border-[color:var(--line)]">
+            <InlineChart symbol={coin.id} type="crypto" name={coin.name} up={up} />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
 export function CryptoTab({ data, loading, error }: Props) {
   const [range, setRange] = useState<CryptoRange>("24h");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   if (loading && !data) {
     return (
@@ -130,7 +152,15 @@ export function CryptoTab({ data, loading, error }: Props) {
             </tr>
           </thead>
           <tbody>
-            {data.coins.map((coin) => <CryptoRow key={coin.id} coin={coin} range={range} />)}
+            {data.coins.map((coin) => (
+              <CryptoRow
+                key={coin.id}
+                coin={coin}
+                range={range}
+                expanded={expanded === coin.id}
+                onToggle={() => setExpanded((prev) => prev === coin.id ? null : coin.id)}
+              />
+            ))}
           </tbody>
         </table>
       </div>
