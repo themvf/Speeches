@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:theme-intelligence": "node --experimental-strip-types --test lib/theme-intelligence.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
