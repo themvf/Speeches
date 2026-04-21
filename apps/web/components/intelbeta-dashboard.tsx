@@ -82,15 +82,8 @@ function sourceLabel(kind: string): string {
   return SOURCE_KIND_LABELS[kind] ?? kind.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function articleHref(article: IntelligenceEvidenceArticle): string {
-  if (article.url) {
-    return article.url;
-  }
-  return `https://www.google.com/search?tbm=nws&q=${encodeURIComponent(`${article.source} ${article.headline}`)}`;
-}
-
 function articleLinkLabel(article: IntelligenceEvidenceArticle): string {
-  return article.url ? "Open Source" : "Search Source";
+  return article.url ? "Open Source" : "Source URL Unavailable";
 }
 
 function computeTrendScore(trend: TrendItem): number {
@@ -419,20 +412,13 @@ function EvidenceStreamItem({
   active: boolean;
   onSelect: () => void;
 }) {
-  const href = articleHref(article);
-
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      onClick={onSelect}
-      className={`block w-full border-l-2 px-4 py-3 text-left transition-colors ${
-        active
-          ? "border-l-[#4fd5ff] bg-[#121722]"
-          : "border-l-transparent bg-transparent hover:border-l-[#515766] hover:bg-[#10131a]"
-      }`}
-    >
+  const className = `block w-full border-l-2 px-4 py-3 text-left transition-colors ${
+    active
+      ? "border-l-[#4fd5ff] bg-[#121722]"
+      : "border-l-transparent bg-transparent hover:border-l-[#515766] hover:bg-[#10131a]"
+  }`;
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7a8190]">
         <span>{String(index + 1).padStart(2, "0")}</span>
         <span>{article.source}</span>
@@ -443,7 +429,21 @@ function EvidenceStreamItem({
         <p className="line-clamp-1 text-[11px] text-[#4fd5ff]">-&gt; {article.explanation}</p>
         <span className="shrink-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[#7a8190]">{articleLinkLabel(article)}</span>
       </div>
-    </a>
+    </>
+  );
+
+  if (article.url) {
+    return (
+      <a href={article.url} target="_blank" rel="noreferrer" onClick={onSelect} className={className}>
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onSelect} aria-pressed={active} className={className}>
+      {content}
+    </button>
   );
 }
 
@@ -788,16 +788,20 @@ export function IntelBetaDashboard({
                   <p className="mt-3 text-sm text-[#9aa1af]">No evidence is available for this signal.</p>
                 )}
               </div>
-              {selectedArticle ? (
+              {selectedArticle?.url ? (
                 <a
-                  href={articleHref(selectedArticle)}
+                  href={selectedArticle.url}
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-sm border border-[#272b36] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#f2f2f2] hover:border-[#4fd5ff]"
                 >
                   {articleLinkLabel(selectedArticle)}
                 </a>
-              ) : null}
+              ) : (
+                <span className="rounded-sm border border-[#272b36] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#777d8e]">
+                  Source URL Unavailable
+                </span>
+              )}
             </div>
           </section>
 
