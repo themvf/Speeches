@@ -48,6 +48,7 @@ type IntelligenceProfile = {
   context: ThemeContextInput;
   oneLineSummary: string;
   narrative: string;
+  whatChanged: string[];
   coverage: {
     totalArticles: number;
     sourceCount: number;
@@ -111,6 +112,11 @@ const PROFILES: readonly IntelligenceProfile[] = [
     oneLineSummary: "Energy-driven inflation pressure is rising quickly across global macro coverage.",
     narrative:
       "An inflation narrative is re-emerging, driven primarily by oil supply concerns and reinforced by central bank sensitivity to renewed price pressure.",
+    whatChanged: [
+      "Energy stories moved from commodity coverage into inflation and rates commentary.",
+      "Central bank coverage is now framing oil risk as a policy constraint.",
+      "Transport-cost headlines broadened the signal beyond crude prices."
+    ],
     context: {
       window_label: "last 2 hours",
       previous_score: 18,
@@ -246,6 +252,11 @@ const PROFILES: readonly IntelligenceProfile[] = [
     oneLineSummary: "Banking and credit-stress coverage is accelerating, with funding pressure becoming the core narrative.",
     narrative:
       "Financial-stress coverage is clustering around bank balance-sheet risk, liquidity preference, and spillover into credit markets.",
+    whatChanged: [
+      "Funding-pressure headlines moved from bank equities into credit-market coverage.",
+      "Money-market flow stories started confirming liquidity preference.",
+      "Regional bank stress is now showing up in broader risk-appetite framing."
+    ],
     context: {
       window_label: "last 2 hours",
       previous_score: 20,
@@ -346,6 +357,11 @@ const PROFILES: readonly IntelligenceProfile[] = [
     oneLineSummary: "Trade and conflict coverage is converging around sanctions, logistics disruption, and supply-chain risk.",
     narrative:
       "A geopolitical supply-shock narrative is building as sanctions headlines, conflict coverage, and logistics stories reinforce each other.",
+    whatChanged: [
+      "Sanctions headlines expanded into shipping and export-channel evidence.",
+      "Freight-rate coverage is converting conflict risk into supply-chain pressure.",
+      "Trade policy stories are now reinforcing the geopolitical risk signal."
+    ],
     context: {
       window_label: "last 2 hours",
       previous_score: 24,
@@ -448,6 +464,11 @@ const PROFILES: readonly IntelligenceProfile[] = [
     oneLineSummary: "AI infrastructure is the lead driver, with crypto participation and corporate-cost narratives adding breadth.",
     narrative:
       "Modern-market coverage is led by AI model deployment, semiconductor demand, and data-center investment, while crypto flows, regulation, and funding conditions shape the quality of the signal.",
+    whatChanged: [
+      "AI infrastructure coverage remains the lead thread while generic technology is secondary.",
+      "Crypto participation is rising but contributes less than AI and semiconductors.",
+      "Regulation and funding stories are acting as quality filters for the signal."
+    ],
     context: {
       window_label: "last 2 hours",
       previous_score: 12,
@@ -613,14 +634,17 @@ function sortArticles(articles: readonly EvidenceArticle[], sort: ArticleSort): 
   });
 }
 
-function expandEvidenceArticles(profile: IntelligenceProfile, count = 30): EvidenceArticle[] {
-  if (profile.evidence.length === 0) {
+function expandEvidenceArticles(profile: IntelligenceProfile, count = 30, theme?: NormalizedTheme): EvidenceArticle[] {
+  const themeArticles = theme ? profile.evidence.filter((article) => article.relatedThemes.includes(theme)) : profile.evidence;
+  const sourceArticles = themeArticles.length > 0 ? themeArticles : profile.evidence;
+
+  if (sourceArticles.length === 0) {
     return [];
   }
 
   return Array.from({ length: count }, (_, index) => {
-    const base = profile.evidence[index % profile.evidence.length];
-    const cycle = Math.floor(index / profile.evidence.length);
+    const base = sourceArticles[index % sourceArticles.length];
+    const cycle = Math.floor(index / sourceArticles.length);
     const cluster = profile.clusters.find((item) => item.id === base.clusterId);
 
     if (cycle === 0) {
@@ -674,6 +698,16 @@ function getProfileIdForTheme(theme: NormalizedTheme): string {
     return "modern";
   }
   return "macro";
+}
+
+function getProfileForTheme(theme: NormalizedTheme): IntelligenceProfile {
+  const profileId = getProfileIdForTheme(theme);
+  return PROFILES.find((profile) => profile.id === profileId) ?? PROFILES[0];
+}
+
+function getFirstClusterIdForTheme(theme: NormalizedTheme, profile: IntelligenceProfile): string {
+  const evidence = getThemeEvidence(theme, profile);
+  return evidence.articles[0]?.clusterId ?? evidence.clusters[0]?.id ?? "all";
 }
 
 function StatusBadge({ severity }: { severity: ThemeSeverity }) {
@@ -952,43 +986,14 @@ function ThemeDetailPanel({
   );
 }
 
-function DriverMetricRow({ driver, profile }: { driver: ThemeFrequencySignal; profile: IntelligenceProfile }) {
-  const evidence = getThemeEvidence(driver.normalized_theme, profile);
-  const firstArticle = evidence.articles[0];
-  const firstCluster = evidence.clusters[0];
-
-  return (
-    <div className="rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(6,15,24,0.38)] p-3">
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_82px_78px_94px] sm:items-center">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-[color:var(--ink)]">{formatTheme(driver.normalized_theme)}</p>
-          {firstArticle ? (
-            <p className="mt-1 line-clamp-1 text-[11px] text-[color:var(--ink-faint)]">
-              Evidence: {firstArticle.explanation}
-            </p>
-          ) : (
-            <p className="mt-1 text-[11px] text-[color:var(--ink-faint)]">Evidence link pending</p>
-          )}
-        </div>
-        <p className="text-xs tabular-nums text-[color:var(--ink-faint)]">{driver.current_mentions} mentions</p>
-        <p className="text-xs font-semibold tabular-nums text-[color:var(--accent)]">{formatPct(driver.spike_pct)}</p>
-        <p className="text-xs font-semibold tabular-nums text-[color:var(--ink)]">{formatContribution(driver.contribution_pct)}</p>
-      </div>
-      {firstCluster ? (
-        <p className="mt-2 text-[11px] text-[color:var(--ink-faint)]">
-          Cluster: {firstCluster.title} - {evidence.articles.length} supporting {evidence.articles.length === 1 ? "article" : "articles"}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 function CompactSignalPanel({
   profile,
   signal,
   trend,
   primaryDrivers,
   secondaryDrivers,
+  selectedTheme,
+  onThemeSelect,
   additionalDriversOpen,
   onToggleAdditionalDrivers
 }: {
@@ -997,6 +1002,8 @@ function CompactSignalPanel({
   trend: { color: string; label: string };
   primaryDrivers: readonly ThemeFrequencySignal[];
   secondaryDrivers: readonly ThemeFrequencySignal[];
+  selectedTheme: NormalizedTheme | null;
+  onThemeSelect: (theme: NormalizedTheme) => void;
   additionalDriversOpen: boolean;
   onToggleAdditionalDrivers: () => void;
 }) {
@@ -1020,6 +1027,14 @@ function CompactSignalPanel({
           </h1>
           <p className="mt-2 max-w-4xl text-sm text-[color:var(--ink-soft)]">{profile.oneLineSummary}</p>
           <p className="mt-2 max-w-4xl text-xs leading-5 text-[color:var(--ink-faint)]">{profile.narrative}</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            {profile.whatChanged.slice(0, 3).map((item) => (
+              <p key={item} className="rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(6,15,24,0.34)] p-2 text-xs leading-5 text-[color:var(--ink-faint)]">
+                <span className="block text-[10px] font-semibold uppercase text-[color:var(--ink)]">What changed</span>
+                {item}
+              </p>
+            ))}
+          </div>
         </div>
 
         <div className="rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(6,15,24,0.42)] p-3">
@@ -1029,14 +1044,24 @@ function CompactSignalPanel({
             <span>Spike</span>
             <span>Contribution</span>
           </div>
-          <div className="mt-2 divide-y divide-[color:var(--line-soft)]">
+          <div className="mt-2 space-y-1">
             {visibleDrivers.map((driver) => (
-              <div key={driver.normalized_theme} className="grid grid-cols-[minmax(0,1fr)_78px_70px_88px] gap-2 py-2 text-xs">
+              <button
+                key={driver.normalized_theme}
+                type="button"
+                onClick={() => onThemeSelect(driver.normalized_theme)}
+                aria-pressed={selectedTheme === driver.normalized_theme}
+                className={`grid w-full grid-cols-[minmax(0,1fr)_78px_70px_88px] gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors ${
+                  selectedTheme === driver.normalized_theme
+                    ? "border border-[color:var(--line-strong)] bg-[color:rgba(79,213,255,0.13)]"
+                    : "border border-transparent hover:border-[color:var(--line-soft)] hover:bg-[color:rgba(79,213,255,0.06)]"
+                }`}
+              >
                 <span className="truncate font-semibold text-[color:var(--ink)]">{formatTheme(driver.normalized_theme)}</span>
                 <span className="tabular-nums text-[color:var(--ink-faint)]">{driver.current_mentions}</span>
                 <span className="font-semibold tabular-nums text-[color:var(--accent)]">{formatPct(driver.spike_pct)}</span>
                 <span className="font-semibold tabular-nums text-[color:var(--ink)]">{formatContribution(driver.contribution_pct)}</span>
-              </div>
+              </button>
             ))}
           </div>
           {secondaryDrivers.length > 0 ? (
@@ -1055,22 +1080,24 @@ function CompactSignalPanel({
   );
 }
 
-function EvidenceListSection({ articles }: { articles: readonly EvidenceArticle[] }) {
+function EvidenceListSection({ articles, focusedTheme }: { articles: readonly EvidenceArticle[]; focusedTheme: NormalizedTheme | null }) {
   return (
     <section className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.58)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-semibold uppercase text-[color:var(--ink-faint)]">Evidence</p>
           <h2 className="mt-1 text-xl font-semibold text-[color:var(--ink)]" style={{ letterSpacing: 0 }}>
-            Supporting articles
+            {focusedTheme ? `Supporting articles for ${formatTheme(focusedTheme)}` : "Supporting articles"}
           </h2>
         </div>
         <span className="rounded-full border border-[color:var(--line-soft)] px-3 py-1 text-xs text-[color:var(--ink-faint)]">{articles.length} articles shown</span>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {articles.map((article) => (
-          <EvidenceItem key={article.id} article={article} />
-        ))}
+      <div className="mt-4 max-h-[560px] overflow-y-auto pr-1">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {articles.map((article) => (
+            <EvidenceItem key={article.id} article={article} />
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -1078,10 +1105,14 @@ function EvidenceListSection({ articles }: { articles: readonly EvidenceArticle[
 
 function SignalCompositionPanel({
   drivers,
-  profile
+  profile,
+  selectedTheme,
+  onThemeSelect
 }: {
   drivers: readonly ThemeFrequencySignal[];
   profile: IntelligenceProfile;
+  selectedTheme: NormalizedTheme | null;
+  onThemeSelect: (theme: NormalizedTheme) => void;
 }) {
   return (
     <section className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.58)] p-4">
@@ -1100,8 +1131,19 @@ function SignalCompositionPanel({
       <div className="mt-4 space-y-3">
         {drivers.map((driver) => {
           const evidence = getThemeEvidence(driver.normalized_theme, profile);
+          const selected = selectedTheme === driver.normalized_theme;
           return (
-            <div key={driver.normalized_theme}>
+            <button
+              key={driver.normalized_theme}
+              type="button"
+              onClick={() => onThemeSelect(driver.normalized_theme)}
+              aria-pressed={selected}
+              className={`w-full rounded-lg border p-2 text-left transition-colors ${
+                selected
+                  ? "border-[color:var(--line-strong)] bg-[color:rgba(79,213,255,0.13)]"
+                  : "border-transparent hover:border-[color:var(--line-soft)] hover:bg-[color:rgba(79,213,255,0.05)]"
+              }`}
+            >
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="font-semibold text-[color:var(--ink)]">{formatTheme(driver.normalized_theme)}</span>
                 <span className="font-semibold tabular-nums text-[color:var(--ink)]">{formatContribution(driver.contribution_pct)}</span>
@@ -1114,7 +1156,7 @@ function SignalCompositionPanel({
                   Driven by {evidence.articles[0].headline}
                 </p>
               ) : null}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -1144,9 +1186,17 @@ function SignalCompositionPanel({
             <tbody>
               {drivers.map((driver) => {
                 const evidence = getThemeEvidence(driver.normalized_theme, profile);
+                const selected = selectedTheme === driver.normalized_theme;
                 return (
-                  <tr key={driver.normalized_theme} className="bg-[color:rgba(6,15,24,0.38)] text-[color:var(--ink)]">
-                    <td className="rounded-l-lg border-y border-l border-[color:var(--line-soft)] px-3 py-2 font-semibold">{formatTheme(driver.normalized_theme)}</td>
+                  <tr
+                    key={driver.normalized_theme}
+                    className={`text-[color:var(--ink)] ${selected ? "bg-[color:rgba(79,213,255,0.13)]" : "bg-[color:rgba(6,15,24,0.38)]"}`}
+                  >
+                    <td className="rounded-l-lg border-y border-l border-[color:var(--line-soft)] px-3 py-2 font-semibold">
+                      <button type="button" onClick={() => onThemeSelect(driver.normalized_theme)} className="text-left font-semibold text-[color:var(--ink)] hover:text-[color:var(--accent)]">
+                        {formatTheme(driver.normalized_theme)}
+                      </button>
+                    </td>
                     <td className="border-y border-[color:var(--line-soft)] px-3 py-2 tabular-nums">{driver.current_mentions}</td>
                     <td className="border-y border-[color:var(--line-soft)] px-3 py-2 tabular-nums text-[color:var(--accent)]">{formatPct(driver.spike_pct)}</td>
                     <td className="border-y border-[color:var(--line-soft)] px-3 py-2 tabular-nums">{formatContribution(driver.contribution_pct)}</td>
@@ -1174,7 +1224,8 @@ export function ThemeIntelligenceLab() {
   const profile = PROFILES.find((item) => item.id === profileId) ?? PROFILES[0];
   const signal = useMemo(() => scoreThemeArticle({ raw_themes: profile.rawThemes, context: profile.context }), [profile]);
   const trend = TREND_STYLE[signal.trend.direction];
-  const evidenceArticles = useMemo(() => expandEvidenceArticles(profile, 30), [profile]);
+  const selectedThemeForDisplay = selectedTheme ?? signal.primary_driver?.normalized_theme ?? null;
+  const evidenceArticles = useMemo(() => expandEvidenceArticles(profile, 30, selectedThemeForDisplay ?? undefined), [profile, selectedThemeForDisplay]);
   const selectedArticles = selectedClusterId === "all" ? evidenceArticles : evidenceArticles.filter((article) => article.clusterId === selectedClusterId);
   const sortedArticles = sortArticles(selectedArticles, articleSort);
   const selectedCluster = profile.clusters.find((cluster) => cluster.id === selectedClusterId);
@@ -1182,13 +1233,12 @@ export function ThemeIntelligenceLab() {
   const additionalSelectedArticles = Math.max(0, selectedVolume - selectedArticles.length);
   const primaryDrivers = signal.primary_drivers;
   const secondaryDrivers = signal.secondary_drivers;
-  const backgroundCount = signal.background_context.length;
-  const selectedThemeForDisplay = selectedTheme ?? signal.primary_driver?.normalized_theme ?? null;
   const selectedThemeDriver = selectedThemeForDisplay ? signal.frequency_signals.find((driver) => driver.normalized_theme === selectedThemeForDisplay) : undefined;
   const handleThemeSelect = (theme: NormalizedTheme) => {
+    const nextProfile = getProfileForTheme(theme);
     setSelectedTheme(theme);
-    setProfileId(getProfileIdForTheme(theme));
-    setSelectedClusterId("all");
+    setProfileId(nextProfile.id);
+    setSelectedClusterId(getFirstClusterIdForTheme(theme, nextProfile));
     setActiveTab("clusters");
     setAdditionalDriversOpen(true);
   };
@@ -1234,15 +1284,19 @@ export function ThemeIntelligenceLab() {
         trend={trend}
         primaryDrivers={primaryDrivers}
         secondaryDrivers={secondaryDrivers}
+        selectedTheme={selectedThemeForDisplay}
+        onThemeSelect={handleThemeSelect}
         additionalDriversOpen={additionalDriversOpen}
         onToggleAdditionalDrivers={() => setAdditionalDriversOpen((open) => !open)}
       />
 
-      <EvidenceListSection articles={evidenceArticles} />
+      <EvidenceListSection articles={evidenceArticles} focusedTheme={selectedThemeForDisplay} />
 
       <SignalCompositionPanel
         drivers={signal.frequency_signals}
         profile={profile}
+        selectedTheme={selectedThemeForDisplay}
+        onThemeSelect={handleThemeSelect}
       />
 
       <section className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.58)] p-4">
