@@ -1,0 +1,29 @@
+{
+  "mode": "extract",
+  "connector": "sec_speech",
+  "ran_at": "2026-03-05T03:56:20Z",
+  "require_remote_persistence": false,
+  "remote_persistence": true,
+  "base_url": "https://www.sec.gov/newsroom/speeches-statements",
+  "selection": "all",
+  "max_pages": 1,
+  "limit": 1,
+  "include_pdfs": false,
+  "include_rss": false,
+  "discovered_count": 25,
+  "candidate_count": 25,
+  "selected_count": 1,
+  "processed_count": 1,
+  "saved_new": 1,
+  "saved_updates": 0,
+  "failed_count": 0,
+  "failed": [],
+  "status_counts": {
+    "new": 1,
+    "update_available": 0,
+    "existing": 0,
+    "existing_in_speeches": 24
+  },
+  "discovery_debug": {},
+  "dry_run": true
+}

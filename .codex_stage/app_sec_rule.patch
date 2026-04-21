@@ -1,0 +1,557 @@
+diff --git a/app.py b/app.py
+index d10d88e..6fbb0a6 100644
+--- a/app.py
++++ b/app.py
+@@ -7640,40 +7640,552 @@ elif page == "Extraction":
+                             saved_new += 1
+ 
+                     except Exception as e:
+                         failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+ 
+                 progress.progress(1.0, text="Litigation ingest complete.")
+                 if saved_new or saved_updates:
+                     _save_custom_documents(custom_payload)
+                     st.success(
+                         f"Saved {saved_new} new litigation docs and updated {saved_updates} existing litigation docs."
+                     )
+                     custom_payload = _load_custom_documents()
+                     custom_docs = _custom_docs_as_speeches(custom_payload)
+                 if failed:
+                     st.warning(f"{len(failed)} litigation releases failed ingest.")
+                     for msg in failed[:20]:
+                         st.write(f"- {msg}")
+             except Exception as e:
+                 st.error(f"Litigation ingest failed: {e}")
+ 
++    st.markdown("---")
++    st.subheader("SEC Connector: Rule Releases + Public Comments (BETA)")
++    st.caption(
++        "Discover and ingest one SEC rule/release page plus its linked public comments."
++    )
++
++    sec_rule_notice_url = st.text_input(
++        "SEC Rule or Release URL",
++        value="",
++        key="sec_rule_comments_notice_url",
++        help="Start from the SEC rule/release page, not a direct SEC comment file.",
++    ).strip()
++    sec_rule_include_pdfs = st.checkbox(
++        "Include linked PDF public comments",
++        value=True,
++        key="sec_rule_comments_include_pdfs",
++    )
++
++    sec_rule_col1, sec_rule_col2 = st.columns(2)
++    with sec_rule_col1:
++        discover_sec_rule_comments = st.button(
++            "Discover SEC Rule + Comments",
++            key="discover_sec_rule_comments",
++        )
++    with sec_rule_col2:
++        clear_sec_rule_comments = st.button(
++            "Clear SEC Rule/Comment Results",
++            key="clear_sec_rule_comments",
++        )
++
++    sec_rule_state_key = "sec_rule_comments_discovered"
++    if sec_rule_state_key not in st.session_state:
++        st.session_state[sec_rule_state_key] = []
++    if clear_sec_rule_comments:
++        st.session_state[sec_rule_state_key] = []
++
++    if discover_sec_rule_comments:
++        if not sec_rule_notice_url:
++            st.warning("Enter an SEC rule/release URL to discover the rule and linked comments.")
++        else:
++            try:
++                from sec_rule_comments_scraper import SECRuleCommentsScraper
++
++                with st.spinner("Discovering SEC rule release and public comments..."):
++                    sec_rule_scraper = SECRuleCommentsScraper()
++                    sec_rule_discovered = sec_rule_scraper.discover_documents(
++                        rule_url=sec_rule_notice_url,
++                        include_pdfs=sec_rule_include_pdfs,
++                    )
++
++                existing_custom = {}
++                for item in custom_docs:
++                    m = item.get("metadata", {})
++                    existing_custom[_url_match_key(m.get("url", ""))] = m
++
++                existing_speech_urls = {
++                    _url_match_key(s.get("metadata", {}).get("url", ""))
++                    for s in raw_data.get("speeches", [])
++                }
++
++                for entry in sec_rule_discovered:
++                    key = _url_match_key(entry.get("url", ""))
++                    status = "new"
++                    existing_meta = existing_custom.get(key)
++                    if existing_meta:
++                        entry_kind = str(entry.get("entry_kind", "") or "").strip().lower()
++                        existing_date = str(
++                            existing_meta.get("published_date")
++                            or existing_meta.get("date")
++                            or ""
++                        ).strip()
++                        incoming_date = str(entry.get("date", "") or "").strip()
++                        existing_file = str(
++                            existing_meta.get("file_number")
++                            or existing_meta.get("notice_number")
++                            or ""
++                        ).strip().upper()
++                        incoming_file = str(
++                            entry.get("file_number")
++                            or entry.get("notice_number")
++                            or ""
++                        ).strip().upper()
++
++                        if entry_kind == "rule":
++                            existing_type = str(
++                                existing_meta.get("rule_type")
++                                or existing_meta.get("doc_type")
++                                or ""
++                            ).strip()
++                            incoming_type = str(entry.get("rule_type", "") or "").strip()
++                            existing_effective = str(
++                                existing_meta.get("effective_date", "") or ""
++                            ).strip()
++                            incoming_effective = str(
++                                entry.get("effective_date", "") or ""
++                            ).strip()
++                            if (
++                                (incoming_date and existing_date and incoming_date != existing_date)
++                                or (incoming_file and existing_file and incoming_file != existing_file)
++                                or (incoming_type and existing_type and incoming_type != existing_type)
++                                or (
++                                    incoming_effective
++                                    and existing_effective
++                                    and incoming_effective != existing_effective
++                                )
++                            ):
++                                status = "update_available"
++                            else:
++                                status = "existing"
++                        else:
++                            existing_commenter = str(
++                                existing_meta.get("commenter_name")
++                                or existing_meta.get("speaker")
++                                or ""
++                            ).strip()
++                            incoming_commenter = str(
++                                entry.get("commenter_name", "") or ""
++                            ).strip()
++                            existing_letter_type = str(
++                                existing_meta.get("letter_type", "") or ""
++                            ).strip()
++                            incoming_letter_type = str(
++                                entry.get("letter_type", "") or ""
++                            ).strip()
++                            if (
++                                (incoming_date and existing_date and incoming_date != existing_date)
++                                or (incoming_file and existing_file and incoming_file != existing_file)
++                                or (
++                                    incoming_commenter
++                                    and existing_commenter
++                                    and incoming_commenter != existing_commenter
++                                )
++                                or (
++                                    incoming_letter_type
++                                    and existing_letter_type
++                                    and incoming_letter_type != existing_letter_type
++                                )
++                            ):
++                                status = "update_available"
++                            else:
++                                status = "existing"
++                    elif key in existing_speech_urls:
++                        status = "existing_in_speeches"
++                    entry["ingest_status"] = status
++
++                st.session_state[sec_rule_state_key] = sec_rule_discovered
++                sec_rule_release_count = sum(
++                    1
++                    for d in sec_rule_discovered
++                    if str(d.get("entry_kind", "") or "").strip().lower() == "rule"
++                )
++                sec_comment_count = len(sec_rule_discovered) - sec_rule_release_count
++                new_count = sum(
++                    1
++                    for d in sec_rule_discovered
++                    if d.get("ingest_status") in {"new", "update_available"}
++                )
++                st.success(
++                    f"Discovered {len(sec_rule_discovered)} SEC items "
++                    f"({sec_rule_release_count} rule release, {sec_comment_count} comments; "
++                    f"{new_count} new/update candidates)."
++                )
++            except Exception as e:
++                st.error(f"SEC rule/comment discovery failed: {e}")
++
++    sec_rule_discovered = st.session_state.get(sec_rule_state_key, [])
++    if sec_rule_discovered:
++        sec_rule_df = pd.DataFrame(sec_rule_discovered)
++        if "entry_kind" in sec_rule_df.columns:
++            sec_rule_df["entry_kind"] = sec_rule_df["entry_kind"].apply(
++                lambda value: "Rule Release"
++                if str(value or "").strip().lower() == "rule"
++                else "Public Comment"
++            )
++        sec_rule_df = _sort_table_by_date(sec_rule_df, date_col="date")
++        show_cols = [
++            c
++            for c in [
++                "entry_kind",
++                "date",
++                "file_number",
++                "rule_type",
++                "title",
++                "commenter_name",
++                "source_format",
++                "ingest_status",
++                "url",
++            ]
++            if c in sec_rule_df.columns
++        ]
++        st.dataframe(
++            sec_rule_df[show_cols],
++            use_container_width=True,
++            hide_index=True,
++        )
++
++        sec_rule_filter = st.selectbox(
++            "SEC Rule/Comment Ingest Selection",
++            ["New/Updates Only", "All Discovered"],
++            key="sec_rule_comments_ingest_filter",
++        )
++        if sec_rule_filter == "New/Updates Only":
++            sec_rule_candidates = [
++                d
++                for d in sec_rule_discovered
++                if d.get("ingest_status") in {"new", "update_available"}
++            ]
++        else:
++            sec_rule_candidates = list(sec_rule_discovered)
++
++        sec_rule_count = len(sec_rule_candidates)
++        if sec_rule_count <= 0:
++            sec_rule_limit = 0
++            st.caption("No SEC rule/comment items match the selected ingest filter.")
++        elif sec_rule_count == 1:
++            sec_rule_limit = 1
++            st.caption("1 SEC rule/comment item selected for ingest.")
++        else:
++            sec_rule_limit = st.slider(
++                "SEC Rule/Comment Items To Ingest",
++                min_value=1,
++                max_value=sec_rule_count,
++                value=min(20, sec_rule_count),
++                key="sec_rule_comments_ingest_limit",
++            )
++        st.caption(
++            f"{sec_rule_count} SEC rule/comment items currently match this ingest selection."
++        )
++
++        if st.button(
++            "Run SEC Rule/Comment Extraction",
++            disabled=(sec_rule_limit <= 0),
++            key="ingest_sec_rule_comments",
++        ):
++            try:
++                from sec_rule_comments_scraper import SECRuleCommentsScraper
++
++                sec_rule_scraper = SECRuleCommentsScraper()
++                progress = st.progress(0, text="Starting SEC rule/comment ingest...")
++                saved_new = 0
++                saved_updates = 0
++                failed = []
++
++                selected = sec_rule_candidates[:sec_rule_limit]
++                for idx, entry in enumerate(selected, 1):
++                    progress.progress(
++                        idx / sec_rule_limit,
++                        text=f"Ingesting {idx}/{sec_rule_limit}: {entry.get('title', '')[:80]}",
++                    )
++                    try:
++                        entry_kind = str(entry.get("entry_kind", "") or "").strip().lower()
++
++                        if entry_kind == "rule":
++                            extracted = sec_rule_scraper.extract_rule(
++                                entry.get("url", ""),
++                                fallback_title=entry.get("title", ""),
++                                fallback_date=entry.get("date", ""),
++                                fallback_file_number=entry.get("file_number", ""),
++                                fallback_release_numbers=entry.get("release_numbers", []),
++                                fallback_rule_type=entry.get("rule_type", ""),
++                                fallback_comments_url=entry.get("comments_url", ""),
++                                fallback_pdf_url=entry.get("pdf_url", ""),
++                                fallback_effective_date=entry.get("effective_date", ""),
++                                fallback_sec_issue_date=entry.get("sec_issue_date", ""),
++                                fallback_federal_register_publish_date=entry.get(
++                                    "federal_register_publish_date", ""
++                                ),
++                            )
++                            if not extracted.get("success"):
++                                raise RuntimeError("Extraction returned unsuccessful result.")
++                            data = extracted.get("data", {})
++                            text = str(data.get("full_text", "") or "").strip()
++                            if len(text.split()) < 80:
++                                raise RuntimeError("Extracted text appears too short; skipping.")
++
++                            src_url = str(data.get("url", "") or entry.get("url", "")).strip()
++                            source_format = str(
++                                data.get("source_format", "")
++                                or entry.get("source_format", "html")
++                            ).strip().lower()
++                            source_ext = ".pdf" if source_format == "pdf" else ".html"
++                            source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip()
++                            if not source_name:
++                                source_name = f"sec-rule-release-{idx}{source_ext}"
++                            elif "." not in source_name:
++                                source_name = f"{source_name}{source_ext}"
++
++                            date_text = str(data.get("date", "") or entry.get("date", "")).strip()
++                            parsed_date = _parse_single_date(date_text)
++                            if pd.notna(parsed_date):
++                                doc_date_value = parsed_date.date()
++                            else:
++                                doc_date_value = date_text
++
++                            rule_type = str(
++                                data.get("rule_type", "")
++                                or entry.get("rule_type", "")
++                                or "Rule Release"
++                            ).strip() or "Rule Release"
++                            file_number = str(
++                                data.get("file_number", "") or entry.get("file_number", "")
++                            ).strip().upper()
++                            tags_csv = "sec,rulemaking,rule-release,public-comment"
++                            if file_number:
++                                tags_csv = f"{tags_csv},file-{file_number.lower()}"
++
++                            record = _create_uploaded_document_record(
++                                text=text,
++                                organization="SEC",
++                                title=str(data.get("title", "") or entry.get("title", "")).strip()
++                                or "SEC Rule Release",
++                                speaker="SEC",
++                                doc_date=doc_date_value,
++                                doc_type=rule_type,
++                                source_url=src_url,
++                                source_filename=source_name,
++                                source_ext=source_ext,
++                                source_local_path="",
++                                source_gcs_path="",
++                                tags_csv=tags_csv,
++                                source_kind="sec_rule_release",
++                            )
++                            rm = record.setdefault("metadata", {})
++                            rm["source_family"] = "sec_rule"
++                            rm["source_index_url"] = sec_rule_notice_url
++                            rm["published_date"] = str(
++                                data.get("date", "") or entry.get("date", "")
++                            ).strip()
++                            rm["file_number"] = file_number
++                            rm["notice_number"] = file_number
++                            rm["release_numbers"] = (
++                                data.get("release_numbers", [])
++                                if isinstance(data.get("release_numbers", []), list)
++                                else []
++                            )
++                            rm["rule_type"] = rule_type
++                            rm["sec_issue_date"] = str(
++                                data.get("sec_issue_date", "") or entry.get("sec_issue_date", "")
++                            ).strip()
++                            rm["effective_date"] = str(
++                                data.get("effective_date", "") or entry.get("effective_date", "")
++                            ).strip()
++                            rm["federal_register_publish_date"] = str(
++                                data.get("federal_register_publish_date", "")
++                                or entry.get("federal_register_publish_date", "")
++                            ).strip()
++                            rm["rule_url"] = src_url
++                            rm["notice_url"] = src_url
++                            rm["comments_url"] = str(
++                                data.get("comments_url", "") or entry.get("comments_url", "")
++                            ).strip()
++                            rm["notice_title"] = str(
++                                data.get("title", "") or entry.get("title", "")
++                            ).strip()
++                            rm["pdf_url"] = str(
++                                data.get("pdf_url", "") or entry.get("pdf_url", "")
++                            ).strip()
++                            rm["source_format"] = source_format
++                            rm["discovery_source"] = str(
++                                entry.get("discovery_source", "") or ""
++                            ).strip()
++                        else:
++                            extracted = sec_rule_scraper.extract_comment(
++                                entry.get("url", ""),
++                                fallback_title=entry.get("title", ""),
++                                fallback_date=entry.get("date", ""),
++                                fallback_commenter_name=entry.get("commenter_name", ""),
++                                fallback_file_number=entry.get("file_number", "")
++                                or entry.get("notice_number", ""),
++                                fallback_release_numbers=entry.get("release_numbers", []),
++                                fallback_rule_title=entry.get("rule_title", "")
++                                or entry.get("notice_title", ""),
++                                fallback_rule_url=entry.get("rule_url", "")
++                                or sec_rule_notice_url,
++                                fallback_comments_url=entry.get("comments_url", ""),
++                                fallback_letter_type=entry.get("letter_type", ""),
++                            )
++                            if not extracted.get("success"):
++                                raise RuntimeError("Extraction returned unsuccessful result.")
++                            data = extracted.get("data", {})
++                            text = str(data.get("full_text", "") or "").strip()
++                            if len(text.split()) < 20:
++                                raise RuntimeError("Extracted text appears too short; skipping.")
++
++                            src_url = str(data.get("url", "") or entry.get("url", "")).strip()
++                            source_format = str(
++                                data.get("source_format", "")
++                                or entry.get("source_format", "html")
++                            ).strip().lower()
++                            if source_format == "pdf":
++                                source_ext = ".pdf"
++                            elif source_format == "txt":
++                                source_ext = ".txt"
++                            else:
++                                source_ext = ".html"
++                            source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip()
++                            if not source_name:
++                                source_name = f"sec-rule-comment-{idx}{source_ext}"
++                            elif "." not in source_name:
++                                source_name = f"{source_name}{source_ext}"
++
++                            date_text = str(data.get("date", "") or entry.get("date", "")).strip()
++                            parsed_date = _parse_single_date(date_text)
++                            if pd.notna(parsed_date):
++                                doc_date_value = parsed_date.date()
++                            else:
++                                doc_date_value = date_text
++
++                            commenter_name = str(
++                                data.get("commenter_name", "")
++                                or entry.get("commenter_name", "")
++                            ).strip()
++                            commenter_org = str(data.get("commenter_org", "") or "").strip()
++                            file_number = str(
++                                data.get("file_number", "")
++                                or entry.get("file_number", "")
++                                or entry.get("notice_number", "")
++                            ).strip().upper()
++                            tags_csv = "sec,rulemaking,public-comment"
++                            if file_number:
++                                tags_csv = f"{tags_csv},file-{file_number.lower()}"
++
++                            record = _create_uploaded_document_record(
++                                text=text,
++                                organization="SEC",
++                                title=str(data.get("title", "") or entry.get("title", "")).strip()
++                                or "Public Comment",
++                                speaker=commenter_name or commenter_org or "Commenter",
++                                doc_date=doc_date_value,
++                                doc_type="Public Comment",
++                                source_url=src_url,
++                                source_filename=source_name,
++                                source_ext=source_ext,
++                                source_local_path="",
++                                source_gcs_path="",
++                                tags_csv=tags_csv,
++                                source_kind="sec_rule_comment",
++                            )
++                            rm = record.setdefault("metadata", {})
++                            rm["source_family"] = "sec_rule"
++                            rm["source_index_url"] = str(
++                                data.get("rule_url", "")
++                                or entry.get("rule_url", "")
++                                or sec_rule_notice_url
++                            ).strip()
++                            rm["published_date"] = str(
++                                data.get("date", "") or entry.get("date", "")
++                            ).strip()
++                            rm["file_number"] = file_number
++                            rm["notice_number"] = file_number
++                            rm["release_numbers"] = (
++                                data.get("release_numbers", [])
++                                if isinstance(data.get("release_numbers", []), list)
++                                else []
++                            )
++                            rm["rule_url"] = str(
++                                data.get("rule_url", "")
++                                or entry.get("rule_url", "")
++                                or sec_rule_notice_url
++                            ).strip()
++                            rm["notice_url"] = rm["rule_url"]
++                            rm["comments_url"] = str(
++                                data.get("comments_url", "") or entry.get("comments_url", "")
++                            ).strip()
++                            rm["notice_title"] = str(
++                                data.get("rule_title", "")
++                                or entry.get("rule_title", "")
++                                or entry.get("notice_title", "")
++                            ).strip()
++                            rm["comment_url"] = str(
++                                data.get("comment_url", "")
++                                or entry.get("comment_url", "")
++                                or src_url
++                            ).strip()
++                            rm["pdf_url"] = str(
++                                data.get("pdf_url", "") or entry.get("pdf_url", "")
++                            ).strip()
++                            rm["commenter_name"] = commenter_name
++                            rm["commenter_org"] = commenter_org
++                            rm["letter_type"] = str(
++                                data.get("letter_type", "") or entry.get("letter_type", "")
++                            ).strip()
++                            rm["source_format"] = source_format
++                            rm["discovery_source"] = str(
++                                entry.get("discovery_source", "") or ""
++                            ).strip()
++
++                        replaced = _upsert_custom_document_record(custom_payload, record)
++                        if replaced:
++                            saved_updates += 1
++                        else:
++                            saved_new += 1
++
++                    except Exception as e:
++                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
++
++                progress.progress(1.0, text="SEC rule/comment ingest complete.")
++                if saved_new or saved_updates:
++                    _save_custom_documents(custom_payload)
++                    st.success(
++                        f"Saved {saved_new} new SEC rule/comment docs and updated {saved_updates} existing SEC rule/comment docs."
++                    )
++                    custom_payload = _load_custom_documents()
++                    custom_docs = _custom_docs_as_speeches(custom_payload)
++                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
++                if failed:
++                    st.warning(f"{len(failed)} SEC rule/comment items failed ingest.")
++                    for msg in failed[:20]:
++                        st.write(f"- {msg}")
++            except Exception as e:
++                st.error(f"SEC rule/comment ingest failed: {e}")
++
+     st.markdown("---")
+     st.subheader("FINRA Connector: Regulatory Notices")
+     st.caption("Discover and ingest FINRA Regulatory Notices directly into the knowledge base.")
+ 
+     finra_notice_index_default = "https://www.finra.org/rules-guidance/notices"
+     finra_notice_index_url = st.text_input(
+         "FINRA Regulatory Notices Index URL",
+         value=finra_notice_index_default,
+         key="finra_notice_index_url",
+     ).strip() or finra_notice_index_default
+     finra_notice_pages = st.slider(
+         "FINRA Notice Pages To Scan",
+         min_value=1,
+         max_value=50,
+         value=5,
+         key="finra_notice_pages",
+     )
+     finra_notice_include_rss = st.checkbox(
+         "Use FINRA Notices RSS Feed For Freshness",
+         value=True,

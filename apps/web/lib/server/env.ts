@@ -26,6 +26,15 @@ export interface GithubActionsConfig {
   extractWorkflow: string;
 }
 
+export interface Neo4jConfig {
+  configured: boolean;
+  missingRequiredEnv: string[];
+  url: string;
+  username: string;
+  password: string;
+  database: string;
+}
+
 function readEnv(name: string, fallback = ""): string {
   return String(process.env[name] ?? fallback).trim();
 }
@@ -110,5 +119,31 @@ export function getOpenAiConfig(): OpenAiConfig {
     apiKey: readEnv("OPENAI_API_KEY", ""),
     model: readEnv("OPENAI_CHAT_MODEL", "gpt-5.1"),
     baseUrl: readEnv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+  };
+}
+
+export function getNeo4jConfig(): Neo4jConfig {
+  const url = readEnv("NEO4J_URL") || readEnv("NEO4J_URI");
+  const username = readEnv("NEO4J_USERNAME") || readEnv("NEO4J_USER");
+  const password = readEnv("NEO4J_PASSWORD");
+  const missingRequiredEnv: string[] = [];
+
+  if (!url) {
+    missingRequiredEnv.push("NEO4J_URL");
+  }
+  if (!username) {
+    missingRequiredEnv.push("NEO4J_USERNAME");
+  }
+  if (!password) {
+    missingRequiredEnv.push("NEO4J_PASSWORD");
+  }
+
+  return {
+    configured: missingRequiredEnv.length === 0,
+    missingRequiredEnv,
+    url,
+    username,
+    password,
+    database: readEnv("NEO4J_DATABASE", "neo4j")
   };
 }

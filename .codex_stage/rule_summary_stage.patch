@@ -1,0 +1,364 @@
+diff --git a/apps/web/lib/server/types.ts b/apps/web/lib/server/types.ts
+--- a/apps/web/lib/server/types.ts
++++ b/apps/web/lib/server/types.ts
+@@ -126,20 +126,77 @@ export interface NewsConnectorSettingsPayload {
+   target_count: number;
+   sort_by: string;
+   organization_label: string;
+   domains: string;
+   exclude_domains: string;
+   tags_csv: string;
+   doj_usao_exclude_terms: string;
+ }
+ 
++export interface RuleSummaryOverviewTopic {
++  label: string;
++  count: number;
++  share: number;
++}
++
++export interface RuleSummaryOverview {
++  total_comments: number;
++  enriched_comments: number;
++  position_counts: Record<string, number>;
++  top_topics: RuleSummaryOverviewTopic[];
++}
++
++export interface RuleSummaryGroup {
++  notice_key: string;
++  source_kind: string;
++  source_family: string;
++  source_family_label: string;
++  group_type_label: string;
++  group_identifier_label: string;
++  group_identifier: string;
++  notice_document_id: string;
++  notice_number: string;
++  docket_id: string;
++  title: string;
++  summary: string;
++  organization: string;
++  url: string;
++  pdf_url: string;
++  published_at: string;
++  effective_date: string;
++  comment_deadline: string;
++  tags: string[];
++  keywords: string[];
++  enrichment_status: string;
++  review_decision: string;
++  comment_count: number;
++  latest_comment_at: string;
++  overview: RuleSummaryOverview;
++  comment_document_ids: string[];
++}
++
++export interface RuleSummariesPayload {
++  version: number;
++  updated_at: string;
++  generated_at: string;
++  custom_documents_updated_at: string;
++  enrichment_state_updated_at: string;
++  totals: {
++    notices: number;
++    comments: number;
++    enriched_comments: number;
++    pending_review_comments: number;
++  };
++  groups: RuleSummaryGroup[];
++}
++
+ export interface DocumentListItem {
+   document_id: string;
+   title: string;
+   organization: string;
+   source_kind: string;
+   doc_type: string;
+   speaker: string;
+   url: string;
+diff --git a/run_financial_news_pipeline.py b/run_financial_news_pipeline.py
+--- a/run_financial_news_pipeline.py
++++ b/run_financial_news_pipeline.py
+@@ -1,70 +1,73 @@
+-?
++
+ #!/usr/bin/env python3
+ """Headless financial news ingest and enrichment pipeline."""
+@@
+ from comment_position import (
+     COMMENT_POSITION_INSTRUCTION as SHARED_COMMENT_POSITION_INSTRUCTION,
+     COMMENT_POSITION_LABELS as SHARED_COMMENT_POSITION_LABELS,
+     infer_comment_position as shared_infer_comment_position,
+     is_comment_position_document as shared_is_comment_position_document,
+ )
++from rule_summaries import build_rule_summaries_payload
+@@
+ CUSTOM_DOCS_LOCAL_PATH = DATA_DIR / "custom_documents.json"
+ NEWS_CONNECTOR_SETTINGS_BLOB_NAME = "news_connector_settings.json"
+ NEWS_CONNECTOR_SETTINGS_LOCAL_PATH = DATA_DIR / "news_connector_settings.json"
+ ENRICHMENT_STATE_BLOB_NAME = "document_enrichment_state.json"
+ ENRICHMENT_STATE_LOCAL_PATH = DATA_DIR / "document_enrichment_state.json"
++RULE_SUMMARIES_BLOB_NAME = "rule_summaries.json"
++RULE_SUMMARIES_LOCAL_PATH = DATA_DIR / "rule_summaries.json"
+ ENRICHMENT_PIPELINE_VERSION = "v1"
+@@ -486,40 +519,123 @@ def _load_enrichment_state(storage: Optional[GCSStorage]) -> Dict[str, Any]:
+         local_path=ENRICHMENT_STATE_LOCAL_PATH,
+         default_factory=_empty_enrichment_state,
+         normalize_fn=_normalize_enrichment_state,
+     )
+@@
+ def _save_enrichment_state(
+     storage: Optional[GCSStorage],
+     payload: Dict[str, Any],
+     require_remote: bool = False,
+ ) -> None:
+     _save_json_store(
+         storage=storage,
+         blob_name=ENRICHMENT_STATE_BLOB_NAME,
+         local_path=ENRICHMENT_STATE_LOCAL_PATH,
+         payload=payload,
+         normalize_fn=_normalize_enrichment_state,
+         require_remote=require_remote,
+     )
+ 
++def _empty_rule_summaries_payload() -> Dict[str, Any]:
++    return {
++        "version": 1,
++        "updated_at": "",
++        "generated_at": "",
++        "custom_documents_updated_at": "",
++        "enrichment_state_updated_at": "",
++        "totals": {
++            "notices": 0,
++            "comments": 0,
++            "enriched_comments": 0,
++            "pending_review_comments": 0,
++        },
++        "groups": [],
++    }
++
++
++def _normalize_rule_summaries_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
++    base = _empty_rule_summaries_payload()
++    if not isinstance(payload, dict):
++        return base
++    groups = payload.get("groups", [])
++    if not isinstance(groups, list):
++        groups = []
++    totals = payload.get("totals", {})
++    if not isinstance(totals, dict):
++        totals = {}
++    return {
++        "version": int(payload.get("version", 1) or 1),
++        "updated_at": str(payload.get("updated_at", "") or ""),
++        "generated_at": str(payload.get("generated_at", "") or ""),
++        "custom_documents_updated_at": str(payload.get("custom_documents_updated_at", "") or ""),
++        "enrichment_state_updated_at": str(payload.get("enrichment_state_updated_at", "") or ""),
++        "totals": {
++            "notices": int(totals.get("notices", 0) or 0),
++            "comments": int(totals.get("comments", 0) or 0),
++            "enriched_comments": int(totals.get("enriched_comments", 0) or 0),
++            "pending_review_comments": int(totals.get("pending_review_comments", 0) or 0),
++        },
++        "groups": groups,
++    }
++
++
++def _load_rule_summaries(storage: Optional[GCSStorage]) -> Dict[str, Any]:
++    return _load_json_store(
++        storage=storage,
++        blob_name=RULE_SUMMARIES_BLOB_NAME,
++        local_path=RULE_SUMMARIES_LOCAL_PATH,
++        default_factory=_empty_rule_summaries_payload,
++        normalize_fn=_normalize_rule_summaries_payload,
++    )
++
++
++def _save_rule_summaries(
++    storage: Optional[GCSStorage],
++    payload: Dict[str, Any],
++    require_remote: bool = False,
++) -> None:
++    _save_json_store(
++        storage=storage,
++        blob_name=RULE_SUMMARIES_BLOB_NAME,
++        local_path=RULE_SUMMARIES_LOCAL_PATH,
++        payload=payload,
++        normalize_fn=_normalize_rule_summaries_payload,
++        require_remote=require_remote,
++    )
++
++
++def _rebuild_rule_summaries(
++    storage: Optional[GCSStorage],
++    custom_payload: Optional[Dict[str, Any]] = None,
++    enrichment_state: Optional[Dict[str, Any]] = None,
++    require_remote: bool = False,
++) -> Dict[str, Any]:
++    if custom_payload is None:
++        custom_payload = _load_custom_documents(storage)
++    if enrichment_state is None:
++        enrichment_state = _load_enrichment_state(storage)
++    payload = build_rule_summaries_payload(custom_payload, enrichment_state)
++    _save_rule_summaries(storage, payload, require_remote=require_remote)
++    return payload
++
++
+ def _create_uploaded_document_record(
+     text: str,
+     organization: str,
+     title: str,
+     speaker: str,
+     doc_date: Any,
+     doc_type: str,
+     source_url: str,
+     source_filename: str,
+     source_ext: str,
+@@ -1338,75 +1465,84 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
+             else:
+                 saved_new += 1
+                 if doc_id:
+                     new_doc_ids.append(doc_id)
+         except Exception as e:
+             failed.append({"url": entry.get("url", ""), "title": entry.get("title", ""), "error": str(e)})
+ 
++    rule_summaries_rebuilt = False
+     if not args.dry_run and (saved_new or saved_updates):
+         _save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
++        enrichment_state = _load_enrichment_state(storage)
++        _rebuild_rule_summaries(
++            storage,
++            custom_payload=custom_payload,
++            enrichment_state=enrichment_state,
++            require_remote=args.require_remote_persistence,
++        )
++        rule_summaries_rebuilt = True
+ 
+     trimmed_discovery_debug = _trim_newsapi_debug(discovery_debug)
+     summary = {
+         "mode": "ingest",
+         "ran_at": _utc_now_iso(),
+         "require_remote_persistence": bool(args.require_remote_persistence),
+         "remote_persistence": bool(storage is not None),
+         "query": settings["query"],
+         "lookback_days": int(settings["lookback_days"]),
+         "domains": settings["domains"],
+         "exclude_domains": settings["exclude_domains"],
+         "max_pages": int(settings["max_pages"]),
+         "page_size": int(settings["page_size"]),
+         "target_count": int(settings["target_count"]),
+         "sort_by": settings["sort_by"],
+         "from_date": from_date,
+         "to_date": to_date,
+         "selection": args.selection,
+         "discovered_count": len(discovered),
+         "candidate_count": len(candidates),
+         "selected_count": len(selected),
+         "processed_count": len(processed_doc_ids),
+         "saved_new": saved_new,
+         "saved_updates": saved_updates,
+         "processed_doc_ids": processed_doc_ids,
+         "new_doc_ids": new_doc_ids,
+         "updated_doc_ids": updated_doc_ids,
+         "failed_count": len(failed),
+         "failed": failed[:25],
+         "discovery_errors": discovery_errors[:10],
+         "discovered_by_domain": dict(trimmed_discovery_debug.get("discovered_by_domain", {})),
+         "discovery_debug": trimmed_discovery_debug,
+         "dry_run": bool(args.dry_run),
++        "rule_summaries_rebuilt": rule_summaries_rebuilt,
+     }
+     _write_summary(args.summary_path, summary)
+     return summary
+@@ -1527,58 +1669,67 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
+             "reward": reward,
+             "enrichment": enrichment,
+         }
+ 
+     enrichment_state["entries"] = entries
++    rule_summaries_rebuilt = False
+     if not args.dry_run and targets:
+         _save_enrichment_state(storage, enrichment_state, require_remote=args.require_remote_persistence)
++        _rebuild_rule_summaries(
++            storage,
++            custom_payload=custom_payload,
++            enrichment_state=enrichment_state,
++            require_remote=args.require_remote_persistence,
++        )
++        rule_summaries_rebuilt = True
+ 
+     summary = {
+         "mode": "enrich",
+         "ran_at": _utc_now_iso(),
+         "require_remote_persistence": bool(args.require_remote_persistence),
+         "remote_persistence": bool(storage is not None),
+         "source_kind": args.source_kind,
+         "mode_selection": args.mode,
+         "requested_doc_ids": dedup_doc_ids,
+         "candidate_count": len(candidates),
+         "selected_count": len(targets),
+         "processed_count": len(targets),
+         "enriched_count": enriched_count,
+         "fallback_enriched_count": fallback_count,
+         "used_models": used_models,
+         "dry_run": bool(args.dry_run),
++        "rule_summaries_rebuilt": rule_summaries_rebuilt,
+     }
+     _write_summary(args.summary_path, summary)
+     return summary
+diff --git a/run_connector_extraction_pipeline.py b/run_connector_extraction_pipeline.py
+--- a/run_connector_extraction_pipeline.py
++++ b/run_connector_extraction_pipeline.py
+@@ -1086,108 +1358,123 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
+         except Exception as exc:
+             failed.append(
+                 {
+                     "url": str(entry.get("url", "") or ""),
+                     "title": str(entry.get("title", "") or ""),
+                     "error": str(exc),
+                 }
+             )
+ 
++    rule_summaries_rebuilt = False
+     if not args.dry_run and (saved_new or saved_updates):
+         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
++        enrichment_state = core._load_enrichment_state(storage)
++        core._rebuild_rule_summaries(
++            storage,
++            custom_payload=custom_payload,
++            enrichment_state=enrichment_state,
++            require_remote=args.require_remote_persistence,
++        )
++        rule_summaries_rebuilt = True
+ 
+     summary = {
+         "mode": "extract",
+         "connector": args.connector,
+         "ran_at": core._utc_now_iso(),
+         "require_remote_persistence": bool(args.require_remote_persistence),
+         "remote_persistence": bool(storage is not None),
+         "base_url": base_url,
+         "selection": args.selection,
+         "max_pages": int(args.max_pages),
+         "limit": limit,
+         "include_pdfs": bool(args.include_pdfs),
+         "include_rss": bool(args.include_rss),
+         "exclude_terms": exclude_terms,
+         "discovered_count": len(discovered),
+         "filtered_count": len(filtered_discovered),
+         "excluded_count": len(excluded),
+         "candidate_count": len(candidates),
+         "selected_count": len(selected),
+         "processed_count": len(processed_doc_ids),
+         "saved_new": saved_new,
+         "saved_updates": saved_updates,
+         "failed_count": len(failed),
+         "failed": failed[:25],
+         "excluded_preview": excluded[:25],
+         "status_counts": status_counts,
+         "discovery_debug": discovery_debug if isinstance(discovery_debug, dict) else {},
+         "dry_run": bool(args.dry_run),
++        "rule_summaries_rebuilt": rule_summaries_rebuilt,
+     }
+     core._write_summary(args.summary_path, summary)
+     return summary

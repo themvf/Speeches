@@ -1,0 +1,67 @@
+diff --git a/run_connector_extraction_pipeline.py b/run_connector_extraction_pipeline.py
+--- a/run_connector_extraction_pipeline.py
++++ b/run_connector_extraction_pipeline.py
+@@ -1086,108 +1358,123 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
+         try:
+             record = _extract_record(args.connector, scraper, entry, idx, base_url)
+             metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+             doc_id = str(metadata.get("document_id", "") or "").strip()
+             replaced = core._upsert_custom_document_record(custom_payload, record)
+             if replaced:
+                 saved_updates += 1
+             else:
+                 saved_new += 1
+             if doc_id:
+                 processed_doc_ids.append(doc_id)
+         except Exception as exc:
+             failed.append(
+                 {
+                     "url": str(entry.get("url", "") or ""),
+                     "title": str(entry.get("title", "") or ""),
+                     "error": str(exc),
+                 }
+             )
+ 
++    rule_summaries_rebuilt = False
+     if not args.dry_run and (saved_new or saved_updates):
+         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
++        enrichment_state = core._load_enrichment_state(storage)
++        core._rebuild_rule_summaries(
++            storage,
++            custom_payload=custom_payload,
++            enrichment_state=enrichment_state,
++            require_remote=args.require_remote_persistence,
++        )
++        rule_summaries_rebuilt = True
+ 
+     summary = {
+         "mode": "extract",
+         "connector": args.connector,
+         "ran_at": core._utc_now_iso(),
+         "require_remote_persistence": bool(args.require_remote_persistence),
+         "remote_persistence": bool(storage is not None),
+         "base_url": base_url,
+         "selection": args.selection,
+         "max_pages": int(args.max_pages),
+         "limit": limit,
+         "include_pdfs": bool(args.include_pdfs),
+         "include_rss": bool(args.include_rss),
+         "exclude_terms": exclude_terms,
+         "discovered_count": len(discovered),
+         "filtered_count": len(filtered_discovered),
+         "excluded_count": len(excluded),
+         "candidate_count": len(candidates),
+         "selected_count": len(selected),
+         "processed_count": len(processed_doc_ids),
+         "saved_new": saved_new,
+         "saved_updates": saved_updates,
+         "failed_count": len(failed),
+         "failed": failed[:25],
+         "excluded_preview": excluded[:25],
+         "status_counts": status_counts,
+         "discovery_debug": discovery_debug if isinstance(discovery_debug, dict) else {},
+         "dry_run": bool(args.dry_run),
++        "rule_summaries_rebuilt": rule_summaries_rebuilt,
+     }
+     core._write_summary(args.summary_path, summary)
+     return summary

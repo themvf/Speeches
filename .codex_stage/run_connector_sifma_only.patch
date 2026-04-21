@@ -1,0 +1,130 @@
+--- a/run_connector_extraction_pipeline.py
++++ b/run_connector_extraction_pipeline.py
+@@ -24,6 +24,7 @@
+ TREASURY_FEATURED_STORIES_DEFAULT_URL = "https://home.treasury.gov/news/featured-stories"
+ TREASURY_PRESS_RELEASES_DEFAULT_URL = "https://home.treasury.gov/news/press-releases"
+ TREASURY_STATEMENTS_REMARKS_DEFAULT_URL = "https://home.treasury.gov/news/press-releases/statements-remarks"
++SIFMA_NEWS_DEFAULT_URL = "https://www.sifma.org/news"
+ 
+ SUPPORTED_CONNECTORS = {
+     "sec_speech",
+@@ -39,6 +40,7 @@
+     "treasury_featured_story",
+     "treasury_press_release",
+     "treasury_statement_remark",
++    "sifma_news_item",
+ }
+ 
+ 
+@@ -69,6 +71,8 @@
+         return TREASURY_PRESS_RELEASES_DEFAULT_URL
+     if connector == "treasury_statement_remark":
+         return TREASURY_STATEMENTS_REMARKS_DEFAULT_URL
++    if connector == "sifma_news_item":
++        return SIFMA_NEWS_DEFAULT_URL
+     return ""
+ 
+ 
+@@ -220,6 +224,24 @@
+             (incoming_date and existing_date and incoming_date != existing_date)
+             or (incoming_commenter and existing_commenter and incoming_commenter != existing_commenter)
+             or (incoming_notice and existing_notice and incoming_notice != existing_notice)
++        ):
++            return "update_available"
++        return "existing"
++
++    if connector == "sifma_news_item":
++        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
++        incoming_date = _normalize_space(entry.get("date", ""))
++        existing_title = _normalize_space(existing_meta.get("title", ""))
++        incoming_title = _normalize_space(entry.get("title", ""))
++        existing_category = _normalize_space(existing_meta.get("category", ""))
++        incoming_category = _normalize_space(entry.get("category", ""))
++        existing_doc_type = _normalize_space(existing_meta.get("doc_type", ""))
++        incoming_doc_type = _normalize_space(entry.get("doc_type", ""))
++        if (
++            (incoming_date and existing_date and incoming_date != existing_date)
++            or (incoming_title and existing_title and incoming_title != existing_title)
++            or (incoming_category and existing_category and incoming_category != existing_category)
++            or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
+         ):
+             return "update_available"
+         return "existing"
+@@ -324,6 +346,14 @@
+         debug = getattr(scraper, "last_discovery_debug", {})
+         return scraper, docs, debug if isinstance(debug, dict) else {}
+ 
++    if connector == "sifma_news_item":
++        from sifma_news_scraper import SIFMANewsScraper
++
++        scraper = SIFMANewsScraper()
++        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
++        debug = getattr(scraper, "last_discovery_debug", {})
++        return scraper, docs, debug if isinstance(debug, dict) else {}
++
+     raise RuntimeError(f"Unsupported connector: {connector}")
+ 
+ 
+@@ -831,6 +861,62 @@
+         metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+         metadata["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+         metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
++        return record
++
++    if connector == "sifma_news_item":
++        extracted = scraper.extract_document(
++            entry.get("url", ""),
++            fallback_title=entry.get("title", ""),
++            fallback_date=entry.get("date", ""),
++            fallback_category=entry.get("category", ""),
++            fallback_doc_type=entry.get("doc_type", ""),
++        )
++        data = extracted.get("data", {})
++        text = str(data.get("full_text", "") or "").strip()
++        if len(text.split()) < 40:
++            raise RuntimeError("Extracted text appears too short.")
++
++        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
++        source_name = _safe_source_name(src_url, f"sifma-news-{idx}", ".html")
++        doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
++        category = str(data.get("category", "") or entry.get("category", "")).strip()
++        doc_type = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "News Item"
++        doc_type_lower = doc_type.lower()
++
++        if "press release" in doc_type_lower:
++            tags_csv = "sifma,press-release,association-news,capital-markets"
++        elif "speech" in doc_type_lower:
++            tags_csv = "sifma,speech,association-news,capital-markets"
++        elif "podcast" in doc_type_lower:
++            tags_csv = "sifma,podcast,association-news,capital-markets"
++        elif "blog" in doc_type_lower:
++            tags_csv = "sifma,blog,association-news,capital-markets"
++        else:
++            tags_csv = "sifma,news,association-news,capital-markets"
++
++        record = core._create_uploaded_document_record(
++            text=text,
++            organization="SIFMA",
++            title=str(data.get("title", "") or entry.get("title", "")).strip() or "SIFMA News Item",
++            speaker="SIFMA",
++            doc_date=doc_date,
++            doc_type=doc_type,
++            source_url=src_url,
++            source_filename=source_name,
++            source_ext=".html",
++            source_local_path="",
++            source_gcs_path="",
++            tags_csv=tags_csv,
++            source_kind="sifma_news_item",
++        )
++        metadata = record.setdefault("metadata", {})
++        metadata["source_family"] = "sifma_news_item"
++        metadata["source_index_url"] = base_url
++        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
++        metadata["category"] = category
++        metadata["topics"] = str(entry.get("topics", "") or "").strip()
++        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
++        metadata["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+         return record
+ 
+     raise RuntimeError(f"Unsupported connector: {connector}")

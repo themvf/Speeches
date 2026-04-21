@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "('invalid_grant: Invalid JWT Signature.', {'error': 'invalid_grant', 'error_description': 'Invalid JWT Signature.'})",
+  "command": "extract",
+  "connector": "finra_comment_letter",
+  "ran_at": "2026-03-06T04:50:01Z"
+}
