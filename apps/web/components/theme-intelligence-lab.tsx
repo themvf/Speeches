@@ -337,10 +337,23 @@ function EvidenceItem({ article }: { article: EvidenceArticle }) {
   return (
     <article className="rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(6,15,24,0.48)] p-3">
       <h3 className="text-sm font-semibold text-[color:var(--ink)]" style={{ letterSpacing: 0 }}>
-        {article.headline}
+        {article.url ? (
+          <a href={article.url} target="_blank" rel="noreferrer" className="hover:text-[color:var(--accent)]">
+            {article.headline}
+          </a>
+        ) : (
+          article.headline
+        )}
       </h3>
       <p className="mt-1 text-[11px] font-semibold uppercase text-[color:var(--ink-faint)]">
-        {article.source} - {article.timestamp}
+        {article.url ? (
+          <a href={article.url} target="_blank" rel="noreferrer" className="hover:text-[color:var(--accent)]">
+            {article.source}
+          </a>
+        ) : (
+          article.source
+        )}{" "}
+        - {article.timestamp}
       </p>
       <p className="mt-2 text-xs text-[color:var(--ink-faint)]">{article.excerpt}</p>
       <p className="mt-2 text-xs font-medium text-[color:var(--accent)]">-&gt; {article.explanation}</p>
@@ -422,9 +435,24 @@ function ThemeDetailPanel({
             <div className="mt-2 space-y-2">
               {evidence.articles.slice(0, 3).map((article) => (
                 <div key={article.id} className="rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(6,15,24,0.35)] p-3">
-                  <p className="text-sm font-semibold text-[color:var(--ink)]">{article.headline}</p>
+                  <p className="text-sm font-semibold text-[color:var(--ink)]">
+                    {article.url ? (
+                      <a href={article.url} target="_blank" rel="noreferrer" className="hover:text-[color:var(--accent)]">
+                        {article.headline}
+                      </a>
+                    ) : (
+                      article.headline
+                    )}
+                  </p>
                   <p className="mt-1 text-[11px] uppercase text-[color:var(--ink-faint)]">
-                    {article.source} - {article.timestamp}
+                    {article.url ? (
+                      <a href={article.url} target="_blank" rel="noreferrer" className="hover:text-[color:var(--accent)]">
+                        {article.source}
+                      </a>
+                    ) : (
+                      article.source
+                    )}{" "}
+                    - {article.timestamp}
                   </p>
                 </div>
               ))}

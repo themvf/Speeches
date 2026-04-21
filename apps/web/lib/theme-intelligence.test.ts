@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { sourceSearchUrl } from "./intelligence-links.ts";
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
 import { parseRawThemes, scoreThemeArticle } from "./theme-intelligence.ts";
 
@@ -141,6 +142,10 @@ test("keeps AI independent from technology and ranks all contributing themes", (
 test("seed intelligence profiles produce complete API-backed signal models", () => {
   const profiles = INTELLIGENCE_PROFILES.map((profile) => ({
     ...profile,
+    evidence: profile.evidence.map((article) => ({
+      ...article,
+      url: article.url ?? sourceSearchUrl(article)
+    })),
     signal: scoreThemeArticle({
       id: profile.id,
       title: profile.label,
@@ -154,6 +159,7 @@ test("seed intelligence profiles produce complete API-backed signal models", () 
   assert.ok(profiles.every((profile) => profile.evidence.length > 0));
   assert.ok(profiles.every((profile) => profile.clusters.length > 0));
   assert.ok(profiles.every((profile) => profile.signal.frequency_signals.length > 0));
+  assert.ok(profiles.every((profile) => profile.evidence.every((article) => article.url?.startsWith("https://"))));
   assert.deepEqual(modern?.signal.primary_drivers.map((driver) => driver.normalized_theme), ["AI", "CRYPTO", "TECHNOLOGY"]);
   assert.deepEqual(modern?.signal.secondary_drivers.map((driver) => driver.normalized_theme), ["LIQUIDITY", "CORPORATE_ACTIVITY", "REGULATION"]);
 });

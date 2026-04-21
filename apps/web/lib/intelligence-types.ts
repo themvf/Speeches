@@ -8,6 +8,7 @@ import type {
 export type IntelligenceEvidenceArticle = {
   id: string;
   headline: string;
+  url?: string;
   source: string;
   timestamp: string;
   excerpt: string;
