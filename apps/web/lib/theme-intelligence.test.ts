@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { sourceSearchUrl } from "./intelligence-links.ts";
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
+import { buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
 import { parseRawThemes, scoreThemeArticle } from "./theme-intelligence.ts";
 
 test("maps raw GDELT themes to deduplicated normalized themes", () => {
@@ -142,10 +142,6 @@ test("keeps AI independent from technology and ranks all contributing themes", (
 test("seed intelligence profiles produce complete API-backed signal models", () => {
   const profiles = INTELLIGENCE_PROFILES.map((profile) => ({
     ...profile,
-    evidence: profile.evidence.map((article) => ({
-      ...article,
-      url: article.url ?? sourceSearchUrl(article)
-    })),
     signal: scoreThemeArticle({
       id: profile.id,
       title: profile.label,
@@ -159,7 +155,49 @@ test("seed intelligence profiles produce complete API-backed signal models", () 
   assert.ok(profiles.every((profile) => profile.evidence.length > 0));
   assert.ok(profiles.every((profile) => profile.clusters.length > 0));
   assert.ok(profiles.every((profile) => profile.signal.frequency_signals.length > 0));
-  assert.ok(profiles.every((profile) => profile.evidence.every((article) => article.url?.startsWith("https://"))));
+  assert.ok(profiles.every((profile) => profile.evidence.every((article) => !article.url || !article.url.includes("/search"))));
   assert.deepEqual(modern?.signal.primary_drivers.map((driver) => driver.normalized_theme), ["AI", "CRYPTO", "TECHNOLOGY"]);
   assert.deepEqual(modern?.signal.secondary_drivers.map((driver) => driver.normalized_theme), ["LIQUIDITY", "CORPORATE_ACTIVITY", "REGULATION"]);
+});
+
+test("maps GDELT DOC articles to evidence with real URLs", () => {
+  const baseProfile = INTELLIGENCE_PROFILES[0];
+  const profile = {
+    ...baseProfile,
+    signal: scoreThemeArticle({
+      id: baseProfile.id,
+      title: baseProfile.label,
+      raw_themes: baseProfile.rawThemes,
+      context: baseProfile.context
+    })
+  };
+
+  const query = buildGdeltDocQuery(profile);
+  const evidence = mapGdeltDocArticlesToEvidence(profile, [
+    {
+      url: "https://www.reuters.com/markets/commodities/oil-prices-rise-2026-04-21/",
+      title: "Oil prices rise as inflation concerns intensify",
+      seendate: "20260421T183000Z",
+      domain: "reuters.com",
+      language: "English",
+      sourcecountry: "United States"
+    },
+    {
+      url: "https://www.reuters.com/markets/commodities/oil-prices-rise-2026-04-21/",
+      title: "Duplicate URL should be removed",
+      seendate: "20260421T183000Z",
+      domain: "reuters.com"
+    },
+    {
+      url: "not-a-url",
+      title: "Invalid URL should be removed"
+    }
+  ]);
+
+  assert.match(query, /sourcelang:english/);
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].url, "https://www.reuters.com/markets/commodities/oil-prices-rise-2026-04-21/");
+  assert.equal(evidence[0].source, "reuters.com");
+  assert.ok(evidence[0].relatedThemes.includes("INFLATION"));
+  assert.ok(evidence[0].relatedThemes.includes("ENERGY"));
 });

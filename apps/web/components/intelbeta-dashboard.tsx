@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SparklineChart } from "@/components/sparkline-chart";
 import type { IntelligenceEvidenceArticle, IntelligenceProfile, IntelligenceSignalsData } from "@/lib/intelligence-types";
 import type { TrendItem, TrendsPayload } from "@/lib/server/types";
@@ -20,6 +20,29 @@ type ScoredTrend = TrendItem & {
 
 type CommandCategory = ThemeCategory | "ALL";
 type SeverityFilter = ThemeSeverity | "ALL";
+type LiveEvidenceMeta = {
+  source: "seed" | "gdelt-doc";
+  coverage: {
+    totalArticles: number;
+    sourceCount: number;
+  };
+  sourceDistribution: { source: string; count: number }[];
+};
+type GdeltEvidenceApiResponse =
+  | {
+      ok: true;
+      data: {
+        profileId: string;
+        source: "seed" | "gdelt-doc";
+        evidence: IntelligenceEvidenceArticle[];
+        coverage: {
+          totalArticles: number;
+          sourceCount: number;
+        };
+        sourceDistribution: { source: string; count: number }[];
+      };
+    }
+  | { ok: false; error: string; code: string };
 
 const CATEGORY_ORDER: ThemeCategory[] = ["GEOPOLITICS", "FINANCIAL_SYSTEM", "MODERN_THEMES", "MACRO", "REAL_ECONOMY"];
 
@@ -153,29 +176,19 @@ function evidenceForSignal(profile: IntelligenceProfile, theme?: NormalizedTheme
   return articles.length > 0 ? articles : profile.evidence;
 }
 
-function expandEvidenceForSignal(profile: IntelligenceProfile, count = 30, theme?: NormalizedTheme): IntelligenceEvidenceArticle[] {
-  const sourceArticles = evidenceForSignal(profile, theme);
-  if (sourceArticles.length === 0) return [];
-
-  return Array.from({ length: count }, (_, index) => {
-    const base = sourceArticles[index % sourceArticles.length];
-    const cycle = Math.floor(index / sourceArticles.length);
-    const cluster = profile.clusters.find((item) => item.id === base.clusterId);
-
-    if (cycle === 0) {
-      return base;
-    }
-
-    return {
-      ...base,
-      id: `${base.id}-command-${cycle}`,
-      headline: `${base.headline} (${cluster?.title ?? "follow-up"} ${cycle + 1})`,
-      timestamp: `${12 + index * 4} min ago`,
-      excerpt: `${base.excerpt} Related coverage continues to reinforce the same signal theme.`,
-      impact: Math.max(1, base.impact - cycle * 2),
-      credibility: Math.max(1, base.credibility - cycle)
-    };
-  });
+function evidenceForArticles(
+  articles: readonly IntelligenceEvidenceArticle[],
+  fallbackArticles: readonly IntelligenceEvidenceArticle[],
+  theme?: NormalizedTheme
+): IntelligenceEvidenceArticle[] {
+  const themedArticles = theme ? articles.filter((article) => article.relatedThemes.includes(theme)) : articles;
+  if (themedArticles.length > 0) {
+    return [...themedArticles];
+  }
+  if (articles.length > 0) {
+    return [...articles];
+  }
+  return [...fallbackArticles];
 }
 
 function profileForTheme(theme: NormalizedTheme, profiles: readonly IntelligenceProfile[], fallback: IntelligenceProfile): IntelligenceProfile {
@@ -359,15 +372,17 @@ function SignalRailItem({
 function DriverCard({
   driver,
   profile,
+  evidenceArticles,
   index,
   onSelect
 }: {
   driver: ThemeFrequencySignal;
   profile: IntelligenceProfile;
+  evidenceArticles: readonly IntelligenceEvidenceArticle[];
   index: number;
   onSelect: () => void;
 }) {
-  const supporting = evidenceForSignal(profile, driver.normalized_theme)[0];
+  const supporting = evidenceForArticles(evidenceArticles, profile.evidence, driver.normalized_theme)[0];
 
   return (
     <button
@@ -473,13 +488,23 @@ export function IntelBetaDashboard({
   const [categoryFilter, setCategoryFilter] = useState<CommandCategory>("ALL");
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [evidenceByProfile, setEvidenceByProfile] = useState<Record<string, IntelligenceEvidenceArticle[]>>({});
+  const [evidenceMetaByProfile, setEvidenceMetaByProfile] = useState<Record<string, LiveEvidenceMeta>>({});
+  const [loadingEvidenceProfileId, setLoadingEvidenceProfileId] = useState<string | null>(null);
+  const [evidenceLoadError, setEvidenceLoadError] = useState<string | null>(null);
+  const requestedEvidenceProfilesRef = useRef<Record<string, true>>({});
 
   const selectedSignal = profiles.find((profile) => profile.id === selectedSignalId) ?? profiles[0];
   const selectedTrend = scoredTrends.find((trend) => trend.id === selectedTrendId);
   const selectedDriver = selectedTheme
     ? selectedSignal?.signal.frequency_signals.find((driver) => driver.normalized_theme === selectedTheme)
     : selectedSignal?.signal.primary_driver;
-  const evidence = selectedSignal ? expandEvidenceForSignal(selectedSignal, 30, selectedTheme ?? selectedDriver?.normalized_theme) : [];
+  const selectedProfileEvidence = selectedSignal ? evidenceByProfile[selectedSignal.id] ?? selectedSignal.evidence : [];
+  const selectedEvidenceMeta = selectedSignal ? evidenceMetaByProfile[selectedSignal.id] : undefined;
+  const hasLiveEvidence = selectedEvidenceMeta?.source === "gdelt-doc";
+  const evidence = selectedSignal
+    ? evidenceForArticles(selectedProfileEvidence, selectedSignal.evidence, selectedTheme ?? selectedDriver?.normalized_theme).slice(0, 30)
+    : [];
   const query = searchQuery.trim().toLowerCase();
   const streamEvidence = query
     ? evidence.filter((article) => `${article.headline} ${article.source} ${article.explanation} ${article.excerpt}`.toLowerCase().includes(query))
@@ -488,6 +513,59 @@ export function IntelBetaDashboard({
   const linkedTrends = selectedSignal ? relatedTrendsForSignal(scoredTrends, selectedSignal) : [];
   const relatedProfiles = profiles.filter((profile) => profile.id !== selectedSignal?.id).slice(0, 3);
   const coverageBars = selectedSignal ? buildCoverageBars(selectedSignal, selectedTrend) : [];
+  const sourceDistribution = selectedSignal ? (hasLiveEvidence ? selectedEvidenceMeta.sourceDistribution : selectedSignal.sourceDistribution) : [];
+  const coverageArticleCount = selectedSignal ? (hasLiveEvidence ? selectedEvidenceMeta.coverage.totalArticles : selectedSignal.coverage.totalArticles) : 0;
+  const coverageSourceCount = selectedSignal ? (hasLiveEvidence ? selectedEvidenceMeta.coverage.sourceCount : selectedSignal.coverage.sourceCount) : 0;
+  const isLoadingEvidence = selectedSignal ? loadingEvidenceProfileId === selectedSignal.id : false;
+
+  useEffect(() => {
+    if (!selectedSignalId || requestedEvidenceProfilesRef.current[selectedSignalId]) {
+      return;
+    }
+
+    let cancelled = false;
+    requestedEvidenceProfilesRef.current[selectedSignalId] = true;
+    setLoadingEvidenceProfileId(selectedSignalId);
+    setEvidenceLoadError(null);
+
+    async function loadLiveEvidence() {
+      try {
+        const response = await fetch(`/api/intelligence/gdelt-evidence?profileId=${encodeURIComponent(selectedSignalId)}`, {
+          cache: "no-store"
+        });
+        const payload = (await response.json()) as GdeltEvidenceApiResponse;
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.ok ? `Request failed with ${response.status}` : payload.error);
+        }
+
+        if (!cancelled) {
+          setEvidenceByProfile((current) => ({ ...current, [payload.data.profileId]: payload.data.evidence }));
+          setEvidenceMetaByProfile((current) => ({
+            ...current,
+            [payload.data.profileId]: {
+              source: payload.data.source,
+              coverage: payload.data.coverage,
+              sourceDistribution: payload.data.sourceDistribution
+            }
+          }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setEvidenceLoadError(error instanceof Error ? error.message : "Unable to load live GDELT evidence.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingEvidenceProfileId(null);
+        }
+      }
+    }
+
+    void loadLiveEvidence();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSignalId]);
 
   const categoryCounts = useMemo(() => {
     return CATEGORY_ORDER.map((category) => ({
@@ -724,11 +802,11 @@ export function IntelBetaDashboard({
               <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">Coverage Footprint</p>
               <div className="mt-5 grid grid-cols-2 gap-5">
                 <div>
-                  <p className="text-2xl font-black tabular-nums text-[#f2f2f2]">{selectedSignal.coverage.totalArticles}</p>
+                  <p className="text-2xl font-black tabular-nums text-[#f2f2f2]">{coverageArticleCount}</p>
                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#777d8e]">Articles</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-black tabular-nums text-[#f2f2f2]">{selectedSignal.coverage.sourceCount}</p>
+                  <p className="text-2xl font-black tabular-nums text-[#f2f2f2]">{coverageSourceCount}</p>
                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#777d8e]">Sources</p>
                 </div>
                 <div>
@@ -751,6 +829,7 @@ export function IntelBetaDashboard({
                   key={driver.normalized_theme}
                   driver={driver}
                   profile={selectedSignal}
+                  evidenceArticles={selectedProfileEvidence}
                   index={index}
                   onSelect={() => selectTheme(driver.normalized_theme)}
                 />
@@ -832,7 +911,15 @@ export function IntelBetaDashboard({
               <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">Evidence Stream</p>
               <span className="text-[10px] text-[#777d8e]">{streamEvidence.length} of {evidence.length}</span>
             </div>
-            <p className="mt-2 text-[11px] leading-4 text-[#8b91a0]">Articles that collectively drove this signal, ordered by relevance.</p>
+            <p className="mt-2 text-[11px] leading-4 text-[#8b91a0]">
+              {isLoadingEvidence
+                ? "Loading live GDELT article links..."
+                : hasLiveEvidence
+                  ? "Live GDELT DOC 2.0 articles with source URLs."
+                  : evidenceLoadError
+                    ? `Seed evidence shown; GDELT issue: ${evidenceLoadError}`
+                    : "Seed evidence shown until live GDELT links load."}
+            </p>
           </div>
 
           <div className="max-h-[560px] overflow-y-auto">
@@ -876,7 +963,7 @@ export function IntelBetaDashboard({
           <section className="border-t border-[#1d2029] px-4 py-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">Top Sources</p>
             <div className="mt-3 space-y-2">
-              {selectedSignal.sourceDistribution.slice(0, 5).map((source) => (
+              {sourceDistribution.slice(0, 5).map((source) => (
                 <div key={source.source} className="flex items-center justify-between gap-3 text-xs">
                   <span className="font-semibold text-[#d8dbe3]">{sourceLabel(source.source)}</span>
                   <span className="font-bold tabular-nums text-[#777d8e]">{source.count}</span>

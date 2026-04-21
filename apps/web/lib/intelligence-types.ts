@@ -71,7 +71,7 @@ export type NarrativeRank = {
 
 export type IntelligenceSignalsData = {
   generatedAt: string;
-  source: "seed";
+  source: "seed" | "gdelt-doc";
   systemTrends: SystemTrend[];
   whatChanged: string[];
   narrativeLeaderboard: NarrativeRank[];
