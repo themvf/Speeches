@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
 import { parseRawThemes, scoreThemeArticle } from "./theme-intelligence.ts";
 
 test("maps raw GDELT themes to deduplicated normalized themes", () => {
@@ -135,4 +136,24 @@ test("keeps AI independent from technology and ranks all contributing themes", (
   assert.deepEqual(signal.secondary_drivers.map((driver) => driver.normalized_theme), ["LIQUIDITY", "CORPORATE_ACTIVITY", "REGULATION"]);
   assert.equal(Math.round(signal.frequency_signals.reduce((sum, driver) => sum + driver.contribution_pct, 0)), 100);
   assert.ok(signal.market_impacts.some((impact) => impact.themes.includes("AI")));
+});
+
+test("seed intelligence profiles produce complete API-backed signal models", () => {
+  const profiles = INTELLIGENCE_PROFILES.map((profile) => ({
+    ...profile,
+    signal: scoreThemeArticle({
+      id: profile.id,
+      title: profile.label,
+      raw_themes: profile.rawThemes,
+      context: profile.context
+    })
+  }));
+  const modern = profiles.find((profile) => profile.id === "modern");
+
+  assert.equal(profiles.length, 4);
+  assert.ok(profiles.every((profile) => profile.evidence.length > 0));
+  assert.ok(profiles.every((profile) => profile.clusters.length > 0));
+  assert.ok(profiles.every((profile) => profile.signal.frequency_signals.length > 0));
+  assert.deepEqual(modern?.signal.primary_drivers.map((driver) => driver.normalized_theme), ["AI", "CRYPTO", "TECHNOLOGY"]);
+  assert.deepEqual(modern?.signal.secondary_drivers.map((driver) => driver.normalized_theme), ["LIQUIDITY", "CORPORATE_ACTIVITY", "REGULATION"]);
 });

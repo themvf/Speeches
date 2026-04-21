@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ThemeIntelligenceLab } from "@/components/theme-intelligence-lab";
+import { buildIntelligenceSignalsData } from "@/lib/server/intelligence-signals";
 
 export const metadata: Metadata = {
   title: "Intelligence | Policy Research Hub",
@@ -7,6 +8,8 @@ export const metadata: Metadata = {
 };
 
 export default function IntelligencePage() {
+  const initialData = buildIntelligenceSignalsData();
+
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 md:px-8">
       <div className="mb-6">
@@ -26,7 +29,7 @@ export default function IntelligencePage() {
         </p>
       </div>
 
-      <ThemeIntelligenceLab />
+      <ThemeIntelligenceLab initialData={initialData} />
     </main>
   );
 }
