@@ -4,7 +4,7 @@ import type { IntelligenceEvidenceArticle, IntelligenceProfile } from "../intell
 import type { NormalizedTheme } from "../theme-intelligence";
 
 const GDELT_DOC_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc";
-const GDELT_DOC_TIMEOUT_MS = 8_000;
+const GDELT_DOC_TIMEOUT_MS = 20_000;
 const GDELT_DOC_CACHE_TTL_MS = 5 * 60 * 1_000;
 const GDELT_DOC_MAX_RECORDS = 30;
 const GDELT_DOC_TIMESPAN = "24h";
@@ -49,6 +49,13 @@ const THEME_QUERY_TERMS: Readonly<Record<NormalizedTheme, readonly string[]>> = 
   CRYPTO: ["cryptocurrency", "bitcoin", "blockchain"],
   CORPORATE_ACTIVITY: ["earnings", "mergers", "acquisitions", "layoffs"],
   AI: ["artificial intelligence", "generative AI", "machine learning", "AI infrastructure", "LLM"]
+};
+
+const PROFILE_QUERY_PLANS: Readonly<Record<string, readonly string[]>> = {
+  macro: ["oil inflation", "energy inflation", "central bank inflation"],
+  bank: ["bank credit", "banking liquidity", "credit spreads"],
+  geopolitical: ["trade sanctions", "shipping sanctions", "supply chain disruption"],
+  modern: ["artificial intelligence semiconductor", "AI chip demand", "generative AI investment"]
 };
 
 function normalizeString(value: unknown): string {
@@ -129,6 +136,11 @@ function themesForArticle(article: GdeltDocArticle, profile: IntelligenceProfile
 }
 
 export function buildGdeltDocQuery(profile: IntelligenceProfile): string {
+  const profileQuery = PROFILE_QUERY_PLANS[profile.id]?.[0];
+  if (profileQuery) {
+    return profileQuery;
+  }
+
   const rankedThemes = unique([
     ...profile.signal.primary_drivers.map((driver) => driver.normalized_theme),
     ...profile.signal.secondary_drivers.map((driver) => driver.normalized_theme),
@@ -137,7 +149,16 @@ export function buildGdeltDocQuery(profile: IntelligenceProfile): string {
 
   const terms = unique(rankedThemes.flatMap((theme) => THEME_QUERY_TERMS[theme] ?? [theme])).slice(0, 16);
   const queryTerms = terms.map(quoteTerm).filter(Boolean);
-  return `(${queryTerms.join(" OR ")}) sourcelang:english`;
+  return queryTerms.slice(0, 6).join(" ");
+}
+
+export function buildGdeltDocQueries(profile: IntelligenceProfile): string[] {
+  const plannedQueries = PROFILE_QUERY_PLANS[profile.id];
+  if (plannedQueries?.length) {
+    return [...plannedQueries];
+  }
+
+  return [buildGdeltDocQuery(profile)];
 }
 
 export function buildGdeltDocUrl(query: string): string {
@@ -206,32 +227,46 @@ function formatThemeForSentence(theme: NormalizedTheme): string {
 }
 
 export async function fetchGdeltEvidenceForProfile(profile: IntelligenceProfile): Promise<IntelligenceEvidenceArticle[]> {
-  const query = buildGdeltDocQuery(profile);
-  const cached = gdeltEvidenceCache.get(query);
-  if (cached && Date.now() - cached.loadedAt < GDELT_DOC_CACHE_TTL_MS) {
-    return cached.articles;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GDELT_DOC_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(buildGdeltDocUrl(query), {
-      signal: controller.signal,
-      next: { revalidate: 300 }
-    });
-
-    if (!response.ok) {
-      return [];
+  for (const query of buildGdeltDocQueries(profile)) {
+    const cached = gdeltEvidenceCache.get(query);
+    if (cached && Date.now() - cached.loadedAt < GDELT_DOC_CACHE_TTL_MS) {
+      if (cached.articles.length > 0) {
+        return cached.articles;
+      }
+      continue;
     }
 
-    const payload = (await response.json()) as { articles?: GdeltDocArticle[] };
-    const evidence = mapGdeltDocArticlesToEvidence(profile, Array.isArray(payload.articles) ? payload.articles : []);
-    gdeltEvidenceCache.set(query, { loadedAt: Date.now(), articles: evidence });
-    return evidence;
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timeout);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GDELT_DOC_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(buildGdeltDocUrl(query), {
+        signal: controller.signal,
+        headers: {
+          "accept": "application/json",
+          "user-agent": "PolicyResearchHub/1.0 IntelBeta GDELT evidence retrieval"
+        },
+        next: { revalidate: 300 }
+      });
+
+      if (!response.ok) {
+        gdeltEvidenceCache.set(query, { loadedAt: Date.now(), articles: [] });
+        continue;
+      }
+
+      const payload = (await response.json()) as { articles?: GdeltDocArticle[] };
+      const evidence = mapGdeltDocArticlesToEvidence(profile, Array.isArray(payload.articles) ? payload.articles : []);
+      gdeltEvidenceCache.set(query, { loadedAt: Date.now(), articles: evidence });
+
+      if (evidence.length > 0) {
+        return evidence;
+      }
+    } catch {
+      gdeltEvidenceCache.set(query, { loadedAt: Date.now(), articles: [] });
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+
+  return [];
 }

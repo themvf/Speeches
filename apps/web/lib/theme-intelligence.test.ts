@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
-import { buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
+import { buildGdeltDocQueries, buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
 import { parseRawThemes, scoreThemeArticle } from "./theme-intelligence.ts";
 
 test("maps raw GDELT themes to deduplicated normalized themes", () => {
@@ -173,6 +173,7 @@ test("maps GDELT DOC articles to evidence with real URLs", () => {
   };
 
   const query = buildGdeltDocQuery(profile);
+  const queries = buildGdeltDocQueries(profile);
   const evidence = mapGdeltDocArticlesToEvidence(profile, [
     {
       url: "https://www.reuters.com/markets/commodities/oil-prices-rise-2026-04-21/",
@@ -194,7 +195,8 @@ test("maps GDELT DOC articles to evidence with real URLs", () => {
     }
   ]);
 
-  assert.match(query, /sourcelang:english/);
+  assert.equal(query, "oil inflation");
+  assert.deepEqual(queries, ["oil inflation", "energy inflation", "central bank inflation"]);
   assert.equal(evidence.length, 1);
   assert.equal(evidence[0].url, "https://www.reuters.com/markets/commodities/oil-prices-rise-2026-04-21/");
   assert.equal(evidence[0].source, "reuters.com");
