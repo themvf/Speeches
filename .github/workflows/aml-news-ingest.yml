@@ -1,0 +1,113 @@
+name: AML News Ingest
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      ingest_limit:
+        description: "Max AML news articles to ingest"
+        required: false
+        default: "30"
+      lookback_days:
+        description: "NewsAPI lookback window in days"
+        required: false
+        default: "5"
+      selection:
+        description: "Ingest selection scope"
+        required: false
+        type: choice
+        options:
+          - new_or_updated
+          - all
+        default: new_or_updated
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aml-news-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest-aml-news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NEWSAPI_API_KEY: ${{ secrets.NEWSAPI_API_KEY }}
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      INGEST_LIMIT: ${{ github.event.inputs.ingest_limit || '30' }}
+      LOOKBACK_DAYS_OVERRIDE: ${{ github.event.inputs.lookback_days || '5' }}
+      SELECTION_MODE: ${{ github.event.inputs.selection || 'new_or_updated' }}
+      AML_NEWS_QUERY: '(("anti-money laundering" OR "money laundering" OR AML OR BSA OR OFAC OR KYC OR "beneficial ownership" OR "suspicious activity" OR "suspicious activity report" OR SAR OR "terrorist financing" OR FinCEN OR sanctions) AND (finance OR bank OR banks OR securities OR crypto OR Treasury OR OFAC OR FinCEN OR SEC OR DOJ)) NOT ("sexual abuse" OR rape OR CSAM)'
+      AML_NEWS_DOMAINS: "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate NewsAPI Secret Wiring
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          import re
+          import sys
+
+          raw = str(os.getenv("NEWSAPI_API_KEY", "") or "").strip()
+          if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
+              raw = raw[1:-1].strip()
+          if raw.lower().startswith("bearer "):
+              raw = raw[7:].strip()
+
+          if not raw:
+              print("NEWSAPI_API_KEY is empty. Set repository/org secret NEWSAPI_API_KEY.", file=sys.stderr)
+              raise SystemExit(1)
+
+          key_fp = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+          key_len = len(raw)
+          key_format_hint = "looks_like_newsapi_key" if re.fullmatch(r"[A-Za-z0-9]{20,64}", raw) else "nonstandard_format"
+          print(f"NEWSAPI key detected: len={key_len}, fp={key_fp}, format={key_format_hint}")
+          PY
+
+      - name: Run AML News Ingest
+        run: |
+          set -euo pipefail
+          args=(
+            ingest
+            --require-remote-persistence
+            --summary-path aml_news_ingest_summary.json
+            --query "${AML_NEWS_QUERY}"
+            --lookback-days "${LOOKBACK_DAYS_OVERRIDE}"
+            --max-pages 1
+            --page-size 50
+            --target-count 30
+            --limit "${INGEST_LIMIT}"
+            --sort-by publishedAt
+            --organization-label News
+            --domains "${AML_NEWS_DOMAINS}"
+            --tags-csv "news,aml,sanctions,financial-crime"
+          )
+          if [ "${SELECTION_MODE}" = "all" ]; then
+            args+=(--selection all)
+          fi
+          python run_financial_news_pipeline.py "${args[@]}"
+
+      - name: Upload AML Ingest Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aml-news-ingest-summary-${{ github.run_id }}
+          path: aml_news_ingest_summary.json
+          if-no-files-found: ignore

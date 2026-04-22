@@ -19,6 +19,30 @@ on:
           - new_or_updated
           - all
         default: new_or_updated
+      query:
+        description: "Override NewsAPI query"
+        required: false
+        default: ""
+      max_pages:
+        description: "NewsAPI result pages to scan"
+        required: false
+        default: ""
+      page_size:
+        description: "NewsAPI page size"
+        required: false
+        default: ""
+      target_count:
+        description: "Max discovered articles before extraction"
+        required: false
+        default: ""
+      domains:
+        description: "Comma-separated domain allowlist"
+        required: false
+        default: ""
+      tags_csv:
+        description: "Tags to apply to ingested articles"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -38,6 +62,12 @@ jobs:
       INGEST_LIMIT: ${{ github.event.inputs.ingest_limit || '10' }}
       LOOKBACK_DAYS_OVERRIDE: ${{ github.event.inputs.lookback_days || '' }}
       SELECTION_MODE: ${{ github.event.inputs.selection || 'new_or_updated' }}
+      NEWS_QUERY_OVERRIDE: ${{ github.event.inputs.query || '' }}
+      MAX_PAGES_OVERRIDE: ${{ github.event.inputs.max_pages || '' }}
+      PAGE_SIZE_OVERRIDE: ${{ github.event.inputs.page_size || '' }}
+      TARGET_COUNT_OVERRIDE: ${{ github.event.inputs.target_count || '' }}
+      DOMAINS_OVERRIDE: ${{ github.event.inputs.domains || '' }}
+      TAGS_CSV_OVERRIDE: ${{ github.event.inputs.tags_csv || '' }}
 
     steps:
       - name: Checkout
@@ -89,6 +119,24 @@ jobs:
           fi
           if [ "${SELECTION_MODE}" = "all" ]; then
             args+=(--selection all)
+          fi
+          if [ -n "${NEWS_QUERY_OVERRIDE}" ]; then
+            args+=(--query "${NEWS_QUERY_OVERRIDE}")
+          fi
+          if [ -n "${MAX_PAGES_OVERRIDE}" ]; then
+            args+=(--max-pages "${MAX_PAGES_OVERRIDE}")
+          fi
+          if [ -n "${PAGE_SIZE_OVERRIDE}" ]; then
+            args+=(--page-size "${PAGE_SIZE_OVERRIDE}")
+          fi
+          if [ -n "${TARGET_COUNT_OVERRIDE}" ]; then
+            args+=(--target-count "${TARGET_COUNT_OVERRIDE}")
+          fi
+          if [ -n "${DOMAINS_OVERRIDE}" ]; then
+            args+=(--domains "${DOMAINS_OVERRIDE}")
+          fi
+          if [ -n "${TAGS_CSV_OVERRIDE}" ]; then
+            args+=(--tags-csv "${TAGS_CSV_OVERRIDE}")
           fi
           python run_financial_news_pipeline.py "${args[@]}"
 

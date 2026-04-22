@@ -265,7 +265,7 @@ export const PRODUCT_FOCUS_AREAS: readonly ProductFocusArea[] = [
     id: "aml_bsa",
     category: "AML",
     label: "AML / BSA",
-    raw_patterns: ["AML", "BSA", "MONEY_LAUNDERING", "ANTI_MONEY_LAUNDERING"],
+    raw_patterns: ["AML", "BSA", "FINCEN", "MONEY_LAUNDERING", "ANTI_MONEY_LAUNDERING"],
     normalized_themes: []
   },
   {
@@ -323,7 +323,7 @@ export const PRODUCT_TAXONOMY: readonly ProductCategoryDefinition[] = [
     category: "AML",
     label: PRODUCT_CATEGORY_LABELS.AML,
     subcategories: [
-      { label: "AML / BSA", normalized_themes: [], raw_patterns: ["AML", "BSA", "MONEY_LAUNDERING", "ANTI_MONEY_LAUNDERING"], weight: 9 },
+      { label: "AML / BSA", normalized_themes: [], raw_patterns: ["AML", "BSA", "FINCEN", "MONEY_LAUNDERING", "ANTI_MONEY_LAUNDERING"], weight: 9 },
       { label: "KYC / Beneficial Ownership", normalized_themes: [], raw_patterns: ["KYC", "CIP", "CUSTOMER_IDENTIFICATION", "BENEFICIAL_OWNERSHIP"], weight: 8 },
       { label: "Sanctions Compliance", normalized_themes: [], raw_patterns: ["SANCTIONS", "OFAC"], weight: 9 },
       { label: "Illicit Finance", normalized_themes: [], raw_patterns: ["ILLICIT_FINANCE", "SUSPICIOUS_ACTIVITY", "SAR", "TERRORIST_FINANCING"], weight: 9 }

@@ -795,7 +795,7 @@ export function IntelBetaDashboard({
   const deltaColor = selectedSignal.signal.trend.delta_pct >= 0 ? "#ff595e" : "#41d39d";
   const displayTitle = isAmlFocusView ? "AML" : selectedSignal.label;
   const displaySummary = isAmlFocusView
-    ? "AML evidence is narrowed to sanctions, OFAC, AML/BSA, KYC, beneficial ownership, and illicit-finance indicators."
+    ? "AML evidence is narrowed to sanctions, OFAC, FinCEN, AML/BSA, KYC, beneficial ownership, and illicit-finance indicators."
     : selectedSignal.oneLineSummary;
   const displayNarrative = isAmlFocusView
     ? "Active Signals remain unchanged. This category focus filters the news stream to explicit AML terms only, avoiding broad regulation, crypto, trade, or conflict matches."
@@ -1177,7 +1177,7 @@ export function IntelBetaDashboard({
                   ? hasLiveEvidence
                     ? amlEvidenceMeta?.source === "stored-news"
                       ? "Stored NewsAPI articles matched to strict AML terms."
-                      : "Live AML news using strict sanctions, OFAC, AML/BSA, KYC, ownership, and illicit-finance terms."
+                      : "Live AML news using strict sanctions, OFAC, FinCEN, AML/BSA, KYC, ownership, and illicit-finance terms."
                     : "No strict AML news matched yet."
                   : hasLiveEvidence
                   ? selectedEvidenceMeta?.source === "stored-news"

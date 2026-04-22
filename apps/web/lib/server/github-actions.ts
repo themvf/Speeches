@@ -182,13 +182,40 @@ export async function triggerIngestJob(payload: {
   limit: number;
   lookbackDays: number;
   selection: string;
+  query?: string;
+  maxPages?: number;
+  pageSize?: number;
+  targetCount?: number;
+  domains?: string;
+  tagsCsv?: string;
 }): Promise<{ job_id: string; provider: "github_actions"; status: "queued"; status_url: string; github_run_id: number }> {
   const cfg = getGithubActionsConfig();
-  const dispatch = await dispatchWorkflow(cfg.ingestWorkflow, {
+  const inputs: Record<string, string> = {
     ingest_limit: String(payload.limit),
     lookback_days: String(payload.lookbackDays),
     selection: payload.selection
-  });
+  };
+
+  if (payload.query?.trim()) {
+    inputs.query = payload.query.trim();
+  }
+  if (payload.maxPages && payload.maxPages > 0) {
+    inputs.max_pages = String(payload.maxPages);
+  }
+  if (payload.pageSize && payload.pageSize > 0) {
+    inputs.page_size = String(payload.pageSize);
+  }
+  if (payload.targetCount && payload.targetCount > 0) {
+    inputs.target_count = String(payload.targetCount);
+  }
+  if (payload.domains?.trim()) {
+    inputs.domains = payload.domains.trim();
+  }
+  if (payload.tagsCsv?.trim()) {
+    inputs.tags_csv = payload.tagsCsv.trim();
+  }
+
+  const dispatch = await dispatchWorkflow(cfg.ingestWorkflow, inputs);
 
   return {
     job_id: dispatch.job_id,

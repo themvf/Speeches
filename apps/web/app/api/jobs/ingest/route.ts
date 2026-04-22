@@ -18,11 +18,23 @@ export async function POST(request: Request) {
     const lookbackDays = Math.max(1, Number.parseInt(String(body.lookback_days ?? "7"), 10) || 7);
     const selectionRaw = String(body.selection ?? "new_or_updated").trim();
     const selection = ["new_or_updated", "all"].includes(selectionRaw) ? selectionRaw : "new_or_updated";
+    const query = String(body.query ?? "").trim();
+    const maxPages = Math.max(0, Number.parseInt(String(body.max_pages ?? "0"), 10) || 0);
+    const pageSize = Math.max(0, Number.parseInt(String(body.page_size ?? "0"), 10) || 0);
+    const targetCount = Math.max(0, Number.parseInt(String(body.target_count ?? "0"), 10) || 0);
+    const domains = String(body.domains ?? "").trim();
+    const tagsCsv = String(body.tags_csv ?? "").trim();
 
     const payload = await triggerIngestJob({
       limit,
       lookbackDays,
-      selection
+      selection,
+      query,
+      maxPages,
+      pageSize,
+      targetCount,
+      domains,
+      tagsCsv
     });
 
     return ok(payload, requestId);

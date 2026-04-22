@@ -203,6 +203,7 @@ test("keeps AML focus areas narrow and avoids broad crypto or regulation chips",
     "OFAC",
     "AML",
     "BSA",
+    "FINCEN",
     "MONEY_LAUNDERING",
     "ANTI_MONEY_LAUNDERING",
     "KYC",
@@ -498,6 +499,36 @@ test("maps stored NewsAPI articles to AML evidence without broad substring match
   assert.ok(evidence[0].matchedTerms?.includes("AML"));
   assert.ok(evidence[0].matchedTerms?.includes("BSA"));
   assert.equal(evidence.some((article) => article.headline.includes("scales")), false);
+});
+
+test("maps FinCEN-only stored news to AML BSA evidence", () => {
+  const items = [
+    {
+      document_id: "fincen-1",
+      title: "FinCEN flags suspicious activity tied to shell companies",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Reuters",
+      url: "https://www.reuters.com/world/us/fincen-suspicious-activity-shell-companies-2026-04-22/",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 900,
+      tags: ["financial_crimes_enforcement_network"],
+      keywords: ["FinCEN"],
+      topics: ["financial crime"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    }
+  ];
+
+  const evidence = mapStoredDocumentsToProductCategoryEvidence("AML", items, new Map());
+
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].focusAreaLabel, "AML / BSA");
+  assert.ok(evidence[0].matchedTerms?.includes("FINCEN"));
 });
 
 test("orders stored AML evidence by recency before match strength", () => {

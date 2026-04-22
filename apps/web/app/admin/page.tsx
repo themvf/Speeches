@@ -58,6 +58,12 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
 const NEWS_INGEST_FIELDS: FieldDef[] = [
   { name: "ingest_limit", label: "Max articles to ingest", type: "number", default: "10" },
   { name: "lookback_days", label: "Lookback days override", type: "number", placeholder: "Leave blank for default" },
+  { name: "query", label: "NewsAPI query override", type: "text", placeholder: "Optional" },
+  { name: "max_pages", label: "Pages override", type: "number", placeholder: "Optional" },
+  { name: "page_size", label: "Page size override", type: "number", placeholder: "Optional" },
+  { name: "target_count", label: "Discovery target override", type: "number", placeholder: "Optional" },
+  { name: "domains", label: "Domains override", type: "text", placeholder: "Optional" },
+  { name: "tags_csv", label: "Tags override", type: "text", placeholder: "Optional" },
   {
     name: "selection",
     label: "Selection",
