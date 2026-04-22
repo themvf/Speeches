@@ -97,7 +97,7 @@ jobs:
             --sort-by publishedAt
             --organization-label News
             --domains "${AML_NEWS_DOMAINS}"
-            --tags-csv "news,aml,sanctions,financial-crime"
+            --tags-csv "news,financial-regulation,financial-crime-watch"
           )
           if [ "${SELECTION_MODE}" = "all" ]; then
             args+=(--selection all)

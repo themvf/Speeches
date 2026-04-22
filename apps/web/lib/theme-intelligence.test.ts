@@ -496,7 +496,6 @@ test("maps stored NewsAPI articles to AML evidence without broad substring match
   assert.equal(evidence[0].headline, "Treasury prepares banks for know your customer data collection");
   assert.equal(evidence[0].source, "CNBC");
   assert.equal(evidence[0].focusAreaLabel, "AML / BSA");
-  assert.ok(evidence[0].matchedTerms?.includes("AML"));
   assert.ok(evidence[0].matchedTerms?.includes("BSA"));
   assert.equal(evidence.some((article) => article.headline.includes("scales")), false);
 });
@@ -529,6 +528,36 @@ test("maps FinCEN-only stored news to AML BSA evidence", () => {
   assert.equal(evidence.length, 1);
   assert.equal(evidence[0].focusAreaLabel, "AML / BSA");
   assert.ok(evidence[0].matchedTerms?.includes("FINCEN"));
+});
+
+test("does not map stored news to AML from ingestion tags alone", () => {
+  const items = [
+    {
+      document_id: "tag-only",
+      title: "General technology earnings update",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Example News",
+      url: "https://example.com/2026/04/22/technology-earnings.html",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 700,
+      tags: ["aml", "sanctions"],
+      keywords: ["technology"],
+      topics: ["earnings"],
+      ingest_status: "existing",
+      enrichment_status: "not_enriched",
+      review_decision: "pending",
+      updated_at: ""
+    }
+  ];
+
+  const evidence = mapStoredDocumentsToProductCategoryEvidence("AML", items, new Map([
+    ["tag-only", "Technology earnings coverage without compliance content."]
+  ]));
+
+  assert.equal(evidence.length, 0);
 });
 
 test("orders stored AML evidence by recency before match strength", () => {
