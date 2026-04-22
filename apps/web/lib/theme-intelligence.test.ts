@@ -4,7 +4,7 @@ import test from "node:test";
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
 import { buildGdeltDocQueries, buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
 import { buildGdeltGkgArchiveUrls, parseGdeltGkgCsv, parseGdeltGkgManifest } from "./server/gdelt-gkg.ts";
-import { parseRawThemes, scoreThemeArticle } from "./theme-intelligence.ts";
+import { PRODUCT_CATEGORY_ORDER, parseRawThemes, scoreThemeArticle, themesForProductCategory } from "./theme-intelligence.ts";
 
 test("maps raw GDELT themes to deduplicated normalized themes", () => {
   const signal = scoreThemeArticle({
@@ -140,6 +140,58 @@ test("keeps AI independent from technology and ranks all contributing themes", (
   assert.ok(signal.market_impacts.some((impact) => impact.themes.includes("AI")));
 });
 
+test("rolls normalized themes into the visible product taxonomy", () => {
+  const signal = scoreThemeArticle({
+    raw_themes: "SEC; COMPLIANCE; IPO; CAPITAL_RAISE; AML; KYC; SANCTIONS; ENFORCEMENT; FRAUD; AI; SEMICONDUCTOR; BITCOIN; ECON_CREDIT; STOCK_MARKET; GDP",
+    context: {
+      theme_mentions: {
+        REGULATION: { current_mentions: 18, baseline_mentions: 12 },
+        CORPORATE_ACTIVITY: { current_mentions: 12, baseline_mentions: 9 },
+        SANCTIONS: { current_mentions: 14, baseline_mentions: 8 },
+        AI: { current_mentions: 20, baseline_mentions: 10 },
+        TECHNOLOGY: { current_mentions: 16, baseline_mentions: 10 },
+        CRYPTO: { current_mentions: 15, baseline_mentions: 9 },
+        CREDIT_MARKETS: { current_mentions: 17, baseline_mentions: 11 },
+        FINANCIAL_MARKETS: { current_mentions: 13, baseline_mentions: 10 },
+        ECONOMIC_GROWTH: { current_mentions: 10, baseline_mentions: 8 }
+      }
+    }
+  });
+
+  const categories = signal.product_categories.map((item) => item.category);
+  assert.deepEqual(PRODUCT_CATEGORY_ORDER, [
+    "SECURITIES_REGULATION",
+    "CAPITAL_FORMATION",
+    "AML",
+    "ENFORCEMENT",
+    "AI_TECH",
+    "CRYPTO",
+    "CREDIT_MARKETS",
+    "FINANCIAL_MARKETS",
+    "ECONOMIC_GROWTH"
+  ]);
+  assert.ok(categories.includes("SECURITIES_REGULATION"));
+  assert.ok(categories.includes("CAPITAL_FORMATION"));
+  assert.ok(categories.includes("AML"));
+  assert.ok(categories.includes("ENFORCEMENT"));
+  assert.ok(categories.includes("AI_TECH"));
+  assert.ok(categories.includes("CRYPTO"));
+  assert.ok(categories.includes("CREDIT_MARKETS"));
+  assert.ok(categories.includes("FINANCIAL_MARKETS"));
+  assert.ok(categories.includes("ECONOMIC_GROWTH"));
+  assert.ok(signal.product_categories.every((category) => category.subcategories.length > 0));
+  assert.ok(signal.primary_product_category);
+  assert.equal(Math.round(signal.product_categories.reduce((sum, category) => sum + category.contribution_pct, 0)), 100);
+});
+
+test("keeps product category theme filters distinct", () => {
+  assert.deepEqual(themesForProductCategory("AI_TECH"), ["AI", "TECHNOLOGY"]);
+  assert.ok(themesForProductCategory("AML").includes("SANCTIONS"));
+  assert.ok(themesForProductCategory("CRYPTO").includes("CRYPTO"));
+  assert.ok(themesForProductCategory("CREDIT_MARKETS").includes("INTEREST_RATES"));
+  assert.ok(themesForProductCategory("ECONOMIC_GROWTH").includes("INFLATION"));
+});
+
 test("seed intelligence profiles produce complete API-backed signal models", () => {
   const profiles = INTELLIGENCE_PROFILES.map((profile) => ({
     ...profile,
@@ -156,6 +208,8 @@ test("seed intelligence profiles produce complete API-backed signal models", () 
   assert.ok(profiles.every((profile) => profile.evidence.length > 0));
   assert.ok(profiles.every((profile) => profile.clusters.length > 0));
   assert.ok(profiles.every((profile) => profile.signal.frequency_signals.length > 0));
+  assert.ok(profiles.every((profile) => profile.signal.product_categories.length > 0));
+  assert.ok(profiles.every((profile) => profile.signal.primary_product_category));
   assert.ok(profiles.every((profile) => profile.evidence.every((article) => !article.url || !article.url.includes("/search"))));
   assert.deepEqual(modern?.signal.primary_drivers.map((driver) => driver.normalized_theme), ["AI", "CRYPTO", "TECHNOLOGY"]);
   assert.deepEqual(modern?.signal.secondary_drivers.map((driver) => driver.normalized_theme), ["LIQUIDITY", "CORPORATE_ACTIVITY", "REGULATION"]);

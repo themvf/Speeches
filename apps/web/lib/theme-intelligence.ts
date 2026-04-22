@@ -1,5 +1,16 @@
 export type ThemeCategory = "MACRO" | "FINANCIAL_SYSTEM" | "GEOPOLITICS" | "REAL_ECONOMY" | "MODERN_THEMES";
 
+export type ProductCategory =
+  | "SECURITIES_REGULATION"
+  | "CAPITAL_FORMATION"
+  | "AML"
+  | "ENFORCEMENT"
+  | "AI_TECH"
+  | "CRYPTO"
+  | "CREDIT_MARKETS"
+  | "FINANCIAL_MARKETS"
+  | "ECONOMIC_GROWTH";
+
 export type NormalizedTheme =
   | "INFLATION"
   | "INTEREST_RATES"
@@ -100,6 +111,28 @@ export interface ThemeFrequencySignal {
   matched_patterns: string[];
 }
 
+export interface ProductSubcategorySignal {
+  label: string;
+  score: number;
+  contribution_pct: number;
+  rank: number;
+  themes: NormalizedTheme[];
+  matched_raw_themes: string[];
+  matched_patterns: string[];
+}
+
+export interface ProductCategorySignal {
+  category: ProductCategory;
+  label: string;
+  score: number;
+  contribution_pct: number;
+  rank: number;
+  subcategories: ProductSubcategorySignal[];
+  themes: NormalizedTheme[];
+  matched_raw_themes: string[];
+  matched_patterns: string[];
+}
+
 export interface SignalModel {
   severity_score: number;
   trend_score: number;
@@ -135,6 +168,10 @@ export interface ThemeSignal {
   severity: ThemeSeverity;
   matches: ThemeMatch[];
   category_scores: Partial<Record<ThemeCategory, number>>;
+  product_category_scores: Partial<Record<ProductCategory, number>>;
+  product_categories: ProductCategorySignal[];
+  primary_product_category: ProductCategorySignal | null;
+  secondary_product_categories: ProductCategorySignal[];
   market_mappings: Partial<Record<NormalizedTheme, string[]>>;
   combination_signals: ThemeCombinationSignal[];
   trend: ThemeTrendSignal;
@@ -170,6 +207,152 @@ export const THEME_MAPPING: readonly ThemeDefinition[] = [
   { normalized_theme: "CRYPTO", category: "MODERN_THEMES", weight: 7, raw_patterns: ["CRYPTOCURRENCY", "BITCOIN", "BLOCKCHAIN"] },
   { normalized_theme: "CORPORATE_ACTIVITY", category: "MODERN_THEMES", weight: 6, raw_patterns: ["EARNINGS", "MERGERS", "ACQUISITIONS", "LAYOFFS"] },
   { normalized_theme: "AI", category: "MODERN_THEMES", weight: 8, raw_patterns: ["AI", "ARTIFICIAL_INTELLIGENCE", "MACHINE_LEARNING", "DEEP_LEARNING", "LLM", "GENERATIVE_AI"] }
+];
+
+export const PRODUCT_CATEGORY_ORDER: readonly ProductCategory[] = [
+  "SECURITIES_REGULATION",
+  "CAPITAL_FORMATION",
+  "AML",
+  "ENFORCEMENT",
+  "AI_TECH",
+  "CRYPTO",
+  "CREDIT_MARKETS",
+  "FINANCIAL_MARKETS",
+  "ECONOMIC_GROWTH"
+];
+
+export const PRODUCT_CATEGORY_LABELS: Readonly<Record<ProductCategory, string>> = {
+  SECURITIES_REGULATION: "Securities Regulation",
+  CAPITAL_FORMATION: "Capital Formation",
+  AML: "AML",
+  ENFORCEMENT: "Enforcement",
+  AI_TECH: "AI & Tech",
+  CRYPTO: "Crypto",
+  CREDIT_MARKETS: "Credit Markets",
+  FINANCIAL_MARKETS: "Financial Markets",
+  ECONOMIC_GROWTH: "Economic Growth"
+};
+
+const PRODUCT_CATEGORY_DISPLAY_THEMES: Readonly<Record<ProductCategory, readonly NormalizedTheme[]>> = {
+  SECURITIES_REGULATION: ["REGULATION", "FINANCIAL_MARKETS", "CORPORATE_ACTIVITY"],
+  CAPITAL_FORMATION: ["CORPORATE_ACTIVITY", "FINANCIAL_MARKETS", "CREDIT_MARKETS"],
+  AML: ["SANCTIONS", "REGULATION", "CRYPTO"],
+  ENFORCEMENT: ["REGULATION", "FINANCIAL_MARKETS", "CRYPTO"],
+  AI_TECH: ["AI", "TECHNOLOGY"],
+  CRYPTO: ["CRYPTO", "REGULATION"],
+  CREDIT_MARKETS: ["BANKING", "INTEREST_RATES", "CREDIT_MARKETS", "LIQUIDITY"],
+  FINANCIAL_MARKETS: ["FINANCIAL_MARKETS", "COMMODITIES", "GEOPOLITICS", "CONFLICT"],
+  ECONOMIC_GROWTH: ["INFLATION", "CENTRAL_BANK", "ECONOMIC_GROWTH", "LABOR_MARKET", "TRADE", "SUPPLY_CHAIN", "ENERGY"]
+};
+
+type ProductSubcategoryDefinition = {
+  label: string;
+  normalized_themes: readonly NormalizedTheme[];
+  raw_patterns: readonly string[];
+  weight: number;
+};
+
+type ProductCategoryDefinition = {
+  category: ProductCategory;
+  label: string;
+  subcategories: readonly ProductSubcategoryDefinition[];
+};
+
+export const PRODUCT_TAXONOMY: readonly ProductCategoryDefinition[] = [
+  {
+    category: "SECURITIES_REGULATION",
+    label: PRODUCT_CATEGORY_LABELS.SECURITIES_REGULATION,
+    subcategories: [
+      { label: "Rulemaking / Compliance", normalized_themes: ["REGULATION"], raw_patterns: ["SEC", "REGULATION", "COMPLIANCE", "POLICY", "RULEMAKING"], weight: 7 },
+      { label: "Disclosure", normalized_themes: [], raw_patterns: ["DISCLOSURE", "REPORTING", "10_K", "10_Q", "8_K", "PUBLIC_COMPANY"], weight: 7 },
+      { label: "Market Structure", normalized_themes: [], raw_patterns: ["MARKET_STRUCTURE", "EXCHANGE", "TRADING_RULES", "CLEARING", "SETTLEMENT"], weight: 8 },
+      { label: "Broker-Dealer / Adviser Regulation", normalized_themes: [], raw_patterns: ["BROKER_DEALER", "INVESTMENT_ADVISER", "ADVISER", "FIDUCIARY"], weight: 7 },
+      { label: "Corporate Governance", normalized_themes: [], raw_patterns: ["CORPORATE_GOVERNANCE", "PROXY", "BOARD", "SHAREHOLDER"], weight: 6 }
+    ]
+  },
+  {
+    category: "CAPITAL_FORMATION",
+    label: PRODUCT_CATEGORY_LABELS.CAPITAL_FORMATION,
+    subcategories: [
+      { label: "IPOs / Offerings", normalized_themes: [], raw_patterns: ["IPO", "OFFERING", "EQUITY_OFFERING", "DEBT_OFFERING", "SECURITIES_OFFERING"], weight: 8 },
+      { label: "Private Markets", normalized_themes: [], raw_patterns: ["PRIVATE_MARKETS", "PRIVATE_CREDIT", "PRIVATE_EQUITY", "VENTURE_CAPITAL"], weight: 8 },
+      { label: "Fundraising", normalized_themes: [], raw_patterns: ["CAPITAL_RAISE", "FUNDRAISING", "FINANCING", "CAPITAL_FORMATION"], weight: 8 },
+      { label: "M&A / SPACs", normalized_themes: [], raw_patterns: ["MERGERS", "ACQUISITIONS", "SPAC", "DEALMAKING"], weight: 7 }
+    ]
+  },
+  {
+    category: "AML",
+    label: PRODUCT_CATEGORY_LABELS.AML,
+    subcategories: [
+      { label: "AML / BSA", normalized_themes: [], raw_patterns: ["AML", "BSA", "MONEY_LAUNDERING", "ANTI_MONEY_LAUNDERING"], weight: 9 },
+      { label: "KYC / Beneficial Ownership", normalized_themes: [], raw_patterns: ["KYC", "CIP", "CUSTOMER_IDENTIFICATION", "BENEFICIAL_OWNERSHIP"], weight: 8 },
+      { label: "Sanctions Compliance", normalized_themes: ["SANCTIONS"], raw_patterns: ["SANCTIONS", "EMBARGO", "RESTRICTIONS", "OFAC"], weight: 9 },
+      { label: "Illicit Finance", normalized_themes: [], raw_patterns: ["ILLICIT_FINANCE", "SUSPICIOUS_ACTIVITY", "SAR", "TERRORIST_FINANCING"], weight: 9 }
+    ]
+  },
+  {
+    category: "ENFORCEMENT",
+    label: PRODUCT_CATEGORY_LABELS.ENFORCEMENT,
+    subcategories: [
+      { label: "SEC / FINRA Enforcement", normalized_themes: [], raw_patterns: ["ENFORCEMENT", "SEC_ACTION", "FINRA", "DISCIPLINARY", "VIOLATION"], weight: 9 },
+      { label: "Fraud / Manipulation", normalized_themes: [], raw_patterns: ["FRAUD", "MARKET_MANIPULATION", "INSIDER_TRADING", "MISREPRESENTATION"], weight: 10 },
+      { label: "Penalties / Settlements", normalized_themes: [], raw_patterns: ["PENALTY", "SETTLEMENT", "FINE", "SANCTIONED"], weight: 8 },
+      { label: "Litigation / Investigations", normalized_themes: [], raw_patterns: ["LITIGATION", "INVESTIGATION", "DOJ", "LAWSUIT", "CHARGES"], weight: 8 }
+    ]
+  },
+  {
+    category: "AI_TECH",
+    label: PRODUCT_CATEGORY_LABELS.AI_TECH,
+    subcategories: [
+      { label: "Artificial Intelligence", normalized_themes: ["AI"], raw_patterns: ["AI", "ARTIFICIAL_INTELLIGENCE", "GENERATIVE_AI", "MACHINE_LEARNING", "DEEP_LEARNING", "LLM"], weight: 8 },
+      { label: "Semiconductors", normalized_themes: ["TECHNOLOGY", "AI"], raw_patterns: ["SEMICONDUCTOR", "CHIP", "GPU", "ACCELERATOR"], weight: 8 },
+      { label: "Software / Cloud", normalized_themes: ["TECHNOLOGY"], raw_patterns: ["SOFTWARE", "CLOUD", "DATA_CENTER", "INFRASTRUCTURE"], weight: 7 },
+      { label: "Cybersecurity", normalized_themes: ["TECHNOLOGY"], raw_patterns: ["CYBERSECURITY", "DATA_SECURITY", "HACK", "BREACH"], weight: 7 }
+    ]
+  },
+  {
+    category: "CRYPTO",
+    label: PRODUCT_CATEGORY_LABELS.CRYPTO,
+    subcategories: [
+      { label: "Digital Assets", normalized_themes: ["CRYPTO"], raw_patterns: ["CRYPTOCURRENCY", "DIGITAL_ASSET", "TOKEN", "TOKENIZATION"], weight: 7 },
+      { label: "Bitcoin / Ethereum", normalized_themes: ["CRYPTO"], raw_patterns: ["BITCOIN", "BTC", "ETHEREUM", "ETH"], weight: 7 },
+      { label: "Stablecoins / DeFi", normalized_themes: ["CRYPTO"], raw_patterns: ["STABLECOIN", "DEFI", "DECENTRALIZED_FINANCE"], weight: 7 },
+      { label: "Custody / Exchanges", normalized_themes: ["CRYPTO"], raw_patterns: ["CRYPTO_EXCHANGE", "CUSTODY", "WALLET", "BLOCKCHAIN"], weight: 7 }
+    ]
+  },
+  {
+    category: "CREDIT_MARKETS",
+    label: PRODUCT_CATEGORY_LABELS.CREDIT_MARKETS,
+    subcategories: [
+      { label: "Interest Rates", normalized_themes: ["INTEREST_RATES"], raw_patterns: ["ECON_INTEREST_RATES", "RATE_HIKE", "RATE_CUT", "YIELDS"], weight: 10 },
+      { label: "Credit Spreads / Debt", normalized_themes: ["CREDIT_MARKETS"], raw_patterns: ["ECON_CREDIT", "CREDIT_SPREADS", "DEBT", "BOND_MARKET"], weight: 9 },
+      { label: "Defaults", normalized_themes: ["CREDIT_MARKETS"], raw_patterns: ["DEFAULT", "BANKRUPTCY", "DISTRESSED_DEBT"], weight: 9 },
+      { label: "Banking Stress", normalized_themes: ["BANKING"], raw_patterns: ["ECON_BANKING", "BANK_FAILURE", "BANK_RUN", "REGIONAL_BANK"], weight: 10 },
+      { label: "Liquidity / Funding", normalized_themes: ["LIQUIDITY"], raw_patterns: ["LIQUIDITY", "FUNDING_STRESS", "CASH_FLOW"], weight: 9 }
+    ]
+  },
+  {
+    category: "FINANCIAL_MARKETS",
+    label: PRODUCT_CATEGORY_LABELS.FINANCIAL_MARKETS,
+    subcategories: [
+      { label: "Equities / Market Structure", normalized_themes: ["FINANCIAL_MARKETS"], raw_patterns: ["FINANCIAL_MARKET", "STOCK_MARKET", "EQUITIES", "ETF", "INDEX"], weight: 8 },
+      { label: "Volatility / Risk Sentiment", normalized_themes: ["FINANCIAL_MARKETS", "GEOPOLITICS", "CONFLICT"], raw_patterns: ["VOLATILITY", "VIX", "RISK_SENTIMENT", "GEOPOLITICAL", "WAR", "ATTACK"], weight: 8 },
+      { label: "Commodities", normalized_themes: ["COMMODITIES"], raw_patterns: ["GOLD", "METALS", "AGRICULTURE", "RAW_MATERIALS", "COMMODITIES"], weight: 8 },
+      { label: "Derivatives / Cross-Asset", normalized_themes: ["FINANCIAL_MARKETS"], raw_patterns: ["DERIVATIVES", "OPTIONS", "FUTURES", "CROSS_ASSET"], weight: 8 }
+    ]
+  },
+  {
+    category: "ECONOMIC_GROWTH",
+    label: PRODUCT_CATEGORY_LABELS.ECONOMIC_GROWTH,
+    subcategories: [
+      { label: "GDP / Recession", normalized_themes: ["ECONOMIC_GROWTH"], raw_patterns: ["ECON_GROWTH", "GDP", "RECESSION", "SLOWDOWN"], weight: 9 },
+      { label: "Inflation", normalized_themes: ["INFLATION"], raw_patterns: ["ECON_INFLATION", "INFLATION", "CPI", "PRICES"], weight: 10 },
+      { label: "Labor Market", normalized_themes: ["LABOR_MARKET"], raw_patterns: ["UNEMPLOYMENT", "JOBS", "WAGES", "LABOR"], weight: 8 },
+      { label: "Monetary Policy", normalized_themes: ["CENTRAL_BANK", "INTEREST_RATES"], raw_patterns: ["CENTRAL_BANK", "FEDERAL_RESERVE", "ECB", "MONETARY_POLICY"], weight: 9 },
+      { label: "Trade / Supply Chain", normalized_themes: ["TRADE", "SUPPLY_CHAIN"], raw_patterns: ["TRADE", "EXPORTS", "IMPORTS", "TARIFFS", "SUPPLY_CHAIN", "SHIPPING", "LOGISTICS"], weight: 8 },
+      { label: "Energy Prices", normalized_themes: ["ENERGY"], raw_patterns: ["OIL", "NATURAL_GAS", "ENERGY_SUPPLY", "OPEC"], weight: 9 }
+    ]
+  }
 ];
 
 export const THEME_WEIGHTS: Readonly<Record<NormalizedTheme, number>> = THEME_MAPPING.reduce(
@@ -319,6 +502,13 @@ function matchesPattern(rawTheme: string, pattern: string): boolean {
   return rawUpper.includes(patternUpper) || rawNormalized.includes(patternNormalized);
 }
 
+export function themesForProductCategory(category: ProductCategory): NormalizedTheme[] {
+  const definition = PRODUCT_TAXONOMY.find((item) => item.category === category);
+  const taxonomyThemes = definition?.subcategories.flatMap((subcategory) => subcategory.normalized_themes) ?? [];
+
+  return [...new Set([...taxonomyThemes, ...PRODUCT_CATEGORY_DISPLAY_THEMES[category]])].sort(sortThemes);
+}
+
 function sortThemes(a: NormalizedTheme, b: NormalizedTheme): number {
   return THEME_WEIGHTS[b] - THEME_WEIGHTS[a] || a.localeCompare(b);
 }
@@ -409,6 +599,77 @@ function buildFrequencySignals(
     rank: index + 1,
     classification: index < 3 ? "PRIMARY" : index < 8 ? "SECONDARY" : "BACKGROUND"
   }));
+}
+
+function buildProductCategorySignals(
+  rawThemes: readonly string[],
+  frequencySignals: readonly ThemeFrequencySignal[]
+): ProductCategorySignal[] {
+  const frequencyByTheme = new Map(frequencySignals.map((signal) => [signal.normalized_theme, signal]));
+  const categorySignals = PRODUCT_TAXONOMY.map((definition) => {
+    const subcategories = definition.subcategories
+      .map((subcategory) => {
+        const themeSignals = subcategory.normalized_themes
+          .map((theme) => frequencyByTheme.get(theme))
+          .filter((signal): signal is ThemeFrequencySignal => Boolean(signal));
+        const themeScore = themeSignals.reduce((sum, signal) => sum + signal.theme_score, 0);
+        const matchedRawThemes = rawThemes.filter((rawTheme) =>
+          subcategory.raw_patterns.some((pattern) => matchesPattern(rawTheme, pattern))
+        );
+        const matchedPatterns = subcategory.raw_patterns.filter((pattern) =>
+          rawThemes.some((rawTheme) => matchesPattern(rawTheme, pattern))
+        );
+        const rawScore = matchedRawThemes.length * subcategory.weight * 0.6;
+        const score = roundTo(themeScore + rawScore);
+
+        return {
+          label: subcategory.label,
+          score,
+          contribution_pct: 0,
+          rank: 0,
+          themes: [...new Set(themeSignals.map((signal) => signal.normalized_theme))].sort(sortThemes),
+          matched_raw_themes: [...new Set(matchedRawThemes)],
+          matched_patterns: [...new Set(matchedPatterns)]
+        };
+      })
+      .filter((subcategory) => subcategory.score > 0)
+      .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+
+    const score = roundTo(subcategories.reduce((sum, subcategory) => sum + subcategory.score, 0));
+    const themes = [...new Set(subcategories.flatMap((subcategory) => subcategory.themes))].sort(sortThemes);
+    const matchedRawThemes = [...new Set(subcategories.flatMap((subcategory) => subcategory.matched_raw_themes))];
+    const matchedPatterns = [...new Set(subcategories.flatMap((subcategory) => subcategory.matched_patterns))];
+
+    return {
+      category: definition.category,
+      label: definition.label,
+      score,
+      contribution_pct: 0,
+      rank: 0,
+      subcategories,
+      themes,
+      matched_raw_themes: matchedRawThemes,
+      matched_patterns: matchedPatterns
+    };
+  })
+    .filter((category) => category.score > 0)
+    .sort((a, b) => b.score - a.score || PRODUCT_CATEGORY_ORDER.indexOf(a.category) - PRODUCT_CATEGORY_ORDER.indexOf(b.category));
+
+  const totalProductScore = categorySignals.reduce((sum, category) => sum + category.score, 0);
+
+  return categorySignals.map((category, categoryIndex) => {
+    const totalSubcategoryScore = category.subcategories.reduce((sum, subcategory) => sum + subcategory.score, 0);
+    return {
+      ...category,
+      contribution_pct: totalProductScore > 0 ? roundTo((category.score / totalProductScore) * 100, 1) : 0,
+      rank: categoryIndex + 1,
+      subcategories: category.subcategories.map((subcategory, subcategoryIndex) => ({
+        ...subcategory,
+        contribution_pct: totalSubcategoryScore > 0 ? roundTo((subcategory.score / totalSubcategoryScore) * 100, 1) : 0,
+        rank: subcategoryIndex + 1
+      }))
+    };
+  });
 }
 
 function buildTrendSignal(totalScore: number, context: ThemeContextInput | undefined): ThemeTrendSignal {
@@ -591,6 +852,13 @@ export function scoreThemeArticle(article: ThemeArticleInput): ThemeSignal {
   }, {});
   const combinations = detectThemeCombinations(normalizedThemes);
   const frequencySignals = buildFrequencySignals(normalizedThemes, matchesByTheme, article.context);
+  const productCategories = buildProductCategorySignals(rawThemes, frequencySignals);
+  const primaryProductCategory = productCategories[0] ?? null;
+  const secondaryProductCategories = productCategories.slice(1, 4);
+  const productCategoryScores = productCategories.reduce<Partial<Record<ProductCategory, number>>>((acc, category) => {
+    acc[category.category] = category.score;
+    return acc;
+  }, {});
   const totalScore = roundTo(frequencySignals.reduce((sum, signal) => sum + signal.theme_score, 0));
   const trend = buildTrendSignal(totalScore, article.context);
   const primaryDriver = frequencySignals[0] ?? null;
@@ -614,6 +882,10 @@ export function scoreThemeArticle(article: ThemeArticleInput): ThemeSignal {
     severity: severityForScore(totalScore),
     matches,
     category_scores: categoryScores,
+    product_category_scores: productCategoryScores,
+    product_categories: productCategories,
+    primary_product_category: primaryProductCategory,
+    secondary_product_categories: secondaryProductCategories,
     market_mappings: marketMappings,
     combination_signals: combinations,
     trend,

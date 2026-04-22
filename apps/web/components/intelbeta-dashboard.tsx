@@ -10,10 +10,13 @@ import type {
 } from "@/lib/intelligence-types";
 import type { TrendItem, TrendsPayload } from "@/lib/server/types";
 import {
+  PRODUCT_CATEGORY_LABELS,
+  PRODUCT_CATEGORY_ORDER,
   THEME_MAPPING,
+  themesForProductCategory,
   type MarketImpactDirection,
   type NormalizedTheme,
-  type ThemeCategory,
+  type ProductCategory,
   type ThemeFrequencySignal,
   type ThemeSeverity
 } from "@/lib/theme-intelligence";
@@ -23,7 +26,7 @@ type ScoredTrend = TrendItem & {
   _relatedSignalId: string;
 };
 
-type CommandCategory = ThemeCategory | "ALL";
+type CommandCategory = ProductCategory | "ALL";
 type SeverityFilter = ThemeSeverity | "ALL";
 type LiveEvidenceMeta = {
   source: IntelligenceEvidenceSource;
@@ -48,16 +51,6 @@ type GdeltEvidenceApiResponse =
       };
     }
   | { ok: false; error: string; code: string };
-
-const CATEGORY_ORDER: ThemeCategory[] = ["GEOPOLITICS", "FINANCIAL_SYSTEM", "MODERN_THEMES", "MACRO", "REAL_ECONOMY"];
-
-const CATEGORY_LABELS: Record<ThemeCategory, string> = {
-  MACRO: "Macro",
-  FINANCIAL_SYSTEM: "Financial System",
-  GEOPOLITICS: "Geopolitics",
-  REAL_ECONOMY: "Real Economy",
-  MODERN_THEMES: "Modern Themes"
-};
 
 const SEVERITY_STYLE: Record<ThemeSeverity, { color: string; background: string; border: string }> = {
   CRITICAL: { color: "#ff595e", background: "rgba(255,89,94,0.12)", border: "rgba(255,89,94,0.52)" },
@@ -131,6 +124,7 @@ function signalHaystack(profile: IntelligenceProfile): string {
     profile.oneLineSummary,
     profile.narrative,
     profile.signal.normalized_theme_list.map(formatTheme).join(" "),
+    profile.signal.product_categories.map((category) => `${category.label} ${category.subcategories.map((subcategory) => subcategory.label).join(" ")}`).join(" "),
     profile.clusters.map((cluster) => `${cluster.title} ${cluster.summary}`).join(" "),
     profile.evidence.map((article) => `${article.headline} ${article.explanation}`).join(" ")
   ]
@@ -200,12 +194,12 @@ function profileForTheme(theme: NormalizedTheme, profiles: readonly Intelligence
   return profiles.find((profile) => profile.signal.normalized_theme_list.includes(theme)) ?? fallback;
 }
 
-function categoryForProfile(profile: IntelligenceProfile): ThemeCategory {
-  return profile.signal.primary_driver?.category ?? profile.signal.frequency_signals[0]?.category ?? "MACRO";
+function categoryForProfile(profile: IntelligenceProfile): ProductCategory {
+  return profile.signal.primary_product_category?.category ?? "ECONOMIC_GROWTH";
 }
 
 function profileContainsCategory(profile: IntelligenceProfile, category: CommandCategory): boolean {
-  return category === "ALL" || profile.signal.frequency_signals.some((driver) => driver.category === category);
+  return category === "ALL" || profile.signal.product_categories.some((item) => item.category === category);
 }
 
 function themeMatchesSearch(theme: NormalizedTheme, query: string): boolean {
@@ -302,8 +296,9 @@ function ThemeCommandStrip({
   onSelect: (theme: NormalizedTheme) => void;
 }) {
   const activeSet = new Set(activeThemes);
-  const themes = THEME_MAPPING.filter((item) => category === "ALL" || item.category === category)
-    .map((item) => item.normalized_theme)
+  const themes = (category === "ALL"
+    ? THEME_MAPPING.map((item) => item.normalized_theme)
+    : themesForProductCategory(category))
     .filter((theme) => themeMatchesSearch(theme, query));
 
   return (
@@ -341,7 +336,7 @@ function SignalRailItem({
   onClick: () => void;
 }) {
   const severity = SEVERITY_STYLE[profile.signal.severity];
-  const category = CATEGORY_LABELS[categoryForProfile(profile)];
+  const category = PRODUCT_CATEGORY_LABELS[categoryForProfile(profile)];
 
   return (
     <button
@@ -573,7 +568,7 @@ export function IntelBetaDashboard({
   }, [selectedSignalId]);
 
   const categoryCounts = useMemo(() => {
-    return CATEGORY_ORDER.map((category) => ({
+    return PRODUCT_CATEGORY_ORDER.map((category) => ({
       category,
       count: profiles.filter((profile) => profileContainsCategory(profile, category)).length
     }));
@@ -633,7 +628,9 @@ export function IntelBetaDashboard({
   const criticalCount = profiles.filter((profile) => profile.signal.severity === "CRITICAL").length;
   const highCount = profiles.filter((profile) => profile.signal.severity === "HIGH").length;
   const sourceCount = profiles.reduce((sum, profile) => sum + profile.coverage.sourceCount, 0);
-  const category = CATEGORY_LABELS[categoryForProfile(selectedSignal)];
+  const category = PRODUCT_CATEGORY_LABELS[categoryForProfile(selectedSignal)];
+  const primarySubcategory = selectedSignal.signal.primary_product_category?.subcategories[0]?.label;
+  const selectedProductCategories = selectedSignal.signal.product_categories.slice(0, 4);
   const deltaColor = selectedSignal.signal.trend.delta_pct >= 0 ? "#ff595e" : "#41d39d";
 
   return (
@@ -654,7 +651,7 @@ export function IntelBetaDashboard({
         <div className="flex flex-wrap items-center gap-5 text-xs">
           <span><b className="mr-1 text-lg text-[#ff595e]">{criticalCount}</b><span className="text-[10px] uppercase tracking-[0.12em] text-[#777d8e]">Critical</span></span>
           <span><b className="mr-1 text-lg text-[#ffbe3b]">{highCount}</b><span className="text-[10px] uppercase tracking-[0.12em] text-[#777d8e]">High</span></span>
-          <span><b className="mr-1 text-lg text-[#f0f1f5]">{THEME_MAPPING.length}</b><span className="text-[10px] uppercase tracking-[0.12em] text-[#777d8e]">Themes</span></span>
+          <span><b className="mr-1 text-lg text-[#f0f1f5]">{PRODUCT_CATEGORY_ORDER.length}</b><span className="text-[10px] uppercase tracking-[0.12em] text-[#777d8e]">Categories</span></span>
           <span><b className="mr-1 text-lg text-[#f0f1f5]">{sourceCount}</b><span className="text-[10px] uppercase tracking-[0.12em] text-[#777d8e]">Sources</span></span>
         </div>
 
@@ -679,7 +676,7 @@ export function IntelBetaDashboard({
             </FilterButton>
             {categoryCounts.map((item) => (
               <FilterButton key={item.category} active={categoryFilter === item.category} onClick={() => setCategoryFilter(item.category)}>
-                {CATEGORY_LABELS[item.category]} {item.count}
+                {PRODUCT_CATEGORY_LABELS[item.category]} {item.count}
               </FilterButton>
             ))}
           </div>
@@ -720,14 +717,14 @@ export function IntelBetaDashboard({
           </div>
 
           <div className="max-h-[660px] overflow-y-auto">
-            {CATEGORY_ORDER.map((group) => {
+            {PRODUCT_CATEGORY_ORDER.map((group) => {
               const groupProfiles = visibleProfiles.filter((profile) => categoryForProfile(profile) === group);
               if (groupProfiles.length === 0) return null;
 
               return (
                 <section key={group} className="border-b border-[#171a22] py-2">
                   <div className="flex items-center justify-between px-4 py-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#777d8e]">{CATEGORY_LABELS[group]}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#777d8e]">{PRODUCT_CATEGORY_LABELS[group]}</p>
                     <span className="text-[10px] text-[#555c6d]">{groupProfiles.length}</span>
                   </div>
                   {groupProfiles.map((profile) => (
@@ -780,7 +777,7 @@ export function IntelBetaDashboard({
                   {formatTheme(selectedSignal.signal.trend.direction)}
                 </span>
                 <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#777d8e]">
-                  SIG-{selectedSignal.signal.primary_driver?.rank ?? 1} - {category} - first seen {formatCompactDate(initialSignals.generatedAt)}
+                  SIG-{selectedSignal.signal.primary_driver?.rank ?? 1} - {category}{primarySubcategory ? ` / ${primarySubcategory}` : ""} - first seen {formatCompactDate(initialSignals.generatedAt)}
                 </span>
               </div>
               <h2 className="mt-3 text-3xl font-bold leading-tight text-[#f2f2f2]" style={{ letterSpacing: 0 }}>
@@ -838,6 +835,36 @@ export function IntelBetaDashboard({
                   index={index}
                   onSelect={() => selectTheme(driver.normalized_theme)}
                 />
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-6">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">Category Map</p>
+              <span className="text-[10px] font-semibold text-[#777d8e]">{selectedSignal.signal.product_categories.length} active categories</span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {selectedProductCategories.map((item) => (
+                <button
+                  key={item.category}
+                  type="button"
+                  onClick={() => setCategoryFilter(item.category)}
+                  className="min-h-[96px] rounded-sm border border-[#272b36] bg-[#11141c] p-3 text-left transition-colors hover:border-[#4fd5ff]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-xs font-bold text-[#f0f1f5]">{item.label}</p>
+                    <span className="font-mono text-xs font-bold text-[#4fd5ff]">{item.contribution_pct.toFixed(1)}%</span>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    {item.subcategories.slice(0, 2).map((subcategory) => (
+                      <div key={subcategory.label} className="flex items-center justify-between gap-2 text-[10px] text-[#8d94a5]">
+                        <span className="line-clamp-1">{subcategory.label}</span>
+                        <span className="font-mono text-[#c8ccd5]">{subcategory.contribution_pct.toFixed(0)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </button>
               ))}
             </div>
           </section>
