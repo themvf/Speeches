@@ -643,18 +643,13 @@ export function IntelBetaDashboard({
       return;
     }
 
-    if (requestedEvidenceProfilesRef.current[AML_EVIDENCE_KEY]) {
-      return;
-    }
-
     let cancelled = false;
-    requestedEvidenceProfilesRef.current[AML_EVIDENCE_KEY] = true;
     setLoadingEvidenceProfileId(AML_EVIDENCE_KEY);
     setEvidenceLoadError(null);
 
     async function loadAmlEvidence() {
       try {
-        const response = await fetch("/api/intelligence/gdelt-evidence?category=AML", {
+        const response = await fetch(`/api/intelligence/gdelt-evidence?category=AML&t=${Date.now()}`, {
           cache: "no-store"
         });
         const payload = (await response.json()) as GdeltEvidenceApiResponse;
@@ -672,6 +667,7 @@ export function IntelBetaDashboard({
               sourceDistribution: payload.data.sourceDistribution
             }
           }));
+          setSelectedArticleId("");
         }
       } catch (error) {
         if (!cancelled) {
