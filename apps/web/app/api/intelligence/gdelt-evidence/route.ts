@@ -1,5 +1,6 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
 import { fetchGdeltGkgEvidenceForProductCategory, fetchGdeltGkgEvidenceForProfile } from "@/lib/server/gdelt-gkg";
+import { fetchStoredEvidenceForProductCategory } from "@/lib/server/stored-category-evidence";
 import { buildIntelligenceSignalsData } from "@/lib/server/intelligence-signals";
 import type { IntelligenceEvidenceArticle } from "@/lib/intelligence-types";
 import { PRODUCT_CATEGORY_ORDER, PRODUCT_CATEGORY_LABELS, type ProductCategory } from "@/lib/theme-intelligence";
@@ -30,24 +31,35 @@ export async function GET(request: Request) {
       return fail("Unknown intelligence category.", "UNKNOWN_CATEGORY", 404, requestId);
     }
 
-    let liveEvidence: IntelligenceEvidenceArticle[] = [];
+    let storedEvidence: IntelligenceEvidenceArticle[] = [];
     try {
-      liveEvidence = await fetchGdeltGkgEvidenceForProductCategory(category as ProductCategory, focusId || null);
+      storedEvidence = await fetchStoredEvidenceForProductCategory(category as ProductCategory, focusId || null);
     } catch {
-      liveEvidence = [];
+      storedEvidence = [];
     }
+
+    let liveEvidence: IntelligenceEvidenceArticle[] = [];
+    if (storedEvidence.length === 0) {
+      try {
+        liveEvidence = await fetchGdeltGkgEvidenceForProductCategory(category as ProductCategory, focusId || null);
+      } catch {
+        liveEvidence = [];
+      }
+    }
+
+    const evidence = storedEvidence.length > 0 ? storedEvidence : liveEvidence;
 
     return ok({
       category,
       label: PRODUCT_CATEGORY_LABELS[category as ProductCategory],
       focusId: focusId || null,
-      source: liveEvidence.length > 0 ? "gdelt-gkg" : "seed",
-      evidence: liveEvidence,
+      source: storedEvidence.length > 0 ? "stored-news" : liveEvidence.length > 0 ? "gdelt-gkg" : "seed",
+      evidence,
       coverage: {
-        totalArticles: liveEvidence.length,
-        sourceCount: new Set(liveEvidence.map((article) => article.source)).size
+        totalArticles: evidence.length,
+        sourceCount: new Set(evidence.map((article) => article.source)).size
       },
-      sourceDistribution: sourceDistributionFromEvidence(liveEvidence)
+      sourceDistribution: sourceDistributionFromEvidence(evidence)
     }, requestId);
   }
 

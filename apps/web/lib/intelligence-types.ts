@@ -22,7 +22,7 @@ export type IntelligenceEvidenceArticle = {
   impact: number;
 };
 
-export type IntelligenceEvidenceSource = "seed" | "gdelt-doc" | "gdelt-gkg";
+export type IntelligenceEvidenceSource = "seed" | "gdelt-doc" | "gdelt-gkg" | "stored-news";
 
 export type IntelligenceEvidenceCluster = {
   id: string;

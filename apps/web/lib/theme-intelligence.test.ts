@@ -4,6 +4,7 @@ import test from "node:test";
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
 import { buildGdeltDocQueries, buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
 import { buildGdeltGkgArchiveUrls, mapGdeltGkgRecordsToProductCategoryEvidence, parseGdeltGkgCsv, parseGdeltGkgManifest } from "./server/gdelt-gkg.ts";
+import { mapStoredDocumentsToProductCategoryEvidence } from "./server/stored-category-evidence.ts";
 import { PRODUCT_CATEGORY_ORDER, focusAreasForProductCategory, parseRawThemes, scoreThemeArticle, themesForProductCategory } from "./theme-intelligence.ts";
 
 test("maps raw GDELT themes to deduplicated normalized themes", () => {
@@ -422,4 +423,79 @@ test("maps AML category evidence only from source-side strict AML terms", () => 
   assert.equal(evidence.some((article) => article.url?.includes("crypto-regulation")), false);
   assert.equal(evidence.some((article) => article.url?.includes("pictofact")), false);
   assert.equal(evidence.some((article) => article.url?.includes("ceasefire")), false);
+});
+
+test("maps stored NewsAPI articles to AML evidence without broad substring matches", () => {
+  const items = [
+    {
+      document_id: "news-1",
+      title: "Treasury prepares banks for know your customer data collection",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "CNBC",
+      url: "https://www.cnbc.com/2026/04/15/banks-citizenship-data-collection-customer-accounts.html",
+      date: "April 15, 2026",
+      published_at: "April 15, 2026",
+      word_count: 1200,
+      tags: ["anti_money_laundering", "know_your_customer"],
+      keywords: ["KYC", "Bank Secrecy Act"],
+      topics: ["banking_regulation"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    },
+    {
+      document_id: "news-2",
+      title: "AI search platform scales merchandising",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Associated Press",
+      url: "https://apnews.com/press-release/business-wire/ai-search-merchandising",
+      date: "April 20, 2026",
+      published_at: "April 20, 2026",
+      word_count: 700,
+      tags: ["artificial_intelligence"],
+      keywords: ["personalization"],
+      topics: ["technology"],
+      ingest_status: "existing",
+      enrichment_status: "not_enriched",
+      review_decision: "pending",
+      updated_at: ""
+    },
+    {
+      document_id: "sec-1",
+      title: "SEC mentions AML controls",
+      organization: "SEC",
+      source_kind: "sec_speech",
+      doc_type: "Speech",
+      speaker: "SEC",
+      url: "https://www.sec.gov/newsroom/speeches-statements/example",
+      date: "April 20, 2026",
+      published_at: "April 20, 2026",
+      word_count: 700,
+      tags: ["AML"],
+      keywords: ["AML"],
+      topics: ["AML"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    }
+  ];
+
+  const evidence = mapStoredDocumentsToProductCategoryEvidence("AML", items, new Map([
+    ["news-1", "Banks would collect citizenship data under KYC and Bank Secrecy Act controls."],
+    ["news-2", "Search and merchandising technology coverage."]
+  ]));
+
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].headline, "Treasury prepares banks for know your customer data collection");
+  assert.equal(evidence[0].source, "CNBC");
+  assert.equal(evidence[0].focusAreaLabel, "AML / BSA");
+  assert.ok(evidence[0].matchedTerms?.includes("AML"));
+  assert.ok(evidence[0].matchedTerms?.includes("BSA"));
+  assert.equal(evidence.some((article) => article.headline.includes("scales")), false);
 });

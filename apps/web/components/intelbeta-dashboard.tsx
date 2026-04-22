@@ -556,8 +556,8 @@ export function IntelBetaDashboard({
     ? allAmlEvidence.filter((article) => article.focusAreaId === selectedAmlFocus.id)
     : allAmlEvidence;
   const hasLiveEvidence = isAmlFocusView
-    ? amlEvidenceMeta?.source === "gdelt-doc" || amlEvidenceMeta?.source === "gdelt-gkg"
-    : selectedEvidenceMeta?.source === "gdelt-doc" || selectedEvidenceMeta?.source === "gdelt-gkg";
+    ? amlEvidenceMeta?.source === "gdelt-doc" || amlEvidenceMeta?.source === "gdelt-gkg" || amlEvidenceMeta?.source === "stored-news"
+    : selectedEvidenceMeta?.source === "gdelt-doc" || selectedEvidenceMeta?.source === "gdelt-gkg" || selectedEvidenceMeta?.source === "stored-news";
   const evidence = isAmlFocusView
     ? amlMatchedEvidence.slice(0, 30)
     : selectedSignal
@@ -1143,9 +1143,15 @@ export function IntelBetaDashboard({
               {isLoadingEvidence
                 ? isAmlFocusView ? "Loading AML evidence across live signals..." : "Loading live GDELT article links..."
                 : isAmlFocusView
-                  ? "AML-only evidence using strict sanctions, OFAC, AML/BSA, KYC, ownership, and illicit-finance terms."
+                  ? hasLiveEvidence
+                    ? amlEvidenceMeta?.source === "stored-news"
+                      ? "Stored NewsAPI articles matched to strict AML terms."
+                      : "Live AML evidence using strict sanctions, OFAC, AML/BSA, KYC, ownership, and illicit-finance terms."
+                    : "No strict AML evidence matched yet."
                   : hasLiveEvidence
-                  ? selectedEvidenceMeta?.source === "gdelt-gkg"
+                  ? selectedEvidenceMeta?.source === "stored-news"
+                    ? "Stored NewsAPI articles from the ingested corpus."
+                    : selectedEvidenceMeta?.source === "gdelt-gkg"
                     ? "Live GDELT GKG articles with source URLs."
                     : "Live GDELT DOC 2.0 articles with source URLs."
                   : evidenceLoadError
