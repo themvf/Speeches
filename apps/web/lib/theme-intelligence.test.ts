@@ -499,3 +499,52 @@ test("maps stored NewsAPI articles to AML evidence without broad substring match
   assert.ok(evidence[0].matchedTerms?.includes("BSA"));
   assert.equal(evidence.some((article) => article.headline.includes("scales")), false);
 });
+
+test("orders stored AML evidence by recency before match strength", () => {
+  const items = [
+    {
+      document_id: "older-strong",
+      title: "Older article with many AML and BSA laundering terms",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "CoinDesk",
+      url: "https://www.coindesk.com/policy/2026/04/10/older-aml-bsa-money-laundering",
+      date: "April 10, 2026",
+      published_at: "April 10, 2026",
+      word_count: 800,
+      tags: ["aml", "bsa", "money_laundering", "anti_money_laundering"],
+      keywords: ["AML", "BSA", "money laundering"],
+      topics: ["aml"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    },
+    {
+      document_id: "newer-weaker",
+      title: "Newer article with OFAC sanctions update",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "CNBC",
+      url: "https://www.cnbc.com/2026/04/22/ofac-sanctions-update.html",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 700,
+      tags: ["ofac"],
+      keywords: ["OFAC"],
+      topics: ["sanctions"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    }
+  ];
+
+  const evidence = mapStoredDocumentsToProductCategoryEvidence("AML", items, new Map());
+
+  assert.equal(evidence.length, 2);
+  assert.equal(evidence[0].headline, "Newer article with OFAC sanctions update");
+  assert.equal(evidence[1].headline, "Older article with many AML and BSA laundering terms");
+});

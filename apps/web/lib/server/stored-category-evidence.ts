@@ -182,6 +182,7 @@ export function mapStoredDocumentsToProductCategoryEvidence(
     fullText: string;
     summary: string;
     score: number;
+    dateMs: number;
   }[] = [];
 
   for (const item of items) {
@@ -207,12 +208,13 @@ export function mapStoredDocumentsToProductCategoryEvidence(
       matchedTerms: bestMatch.matchedTerms,
       fullText,
       summary: summaryById.get(item.document_id) || "",
-      score: bestMatch.matchedTerms.length * 40 + recencyScore(item)
+      score: bestMatch.matchedTerms.length * 40 + recencyScore(item),
+      dateMs: parseComparableDate(item.published_at || item.date)
     });
   }
 
   return ranked
-    .sort((a, b) => b.score - a.score || parseComparableDate(b.item.published_at || b.item.date) - parseComparableDate(a.item.published_at || a.item.date))
+    .sort((a, b) => b.dateMs - a.dateMs || b.score - a.score || a.item.title.localeCompare(b.item.title))
     .slice(0, STORED_EVIDENCE_MAX_RECORDS)
     .map((match, index) =>
       mapStoredArticleToEvidence(
