@@ -29,6 +29,7 @@ type ScoredTrend = TrendItem & {
 };
 
 const AML_EVIDENCE_KEY = "category:AML";
+const AML_NEWS_REFRESH_INTERVAL_MS = 15 * 60 * 1_000;
 type CommandCategory = ProductCategory | "ALL";
 type AmlFocusId = string;
 type SeverityFilter = ThemeSeverity | "ALL";
@@ -103,6 +104,20 @@ function formatCompactDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
     timeZoneName: "short"
+  });
+}
+
+function formatRefreshTime(value: string | null): string {
+  if (!value) {
+    return "Pending";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Pending";
+  }
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
   });
 }
 
@@ -538,6 +553,7 @@ export function IntelBetaDashboard({
   const [evidenceMetaByProfile, setEvidenceMetaByProfile] = useState<Record<string, LiveEvidenceMeta>>({});
   const [loadingEvidenceProfileId, setLoadingEvidenceProfileId] = useState<string | null>(null);
   const [evidenceLoadError, setEvidenceLoadError] = useState<string | null>(null);
+  const [amlNewsLastUpdatedAt, setAmlNewsLastUpdatedAt] = useState<string | null>(null);
   const requestedEvidenceProfilesRef = useRef<Record<string, true>>({});
 
   const selectedSignal = profiles.find((profile) => profile.id === selectedSignalId) ?? profiles[0];
@@ -647,8 +663,11 @@ export function IntelBetaDashboard({
     setLoadingEvidenceProfileId(AML_EVIDENCE_KEY);
     setEvidenceLoadError(null);
 
-    async function loadAmlEvidence() {
+    async function loadAmlEvidence(background = false) {
       try {
+        if (!background) {
+          setLoadingEvidenceProfileId(AML_EVIDENCE_KEY);
+        }
         const response = await fetch(`/api/intelligence/gdelt-evidence?category=AML&t=${Date.now()}`, {
           cache: "no-store"
         });
@@ -668,22 +687,29 @@ export function IntelBetaDashboard({
             }
           }));
           setSelectedArticleId("");
+          setAmlNewsLastUpdatedAt(new Date().toISOString());
         }
       } catch (error) {
         if (!cancelled) {
-          setEvidenceLoadError(error instanceof Error ? error.message : "Unable to load AML evidence.");
+          setEvidenceLoadError(error instanceof Error ? error.message : "Unable to load AML news.");
         }
       } finally {
         if (!cancelled) {
-          setLoadingEvidenceProfileId(null);
+          if (!background) {
+            setLoadingEvidenceProfileId(null);
+          }
         }
       }
     }
 
     void loadAmlEvidence();
+    const refreshId = window.setInterval(() => {
+      void loadAmlEvidence(true);
+    }, AML_NEWS_REFRESH_INTERVAL_MS);
 
     return () => {
       cancelled = true;
+      window.clearInterval(refreshId);
     };
   }, [categoryFilter]);
 
@@ -772,7 +798,7 @@ export function IntelBetaDashboard({
     ? "AML evidence is narrowed to sanctions, OFAC, AML/BSA, KYC, beneficial ownership, and illicit-finance indicators."
     : selectedSignal.oneLineSummary;
   const displayNarrative = isAmlFocusView
-    ? "Active Signals remain unchanged. This category focus filters the evidence stream to explicit AML terms only, avoiding broad regulation, crypto, trade, or conflict matches."
+    ? "Active Signals remain unchanged. This category focus filters the news stream to explicit AML terms only, avoiding broad regulation, crypto, trade, or conflict matches."
     : selectedSignal.narrative;
 
   return (
@@ -929,7 +955,7 @@ export function IntelBetaDashboard({
                 </span>
                 <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#777d8e]">
                   {isAmlFocusView
-                    ? `AML evidence focus - ${streamEvidence.length} matched articles`
+                    ? `AML news focus - ${streamEvidence.length} matched articles`
                     : `SIG-${selectedSignal.signal.primary_driver?.rank ?? 1} - ${category}${primarySubcategory ? ` / ${primarySubcategory}` : ""} - first seen ${formatCompactDate(initialSignals.generatedAt)}`}
                 </span>
               </div>
@@ -947,7 +973,7 @@ export function IntelBetaDashboard({
                 {isAmlFocusView ? streamEvidence.length : formatPct(selectedSignal.signal.trend.delta_pct)}
               </p>
               <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#777d8e]">
-                {isAmlFocusView ? "matched evidence" : "vs prior window"}
+                {isAmlFocusView ? "matched news" : "vs prior window"}
               </p>
             </div>
           </div>
@@ -972,7 +998,7 @@ export function IntelBetaDashboard({
                 </div>
                 <div>
                   <p className="text-2xl font-black tabular-nums text-[#f2f2f2]">{streamEvidence.length}</p>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#777d8e]">Evidence</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#777d8e]">{isAmlFocusView ? "News" : "Evidence"}</p>
                 </div>
               </div>
             </div>
@@ -1077,7 +1103,7 @@ export function IntelBetaDashboard({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">
-                  Promoted Evidence {selectedArticle ? "#01" : ""}
+                  {isAmlFocusView ? "Lead Story" : "Promoted Evidence"} {selectedArticle ? "#01" : ""}
                 </p>
                 {selectedArticle ? (
                   <>
@@ -1132,18 +1158,27 @@ export function IntelBetaDashboard({
         <aside className="border-l border-[#1d2029] bg-[#090b10]">
           <div className="border-b border-[#1d2029] px-4 py-4">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">Evidence Stream</p>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#41d39d]" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">News Stream</p>
+              </div>
               <span className="text-[10px] text-[#777d8e]">{streamEvidence.length} of {evidence.length}</span>
             </div>
+            {isAmlFocusView ? (
+              <div className="mt-2 flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5f6675]">
+                <span>Auto-refresh 15m</span>
+                <span>Updated {formatRefreshTime(amlNewsLastUpdatedAt)}</span>
+              </div>
+            ) : null}
             <p className="mt-2 text-[11px] leading-4 text-[#8b91a0]">
               {isLoadingEvidence
-                ? isAmlFocusView ? "Loading AML evidence across live signals..." : "Loading live GDELT article links..."
+                ? isAmlFocusView ? "Loading AML news across live signals..." : "Loading live GDELT article links..."
                 : isAmlFocusView
                   ? hasLiveEvidence
                     ? amlEvidenceMeta?.source === "stored-news"
                       ? "Stored NewsAPI articles matched to strict AML terms."
-                      : "Live AML evidence using strict sanctions, OFAC, AML/BSA, KYC, ownership, and illicit-finance terms."
-                    : "No strict AML evidence matched yet."
+                      : "Live AML news using strict sanctions, OFAC, AML/BSA, KYC, ownership, and illicit-finance terms."
+                    : "No strict AML news matched yet."
                   : hasLiveEvidence
                   ? selectedEvidenceMeta?.source === "stored-news"
                     ? "Stored NewsAPI articles from the ingested corpus."
