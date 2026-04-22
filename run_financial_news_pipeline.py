@@ -1525,6 +1525,17 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         "processed_doc_ids": processed_doc_ids,
         "new_doc_ids": new_doc_ids,
         "updated_doc_ids": updated_doc_ids,
+        "discovered_preview": [
+            {
+                "title": str(entry.get("title", "") or "").strip(),
+                "source_name": str(entry.get("source_name", "") or "").strip(),
+                "date": str(entry.get("date", "") or "").strip(),
+                "published_at": str(entry.get("published_at", "") or "").strip(),
+                "url": str(entry.get("url", "") or "").strip(),
+                "ingest_status": str(entry.get("ingest_status", "") or "").strip(),
+            }
+            for entry in discovered[:20]
+        ],
         "failed_count": len(failed),
         "failed": failed[:25],
         "discovery_errors": discovery_errors[:10],

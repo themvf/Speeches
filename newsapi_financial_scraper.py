@@ -498,7 +498,13 @@ class NewsAPIFinancialScraper:
                         }
                     )
 
-        if not discovered and str(base_params.get("domains", "") or "").strip():
+        domain_limited = str(base_params.get("domains", "") or "").strip()
+        needs_broader_pass = (
+            bool(domain_limited)
+            and target_count > 0
+            and len(discovered) < target_count
+        )
+        if (not discovered or needs_broader_pass) and domain_limited:
             debug["fallback_no_domains_used"] = True
             no_domains_params = dict(base_params)
             no_domains_params.pop("domains", None)
