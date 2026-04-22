@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
 import { buildGdeltDocQueries, buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
-import { buildGdeltGkgArchiveUrls, parseGdeltGkgCsv, parseGdeltGkgManifest } from "./server/gdelt-gkg.ts";
+import { buildGdeltGkgArchiveUrls, mapGdeltGkgRecordsToProductCategoryEvidence, parseGdeltGkgCsv, parseGdeltGkgManifest } from "./server/gdelt-gkg.ts";
 import { PRODUCT_CATEGORY_ORDER, focusAreasForProductCategory, parseRawThemes, scoreThemeArticle, themesForProductCategory } from "./theme-intelligence.ts";
 
 test("maps raw GDELT themes to deduplicated normalized themes", () => {
@@ -336,7 +336,90 @@ test("parses GDELT GKG manifest and maps live rows through normalized themes", (
   ].join("\n");
 
   const records = parseGdeltGkgCsv(rows);
-  assert.equal(records.length, 1);
+  assert.equal(records.length, 2);
   assert.equal(records[0].url, "https://www.reuters.com/markets/commodities/oil-prices-rise-2026-04-21/");
   assert.deepEqual(records[0].normalizedThemes, ["CENTRAL_BANK", "ENERGY", "INFLATION"]);
+  assert.deepEqual(records[1].normalizedThemes, []);
+});
+
+test("maps AML category evidence only from source-side strict AML terms", () => {
+  const rows = [
+    [
+      "20260421211500-1",
+      "20260421211500",
+      "1",
+      "aljazeera.com",
+      "https://www.aljazeera.com/news/2026/4/21/us-issues-more-iran-sanctions-on-eve-of-possible-talks",
+      "",
+      "",
+      "SANCTIONS;",
+      "SANCTIONS,12;"
+    ].join("\t"),
+    [
+      "20260421211500-2",
+      "20260421211500",
+      "1",
+      "example.com",
+      "https://example.com/news/iran-ceasefire-embargo-extension",
+      "",
+      "",
+      "EMBARGO;RESTRICTIONS;",
+      "EMBARGO,12;RESTRICTIONS,21;"
+    ].join("\t"),
+    [
+      "20260421211500-3",
+      "20260421211500",
+      "1",
+      "example.org",
+      "https://example.org/news/bank-money-laundering-kyc-beneficial-ownership-controls",
+      "",
+      "",
+      "MONEY_LAUNDERING;KYC;BENEFICIAL_OWNERSHIP;",
+      "MONEY_LAUNDERING,12;KYC,21;BENEFICIAL_OWNERSHIP,45;"
+    ].join("\t"),
+    [
+      "20260421211500-4",
+      "20260421211500",
+      "1",
+      "example.net",
+      "https://example.net/news/crypto-regulation-market-update",
+      "",
+      "",
+      "CRYPTOCURRENCY;REGULATION;",
+      "CRYPTOCURRENCY,12;REGULATION,21;"
+    ].join("\t"),
+    [
+      "20260421211500-5",
+      "20260421211500",
+      "1",
+      "cracked.com",
+      "https://trivia.cracked.com/image-pictofact-20497-news-roundup",
+      "",
+      "",
+      "GENERAL_NEWS;",
+      "GENERAL_NEWS,12;"
+    ].join("\t"),
+    [
+      "20260421211500-6",
+      "20260421211500",
+      "1",
+      "example.edu",
+      "https://example.edu/news/iran-ceasefire-talks-continue",
+      "",
+      "",
+      "SANCTIONS;",
+      "SANCTIONS,12;"
+    ].join("\t")
+  ].join("\n");
+
+  const evidence = mapGdeltGkgRecordsToProductCategoryEvidence("AML", parseGdeltGkgCsv(rows));
+
+  assert.equal(evidence.length, 2);
+  assert.deepEqual(evidence.map((article) => article.focusAreaLabel).sort(), ["KYC / Ownership", "Sanctions"]);
+  assert.ok(evidence.some((article) => article.matchedTerms?.includes("SANCTIONS")));
+  assert.ok(evidence.some((article) => article.matchedTerms?.includes("KYC") && article.matchedTerms.includes("BENEFICIAL_OWNERSHIP")));
+  assert.equal(evidence.some((article) => article.url?.includes("embargo")), false);
+  assert.equal(evidence.some((article) => article.url?.includes("crypto-regulation")), false);
+  assert.equal(evidence.some((article) => article.url?.includes("pictofact")), false);
+  assert.equal(evidence.some((article) => article.url?.includes("ceasefire")), false);
 });

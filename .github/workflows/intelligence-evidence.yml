@@ -1,0 +1,76 @@
+name: Intelligence Evidence
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/app/api/intelligence/gdelt-evidence/route.ts"
+      - "apps/web/components/intelbeta-dashboard.tsx"
+      - "apps/web/lib/intelligence-types.ts"
+      - "apps/web/lib/server/gdelt-gkg.ts"
+      - "apps/web/lib/theme-intelligence.ts"
+      - "apps/web/lib/theme-intelligence.test.ts"
+      - "apps/web/scripts/check-gdelt-evidence-live.ts"
+      - "apps/web/package.json"
+      - "apps/web/package-lock.json"
+      - ".github/workflows/intelligence-evidence.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/web/app/api/intelligence/gdelt-evidence/route.ts"
+      - "apps/web/components/intelbeta-dashboard.tsx"
+      - "apps/web/lib/intelligence-types.ts"
+      - "apps/web/lib/server/gdelt-gkg.ts"
+      - "apps/web/lib/theme-intelligence.ts"
+      - "apps/web/lib/theme-intelligence.test.ts"
+      - "apps/web/scripts/check-gdelt-evidence-live.ts"
+      - "apps/web/package.json"
+      - "apps/web/package-lock.json"
+      - ".github/workflows/intelligence-evidence.yml"
+  workflow_dispatch:
+    inputs:
+      require_live_matches:
+        description: "Fail if live GDELT returns zero AML evidence matches"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intelligence-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      GDELT_LIVE_REQUIRED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.require_live_matches == 'true' && '1' || '0' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Theme Intelligence Tests
+        run: npm run test:theme-intelligence
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Smoke Test Live GDELT AML Evidence
+        run: npm run test:gdelt-evidence-live

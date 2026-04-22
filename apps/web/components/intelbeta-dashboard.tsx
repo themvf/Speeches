@@ -28,6 +28,7 @@ type ScoredTrend = TrendItem & {
   _relatedSignalId: string;
 };
 
+const AML_EVIDENCE_KEY = "category:AML";
 type CommandCategory = ProductCategory | "ALL";
 type AmlFocusId = string;
 type SeverityFilter = ThemeSeverity | "ALL";
@@ -43,7 +44,10 @@ type GdeltEvidenceApiResponse =
   | {
       ok: true;
       data: {
-        profileId: string;
+        profileId?: string;
+        category?: string;
+        label?: string;
+        focusId?: string | null;
         source: IntelligenceEvidenceSource;
         evidence: IntelligenceEvidenceArticle[];
         coverage: {
@@ -191,45 +195,6 @@ function evidenceForArticles(
     return [...articles];
   }
   return [...fallbackArticles];
-}
-
-function normalizeMatchText(value: string): string {
-  return value
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function textMatchesPattern(value: string, pattern: string): boolean {
-  const haystack = normalizeMatchText(value);
-  const needle = normalizeMatchText(pattern);
-  if (!needle) return false;
-  if (needle.length <= 3) {
-    return haystack.split("_").includes(needle);
-  }
-  return haystack.includes(needle);
-}
-
-function articleMatchesFocusArea(article: IntelligenceEvidenceArticle, focusArea: ProductFocusArea): boolean {
-  const text = [article.headline, article.excerpt, article.explanation, article.source].join(" ");
-  return (
-    focusArea.normalized_themes.some((theme) => article.relatedThemes.includes(theme)) ||
-    focusArea.raw_patterns.some((pattern) => textMatchesPattern(text, pattern))
-  );
-}
-
-function uniqueEvidenceArticles(articles: readonly IntelligenceEvidenceArticle[]): IntelligenceEvidenceArticle[] {
-  const seen = new Set<string>();
-  const result: IntelligenceEvidenceArticle[] = [];
-
-  for (const article of articles) {
-    const key = article.url ?? article.id;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(article);
-  }
-
-  return result;
 }
 
 function sourceDistributionFromEvidence(articles: readonly IntelligenceEvidenceArticle[]) {
@@ -585,17 +550,13 @@ export function IntelBetaDashboard({
   const selectedAmlFocus = selectedAmlFocusId ? amlFocusAreas.find((focusArea) => focusArea.id === selectedAmlFocusId) ?? null : null;
   const selectedProfileEvidence = selectedSignal ? evidenceByProfile[selectedSignal.id] ?? selectedSignal.evidence : [];
   const selectedEvidenceMeta = selectedSignal ? evidenceMetaByProfile[selectedSignal.id] : undefined;
-  const allProfileEvidence = uniqueEvidenceArticles(
-    profiles.flatMap((profile) => evidenceByProfile[profile.id] ?? profile.evidence)
-  );
-  const amlMatchedEvidence = allProfileEvidence.filter((article) => {
-    if (selectedAmlFocus) {
-      return articleMatchesFocusArea(article, selectedAmlFocus);
-    }
-    return amlFocusAreas.some((focusArea) => articleMatchesFocusArea(article, focusArea));
-  });
+  const allAmlEvidence = evidenceByProfile[AML_EVIDENCE_KEY] ?? [];
+  const amlEvidenceMeta = evidenceMetaByProfile[AML_EVIDENCE_KEY];
+  const amlMatchedEvidence = selectedAmlFocus
+    ? allAmlEvidence.filter((article) => article.focusAreaId === selectedAmlFocus.id)
+    : allAmlEvidence;
   const hasLiveEvidence = isAmlFocusView
-    ? Object.values(evidenceMetaByProfile).some((meta) => meta.source === "gdelt-doc" || meta.source === "gdelt-gkg")
+    ? amlEvidenceMeta?.source === "gdelt-doc" || amlEvidenceMeta?.source === "gdelt-gkg"
     : selectedEvidenceMeta?.source === "gdelt-doc" || selectedEvidenceMeta?.source === "gdelt-gkg";
   const evidence = isAmlFocusView
     ? amlMatchedEvidence.slice(0, 30)
@@ -611,7 +572,7 @@ export function IntelBetaDashboard({
   const relatedProfiles = profiles.filter((profile) => profile.id !== selectedSignal?.id).slice(0, 3);
   const amlFocusCards = amlFocusAreas.map((focusArea) => ({
     focusArea,
-    count: allProfileEvidence.filter((article) => articleMatchesFocusArea(article, focusArea)).length
+    count: allAmlEvidence.filter((article) => article.focusAreaId === focusArea.id).length
   }));
   const coverageBars = isAmlFocusView
     ? amlFocusCards.map((item) => ({ label: item.focusArea.label, count: item.count }))
@@ -625,7 +586,7 @@ export function IntelBetaDashboard({
   const coverageSourceCount = isAmlFocusView
     ? new Set(evidence.map((article) => article.source)).size
     : selectedSignal ? (hasLiveEvidence && selectedEvidenceMeta ? selectedEvidenceMeta.coverage.sourceCount : selectedSignal.coverage.sourceCount) : 0;
-  const isLoadingEvidence = isAmlFocusView ? loadingEvidenceProfileId === "AML" : selectedSignal ? loadingEvidenceProfileId === selectedSignal.id : false;
+  const isLoadingEvidence = isAmlFocusView ? loadingEvidenceProfileId === AML_EVIDENCE_KEY : selectedSignal ? loadingEvidenceProfileId === selectedSignal.id : false;
 
   useEffect(() => {
     if (!selectedSignalId || requestedEvidenceProfilesRef.current[selectedSignalId]) {
@@ -648,10 +609,11 @@ export function IntelBetaDashboard({
         }
 
         if (!cancelled) {
-          setEvidenceByProfile((current) => ({ ...current, [payload.data.profileId]: payload.data.evidence }));
+          const evidenceKey = payload.data.profileId ?? selectedSignalId;
+          setEvidenceByProfile((current) => ({ ...current, [evidenceKey]: payload.data.evidence }));
           setEvidenceMetaByProfile((current) => ({
             ...current,
-            [payload.data.profileId]: {
+            [evidenceKey]: {
               source: payload.data.source,
               coverage: payload.data.coverage,
               sourceDistribution: payload.data.sourceDistribution
@@ -681,44 +643,36 @@ export function IntelBetaDashboard({
       return;
     }
 
-    const missingProfileIds = profiles
-      .map((profile) => profile.id)
-      .filter((profileId) => !requestedEvidenceProfilesRef.current[profileId]);
-
-    if (missingProfileIds.length === 0) {
+    if (requestedEvidenceProfilesRef.current[AML_EVIDENCE_KEY]) {
       return;
     }
 
     let cancelled = false;
-    missingProfileIds.forEach((profileId) => {
-      requestedEvidenceProfilesRef.current[profileId] = true;
-    });
-    setLoadingEvidenceProfileId("AML");
+    requestedEvidenceProfilesRef.current[AML_EVIDENCE_KEY] = true;
+    setLoadingEvidenceProfileId(AML_EVIDENCE_KEY);
     setEvidenceLoadError(null);
 
     async function loadAmlEvidence() {
       try {
-        await Promise.all(missingProfileIds.map(async (profileId) => {
-          const response = await fetch(`/api/intelligence/gdelt-evidence?profileId=${encodeURIComponent(profileId)}`, {
-            cache: "no-store"
-          });
-          const payload = (await response.json()) as GdeltEvidenceApiResponse;
-          if (!response.ok || !payload.ok) {
-            throw new Error(payload.ok ? `Request failed with ${response.status}` : payload.error);
-          }
+        const response = await fetch("/api/intelligence/gdelt-evidence?category=AML", {
+          cache: "no-store"
+        });
+        const payload = (await response.json()) as GdeltEvidenceApiResponse;
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.ok ? `Request failed with ${response.status}` : payload.error);
+        }
 
-          if (!cancelled) {
-            setEvidenceByProfile((current) => ({ ...current, [payload.data.profileId]: payload.data.evidence }));
-            setEvidenceMetaByProfile((current) => ({
-              ...current,
-              [payload.data.profileId]: {
-                source: payload.data.source,
-                coverage: payload.data.coverage,
-                sourceDistribution: payload.data.sourceDistribution
-              }
-            }));
-          }
-        }));
+        if (!cancelled) {
+          setEvidenceByProfile((current) => ({ ...current, [AML_EVIDENCE_KEY]: payload.data.evidence }));
+          setEvidenceMetaByProfile((current) => ({
+            ...current,
+            [AML_EVIDENCE_KEY]: {
+              source: payload.data.source,
+              coverage: payload.data.coverage,
+              sourceDistribution: payload.data.sourceDistribution
+            }
+          }));
+        }
       } catch (error) {
         if (!cancelled) {
           setEvidenceLoadError(error instanceof Error ? error.message : "Unable to load AML evidence.");
@@ -735,7 +689,7 @@ export function IntelBetaDashboard({
     return () => {
       cancelled = true;
     };
-  }, [categoryFilter, profiles]);
+  }, [categoryFilter]);
 
   const categoryCounts = useMemo(() => {
     return PRODUCT_CATEGORY_ORDER.map((category) => ({

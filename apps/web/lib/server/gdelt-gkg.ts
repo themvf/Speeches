@@ -2,13 +2,20 @@ import { createHash } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 
 import type { IntelligenceEvidenceArticle, IntelligenceProfile } from "../intelligence-types";
-import { scoreThemeArticle, type NormalizedTheme } from "../theme-intelligence.ts";
+import {
+  focusAreasForProductCategory,
+  scoreThemeArticle,
+  type NormalizedTheme,
+  type ProductCategory,
+  type ProductFocusArea
+} from "../theme-intelligence.ts";
 
 const GDELT_GKG_UPDATE_URL = "http://data.gdeltproject.org/gdeltv2/lastupdate.txt";
 const GDELT_GKG_TIMEOUT_MS = 8_000;
 const GDELT_GKG_CACHE_TTL_MS = 5 * 60 * 1_000;
 const GDELT_GKG_MAX_RECORDS = 30;
 const GDELT_GKG_ARCHIVE_COUNT = 6;
+const SOURCE_TOKEN_ONLY_PATTERNS = new Set(["AI", "AML", "BSA", "CIP", "KYC", "SAR", "OFAC"]);
 
 const PROFILE_EVIDENCE_TERMS: Readonly<Record<string, readonly string[]>> = {
   macro: ["inflation", "oil", "energy", "central-bank", "central bank", "rates", "price", "prices", "cpi"],
@@ -43,7 +50,7 @@ const PROFILE_TERM_THEMES: Readonly<Record<string, readonly { terms: readonly st
   ]
 };
 
-type GdeltGkgRecord = {
+export type GdeltGkgRecord = {
   recordId: string;
   date: string;
   source: string;
@@ -59,6 +66,7 @@ type GkgArchiveCacheEntry = {
 
 const gkgArchiveCache = new Map<string, GkgArchiveCacheEntry>();
 const gkgEvidenceCache = new Map<string, { loadedAt: number; articles: IntelligenceEvidenceArticle[] }>();
+const gkgCategoryEvidenceCache = new Map<string, { loadedAt: number; articles: IntelligenceEvidenceArticle[] }>();
 
 function isHttpUrl(value: string): boolean {
   try {
@@ -258,9 +266,6 @@ export function parseGdeltGkgCsv(text: string): GdeltGkgRecord[] {
     }
 
     const signal = scoreThemeArticle({ id: recordId, raw_themes: rawThemes });
-    if (signal.normalized_theme_list.length === 0) {
-      continue;
-    }
 
     records.push({
       recordId,
@@ -288,9 +293,35 @@ async function fetchGkgArchiveRecords(url: string): Promise<GdeltGkgRecord[]> {
   return records;
 }
 
+async function fetchRecentGkgRecords(archiveCount = GDELT_GKG_ARCHIVE_COUNT): Promise<GdeltGkgRecord[]> {
+  const manifest = await fetchText(GDELT_GKG_UPDATE_URL, GDELT_GKG_TIMEOUT_MS);
+  const latestArchiveUrl = parseGdeltGkgManifest(manifest);
+  if (!latestArchiveUrl) {
+    return [];
+  }
+
+  const records: GdeltGkgRecord[] = [];
+  const archiveUrls = buildGdeltGkgArchiveUrls(latestArchiveUrl, archiveCount);
+
+  for (const archiveUrl of archiveUrls) {
+    try {
+      records.push(...await fetchGkgArchiveRecords(archiveUrl));
+    } catch {
+      continue;
+    }
+  }
+
+  return records;
+}
+
 function articleId(profileId: string, url: string): string {
   const hash = createHash("sha1").update(url).digest("hex").slice(0, 12);
   return `gkg-${profileId}-${hash}`;
+}
+
+function categoryArticleId(category: ProductCategory, url: string): string {
+  const hash = createHash("sha1").update(`${category}:${url}`).digest("hex").slice(0, 12);
+  return `gkg-${category.toLowerCase()}-${hash}`;
 }
 
 function titleCase(value: string): string {
@@ -363,6 +394,49 @@ function urlTextIncludesTerm(urlText: string, term: string): boolean {
   return urlText.includes(normalized);
 }
 
+function normalizeMatchText(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function textMatchesSourcePattern(value: string, pattern: string): boolean {
+  const haystack = normalizeMatchText(value);
+  const needle = normalizeMatchText(pattern);
+  if (!needle) return false;
+  if (needle.length <= 3 || SOURCE_TOKEN_ONLY_PATTERNS.has(needle)) {
+    return haystack.split("_").includes(needle);
+  }
+  return haystack.includes(needle);
+}
+
+function matchedFocusTerms(record: GdeltGkgRecord, focusArea: ProductFocusArea): string[] {
+  const urlSourceText = [
+    record.url,
+    record.source
+  ].join(" ");
+  const sourceText = [
+    record.url,
+    record.source,
+    record.rawThemes.join(" ")
+  ].join(" ");
+
+  return focusArea.raw_patterns.filter((pattern) => {
+    const normalizedPattern = normalizeMatchText(pattern);
+
+    if (focusArea.id === "aml_sanctions" && normalizedPattern === "SANCTIONS") {
+      return (
+        textMatchesSourcePattern(urlSourceText, "SANCTION") ||
+        textMatchesSourcePattern(urlSourceText, "SANCTIONS") ||
+        textMatchesSourcePattern(urlSourceText, "SANCTIONED")
+      );
+    }
+
+    return textMatchesSourcePattern(sourceText, pattern);
+  });
+}
+
 function inferredThemesFromUrl(record: GdeltGkgRecord, profile: IntelligenceProfile): NormalizedTheme[] {
   const urlText = urlTextForRecord(record);
   const inferred = new Set<NormalizedTheme>();
@@ -429,37 +503,22 @@ export async function fetchGdeltGkgEvidenceForProfile(profile: IntelligenceProfi
     return cached.articles;
   }
 
-  const manifest = await fetchText(GDELT_GKG_UPDATE_URL, GDELT_GKG_TIMEOUT_MS);
-  const latestArchiveUrl = parseGdeltGkgManifest(manifest);
-  if (!latestArchiveUrl) {
-    return [];
-  }
-
   const seenUrls = new Set<string>();
   const rankedRecords: { record: GdeltGkgRecord; relevance: number }[] = [];
-  const archiveUrls = buildGdeltGkgArchiveUrls(latestArchiveUrl);
+  const records = await fetchRecentGkgRecords();
 
-  for (const archiveUrl of archiveUrls) {
-    let records: GdeltGkgRecord[] = [];
-    try {
-      records = await fetchGkgArchiveRecords(archiveUrl);
-    } catch {
+  for (const record of records) {
+    if (seenUrls.has(record.url)) {
       continue;
     }
 
-    for (const record of records) {
-      if (seenUrls.has(record.url)) {
-        continue;
-      }
-
-      const relevance = relevanceScore(record, profile);
-      if (relevance <= 0) {
-        continue;
-      }
-
-      seenUrls.add(record.url);
-      rankedRecords.push({ record, relevance });
+    const relevance = relevanceScore(record, profile);
+    if (relevance <= 0) {
+      continue;
     }
+
+    seenUrls.add(record.url);
+    rankedRecords.push({ record, relevance });
 
     if (rankedRecords.length >= GDELT_GKG_MAX_RECORDS * 2) {
       break;
@@ -484,4 +543,99 @@ export async function fetchGdeltGkgEvidenceForProfile(profile: IntelligenceProfi
 
   gkgEvidenceCache.set(profile.id, { loadedAt: Date.now(), articles });
   return articles;
+}
+
+function mapGkgRecordToCategoryEvidence(
+  category: ProductCategory,
+  record: GdeltGkgRecord,
+  focusArea: ProductFocusArea,
+  matchedTerms: readonly string[],
+  index: number
+): IntelligenceEvidenceArticle {
+  const headline = headlineFromUrl(record.url, record.source);
+  return {
+    id: categoryArticleId(category, record.url),
+    headline,
+    url: record.url,
+    source: record.source,
+    timestamp: formatGdeltTimestamp(record.date),
+    excerpt: `Live GDELT GKG match on source-side terms: ${matchedTerms.join(", ")}.`,
+    explanation: `Matched ${focusArea.label}: ${matchedTerms.join(", ")}`,
+    relatedThemes: record.normalizedThemes,
+    matchedTerms: [...matchedTerms],
+    focusAreaId: focusArea.id,
+    focusAreaLabel: focusArea.label,
+    clusterId: `${category.toLowerCase()}-${focusArea.id}`,
+    credibility: Math.max(60, 92 - index),
+    impact: Math.max(55, 90 - index)
+  };
+}
+
+export async function fetchGdeltGkgEvidenceForProductCategory(
+  category: ProductCategory,
+  focusId?: string | null,
+  options?: { archiveCount?: number }
+): Promise<IntelligenceEvidenceArticle[]> {
+  const focusAreas = focusAreasForProductCategory(category).filter((focusArea) => !focusId || focusArea.id === focusId);
+  if (focusAreas.length === 0) {
+    return [];
+  }
+
+  const archiveCount = options?.archiveCount ?? GDELT_GKG_ARCHIVE_COUNT;
+  const cacheKey = `${category}:${focusId ?? "all"}:${archiveCount}`;
+  const cached = gkgCategoryEvidenceCache.get(cacheKey);
+  if (cached && Date.now() - cached.loadedAt < GDELT_GKG_CACHE_TTL_MS) {
+    return cached.articles;
+  }
+
+  const records = await fetchRecentGkgRecords(archiveCount);
+  const articles = mapGdeltGkgRecordsToProductCategoryEvidence(category, records, focusAreas);
+  gkgCategoryEvidenceCache.set(cacheKey, { loadedAt: Date.now(), articles });
+  return articles;
+}
+
+export function mapGdeltGkgRecordsToProductCategoryEvidence(
+  category: ProductCategory,
+  records: readonly GdeltGkgRecord[],
+  focusAreas: readonly ProductFocusArea[] = focusAreasForProductCategory(category)
+): IntelligenceEvidenceArticle[] {
+  const rankedRecords: { record: GdeltGkgRecord; focusArea: ProductFocusArea; matchedTerms: string[]; score: number }[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const record of records) {
+    if (seenUrls.has(record.url)) {
+      continue;
+    }
+
+    const matchedFocusAreas = focusAreas
+      .map((focusArea) => ({ focusArea, matchedTerms: matchedFocusTerms(record, focusArea) }))
+      .filter((item) => item.matchedTerms.length > 0)
+      .sort((a, b) => b.matchedTerms.length - a.matchedTerms.length);
+
+    const bestMatch = matchedFocusAreas[0];
+    if (!bestMatch) {
+      continue;
+    }
+
+    seenUrls.add(record.url);
+    const urlText = urlTextForRecord(record);
+    const score = bestMatch.matchedTerms.length * 20 + bestMatch.matchedTerms.reduce((sum, term) => {
+      return urlTextIncludesTerm(urlText, term) ? sum + 10 : sum;
+    }, 0);
+    rankedRecords.push({
+      record,
+      focusArea: bestMatch.focusArea,
+      matchedTerms: bestMatch.matchedTerms,
+      score
+    });
+
+    if (rankedRecords.length >= GDELT_GKG_MAX_RECORDS * 3) {
+      break;
+    }
+  }
+
+  return rankedRecords
+    .sort((a, b) => b.score - a.score || b.record.date.localeCompare(a.record.date))
+    .slice(0, GDELT_GKG_MAX_RECORDS)
+    .map((item, index) => mapGkgRecordToCategoryEvidence(category, item.record, item.focusArea, item.matchedTerms, index));
 }

@@ -14,6 +14,9 @@ export type IntelligenceEvidenceArticle = {
   excerpt: string;
   explanation: string;
   relatedThemes: NormalizedTheme[];
+  matchedTerms?: string[];
+  focusAreaId?: string;
+  focusAreaLabel?: string;
   clusterId: string;
   credibility: number;
   impact: number;
