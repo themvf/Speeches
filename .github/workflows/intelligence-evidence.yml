@@ -1,14 +1,18 @@
 name: Intelligence Evidence
 
 on:
+  schedule:
+    - cron: "*/5 * * * *"
   pull_request:
     paths:
       - "apps/web/app/api/intelligence/gdelt-evidence/route.ts"
       - "apps/web/components/intelbeta-dashboard.tsx"
       - "apps/web/lib/intelligence-types.ts"
       - "apps/web/lib/server/gdelt-gkg.ts"
+      - "apps/web/lib/server/stored-category-evidence.ts"
       - "apps/web/lib/theme-intelligence.ts"
       - "apps/web/lib/theme-intelligence.test.ts"
+      - "apps/web/scripts/check-aml-evidence-endpoint.ts"
       - "apps/web/scripts/check-gdelt-evidence-live.ts"
       - "apps/web/package.json"
       - "apps/web/package-lock.json"
@@ -21,8 +25,10 @@ on:
       - "apps/web/components/intelbeta-dashboard.tsx"
       - "apps/web/lib/intelligence-types.ts"
       - "apps/web/lib/server/gdelt-gkg.ts"
+      - "apps/web/lib/server/stored-category-evidence.ts"
       - "apps/web/lib/theme-intelligence.ts"
       - "apps/web/lib/theme-intelligence.test.ts"
+      - "apps/web/scripts/check-aml-evidence-endpoint.ts"
       - "apps/web/scripts/check-gdelt-evidence-live.ts"
       - "apps/web/package.json"
       - "apps/web/package-lock.json"
@@ -51,6 +57,7 @@ jobs:
         working-directory: apps/web
     env:
       GDELT_LIVE_REQUIRED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.require_live_matches == 'true' && '1' || '0' }}
+      AML_EVIDENCE_ENDPOINT_URL: https://speeches-zeta.vercel.app/api/intelligence/gdelt-evidence?category=AML
 
     steps:
       - name: Checkout
@@ -64,13 +71,20 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
 
       - name: Install Dependencies
+        if: github.event_name != 'schedule'
         run: npm ci
 
       - name: Run Theme Intelligence Tests
+        if: github.event_name != 'schedule'
         run: npm run test:theme-intelligence
 
       - name: Typecheck
+        if: github.event_name != 'schedule'
         run: npm run typecheck
 
       - name: Smoke Test Live GDELT AML Evidence
+        if: github.event_name != 'schedule'
         run: npm run test:gdelt-evidence-live
+
+      - name: Smoke Test Production AML Evidence Endpoint
+        run: npm run test:aml-evidence-endpoint

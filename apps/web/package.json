@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:theme-intelligence": "node --experimental-strip-types --test lib/theme-intelligence.test.ts",
+    "test:aml-evidence-endpoint": "node --experimental-strip-types scripts/check-aml-evidence-endpoint.ts",
     "test:gdelt-evidence-live": "node --experimental-strip-types scripts/check-gdelt-evidence-live.ts",
     "typecheck": "tsc --noEmit"
   },
