@@ -28,6 +28,10 @@ export async function GET(request: Request) {
     const pageSize = toInt(url.searchParams.get("page_size"), 25, 1, 100);
     const fromDate = parseDate(url.searchParams.get("date_from"));
     const toDate = parseDate(url.searchParams.get("date_to"));
+    const docIdsParam = normalizeText(url.searchParams.get("doc_ids"));
+    const allowedDocIds = docIdsParam
+      ? new Set(docIdsParam.split(",").map((s) => s.trim()).filter(Boolean))
+      : null;
 
     const [corpusDocs, enrichment] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
     const items = buildDocumentListItems(corpusDocs, enrichment);
@@ -35,7 +39,7 @@ export async function GET(request: Request) {
     const fullTextById = buildFullTextById(corpusDocs);
 
     let filtered = filterDocumentListItems(items, fullTextById, {
-      q,
+      q: allowedDocIds ? "" : q,
       org,
       sourceKind,
       topic,
@@ -45,6 +49,10 @@ export async function GET(request: Request) {
       fromDate,
       toDate
     });
+
+    if (allowedDocIds) {
+      filtered = filtered.filter((item) => allowedDocIds.has(item.document_id));
+    }
 
     const sorters: Record<string, (a: (typeof filtered)[number], b: (typeof filtered)[number]) => number> = {
       date_desc: (a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date),

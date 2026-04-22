@@ -548,3 +548,29 @@ export async function askVectorStoreChat(args: AskVectorChatArgs): Promise<Vecto
     model
   };
 }
+
+export async function fetchSemanticDocIds(
+  query: string,
+  vectorStoreIds: string[],
+  topK = 20
+): Promise<{ document_ids: string[]; snippets: Record<string, string> }> {
+  const cfg = getOpenAiConfig();
+  const model = normalizeText(cfg.model) || "gpt-4.1-mini";
+  const ids = [...new Set(vectorStoreIds.map((id) => normalizeText(id)).filter(Boolean))];
+  if (!ids.length) {
+    return { document_ids: [], snippets: {} };
+  }
+  const results = await searchVectorStores(model, query, ids, topK);
+  const document_ids: string[] = [];
+  const snippets: Record<string, string> = {};
+  const seen = new Set<string>();
+  for (const r of results) {
+    const docId = extractDocIdFromFilename(r.filename);
+    if (docId && !seen.has(docId)) {
+      seen.add(docId);
+      document_ids.push(docId);
+      if (r.snippet) snippets[docId] = normalizeSnippet(r.snippet, 280);
+    }
+  }
+  return { document_ids, snippets };
+}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { expandQuery } from "@/lib/synonyms";
 import type {
   EnforcementBetaAction,
   EnforcementBetaAgencyPayload,
@@ -339,7 +340,7 @@ function TopCitationList({
   );
 }
 
-function ActionRow({ action }: { action: EnforcementBetaAction }) {
+function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet?: string }) {
   const style = AGENCY_STYLE[action.agency];
   const citationPreview = action.citations.slice(0, 3);
   const row = (
@@ -367,6 +368,7 @@ function ActionRow({ action }: { action: EnforcementBetaAction }) {
         <span>{action.forum}</span>
       </div>
       {action.summary ? <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[color:var(--ink-faint)]">{action.summary}</p> : null}
+      {snippet ? <p className="mt-1.5 line-clamp-2 text-[11px] italic leading-relaxed text-[color:rgba(79,213,255,0.55)]">{snippet}</p> : null}
       <div className="mt-3 flex flex-wrap gap-1.5">
         {citationPreview.length > 0 ? (
           citationPreview.map((citation) => (
@@ -403,7 +405,7 @@ function ActionRow({ action }: { action: EnforcementBetaAction }) {
   );
 }
 
-function ActionsPanel({ actions }: { actions: EnforcementBetaAction[] }) {
+function ActionsPanel({ actions, snippets }: { actions: EnforcementBetaAction[]; snippets?: Record<string, string> }) {
   return (
     <section className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.52)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line-soft)] px-4 py-3">
@@ -419,7 +421,11 @@ function ActionsPanel({ actions }: { actions: EnforcementBetaAction[] }) {
           </div>
         ) : (
           actions.slice(0, 80).map((action) => (
-            <ActionRow key={`${action.agency}-${action.document_id || action.url || action.title}`} action={action} />
+            <ActionRow
+              key={`${action.agency}-${action.document_id || action.url || action.title}`}
+              action={action}
+              snippet={snippets?.[action.document_id]}
+            />
           ))
         )}
       </div>
@@ -444,7 +450,10 @@ function Filters({
   dateFrom,
   setDateFrom,
   dateTo,
-  setDateTo
+  setDateTo,
+  semanticMode,
+  setSemanticMode,
+  semanticLoading,
 }: {
   payload: EnforcementBetaPayload;
   viewMode: ViewMode;
@@ -463,6 +472,9 @@ function Filters({
   setDateFrom: (value: string) => void;
   dateTo: string;
   setDateTo: (value: string) => void;
+  semanticMode: boolean;
+  setSemanticMode: (v: boolean) => void;
+  semanticLoading: boolean;
 }) {
   return (
     <section className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.56)] p-4">
@@ -480,7 +492,22 @@ function Filters({
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase text-[color:var(--ink-faint)]">Search</span>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase text-[color:var(--ink-faint)]">Search</span>
+            <button
+              type="button"
+              onClick={() => setSemanticMode(!semanticMode)}
+              className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                semanticMode
+                  ? "border border-[color:rgba(79,213,255,0.5)] bg-[color:rgba(79,213,255,0.12)] text-[color:var(--accent)]"
+                  : "border border-[color:var(--line)] text-[color:var(--ink-faint)] hover:text-[color:var(--ink)]"
+              }`}
+              title="Use OpenAI vector search for concept matching (blockchain → crypto, digital assets)"
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${semanticMode ? "bg-[color:var(--accent)]" : "bg-[color:var(--ink-faint)]"}`} />
+              Semantic{semanticLoading ? "…" : ""}
+            </button>
+          </div>
           <input className={inputClass()} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Title, entity, release, citation" />
         </label>
 
@@ -558,6 +585,11 @@ export function EnforcementBetaDashboard() {
   const [citation, setCitation] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [semanticMode, setSemanticMode] = useState(false);
+  const [semanticDocIds, setSemanticDocIds] = useState<Set<string> | null>(null);
+  const [semanticLoading, setSemanticLoading] = useState(false);
+  const [semanticSnippets, setSemanticSnippets] = useState<Record<string, string>>({});
+  const semanticAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetch("/api/enforcement/beta")
@@ -571,6 +603,36 @@ export function EnforcementBetaDashboard() {
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!semanticMode || !q) {
+      setSemanticDocIds(null);
+      setSemanticSnippets({});
+      return;
+    }
+    if (semanticAbortRef.current) semanticAbortRef.current.abort();
+    const controller = new AbortController();
+    semanticAbortRef.current = controller;
+    setSemanticLoading(true);
+    const expanded = expandQuery(q);
+    fetch(`/api/search?q=${encodeURIComponent(expanded)}&topK=40`, {
+      signal: controller.signal,
+      cache: "no-store",
+    })
+      .then((res) => res.json() as Promise<{ ok: boolean; data?: { document_ids: string[]; snippets: Record<string, string> }; error?: string }>)
+      .then((env) => {
+        if (env.ok && env.data?.document_ids) {
+          setSemanticDocIds(new Set(env.data.document_ids));
+          setSemanticSnippets(env.data.snippets || {});
+        } else {
+          setSemanticDocIds(new Set());
+          setSemanticSnippets({});
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSemanticLoading(false));
+  }, [query, semanticMode]);
 
   const filteredActions = useMemo(() => {
     if (!payload) {
@@ -606,6 +668,9 @@ export function EnforcementBetaDashboard() {
       if (!q) {
         return true;
       }
+      if (semanticMode && semanticDocIds !== null) {
+        return semanticDocIds.has(action.document_id);
+      }
       const haystack = [
         action.title,
         action.release_no,
@@ -621,7 +686,7 @@ export function EnforcementBetaDashboard() {
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [actionType, citation, dateFrom, dateTo, docType, outcome, payload, query, viewMode]);
+  }, [actionType, citation, dateFrom, dateTo, docType, outcome, payload, query, semanticDocIds, semanticMode, viewMode]);
 
   const visibleAgencies = useMemo(() => {
     if (!payload) {
@@ -685,6 +750,9 @@ export function EnforcementBetaDashboard() {
         setDateFrom={setDateFrom}
         dateTo={dateTo}
         setDateTo={setDateTo}
+        semanticMode={semanticMode}
+        setSemanticMode={setSemanticMode}
+        semanticLoading={semanticLoading}
       />
 
       <div className={`grid gap-4 ${visibleAgencies.length > 1 ? "xl:grid-cols-2" : ""}`}>
@@ -718,7 +786,7 @@ export function EnforcementBetaDashboard() {
           </div>
         </div>
         <div className="xl:col-span-2">
-          <ActionsPanel actions={filteredActions} />
+          <ActionsPanel actions={filteredActions} snippets={semanticMode ? semanticSnippets : undefined} />
         </div>
       </div>
     </div>

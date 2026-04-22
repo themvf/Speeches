@@ -1,7 +1,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { expandQuery } from "@/lib/synonyms";
 
 type HubMode = "home" | "operations" | "analytics" | "chats";
 type JobStatus = "queued" | "running" | "success" | "failed" | "unknown";
@@ -559,6 +560,10 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   const [keyword, setKeyword] = useState(searchParams.get("keyword") || "");
   const [tag, setTag] = useState(searchParams.get("tag") || "");
   const [sort, setSort] = useState("date_desc");
+  const [semanticMode, setSemanticMode] = useState(false);
+  const [semanticLoading, setSemanticLoading] = useState(false);
+  const [semanticSnippets, setSemanticSnippets] = useState<Record<string, string>>({});
+  const semanticAbortRef = useRef<AbortController | null>(null);
 
   const [settings, setSettings] = useState<NewsConnectorSettings>(DEFAULT_SETTINGS);
   const [settingsLoading, setSettingsLoading] = useState(needsOps);
@@ -649,14 +654,41 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     if (!needsDocs) return;
     setDocsLoading(true);
     setDocsError("");
+    setSemanticSnippets({});
+
     try {
+      const qTrimmed = q.trim();
       const params = new URLSearchParams({ page: String(page), page_size: String(pageSize), sort });
-      if (q.trim()) params.set("q", q.trim());
       if (org.trim()) params.set("org", org.trim());
       if (source.trim()) params.set("source_kind", source.trim());
       if (topic.trim()) params.set("topic", topic.trim());
       if (keyword.trim()) params.set("keyword", keyword.trim());
       if (tag.trim()) params.set("tag", tag.trim());
+
+      if (semanticMode && qTrimmed) {
+        setSemanticLoading(true);
+        if (semanticAbortRef.current) semanticAbortRef.current.abort();
+        semanticAbortRef.current = new AbortController();
+        const signal = semanticAbortRef.current.signal;
+        try {
+          const expanded = expandQuery(qTrimmed);
+          const res = await fetch(`/api/search?q=${encodeURIComponent(expanded)}&topK=30`, { signal, cache: "no-store" });
+          const envelope = (await res.json()) as { ok: boolean; data?: { document_ids: string[]; snippets: Record<string, string> }; error?: string };
+          if (envelope.ok && envelope.data?.document_ids?.length) {
+            setSemanticSnippets(envelope.data.snippets || {});
+            params.set("doc_ids", envelope.data.document_ids.join(","));
+          } else {
+            params.set("q", qTrimmed);
+          }
+        } catch {
+          params.set("q", qTrimmed);
+        } finally {
+          setSemanticLoading(false);
+        }
+      } else {
+        if (qTrimmed) params.set("q", qTrimmed);
+      }
+
       const data = await fetchJson<DocumentsData>(`/api/documents?${params.toString()}`);
       setItems(data.items || []);
       setFacets(data.facets || EMPTY_FACETS);
@@ -668,7 +700,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     } finally {
       setDocsLoading(false);
     }
-  }, [keyword, needsDocs, org, page, pageSize, q, sort, source, tag, topic]);
+  }, [keyword, needsDocs, org, page, pageSize, q, semanticMode, sort, source, tag, topic]);
 
   const loadSettings = useCallback(async () => {
     if (!needsOps) return;
@@ -954,8 +986,24 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
               }}
             />
           </div>
-          <div className="mt-3 flex items-center justify-between">
-            <p className="text-sm text-[color:var(--ink-soft)]">{fmt(total)} matching documents</p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-[color:var(--ink-soft)]">{fmt(total)} matching documents</p>
+              <button
+                type="button"
+                onClick={() => { setPage(1); setSemanticMode((prev) => !prev); }}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  semanticMode
+                    ? "border-[color:rgba(79,213,255,0.5)] bg-[color:rgba(79,213,255,0.12)] text-[color:var(--accent)]"
+                    : "border-[color:var(--line)] text-[color:var(--ink-faint)] hover:text-[color:var(--ink)]"
+                }`}
+                title="Use OpenAI vector search for semantic concept matching"
+              >
+                <span className={`inline-block h-1.5 w-1.5 rounded-full ${semanticMode ? "bg-[color:var(--accent)]" : "bg-[color:var(--ink-faint)]"}`} />
+                Semantic
+                {semanticLoading && <span className="ml-0.5 opacity-60">…</span>}
+              </button>
+            </div>
             <select
               className="form-control px-3 py-1.5 text-sm"
               value={sort}
@@ -1021,12 +1069,18 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                     const isExpanded = !!expandedDocs[d.document_id];
                     const primaryAnalysis = pickPrimaryAnalysis(detail);
                     const analysisActionLabel = detailLoading ? "Loading Analysis..." : isExpanded ? "Hide Analysis" : "Open Analysis";
+                    const semanticSnippet = semanticSnippets[d.document_id];
 
                     return (
                       <Fragment key={d.document_id}>
                         <tr>
                           <td>
                             <p className="feed-title">{d.title || "Untitled"}</p>
+                            {semanticSnippet && (
+                              <p className="mt-1 text-[11px] leading-relaxed text-[color:var(--ink-faint)] line-clamp-2 italic">
+                                {semanticSnippet}
+                              </p>
+                            )}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               {d.url ? (
                                 <a
