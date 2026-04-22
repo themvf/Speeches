@@ -112,7 +112,6 @@ function buildMatchHaystack(item: DocumentListItem, fullText: string): string {
     item.speaker,
     item.organization,
     item.doc_type,
-    ...(item.topics || []),
     ...(item.keywords || []),
     fullText
   ].join("\n");
