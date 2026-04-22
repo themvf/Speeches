@@ -133,6 +133,14 @@ export interface ProductCategorySignal {
   matched_patterns: string[];
 }
 
+export interface ProductFocusArea {
+  id: string;
+  category: ProductCategory;
+  label: string;
+  raw_patterns: readonly string[];
+  normalized_themes: readonly NormalizedTheme[];
+}
+
 export interface SignalModel {
   severity_score: number;
   trend_score: number;
@@ -236,7 +244,7 @@ export const PRODUCT_CATEGORY_LABELS: Readonly<Record<ProductCategory, string>> 
 const PRODUCT_CATEGORY_DISPLAY_THEMES: Readonly<Record<ProductCategory, readonly NormalizedTheme[]>> = {
   SECURITIES_REGULATION: ["REGULATION", "FINANCIAL_MARKETS", "CORPORATE_ACTIVITY"],
   CAPITAL_FORMATION: ["CORPORATE_ACTIVITY", "FINANCIAL_MARKETS", "CREDIT_MARKETS"],
-  AML: ["SANCTIONS", "REGULATION", "CRYPTO"],
+  AML: ["SANCTIONS"],
   ENFORCEMENT: ["REGULATION", "FINANCIAL_MARKETS", "CRYPTO"],
   AI_TECH: ["AI", "TECHNOLOGY"],
   CRYPTO: ["CRYPTO", "REGULATION"],
@@ -244,6 +252,37 @@ const PRODUCT_CATEGORY_DISPLAY_THEMES: Readonly<Record<ProductCategory, readonly
   FINANCIAL_MARKETS: ["FINANCIAL_MARKETS", "COMMODITIES", "GEOPOLITICS", "CONFLICT"],
   ECONOMIC_GROWTH: ["INFLATION", "CENTRAL_BANK", "ECONOMIC_GROWTH", "LABOR_MARKET", "TRADE", "SUPPLY_CHAIN", "ENERGY"]
 };
+
+export const PRODUCT_FOCUS_AREAS: readonly ProductFocusArea[] = [
+  {
+    id: "aml_sanctions",
+    category: "AML",
+    label: "Sanctions",
+    raw_patterns: ["SANCTIONS", "OFAC"],
+    normalized_themes: []
+  },
+  {
+    id: "aml_bsa",
+    category: "AML",
+    label: "AML / BSA",
+    raw_patterns: ["AML", "BSA", "MONEY_LAUNDERING", "ANTI_MONEY_LAUNDERING"],
+    normalized_themes: []
+  },
+  {
+    id: "aml_kyc_ownership",
+    category: "AML",
+    label: "KYC / Ownership",
+    raw_patterns: ["KYC", "CIP", "CUSTOMER_IDENTIFICATION", "BENEFICIAL_OWNERSHIP"],
+    normalized_themes: []
+  },
+  {
+    id: "aml_illicit_finance",
+    category: "AML",
+    label: "Illicit Finance",
+    raw_patterns: ["ILLICIT_FINANCE", "SUSPICIOUS_ACTIVITY", "SAR", "TERRORIST_FINANCING"],
+    normalized_themes: []
+  }
+];
 
 type ProductSubcategoryDefinition = {
   label: string;
@@ -286,7 +325,7 @@ export const PRODUCT_TAXONOMY: readonly ProductCategoryDefinition[] = [
     subcategories: [
       { label: "AML / BSA", normalized_themes: [], raw_patterns: ["AML", "BSA", "MONEY_LAUNDERING", "ANTI_MONEY_LAUNDERING"], weight: 9 },
       { label: "KYC / Beneficial Ownership", normalized_themes: [], raw_patterns: ["KYC", "CIP", "CUSTOMER_IDENTIFICATION", "BENEFICIAL_OWNERSHIP"], weight: 8 },
-      { label: "Sanctions Compliance", normalized_themes: ["SANCTIONS"], raw_patterns: ["SANCTIONS", "EMBARGO", "RESTRICTIONS", "OFAC"], weight: 9 },
+      { label: "Sanctions Compliance", normalized_themes: [], raw_patterns: ["SANCTIONS", "OFAC"], weight: 9 },
       { label: "Illicit Finance", normalized_themes: [], raw_patterns: ["ILLICIT_FINANCE", "SUSPICIOUS_ACTIVITY", "SAR", "TERRORIST_FINANCING"], weight: 9 }
     ]
   },
@@ -507,6 +546,10 @@ export function themesForProductCategory(category: ProductCategory): NormalizedT
   const taxonomyThemes = definition?.subcategories.flatMap((subcategory) => subcategory.normalized_themes) ?? [];
 
   return [...new Set([...taxonomyThemes, ...PRODUCT_CATEGORY_DISPLAY_THEMES[category]])].sort(sortThemes);
+}
+
+export function focusAreasForProductCategory(category: ProductCategory): ProductFocusArea[] {
+  return PRODUCT_FOCUS_AREAS.filter((focusArea) => focusArea.category === category).map((focusArea) => ({ ...focusArea }));
 }
 
 function sortThemes(a: NormalizedTheme, b: NormalizedTheme): number {

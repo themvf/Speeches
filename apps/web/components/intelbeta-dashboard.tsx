@@ -13,10 +13,12 @@ import {
   PRODUCT_CATEGORY_LABELS,
   PRODUCT_CATEGORY_ORDER,
   THEME_MAPPING,
+  focusAreasForProductCategory,
   themesForProductCategory,
   type MarketImpactDirection,
   type NormalizedTheme,
   type ProductCategory,
+  type ProductFocusArea,
   type ThemeFrequencySignal,
   type ThemeSeverity
 } from "@/lib/theme-intelligence";
@@ -27,6 +29,7 @@ type ScoredTrend = TrendItem & {
 };
 
 type CommandCategory = ProductCategory | "ALL";
+type AmlFocusId = string;
 type SeverityFilter = ThemeSeverity | "ALL";
 type LiveEvidenceMeta = {
   source: IntelligenceEvidenceSource;
@@ -190,6 +193,56 @@ function evidenceForArticles(
   return [...fallbackArticles];
 }
 
+function normalizeMatchText(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function textMatchesPattern(value: string, pattern: string): boolean {
+  const haystack = normalizeMatchText(value);
+  const needle = normalizeMatchText(pattern);
+  if (!needle) return false;
+  if (needle.length <= 3) {
+    return haystack.split("_").includes(needle);
+  }
+  return haystack.includes(needle);
+}
+
+function articleMatchesFocusArea(article: IntelligenceEvidenceArticle, focusArea: ProductFocusArea): boolean {
+  const text = [article.headline, article.excerpt, article.explanation, article.source].join(" ");
+  return (
+    focusArea.normalized_themes.some((theme) => article.relatedThemes.includes(theme)) ||
+    focusArea.raw_patterns.some((pattern) => textMatchesPattern(text, pattern))
+  );
+}
+
+function uniqueEvidenceArticles(articles: readonly IntelligenceEvidenceArticle[]): IntelligenceEvidenceArticle[] {
+  const seen = new Set<string>();
+  const result: IntelligenceEvidenceArticle[] = [];
+
+  for (const article of articles) {
+    const key = article.url ?? article.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(article);
+  }
+
+  return result;
+}
+
+function sourceDistributionFromEvidence(articles: readonly IntelligenceEvidenceArticle[]) {
+  const counts = new Map<string, number>();
+
+  for (const article of articles) {
+    counts.set(article.source, (counts.get(article.source) ?? 0) + 1);
+  }
+
+  return Array.from(counts, ([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
+}
+
 function profileForTheme(theme: NormalizedTheme, profiles: readonly IntelligenceProfile[], fallback: IntelligenceProfile): IntelligenceProfile {
   return profiles.find((profile) => profile.signal.normalized_theme_list.includes(theme)) ?? fallback;
 }
@@ -285,17 +338,30 @@ function CoverageChart({ bars }: { bars: { label: string; count: number }[] }) {
 function ThemeCommandStrip({
   category,
   activeThemes,
+  focusAreas,
+  selectedFocusId,
   selectedTheme,
   query,
+  onSelectFocus,
   onSelect
 }: {
   category: CommandCategory;
   activeThemes: readonly NormalizedTheme[];
+  focusAreas: readonly ProductFocusArea[];
+  selectedFocusId: AmlFocusId | null;
   selectedTheme: NormalizedTheme | null;
   query: string;
+  onSelectFocus: (focusId: AmlFocusId) => void;
   onSelect: (theme: NormalizedTheme) => void;
 }) {
   const activeSet = new Set(activeThemes);
+  const visibleFocusAreas = category === "AML"
+    ? focusAreas.filter((focusArea) => {
+        if (!query) return true;
+        const haystack = `${focusArea.label} ${focusArea.raw_patterns.join(" ")}`.toLowerCase();
+        return haystack.includes(query.toLowerCase());
+      })
+    : [];
   const themes = (category === "ALL"
     ? THEME_MAPPING.map((item) => item.normalized_theme)
     : themesForProductCategory(category))
@@ -303,7 +369,21 @@ function ThemeCommandStrip({
 
   return (
     <div className="flex gap-2 overflow-x-auto border-t border-[#1d2029] px-5 py-3">
-      {themes.map((theme) => (
+      {visibleFocusAreas.length > 0 ? visibleFocusAreas.map((focusArea) => (
+        <button
+          key={focusArea.id}
+          type="button"
+          onClick={() => onSelectFocus(focusArea.id)}
+          aria-pressed={selectedFocusId === focusArea.id}
+          className={`min-h-7 shrink-0 rounded-sm border px-2.5 text-[10px] font-bold uppercase tracking-[0.12em] ${
+            selectedFocusId === focusArea.id
+              ? "border-[#f2f2f2] bg-[#f2f2f2] text-[#0c0d12]"
+              : "border-[#3a5066] bg-[#121926] text-[#b8daf1] hover:border-[#4fd5ff] hover:text-[#f2f2f2]"
+          }`}
+        >
+          {focusArea.label}
+        </button>
+      )) : themes.map((theme) => (
         <button
           key={theme}
           type="button"
@@ -484,6 +564,7 @@ export function IntelBetaDashboard({
   const [selectedSignalId, setSelectedSignalId] = useState(profiles[0]?.id ?? "");
   const [selectedTrendId, setSelectedTrendId] = useState(scoredTrends[0]?.id ?? "");
   const [selectedTheme, setSelectedTheme] = useState<NormalizedTheme | null>(null);
+  const [selectedAmlFocusId, setSelectedAmlFocusId] = useState<AmlFocusId | null>(null);
   const [selectedArticleId, setSelectedArticleId] = useState<string>("");
   const [categoryFilter, setCategoryFilter] = useState<CommandCategory>("ALL");
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("ALL");
@@ -499,10 +580,26 @@ export function IntelBetaDashboard({
   const selectedDriver = selectedTheme
     ? selectedSignal?.signal.frequency_signals.find((driver) => driver.normalized_theme === selectedTheme)
     : selectedSignal?.signal.primary_driver;
+  const isAmlFocusView = categoryFilter === "AML";
+  const amlFocusAreas = useMemo(() => focusAreasForProductCategory("AML"), []);
+  const selectedAmlFocus = selectedAmlFocusId ? amlFocusAreas.find((focusArea) => focusArea.id === selectedAmlFocusId) ?? null : null;
   const selectedProfileEvidence = selectedSignal ? evidenceByProfile[selectedSignal.id] ?? selectedSignal.evidence : [];
   const selectedEvidenceMeta = selectedSignal ? evidenceMetaByProfile[selectedSignal.id] : undefined;
-  const hasLiveEvidence = selectedEvidenceMeta?.source === "gdelt-doc" || selectedEvidenceMeta?.source === "gdelt-gkg";
-  const evidence = selectedSignal
+  const allProfileEvidence = uniqueEvidenceArticles(
+    profiles.flatMap((profile) => evidenceByProfile[profile.id] ?? profile.evidence)
+  );
+  const amlMatchedEvidence = allProfileEvidence.filter((article) => {
+    if (selectedAmlFocus) {
+      return articleMatchesFocusArea(article, selectedAmlFocus);
+    }
+    return amlFocusAreas.some((focusArea) => articleMatchesFocusArea(article, focusArea));
+  });
+  const hasLiveEvidence = isAmlFocusView
+    ? Object.values(evidenceMetaByProfile).some((meta) => meta.source === "gdelt-doc" || meta.source === "gdelt-gkg")
+    : selectedEvidenceMeta?.source === "gdelt-doc" || selectedEvidenceMeta?.source === "gdelt-gkg";
+  const evidence = isAmlFocusView
+    ? amlMatchedEvidence.slice(0, 30)
+    : selectedSignal
     ? evidenceForArticles(selectedProfileEvidence, selectedSignal.evidence, selectedTheme ?? selectedDriver?.normalized_theme).slice(0, 30)
     : [];
   const query = searchQuery.trim().toLowerCase();
@@ -512,11 +609,23 @@ export function IntelBetaDashboard({
   const selectedArticle = streamEvidence.find((article) => article.id === selectedArticleId) ?? streamEvidence[0] ?? evidence[0];
   const linkedTrends = selectedSignal ? relatedTrendsForSignal(scoredTrends, selectedSignal) : [];
   const relatedProfiles = profiles.filter((profile) => profile.id !== selectedSignal?.id).slice(0, 3);
-  const coverageBars = selectedSignal ? buildCoverageBars(selectedSignal, selectedTrend) : [];
-  const sourceDistribution = selectedSignal ? (hasLiveEvidence ? selectedEvidenceMeta.sourceDistribution : selectedSignal.sourceDistribution) : [];
-  const coverageArticleCount = selectedSignal ? (hasLiveEvidence ? selectedEvidenceMeta.coverage.totalArticles : selectedSignal.coverage.totalArticles) : 0;
-  const coverageSourceCount = selectedSignal ? (hasLiveEvidence ? selectedEvidenceMeta.coverage.sourceCount : selectedSignal.coverage.sourceCount) : 0;
-  const isLoadingEvidence = selectedSignal ? loadingEvidenceProfileId === selectedSignal.id : false;
+  const amlFocusCards = amlFocusAreas.map((focusArea) => ({
+    focusArea,
+    count: allProfileEvidence.filter((article) => articleMatchesFocusArea(article, focusArea)).length
+  }));
+  const coverageBars = isAmlFocusView
+    ? amlFocusCards.map((item) => ({ label: item.focusArea.label, count: item.count }))
+    : selectedSignal ? buildCoverageBars(selectedSignal, selectedTrend) : [];
+  const sourceDistribution = isAmlFocusView
+    ? sourceDistributionFromEvidence(evidence)
+    : selectedSignal ? (hasLiveEvidence && selectedEvidenceMeta ? selectedEvidenceMeta.sourceDistribution : selectedSignal.sourceDistribution) : [];
+  const coverageArticleCount = isAmlFocusView
+    ? evidence.length
+    : selectedSignal ? (hasLiveEvidence && selectedEvidenceMeta ? selectedEvidenceMeta.coverage.totalArticles : selectedSignal.coverage.totalArticles) : 0;
+  const coverageSourceCount = isAmlFocusView
+    ? new Set(evidence.map((article) => article.source)).size
+    : selectedSignal ? (hasLiveEvidence && selectedEvidenceMeta ? selectedEvidenceMeta.coverage.sourceCount : selectedSignal.coverage.sourceCount) : 0;
+  const isLoadingEvidence = isAmlFocusView ? loadingEvidenceProfileId === "AML" : selectedSignal ? loadingEvidenceProfileId === selectedSignal.id : false;
 
   useEffect(() => {
     if (!selectedSignalId || requestedEvidenceProfilesRef.current[selectedSignalId]) {
@@ -567,6 +676,67 @@ export function IntelBetaDashboard({
     };
   }, [selectedSignalId]);
 
+  useEffect(() => {
+    if (categoryFilter !== "AML") {
+      return;
+    }
+
+    const missingProfileIds = profiles
+      .map((profile) => profile.id)
+      .filter((profileId) => !requestedEvidenceProfilesRef.current[profileId]);
+
+    if (missingProfileIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    missingProfileIds.forEach((profileId) => {
+      requestedEvidenceProfilesRef.current[profileId] = true;
+    });
+    setLoadingEvidenceProfileId("AML");
+    setEvidenceLoadError(null);
+
+    async function loadAmlEvidence() {
+      try {
+        await Promise.all(missingProfileIds.map(async (profileId) => {
+          const response = await fetch(`/api/intelligence/gdelt-evidence?profileId=${encodeURIComponent(profileId)}`, {
+            cache: "no-store"
+          });
+          const payload = (await response.json()) as GdeltEvidenceApiResponse;
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.ok ? `Request failed with ${response.status}` : payload.error);
+          }
+
+          if (!cancelled) {
+            setEvidenceByProfile((current) => ({ ...current, [payload.data.profileId]: payload.data.evidence }));
+            setEvidenceMetaByProfile((current) => ({
+              ...current,
+              [payload.data.profileId]: {
+                source: payload.data.source,
+                coverage: payload.data.coverage,
+                sourceDistribution: payload.data.sourceDistribution
+              }
+            }));
+          }
+        }));
+      } catch (error) {
+        if (!cancelled) {
+          setEvidenceLoadError(error instanceof Error ? error.message : "Unable to load AML evidence.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingEvidenceProfileId(null);
+        }
+      }
+    }
+
+    void loadAmlEvidence();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [categoryFilter, profiles]);
+
   const categoryCounts = useMemo(() => {
     return PRODUCT_CATEGORY_ORDER.map((category) => ({
       category,
@@ -576,9 +746,8 @@ export function IntelBetaDashboard({
 
   const visibleProfiles = profiles.filter((profile) => {
     const severityMatch = severityFilter === "ALL" || profile.signal.severity === severityFilter;
-    const categoryMatch = profileContainsCategory(profile, categoryFilter);
     const searchMatch = !query || signalHaystack(profile).includes(query);
-    return severityMatch && categoryMatch && searchMatch;
+    return severityMatch && searchMatch;
   });
 
   const keyDrivers = useMemo(() => {
@@ -588,16 +757,25 @@ export function IntelBetaDashboard({
     return [selectedDriver, ...drivers.filter((driver) => driver.normalized_theme !== selectedDriver.normalized_theme)].slice(0, 3);
   }, [selectedDriver, selectedSignal]);
 
+  function selectCategory(category: CommandCategory) {
+    setCategoryFilter(category);
+    setSelectedTheme(null);
+    setSelectedAmlFocusId(null);
+    setSelectedArticleId("");
+  }
+
   function selectTrend(trend: ScoredTrend) {
     setSelectedTrendId(trend.id);
     setSelectedSignalId(trend._relatedSignalId);
     setSelectedTheme(null);
+    setSelectedAmlFocusId(null);
     setSelectedArticleId("");
   }
 
   function selectSignal(profile: IntelligenceProfile) {
     setSelectedSignalId(profile.id);
     setSelectedTheme(null);
+    setSelectedAmlFocusId(null);
     setSelectedArticleId("");
     const nextTrend = relatedTrendsForSignal(scoredTrends, profile)[0];
     if (nextTrend) {
@@ -610,11 +788,18 @@ export function IntelBetaDashboard({
     const nextSignal = profileForTheme(theme, profiles, selectedSignal);
     setSelectedSignalId(nextSignal.id);
     setSelectedTheme(theme);
+    setSelectedAmlFocusId(null);
     setSelectedArticleId("");
     const nextTrend = relatedTrendsForSignal(scoredTrends, nextSignal)[0];
     if (nextTrend) {
       setSelectedTrendId(nextTrend.id);
     }
+  }
+
+  function selectAmlFocus(focusId: AmlFocusId) {
+    setSelectedTheme(null);
+    setSelectedAmlFocusId((current) => current === focusId ? null : focusId);
+    setSelectedArticleId("");
   }
 
   if (!selectedSignal) {
@@ -632,6 +817,13 @@ export function IntelBetaDashboard({
   const primarySubcategory = selectedSignal.signal.primary_product_category?.subcategories[0]?.label;
   const selectedProductCategories = selectedSignal.signal.product_categories.slice(0, 4);
   const deltaColor = selectedSignal.signal.trend.delta_pct >= 0 ? "#ff595e" : "#41d39d";
+  const displayTitle = isAmlFocusView ? "AML" : selectedSignal.label;
+  const displaySummary = isAmlFocusView
+    ? "AML evidence is narrowed to sanctions, OFAC, AML/BSA, KYC, beneficial ownership, and illicit-finance indicators."
+    : selectedSignal.oneLineSummary;
+  const displayNarrative = isAmlFocusView
+    ? "Active Signals remain unchanged. This category focus filters the evidence stream to explicit AML terms only, avoiding broad regulation, crypto, trade, or conflict matches."
+    : selectedSignal.narrative;
 
   return (
     <div className="overflow-hidden rounded-md border border-[#252936] bg-[#080a10] text-[#f0f1f5] shadow-[0_24px_70px_rgba(0,0,0,0.55)]">
@@ -671,11 +863,11 @@ export function IntelBetaDashboard({
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#777d8e]">Category</span>
-            <FilterButton active={categoryFilter === "ALL"} onClick={() => setCategoryFilter("ALL")}>
+            <FilterButton active={categoryFilter === "ALL"} onClick={() => selectCategory("ALL")}>
               All {profiles.length}
             </FilterButton>
             {categoryCounts.map((item) => (
-              <FilterButton key={item.category} active={categoryFilter === item.category} onClick={() => setCategoryFilter(item.category)}>
+              <FilterButton key={item.category} active={categoryFilter === item.category} onClick={() => selectCategory(item.category)}>
                 {PRODUCT_CATEGORY_LABELS[item.category]} {item.count}
               </FilterButton>
             ))}
@@ -695,8 +887,11 @@ export function IntelBetaDashboard({
       <ThemeCommandStrip
         category={categoryFilter}
         activeThemes={selectedSignal.signal.normalized_theme_list}
+        focusAreas={amlFocusAreas}
+        selectedFocusId={selectedAmlFocusId}
         selectedTheme={selectedTheme}
         query={query}
+        onSelectFocus={selectAmlFocus}
         onSelect={selectTheme}
       />
 
@@ -772,28 +967,38 @@ export function IntelBetaDashboard({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <CommandBadge severity={selectedSignal.signal.severity} />
+                {isAmlFocusView ? (
+                  <span className="inline-flex items-center rounded-sm border border-[#3a5066] bg-[#121926] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#b8daf1]">
+                    Category Focus
+                  </span>
+                ) : (
+                  <CommandBadge severity={selectedSignal.signal.severity} />
+                )}
                 <span className="rounded-sm border border-[#5a2530] bg-[#231117] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#ff595e]">
-                  {formatTheme(selectedSignal.signal.trend.direction)}
+                  {isAmlFocusView ? (selectedAmlFocus?.label ?? "All AML") : formatTheme(selectedSignal.signal.trend.direction)}
                 </span>
                 <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#777d8e]">
-                  SIG-{selectedSignal.signal.primary_driver?.rank ?? 1} - {category}{primarySubcategory ? ` / ${primarySubcategory}` : ""} - first seen {formatCompactDate(initialSignals.generatedAt)}
+                  {isAmlFocusView
+                    ? `AML evidence focus - ${streamEvidence.length} matched articles`
+                    : `SIG-${selectedSignal.signal.primary_driver?.rank ?? 1} - ${category}${primarySubcategory ? ` / ${primarySubcategory}` : ""} - first seen ${formatCompactDate(initialSignals.generatedAt)}`}
                 </span>
               </div>
               <h2 className="mt-3 text-3xl font-bold leading-tight text-[#f2f2f2]" style={{ letterSpacing: 0 }}>
-                {selectedSignal.label}
+                {displayTitle}
               </h2>
               <p className="mt-3 max-w-3xl font-serif text-lg italic leading-7 text-[#d6d7dc]">
-                {selectedSignal.oneLineSummary}
+                {displaySummary}
               </p>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[#a1a7b5]">{selectedSignal.narrative}</p>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[#a1a7b5]">{displayNarrative}</p>
             </div>
 
             <div className="text-right">
-              <p className="text-4xl font-black tabular-nums" style={{ color: deltaColor }}>
-                {formatPct(selectedSignal.signal.trend.delta_pct)}
+              <p className="text-4xl font-black tabular-nums" style={{ color: isAmlFocusView ? "#4fd5ff" : deltaColor }}>
+                {isAmlFocusView ? streamEvidence.length : formatPct(selectedSignal.signal.trend.delta_pct)}
               </p>
-              <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#777d8e]">vs prior window</p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#777d8e]">
+                {isAmlFocusView ? "matched evidence" : "vs prior window"}
+              </p>
             </div>
           </div>
 
@@ -824,9 +1029,29 @@ export function IntelBetaDashboard({
           </div>
 
           <section className="mt-6">
-            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">Key Drivers</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">{isAmlFocusView ? "AML Focus Areas" : "Key Drivers"}</p>
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
-              {keyDrivers.map((driver, index) => (
+              {isAmlFocusView ? amlFocusCards.map((item, index) => (
+                <button
+                  key={item.focusArea.id}
+                  type="button"
+                  onClick={() => selectAmlFocus(item.focusArea.id)}
+                  className={`min-h-[74px] rounded-sm border p-3 text-left transition-colors ${
+                    selectedAmlFocusId === item.focusArea.id
+                      ? "border-[#f2f2f2] bg-[#f2f2f2] text-[#0c0d12]"
+                      : "border-[#272b36] bg-[#11141c] hover:border-[#4fd5ff]"
+                  }`}
+                >
+                  <p className={`text-[9px] font-bold uppercase tracking-[0.18em] ${selectedAmlFocusId === item.focusArea.id ? "text-[#0c0d12]" : "text-[#4fd5ff]"}`}>
+                    Focus {String(index + 1).padStart(2, "0")}
+                  </p>
+                  <p className={`mt-2 text-xs font-semibold leading-5 ${selectedAmlFocusId === item.focusArea.id ? "text-[#0c0d12]" : "text-[#f0f1f5]"}`}>{item.focusArea.label}</p>
+                  <div className={`mt-2 flex items-center justify-between text-[10px] ${selectedAmlFocusId === item.focusArea.id ? "text-[#333741]" : "text-[#7b8190]"}`}>
+                    <span>{item.focusArea.raw_patterns.slice(0, 2).join(", ")}</span>
+                    <span className="font-bold tabular-nums">{item.count}</span>
+                  </div>
+                </button>
+              )) : keyDrivers.map((driver, index) => (
                 <DriverCard
                   key={driver.normalized_theme}
                   driver={driver}
@@ -841,15 +1066,32 @@ export function IntelBetaDashboard({
 
           <section className="mt-6">
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">Category Map</p>
-              <span className="text-[10px] font-semibold text-[#777d8e]">{selectedSignal.signal.product_categories.length} active categories</span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#777d8e]">{isAmlFocusView ? "AML Match Terms" : "Category Map"}</p>
+              <span className="text-[10px] font-semibold text-[#777d8e]">
+                {isAmlFocusView ? `${amlFocusAreas.reduce((sum, item) => sum + item.raw_patterns.length, 0)} strict terms` : `${selectedSignal.signal.product_categories.length} active categories`}
+              </span>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {selectedProductCategories.map((item) => (
+              {isAmlFocusView ? amlFocusAreas.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => selectAmlFocus(item.id)}
+                  className="min-h-[96px] rounded-sm border border-[#272b36] bg-[#11141c] p-3 text-left transition-colors hover:border-[#4fd5ff]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-xs font-bold text-[#f0f1f5]">{item.label}</p>
+                    <span className="font-mono text-xs font-bold text-[#4fd5ff]">{amlFocusCards.find((card) => card.focusArea.id === item.id)?.count ?? 0}</span>
+                  </div>
+                  <p className="mt-3 text-[10px] leading-4 text-[#8d94a5]">
+                    {item.raw_patterns.join(", ")}
+                  </p>
+                </button>
+              )) : selectedProductCategories.map((item) => (
                 <button
                   key={item.category}
                   type="button"
-                  onClick={() => setCategoryFilter(item.category)}
+                  onClick={() => selectCategory(item.category)}
                   className="min-h-[96px] rounded-sm border border-[#272b36] bg-[#11141c] p-3 text-left transition-colors hover:border-[#4fd5ff]"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -945,8 +1187,10 @@ export function IntelBetaDashboard({
             </div>
             <p className="mt-2 text-[11px] leading-4 text-[#8b91a0]">
               {isLoadingEvidence
-                ? "Loading live GDELT article links..."
-                : hasLiveEvidence
+                ? isAmlFocusView ? "Loading AML evidence across live signals..." : "Loading live GDELT article links..."
+                : isAmlFocusView
+                  ? "AML-only evidence using strict sanctions, OFAC, AML/BSA, KYC, ownership, and illicit-finance terms."
+                  : hasLiveEvidence
                   ? selectedEvidenceMeta?.source === "gdelt-gkg"
                     ? "Live GDELT GKG articles with source URLs."
                     : "Live GDELT DOC 2.0 articles with source URLs."

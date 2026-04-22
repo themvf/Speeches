@@ -4,7 +4,7 @@ import test from "node:test";
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
 import { buildGdeltDocQueries, buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
 import { buildGdeltGkgArchiveUrls, parseGdeltGkgCsv, parseGdeltGkgManifest } from "./server/gdelt-gkg.ts";
-import { PRODUCT_CATEGORY_ORDER, parseRawThemes, scoreThemeArticle, themesForProductCategory } from "./theme-intelligence.ts";
+import { PRODUCT_CATEGORY_ORDER, focusAreasForProductCategory, parseRawThemes, scoreThemeArticle, themesForProductCategory } from "./theme-intelligence.ts";
 
 test("maps raw GDELT themes to deduplicated normalized themes", () => {
   const signal = scoreThemeArticle({
@@ -186,10 +186,47 @@ test("rolls normalized themes into the visible product taxonomy", () => {
 
 test("keeps product category theme filters distinct", () => {
   assert.deepEqual(themesForProductCategory("AI_TECH"), ["AI", "TECHNOLOGY"]);
-  assert.ok(themesForProductCategory("AML").includes("SANCTIONS"));
+  assert.deepEqual(themesForProductCategory("AML"), ["SANCTIONS"]);
   assert.ok(themesForProductCategory("CRYPTO").includes("CRYPTO"));
   assert.ok(themesForProductCategory("CREDIT_MARKETS").includes("INTEREST_RATES"));
   assert.ok(themesForProductCategory("ECONOMIC_GROWTH").includes("INFLATION"));
+});
+
+test("keeps AML focus areas narrow and avoids broad crypto or regulation chips", () => {
+  const focusAreas = focusAreasForProductCategory("AML");
+
+  assert.deepEqual(focusAreas.map((item) => item.label), ["Sanctions", "AML / BSA", "KYC / Ownership", "Illicit Finance"]);
+  assert.deepEqual(focusAreas.find((item) => item.id === "aml_sanctions")?.raw_patterns, ["SANCTIONS", "OFAC"]);
+  assert.deepEqual(focusAreas.flatMap((item) => item.raw_patterns), [
+    "SANCTIONS",
+    "OFAC",
+    "AML",
+    "BSA",
+    "MONEY_LAUNDERING",
+    "ANTI_MONEY_LAUNDERING",
+    "KYC",
+    "CIP",
+    "CUSTOMER_IDENTIFICATION",
+    "BENEFICIAL_OWNERSHIP",
+    "ILLICIT_FINANCE",
+    "SUSPICIOUS_ACTIVITY",
+    "SAR",
+    "TERRORIST_FINANCING"
+  ]);
+  assert.equal(themesForProductCategory("AML").includes("CRYPTO"), false);
+  assert.equal(themesForProductCategory("AML").includes("REGULATION"), false);
+});
+
+test("does not feed AML from embargo, restrictions, generic regulation, or generic crypto", () => {
+  const broad = scoreThemeArticle({
+    raw_themes: "EMBARGO; RESTRICTIONS; REGULATION; CRYPTOCURRENCY; BITCOIN"
+  });
+  const explicit = scoreThemeArticle({
+    raw_themes: "SANCTIONS; OFAC; MONEY_LAUNDERING; KYC; BENEFICIAL_OWNERSHIP; SAR"
+  });
+
+  assert.equal(broad.product_categories.some((category) => category.category === "AML"), false);
+  assert.equal(explicit.product_categories.some((category) => category.category === "AML"), true);
 });
 
 test("seed intelligence profiles produce complete API-backed signal models", () => {
