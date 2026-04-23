@@ -97,13 +97,15 @@ function priceAt(candle: YahooCandle, targetUnix: number): number | null {
   return best;
 }
 
-function computePcts(candle: YahooCandle, currentPrice: number): SectorPcts {
+function computePcts(candle: YahooCandle): SectorPcts {
+  const last = candle.c[candle.c.length - 1];
+  const prev = candle.c.length > 1 ? candle.c[candle.c.length - 2] : null;
   const now = Date.now() / 1000;
   const ytdStart = new Date(new Date().getFullYear(), 0, 1).getTime() / 1000;
   const pct = (ref: number | null) =>
-    ref && ref > 0 ? ((currentPrice - ref) / ref) * 100 : 0;
+    ref && ref > 0 ? ((last - ref) / ref) * 100 : 0;
   return {
-    d1:  0,
+    d1:  prev && prev > 0 ? ((last - prev) / prev) * 100 : 0,
     w1:  pct(priceAt(candle, now - 7  * 86400)),
     m1:  pct(priceAt(candle, now - 30 * 86400)),
     m3:  pct(priceAt(candle, now - 90 * 86400)),
@@ -118,10 +120,9 @@ export async function GET() {
 
   const sectorKeys = Object.keys(SECTOR_STOCKS);
 
-  const [etfQuotes, etfCandles] = await Promise.all([
-    Promise.allSettled(sectorKeys.map((key) => fetchQuote(SECTOR_ETFS[key], apiKey))),
-    Promise.allSettled(sectorKeys.map((key) => fetchYahooCandles(SECTOR_ETFS[key]))),
-  ]);
+  const etfCandles = await Promise.allSettled(
+    sectorKeys.map((key) => fetchYahooCandles(SECTOR_ETFS[key]))
+  );
 
   const allStocks = sectorKeys.flatMap((key) =>
     SECTOR_STOCKS[key].map((s) => ({ ...s, sectorKey: key }))
@@ -131,12 +132,10 @@ export async function GET() {
   );
 
   const sectors: SectorData[] = sectorKeys.map((key, i) => {
-    const quote  = etfQuotes[i].status === "fulfilled" ? etfQuotes[i].value : null;
     const candle = etfCandles[i].status === "fulfilled" ? etfCandles[i].value : null;
-    const currentPrice = quote?.c ?? 0;
-    const pcts: SectorPcts = candle && currentPrice > 0
-      ? { ...computePcts(candle, currentPrice), d1: quote?.dp ?? 0 }
-      : { d1: quote?.dp ?? 0, w1: 0, m1: 0, m3: 0, ytd: 0 };
+    const pcts: SectorPcts = candle
+      ? computePcts(candle)
+      : { d1: 0, w1: 0, m1: 0, m3: 0, ytd: 0 };
 
     const stocks: SectorStock[] = SECTOR_STOCKS[key]
       .map((def) => {
