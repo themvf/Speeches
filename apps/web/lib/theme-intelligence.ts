@@ -258,7 +258,7 @@ export const PRODUCT_FOCUS_AREAS: readonly ProductFocusArea[] = [
     id: "capital_public_offerings",
     category: "CAPITAL_FORMATION",
     label: "Public Offerings",
-    raw_patterns: ["IPO", "INITIAL_PUBLIC_OFFERING", "OFFERING", "SECURITIES_OFFERING", "EQUITY_OFFERING", "PUBLIC_OFFERING", "SECONDARY_OFFERING", "SHARE_SALE", "LISTING", "STOCK_LISTING"],
+    raw_patterns: ["IPO", "INITIAL_PUBLIC_OFFERING", "SECURITIES_OFFERING", "EQUITY_OFFERING", "PUBLIC_OFFERING", "SECONDARY_OFFERING", "SHARE_SALE", "STOCK_LISTING"],
     normalized_themes: ["FINANCIAL_MARKETS", "CORPORATE_ACTIVITY"]
   },
   {
@@ -279,7 +279,7 @@ export const PRODUCT_FOCUS_AREAS: readonly ProductFocusArea[] = [
     id: "capital_strategic_transactions",
     category: "CAPITAL_FORMATION",
     label: "M&A / Strategic Transactions",
-    raw_patterns: ["MERGERS", "ACQUISITIONS", "M&A", "DEALMAKING", "TAKEOVER", "BUYOUT", "SPAC", "DE_SPAC", "MERGER_AGREEMENT", "STRATEGIC_TRANSACTION"],
+    raw_patterns: ["M&A", "DEALMAKING", "TAKEOVER_BID", "BUYOUT", "SPAC", "DE_SPAC", "MERGER_AGREEMENT", "STRATEGIC_TRANSACTION"],
     normalized_themes: ["CORPORATE_ACTIVITY", "FINANCIAL_MARKETS"]
   },
   {
@@ -348,10 +348,10 @@ export const PRODUCT_TAXONOMY: readonly ProductCategoryDefinition[] = [
     category: "CAPITAL_FORMATION",
     label: PRODUCT_CATEGORY_LABELS.CAPITAL_FORMATION,
     subcategories: [
-      { label: "Public Offerings", normalized_themes: [], raw_patterns: ["IPO", "INITIAL_PUBLIC_OFFERING", "OFFERING", "SECURITIES_OFFERING", "EQUITY_OFFERING", "PUBLIC_OFFERING", "SECONDARY_OFFERING", "SHARE_SALE", "LISTING", "STOCK_LISTING"], weight: 8 },
+      { label: "Public Offerings", normalized_themes: [], raw_patterns: ["IPO", "INITIAL_PUBLIC_OFFERING", "SECURITIES_OFFERING", "EQUITY_OFFERING", "PUBLIC_OFFERING", "SECONDARY_OFFERING", "SHARE_SALE", "STOCK_LISTING"], weight: 8 },
       { label: "Private Capital", normalized_themes: [], raw_patterns: ["PRIVATE_MARKETS", "PRIVATE_EQUITY", "PRIVATE_CREDIT", "VENTURE_CAPITAL", "STARTUP_FUNDING", "PRIVATE_PLACEMENT", "REG_D", "ACCREDITED_INVESTOR", "CAPITAL_RAISE", "FUNDRAISING"], weight: 8 },
       { label: "Debt Financing", normalized_themes: [], raw_patterns: ["DEBT_OFFERING", "BOND_ISSUANCE", "CORPORATE_BONDS", "DEBT_FINANCING", "REFINANCING", "LEVERAGED_LOAN", "CREDIT_FACILITY", "HIGH_YIELD", "INVESTMENT_GRADE"], weight: 8 },
-      { label: "M&A / Strategic Transactions", normalized_themes: [], raw_patterns: ["MERGERS", "ACQUISITIONS", "M&A", "DEALMAKING", "TAKEOVER", "BUYOUT", "SPAC", "DE_SPAC", "MERGER_AGREEMENT", "STRATEGIC_TRANSACTION"], weight: 7 },
+      { label: "M&A / Strategic Transactions", normalized_themes: [], raw_patterns: ["M&A", "DEALMAKING", "TAKEOVER_BID", "BUYOUT", "SPAC", "DE_SPAC", "MERGER_AGREEMENT", "STRATEGIC_TRANSACTION"], weight: 7 },
       { label: "Capital Access / Policy", normalized_themes: [], raw_patterns: ["CAPITAL_FORMATION", "SMALL_BUSINESS_CAPITAL", "EMERGING_GROWTH_COMPANY", "CROWDFUNDING", "REG_CF", "REG_A", "REGULATION_A", "EXEMPT_OFFERING"], weight: 7 }
     ]
   },

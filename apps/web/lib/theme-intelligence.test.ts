@@ -197,7 +197,7 @@ test("keeps product category theme filters distinct", () => {
 test("keeps capital formation focused on explicit capital raising and transaction terms", () => {
   const focusAreas = focusAreasForProductCategory("CAPITAL_FORMATION");
   const broad = scoreThemeArticle({
-    raw_themes: "ECON_CREDIT; STOCK_MARKET; EARNINGS; SEC; RULEMAKING; DISCLOSURE"
+    raw_themes: "ECON_CREDIT; STOCK_MARKET; EARNINGS; SEC; RULEMAKING; DISCLOSURE; OFFERING; LISTING; ACQUISITIONS; TAKEOVER"
   });
   const explicit = scoreThemeArticle({
     raw_themes: "IPO; VENTURE_CAPITAL; BOND_ISSUANCE; REG_A; SPAC"
@@ -633,7 +633,7 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
 
   const evidence = mapStoredDocumentsToProductCategoryEvidence("CAPITAL_FORMATION", items, new Map([
     ["capital-ipo", "The company filed for an initial public offering after a private funding round."],
-    ["capital-tag-only", "General equity market coverage without an issuance event."]
+    ["capital-tag-only", "General equity market coverage mentions offering, listing, acquisitions, and takeover as generic business words."]
   ]));
 
   assert.equal(evidence.length, 1);
