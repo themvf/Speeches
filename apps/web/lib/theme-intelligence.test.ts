@@ -628,12 +628,74 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
       enrichment_status: "not_enriched",
       review_decision: "pending",
       updated_at: ""
+    },
+    {
+      document_id: "capital-nav-only",
+      title: "Mutual fund transfer guide for account holders",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Example News",
+      url: "https://example.com/money/2026/04/22/mutual-fund-transfer.html",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 700,
+      tags: ["news"],
+      keywords: ["personal finance"],
+      topics: ["markets"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    },
+    {
+      document_id: "capital-regulation-a-false-positive",
+      title: "Stablecoin regulations reshape institutional crypto trading",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Example News",
+      url: "https://example.com/crypto/2026/04/22/stablecoin-regulations.html",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 700,
+      tags: ["news"],
+      keywords: ["crypto"],
+      topics: ["regulation"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    },
+    {
+      document_id: "capital-mna-false-positive",
+      title: "Protocol faces losses after bridge exploit",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Example News",
+      url: "https://example.com/tech/2026/04/22/protocol-losses.html",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 700,
+      tags: ["news"],
+      keywords: ["defi"],
+      topics: ["crypto"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
     }
   ];
 
   const evidence = mapStoredDocumentsToProductCategoryEvidence("CAPITAL_FORMATION", items, new Map([
+    ["capital-nav-only", "Related links mention initial public offering, public offering, and securities offering."]
+  ]), new Map([
     ["capital-ipo", "The company filed for an initial public offering after a private funding round."],
-    ["capital-tag-only", "General equity market coverage mentions offering, listing, acquisitions, and takeover as generic business words."]
+    ["capital-tag-only", "General equity market coverage mentions offering, listing, acquisitions, and takeover as generic business words."],
+    ["capital-nav-only", "Account transfer guidance for mutual fund holders."],
+    ["capital-regulation-a-false-positive", "Stablecoin regulation and trading rules remain under review."],
+    ["capital-mna-false-positive", "$230m in losses after a bridge exploit triggers market volatility."]
   ]));
 
   assert.equal(evidence.length, 1);

@@ -11,8 +11,6 @@ import type { CustomDocumentRecord, DocumentListItem, EnrichmentStatePayload } f
 
 const STORED_EVIDENCE_MAX_RECORDS = 30;
 const STORED_EVIDENCE_CACHE_TTL_MS = 60_000;
-const TOKEN_ONLY_PATTERNS = new Set(["AML", "BSA", "CIP", "IPO", "KYC", "OFAC", "SAR", "SPAC"]);
-
 const storedEvidenceCache = new Map<string, { loadedAt: number; articles: IntelligenceEvidenceArticle[] }>();
 
 const PATTERN_ALIASES: Readonly<Record<string, readonly string[]>> = {
@@ -73,16 +71,34 @@ function normalizeMatchText(value: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-function textMatchesPattern(value: string, pattern: string): boolean {
-  const haystack = normalizeMatchText(value);
-  const needle = normalizeMatchText(pattern);
-  if (!needle) return false;
+function matchTokens(value: string): string[] {
+  return normalizeMatchText(value).split("_").filter(Boolean);
+}
 
-  if (needle.length <= 3 || TOKEN_ONLY_PATTERNS.has(needle)) {
-    return haystack.split("_").includes(needle);
+function containsTokenSequence(haystack: readonly string[], needle: readonly string[]): boolean {
+  if (needle.length === 0 || needle.length > haystack.length) {
+    return false;
   }
 
-  return haystack.includes(needle);
+  for (let index = 0; index <= haystack.length - needle.length; index += 1) {
+    if (needle.every((token, offset) => haystack[index + offset] === token)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function textMatchesPattern(value: string, pattern: string): boolean {
+  const haystack = matchTokens(value);
+  const needle = matchTokens(pattern);
+  if (needle.length === 0) return false;
+
+  if (needle.length === 1) {
+    return haystack.includes(needle[0]);
+  }
+
+  return containsTokenSequence(haystack, needle);
 }
 
 function aliasesForPattern(pattern: string): readonly string[] {
@@ -140,13 +156,23 @@ function recencyScore(item: DocumentListItem): number {
   return Math.max(0, 20 - Math.min(20, ageDays));
 }
 
-function buildMatchHaystack(item: DocumentListItem, fullText: string): string {
-  return [
+function buildMatchHaystack(item: DocumentListItem, fullText: string, summary: string, category: ProductCategory): string {
+  const commonFields = [
     item.title,
-    item.url,
     item.speaker,
     item.organization,
-    item.doc_type,
+    item.doc_type
+  ];
+
+  if (category === "CAPITAL_FORMATION") {
+    return [
+      ...commonFields,
+      summary
+    ].join("\n");
+  }
+
+  return [
+    ...commonFields,
     ...(item.keywords || []),
     fullText
   ].join("\n");
@@ -225,7 +251,8 @@ export function mapStoredDocumentsToProductCategoryEvidence(
     }
 
     const fullText = fullTextById.get(item.document_id) || "";
-    const haystack = buildMatchHaystack(item, fullText);
+    const summary = summaryById.get(item.document_id) || "";
+    const haystack = buildMatchHaystack(item, fullText, summary, category);
     const matches = focusAreas
       .map((focusArea) => ({ focusArea, matchedTerms: matchedFocusTerms(haystack, focusArea) }))
       .filter((match) => match.matchedTerms.length > 0)
@@ -241,7 +268,7 @@ export function mapStoredDocumentsToProductCategoryEvidence(
       focusArea: bestMatch.focusArea,
       matchedTerms: bestMatch.matchedTerms,
       fullText,
-      summary: summaryById.get(item.document_id) || "",
+      summary,
       score: bestMatch.matchedTerms.length * 40 + recencyScore(item),
       dateMs: parseComparableDate(item.published_at || item.date)
     });
