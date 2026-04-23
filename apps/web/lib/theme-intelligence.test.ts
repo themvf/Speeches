@@ -649,6 +649,25 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
       updated_at: ""
     },
     {
+      document_id: "capital-summary-only",
+      title: "Daily market briefing highlights mixed trading",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Example News",
+      url: "https://example.com/markets/2026/04/22/daily-market-briefing.html",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 700,
+      tags: ["news"],
+      keywords: ["markets"],
+      topics: ["stocks"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    },
+    {
       document_id: "capital-regulation-a-false-positive",
       title: "Stablecoin regulations reshape institutional crypto trading",
       organization: "News",
@@ -694,6 +713,7 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
     ["capital-ipo", "The company filed for an initial public offering after a private funding round."],
     ["capital-tag-only", "General equity market coverage mentions offering, listing, acquisitions, and takeover as generic business words."],
     ["capital-nav-only", "Account transfer guidance for mutual fund holders."],
+    ["capital-summary-only", "The briefing also mentions initial public offering and venture capital activity in related market coverage."],
     ["capital-regulation-a-false-positive", "Stablecoin regulation and trading rules remain under review."],
     ["capital-mna-false-positive", "$230m in losses after a bridge exploit triggers market volatility."]
   ]));

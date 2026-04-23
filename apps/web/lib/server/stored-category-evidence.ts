@@ -156,7 +156,7 @@ function recencyScore(item: DocumentListItem): number {
   return Math.max(0, 20 - Math.min(20, ageDays));
 }
 
-function buildMatchHaystack(item: DocumentListItem, fullText: string, summary: string, category: ProductCategory): string {
+function buildMatchHaystack(item: DocumentListItem, fullText: string, category: ProductCategory): string {
   const commonFields = [
     item.title,
     item.speaker,
@@ -165,10 +165,7 @@ function buildMatchHaystack(item: DocumentListItem, fullText: string, summary: s
   ];
 
   if (category === "CAPITAL_FORMATION") {
-    return [
-      ...commonFields,
-      summary
-    ].join("\n");
+    return item.title;
   }
 
   return [
@@ -252,7 +249,7 @@ export function mapStoredDocumentsToProductCategoryEvidence(
 
     const fullText = fullTextById.get(item.document_id) || "";
     const summary = summaryById.get(item.document_id) || "";
-    const haystack = buildMatchHaystack(item, fullText, summary, category);
+    const haystack = buildMatchHaystack(item, fullText, category);
     const matches = focusAreas
       .map((focusArea) => ({ focusArea, matchedTerms: matchedFocusTerms(haystack, focusArea) }))
       .filter((match) => match.matchedTerms.length > 0)
