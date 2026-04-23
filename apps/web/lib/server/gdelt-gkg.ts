@@ -15,8 +15,6 @@ const GDELT_GKG_TIMEOUT_MS = 8_000;
 const GDELT_GKG_CACHE_TTL_MS = 5 * 60 * 1_000;
 const GDELT_GKG_MAX_RECORDS = 30;
 const GDELT_GKG_ARCHIVE_COUNT = 6;
-const SOURCE_TOKEN_ONLY_PATTERNS = new Set(["AI", "AML", "BSA", "CIP", "IPO", "KYC", "SAR", "OFAC", "SPAC"]);
-
 const PROFILE_EVIDENCE_TERMS: Readonly<Record<string, readonly string[]>> = {
   macro: ["inflation", "oil", "energy", "central-bank", "central bank", "rates", "price", "prices", "cpi"],
   bank: ["bank", "banking", "credit", "debt", "liquidity", "funding", "default", "bonds"],
@@ -300,18 +298,10 @@ async function fetchRecentGkgRecords(archiveCount = GDELT_GKG_ARCHIVE_COUNT): Pr
     return [];
   }
 
-  const records: GdeltGkgRecord[] = [];
   const archiveUrls = buildGdeltGkgArchiveUrls(latestArchiveUrl, archiveCount);
+  const results = await Promise.allSettled(archiveUrls.map((archiveUrl) => fetchGkgArchiveRecords(archiveUrl)));
 
-  for (const archiveUrl of archiveUrls) {
-    try {
-      records.push(...await fetchGkgArchiveRecords(archiveUrl));
-    } catch {
-      continue;
-    }
-  }
-
-  return records;
+  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
 }
 
 function articleId(profileId: string, url: string): string {
@@ -401,14 +391,32 @@ function normalizeMatchText(value: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-function textMatchesSourcePattern(value: string, pattern: string): boolean {
-  const haystack = normalizeMatchText(value);
-  const needle = normalizeMatchText(pattern);
-  if (!needle) return false;
-  if (needle.length <= 3 || SOURCE_TOKEN_ONLY_PATTERNS.has(needle)) {
-    return haystack.split("_").includes(needle);
+function matchTokens(value: string): string[] {
+  return normalizeMatchText(value).split("_").filter(Boolean);
+}
+
+function containsTokenSequence(haystack: readonly string[], needle: readonly string[]): boolean {
+  if (needle.length === 0 || needle.length > haystack.length) {
+    return false;
   }
-  return haystack.includes(needle);
+
+  for (let index = 0; index <= haystack.length - needle.length; index += 1) {
+    if (needle.every((token, offset) => haystack[index + offset] === token)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function textMatchesSourcePattern(value: string, pattern: string): boolean {
+  const haystack = matchTokens(value);
+  const needle = matchTokens(pattern);
+  if (needle.length === 0) return false;
+  if (needle.length === 1) {
+    return haystack.includes(needle[0]);
+  }
+  return containsTokenSequence(haystack, needle);
 }
 
 function matchedFocusTerms(record: GdeltGkgRecord, focusArea: ProductFocusArea): string[] {

@@ -86,5 +86,16 @@ jobs:
         if: github.event_name != 'schedule'
         run: npm run test:gdelt-evidence-live
 
+      - name: Smoke Test Live GDELT Capital Formation Evidence
+        if: github.event_name != 'schedule'
+        env:
+          GDELT_EVIDENCE_CATEGORY: CAPITAL_FORMATION
+        run: npm run test:gdelt-evidence-live
+
       - name: Smoke Test Production AML Evidence Endpoint
+        run: npm run test:aml-evidence-endpoint
+
+      - name: Smoke Test Production Capital Formation Evidence Endpoint
+        env:
+          EVIDENCE_CATEGORY: CAPITAL_FORMATION
         run: npm run test:aml-evidence-endpoint

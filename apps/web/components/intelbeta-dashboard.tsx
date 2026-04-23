@@ -1189,8 +1189,8 @@ export function IntelBetaDashboard({
                 : isCategoryFocusView
                   ? hasLiveEvidence
                     ? categoryEvidenceMeta?.source === "stored-news"
-                      ? `Stored NewsAPI articles matched to strict ${categoryFocusLabel} terms.`
-                      : `Live ${categoryFocusLabel} news using strict category terms.`
+                      ? `Stored fallback articles matched to strict ${categoryFocusLabel} terms.`
+                      : `Live GDELT ${categoryFocusLabel} news using strict category terms.`
                     : `No strict ${categoryFocusLabel} news matched yet.`
                   : hasLiveEvidence
                   ? selectedEvidenceMeta?.source === "stored-news"

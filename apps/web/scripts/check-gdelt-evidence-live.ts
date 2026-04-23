@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
 import { fetchGdeltGkgEvidenceForProductCategory } from "../lib/server/gdelt-gkg.ts";
+import { PRODUCT_CATEGORY_ORDER, type ProductCategory } from "../lib/theme-intelligence.ts";
 
 const liveRequired = process.env.GDELT_LIVE_REQUIRED === "1";
+const category = (process.env.GDELT_EVIDENCE_CATEGORY ?? "AML") as ProductCategory;
 const forbiddenAmlTerms = new Set(["EMBARGO", "RESTRICTIONS"]);
 
-const evidence = await fetchGdeltGkgEvidenceForProductCategory("AML", null, { archiveCount: 1 });
+assert.ok(PRODUCT_CATEGORY_ORDER.includes(category), `Unknown GDELT evidence category: ${category}`);
 
-assert.ok(Array.isArray(evidence), "AML evidence response must be an array");
+const evidence = await fetchGdeltGkgEvidenceForProductCategory(category, null, { archiveCount: 1 });
+
+assert.ok(Array.isArray(evidence), `${category} evidence response must be an array`);
 
 if (liveRequired) {
-  assert.ok(evidence.length > 0, "expected at least one live AML evidence article");
+  assert.ok(evidence.length > 0, `expected at least one live ${category} evidence article`);
 }
 
 for (const article of evidence) {
@@ -18,15 +22,17 @@ for (const article of evidence) {
   assert.ok(article.headline, `evidence article ${article.id} must include a headline`);
   assert.ok(article.source, `evidence article ${article.id} must include a source`);
   assert.ok(article.url?.startsWith("http"), `evidence article ${article.id} must include a source URL`);
-  assert.ok(article.focusAreaId, `evidence article ${article.id} must include an AML focus area`);
-  assert.ok(article.focusAreaLabel, `evidence article ${article.id} must include an AML focus label`);
-  assert.ok(article.matchedTerms?.length, `evidence article ${article.id} must include matched AML terms`);
-  assert.equal(
-    article.matchedTerms.some((term) => forbiddenAmlTerms.has(term)),
-    false,
-    `evidence article ${article.id} matched broad sanctions-adjacent terms instead of strict AML terms`
-  );
-  if (article.matchedTerms.includes("SANCTIONS")) {
+  assert.ok(article.focusAreaId, `evidence article ${article.id} must include a ${category} focus area`);
+  assert.ok(article.focusAreaLabel, `evidence article ${article.id} must include a ${category} focus label`);
+  assert.ok(article.matchedTerms?.length, `evidence article ${article.id} must include matched ${category} terms`);
+  if (category === "AML") {
+    assert.equal(
+      article.matchedTerms.some((term) => forbiddenAmlTerms.has(term)),
+      false,
+      `evidence article ${article.id} matched broad sanctions-adjacent terms instead of strict AML terms`
+    );
+  }
+  if (category === "AML" && article.matchedTerms.includes("SANCTIONS")) {
     assert.match(
       visibleSourceText,
       /SANCTION|OFAC/,
@@ -45,7 +51,7 @@ console.log(
   JSON.stringify(
     {
       ok: true,
-      category: "AML",
+      category,
       articles: evidence.length,
       focusCounts,
       liveRequired

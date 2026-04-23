@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { INTELLIGENCE_PROFILES } from "./intelligence-seed.ts";
-import { buildGdeltDocQueries, buildGdeltDocQuery, mapGdeltDocArticlesToEvidence } from "./server/gdelt-doc.ts";
+import { buildGdeltDocCategoryQueries, buildGdeltDocQueries, buildGdeltDocQuery, mapGdeltDocArticlesToEvidence, mapGdeltDocArticlesToProductCategoryEvidence } from "./server/gdelt-doc.ts";
 import { buildGdeltGkgArchiveUrls, mapGdeltGkgRecordsToProductCategoryEvidence, parseGdeltGkgCsv, parseGdeltGkgManifest } from "./server/gdelt-gkg.ts";
 import { mapStoredDocumentsToProductCategoryEvidence } from "./server/stored-category-evidence.ts";
 import { PRODUCT_CATEGORY_ORDER, focusAreasForProductCategory, parseRawThemes, scoreThemeArticle, themesForProductCategory } from "./theme-intelligence.ts";
@@ -327,6 +327,46 @@ test("maps GDELT DOC articles to evidence with real URLs", () => {
   assert.ok(evidence[0].relatedThemes.includes("ENERGY"));
 });
 
+test("maps GDELT DOC category articles to strict focus areas", () => {
+  const amlQueries = buildGdeltDocCategoryQueries("AML");
+  const capitalQueries = buildGdeltDocCategoryQueries("CAPITAL_FORMATION");
+  const amlEvidence = mapGdeltDocArticlesToProductCategoryEvidence("AML", [
+    {
+      url: "https://www.reuters.com/world/us/treasury-announces-new-ofac-sanctions-2026-04-22/",
+      title: "Treasury announces new OFAC sanctions",
+      seendate: "20260422T183000Z",
+      domain: "reuters.com"
+    },
+    {
+      url: "https://example.com/markets/crypto-regulation-update",
+      title: "Crypto regulation update",
+      seendate: "20260422T183000Z",
+      domain: "example.com"
+    }
+  ]);
+  const capitalEvidence = mapGdeltDocArticlesToProductCategoryEvidence("CAPITAL_FORMATION", [
+    {
+      url: "https://www.cnbc.com/2026/04/22/ai-company-files-for-ipo.html",
+      title: "AI company files for IPO",
+      seendate: "20260422T183000Z",
+      domain: "cnbc.com"
+    },
+    {
+      url: "https://example.com/crypto/stablecoin-regulation-and-trading-update",
+      title: "Stablecoin regulation and trading update",
+      seendate: "20260422T183000Z",
+      domain: "example.com"
+    }
+  ]);
+
+  assert.ok(amlQueries.some((query) => query.includes("OFAC")));
+  assert.ok(capitalQueries.some((query) => query.includes("IPO")));
+  assert.equal(amlEvidence.length, 1);
+  assert.equal(amlEvidence[0].focusAreaLabel, "Sanctions");
+  assert.equal(capitalEvidence.length, 1);
+  assert.equal(capitalEvidence[0].focusAreaLabel, "Public Offerings");
+});
+
 test("parses GDELT GKG manifest and maps live rows through normalized themes", () => {
   const manifest = [
     "97681 hash http://data.gdeltproject.org/gdeltv2/20260421211500.export.CSV.zip",
@@ -453,6 +493,76 @@ test("maps AML category evidence only from source-side strict AML terms", () => 
   assert.equal(evidence.some((article) => article.url?.includes("crypto-regulation")), false);
   assert.equal(evidence.some((article) => article.url?.includes("pictofact")), false);
   assert.equal(evidence.some((article) => article.url?.includes("ceasefire")), false);
+});
+
+test("maps Capital Formation GDELT evidence from explicit source terms only", () => {
+  const rows = [
+    [
+      "20260421211500-1",
+      "20260421211500",
+      "1",
+      "cnbc.com",
+      "https://www.cnbc.com/2026/04/21/software-company-files-for-ipo-after-private-funding-round.html",
+      "",
+      "",
+      "FINANCIAL_MARKET;CORPORATE_ACTIVITY;",
+      "FINANCIAL_MARKET,12;CORPORATE_ACTIVITY,20;"
+    ].join("\t"),
+    [
+      "20260421211500-2",
+      "20260421211500",
+      "1",
+      "bloomberg.com",
+      "https://www.bloomberg.com/news/articles/2026-04-21/private-credit-fund-closes-new-credit-facility",
+      "",
+      "",
+      "ECON_CREDIT;",
+      "ECON_CREDIT,12;"
+    ].join("\t"),
+    [
+      "20260421211500-3",
+      "20260421211500",
+      "1",
+      "example.com",
+      "https://example.com/markets/stablecoin-regulation-and-trading-update",
+      "",
+      "",
+      "REGULATION;",
+      "REGULATION,24;"
+    ].join("\t"),
+    [
+      "20260421211500-4",
+      "20260421211500",
+      "1",
+      "example.org",
+      "https://example.org/news/general-market-offering-listing-acquisitions-takeover",
+      "",
+      "",
+      "OFFERING;LISTING;ACQUISITIONS;TAKEOVER;",
+      "OFFERING,12;LISTING,15;ACQUISITIONS,20;TAKEOVER,30;"
+    ].join("\t"),
+    [
+      "20260421211500-5",
+      "20260421211500",
+      "1",
+      "coindesk.com",
+      "https://www.coindesk.com/business/2026/04/21/crypto-spac-deal-collapses",
+      "",
+      "",
+      "SPAC;",
+      "SPAC,12;"
+    ].join("\t")
+  ].join("\n");
+
+  const evidence = mapGdeltGkgRecordsToProductCategoryEvidence("CAPITAL_FORMATION", parseGdeltGkgCsv(rows));
+
+  assert.equal(evidence.length, 3);
+  assert.deepEqual(
+    evidence.map((article) => article.focusAreaLabel).sort(),
+    ["M&A / Strategic Transactions", "Private Capital", "Public Offerings"]
+  );
+  assert.equal(evidence.some((article) => article.url?.includes("regulation-and-trading")), false);
+  assert.equal(evidence.some((article) => article.url?.includes("offering-listing-acquisitions-takeover")), false);
 });
 
 test("maps stored NewsAPI articles to AML evidence without broad substring matches", () => {

@@ -1,4 +1,5 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
+import { fetchGdeltDocEvidenceForProductCategory } from "@/lib/server/gdelt-doc";
 import { fetchGdeltGkgEvidenceForProductCategory, fetchGdeltGkgEvidenceForProfile } from "@/lib/server/gdelt-gkg";
 import { fetchStoredEvidenceForProductCategory } from "@/lib/server/stored-category-evidence";
 import { buildIntelligenceSignalsData } from "@/lib/server/intelligence-signals";
@@ -31,29 +32,38 @@ export async function GET(request: Request) {
       return fail("Unknown intelligence category.", "UNKNOWN_CATEGORY", 404, requestId);
     }
 
-    let storedEvidence: IntelligenceEvidenceArticle[] = [];
+    let liveDocEvidence: IntelligenceEvidenceArticle[] = [];
     try {
-      storedEvidence = await fetchStoredEvidenceForProductCategory(category as ProductCategory, focusId || null);
+      liveDocEvidence = await fetchGdeltDocEvidenceForProductCategory(category as ProductCategory, focusId || null);
     } catch {
-      storedEvidence = [];
+      liveDocEvidence = [];
     }
 
-    let liveEvidence: IntelligenceEvidenceArticle[] = [];
-    if (storedEvidence.length === 0) {
+    let liveGkgEvidence: IntelligenceEvidenceArticle[] = [];
+    if (liveDocEvidence.length === 0) {
       try {
-        liveEvidence = await fetchGdeltGkgEvidenceForProductCategory(category as ProductCategory, focusId || null);
+        liveGkgEvidence = await fetchGdeltGkgEvidenceForProductCategory(category as ProductCategory, focusId || null);
       } catch {
-        liveEvidence = [];
+        liveGkgEvidence = [];
       }
     }
 
-    const evidence = storedEvidence.length > 0 ? storedEvidence : liveEvidence;
+    let storedEvidence: IntelligenceEvidenceArticle[] = [];
+    if (liveDocEvidence.length === 0 && liveGkgEvidence.length === 0) {
+      try {
+        storedEvidence = await fetchStoredEvidenceForProductCategory(category as ProductCategory, focusId || null);
+      } catch {
+        storedEvidence = [];
+      }
+    }
+
+    const evidence = liveDocEvidence.length > 0 ? liveDocEvidence : liveGkgEvidence.length > 0 ? liveGkgEvidence : storedEvidence;
 
     return ok({
       category,
       label: PRODUCT_CATEGORY_LABELS[category as ProductCategory],
       focusId: focusId || null,
-      source: storedEvidence.length > 0 ? "stored-news" : liveEvidence.length > 0 ? "gdelt-gkg" : "seed",
+      source: liveDocEvidence.length > 0 ? "gdelt-doc" : liveGkgEvidence.length > 0 ? "gdelt-gkg" : storedEvidence.length > 0 ? "stored-news" : "seed",
       evidence,
       coverage: {
         totalArticles: evidence.length,

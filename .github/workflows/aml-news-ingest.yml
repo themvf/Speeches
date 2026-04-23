@@ -1,8 +1,6 @@
 name: AML News Ingest
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       ingest_limit:
