@@ -15,7 +15,7 @@ const GDELT_GKG_TIMEOUT_MS = 8_000;
 const GDELT_GKG_CACHE_TTL_MS = 5 * 60 * 1_000;
 const GDELT_GKG_MAX_RECORDS = 30;
 const GDELT_GKG_ARCHIVE_COUNT = 6;
-const SOURCE_TOKEN_ONLY_PATTERNS = new Set(["AI", "AML", "BSA", "CIP", "KYC", "SAR", "OFAC"]);
+const SOURCE_TOKEN_ONLY_PATTERNS = new Set(["AI", "AML", "BSA", "CIP", "IPO", "KYC", "SAR", "OFAC", "SPAC"]);
 
 const PROFILE_EVIDENCE_TERMS: Readonly<Record<string, readonly string[]>> = {
   macro: ["inflation", "oil", "energy", "central-bank", "central bank", "rates", "price", "prices", "cpi"],

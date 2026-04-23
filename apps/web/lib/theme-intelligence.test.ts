@@ -188,9 +188,38 @@ test("rolls normalized themes into the visible product taxonomy", () => {
 test("keeps product category theme filters distinct", () => {
   assert.deepEqual(themesForProductCategory("AI_TECH"), ["AI", "TECHNOLOGY"]);
   assert.deepEqual(themesForProductCategory("AML"), ["SANCTIONS"]);
+  assert.deepEqual(themesForProductCategory("CAPITAL_FORMATION"), ["CREDIT_MARKETS", "FINANCIAL_MARKETS", "REGULATION", "CORPORATE_ACTIVITY"]);
   assert.ok(themesForProductCategory("CRYPTO").includes("CRYPTO"));
   assert.ok(themesForProductCategory("CREDIT_MARKETS").includes("INTEREST_RATES"));
   assert.ok(themesForProductCategory("ECONOMIC_GROWTH").includes("INFLATION"));
+});
+
+test("keeps capital formation focused on explicit capital raising and transaction terms", () => {
+  const focusAreas = focusAreasForProductCategory("CAPITAL_FORMATION");
+  const broad = scoreThemeArticle({
+    raw_themes: "ECON_CREDIT; STOCK_MARKET; EARNINGS; SEC; RULEMAKING; DISCLOSURE"
+  });
+  const explicit = scoreThemeArticle({
+    raw_themes: "IPO; VENTURE_CAPITAL; BOND_ISSUANCE; REG_A; SPAC"
+  });
+  const capital = explicit.product_categories.find((category) => category.category === "CAPITAL_FORMATION");
+
+  assert.deepEqual(focusAreas.map((item) => item.label), [
+    "Public Offerings",
+    "Private Capital",
+    "Debt Financing",
+    "M&A / Strategic Transactions",
+    "Capital Access / Policy"
+  ]);
+  assert.equal(broad.product_categories.some((category) => category.category === "CAPITAL_FORMATION"), false);
+  assert.ok(capital);
+  assert.deepEqual(new Set(capital?.subcategories.map((subcategory) => subcategory.label)), new Set([
+    "Public Offerings",
+    "Private Capital",
+    "Debt Financing",
+    "Capital Access / Policy",
+    "M&A / Strategic Transactions"
+  ]));
 });
 
 test("keeps AML focus areas narrow and avoids broad crypto or regulation chips", () => {
@@ -558,6 +587,59 @@ test("does not map stored news to AML from ingestion tags alone", () => {
   ]));
 
   assert.equal(evidence.length, 0);
+});
+
+test("maps stored NewsAPI articles to capital formation evidence from explicit terms", () => {
+  const items = [
+    {
+      document_id: "capital-ipo",
+      title: "Software company files for IPO after private funding round",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Reuters",
+      url: "https://www.reuters.com/markets/deals/software-company-ipo-2026-04-22/",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 900,
+      tags: ["news"],
+      keywords: ["initial public offering"],
+      topics: ["markets"],
+      ingest_status: "existing",
+      enrichment_status: "enriched",
+      review_decision: "pending",
+      updated_at: ""
+    },
+    {
+      document_id: "capital-tag-only",
+      title: "General market update after earnings",
+      organization: "News",
+      source_kind: "newsapi_article",
+      doc_type: "News Article",
+      speaker: "Example News",
+      url: "https://example.com/markets/2026/04/22/earnings-market-update.html",
+      date: "April 22, 2026",
+      published_at: "April 22, 2026",
+      word_count: 700,
+      tags: ["ipo", "private_equity"],
+      keywords: ["equities"],
+      topics: ["venture_capital"],
+      ingest_status: "existing",
+      enrichment_status: "not_enriched",
+      review_decision: "pending",
+      updated_at: ""
+    }
+  ];
+
+  const evidence = mapStoredDocumentsToProductCategoryEvidence("CAPITAL_FORMATION", items, new Map([
+    ["capital-ipo", "The company filed for an initial public offering after a private funding round."],
+    ["capital-tag-only", "General equity market coverage without an issuance event."]
+  ]));
+
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].headline, "Software company files for IPO after private funding round");
+  assert.equal(evidence[0].focusAreaLabel, "Public Offerings");
+  assert.ok(evidence[0].matchedTerms?.includes("IPO"));
 });
 
 test("orders stored AML evidence by recency before match strength", () => {

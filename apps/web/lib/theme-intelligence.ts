@@ -243,7 +243,7 @@ export const PRODUCT_CATEGORY_LABELS: Readonly<Record<ProductCategory, string>> 
 
 const PRODUCT_CATEGORY_DISPLAY_THEMES: Readonly<Record<ProductCategory, readonly NormalizedTheme[]>> = {
   SECURITIES_REGULATION: ["REGULATION", "FINANCIAL_MARKETS", "CORPORATE_ACTIVITY"],
-  CAPITAL_FORMATION: ["CORPORATE_ACTIVITY", "FINANCIAL_MARKETS", "CREDIT_MARKETS"],
+  CAPITAL_FORMATION: ["CORPORATE_ACTIVITY", "FINANCIAL_MARKETS", "CREDIT_MARKETS", "REGULATION"],
   AML: ["SANCTIONS"],
   ENFORCEMENT: ["REGULATION", "FINANCIAL_MARKETS", "CRYPTO"],
   AI_TECH: ["AI", "TECHNOLOGY"],
@@ -254,6 +254,41 @@ const PRODUCT_CATEGORY_DISPLAY_THEMES: Readonly<Record<ProductCategory, readonly
 };
 
 export const PRODUCT_FOCUS_AREAS: readonly ProductFocusArea[] = [
+  {
+    id: "capital_public_offerings",
+    category: "CAPITAL_FORMATION",
+    label: "Public Offerings",
+    raw_patterns: ["IPO", "INITIAL_PUBLIC_OFFERING", "OFFERING", "SECURITIES_OFFERING", "EQUITY_OFFERING", "PUBLIC_OFFERING", "SECONDARY_OFFERING", "SHARE_SALE", "LISTING", "STOCK_LISTING"],
+    normalized_themes: ["FINANCIAL_MARKETS", "CORPORATE_ACTIVITY"]
+  },
+  {
+    id: "capital_private_capital",
+    category: "CAPITAL_FORMATION",
+    label: "Private Capital",
+    raw_patterns: ["PRIVATE_MARKETS", "PRIVATE_EQUITY", "PRIVATE_CREDIT", "VENTURE_CAPITAL", "STARTUP_FUNDING", "PRIVATE_PLACEMENT", "REG_D", "ACCREDITED_INVESTOR", "CAPITAL_RAISE", "FUNDRAISING"],
+    normalized_themes: ["CREDIT_MARKETS", "CORPORATE_ACTIVITY"]
+  },
+  {
+    id: "capital_debt_financing",
+    category: "CAPITAL_FORMATION",
+    label: "Debt Financing",
+    raw_patterns: ["DEBT_OFFERING", "BOND_ISSUANCE", "CORPORATE_BONDS", "DEBT_FINANCING", "REFINANCING", "LEVERAGED_LOAN", "CREDIT_FACILITY", "HIGH_YIELD", "INVESTMENT_GRADE"],
+    normalized_themes: ["CREDIT_MARKETS", "FINANCIAL_MARKETS"]
+  },
+  {
+    id: "capital_strategic_transactions",
+    category: "CAPITAL_FORMATION",
+    label: "M&A / Strategic Transactions",
+    raw_patterns: ["MERGERS", "ACQUISITIONS", "M&A", "DEALMAKING", "TAKEOVER", "BUYOUT", "SPAC", "DE_SPAC", "MERGER_AGREEMENT", "STRATEGIC_TRANSACTION"],
+    normalized_themes: ["CORPORATE_ACTIVITY", "FINANCIAL_MARKETS"]
+  },
+  {
+    id: "capital_access_policy",
+    category: "CAPITAL_FORMATION",
+    label: "Capital Access / Policy",
+    raw_patterns: ["CAPITAL_FORMATION", "SMALL_BUSINESS_CAPITAL", "EMERGING_GROWTH_COMPANY", "CROWDFUNDING", "REG_CF", "REG_A", "REGULATION_A", "EXEMPT_OFFERING"],
+    normalized_themes: ["REGULATION", "FINANCIAL_MARKETS"]
+  },
   {
     id: "aml_sanctions",
     category: "AML",
@@ -313,10 +348,11 @@ export const PRODUCT_TAXONOMY: readonly ProductCategoryDefinition[] = [
     category: "CAPITAL_FORMATION",
     label: PRODUCT_CATEGORY_LABELS.CAPITAL_FORMATION,
     subcategories: [
-      { label: "IPOs / Offerings", normalized_themes: [], raw_patterns: ["IPO", "OFFERING", "EQUITY_OFFERING", "DEBT_OFFERING", "SECURITIES_OFFERING"], weight: 8 },
-      { label: "Private Markets", normalized_themes: [], raw_patterns: ["PRIVATE_MARKETS", "PRIVATE_CREDIT", "PRIVATE_EQUITY", "VENTURE_CAPITAL"], weight: 8 },
-      { label: "Fundraising", normalized_themes: [], raw_patterns: ["CAPITAL_RAISE", "FUNDRAISING", "FINANCING", "CAPITAL_FORMATION"], weight: 8 },
-      { label: "M&A / SPACs", normalized_themes: [], raw_patterns: ["MERGERS", "ACQUISITIONS", "SPAC", "DEALMAKING"], weight: 7 }
+      { label: "Public Offerings", normalized_themes: [], raw_patterns: ["IPO", "INITIAL_PUBLIC_OFFERING", "OFFERING", "SECURITIES_OFFERING", "EQUITY_OFFERING", "PUBLIC_OFFERING", "SECONDARY_OFFERING", "SHARE_SALE", "LISTING", "STOCK_LISTING"], weight: 8 },
+      { label: "Private Capital", normalized_themes: [], raw_patterns: ["PRIVATE_MARKETS", "PRIVATE_EQUITY", "PRIVATE_CREDIT", "VENTURE_CAPITAL", "STARTUP_FUNDING", "PRIVATE_PLACEMENT", "REG_D", "ACCREDITED_INVESTOR", "CAPITAL_RAISE", "FUNDRAISING"], weight: 8 },
+      { label: "Debt Financing", normalized_themes: [], raw_patterns: ["DEBT_OFFERING", "BOND_ISSUANCE", "CORPORATE_BONDS", "DEBT_FINANCING", "REFINANCING", "LEVERAGED_LOAN", "CREDIT_FACILITY", "HIGH_YIELD", "INVESTMENT_GRADE"], weight: 8 },
+      { label: "M&A / Strategic Transactions", normalized_themes: [], raw_patterns: ["MERGERS", "ACQUISITIONS", "M&A", "DEALMAKING", "TAKEOVER", "BUYOUT", "SPAC", "DE_SPAC", "MERGER_AGREEMENT", "STRATEGIC_TRANSACTION"], weight: 7 },
+      { label: "Capital Access / Policy", normalized_themes: [], raw_patterns: ["CAPITAL_FORMATION", "SMALL_BUSINESS_CAPITAL", "EMERGING_GROWTH_COMPANY", "CROWDFUNDING", "REG_CF", "REG_A", "REGULATION_A", "EXEMPT_OFFERING"], weight: 7 }
     ]
   },
   {
