@@ -12,6 +12,7 @@ const GDELT_DOC_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc";
 const GDELT_DOC_TIMEOUT_MS = 20_000;
 const GDELT_DOC_CACHE_TTL_MS = 5 * 60 * 1_000;
 const GDELT_DOC_MAX_RECORDS = 30;
+const GDELT_DOC_MAX_RECORDS_PER_FOCUS = 6;
 const GDELT_DOC_TIMESPAN = "24h";
 
 type GdeltDocArticle = {
@@ -79,7 +80,7 @@ const CATEGORY_DOC_QUERY_TERMS: Readonly<Partial<Record<ProductCategory, Readonl
   },
   CAPITAL_FORMATION: {
     capital_public_offerings: ["IPO", "initial public offering", "go public", "public offering", "secondary offering"],
-    capital_private_capital: ["private credit", "private equity", "venture capital", "fundraising", "private placement"],
+    capital_private_capital: ["private credit", "private equity", "venture capital", "funding round", "private placement"],
     capital_debt_financing: ["debt offering", "bond issuance", "credit facility", "leveraged loan", "high yield"],
     capital_strategic_transactions: ["SPAC", "merger", "acquisition", "takeover bid", "buyout"],
     capital_access_policy: ["capital formation", "crowdfunding", "Reg A", "Reg CF", "exempt offering"]
@@ -451,9 +452,13 @@ function mapGdeltDocArticlesToKnownFocusAreaEvidence(
   focusArea: ProductFocusArea,
   matchedTerms: readonly string[],
   seenUrls: Set<string>,
-  existingCount: number
+  existingCount: number,
+  limit: number
 ): IntelligenceEvidenceArticle[] {
   const evidence: IntelligenceEvidenceArticle[] = [];
+  if (limit <= 0) {
+    return evidence;
+  }
 
   for (const article of articles) {
     const url = normalizeString(article.url);
@@ -482,7 +487,7 @@ function mapGdeltDocArticlesToKnownFocusAreaEvidence(
       impact: Math.max(55, 90 - index)
     });
 
-    if (existingCount + evidence.length >= GDELT_DOC_MAX_RECORDS) {
+    if (existingCount + evidence.length >= GDELT_DOC_MAX_RECORDS || evidence.length >= limit) {
       break;
     }
   }
@@ -596,10 +601,15 @@ export async function fetchGdeltDocEvidenceForProductCategory(
 
     const strictEvidence = mapGdeltDocArticlesToProductCategoryEvidence(category, result.value.articles, [result.value.plan.focusArea])
       .filter((article) => article.url && !seenUrls.has(article.url));
+    let focusCount = 0;
     for (const article of strictEvidence) {
       seenUrls.add(article.url!);
       evidence.push(article);
+      focusCount += 1;
       if (evidence.length >= GDELT_DOC_MAX_RECORDS) {
+        break;
+      }
+      if (focusCount >= GDELT_DOC_MAX_RECORDS_PER_FOCUS) {
         break;
       }
     }
@@ -613,7 +623,8 @@ export async function fetchGdeltDocEvidenceForProductCategory(
       result.value.plan.focusArea,
       result.value.plan.terms,
       seenUrls,
-      evidence.length
+      evidence.length,
+      Math.max(0, GDELT_DOC_MAX_RECORDS_PER_FOCUS - focusCount)
     ));
     if (evidence.length >= GDELT_DOC_MAX_RECORDS) {
       break;
