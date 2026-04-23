@@ -1,10 +1,9 @@
-import { createRequestId, fail, ok } from "@/lib/server/api-utils";
+import { createRequestId, ok } from "@/lib/server/api-utils";
 import type { MarketBondsData, TreasuryYield } from "@/lib/server/types";
+import { fetchYahooQuote } from "@/lib/server/yahoo";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
-
-type FinnhubQuote = { c: number | null; d: number | null; dp: number | null };
 
 async function fetchTreasuryXml(year: number, month: number): Promise<string | null> {
   const mm = String(month).padStart(2, "0");
@@ -39,23 +38,8 @@ function parseYields(xml: string): { latest: Record<string, number>; prev: Recor
   return { latest, prev };
 }
 
-async function fetchUupQuote(apiKey: string): Promise<FinnhubQuote | null> {
-  try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=UUP&token=${apiKey}`,
-      { next: { revalidate: 3600 } }
-    );
-    if (!res.ok) return null;
-    const data: FinnhubQuote = await res.json();
-    return data.c != null ? data : null;
-  } catch { return null; }
-}
-
 export async function GET() {
   const requestId = createRequestId();
-  const apiKey = process.env.FINNHUB_API_KEY;
-  if (!apiKey) return fail("FINNHUB_API_KEY not set", "NO_API_KEY", 500, requestId);
-
   const now = new Date();
 
   // Try current month; fall back to previous if empty
@@ -67,7 +51,7 @@ export async function GET() {
 
   const [parsed, uup] = await Promise.all([
     Promise.resolve(xml ? parseYields(xml) : null),
-    fetchUupQuote(apiKey),
+    fetchYahooQuote("UUP", 3600),
   ]);
 
   const YIELD_DEFS: { field: string; label: string }[] = [
@@ -87,8 +71,8 @@ export async function GET() {
       }).filter((y) => y.rate > 0)
     : [];
 
-  const dxy = uup?.c
-    ? { price: uup.c, change: uup.d ?? 0, pct: uup.dp ?? 0, up: (uup.d ?? 0) >= 0 }
+  const dxy = uup
+    ? { price: uup.price, change: uup.change, pct: uup.pct, up: uup.change >= 0 }
     : null;
 
   const data: MarketBondsData = { yields, dxy, generatedAt: new Date().toISOString() };

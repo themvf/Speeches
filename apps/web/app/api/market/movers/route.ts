@@ -1,10 +1,9 @@
-import { createRequestId, fail, ok } from "@/lib/server/api-utils";
+import { createRequestId, ok } from "@/lib/server/api-utils";
 import type { MarketMoversData, MoverQuote } from "@/lib/server/types";
+import { fetchYahooQuote } from "@/lib/server/yahoo";
 
 export const runtime = "nodejs";
 export const revalidate = 120;
-
-type FinnhubQuote = { c: number | null; d: number | null; dp: number | null };
 
 const WATCHLIST: { symbol: string; name: string }[] = [
   { symbol: "AAPL", name: "Apple Inc." },
@@ -44,27 +43,11 @@ const WATCHLIST: { symbol: string; name: string }[] = [
   { symbol: "QCOM", name: "Qualcomm Inc." },
 ];
 
-async function fetchQuote(symbol: string, apiKey: string): Promise<FinnhubQuote | null> {
-  try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`,
-      { next: { revalidate: 120 } }
-    );
-    if (!res.ok) return null;
-    const data: FinnhubQuote = await res.json();
-    return data.c != null ? data : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function GET() {
   const requestId = createRequestId();
-  const apiKey = process.env.FINNHUB_API_KEY;
-  if (!apiKey) return fail("FINNHUB_API_KEY not set", "NO_API_KEY", 500, requestId);
 
   const settled = await Promise.allSettled(
-    WATCHLIST.map(({ symbol }) => fetchQuote(symbol, apiKey))
+    WATCHLIST.map(({ symbol }) => fetchYahooQuote(symbol, 120))
   );
 
   const quoted = settled
@@ -76,10 +59,10 @@ export async function GET() {
     .map((item) => ({
       symbol: item.symbol,
       name: item.name,
-      price: item.q!.c ?? 0,
-      pct: item.q!.dp ?? 0,
-      change: item.q!.d ?? 0,
-      up: (item.q!.d ?? 0) >= 0,
+      price: item.q!.price,
+      pct: item.q!.pct,
+      change: item.q!.change,
+      up: item.q!.change >= 0,
     }));
 
   const byPct = [...quoted].sort((a, b) => b.pct - a.pct);

@@ -1,11 +1,9 @@
-import { createRequestId, fail, ok } from "@/lib/server/api-utils";
+import { createRequestId, ok } from "@/lib/server/api-utils";
 import type { MarketSectorsData, SectorData, SectorPcts, SectorStock } from "@/lib/server/types";
+import { fetchYahooCandles, fetchYahooQuote } from "@/lib/server/yahoo";
 
 export const runtime = "nodejs";
 export const revalidate = 300;
-
-type FinnhubQuote = { c: number | null; d: number | null; dp: number | null };
-type YahooCandle  = { t: number[]; c: number[] };
 
 const SECTOR_ETFS: Record<string, string> = {
   "Technology":             "XLK",
@@ -49,44 +47,7 @@ const SECTOR_STOCKS: Record<string, { symbol: string; name: string }[]> = {
   "Utilities":              [{ symbol: "NEE", name: "NextEra" }, { symbol: "DUK", name: "Duke Energy" }, { symbol: "SO", name: "Southern Co." }],
 };
 
-const YH = { "User-Agent": "Mozilla/5.0 (compatible; market-data/1.0)" };
-
-async function fetchQuote(symbol: string, apiKey: string): Promise<FinnhubQuote | null> {
-  try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`,
-      { next: { revalidate: 300 } }
-    );
-    if (!res.ok) return null;
-    const data: FinnhubQuote = await res.json();
-    return data.c != null ? data : null;
-  } catch { return null; }
-}
-
-async function fetchYahooCandles(symbol: string): Promise<YahooCandle | null> {
-  try {
-    const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`,
-      { next: { revalidate: 3600 }, headers: YH }
-    );
-    if (!res.ok) return null;
-    const json = await res.json();
-    const result = json?.chart?.result?.[0];
-    if (!result?.timestamp?.length) return null;
-    const closes: (number | null)[] =
-      result.indicators?.adjclose?.[0]?.adjclose ??
-      result.indicators?.quote?.[0]?.close ?? [];
-    const t: number[] = [];
-    const c: number[] = [];
-    (result.timestamp as number[]).forEach((ts: number, i: number) => {
-      const price = closes[i];
-      if (price != null && price > 0) { t.push(ts); c.push(price); }
-    });
-    return t.length ? { t, c } : null;
-  } catch { return null; }
-}
-
-function priceAt(candle: YahooCandle, targetUnix: number): number | null {
+function priceAt(candle: { t: number[]; c: number[] }, targetUnix: number): number | null {
   let best: number | null = null;
   let bestDiff = Infinity;
   for (let i = 0; i < candle.t.length; i++) {
@@ -97,7 +58,7 @@ function priceAt(candle: YahooCandle, targetUnix: number): number | null {
   return best;
 }
 
-function computePcts(candle: YahooCandle): SectorPcts {
+function computePcts(candle: { t: number[]; c: number[] }): SectorPcts {
   const last = candle.c[candle.c.length - 1];
   const prev = candle.c.length > 1 ? candle.c[candle.c.length - 2] : null;
   const now = Date.now() / 1000;
@@ -115,9 +76,6 @@ function computePcts(candle: YahooCandle): SectorPcts {
 
 export async function GET() {
   const requestId = createRequestId();
-  const apiKey = process.env.FINNHUB_API_KEY;
-  if (!apiKey) return fail("FINNHUB_API_KEY not set", "NO_API_KEY", 500, requestId);
-
   const sectorKeys = Object.keys(SECTOR_STOCKS);
 
   const etfCandles = await Promise.allSettled(
@@ -128,7 +86,7 @@ export async function GET() {
     SECTOR_STOCKS[key].map((s) => ({ ...s, sectorKey: key }))
   );
   const stockSettled = await Promise.allSettled(
-    allStocks.map(({ symbol }) => fetchQuote(symbol, apiKey))
+    allStocks.map(({ symbol }) => fetchYahooQuote(symbol, 300))
   );
 
   const sectors: SectorData[] = sectorKeys.map((key, i) => {
@@ -142,7 +100,7 @@ export async function GET() {
         const idx = allStocks.findIndex((s) => s.symbol === def.symbol && s.sectorKey === key);
         const q = idx >= 0 && stockSettled[idx].status === "fulfilled" ? stockSettled[idx].value : null;
         if (!q) return null;
-        return { symbol: def.symbol, name: def.name, price: q.c ?? 0, pct: q.dp ?? 0, change: q.d ?? 0, up: (q.d ?? 0) >= 0 };
+        return { symbol: def.symbol, name: def.name, price: q.price, pct: q.pct, change: q.change, up: q.change >= 0 };
       })
       .filter((s): s is SectorStock => s !== null);
 
