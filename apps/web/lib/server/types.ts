@@ -113,6 +113,16 @@ export interface EnrichmentPayload {
   confidence: number;
 }
 
+export interface SentimentPayload {
+  score: number;
+  label: "positive" | "negative" | "neutral";
+  rationale: string;
+  model: string;
+  status: string;
+  error: string;
+  updated_at: string;
+}
+
 export interface EnrichmentEntry {
   doc_id: string;
   organization: string;
@@ -130,6 +140,7 @@ export interface EnrichmentEntry {
   updated_at: string;
   enrichment: EnrichmentPayload;
   review: EnrichmentReviewPayload;
+  sentiment?: SentimentPayload;
   reward?: Record<string, JsonValue>;
   auto_review?: Record<string, JsonValue>;
 }
@@ -231,6 +242,8 @@ export interface DocumentListItem {
   enrichment_status: string;
   review_decision: string;
   updated_at: string;
+  sentiment_label: "positive" | "negative" | "neutral" | "";
+  sentiment_score: number;
 }
 
 export interface DocumentsFacets {

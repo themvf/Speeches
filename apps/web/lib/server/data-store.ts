@@ -862,7 +862,9 @@ export function buildDocumentListItems(
       enrichment_status: normalizeString(enrich?.status || "not_enriched") || "not_enriched",
       review_decision: reviewDecision,
       updated_at:
-        normalizeString(m.last_reviewed_or_updated) || normalizeString(m.updated_date) || normalizeString(enrich?.updated_at)
+        normalizeString(m.last_reviewed_or_updated) || normalizeString(m.updated_date) || normalizeString(enrich?.updated_at),
+      sentiment_label: (enrich?.sentiment?.label as "positive" | "negative" | "neutral") || "",
+      sentiment_score: typeof enrich?.sentiment?.score === "number" ? enrich.sentiment.score : 0,
     };
   });
 }

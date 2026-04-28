@@ -87,6 +87,12 @@ interface DocumentDetailData {
     notes: string;
     reviewed_at: string;
   };
+  sentiment: {
+    score: number;
+    label: string;
+    rationale: string;
+    status: string;
+  } | null;
 }
 
 interface JobState {
@@ -339,6 +345,20 @@ function typeClass(typeLabel: string): string {
   if (t.includes("faq")) return "type-chip type-faq";
   if (t.includes("key topic")) return "type-chip type-key-topic";
   return "type-chip type-default";
+}
+
+function sentimentChipClass(label: string): string {
+  if (label === "positive") return "type-chip type-chip--positive";
+  if (label === "negative") return "type-chip type-chip--negative";
+  return "type-chip type-default";
+}
+
+function sentimentLabel(label: string, score: number): string {
+  const sign = score > 0 ? "+" : "";
+  const pct = `${sign}${Math.round(score * 100)}`;
+  if (label === "positive") return `▲ ${pct}`;
+  if (label === "negative") return `▼ ${pct}`;
+  return "● Neutral";
 }
 
 function formatAnalysisLabel(value: string): string {
@@ -1111,6 +1131,16 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                           </td>
                           <td className="text-xs">
                             <span className={typeClass(typeLabel)}>{typeLabel}</span>
+                            {d.sentiment_label ? (
+                              <p className="mt-1.5">
+                                <span
+                                  className={sentimentChipClass(d.sentiment_label)}
+                                  title={`Tone score: ${d.sentiment_score > 0 ? "+" : ""}${d.sentiment_score.toFixed(2)}`}
+                                >
+                                  {sentimentLabel(d.sentiment_label, d.sentiment_score)}
+                                </span>
+                              </p>
+                            ) : null}
                           </td>
                           <td className="text-xs">{exactSpeakerName(d)}</td>
                           <td className="text-xs">

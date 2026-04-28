@@ -81,6 +81,23 @@ ENRICHMENT_ACTIVE_RUN_SESSION_KEY = "_enrichment_active_run"
 ENRICHMENT_RUN_NOTICE_SESSION_KEY = "_enrichment_run_notice"
 ENRICHMENT_DOCS_PER_RERUN = 1
 ENRICHMENT_RUN_ERROR_SESSION_KEY = "_enrichment_run_error"
+_SENTIMENT_SYSTEM_PROMPT = """\
+You are a tone-scoring agent for financial and regulatory news.
+
+Score the AUTHOR'S editorial tone and framing — not the subject matter or event severity.
+
+Rules:
+- Institutional press releases (DOJ, SEC, CFTC, Fed, FINRA) are neutral by default
+  unless the author uses charged, alarming, or celebratory language.
+- Wire-service factual reporting (Reuters, AP, Bloomberg News) defaults to neutral.
+- An arrest announcement written in plain institutional language = neutral.
+- A piece calling a regulation "dangerously overreaching" = negative.
+- A piece framing a ruling as a "landmark victory for investors" = positive.
+- Score reflects word choice, framing, and rhetorical stance — not what happened.
+
+Return ONLY valid JSON with no markdown or commentary:
+{"score": <float -1.0 to 1.0>, "label": "positive" | "negative" | "neutral", "rationale": "<one concise sentence>"}
+"""
 
 
 # --- GCS helpers ---
@@ -1518,6 +1535,9 @@ def _build_corpus_explorer_df(knowledge_data, enrichment_state):
             enrich = {}
         review = enrich_entry.get("review", {}) if isinstance(enrich_entry.get("review", {}), dict) else {}
         auto_review = enrich_entry.get("auto_review", {}) if isinstance(enrich_entry.get("auto_review", {}), dict) else {}
+        sentiment_raw = enrich_entry.get("sentiment", {})
+        if not isinstance(sentiment_raw, dict):
+            sentiment_raw = {}
 
         tags = enrich.get("tags", [])
         if not isinstance(tags, list):
@@ -1543,6 +1563,10 @@ def _build_corpus_explorer_df(knowledge_data, enrichment_state):
             full_text=str(c.get("full_text", "") or ""),
         )
         finra_topics = _coerce_string_list(m.get("finra_topics", []), limit=20)
+
+        sentiment_label = str(sentiment_raw.get("label", "") or "").strip()
+        sentiment_score = sentiment_raw.get("score")
+        sentiment_score = float(sentiment_score) if isinstance(sentiment_score, (int, float)) else None
 
         rows.append(
             {
@@ -1570,6 +1594,9 @@ def _build_corpus_explorer_df(knowledge_data, enrichment_state):
                 "outcome_status": enforcement_meta.get("outcome_status", "unknown"),
                 "alleged_violations": ", ".join(enforcement_meta.get("alleged_violations", [])[:8]),
                 "finra_topics": ", ".join(finra_topics),
+                "tone": sentiment_label,
+                "tone_score": sentiment_score,
+                "tone_rationale": str(sentiment_raw.get("rationale", "") or "").strip(),
             }
         )
 
@@ -3881,6 +3908,169 @@ def _set_enrichment_run_notice(level, message):
 def _pop_enrichment_run_notice():
     notice = st.session_state.pop(ENRICHMENT_RUN_NOTICE_SESSION_KEY, None)
     return notice if isinstance(notice, dict) else None
+
+
+def _run_auto_sentiment(client, doc_ids=None, limit=50):
+    """Score editorial tone for documents lacking sentiment. Returns (llm_count, heuristic_count)."""
+    import json as _json
+    from datetime import timezone as _tz
+
+    custom_payload = _load_custom_documents()
+    enrichment_state = _load_enrichment_state()
+    if not isinstance(enrichment_state, dict):
+        enrichment_state = {"entries": {}}
+    entries = enrichment_state.setdefault("entries", {})
+
+    doc_id_set = {str(d).strip() for d in doc_ids if str(d).strip()} if doc_ids is not None else None
+
+    candidates = []
+    for item in custom_payload.get("documents", []):
+        if not isinstance(item, dict):
+            continue
+        m = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        c = item.get("content", {}) if isinstance(item.get("content", {}), dict) else {}
+        doc_id = str(m.get("document_id", "") or "").strip()
+        if not doc_id:
+            continue
+        if doc_id_set is not None and doc_id not in doc_id_set:
+            continue
+        if doc_id_set is None:
+            existing = entries.get(doc_id, {})
+            if isinstance(existing, dict) and isinstance(existing.get("sentiment"), dict):
+                continue
+        full_text = str(c.get("full_text", "") or "").strip()
+        if not full_text:
+            continue
+        candidates.append({
+            "doc_id": doc_id,
+            "title": str(m.get("title", "") or "").strip(),
+            "full_text": full_text,
+        })
+
+    effective_limit = max(0, int(limit)) if limit is not None else len(candidates)
+    targets = candidates[:effective_limit]
+    if not targets:
+        return 0, 0
+
+    def _extract_json(text):
+        raw = str(text or "").strip()
+        try:
+            p = _json.loads(raw)
+            if isinstance(p, dict):
+                return p
+        except Exception:
+            pass
+        if raw.startswith("```"):
+            raw = raw.strip("`").replace("json", "", 1).strip()
+        try:
+            p = _json.loads(raw)
+            if isinstance(p, dict):
+                return p
+        except Exception:
+            pass
+        s, e = raw.find("{"), raw.rfind("}")
+        if s >= 0 and e > s:
+            try:
+                p = _json.loads(raw[s:e + 1])
+                if isinstance(p, dict):
+                    return p
+            except Exception:
+                pass
+        return {}
+
+    def _heuristic(text):
+        lower = str(text or "").lower()
+        pos = sum(1 for p in ["landmark victory", "breakthrough", "celebrated", "praised", "applauded", "hailed"] if p in lower)
+        neg = sum(1 for p in ["reckless", "dangerously", "alarming", "overreaching", "disastrous", "slammed", "blasted"] if p in lower)
+        if pos == 0 and neg == 0:
+            return {"score": 0.0, "label": "neutral", "rationale": "No editorial language detected."}
+        raw_score = (pos - neg) / max(pos + neg, 1)
+        score = round(max(-1.0, min(1.0, raw_score)), 4)
+        label = "positive" if score > 0.05 else "negative" if score < -0.05 else "neutral"
+        return {"score": score, "label": label, "rationale": "Heuristic fallback."}
+
+    _models = ["gpt-4.1-mini", "gpt-4o-mini", "gpt-4.1", "gpt-4o"]
+    llm_count = 0
+    heuristic_count = 0
+    now_ts = datetime.now(_tz.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    for cand in targets:
+        doc_id = cand["doc_id"]
+        text = cand["full_text"]
+        if len(text) > 60000:
+            text = text[:40000] + "\n\n[...TRUNCATED...]\n\n" + text[-10000:]
+        prompt = f"Title: {cand['title']}\n\nArticle:\n{text}"
+
+        sentiment = None
+        model_used = ""
+        status = "scored"
+        error_msg = ""
+
+        try:
+            if client is None:
+                raise RuntimeError("OpenAI client unavailable.")
+            for model_name in _models:
+                try:
+                    for attempt in range(1, 3):
+                        instruction = _SENTIMENT_SYSTEM_PROMPT
+                        if attempt > 1:
+                            instruction += " Respond with raw JSON only. No markdown, no code fences."
+                        resp = client.responses.create(model=model_name, instructions=instruction, input=prompt)
+                        raw_text = getattr(resp, "output_text", None) or ""
+                        if not raw_text and hasattr(resp, "model_dump"):
+                            for out_item in (resp.model_dump() or {}).get("output", []):
+                                if out_item.get("type") == "message":
+                                    for chunk in out_item.get("content", []):
+                                        if chunk.get("type") in ("output_text", "text") and chunk.get("text"):
+                                            raw_text = chunk["text"]
+                                            break
+                        parsed = _extract_json(raw_text)
+                        if parsed:
+                            break
+                    if parsed:
+                        try:
+                            score = float(parsed.get("score", 0.0) or 0.0)
+                        except Exception:
+                            score = 0.0
+                        score = max(-1.0, min(1.0, score))
+                        label = str(parsed.get("label", "neutral") or "neutral").strip().lower()
+                        if label not in {"positive", "negative", "neutral"}:
+                            label = "neutral"
+                        rationale = str(parsed.get("rationale", "") or "").strip()[:300]
+                        sentiment = {"score": round(score, 4), "label": label, "rationale": rationale}
+                        model_used = model_name
+                        break
+                except Exception as model_err:
+                    err_str = str(model_err).lower()
+                    if "model_not_found" in err_str or "does not have access" in err_str:
+                        continue
+                    raise
+            if sentiment is None:
+                raise RuntimeError("No model returned parseable JSON.")
+            llm_count += 1
+        except Exception as exc:
+            sentiment = _heuristic(cand["full_text"])
+            status = "fallback_scored"
+            error_msg = str(exc)
+            heuristic_count += 1
+
+        entry = entries.get(doc_id, {})
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["sentiment"] = {
+            **sentiment,
+            "model": model_used or "heuristic",
+            "status": status,
+            "error": error_msg,
+            "updated_at": now_ts,
+        }
+        entries[doc_id] = entry
+
+    if targets:
+        enrichment_state["entries"] = entries
+        _save_enrichment_state(enrichment_state)
+
+    return llm_count, heuristic_count
 
 
 def _get_active_enrichment_run():
@@ -6500,24 +6690,24 @@ elif page in {"Speech Explorer", "Corpus Explorer"}:
         filtered = _sort_table_by_date(filtered, date_col="date")
         st.markdown(f"**Showing {len(filtered)} of {len(corpus_df)} corpus documents**")
 
+        display_cols = [
+            "date",
+            "organization",
+            "source_kind",
+            "doc_type",
+            "title",
+            "speaker",
+            "tone",
+            "stance",
+            "review",
+            "auto_verdict",
+            "status",
+            "tags_text",
+            "keywords_text",
+            "word_count",
+        ]
         st.dataframe(
-            filtered[
-                [
-                    "date",
-                    "organization",
-                    "source_kind",
-                    "doc_type",
-                    "title",
-                    "speaker",
-                    "stance",
-                    "review",
-                    "auto_verdict",
-                    "status",
-                    "tags_text",
-                    "keywords_text",
-                    "word_count",
-                ]
-            ],
+            filtered[[c for c in display_cols if c in filtered.columns]],
             use_container_width=True,
             hide_index=True,
         )
@@ -6542,6 +6732,12 @@ elif page in {"Speech Explorer", "Corpus Explorer"}:
                 f"Stance: {detail['stance'] or 'n/a'} | "
                 f"Review: {detail['review']} | Auto Verdict: {detail['auto_verdict'] or 'n/a'}"
             )
+            _tone_label = str(detail.get("tone", "") or "").strip()
+            _tone_score = detail.get("tone_score")
+            _tone_rationale = str(detail.get("tone_rationale", "") or "").strip()
+            if _tone_label:
+                _tone_score_str = f" ({'+' if _tone_score and _tone_score > 0 else ''}{_tone_score:.2f})" if isinstance(_tone_score, float) else ""
+                st.caption(f"Tone: **{_tone_label.capitalize()}{_tone_score_str}**{' — ' + _tone_rationale if _tone_rationale else ''}")
             if detail["url"]:
                 st.markdown(f"[Open Source]({detail['url']})")
             if detail["tags_text"]:
@@ -12164,6 +12360,280 @@ elif page == "Extraction":
                 st.error(f"Trade-media ingest failed: {e}")
 
     st.markdown("---")
+    st.subheader("WSJ / Dow Jones RSS Connector")
+    st.caption(
+        "Discover and ingest articles from WSJ and Dow Jones RSS feeds (feeds.content.dowjones.io). "
+        "Full article text is fetched when available; falls back to the RSS description for paywalled content."
+    )
+
+    wsj_feed_options = {
+        "wsj_us_business": "WSJ US Business News",
+        "wsj_markets": "WSJ Markets",
+        "wsj_opinion": "WSJ Opinion",
+        "mw_top_stories": "MarketWatch Top Stories",
+        "wsj_custom": "Custom Feed URL",
+    }
+    wsj_default_feeds = {
+        "wsj_us_business": "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews",
+        "wsj_markets": "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
+        "wsj_opinion": "https://feeds.content.dowjones.io/public/rss/RSSOpinion",
+        "mw_top_stories": "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines",
+        "wsj_custom": "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews",
+    }
+    wsj_default_tags = {
+        "wsj_us_business": "wsj,business,financial-news",
+        "wsj_markets": "wsj,markets,financial-news",
+        "wsj_opinion": "wsj,opinion,editorial",
+        "mw_top_stories": "marketwatch,markets,financial-news",
+        "wsj_custom": "wsj,financial-news",
+    }
+    wsj_default_orgs = {
+        "wsj_us_business": "Wall Street Journal",
+        "wsj_markets": "Wall Street Journal",
+        "wsj_opinion": "Wall Street Journal",
+        "mw_top_stories": "MarketWatch",
+        "wsj_custom": "Wall Street Journal",
+    }
+    wsj_source_kinds = {
+        "wsj_us_business": "wsj_rss_article",
+        "wsj_markets": "wsj_rss_article",
+        "wsj_opinion": "wsj_rss_article",
+        "mw_top_stories": "mw_rss_article",
+        "wsj_custom": "wsj_rss_article",
+    }
+
+    wsj_feed_key = st.selectbox(
+        "Feed",
+        list(wsj_feed_options.keys()),
+        format_func=lambda k: wsj_feed_options.get(k, k),
+        key="wsj_feed_key",
+    )
+    wsj_feed_url = st.text_input(
+        "Feed URL",
+        value=wsj_default_feeds.get(wsj_feed_key, wsj_default_feeds["wsj_custom"]),
+        key=f"wsj_feed_url_{wsj_feed_key}",
+    ).strip() or wsj_default_feeds[wsj_feed_key]
+    wsj_org_label = st.text_input(
+        "Organization Label",
+        value=wsj_default_orgs.get(wsj_feed_key, "Wall Street Journal"),
+        key=f"wsj_org_{wsj_feed_key}",
+    ).strip() or wsj_default_orgs.get(wsj_feed_key, "Wall Street Journal")
+    wsj_tags_csv = st.text_input(
+        "Tags (comma-separated)",
+        value=wsj_default_tags.get(wsj_feed_key, "wsj,financial-news"),
+        key=f"wsj_tags_{wsj_feed_key}",
+    ).strip()
+    wsj_max_items = st.slider(
+        "Max Items To Discover",
+        min_value=5,
+        max_value=100,
+        value=30,
+        key="wsj_max_items",
+    )
+
+    wsj_btn_col1, wsj_btn_col2 = st.columns(2)
+    with wsj_btn_col1:
+        discover_wsj = st.button("Discover WSJ/DJ Articles", key="discover_wsj_articles")
+    with wsj_btn_col2:
+        clear_wsj = st.button("Clear WSJ Results", key="clear_wsj_articles")
+
+    wsj_state_key = "wsj_discovered"
+    wsj_debug_key = "wsj_discovery_debug"
+    if wsj_state_key not in st.session_state:
+        st.session_state[wsj_state_key] = []
+    if wsj_debug_key not in st.session_state:
+        st.session_state[wsj_debug_key] = {}
+    if clear_wsj:
+        st.session_state[wsj_state_key] = []
+        st.session_state[wsj_debug_key] = {}
+
+    if discover_wsj:
+        try:
+            from wsj_rss_scraper import WSJRssScraper
+
+            with st.spinner(f"Fetching {wsj_feed_options.get(wsj_feed_key, 'WSJ')} RSS feed..."):
+                wsj_scraper = WSJRssScraper()
+                wsj_discovered = wsj_scraper.discover_documents(
+                    feed_url=wsj_feed_url,
+                    max_items=wsj_max_items,
+                )
+                st.session_state[wsj_debug_key] = getattr(wsj_scraper, "last_discovery_debug", {})
+
+            existing_custom_urls = {
+                _url_match_key(item.get("metadata", {}).get("url", ""))
+                for item in custom_docs
+            }
+            existing_speech_urls = {
+                _url_match_key(s.get("metadata", {}).get("url", ""))
+                for s in raw_data.get("speeches", [])
+            }
+
+            for entry in wsj_discovered:
+                key = _url_match_key(entry.get("source_url", ""))
+                if key in existing_custom_urls or key in existing_speech_urls:
+                    entry["ingest_status"] = "existing"
+                else:
+                    entry["ingest_status"] = "new"
+
+            st.session_state[wsj_state_key] = wsj_discovered
+            new_count = sum(1 for d in wsj_discovered if d.get("ingest_status") == "new")
+            st.success(
+                f"Discovered {len(wsj_discovered)} articles ({new_count} new)."
+            )
+        except Exception as e:
+            st.session_state[wsj_debug_key] = {"error": str(e)}
+            st.error(f"WSJ RSS discovery failed: {e}")
+
+    wsj_discovered = st.session_state.get(wsj_state_key, [])
+    wsj_debug = st.session_state.get(wsj_debug_key, {})
+    if isinstance(wsj_debug, dict) and wsj_debug:
+        with st.expander("WSJ Discovery Debug", expanded=False):
+            if wsj_debug.get("error"):
+                st.error(str(wsj_debug.get("error", "")))
+            else:
+                st.json(wsj_debug)
+
+    if wsj_discovered:
+        wsj_df = pd.DataFrame(wsj_discovered)
+        wsj_df = _sort_table_by_date(wsj_df, date_col="date")
+        show_cols = [c for c in ["date", "title", "author", "ingest_status", "source_url"] if c in wsj_df.columns]
+        st.dataframe(wsj_df[show_cols], use_container_width=True, hide_index=True)
+
+        wsj_filter = st.selectbox(
+            "Ingest Selection",
+            ["New Only", "All Discovered"],
+            key="wsj_ingest_filter",
+        )
+        wsj_candidates = (
+            [d for d in wsj_discovered if d.get("ingest_status") == "new"]
+            if wsj_filter == "New Only"
+            else list(wsj_discovered)
+        )
+        wsj_count = len(wsj_candidates)
+        if wsj_count <= 0:
+            wsj_limit = 0
+            st.caption("No articles match the selected ingest filter.")
+        elif wsj_count == 1:
+            wsj_limit = 1
+        else:
+            wsj_limit = st.slider(
+                "Articles To Ingest",
+                min_value=1,
+                max_value=wsj_count,
+                value=min(20, wsj_count),
+                key="wsj_ingest_limit",
+            )
+
+        if st.button("Run WSJ Extraction", disabled=(wsj_limit <= 0), key="ingest_wsj_articles"):
+            try:
+                from wsj_rss_scraper import WSJRssScraper
+
+                wsj_scraper = WSJRssScraper()
+                progress = st.progress(0, text="Starting WSJ ingest...")
+                saved_new = 0
+                saved_updates = 0
+                failed = []
+                _wsj_doc_ids = []
+                wsj_source_kind = wsj_source_kinds.get(wsj_feed_key, "wsj_rss_article")
+
+                for idx, entry in enumerate(wsj_candidates[:wsj_limit], 1):
+                    progress.progress(
+                        idx / wsj_limit,
+                        text=f"Ingesting {idx}/{wsj_limit}: {entry.get('title', '')[:80]}",
+                    )
+                    try:
+                        extracted = wsj_scraper.extract_document(
+                            entry.get("source_url", ""),
+                            fallback_title=entry.get("title", ""),
+                            fallback_date=entry.get("date", ""),
+                            fallback_description=entry.get("description", ""),
+                            fallback_author=entry.get("author", ""),
+                        )
+                        if not extracted.get("success"):
+                            raise RuntimeError("Extraction returned unsuccessful result.")
+
+                        data = extracted.get("data", {})
+                        text = str(data.get("full_text", "") or "").strip()
+                        if len(text.split()) < 20:
+                            raise RuntimeError("Extracted text is too short; skipping.")
+
+                        src_url = str(data.get("url", "") or entry.get("source_url", "")).strip()
+                        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                        parsed_date = _parse_single_date(date_text)
+                        doc_date_value = parsed_date.date() if pd.notna(parsed_date) else date_text
+
+                        author_text = str(data.get("author", "") or entry.get("author", "")).strip()
+                        source_name_text = str(data.get("source_name", "") or wsj_org_label).strip()
+                        speaker_text = author_text or source_name_text or "News Desk"
+
+                        source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"wsj-article-{idx}.html"
+                        if "." not in source_name:
+                            source_name += ".html"
+
+                        record = _create_uploaded_document_record(
+                            text=text,
+                            organization=wsj_org_label,
+                            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+                            speaker=speaker_text,
+                            doc_date=doc_date_value,
+                            doc_type="News Article",
+                            source_url=src_url,
+                            source_filename=source_name,
+                            source_ext=".html",
+                            source_local_path="",
+                            source_gcs_path="",
+                            tags_csv=wsj_tags_csv,
+                            source_kind=wsj_source_kind,
+                        )
+                        rm = record.setdefault("metadata", {})
+                        rm["source_family"] = "wsj_rss"
+                        rm["feed_key"] = wsj_feed_key
+                        rm["feed_url"] = wsj_feed_url
+                        rm["author"] = author_text
+                        rm["guid"] = str(entry.get("guid", "") or "").strip()
+                        rm["published_date"] = date_text
+                        rm["description"] = str(entry.get("description", "") or "").strip()
+                        rm["wsj_extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+
+                        replaced = _upsert_custom_document_record(custom_payload, record)
+                        if replaced:
+                            saved_updates += 1
+                        else:
+                            saved_new += 1
+                        _wsj_doc_ids.append(str(record.get("metadata", {}).get("document_id", "") or ""))
+
+                    except Exception as e:
+                        failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                progress.progress(1.0, text="WSJ ingest complete.")
+                if saved_new or saved_updates:
+                    _save_custom_documents(custom_payload)
+                    _wsj_sent_suffix = ""
+                    _valid_wsj_ids = [d for d in _wsj_doc_ids if d]
+                    if _valid_wsj_ids:
+                        try:
+                            _wsj_sent_client = _get_openai_client()
+                            with st.spinner(f"Scoring tone for {len(_valid_wsj_ids)} article(s)..."):
+                                _s_llm, _s_heur = _run_auto_sentiment(_wsj_sent_client, doc_ids=_valid_wsj_ids)
+                            _s_total = _s_llm + _s_heur
+                            if _s_total:
+                                _wsj_sent_suffix = f" Tone-scored {_s_total} doc{'s' if _s_total != 1 else ''}."
+                        except Exception:
+                            pass
+                    st.success(
+                        f"Saved {saved_new} new WSJ docs and updated {saved_updates} existing.{_wsj_sent_suffix}"
+                    )
+                    custom_payload = _load_custom_documents()
+                    custom_docs = _custom_docs_as_speeches(custom_payload)
+                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
+                if failed:
+                    st.warning(f"{len(failed)} articles failed ingest.")
+                    for msg in failed[:20]:
+                        st.write(f"- {msg}")
+            except Exception as e:
+                st.error(f"WSJ ingest failed: {e}")
+
+    st.markdown("---")
     st.subheader("Congress Connector: CRS Products")
     st.caption(
         "Discover and ingest Congressional Research Service products from Congress.gov."
@@ -12764,6 +13234,7 @@ elif page == "Extraction":
                 saved_new = 0
                 saved_updates = 0
                 failed = []
+                _ingested_doc_ids = []
 
                 selected = news_candidates[:news_limit]
                 for idx, entry in enumerate(selected, 1):
@@ -12843,6 +13314,7 @@ elif page == "Extraction":
                             saved_updates += 1
                         else:
                             saved_new += 1
+                        _ingested_doc_ids.append(str(record.get("metadata", {}).get("document_id", "") or ""))
 
                     except Exception as e:
                         failed.append(f"{entry.get('title', 'Untitled')}: {e}")
@@ -12850,8 +13322,20 @@ elif page == "Extraction":
                 progress.progress(1.0, text="News ingest complete.")
                 if saved_new or saved_updates:
                     _save_custom_documents(custom_payload)
+                    _sentiment_doc_ids = [d for d in _ingested_doc_ids if d]
+                    _sent_suffix = ""
+                    if _sentiment_doc_ids:
+                        try:
+                            _sent_client = _get_openai_client()
+                            with st.spinner(f"Scoring tone for {len(_sentiment_doc_ids)} article(s)..."):
+                                _s_llm, _s_heur = _run_auto_sentiment(_sent_client, doc_ids=_sentiment_doc_ids)
+                            _s_total = _s_llm + _s_heur
+                            if _s_total:
+                                _sent_suffix = f" Tone-scored {_s_total} doc{'s' if _s_total != 1 else ''}."
+                        except Exception:
+                            pass
                     st.success(
-                        f"Saved {saved_new} new news docs and updated {saved_updates} existing news docs."
+                        f"Saved {saved_new} new news docs and updated {saved_updates} existing news docs.{_sent_suffix}"
                     )
                     custom_payload = _load_custom_documents()
                     custom_docs = _custom_docs_as_speeches(custom_payload)
@@ -13543,9 +14027,19 @@ elif page == "Enrichment Pipeline":
             _set_active_enrichment_run(run_step.get("state", {}))
         else:
             _set_active_enrichment_run({})
+            sentiment_suffix = ""
+            if run_status == "completed":
+                try:
+                    with st.spinner("Scoring tone for enriched documents..."):
+                        _s_llm, _s_heur = _run_auto_sentiment(client, limit=50)
+                    _s_total = _s_llm + _s_heur
+                    if _s_total:
+                        sentiment_suffix = f" Tone-scored {_s_total} doc{'s' if _s_total != 1 else ''}."
+                except Exception:
+                    pass
             _set_enrichment_run_notice(
                 "success" if run_status == "completed" else "error",
-                str(run_step.get("message", "") or "").strip(),
+                str(run_step.get("message", "") or "").strip() + sentiment_suffix,
             )
         st.rerun()
 
@@ -14443,6 +14937,11 @@ elif page == "Document Library":
     if not custom_docs:
         st.info("No ingested custom documents yet. Use the **Extraction** page to add documents.")
     else:
+        _lib_enrichment_state = _load_enrichment_state()
+        _lib_entries = _lib_enrichment_state.get("entries", {}) if isinstance(_lib_enrichment_state, dict) else {}
+        if not isinstance(_lib_entries, dict):
+            _lib_entries = {}
+
         rows = []
         doc_map = {}
         for item in custom_docs:
@@ -14464,6 +14963,13 @@ elif page == "Document Library":
                     str(content.get("full_text", "") or "")[:4000],
                 ]
             ).lower()
+            _lib_sent = _lib_entries.get(doc_id, {})
+            if not isinstance(_lib_sent, dict):
+                _lib_sent = {}
+            _lib_sent = _lib_sent.get("sentiment", {})
+            if not isinstance(_lib_sent, dict):
+                _lib_sent = {}
+            _lib_tone = str(_lib_sent.get("label", "") or "").strip()
             rows.append(
                 {
                     "doc_id": doc_id,
@@ -14476,6 +14982,7 @@ elif page == "Document Library":
                     "words": m.get("word_count", 0),
                     "source_file": m.get("source_filename", ""),
                     "url": m.get("url", ""),
+                    "tone": _lib_tone,
                     "search_text": search_blob,
                 }
             )
@@ -14519,7 +15026,7 @@ elif page == "Document Library":
         st.caption(f"{len(filtered)} documents match the current filters.")
 
         st.dataframe(
-            filtered[["date", "title", "organization", "speaker", "doc_type", "source_kind", "words", "source_file"]],
+            filtered[[c for c in ["date", "title", "organization", "speaker", "doc_type", "source_kind", "tone", "words", "source_file"] if c in filtered.columns]],
             use_container_width=True,
             hide_index=True,
         )
