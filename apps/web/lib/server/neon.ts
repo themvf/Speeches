@@ -15,6 +15,16 @@ export type StoredRssArticle = {
   fetched_at: string;
 };
 
+export type StoredRssTopicRule = {
+  id: number;
+  topic_key: string;
+  label: string;
+  keywords: string;
+  active: boolean;
+  sort_order: number;
+  updated_at: string;
+};
+
 export type RssFeed = {
   id: number;
   label: string;
@@ -25,6 +35,68 @@ export type RssFeed = {
 };
 
 let _sql: ReturnType<typeof neon> | null = null;
+
+const DEFAULT_TOPIC_RULES: Array<{
+  topicKey: string;
+  label: string;
+  keywords: string;
+  sortOrder: number;
+}> = [
+  {
+    topicKey: "SECURITIES_REGULATION",
+    label: "Securities Regulation",
+    keywords: "sec, securities, disclosure, investor, exchange, registration",
+    sortOrder: 10,
+  },
+  {
+    topicKey: "CAPITAL_FORMATION",
+    label: "Capital Formation",
+    keywords: "ipo, spac, capital, offering, funding, venture, startup",
+    sortOrder: 20,
+  },
+  {
+    topicKey: "AML",
+    label: "AML",
+    keywords: "aml, money laundering, sanctions, bsa, finra, anti-money",
+    sortOrder: 30,
+  },
+  {
+    topicKey: "ENFORCEMENT",
+    label: "Enforcement",
+    keywords: "enforcement, fine, penalty, fraud, charges, lawsuit, settlement, indictment",
+    sortOrder: 40,
+  },
+  {
+    topicKey: "AI_TECH",
+    label: "AI & Tech",
+    keywords: "ai, artificial intelligence, machine learning, technology, fintech, automation",
+    sortOrder: 50,
+  },
+  {
+    topicKey: "CRYPTO",
+    label: "Crypto",
+    keywords: "crypto, bitcoin, blockchain, digital asset, stablecoin, ethereum, defi, nft",
+    sortOrder: 60,
+  },
+  {
+    topicKey: "CREDIT_MARKETS",
+    label: "Credit Markets",
+    keywords: "credit, bond, debt, yield, loan, lending, mortgage, default",
+    sortOrder: 70,
+  },
+  {
+    topicKey: "FINANCIAL_MARKETS",
+    label: "Financial Markets",
+    keywords: "market, stock, equity, trading, volatility, s&p, nasdaq, dow",
+    sortOrder: 80,
+  },
+  {
+    topicKey: "ECONOMIC_GROWTH",
+    label: "Economic Growth",
+    keywords: "economy, gdp, growth, inflation, fed, federal reserve, recession, jobs",
+    sortOrder: 90,
+  },
+];
 
 function getSql() {
   if (!_sql) {
@@ -76,7 +148,19 @@ export async function ensureSchema(): Promise<void> {
       added_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS rss_topic_rules (
+      id         SERIAL PRIMARY KEY,
+      topic_key  TEXT UNIQUE NOT NULL,
+      label      TEXT NOT NULL,
+      keywords   TEXT NOT NULL DEFAULT '',
+      active     BOOLEAN NOT NULL DEFAULT true,
+      sort_order INTEGER NOT NULL DEFAULT 100,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
   await seedDefaultFeeds(sql);
+  await seedDefaultTopicRules(sql);
 }
 
 async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
@@ -87,6 +171,18 @@ async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
       INSERT INTO rss_feeds (label, feed_url, feed_key)
       VALUES (${label}, ${feedUrl}, ${key})
       ON CONFLICT (feed_url) DO NOTHING
+    `;
+  }
+}
+
+async function seedDefaultTopicRules(sql: ReturnType<typeof neon>): Promise<void> {
+  const existing = (await sql`SELECT COUNT(*) AS n FROM rss_topic_rules`) as unknown as { n: string }[];
+  if (parseInt(existing[0]?.n ?? "0", 10) > 0) return;
+  for (const rule of DEFAULT_TOPIC_RULES) {
+    await sql`
+      INSERT INTO rss_topic_rules (topic_key, label, keywords, active, sort_order)
+      VALUES (${rule.topicKey}, ${rule.label}, ${rule.keywords}, true, ${rule.sortOrder})
+      ON CONFLICT (topic_key) DO NOTHING
     `;
   }
 }
@@ -119,6 +215,22 @@ export async function toggleFeed(id: number, active: boolean): Promise<void> {
 export async function deleteFeed(id: number): Promise<void> {
   const sql = getSql();
   await sql`DELETE FROM rss_feeds WHERE id = ${id}`;
+}
+
+export async function getTopicRules(onlyActive = true): Promise<StoredRssTopicRule[]> {
+  await ensureSchema();
+  const sql = getSql();
+  const rows = onlyActive
+    ? await sql`
+        SELECT * FROM rss_topic_rules
+        WHERE active = true
+        ORDER BY sort_order ASC, label ASC
+      `
+    : await sql`
+        SELECT * FROM rss_topic_rules
+        ORDER BY sort_order ASC, label ASC
+      `;
+  return rows as unknown as StoredRssTopicRule[];
 }
 
 export async function upsertRssArticles(articles: RssArticle[], feedKey: string): Promise<number> {

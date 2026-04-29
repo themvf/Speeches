@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { IntelBetaDashboard } from "@/components/intelbeta-dashboard";
-import { getRecentArticles } from "@/lib/server/neon";
-import type { StoredRssArticle } from "@/lib/server/neon";
+import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
+import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 
 export const dynamic = "force-dynamic";
 
@@ -12,15 +12,19 @@ export const metadata: Metadata = {
 
 export default async function IntelBetaPage() {
   let initialArticles: StoredRssArticle[] = [];
+  let initialTopicRules: StoredRssTopicRule[] = [];
   try {
-    initialArticles = await getRecentArticles({ limit: 100 });
+    [initialArticles, initialTopicRules] = await Promise.all([
+      getRecentArticles({ limit: 100 }),
+      getTopicRules(true),
+    ]);
   } catch {
-    // DB not yet configured or schema not created — start with empty feed
+    // DB not yet configured or schema not created; start with empty feed.
   }
 
   return (
     <main className="mx-auto w-full max-w-[1800px] px-3 py-4 md:px-5">
-      <IntelBetaDashboard initialArticles={initialArticles} />
+      <IntelBetaDashboard initialArticles={initialArticles} initialTopicRules={initialTopicRules} />
     </main>
   );
 }

@@ -12673,7 +12673,15 @@ elif page == "Extraction":
             )
     else:
         try:
-            from neon_feeds import get_feeds, add_feed, toggle_feed, delete_feed
+            from neon_feeds import (
+                get_feeds,
+                add_feed,
+                toggle_feed,
+                delete_feed,
+                get_topic_rules,
+                upsert_topic_rule,
+                delete_topic_rule,
+            )
 
             _feeds = get_feeds()
 
@@ -12723,6 +12731,137 @@ elif page == "Extraction":
                             st.rerun()
                         except Exception as _e:
                             st.error(f"Failed to add feed: {_e}")
+
+            st.markdown("---")
+            st.markdown("**Intel Feed Topic Rules**")
+            st.caption(
+                "Edit the sidebar topics and keyword matching used by the web Intel Feed. "
+                "Keyword matching checks article title and description text."
+            )
+
+            _topic_rules = get_topic_rules()
+            if _topic_rules:
+                for _rule in _topic_rules:
+                    _rule_label = str(_rule.get("label", "") or _rule.get("topic_key", "")).strip() or "Untitled"
+                    with st.expander(f"{_rule_label} ({_rule.get('topic_key', '')})", expanded=False):
+                        _topic_key = st.text_input(
+                            "Topic Key",
+                            value=str(_rule.get("topic_key", "") or "").strip(),
+                            key=f"topic_rule_key_{_rule['id']}",
+                            help="Stable internal key, e.g. AI_TECH or PAYMENTS.",
+                        )
+                        _topic_label = st.text_input(
+                            "Label",
+                            value=str(_rule.get("label", "") or "").strip(),
+                            key=f"topic_rule_label_{_rule['id']}",
+                        )
+                        _topic_keywords = st.text_area(
+                            "Keywords",
+                            value=str(_rule.get("keywords", "") or "").strip(),
+                            key=f"topic_rule_keywords_{_rule['id']}",
+                            height=110,
+                            help="Comma or newline separated. An article matches when any keyword appears in the title or description.",
+                        )
+                        _topic_active = st.checkbox(
+                            "Active",
+                            value=bool(_rule.get("active", True)),
+                            key=f"topic_rule_active_{_rule['id']}",
+                        )
+                        _topic_sort_order = st.number_input(
+                            "Sort Order",
+                            min_value=0,
+                            max_value=10000,
+                            value=int(_rule.get("sort_order", 100) or 100),
+                            step=10,
+                            key=f"topic_rule_sort_{_rule['id']}",
+                        )
+                        _rule_col1, _rule_col2 = st.columns([0.7, 0.3])
+                        with _rule_col1:
+                            if st.button("Save Topic Rule", key=f"save_topic_rule_{_rule['id']}"):
+                                _normalized_key = re.sub(r"[^A-Z0-9]+", "_", _topic_key.strip().upper()).strip("_")
+                                if not _normalized_key or not _topic_label.strip():
+                                    st.warning("Topic key and label are required.")
+                                else:
+                                    try:
+                                        upsert_topic_rule(
+                                            _normalized_key,
+                                            _topic_label.strip(),
+                                            _topic_keywords.strip(),
+                                            _topic_active,
+                                            int(_topic_sort_order),
+                                        )
+                                        if _normalized_key != str(_rule.get("topic_key", "") or "").strip():
+                                            delete_topic_rule(int(_rule["id"]))
+                                        st.success(f"Saved topic rule: {_topic_label.strip()}")
+                                        st.rerun()
+                                    except Exception as _e:
+                                        st.error(f"Failed to save topic rule: {_e}")
+                        with _rule_col2:
+                            if st.button("Delete Topic Rule", key=f"delete_topic_rule_{_rule['id']}"):
+                                try:
+                                    delete_topic_rule(int(_rule["id"]))
+                                    st.success(f"Deleted topic rule: {_rule_label}")
+                                    st.rerun()
+                                except Exception as _e:
+                                    st.error(f"Failed to delete topic rule: {_e}")
+            else:
+                st.info("No topic rules configured yet. Add one below.")
+
+            st.markdown("**Add a Topic Rule**")
+            _new_rule_col1, _new_rule_col2 = st.columns(2)
+            with _new_rule_col1:
+                _new_topic_label = st.text_input(
+                    "New Topic Label",
+                    placeholder="e.g. Payments",
+                    key="new_topic_rule_label",
+                )
+            with _new_rule_col2:
+                _new_topic_key = st.text_input(
+                    "New Topic Key",
+                    placeholder="e.g. PAYMENTS",
+                    key="new_topic_rule_key",
+                )
+            _new_topic_keywords = st.text_area(
+                "New Topic Keywords",
+                placeholder="payments, visa, mastercard, merchant, checkout",
+                height=110,
+                key="new_topic_rule_keywords",
+            )
+            _new_rule_col3, _new_rule_col4 = st.columns([0.25, 0.25])
+            with _new_rule_col3:
+                _new_topic_active = st.checkbox("New Topic Active", value=True, key="new_topic_rule_active")
+            with _new_rule_col4:
+                _new_topic_sort = st.number_input(
+                    "New Topic Sort Order",
+                    min_value=0,
+                    max_value=10000,
+                    value=(len(_topic_rules) + 1) * 10 if isinstance(_topic_rules, list) else 100,
+                    step=10,
+                    key="new_topic_rule_sort_order",
+                )
+            if st.button("Add Topic Rule", key="add_topic_rule_btn"):
+                _new_label_clean = _new_topic_label.strip()
+                _normalized_key = re.sub(r"[^A-Z0-9]+", "_", _new_topic_key.strip().upper()).strip("_")
+                if not _new_label_clean:
+                    st.warning("Topic label is required.")
+                else:
+                    if not _normalized_key:
+                        _normalized_key = re.sub(r"[^A-Z0-9]+", "_", _new_label_clean.upper()).strip("_")
+                    if not _normalized_key:
+                        st.warning("Could not derive a valid topic key.")
+                    else:
+                        try:
+                            upsert_topic_rule(
+                                _normalized_key,
+                                _new_label_clean,
+                                _new_topic_keywords.strip(),
+                                _new_topic_active,
+                                int(_new_topic_sort),
+                            )
+                            st.success(f"Added topic rule: {_new_label_clean}")
+                            st.rerun()
+                        except Exception as _e:
+                            st.error(f"Failed to add topic rule: {_e}")
 
         except Exception as _e:
             st.error(f"Could not connect to Neon: {_e}")

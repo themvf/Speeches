@@ -1,14 +1,15 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { StoredRssArticle } from "@/lib/server/neon";
-import {
-  PRODUCT_CATEGORY_LABELS,
-  PRODUCT_CATEGORY_ORDER,
-  type ProductCategory,
-} from "@/lib/theme-intelligence";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 
-type TopicFilter = ProductCategory | "ALL";
+type TopicFilter = string | "ALL";
+
+type TopicRuleView = {
+  topic_key: string;
+  label: string;
+  keywords: string[];
+};
 
 function decodeEntities(text: string): string {
   return text
@@ -18,17 +19,23 @@ function decodeEntities(text: string): string {
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, " ");
 }
 
-const TOPIC_KEYWORDS: Record<ProductCategory, string[]> = {
-  SECURITIES_REGULATION: ["sec", "securities", "disclosure", "investor", "exchange", "registration"],
-  CAPITAL_FORMATION: ["ipo", "spac", "capital", "offering", "funding", "venture", "startup"],
-  AML: ["aml", "money laundering", "sanctions", "bsa", "finra", "anti-money"],
-  ENFORCEMENT: ["enforcement", "fine", "penalty", "fraud", "charges", "lawsuit", "settlement", "indictment"],
-  AI_TECH: ["ai", "artificial intelligence", "machine learning", "technology", "fintech", "automation"],
-  CRYPTO: ["crypto", "bitcoin", "blockchain", "digital asset", "stablecoin", "ethereum", "defi", "nft"],
-  CREDIT_MARKETS: ["credit", "bond", "debt", "yield", "loan", "lending", "mortgage", "default"],
-  FINANCIAL_MARKETS: ["market", "stock", "equity", "trading", "volatility", "s&p", "nasdaq", "dow"],
-  ECONOMIC_GROWTH: ["economy", "gdp", "growth", "inflation", "fed", "federal reserve", "recession", "jobs"],
-};
+function parseKeywords(value: string): string[] {
+  return value
+    .split(/[\n,]+/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function normalizeTopicRules(rules: StoredRssTopicRule[]): TopicRuleView[] {
+  return rules
+    .filter((rule) => rule && rule.active)
+    .map((rule) => ({
+      topic_key: String(rule.topic_key || "").trim(),
+      label: String(rule.label || "").trim() || String(rule.topic_key || "").trim(),
+      keywords: parseKeywords(String(rule.keywords || "")),
+    }))
+    .filter((rule) => rule.topic_key && rule.label);
+}
 
 const FEED_LABELS: Record<string, string> = {
   wsj_us_business: "WSJ Business",
@@ -43,10 +50,11 @@ const TONE_STYLE: Record<string, { color: string; bg: string; label: string }> =
   neutral: { color: "#8b95a1", bg: "rgba(139,149,161,0.1)", label: "Neutral" },
 };
 
-function matchesTopic(article: StoredRssArticle, topic: TopicFilter): boolean {
-  if (topic === "ALL") return true;
+function matchesTopic(article: StoredRssArticle, rule: TopicRuleView | null): boolean {
+  if (!rule) return true;
+  if (rule.keywords.length === 0) return false;
   const haystack = `${article.title} ${article.description ?? ""}`.toLowerCase();
-  return TOPIC_KEYWORDS[topic].some((kw) => haystack.includes(kw));
+  return rule.keywords.some((kw) => haystack.includes(kw));
 }
 
 function formatRelativeTime(dateStr: string | null): string {
@@ -147,12 +155,30 @@ function ArticleCard({ article }: { article: StoredRssArticle }) {
   );
 }
 
-export function IntelBetaDashboard({ initialArticles }: { initialArticles: StoredRssArticle[] }) {
+export function IntelBetaDashboard({
+  initialArticles,
+  initialTopicRules,
+}: {
+  initialArticles: StoredRssArticle[];
+  initialTopicRules: StoredRssTopicRule[];
+}) {
   const [articles, setArticles] = useState<StoredRssArticle[]>(initialArticles);
+  const [topicRules, setTopicRules] = useState<StoredRssTopicRule[]>(initialTopicRules);
   const [selectedTopic, setSelectedTopic] = useState<TopicFilter>("ALL");
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newCount, setNewCount] = useState(0);
   const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
+
+  const visibleTopicRules = useMemo(() => normalizeTopicRules(topicRules), [topicRules]);
+  const selectedRule = selectedTopic === "ALL"
+    ? null
+    : visibleTopicRules.find((rule) => rule.topic_key === selectedTopic) ?? null;
+
+  useEffect(() => {
+    if (selectedTopic !== "ALL" && !visibleTopicRules.some((rule) => rule.topic_key === selectedTopic)) {
+      setSelectedTopic("ALL");
+    }
+  }, [selectedTopic, visibleTopicRules]);
 
   useEffect(() => {
     const poll = async () => {
@@ -161,20 +187,24 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
         if (!res.ok) return;
         const json = (await res.json()) as {
           ok: boolean;
-          data: { articles: StoredRssArticle[]; generatedAt: string };
+          data: { articles: StoredRssArticle[]; topicRules: StoredRssTopicRule[]; generatedAt: string };
         };
         if (!json.ok) return;
         const fresh = json.data.articles;
+        const freshRules = json.data.topicRules;
         const newest = fresh[0]?.fetched_at ?? "";
         if (newest && newest > newestFetchedAtRef.current) {
           const added = fresh.filter((a) => a.fetched_at > newestFetchedAtRef.current).length;
           newestFetchedAtRef.current = newest;
           setArticles(fresh);
           setNewCount((c) => c + added);
+        } else {
+          setArticles(fresh);
         }
+        setTopicRules(freshRules);
         setLastUpdated(new Date());
       } catch {
-        // silent — will retry next interval
+        // silent; will retry next interval
       }
     };
 
@@ -182,11 +212,10 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
     return () => clearInterval(id);
   }, []);
 
-  const filtered = articles.filter((a) => matchesTopic(a, selectedTopic));
+  const filtered = articles.filter((article) => matchesTopic(article, selectedRule));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, minHeight: "80vh" }}>
-      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -211,7 +240,6 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
         </div>
       </div>
 
-      {/* New articles banner */}
       {newCount > 0 && (
         <button
           onClick={() => setNewCount(0)}
@@ -233,9 +261,7 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
         </button>
       )}
 
-      {/* Body */}
       <div style={{ display: "flex", gap: 0, marginTop: 16, alignItems: "flex-start" }}>
-        {/* Sidebar */}
         <aside
           style={{
             width: 180,
@@ -256,26 +282,25 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
             onClick={() => setSelectedTopic("ALL")}
             count={articles.length}
           />
-          {PRODUCT_CATEGORY_ORDER.map((cat) => {
-            const count = articles.filter((a) => matchesTopic(a, cat)).length;
+          {visibleTopicRules.map((rule) => {
+            const count = articles.filter((article) => matchesTopic(article, rule)).length;
             return (
               <TopicButton
-                key={cat}
-                label={PRODUCT_CATEGORY_LABELS[cat]}
-                active={selectedTopic === cat}
-                onClick={() => setSelectedTopic(cat)}
+                key={rule.topic_key}
+                label={rule.label}
+                active={selectedTopic === rule.topic_key}
+                onClick={() => setSelectedTopic(rule.topic_key)}
                 count={count}
               />
             );
           })}
         </aside>
 
-        {/* Feed */}
         <main style={{ flex: 1, minWidth: 0 }}>
           {filtered.length === 0 ? (
             <div style={{ color: "#5f6978", fontSize: 14, padding: "40px 0", textAlign: "center" }}>
               {articles.length === 0
-                ? "No articles yet — the feed refreshes every 10 minutes."
+                ? "No articles yet - the feed refreshes every 10 minutes."
                 : "No articles match this topic filter."}
             </div>
           ) : (

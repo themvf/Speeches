@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRecentArticles } from "@/lib/server/neon";
+import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +11,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const since = sinceParam ? new Date(sinceParam) : undefined;
 
   try {
-    const articles = await getRecentArticles({ limit, feedKey, since });
+    const [articles, topicRules] = await Promise.all([
+      getRecentArticles({ limit, feedKey, since }),
+      getTopicRules(true),
+    ]);
     return NextResponse.json({
       ok: true,
-      data: { articles, generatedAt: new Date().toISOString() },
+      data: { articles, topicRules, generatedAt: new Date().toISOString() },
     });
   } catch (err) {
     return NextResponse.json(
