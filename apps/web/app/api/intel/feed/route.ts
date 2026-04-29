@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
+import { fetchRssFeed } from "@/lib/server/rss-fetcher";
+import {
+  ensureSchema,
+  getFeeds,
+  getRecentArticles,
+  getTopicRules,
+  upsertRssArticles,
+} from "@/lib/server/neon";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +18,28 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const since = sinceParam ? new Date(sinceParam) : undefined;
 
   try {
-    const [articles, topicRules] = await Promise.all([
+    await ensureSchema();
+
+    let [articles, topicRules] = await Promise.all([
       getRecentArticles({ limit, feedKey, since }),
       getTopicRules(true),
     ]);
+
+    const latestFetchedAt = articles[0]?.fetched_at ? new Date(articles[0].fetched_at).getTime() : 0;
+    const ageMs = latestFetchedAt > 0 ? Date.now() - latestFetchedAt : Number.POSITIVE_INFINITY;
+    const needsRefresh = !feedKey && !since && ageMs > 8 * 60_000;
+
+    if (needsRefresh) {
+      const activeFeeds = await getFeeds(true);
+      await Promise.allSettled(
+        activeFeeds.map(async (feed) => {
+          const feedArticles = await fetchRssFeed(feed.feed_url, 50);
+          await upsertRssArticles(feedArticles, feed.feed_key);
+        })
+      );
+      articles = await getRecentArticles({ limit, feedKey, since });
+    }
+
     return NextResponse.json(
       {
         ok: true,
