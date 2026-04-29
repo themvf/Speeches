@@ -14,10 +14,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 async function handleRefresh(req: NextRequest): Promise<NextResponse> {
-  if (process.env.NODE_ENV === "production") {
+  const secret = process.env.CRON_SECRET ?? "";
+  if (secret) {
     const authHeader = req.headers.get("authorization") ?? "";
-    const secret = process.env.CRON_SECRET ?? "";
-    if (!secret || authHeader !== `Bearer ${secret}`) {
+    if (authHeader !== `Bearer ${secret}`) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
   }
