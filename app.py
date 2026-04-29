@@ -12643,16 +12643,28 @@ elif page == "Extraction":
     )
 
     try:
-        from neon_feeds import get_database_url
+        from neon_feeds import get_database_url, get_database_url_debug_info
 
         _db_url_set = bool(get_database_url())
+        _db_url_debug = get_database_url_debug_info()
     except Exception:
         _db_url_set = False
+        _db_url_debug = None
     if not _db_url_set:
         st.warning(
             "DATABASE_URL is not configured. Set it as an environment variable, "
             "a top-level Streamlit secret, or `neon.DATABASE_URL`."
         )
+        if _db_url_debug:
+            st.caption(
+                "Debug: "
+                f"env={_db_url_debug.get('env_has_DATABASE_URL', False)}, "
+                f"top.DATABASE_URL={_db_url_debug.get('top_level_has_DATABASE_URL', False)}, "
+                f"top.database_url={_db_url_debug.get('top_level_has_database_url', False)}, "
+                f"neon.DATABASE_URL={_db_url_debug.get('neon_has_DATABASE_URL', False)}, "
+                f"neon.database_url={_db_url_debug.get('neon_has_database_url', False)}, "
+                f"keys={_db_url_debug.get('secret_keys', [])}"
+            )
     else:
         try:
             from neon_feeds import get_feeds, add_feed, toggle_feed, delete_feed

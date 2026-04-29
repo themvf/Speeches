@@ -41,6 +41,30 @@ def get_database_url() -> str:
     )
 
 
+def get_database_url_debug_info() -> Dict[str, Any]:
+    info: Dict[str, Any] = {
+        "env_has_DATABASE_URL": bool(os.environ.get("DATABASE_URL", "")),
+        "top_level_has_DATABASE_URL": False,
+        "top_level_has_database_url": False,
+        "neon_has_DATABASE_URL": False,
+        "neon_has_database_url": False,
+        "secret_keys": [],
+    }
+
+    try:
+        info["secret_keys"] = list(st.secrets.keys())
+        info["top_level_has_DATABASE_URL"] = bool(st.secrets.get("DATABASE_URL", ""))
+        info["top_level_has_database_url"] = bool(st.secrets.get("database_url", ""))
+        neon_section = st.secrets.get("neon", None)
+        if neon_section:
+            info["neon_has_DATABASE_URL"] = bool(neon_section.get("DATABASE_URL", ""))
+            info["neon_has_database_url"] = bool(neon_section.get("database_url", ""))
+    except Exception as exc:
+        info["secrets_error"] = str(exc)
+
+    return info
+
+
 def _get_conn():
     url = get_database_url()
     return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
