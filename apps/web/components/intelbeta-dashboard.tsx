@@ -221,9 +221,13 @@ function TopicButton({
 function FeedRow({
   article,
   rules,
+  active,
+  onSelect,
 }: {
   article: StoredRssArticle;
   rules: TopicRuleView[];
+  active: boolean;
+  onSelect: () => void;
 }) {
   const source = FEED_META[article.feed_key] ?? {
     label: article.feed_key,
@@ -242,7 +246,10 @@ function FeedRow({
         alignItems: "start",
         padding: "10px 0",
         borderTop: "1px solid rgba(112, 142, 187, 0.12)",
+        background: active ? "rgba(67, 112, 186, 0.08)" : "transparent",
+        cursor: "pointer",
       }}
+      onClick={onSelect}
     >
       <div style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(article.fetched_at)}</div>
       <div style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</div>
@@ -389,6 +396,7 @@ export function IntelBetaDashboard({
   const [topicRules, setTopicRules] = useState<StoredRssTopicRule[]>(initialTopicRules);
   const [selectedTopic, setSelectedTopic] = useState<TopicFilter>("ALL");
   const [search, setSearch] = useState("");
+  const [selectedArticleId, setSelectedArticleId] = useState<number | null>(initialArticles[0]?.id ?? null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newCount, setNewCount] = useState(0);
   const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
@@ -423,6 +431,9 @@ export function IntelBetaDashboard({
           newestFetchedAtRef.current = newest;
           setArticles(fresh);
           setNewCount((count) => count + added);
+          if (!selectedArticleId && fresh[0]?.id) {
+            setSelectedArticleId(fresh[0].id);
+          }
         } else {
           setArticles(fresh);
         }
@@ -441,8 +452,18 @@ export function IntelBetaDashboard({
   const filtered = articles.filter(
     (article) => matchesTopic(article, selectedRule, visibleTopicRules) && matchesSearch(article, searchTerm)
   );
-  const featured = filtered[0] ?? null;
-  const rest = featured ? filtered.slice(1) : filtered;
+  useEffect(() => {
+    if (filtered.length === 0) {
+      setSelectedArticleId(null);
+      return;
+    }
+    if (!filtered.some((article) => article.id === selectedArticleId)) {
+      setSelectedArticleId(filtered[0].id);
+    }
+  }, [filtered, selectedArticleId]);
+
+  const featured = filtered.find((article) => article.id === selectedArticleId) ?? filtered[0] ?? null;
+  const rest = featured ? filtered.filter((article) => article.id !== featured.id) : filtered;
 
   return (
     <div
@@ -609,7 +630,15 @@ export function IntelBetaDashboard({
                 {articles.length === 0 ? "No articles yet." : "No articles match the current filters."}
               </div>
             ) : (
-              rest.map((article) => <FeedRow key={article.id} article={article} rules={visibleTopicRules} />)
+              rest.map((article) => (
+                <FeedRow
+                  key={article.id}
+                  article={article}
+                  rules={visibleTopicRules}
+                  active={article.id === selectedArticleId}
+                  onSelect={() => setSelectedArticleId(article.id)}
+                />
+              ))
             )}
           </div>
         </main>
