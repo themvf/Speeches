@@ -12642,14 +12642,20 @@ elif page == "Extraction":
         "Requires DATABASE_URL to be set."
     )
 
+    _db_url_debug = None
     try:
         from neon_feeds import get_database_url, get_database_url_debug_info
-
-        _db_url_set = bool(get_database_url())
-        _db_url_debug = get_database_url_debug_info()
     except Exception:
         _db_url_set = False
-        _db_url_debug = None
+    else:
+        try:
+            _db_url_debug = get_database_url_debug_info()
+        except Exception:
+            _db_url_debug = None
+        try:
+            _db_url_set = bool(get_database_url())
+        except Exception:
+            _db_url_set = False
     if not _db_url_set:
         st.warning(
             "DATABASE_URL is not configured. Set it as an environment variable, "
