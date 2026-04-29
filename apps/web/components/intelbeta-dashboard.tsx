@@ -463,7 +463,6 @@ export function IntelBetaDashboard({
   }, [filtered, selectedArticleId]);
 
   const featured = filtered.find((article) => article.id === selectedArticleId) ?? filtered[0] ?? null;
-  const rest = featured ? filtered.filter((article) => article.id !== featured.id) : filtered;
 
   return (
     <div
@@ -623,22 +622,24 @@ export function IntelBetaDashboard({
               <div style={{ textAlign: "right" }}>Tags</div>
             </div>
 
-            {featured ? <FeaturedCard article={featured} rules={visibleTopicRules} /> : null}
-
-            {rest.length === 0 ? (
+            {filtered.length === 0 ? (
               <div style={{ color: "#72839d", fontSize: 13, padding: "28px 0" }}>
                 {articles.length === 0 ? "No articles yet." : "No articles match the current filters."}
               </div>
             ) : (
-              rest.map((article) => (
-                <FeedRow
-                  key={article.id}
-                  article={article}
-                  rules={visibleTopicRules}
-                  active={article.id === selectedArticleId}
-                  onSelect={() => setSelectedArticleId(article.id)}
-                />
-              ))
+              filtered.map((article) =>
+                article.id === featured?.id ? (
+                  <FeaturedCard key={article.id} article={article} rules={visibleTopicRules} />
+                ) : (
+                  <FeedRow
+                    key={article.id}
+                    article={article}
+                    rules={visibleTopicRules}
+                    active={article.id === selectedArticleId}
+                    onSelect={() => setSelectedArticleId(article.id)}
+                  />
+                )
+              )
             )}
           </div>
         </main>
