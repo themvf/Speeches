@@ -2,6 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "crons": [
-    { "path": "/api/intel/rss-refresh", "schedule": "* * * * *" }
+    { "path": "/api/intel/rss-refresh", "schedule": "*/10 * * * *" }
   ]
 }
