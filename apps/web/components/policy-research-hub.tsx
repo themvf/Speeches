@@ -42,6 +42,8 @@ interface DocumentItem {
   topics: string[];
   enrichment_status: string;
   review_decision: string;
+  sentiment_label: "positive" | "negative" | "neutral" | "";
+  sentiment_score: number;
 }
 
 interface DocumentsFacets {

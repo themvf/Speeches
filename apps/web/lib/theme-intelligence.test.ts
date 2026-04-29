@@ -487,8 +487,8 @@ test("maps AML category evidence only from source-side strict AML terms", () => 
 
   assert.equal(evidence.length, 2);
   assert.deepEqual(evidence.map((article) => article.focusAreaLabel).sort(), ["KYC / Ownership", "Sanctions"]);
-  assert.ok(evidence.some((article) => article.matchedTerms?.includes("SANCTIONS")));
-  assert.ok(evidence.some((article) => article.matchedTerms?.includes("KYC") && article.matchedTerms.includes("BENEFICIAL_OWNERSHIP")));
+  assert.ok(evidence.some((article) => article.matchedTerms?.includes("sanctions")));
+  assert.ok(evidence.some((article) => article.matchedTerms?.includes("KYC") && article.matchedTerms.includes("beneficial ownership")));
   assert.equal(evidence.some((article) => article.url?.includes("embargo")), false);
   assert.equal(evidence.some((article) => article.url?.includes("crypto-regulation")), false);
   assert.equal(evidence.some((article) => article.url?.includes("pictofact")), false);
@@ -584,7 +584,9 @@ test("maps stored NewsAPI articles to AML evidence without broad substring match
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     },
     {
       document_id: "news-2",
@@ -603,7 +605,9 @@ test("maps stored NewsAPI articles to AML evidence without broad substring match
       ingest_status: "existing",
       enrichment_status: "not_enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     },
     {
       document_id: "sec-1",
@@ -622,7 +626,9 @@ test("maps stored NewsAPI articles to AML evidence without broad substring match
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     }
   ];
 
@@ -658,7 +664,9 @@ test("maps FinCEN-only stored news to AML BSA evidence", () => {
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     }
   ];
 
@@ -688,7 +696,9 @@ test("does not map stored news to AML from ingestion tags alone", () => {
       ingest_status: "existing",
       enrichment_status: "not_enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     }
   ];
 
@@ -718,7 +728,9 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     },
     {
       document_id: "capital-tag-only",
@@ -737,7 +749,9 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
       ingest_status: "existing",
       enrichment_status: "not_enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     },
     {
       document_id: "capital-nav-only",
@@ -756,7 +770,9 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     },
     {
       document_id: "capital-summary-only",
@@ -775,7 +791,9 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     },
     {
       document_id: "capital-regulation-a-false-positive",
@@ -794,7 +812,9 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     },
     {
       document_id: "capital-mna-false-positive",
@@ -813,7 +833,9 @@ test("maps stored NewsAPI articles to capital formation evidence from explicit t
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     }
   ];
 
@@ -853,7 +875,9 @@ test("orders stored AML evidence by recency before match strength", () => {
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     },
     {
       document_id: "newer-weaker",
@@ -872,7 +896,9 @@ test("orders stored AML evidence by recency before match strength", () => {
       ingest_status: "existing",
       enrichment_status: "enriched",
       review_decision: "pending",
-      updated_at: ""
+      updated_at: "",
+      sentiment_label: "" as const,
+      sentiment_score: 0
     }
   ];
 

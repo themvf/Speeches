@@ -140,7 +140,7 @@ def _best_article_text(soup: BeautifulSoup) -> str:
             if words > best_words:
                 best_text = candidate
                 best_words = words
-    if best_words >= 80:
+    if best_words >= 30:
         return best_text
     body = soup.body or soup
     lines = [
@@ -287,7 +287,7 @@ class WSJRssScraper:
             else:
                 soup = BeautifulSoup(html_text, "html.parser")
                 candidate = _best_article_text(soup)
-                if len(candidate.split()) >= 50:
+                if len(candidate.split()) >= 20:
                     full_text = candidate
                     extraction_mode = "html_body"
 
