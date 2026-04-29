@@ -10,6 +10,14 @@ import {
 
 type TopicFilter = ProductCategory | "ALL";
 
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, " ");
+}
+
 const TOPIC_KEYWORDS: Record<ProductCategory, string[]> = {
   SECURITIES_REGULATION: ["sec", "securities", "disclosure", "investor", "exchange", "registration"],
   CAPITAL_FORMATION: ["ipo", "spac", "capital", "offering", "funding", "venture", "startup"],
@@ -106,7 +114,7 @@ function ArticleCard({ article }: { article: StoredRssArticle }) {
           onMouseEnter={(e) => ((e.target as HTMLElement).style.color = "#ffffff")}
           onMouseLeave={(e) => ((e.target as HTMLElement).style.color = "#e8eaed")}
         >
-          {article.title}
+          {decodeEntities(article.title)}
         </a>
         <ToneBadge label={article.tone_label} />
       </div>
@@ -124,7 +132,7 @@ function ArticleCard({ article }: { article: StoredRssArticle }) {
             overflow: "hidden",
           }}
         >
-          {article.description}
+          {decodeEntities(article.description ?? "")}
         </p>
       )}
 
@@ -132,7 +140,7 @@ function ArticleCard({ article }: { article: StoredRssArticle }) {
         <span style={{ color: "#6b7a8d", fontWeight: 500 }}>
           {FEED_LABELS[article.feed_key] ?? article.feed_key}
         </span>
-        {article.author && <span>· {article.author}</span>}
+        {article.author && <span>· {decodeEntities(article.author)}</span>}
         <span>· {formatRelativeTime(article.fetched_at)}</span>
       </div>
     </article>

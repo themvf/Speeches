@@ -26,6 +26,18 @@ export const WSJ_FEEDS: Record<string, { label: string; feedUrl: string }> = {
   },
 };
 
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
 function extractTag(xml: string, tag: string): string {
   const cdataRe = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, "i");
   const plainRe = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
@@ -68,10 +80,10 @@ export async function fetchRssFeed(feedUrl: string, maxItems = 50): Promise<RssA
 
   while ((match = itemRe.exec(xml)) !== null && results.length < maxItems) {
     const block = match[1];
-    const title = stripHtml(extractTag(block, "title"));
+    const title = decodeEntities(stripHtml(extractTag(block, "title")));
     const url = extractTag(block, "link") || extractAttr(block, "link", "href");
-    const description = stripHtml(extractTag(block, "description") || extractTag(block, "summary"));
-    const author = extractTag(block, "dc:creator") || extractTag(block, "author");
+    const description = decodeEntities(stripHtml(extractTag(block, "description") || extractTag(block, "summary")));
+    const author = decodeEntities(extractTag(block, "dc:creator") || extractTag(block, "author"));
     const pubDate = extractTag(block, "pubDate") || extractTag(block, "published") || extractTag(block, "updated");
     const guid = normalizeGuid(extractTag(block, "guid"), url);
 
