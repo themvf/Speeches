@@ -5,7 +5,15 @@ import { upsertRssArticles, ensureSchema } from "@/lib/server/neon";
 export const dynamic = "force-dynamic";
 export const maxDuration = 55;
 
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  return handleRefresh(req);
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  return handleRefresh(req);
+}
+
+async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   if (process.env.NODE_ENV === "production") {
     const authHeader = req.headers.get("authorization") ?? "";
     const secret = process.env.CRON_SECRET ?? "";
