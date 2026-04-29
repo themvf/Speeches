@@ -120,6 +120,18 @@ function deriveFeedKey(feedUrl: string): string {
   }
 }
 
+function inferToneLabel(title: string, description: string): "positive" | "neutral" | "negative" {
+  const lower = `${title} ${description}`.toLowerCase();
+  const positivePhrases = ["landmark victory", "breakthrough", "celebrated", "praised", "applauded", "hailed"];
+  const negativePhrases = ["reckless", "dangerously", "alarming", "overreaching", "disastrous", "slammed", "blasted"];
+  const positive = positivePhrases.filter((phrase) => lower.includes(phrase)).length;
+  const negative = negativePhrases.filter((phrase) => lower.includes(phrase)).length;
+  if (positive === 0 && negative === 0) {
+    return "neutral";
+  }
+  return positive > negative ? "positive" : negative > positive ? "negative" : "neutral";
+}
+
 export async function ensureSchema(): Promise<void> {
   const sql = getSql();
   await sql`
@@ -238,8 +250,9 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
   const sql = getSql();
   let inserted = 0;
   for (const a of articles) {
+    const toneLabel = inferToneLabel(a.title, a.description ?? "");
     const result = (await sql`
-      INSERT INTO rss_articles (guid, feed_key, title, url, description, author, published_at)
+      INSERT INTO rss_articles (guid, feed_key, title, url, description, author, published_at, tone_label)
       VALUES (
         ${a.guid},
         ${feedKey},
@@ -247,12 +260,20 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
         ${a.url},
         ${a.description ?? ""},
         ${a.author ?? ""},
-        ${a.publishedAt ? a.publishedAt.toISOString() : null}
+        ${a.publishedAt ? a.publishedAt.toISOString() : null},
+        ${toneLabel}
       )
-      ON CONFLICT (guid) DO NOTHING
-      RETURNING id
-    `) as unknown as { id: number }[];
-    if (result.length > 0) inserted++;
+      ON CONFLICT (guid) DO UPDATE
+      SET title = EXCLUDED.title,
+          url = EXCLUDED.url,
+          description = EXCLUDED.description,
+          author = EXCLUDED.author,
+          published_at = EXCLUDED.published_at,
+          feed_key = EXCLUDED.feed_key,
+          tone_label = COALESCE(rss_articles.tone_label, EXCLUDED.tone_label)
+      RETURNING id, (xmax = 0) AS inserted
+    `) as unknown as { id: number; inserted: boolean }[];
+    if (result[0]?.inserted) inserted++;
   }
   return inserted;
 }

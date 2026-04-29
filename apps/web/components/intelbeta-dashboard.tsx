@@ -183,7 +183,7 @@ export function IntelBetaDashboard({
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch("/api/intel/feed?limit=100");
+        const res = await fetch("/api/intel/feed?limit=100", { cache: "no-store" });
         if (!res.ok) return;
         const json = (await res.json()) as {
           ok: boolean;
@@ -208,7 +208,8 @@ export function IntelBetaDashboard({
       }
     };
 
-    const id = setInterval(poll, 60_000);
+    void poll();
+    const id = setInterval(poll, 15_000);
     return () => clearInterval(id);
   }, []);
 

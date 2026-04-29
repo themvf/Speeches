@@ -15,10 +15,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       getRecentArticles({ limit, feedKey, since }),
       getTopicRules(true),
     ]);
-    return NextResponse.json({
-      ok: true,
-      data: { articles, topicRules, generatedAt: new Date().toISOString() },
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        data: { articles, topicRules, generatedAt: new Date().toISOString() },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      }
+    );
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: String(err) },
