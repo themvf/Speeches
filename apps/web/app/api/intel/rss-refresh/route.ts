@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchRssFeed, WSJ_FEEDS } from "@/lib/server/rss-fetcher";
-import { upsertRssArticles, ensureSchema } from "@/lib/server/neon";
+import { fetchRssFeed } from "@/lib/server/rss-fetcher";
+import { upsertRssArticles, ensureSchema, getFeeds } from "@/lib/server/neon";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 55;
@@ -31,15 +31,17 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  const activeFeeds = await getFeeds(true);
+
   const feedResults = await Promise.allSettled(
-    Object.entries(WSJ_FEEDS).map(async ([feedKey, { feedUrl }]) => {
-      const articles = await fetchRssFeed(feedUrl, 50);
-      const inserted = await upsertRssArticles(articles, feedKey);
-      return { feedKey, fetched: articles.length, inserted };
+    activeFeeds.map(async (feed) => {
+      const articles = await fetchRssFeed(feed.feed_url, 50);
+      const inserted = await upsertRssArticles(articles, feed.feed_key);
+      return { feedKey: feed.feed_key, label: feed.label, fetched: articles.length, inserted };
     })
   );
 
-  const feeds: Array<{ feedKey: string; fetched: number; inserted: number; error?: string }> = [];
+  const feeds: Array<{ feedKey: string; label: string; fetched: number; inserted: number; error?: string }> = [];
   let totalInserted = 0;
 
   for (const result of feedResults) {
@@ -47,7 +49,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
       feeds.push(result.value);
       totalInserted += result.value.inserted;
     } else {
-      feeds.push({ feedKey: "unknown", fetched: 0, inserted: 0, error: String(result.reason) });
+      feeds.push({ feedKey: "unknown", label: "unknown", fetched: 0, inserted: 0, error: String(result.reason) });
     }
   }
 

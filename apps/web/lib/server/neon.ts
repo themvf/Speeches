@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
+import { WSJ_FEEDS } from "@/lib/server/rss-fetcher";
 
 export type StoredRssArticle = {
   id: number;
@@ -14,6 +15,15 @@ export type StoredRssArticle = {
   fetched_at: string;
 };
 
+export type RssFeed = {
+  id: number;
+  label: string;
+  feed_url: string;
+  feed_key: string;
+  active: boolean;
+  added_at: string;
+};
+
 let _sql: ReturnType<typeof neon> | null = null;
 
 function getSql() {
@@ -23,6 +33,19 @@ function getSql() {
     _sql = neon(url);
   }
   return _sql;
+}
+
+function deriveFeedKey(feedUrl: string): string {
+  try {
+    const u = new URL(feedUrl);
+    return (u.hostname + u.pathname)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "")
+      .slice(0, 60);
+  } catch {
+    return feedUrl.replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
+  }
 }
 
 export async function ensureSchema(): Promise<void> {
@@ -43,6 +66,59 @@ export async function ensureSchema(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS rss_articles_fetched_at ON rss_articles (fetched_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS rss_articles_feed_key ON rss_articles (feed_key)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS rss_feeds (
+      id       SERIAL PRIMARY KEY,
+      label    TEXT NOT NULL,
+      feed_url TEXT UNIQUE NOT NULL,
+      feed_key TEXT UNIQUE NOT NULL,
+      active   BOOLEAN NOT NULL DEFAULT true,
+      added_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await seedDefaultFeeds(sql);
+}
+
+async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
+  const existing = (await sql`SELECT COUNT(*) AS n FROM rss_feeds`) as unknown as { n: string }[];
+  if (parseInt(existing[0]?.n ?? "0", 10) > 0) return;
+  for (const [key, { label, feedUrl }] of Object.entries(WSJ_FEEDS)) {
+    await sql`
+      INSERT INTO rss_feeds (label, feed_url, feed_key)
+      VALUES (${label}, ${feedUrl}, ${key})
+      ON CONFLICT (feed_url) DO NOTHING
+    `;
+  }
+}
+
+export async function getFeeds(onlyActive = false): Promise<RssFeed[]> {
+  const sql = getSql();
+  const rows = onlyActive
+    ? await sql`SELECT * FROM rss_feeds WHERE active = true ORDER BY added_at ASC`
+    : await sql`SELECT * FROM rss_feeds ORDER BY added_at ASC`;
+  return rows as unknown as RssFeed[];
+}
+
+export async function addFeed(label: string, feedUrl: string): Promise<RssFeed> {
+  const sql = getSql();
+  const feedKey = deriveFeedKey(feedUrl);
+  const rows = (await sql`
+    INSERT INTO rss_feeds (label, feed_url, feed_key)
+    VALUES (${label.trim()}, ${feedUrl.trim()}, ${feedKey})
+    ON CONFLICT (feed_url) DO UPDATE SET label = EXCLUDED.label, active = true
+    RETURNING *
+  `) as unknown as RssFeed[];
+  return rows[0];
+}
+
+export async function toggleFeed(id: number, active: boolean): Promise<void> {
+  const sql = getSql();
+  await sql`UPDATE rss_feeds SET active = ${active} WHERE id = ${id}`;
+}
+
+export async function deleteFeed(id: number): Promise<void> {
+  const sql = getSql();
+  await sql`DELETE FROM rss_feeds WHERE id = ${id}`;
 }
 
 export async function upsertRssArticles(articles: RssArticle[], feedKey: string): Promise<number> {
