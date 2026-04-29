@@ -120,16 +120,93 @@ function deriveFeedKey(feedUrl: string): string {
   }
 }
 
-function inferToneLabel(title: string, description: string): "positive" | "neutral" | "negative" {
-  const lower = `${title} ${description}`.toLowerCase();
-  const positivePhrases = ["landmark victory", "breakthrough", "celebrated", "praised", "applauded", "hailed"];
-  const negativePhrases = ["reckless", "dangerously", "alarming", "overreaching", "disastrous", "slammed", "blasted"];
-  const positive = positivePhrases.filter((phrase) => lower.includes(phrase)).length;
-  const negative = negativePhrases.filter((phrase) => lower.includes(phrase)).length;
-  if (positive === 0 && negative === 0) {
-    return "neutral";
+function inferToneLabel(
+  title: string,
+  description: string,
+  feedKey: string
+): "positive" | "neutral" | "negative" {
+  const titleLower = title.toLowerCase();
+  const descLower = description.toLowerCase();
+  const fullLower = `${titleLower} ${descLower}`;
+
+  const weightedSignals: Array<{ label: "positive" | "negative"; weight: number; patterns: string[] }> = [
+    {
+      label: "positive",
+      weight: 3,
+      patterns: [
+        "landmark victory",
+        "major victory",
+        "strikes a blow against",
+        "hailed",
+        "praised",
+        "applauded",
+        "breakthrough",
+        "surges",
+        "boosts",
+        "eases fears",
+        "beats expectations",
+        "on track",
+        "to reach ballot",
+      ],
+    },
+    {
+      label: "negative",
+      weight: 3,
+      patterns: [
+        "beware",
+        "murderous",
+        "evil",
+        "rackets",
+        "frustrated",
+        "legal threats",
+        "less leverage than expected",
+        "reckless",
+        "dangerously",
+        "alarming",
+        "overreaching",
+        "disastrous",
+        "slammed",
+        "blasted",
+        "crisis",
+        "collapse",
+      ],
+    },
+  ];
+
+  let score = 0;
+  for (const signal of weightedSignals) {
+    for (const pattern of signal.patterns) {
+      const inTitle = titleLower.includes(pattern);
+      const inDesc = descLower.includes(pattern);
+      if (!inTitle && !inDesc) continue;
+      const delta = signal.weight * (inTitle ? 2 : 1);
+      score += signal.label === "positive" ? delta : -delta;
+    }
   }
-  return positive > negative ? "positive" : negative > positive ? "negative" : "neutral";
+
+  const opinionBoostNegative = [
+    "the left",
+    "the right",
+    "shouldn't",
+    "no evil",
+    "casualty",
+    "threat",
+    "war",
+    "fight",
+  ];
+  const opinionBoostPositive = ["win", "victory", "success", "benefit", "improves"];
+
+  if (feedKey === "wsj_opinion") {
+    score += opinionBoostPositive.filter((pattern) => fullLower.includes(pattern)).length;
+    score -= opinionBoostNegative.filter((pattern) => fullLower.includes(pattern)).length;
+    if (score === 0 && (titleLower.includes("?") || descLower.includes("?"))) {
+      score -= 1;
+    }
+  }
+
+  if (score >= 2) return "positive";
+  if (score <= -2) return "negative";
+  return "neutral";
 }
 
 export async function ensureSchema(): Promise<void> {
@@ -250,7 +327,7 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
   const sql = getSql();
   let inserted = 0;
   for (const a of articles) {
-    const toneLabel = inferToneLabel(a.title, a.description ?? "");
+    const toneLabel = inferToneLabel(a.title, a.description ?? "", feedKey);
     const result = (await sql`
       INSERT INTO rss_articles (guid, feed_key, title, url, description, author, published_at, tone_label)
       VALUES (
@@ -270,7 +347,11 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
           author = EXCLUDED.author,
           published_at = EXCLUDED.published_at,
           feed_key = EXCLUDED.feed_key,
-          tone_label = COALESCE(rss_articles.tone_label, EXCLUDED.tone_label)
+          tone_label = CASE
+            WHEN rss_articles.tone_label IS NULL THEN EXCLUDED.tone_label
+            WHEN rss_articles.tone_label = 'neutral' AND EXCLUDED.tone_label <> 'neutral' THEN EXCLUDED.tone_label
+            ELSE rss_articles.tone_label
+          END
       RETURNING id, (xmax = 0) AS inserted
     `) as unknown as { id: number; inserted: boolean }[];
     if (result[0]?.inserted) inserted++;
