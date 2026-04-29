@@ -11,12 +11,38 @@ from urllib.parse import urlparse
 
 import psycopg2
 import psycopg2.extras
+import streamlit as st
+
+
+def get_database_url() -> str:
+    url = os.environ.get("DATABASE_URL", "")
+    if url:
+        return url
+
+    try:
+        url = st.secrets.get("DATABASE_URL", "") or st.secrets.get("database_url", "")
+        if url:
+            return str(url)
+    except Exception:
+        pass
+
+    try:
+        neon_section = st.secrets.get("neon", None)
+        if neon_section:
+            url = neon_section.get("DATABASE_URL", "") or neon_section.get("database_url", "")
+            if url:
+                return str(url)
+    except Exception:
+        pass
+
+    raise RuntimeError(
+        "DATABASE_URL is not set. Provide it as an environment variable, "
+        "a top-level Streamlit secret, or neon.DATABASE_URL in Streamlit secrets."
+    )
 
 
 def _get_conn():
-    url = os.environ.get("DATABASE_URL", "")
-    if not url:
-        raise RuntimeError("DATABASE_URL env var is not set")
+    url = get_database_url()
     return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
 
 

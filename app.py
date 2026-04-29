@@ -12642,9 +12642,17 @@ elif page == "Extraction":
         "Requires DATABASE_URL to be set."
     )
 
-    _db_url_set = bool(os.environ.get("DATABASE_URL", ""))
+    try:
+        from neon_feeds import get_database_url
+
+        _db_url_set = bool(get_database_url())
+    except Exception:
+        _db_url_set = False
     if not _db_url_set:
-        st.warning("DATABASE_URL is not configured. Set it to enable feed management.")
+        st.warning(
+            "DATABASE_URL is not configured. Set it as an environment variable, "
+            "a top-level Streamlit secret, or `neon.DATABASE_URL`."
+        )
     else:
         try:
             from neon_feeds import get_feeds, add_feed, toggle_feed, delete_feed
