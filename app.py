@@ -12634,6 +12634,73 @@ elif page == "Extraction":
                 st.error(f"WSJ ingest failed: {e}")
 
     st.markdown("---")
+    st.subheader("Intel Feed: RSS Feed Manager")
+    st.caption(
+        "Manage which RSS feeds are pulled into the Intel Feed live stream. "
+        "Changes take effect on the next 10-minute cron refresh. "
+        "Requires DATABASE_URL to be set."
+    )
+
+    _db_url_set = bool(os.environ.get("DATABASE_URL", ""))
+    if not _db_url_set:
+        st.warning("DATABASE_URL is not configured. Set it to enable feed management.")
+    else:
+        try:
+            from neon_feeds import get_feeds, add_feed, toggle_feed, delete_feed
+
+            _feeds = get_feeds()
+
+            if _feeds:
+                st.markdown("**Active Feeds**")
+                for _feed in _feeds:
+                    _col1, _col2, _col3 = st.columns([0.08, 0.72, 0.20])
+                    with _col1:
+                        _new_active = st.checkbox(
+                            "",
+                            value=bool(_feed["active"]),
+                            key=f"feed_toggle_{_feed['id']}",
+                            label_visibility="collapsed",
+                        )
+                        if _new_active != bool(_feed["active"]):
+                            toggle_feed(_feed["id"], _new_active)
+                            st.rerun()
+                    with _col2:
+                        _active_icon = "🟢" if _feed["active"] else "⚪"
+                        st.markdown(
+                            f"{_active_icon} **{_feed['label']}**  \n"
+                            f"<span style='font-size:11px;color:#888'>{_feed['feed_url']}</span>",
+                            unsafe_allow_html=True,
+                        )
+                    with _col3:
+                        if st.button("Remove", key=f"feed_delete_{_feed['id']}"):
+                            delete_feed(_feed["id"])
+                            st.rerun()
+            else:
+                st.info("No feeds configured yet. Add one below.")
+
+            st.markdown("**Add a Feed**")
+            _add_col1, _add_col2, _add_col3 = st.columns([0.3, 0.55, 0.15])
+            with _add_col1:
+                _new_label = st.text_input("Label", placeholder="e.g. WSJ Tech", key="new_feed_label")
+            with _add_col2:
+                _new_url = st.text_input("Feed URL", placeholder="https://...", key="new_feed_url")
+            with _add_col3:
+                st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+                if st.button("＋ Add", key="add_feed_btn"):
+                    if not _new_label.strip() or not _new_url.strip():
+                        st.warning("Both label and URL are required.")
+                    else:
+                        try:
+                            add_feed(_new_label.strip(), _new_url.strip())
+                            st.success(f"Added: {_new_label}")
+                            st.rerun()
+                        except Exception as _e:
+                            st.error(f"Failed to add feed: {_e}")
+
+        except Exception as _e:
+            st.error(f"Could not connect to Neon: {_e}")
+
+    st.markdown("---")
     st.subheader("Congress Connector: CRS Products")
     st.caption(
         "Discover and ingest Congressional Research Service products from Congress.gov."

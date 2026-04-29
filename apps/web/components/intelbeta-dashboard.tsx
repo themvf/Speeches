@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { StoredRssArticle, RssFeed } from "@/lib/server/neon";
+import { useEffect, useRef, useState } from "react";
+import type { StoredRssArticle } from "@/lib/server/neon";
 import {
   PRODUCT_CATEGORY_LABELS,
   PRODUCT_CATEGORY_ORDER,
@@ -152,7 +152,6 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
   const [selectedTopic, setSelectedTopic] = useState<TopicFilter>("ALL");
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newCount, setNewCount] = useState(0);
-  const [showFeeds, setShowFeeds] = useState(false);
   const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
 
   useEffect(() => {
@@ -206,27 +205,9 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
             WSJ &amp; MarketWatch · live stream
           </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ fontSize: 12, color: "#5f6978", textAlign: "right" }}>
-            <div>Updated {formatTime(lastUpdated.toISOString())}</div>
-            <div style={{ color: "#3d4a59" }}>{articles.length} articles</div>
-          </div>
-          <button
-            onClick={() => setShowFeeds((v) => !v)}
-            title="Manage feeds"
-            style={{
-              background: showFeeds ? "rgba(255,255,255,0.1)" : "transparent",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 6,
-              color: "#8b95a1",
-              cursor: "pointer",
-              fontSize: 16,
-              lineHeight: 1,
-              padding: "6px 9px",
-            }}
-          >
-            ⚙
-          </button>
+        <div style={{ fontSize: 12, color: "#5f6978", textAlign: "right" }}>
+          <div>Updated {formatTime(lastUpdated.toISOString())}</div>
+          <div style={{ color: "#3d4a59" }}>{articles.length} articles</div>
         </div>
       </div>
 
@@ -289,11 +270,9 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
           })}
         </aside>
 
-        {/* Feed or Feeds Panel */}
+        {/* Feed */}
         <main style={{ flex: 1, minWidth: 0 }}>
-          {showFeeds ? (
-            <FeedsPanel />
-          ) : filtered.length === 0 ? (
+          {filtered.length === 0 ? (
             <div style={{ color: "#5f6978", fontSize: 14, padding: "40px 0", textAlign: "center" }}>
               {articles.length === 0
                 ? "No articles yet — the feed refreshes every 10 minutes."
@@ -303,226 +282,6 @@ export function IntelBetaDashboard({ initialArticles }: { initialArticles: Store
             filtered.map((article) => <ArticleCard key={article.id} article={article} />)
           )}
         </main>
-      </div>
-    </div>
-  );
-}
-
-function FeedsPanel() {
-  const [feeds, setFeeds] = useState<RssFeed[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [labelInput, setLabelInput] = useState("");
-  const [urlInput, setUrlInput] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [error, setError] = useState("");
-
-  const loadFeeds = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/feeds");
-      const json = (await res.json()) as { ok: boolean; data: { feeds: RssFeed[] } };
-      if (json.ok) setFeeds(json.data.feeds);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadFeeds(); }, [loadFeeds]);
-
-  const handleAdd = async () => {
-    setError("");
-    const label = labelInput.trim();
-    const feedUrl = urlInput.trim();
-    if (!label || !feedUrl) { setError("Both label and URL are required."); return; }
-    setAdding(true);
-    try {
-      const res = await fetch("/api/admin/feeds", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, feedUrl }),
-      });
-      const json = (await res.json()) as { ok: boolean; error?: string };
-      if (!json.ok) { setError(json.error ?? "Failed to add feed."); return; }
-      setLabelInput("");
-      setUrlInput("");
-      await loadFeeds();
-    } catch {
-      setError("Network error.");
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const handleToggle = async (id: number, active: boolean) => {
-    await fetch(`/api/admin/feeds/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active }),
-    });
-    setFeeds((prev) => prev.map((f) => (f.id === id ? { ...f, active } : f)));
-  };
-
-  const handleDelete = async (id: number) => {
-    await fetch(`/api/admin/feeds/${id}`, { method: "DELETE" });
-    setFeeds((prev) => prev.filter((f) => f.id !== id));
-  };
-
-  if (loading) return <div style={{ color: "#5f6978", fontSize: 13, padding: "20px 0" }}>Loading feeds…</div>;
-
-  return (
-    <div style={{ maxWidth: 600 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#8b95a1", marginBottom: 16, letterSpacing: "0.04em" }}>
-        MANAGE FEEDS
-      </div>
-
-      {/* Feed list */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 24 }}>
-        {feeds.map((feed) => (
-          <div
-            key={feed.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "10px 12px",
-              background: "rgba(255,255,255,0.03)",
-              borderRadius: 6,
-              border: "1px solid rgba(255,255,255,0.07)",
-            }}
-          >
-            {/* Toggle */}
-            <button
-              onClick={() => handleToggle(feed.id, !feed.active)}
-              title={feed.active ? "Disable" : "Enable"}
-              style={{
-                width: 32,
-                height: 18,
-                borderRadius: 9,
-                border: "none",
-                cursor: "pointer",
-                background: feed.active ? "#41d39d" : "#3d4a59",
-                flexShrink: 0,
-                position: "relative",
-                transition: "background 0.15s",
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  top: 2,
-                  left: feed.active ? 14 : 2,
-                  width: 14,
-                  height: 14,
-                  borderRadius: "50%",
-                  background: "#fff",
-                  transition: "left 0.15s",
-                }}
-              />
-            </button>
-
-            {/* Label + URL */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: feed.active ? "#e8eaed" : "#5f6978" }}>
-                {feed.label}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#3d4a59",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {feed.feed_url}
-              </div>
-            </div>
-
-            {/* Delete */}
-            <button
-              onClick={() => handleDelete(feed.id)}
-              title="Remove feed"
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#5f6978",
-                cursor: "pointer",
-                fontSize: 16,
-                lineHeight: 1,
-                padding: "2px 4px",
-                flexShrink: 0,
-              }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#ff595e")}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#5f6978")}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Add feed form */}
-      <div
-        style={{
-          padding: 16,
-          background: "rgba(255,255,255,0.03)",
-          borderRadius: 8,
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7a8d", marginBottom: 12, letterSpacing: "0.04em" }}>
-          ADD FEED
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <input
-            type="text"
-            placeholder="Label (e.g. WSJ Tech)"
-            value={labelInput}
-            onChange={(e) => setLabelInput(e.target.value)}
-            style={{
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 5,
-              color: "#e8eaed",
-              fontSize: 13,
-              outline: "none",
-              padding: "8px 10px",
-            }}
-          />
-          <input
-            type="url"
-            placeholder="Feed URL (https://...)"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            style={{
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 5,
-              color: "#e8eaed",
-              fontSize: 13,
-              outline: "none",
-              padding: "8px 10px",
-            }}
-          />
-          {error && <div style={{ fontSize: 12, color: "#ff595e" }}>{error}</div>}
-          <button
-            onClick={handleAdd}
-            disabled={adding}
-            style={{
-              alignSelf: "flex-start",
-              background: adding ? "rgba(65,211,157,0.2)" : "rgba(65,211,157,0.15)",
-              border: "1px solid rgba(65,211,157,0.35)",
-              borderRadius: 5,
-              color: "#41d39d",
-              cursor: adding ? "default" : "pointer",
-              fontSize: 13,
-              fontWeight: 600,
-              padding: "7px 14px",
-            }}
-          >
-            {adding ? "Adding…" : "+ Add Feed"}
-          </button>
-        </div>
       </div>
     </div>
   );
