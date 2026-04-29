@@ -11,6 +11,12 @@ type TopicRuleView = {
   keywords: string[];
 };
 
+type FeedMeta = {
+  label: string;
+  code: string;
+  color: string;
+};
+
 function decodeEntities(text: string): string {
   return text
     .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
@@ -37,24 +43,58 @@ function normalizeTopicRules(rules: StoredRssTopicRule[]): TopicRuleView[] {
     .filter((rule) => rule.topic_key && rule.label);
 }
 
-const FEED_LABELS: Record<string, string> = {
-  wsj_us_business: "WSJ Business",
-  wsj_markets: "WSJ Markets",
-  wsj_opinion: "WSJ Opinion",
-  mw_top_stories: "MarketWatch",
+const FEED_META: Record<string, FeedMeta> = {
+  wsj_us_business: { label: "WSJ Business", code: "WSJB", color: "#63a8ff" },
+  wsj_markets: { label: "WSJ Markets", code: "WSJM", color: "#ffc857" },
+  wsj_opinion: { label: "WSJ Opinion", code: "WSJO", color: "#b88fff" },
+  mw_top_stories: { label: "MarketWatch", code: "MW", color: "#4dd39f" },
+  rss_nytimes_com_services_xml_rss_nyt_business_xml: { label: "NYT Business", code: "NYTB", color: "#ffe066" },
+  rss_nytimes_com_services_xml_rss_nyt_technology_xml: { label: "NYT Tech", code: "NYTT", color: "#74c0fc" },
+  rss_nytimes_com_services_xml_rss_nyt_politics_xml: { label: "NYT Politics", code: "NYTP", color: "#ff8787" },
 };
 
-const TONE_STYLE: Record<string, { color: string; bg: string; label: string }> = {
-  positive: { color: "#41d39d", bg: "rgba(65,211,157,0.12)", label: "Positive" },
-  negative: { color: "#ff595e", bg: "rgba(255,89,94,0.12)", label: "Negative" },
-  neutral: { color: "#8b95a1", bg: "rgba(139,149,161,0.1)", label: "Neutral" },
+const TONE_STYLE: Record<string, { color: string; bg: string; label: string; short: string; glyph: string }> = {
+  positive: {
+    color: "#41d39d",
+    bg: "rgba(65, 211, 157, 0.12)",
+    label: "Bullish",
+    short: "POS",
+    glyph: "▲",
+  },
+  negative: {
+    color: "#ff6b7f",
+    bg: "rgba(255, 107, 127, 0.12)",
+    label: "Bearish",
+    short: "NEG",
+    glyph: "▼",
+  },
+  neutral: {
+    color: "#8b95a1",
+    bg: "rgba(139, 149, 161, 0.10)",
+    label: "Neutral",
+    short: "NEU",
+    glyph: "◆",
+  },
 };
 
-function matchesTopic(article: StoredRssArticle, rule: TopicRuleView | null): boolean {
+function articleHaystack(article: StoredRssArticle): string {
+  return `${article.title} ${article.description ?? ""}`.toLowerCase();
+}
+
+function getMatchingTopics(article: StoredRssArticle, rules: TopicRuleView[]): TopicRuleView[] {
+  const haystack = articleHaystack(article);
+  return rules.filter((rule) => rule.keywords.some((kw) => haystack.includes(kw)));
+}
+
+function matchesTopic(article: StoredRssArticle, rule: TopicRuleView | null, rules: TopicRuleView[]): boolean {
   if (!rule) return true;
-  if (rule.keywords.length === 0) return false;
-  const haystack = `${article.title} ${article.description ?? ""}`.toLowerCase();
-  return rule.keywords.some((kw) => haystack.includes(kw));
+  return getMatchingTopics(article, rules).some((item) => item.topic_key === rule.topic_key);
+}
+
+function matchesSearch(article: StoredRssArticle, searchTerm: string): boolean {
+  if (!searchTerm) return true;
+  const haystack = `${article.title} ${article.description ?? ""} ${article.author ?? ""}`.toLowerCase();
+  return haystack.includes(searchTerm);
 }
 
 function formatRelativeTime(dateStr: string | null): string {
@@ -68,90 +108,273 @@ function formatRelativeTime(dateStr: string | null): string {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function formatTime(dateStr: string | null): string {
+function formatClock(date: Date): string {
+  return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function formatUpdated(dateStr: string | null): string {
   if (!dateStr) return "";
   return new Date(dateStr).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
-function ToneBadge({ label }: { label: string | null }) {
-  const tone = label && TONE_STYLE[label] ? label : "neutral";
-  const s = TONE_STYLE[tone];
+function ellipsize(text: string, max = 120): string {
+  const value = decodeEntities(text || "");
+  return value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
+}
+
+function topicCount(articles: StoredRssArticle[], rule: TopicRuleView, rules: TopicRuleView[]): number {
+  return articles.filter((article) => matchesTopic(article, rule, rules)).length;
+}
+
+function TopicPill({ label }: { label: string }) {
   return (
     <span
       style={{
-        color: s.color,
-        background: s.bg,
-        border: `1px solid ${s.color}33`,
+        border: "1px solid rgba(93, 123, 171, 0.32)",
         borderRadius: 4,
-        fontSize: 11,
-        fontWeight: 600,
-        padding: "1px 7px",
-        letterSpacing: "0.03em",
+        padding: "2px 6px",
+        fontSize: 10,
+        lineHeight: 1.2,
+        letterSpacing: "0.08em",
+        color: "#8fa7c8",
+        textTransform: "uppercase",
         whiteSpace: "nowrap",
       }}
     >
-      {s.label}
+      {label}
     </span>
   );
 }
 
-function ArticleCard({ article }: { article: StoredRssArticle }) {
+function ToneChip({ label }: { label: string | null }) {
+  const tone = label && TONE_STYLE[label] ? label : "neutral";
+  const style = TONE_STYLE[tone];
   return (
-    <article
+    <span
       style={{
-        borderBottom: "1px solid rgba(255,255,255,0.07)",
-        padding: "14px 0",
-        display: "flex",
-        flexDirection: "column",
+        display: "inline-flex",
+        alignItems: "center",
         gap: 5,
+        color: style.color,
+        fontSize: 11,
+        letterSpacing: "0.10em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
       }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+      <span>{style.glyph}</span>
+      <span>{style.short}</span>
+    </span>
+  );
+}
+
+function TopicButton({
+  label,
+  active,
+  onClick,
+  count,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  count: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+        textAlign: "left",
+        border: "none",
+        borderLeft: active ? "2px solid #63a8ff" : "2px solid transparent",
+        background: active ? "rgba(67, 112, 186, 0.18)" : "transparent",
+        color: active ? "#e6eef9" : "#9ba9bc",
+        borderRadius: 4,
+        padding: "7px 10px 7px 8px",
+        cursor: "pointer",
+        fontSize: 13,
+        transition: "background 120ms ease, color 120ms ease, border-color 120ms ease",
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLElement).style.background = "rgba(67, 112, 186, 0.08)";
+          (e.currentTarget as HTMLElement).style.color = "#dbe6f4";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLElement).style.background = "transparent";
+          (e.currentTarget as HTMLElement).style.color = "#9ba9bc";
+        }
+      }}
+    >
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ color: active ? "#8fb2ea" : "#64728a", fontSize: 12 }}>{count}</span>
+    </button>
+  );
+}
+
+function FeedRow({
+  article,
+  rules,
+}: {
+  article: StoredRssArticle;
+  rules: TopicRuleView[];
+}) {
+  const source = FEED_META[article.feed_key] ?? {
+    label: article.feed_key,
+    code: article.feed_key.slice(0, 4).toUpperCase(),
+    color: "#8fa7c8",
+  };
+  const matchedTopics = getMatchingTopics(article, rules).slice(0, 3);
+  const description = ellipsize(article.description ?? "", 82);
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px",
+        gap: 14,
+        alignItems: "start",
+        padding: "10px 0",
+        borderTop: "1px solid rgba(112, 142, 187, 0.12)",
+      }}
+    >
+      <div style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(article.fetched_at)}</div>
+      <div style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</div>
+      <ToneChip label={article.tone_label} />
+      <div style={{ minWidth: 0 }}>
         <a
           href={article.url}
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            color: "#e8eaed",
+            color: "#edf3fb",
+            fontSize: 15,
             fontWeight: 600,
-            fontSize: 14,
-            lineHeight: 1.4,
             textDecoration: "none",
-            flex: 1,
+            lineHeight: 1.35,
           }}
-          onMouseEnter={(e) => ((e.target as HTMLElement).style.color = "#ffffff")}
-          onMouseLeave={(e) => ((e.target as HTMLElement).style.color = "#e8eaed")}
         >
           {decodeEntities(article.title)}
         </a>
-        <ToneBadge label={article.tone_label} />
+        {description ? (
+          <div style={{ color: "#7f8faa", fontSize: 12, marginTop: 3, lineHeight: 1.45 }}>{description}</div>
+        ) : null}
       </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {matchedTopics.map((topic) => (
+          <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-      {article.description && (
-        <p
+function FeaturedCard({
+  article,
+  rules,
+}: {
+  article: StoredRssArticle;
+  rules: TopicRuleView[];
+}) {
+  const matchedTopics = getMatchingTopics(article, rules);
+  const source = FEED_META[article.feed_key] ?? {
+    label: article.feed_key,
+    code: article.feed_key.slice(0, 4).toUpperCase(),
+    color: "#8fa7c8",
+  };
+  const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid rgba(112, 142, 187, 0.16)",
+        borderBottom: "1px solid rgba(112, 142, 187, 0.16)",
+        padding: "14px 0 18px",
+        marginBottom: 4,
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 240px",
+          gap: 14,
+          alignItems: "start",
+        }}
+      >
+        <div style={{ color: "#8fa7c8", fontSize: 12 }}>{formatRelativeTime(article.fetched_at)}</div>
+        <div style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</div>
+        <ToneChip label={tone} />
+        <div style={{ minWidth: 0 }}>
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "#f4f7fc",
+              fontWeight: 700,
+              fontSize: 16,
+              lineHeight: 1.4,
+              textDecoration: "none",
+            }}
+          >
+            {decodeEntities(article.title)}
+          </a>
+          {article.description ? (
+            <div style={{ marginTop: 14 }}>
+              <div
+                style={{
+                  color: "#6e7e98",
+                  fontSize: 10,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  marginBottom: 8,
+                }}
+              >
+                Why It Matters
+              </div>
+              <div
+                style={{
+                  color: "#dce7f7",
+                  fontSize: 16,
+                  lineHeight: 1.65,
+                  fontStyle: "italic",
+                  fontFamily: '"Iowan Old Style", "Palatino Linotype", serif',
+                }}
+              >
+                {decodeEntities(article.description)}
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div
           style={{
-            color: "#8b95a1",
-            fontSize: 13,
-            lineHeight: 1.5,
-            margin: 0,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
+            display: "grid",
+            gridTemplateColumns: "74px minmax(0, 1fr)",
+            gap: "6px 10px",
+            fontSize: 11,
+            color: "#8da0bc",
+            alignSelf: "stretch",
           }}
         >
-          {decodeEntities(article.description ?? "")}
-        </p>
-      )}
-
-      <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 11, color: "#5f6978" }}>
-        <span style={{ color: "#6b7a8d", fontWeight: 500 }}>
-          {FEED_LABELS[article.feed_key] ?? article.feed_key}
-        </span>
-        {article.author && <span>· {decodeEntities(article.author)}</span>}
-        <span>· {formatRelativeTime(article.fetched_at)}</span>
+          <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Author</div>
+          <div style={{ color: "#d7e1ef" }}>{decodeEntities(article.author || "News Desk")}</div>
+          <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Source</div>
+          <div style={{ color: "#d7e1ef" }}>{source.label}</div>
+          <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Impact</div>
+          <div style={{ color: TONE_STYLE[tone].color, fontWeight: 700 }}>{TONE_STYLE[tone].label.toUpperCase()}</div>
+          <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Topics</div>
+          <div style={{ color: "#d7e1ef" }}>
+            {matchedTopics.length > 0 ? matchedTopics.map((topic) => topic.label).join(", ") : "Unmapped"}
+          </div>
+        </div>
       </div>
-    </article>
+    </div>
   );
 }
 
@@ -165,6 +388,7 @@ export function IntelBetaDashboard({
   const [articles, setArticles] = useState<StoredRssArticle[]>(initialArticles);
   const [topicRules, setTopicRules] = useState<StoredRssTopicRule[]>(initialTopicRules);
   const [selectedTopic, setSelectedTopic] = useState<TopicFilter>("ALL");
+  const [search, setSearch] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newCount, setNewCount] = useState(0);
   const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
@@ -173,6 +397,7 @@ export function IntelBetaDashboard({
   const selectedRule = selectedTopic === "ALL"
     ? null
     : visibleTopicRules.find((rule) => rule.topic_key === selectedTopic) ?? null;
+  const searchTerm = search.trim().toLowerCase();
 
   useEffect(() => {
     if (selectedTopic !== "ALL" && !visibleTopicRules.some((rule) => rule.topic_key === selectedTopic)) {
@@ -194,10 +419,10 @@ export function IntelBetaDashboard({
         const freshRules = json.data.topicRules;
         const newest = fresh[0]?.fetched_at ?? "";
         if (newest && newest > newestFetchedAtRef.current) {
-          const added = fresh.filter((a) => a.fetched_at > newestFetchedAtRef.current).length;
+          const added = fresh.filter((article) => article.fetched_at > newestFetchedAtRef.current).length;
           newestFetchedAtRef.current = newest;
           setArticles(fresh);
-          setNewCount((c) => c + added);
+          setNewCount((count) => count + added);
         } else {
           setArticles(fresh);
         }
@@ -213,163 +438,187 @@ export function IntelBetaDashboard({
     return () => clearInterval(id);
   }, []);
 
-  const filtered = articles.filter((article) => matchesTopic(article, selectedRule));
+  const filtered = articles.filter(
+    (article) => matchesTopic(article, selectedRule, visibleTopicRules) && matchesSearch(article, searchTerm)
+  );
+  const featured = filtered[0] ?? null;
+  const rest = featured ? filtered.slice(1) : filtered;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0, minHeight: "80vh" }}>
+    <div
+      style={{
+        minHeight: "82vh",
+        color: "#dbe7f5",
+        fontFamily: 'var(--font-body), "Segoe UI", sans-serif',
+      }}
+    >
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingBottom: 16,
-          borderBottom: "1px solid rgba(255,255,255,0.1)",
-          marginBottom: 0,
+          display: "grid",
+          gridTemplateColumns: "168px minmax(0, 1fr)",
+          gap: 0,
+          border: "1px solid rgba(99, 127, 170, 0.18)",
+          background: "linear-gradient(180deg, rgba(8,16,28,0.96), rgba(9,20,31,0.96))",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.28)",
+          overflow: "hidden",
         }}
       >
-        <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#e8eaed", letterSpacing: "-0.01em" }}>
-            Intel Feed
-          </h1>
-          <p style={{ margin: 0, fontSize: 12, color: "#5f6978", marginTop: 2 }}>
-            WSJ &amp; MarketWatch · live stream
-          </p>
-        </div>
-        <div style={{ fontSize: 12, color: "#5f6978", textAlign: "right" }}>
-          <div>Updated {formatTime(lastUpdated.toISOString())}</div>
-          <div style={{ color: "#3d4a59" }}>{articles.length} articles</div>
-        </div>
-      </div>
-
-      {newCount > 0 && (
-        <button
-          onClick={() => setNewCount(0)}
-          style={{
-            background: "rgba(65,211,157,0.12)",
-            border: "1px solid rgba(65,211,157,0.3)",
-            borderRadius: 6,
-            color: "#41d39d",
-            fontSize: 13,
-            fontWeight: 600,
-            padding: "8px 16px",
-            cursor: "pointer",
-            marginTop: 12,
-            textAlign: "center",
-            width: "100%",
-          }}
-        >
-          {newCount} new article{newCount !== 1 ? "s" : ""} · click to dismiss
-        </button>
-      )}
-
-      <div style={{ display: "flex", gap: 0, marginTop: 16, alignItems: "flex-start" }}>
         <aside
           style={{
-            width: 180,
-            flexShrink: 0,
-            paddingRight: 20,
-            borderRight: "1px solid rgba(255,255,255,0.07)",
-            marginRight: 24,
-            position: "sticky",
-            top: 16,
+            borderRight: "1px solid rgba(99, 127, 170, 0.16)",
+            padding: "14px 10px 18px",
+            background: "linear-gradient(180deg, rgba(8,17,29,0.92), rgba(10,21,34,0.98))",
           }}
         >
-          <div style={{ fontSize: 11, fontWeight: 600, color: "#5f6978", letterSpacing: "0.06em", marginBottom: 10 }}>
-            TOPICS
+          <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
+            Topics
           </div>
-          <TopicButton
-            label="All Topics"
-            active={selectedTopic === "ALL"}
-            onClick={() => setSelectedTopic("ALL")}
-            count={articles.length}
-          />
-          {visibleTopicRules.map((rule) => {
-            const count = articles.filter((article) => matchesTopic(article, rule)).length;
-            return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <TopicButton
+              label="All Topics"
+              active={selectedTopic === "ALL"}
+              onClick={() => setSelectedTopic("ALL")}
+              count={articles.length}
+            />
+            {visibleTopicRules.map((rule) => (
               <TopicButton
                 key={rule.topic_key}
                 label={rule.label}
                 active={selectedTopic === rule.topic_key}
                 onClick={() => setSelectedTopic(rule.topic_key)}
-                count={count}
+                count={topicCount(articles, rule, visibleTopicRules)}
               />
-            );
-          })}
+            ))}
+          </div>
+
+          <div style={{ marginTop: 22 }}>
+            <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
+              Legend
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12, color: "#8d9fb7" }}>
+              {Object.entries(TONE_STYLE).map(([key, value]) => (
+                <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 1, background: value.color }} />
+                  <span>{value.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </aside>
 
-        <main style={{ flex: 1, minWidth: 0 }}>
-          {filtered.length === 0 ? (
-            <div style={{ color: "#5f6978", fontSize: 14, padding: "40px 0", textAlign: "center" }}>
-              {articles.length === 0
-                ? "No articles yet - the feed refreshes every 10 minutes."
-                : "No articles match this topic filter."}
+        <main style={{ minWidth: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              padding: "14px 16px 10px",
+              borderBottom: "1px solid rgba(99, 127, 170, 0.16)",
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                color: "#91a8c7",
+                fontSize: 11,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
+              }}
+            >
+              Intel Feed / {selectedRule ? selectedRule.label : "All"} / {filtered.length} Items
             </div>
-          ) : (
-            filtered.map((article) => <ArticleCard key={article.id} article={article} />)
-          )}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="search..."
+                style={{
+                  width: 220,
+                  background: "rgba(14, 24, 39, 0.9)",
+                  border: "1px solid rgba(90, 118, 162, 0.18)",
+                  color: "#d9e7f7",
+                  borderRadius: 5,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                }}
+              />
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  color: "#4dd39f",
+                  fontSize: 12,
+                  letterSpacing: "0.10em",
+                  textTransform: "uppercase",
+                  fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
+                }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: "#4dd39f", boxShadow: "0 0 10px rgba(77,211,159,0.7)" }} />
+                <span>Live {formatClock(lastUpdated)}</span>
+              </div>
+            </div>
+          </div>
+
+          {newCount > 0 ? (
+            <button
+              onClick={() => setNewCount(0)}
+              style={{
+                margin: "10px 16px 0",
+                border: "1px solid rgba(77, 211, 159, 0.25)",
+                background: "rgba(77, 211, 159, 0.08)",
+                color: "#4dd39f",
+                padding: "7px 12px",
+                borderRadius: 4,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {newCount} new item{newCount === 1 ? "" : "s"} available
+            </button>
+          ) : null}
+
+          <div style={{ padding: "12px 16px 18px" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px",
+                gap: 14,
+                paddingBottom: 8,
+                color: "#5f7390",
+                fontSize: 10,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
+              }}
+            >
+              <div>Time</div>
+              <div>Src</div>
+              <div>Snt</div>
+              <div>Headline</div>
+              <div style={{ textAlign: "right" }}>Tags</div>
+            </div>
+
+            {featured ? <FeaturedCard article={featured} rules={visibleTopicRules} /> : null}
+
+            {rest.length === 0 ? (
+              <div style={{ color: "#72839d", fontSize: 13, padding: "28px 0" }}>
+                {articles.length === 0 ? "No articles yet." : "No articles match the current filters."}
+              </div>
+            ) : (
+              rest.map((article) => <FeedRow key={article.id} article={article} rules={visibleTopicRules} />)
+            )}
+          </div>
         </main>
       </div>
-    </div>
-  );
-}
 
-function TopicButton({
-  label,
-  active,
-  onClick,
-  count,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  count: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        width: "100%",
-        textAlign: "left",
-        background: active ? "rgba(255,255,255,0.07)" : "transparent",
-        border: "none",
-        borderRadius: 5,
-        color: active ? "#e8eaed" : "#8b95a1",
-        fontSize: 13,
-        fontWeight: active ? 600 : 400,
-        padding: "6px 8px",
-        cursor: "pointer",
-        marginBottom: 1,
-        transition: "background 0.1s, color 0.1s",
-      }}
-      onMouseEnter={(e) => {
-        if (!active) {
-          (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)";
-          (e.currentTarget as HTMLElement).style.color = "#c8d0da";
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!active) {
-          (e.currentTarget as HTMLElement).style.background = "transparent";
-          (e.currentTarget as HTMLElement).style.color = "#8b95a1";
-        }
-      }}
-    >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{label}</span>
-      {count > 0 && (
-        <span
-          style={{
-            fontSize: 11,
-            color: active ? "#6b7a8d" : "#3d4a59",
-            marginLeft: 6,
-            flexShrink: 0,
-          }}
-        >
-          {count}
-        </span>
-      )}
-    </button>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 4px 0", color: "#5d708a", fontSize: 11 }}>
+        <div>Updated {formatUpdated(lastUpdated.toISOString())}</div>
+        <div>{articles.length} tracked articles</div>
+      </div>
+    </div>
   );
 }
