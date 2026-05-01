@@ -16,7 +16,10 @@ type CategoryFilter =
   | "enforcement"
   | "aml"
   | "capital_formation"
-  | "securities_regulation";
+  | "securities_regulation"
+  | "credit_markets"
+  | "financial_markets"
+  | "economic_growth";
 
 type RangeFilter = "30d" | "7d" | "90d";
 
@@ -33,60 +36,82 @@ type ScoredTrend = TrendItem & { _score: number };
 const CATEGORIES: CategoryDef[] = [
   { value: "all", label: "All", keywords: [] },
   {
-    value: "crypto",
-    label: "Crypto Assets",
+    value: "securities_regulation",
+    label: "Securities Regulation",
     keywords: [
-      "crypto", "bitcoin", "ethereum", "blockchain", "token", "stablecoin",
-      "defi", "digital asset", "digital-asset", "nft", "web3", "cryptocurrency",
-      "crypto-asset", "crypto asset", "digital_asset",
-    ],
-  },
-  {
-    value: "ai_tech",
-    label: "AI & Tech",
-    keywords: [
-      "artificial intelligence", "machine learning", "ai", "technology", "fintech",
-      "cybersecurity", "cyber", "innovation", "algorithm", "automated", "automation",
-      "predictive", "large language model", "llm",
-    ],
-  },
-  {
-    value: "enforcement",
-    label: "Enforcement",
-    keywords: [
-      "enforcement", "litigation", "fraud", "sanction", "penalty", "settlement",
-      "complaint", "violation", "misconduct", "fine", "cease-and-desist", "awc",
-      "disciplinary", "conviction", "prosecution", "insider trading", "market manipulation",
-    ],
-  },
-  {
-    value: "aml",
-    label: "AML",
-    keywords: [
-      "anti-money laundering", "aml", "bank secrecy", "bsa", "financial crime",
-      "terrorist financing", "suspicious activity", "kyc", "know your customer",
-      "fatf", "money laundering", "illicit finance", "sanctions",
+      "sec", "securities", "disclosure", "investor", "exchange", "registration",
+      "securities regulation", "rulemaking", "regulation nms", "market structure",
+      "broker-dealer", "investment adviser", "fiduciary", "proxy", "shareholder",
+      "corporate governance", "form pf", "edgar", "investment company",
     ],
   },
   {
     value: "capital_formation",
     label: "Capital Formation",
     keywords: [
-      "capital formation", "capital-formation", "ipo", "spac", "private offering",
-      "regulation a", "regulation crowdfunding", "small business", "emerging growth",
-      "startup", "venture", "private market", "private-market", "fundraising",
-      "public offering", "exempt offering",
+      "ipo", "spac", "capital", "offering", "funding", "venture", "startup",
+      "capital formation", "private offering", "regulation a", "regulation crowdfunding",
+      "small business", "emerging growth", "private market", "fundraising", "exempt offering",
     ],
   },
   {
-    value: "securities_regulation",
-    label: "Securities Regulation",
+    value: "aml",
+    label: "AML",
     keywords: [
-      "securities regulation", "securities-regulation", "disclosure", "rulemaking",
-      "regulation nms", "market structure", "equity market", "best execution",
-      "broker-dealer", "investment adviser", "fiduciary", "suitability", "proxy",
-      "shareholder", "corporate governance", "form pf", "edgar", "reporting",
-      "registration", "investment company",
+      "aml", "money laundering", "sanctions", "bsa", "anti-money",
+      "bank secrecy", "financial crime", "terrorist financing", "suspicious activity",
+      "kyc", "know your customer", "fatf", "illicit finance",
+    ],
+  },
+  {
+    value: "enforcement",
+    label: "Enforcement",
+    keywords: [
+      "enforcement", "fine", "penalty", "fraud", "charges", "lawsuit", "settlement",
+      "indictment", "litigation", "sanction", "complaint", "violation", "misconduct",
+      "cease-and-desist", "awc", "disciplinary", "conviction", "prosecution",
+      "insider trading", "market manipulation",
+    ],
+  },
+  {
+    value: "ai_tech",
+    label: "AI & Tech",
+    keywords: [
+      "ai", "artificial intelligence", "machine learning", "technology", "fintech",
+      "automation", "cybersecurity", "cyber", "innovation", "algorithm", "automated",
+      "predictive", "large language model", "llm",
+    ],
+  },
+  {
+    value: "crypto",
+    label: "Crypto",
+    keywords: [
+      "crypto", "bitcoin", "blockchain", "digital asset", "stablecoin", "ethereum",
+      "defi", "nft", "token", "web3", "cryptocurrency", "crypto-asset", "digital_asset",
+    ],
+  },
+  {
+    value: "credit_markets",
+    label: "Credit Markets",
+    keywords: [
+      "credit", "bond", "debt", "yield", "loan", "lending", "mortgage", "default",
+      "fixed income", "high yield", "investment grade", "credit spread", "cdo", "clo",
+    ],
+  },
+  {
+    value: "financial_markets",
+    label: "Financial Markets",
+    keywords: [
+      "market", "stock", "equity", "trading", "volatility", "s&p", "nasdaq", "dow",
+      "index", "futures", "options", "hedge fund", "asset management", "portfolio",
+    ],
+  },
+  {
+    value: "economic_growth",
+    label: "Economic Growth",
+    keywords: [
+      "economy", "gdp", "growth", "inflation", "fed", "federal reserve", "recession",
+      "jobs", "employment", "interest rate", "monetary policy", "fiscal", "tariff", "trade",
     ],
   },
 ];
