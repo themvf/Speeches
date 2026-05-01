@@ -26,7 +26,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/intelbeta", label: "Intelligence Feed", prefetch: true },
   { href: "/enforcement", label: "Enforcement", prefetch: true },
   { href: "/market", label: "Market", prefetch: true },
-  { href: "/analytics", label: "Analytics", prefetch: true },
   { href: "/chats", label: "Agentic Chats", prefetch: true }
 ];
 

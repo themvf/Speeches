@@ -752,12 +752,6 @@ export function EnforcementBetaDashboard() {
         semanticLoading={semanticLoading}
       />
 
-      <div className={`grid gap-4 ${visibleAgencies.length > 1 ? "xl:grid-cols-2" : ""}`}>
-        {visibleAgencies.map((agency) => (
-          <HeatmapPanel key={agency.agency} agency={agency.agency} data={agency} months={payload.months} />
-        ))}
-      </div>
-
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-1">
           <TopCitationList title="SEC Top Citations" rows={payload.agencies.sec.top_citations} agency="SEC" />
