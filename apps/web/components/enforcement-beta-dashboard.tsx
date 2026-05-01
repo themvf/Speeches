@@ -768,7 +768,7 @@ export function EnforcementBetaDashboard() {
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-1">
           <TopCitationList title="SEC Top Citations" rows={payload.agencies.sec.top_citations} agency="SEC" selected={citation} onSelect={setCitation} />
-          <TopCitationList title="FINRA Top Citations" rows={payload.agencies.finra.top_citations} agency="FINRA" selected={citation} onSelect={setCitation} />
+          <TopCitationList title="FINRA Top Citations" rows={payload.agencies.finra.top_citations.filter((r) => !["8310", "8311", "9216", "9143", "9144"].includes(r.citation.replace(/^FINRA Rule\s*/i, "")))} agency="FINRA" selected={citation} onSelect={setCitation} />
           <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.52)] p-4">
             <h3 className="text-xs font-semibold uppercase text-[color:var(--ink-faint)]">Data Quality</h3>
             <div className="mt-4 space-y-4">
