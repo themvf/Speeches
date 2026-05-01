@@ -13,6 +13,13 @@ import type {
 type ApiEnvelope<T> = { ok: boolean; data?: T; error?: string };
 type ViewMode = "combined" | "sec" | "finra";
 
+const HIDDEN_FINRA_RULES = new Set(["8310", "8311", "8313", "9216", "9143", "9144"]);
+
+function isHiddenFinraCitation(agency: string, citation: string): boolean {
+  if (agency !== "FINRA") return false;
+  return HIDDEN_FINRA_RULES.has(citation.replace(/^FINRA Rule\s*/i, ""));
+}
+
 const AGENCY_STYLE = {
   SEC: {
     color: "#ff6b7f",
@@ -352,7 +359,7 @@ function TopCitationList({
 
 function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet?: string }) {
   const style = AGENCY_STYLE[action.agency];
-  const citationPreview = action.citations.slice(0, 3);
+  const citationPreview = action.citations.filter((c) => !isHiddenFinraCitation(action.agency, c.citation)).slice(0, 3);
   const row = (
     <div className="rounded-xl border border-[color:var(--line-soft)] bg-[color:rgba(6,15,24,0.46)] p-4 transition-colors hover:border-[color:var(--line-strong)]">
       <div className="flex flex-wrap items-center gap-2">
@@ -768,7 +775,7 @@ export function EnforcementBetaDashboard() {
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-1">
           <TopCitationList title="SEC Top Citations" rows={payload.agencies.sec.top_citations} agency="SEC" selected={citation} onSelect={setCitation} />
-          <TopCitationList title="FINRA Top Citations" rows={payload.agencies.finra.top_citations.filter((r) => !["8310", "8311", "9216", "9143", "9144"].includes(r.citation.replace(/^FINRA Rule\s*/i, "")))} agency="FINRA" selected={citation} onSelect={setCitation} />
+          <TopCitationList title="FINRA Top Citations" rows={payload.agencies.finra.top_citations.filter((r) => !isHiddenFinraCitation("FINRA", r.citation))} agency="FINRA" selected={citation} onSelect={setCitation} />
           <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.52)] p-4">
             <h3 className="text-xs font-semibold uppercase text-[color:var(--ink-faint)]">Data Quality</h3>
             <div className="mt-4 space-y-4">
