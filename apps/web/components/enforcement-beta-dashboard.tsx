@@ -299,11 +299,15 @@ function HeatmapPanel({
 function TopCitationList({
   title,
   rows,
-  agency
+  agency,
+  selected,
+  onSelect,
 }: {
   title: string;
   rows: EnforcementBetaCitationActivity[];
   agency: "SEC" | "FINRA";
+  selected: string;
+  onSelect: (value: string) => void;
 }) {
   const style = AGENCY_STYLE[agency];
   const max = rows.length ? Math.max(...rows.map((row) => row.total), 1) : 1;
@@ -318,19 +322,28 @@ function TopCitationList({
         <p className="text-xs text-[color:var(--ink-faint)]">No extracted citations.</p>
       ) : (
         <div className="space-y-3">
-          {rows.slice(0, 8).map((row) => (
-            <div key={row.citation}>
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <span className="truncate text-xs font-medium text-[color:var(--ink)]" title={row.label}>
-                  {row.citation}
-                </span>
-                <span className="text-xs tabular-nums text-[color:var(--ink-faint)]">{row.total}</span>
+          {rows.slice(0, 8).map((row) => {
+            const key = `${agency}:${row.citation}`;
+            const isActive = selected === key;
+            return (
+              <div
+                key={row.citation}
+                onClick={() => onSelect(isActive ? "" : key)}
+                className="cursor-pointer rounded-md px-1.5 py-1 -mx-1.5 transition-colors hover:bg-[color:rgba(255,255,255,0.04)]"
+                style={isActive ? { background: "rgba(255,255,255,0.07)" } : undefined}
+              >
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <span className="truncate text-xs font-medium" style={{ color: isActive ? style.color : "var(--ink)" }} title={row.label}>
+                    {row.citation}
+                  </span>
+                  <span className="text-xs tabular-nums text-[color:var(--ink-faint)]">{row.total}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-[color:rgba(9,20,36,0.75)]">
+                  <div className="h-full rounded-full" style={{ width: `${(row.total / max) * 100}%`, background: style.color, opacity: isActive ? 1 : 0.7 }} />
+                </div>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-[color:rgba(9,20,36,0.75)]">
-                <div className="h-full rounded-full" style={{ width: `${(row.total / max) * 100}%`, background: style.color }} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -754,8 +767,8 @@ export function EnforcementBetaDashboard() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-1">
-          <TopCitationList title="SEC Top Citations" rows={payload.agencies.sec.top_citations} agency="SEC" />
-          <TopCitationList title="FINRA Top Citations" rows={payload.agencies.finra.top_citations} agency="FINRA" />
+          <TopCitationList title="SEC Top Citations" rows={payload.agencies.sec.top_citations} agency="SEC" selected={citation} onSelect={setCitation} />
+          <TopCitationList title="FINRA Top Citations" rows={payload.agencies.finra.top_citations} agency="FINRA" selected={citation} onSelect={setCitation} />
           <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.52)] p-4">
             <h3 className="text-xs font-semibold uppercase text-[color:var(--ink-faint)]">Data Quality</h3>
             <div className="mt-4 space-y-4">
