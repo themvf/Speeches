@@ -581,51 +581,8 @@ export function TrendsDashboard() {
 
       {!loading && !error && scoredTrends.length > 0 && (
         <>
-          {/* ── Top Movers ─────────────────────────────────────────── */}
-          {showMovers && (
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                Top Movers
-              </p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {/* Rising */}
-                {topRisers.length > 0 && (
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#4fd5ff" }}>
-                      Rising
-                    </p>
-                    <div className="space-y-2">
-                      {topRisers.map((t) => (
-                        <MoverCard key={t.id} trend={t} type="rising" />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Declining */}
-                {topDecliners.length > 0 && (
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#f87171" }}>
-                      Declining
-                    </p>
-                    <div className="space-y-2">
-                      {topDecliners.map((t) => (
-                        <MoverCard key={t.id} trend={t} type="declining" />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* ── All Trends list ────────────────────────────────────── */}
           <div>
-            {showMovers && (
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                All Trends
-              </p>
-            )}
             <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
               {/* Summary header */}
               <div className="flex items-center justify-between border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] px-4 py-2">
