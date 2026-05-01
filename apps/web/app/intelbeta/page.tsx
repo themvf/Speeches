@@ -6,7 +6,7 @@ import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Intel Feed | Policy Research Hub",
+  title: "Intelligence Feed | Policy Research Hub",
   description: "Live WSJ & MarketWatch news stream filtered by regulatory topic.",
 };
 
@@ -15,7 +15,7 @@ export default async function IntelBetaPage() {
   let initialTopicRules: StoredRssTopicRule[] = [];
   try {
     [initialArticles, initialTopicRules] = await Promise.all([
-      getRecentArticles({ limit: 100 }),
+      getRecentArticles({ limit: 200 }),
       getTopicRules(true),
     ]);
   } catch {

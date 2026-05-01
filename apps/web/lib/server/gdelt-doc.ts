@@ -13,6 +13,7 @@ const GDELT_DOC_TIMEOUT_MS = 20_000;
 const GDELT_DOC_CACHE_TTL_MS = 5 * 60 * 1_000;
 const GDELT_DOC_MAX_RECORDS = 30;
 const GDELT_DOC_MAX_RECORDS_PER_FOCUS = 6;
+const GDELT_DOC_CATEGORY_MAX_RECORDS_PER_QUERY = 8;
 const GDELT_DOC_TIMESPAN = "24h";
 
 type GdeltDocArticle = {
@@ -71,23 +72,23 @@ const PROFILE_QUERY_PLANS: Readonly<Record<string, readonly string[]>> = {
   modern: ["artificial intelligence semiconductor", "AI chip demand", "generative AI investment"]
 };
 
-const CATEGORY_DOC_QUERY_TERMS: Readonly<Partial<Record<ProductCategory, Readonly<Record<string, readonly string[]>>>>> = {
+export const CATEGORY_DOC_QUERY_TERMS: Readonly<Partial<Record<ProductCategory, Readonly<Record<string, readonly string[]>>>>> = {
   AML: {
-    aml_sanctions: ["sanctions", "OFAC"],
-    aml_bsa: ["anti-money laundering", "money laundering", "AML", "BSA", "FinCEN"],
-    aml_kyc_ownership: ["KYC", "beneficial ownership", "customer identification"],
-    aml_illicit_finance: ["illicit finance", "suspicious activity", "terrorist financing"]
+    aml_sanctions: ["OFAC", "sanctions"],
+    aml_bsa: ["money laundering", "anti-money laundering", "FinCEN"],
+    aml_kyc_ownership: ["beneficial ownership", "KYC", "customer identification"],
+    aml_illicit_finance: ["suspicious activity", "terrorist financing", "illicit finance"]
   },
   CAPITAL_FORMATION: {
-    capital_public_offerings: ["IPO", "initial public offering", "go public", "public offering", "secondary offering"],
-    capital_private_capital: ["private credit", "private equity", "venture capital", "funding round", "private placement"],
-    capital_debt_financing: ["debt offering", "bond issuance", "credit facility", "leveraged loan", "high yield"],
-    capital_strategic_transactions: ["SPAC", "merger", "acquisition", "takeover bid", "buyout"],
-    capital_access_policy: ["capital formation", "crowdfunding", "Reg A", "Reg CF", "exempt offering"]
+    capital_public_offerings: ["IPO", "initial public offering", "public offering"],
+    capital_private_capital: ["private credit", "private equity", "venture capital"],
+    capital_debt_financing: ["bond issuance", "debt offering", "credit facility"],
+    capital_strategic_transactions: ["SPAC", "merger", "acquisition"],
+    capital_access_policy: ["crowdfunding", "Reg A", "exempt offering"]
   }
 };
 
-const CATEGORY_PATTERN_ALIASES: Readonly<Record<string, readonly string[]>> = {
+export const CATEGORY_PATTERN_ALIASES: Readonly<Record<string, readonly string[]>> = {
   SANCTIONS: ["SANCTIONS", "SANCTION", "SANCTIONED"],
   OFAC: ["OFAC"],
   AML: ["AML", "ANTI_MONEY_LAUNDERING"],
@@ -309,21 +310,23 @@ function categoryDocQueryPlans(category: ProductCategory, focusId?: string | nul
   const queryPlans = CATEGORY_DOC_QUERY_TERMS[category];
 
   return focusAreas
-    .map((focusArea) => {
+    .flatMap((focusArea) => {
       const terms = queryPlans?.[focusArea.id] ?? focusArea.raw_patterns;
-      const query = buildOrQuery(terms);
-      return query ? { focusArea, query: `${query} sourcelang:english`, terms } : null;
-    })
-    .filter((plan): plan is CategoryDocQueryPlan => Boolean(plan));
+      return terms.map((term) => ({
+        focusArea,
+        query: `${quoteTerm(term)} sourcelang:english`,
+        terms: [term]
+      }));
+    });
 }
 
-export function buildGdeltDocUrl(query: string): string {
+export function buildGdeltDocUrl(query: string, options?: { maxRecords?: number; timespan?: string }): string {
   const url = new URL(GDELT_DOC_ENDPOINT);
   url.searchParams.set("query", query);
   url.searchParams.set("mode", "artlist");
   url.searchParams.set("format", "json");
-  url.searchParams.set("maxrecords", String(GDELT_DOC_MAX_RECORDS));
-  url.searchParams.set("timespan", GDELT_DOC_TIMESPAN);
+  url.searchParams.set("maxrecords", String(options?.maxRecords ?? GDELT_DOC_MAX_RECORDS));
+  url.searchParams.set("timespan", options?.timespan ?? GDELT_DOC_TIMESPAN);
   url.searchParams.set("sort", "datedesc");
   return url.toString();
 }
@@ -544,12 +547,15 @@ export async function fetchGdeltEvidenceForProfile(profile: IntelligenceProfile)
   return [];
 }
 
-async function fetchGdeltDocArticlesForQuery(query: string): Promise<GdeltDocArticle[]> {
+async function fetchGdeltDocArticlesForQuery(
+  query: string,
+  options?: { maxRecords?: number; timespan?: string }
+): Promise<GdeltDocArticle[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), GDELT_DOC_TIMEOUT_MS);
 
   try {
-    const response = await fetch(buildGdeltDocUrl(query), {
+    const response = await fetch(buildGdeltDocUrl(query, options), {
       signal: controller.signal,
       headers: {
         "accept": "application/json",
@@ -589,10 +595,11 @@ export async function fetchGdeltDocEvidenceForProductCategory(
   const plans = categoryDocQueryPlans(category, focusId);
   const results = await Promise.allSettled(plans.map(async (plan) => ({
     plan,
-    articles: await fetchGdeltDocArticlesForQuery(plan.query)
+    articles: await fetchGdeltDocArticlesForQuery(plan.query, { maxRecords: GDELT_DOC_CATEGORY_MAX_RECORDS_PER_QUERY })
   })));
   const seenUrls = new Set<string>();
   const evidence: IntelligenceEvidenceArticle[] = [];
+  const focusCounts = new Map<string, number>();
 
   for (const result of results) {
     if (result.status !== "fulfilled") {
@@ -601,11 +608,11 @@ export async function fetchGdeltDocEvidenceForProductCategory(
 
     const strictEvidence = mapGdeltDocArticlesToProductCategoryEvidence(category, result.value.articles, [result.value.plan.focusArea])
       .filter((article) => article.url && !seenUrls.has(article.url));
-    let focusCount = 0;
+    let focusCount = focusCounts.get(result.value.plan.focusArea.id) ?? 0;
     for (const article of strictEvidence) {
       seenUrls.add(article.url!);
       evidence.push(article);
-      focusCount += 1;
+      focusCounts.set(result.value.plan.focusArea.id, ++focusCount);
       if (evidence.length >= GDELT_DOC_MAX_RECORDS) {
         break;
       }
@@ -613,19 +620,6 @@ export async function fetchGdeltDocEvidenceForProductCategory(
         break;
       }
     }
-    if (evidence.length >= GDELT_DOC_MAX_RECORDS) {
-      break;
-    }
-
-    evidence.push(...mapGdeltDocArticlesToKnownFocusAreaEvidence(
-      category,
-      result.value.articles,
-      result.value.plan.focusArea,
-      result.value.plan.terms,
-      seenUrls,
-      evidence.length,
-      Math.max(0, GDELT_DOC_MAX_RECORDS_PER_FOCUS - focusCount)
-    ));
     if (evidence.length >= GDELT_DOC_MAX_RECORDS) {
       break;
     }

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 
 import type { IntelligenceEvidenceArticle, IntelligenceProfile } from "../intelligence-types";
+import { CATEGORY_DOC_QUERY_TERMS } from "./gdelt-doc.ts";
 import {
   focusAreasForProductCategory,
   scoreThemeArticle,
@@ -15,6 +16,7 @@ const GDELT_GKG_TIMEOUT_MS = 8_000;
 const GDELT_GKG_CACHE_TTL_MS = 5 * 60 * 1_000;
 const GDELT_GKG_MAX_RECORDS = 30;
 const GDELT_GKG_ARCHIVE_COUNT = 6;
+const GDELT_GKG_CATEGORY_ARCHIVE_COUNT = 24;
 const PROFILE_EVIDENCE_TERMS: Readonly<Record<string, readonly string[]>> = {
   macro: ["inflation", "oil", "energy", "central-bank", "central bank", "rates", "price", "prices", "cpi"],
   bank: ["bank", "banking", "credit", "debt", "liquidity", "funding", "default", "bonds"],
@@ -420,17 +422,13 @@ function textMatchesSourcePattern(value: string, pattern: string): boolean {
 }
 
 function matchedFocusTerms(record: GdeltGkgRecord, focusArea: ProductFocusArea): string[] {
-  const urlSourceText = [
-    record.url,
-    record.source
-  ].join(" ");
-  const sourceText = [
-    record.url,
-    record.source,
-    record.rawThemes.join(" ")
-  ].join(" ");
+  const urlSourceParts = [record.url, record.source];
+  const visibleText = [...urlSourceParts, headlineFromUrl(record.url, record.source)].join(" ");
+  const urlSourceText = urlSourceParts.join(" ");
+  const categoryQueryTerms = CATEGORY_DOC_QUERY_TERMS[focusArea.category]?.[focusArea.id];
+  const matchPatterns = categoryQueryTerms ?? focusArea.raw_patterns;
 
-  return focusArea.raw_patterns.filter((pattern) => {
+  return matchPatterns.filter((pattern) => {
     const normalizedPattern = normalizeMatchText(pattern);
 
     if (focusArea.id === "aml_sanctions" && normalizedPattern === "SANCTIONS") {
@@ -441,7 +439,7 @@ function matchedFocusTerms(record: GdeltGkgRecord, focusArea: ProductFocusArea):
       );
     }
 
-    return textMatchesSourcePattern(sourceText, pattern);
+    return textMatchesSourcePattern(visibleText, pattern);
   });
 }
 
@@ -589,7 +587,7 @@ export async function fetchGdeltGkgEvidenceForProductCategory(
     return [];
   }
 
-  const archiveCount = options?.archiveCount ?? GDELT_GKG_ARCHIVE_COUNT;
+  const archiveCount = options?.archiveCount ?? GDELT_GKG_CATEGORY_ARCHIVE_COUNT;
   const cacheKey = `${category}:${focusId ?? "all"}:${archiveCount}`;
   const cached = gkgCategoryEvidenceCache.get(cacheKey);
   if (cached && Date.now() - cached.loadedAt < GDELT_GKG_CACHE_TTL_MS) {

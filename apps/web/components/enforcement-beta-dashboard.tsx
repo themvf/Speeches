@@ -70,6 +70,12 @@ function dateMs(value: string): number {
   return Number.isNaN(ms) ? 0 : ms;
 }
 
+function monthDateRange(month: string): { from: string; to: string } {
+  const [yearStr, monStr] = month.split("-");
+  const lastDay = new Date(Date.UTC(Number(yearStr), Number(monStr), 0)).getUTCDate();
+  return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, "0")}` };
+}
+
 function citationKey(citation: EnforcementBetaCitation): string {
   return `${citation.agency}:${citation.citation}`;
 }
@@ -86,18 +92,9 @@ function cellBackground(count: number, max: number, agency: "SEC" | "FINRA"): st
   if (count <= 0 || max <= 0) {
     return "rgba(9,20,36,0.62)";
   }
-  const ratio = count / max;
   const base = agency === "SEC" ? "255,107,127" : "79,213,255";
-  if (ratio < 0.2) {
-    return `rgba(${base},0.16)`;
-  }
-  if (ratio < 0.45) {
-    return `rgba(${base},0.34)`;
-  }
-  if (ratio < 0.7) {
-    return `rgba(${base},0.56)`;
-  }
-  return `rgba(${base},0.82)`;
+  const opacity = Math.max(0.12, (count / max) * 0.84);
+  return `rgba(${base},${opacity.toFixed(2)})`;
 }
 
 function MetricCard({

@@ -59,7 +59,15 @@ export async function GET(
         decision: String(enrichEntry?.review?.decision || "pending"),
         notes: String(enrichEntry?.review?.notes || ""),
         reviewed_at: String(enrichEntry?.review?.reviewed_at || "")
-      }
+      },
+      sentiment: enrichEntry?.sentiment
+        ? {
+            score: Number(enrichEntry.sentiment.score ?? 0),
+            label: String(enrichEntry.sentiment.label || "neutral"),
+            rationale: String(enrichEntry.sentiment.rationale || ""),
+            status: String(enrichEntry.sentiment.status || ""),
+          }
+        : null,
     };
 
     return ok(payload, requestId);

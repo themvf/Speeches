@@ -402,6 +402,10 @@ export function IntelBetaDashboard({
   const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
 
   const visibleTopicRules = useMemo(() => normalizeTopicRules(topicRules), [topicRules]);
+  const matchedArticles = useMemo(
+    () => articles.filter((a) => getMatchingTopics(a, visibleTopicRules).length > 0),
+    [articles, visibleTopicRules]
+  );
   const selectedRule = selectedTopic === "ALL"
     ? null
     : visibleTopicRules.find((rule) => rule.topic_key === selectedTopic) ?? null;
@@ -416,7 +420,7 @@ export function IntelBetaDashboard({
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch("/api/intel/feed?limit=100", { cache: "no-store" });
+        const res = await fetch("/api/intel/feed?limit=200", { cache: "no-store" });
         if (!res.ok) return;
         const json = (await res.json()) as {
           ok: boolean;
@@ -449,7 +453,7 @@ export function IntelBetaDashboard({
     return () => clearInterval(id);
   }, []);
 
-  const filtered = articles.filter(
+  const filtered = matchedArticles.filter(
     (article) => matchesTopic(article, selectedRule, visibleTopicRules) && matchesSearch(article, searchTerm)
   );
   useEffect(() => {
@@ -498,7 +502,7 @@ export function IntelBetaDashboard({
               label="All Topics"
               active={selectedTopic === "ALL"}
               onClick={() => setSelectedTopic("ALL")}
-              count={articles.length}
+              count={matchedArticles.length}
             />
             {visibleTopicRules.map((rule) => (
               <TopicButton
@@ -506,7 +510,7 @@ export function IntelBetaDashboard({
                 label={rule.label}
                 active={selectedTopic === rule.topic_key}
                 onClick={() => setSelectedTopic(rule.topic_key)}
-                count={topicCount(articles, rule, visibleTopicRules)}
+                count={topicCount(matchedArticles, rule, visibleTopicRules)}
               />
             ))}
           </div>
