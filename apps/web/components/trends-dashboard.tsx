@@ -19,7 +19,8 @@ type CategoryFilter =
   | "securities_regulation"
   | "credit_markets"
   | "financial_markets"
-  | "economic_growth";
+  | "economic_growth"
+  | "prediction_markets";
 
 type RangeFilter = "30d" | "7d" | "90d";
 
@@ -112,6 +113,14 @@ const CATEGORIES: CategoryDef[] = [
     keywords: [
       "economy", "gdp", "growth", "inflation", "fed", "federal reserve", "recession",
       "jobs", "employment", "interest rate", "monetary policy", "fiscal", "tariff", "trade",
+    ],
+  },
+  {
+    value: "prediction_markets",
+    label: "Prediction Markets",
+    keywords: [
+      "prediction market", "polymarket", "kalshi", "betting market", "forecast", "odds", "contract",
+      "prediction", "event contract", "prediction exchange",
     ],
   },
 ];

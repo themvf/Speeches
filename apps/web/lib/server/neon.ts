@@ -96,6 +96,12 @@ const DEFAULT_TOPIC_RULES: Array<{
     keywords: "economy, gdp, growth, inflation, fed, federal reserve, recession, jobs",
     sortOrder: 90,
   },
+  {
+    topicKey: "PREDICTION_MARKETS",
+    label: "Prediction Markets",
+    keywords: "prediction market, polymarket, kalshi, betting market, forecast, odds, contract",
+    sortOrder: 100,
+  },
 ];
 
 function getSql() {
