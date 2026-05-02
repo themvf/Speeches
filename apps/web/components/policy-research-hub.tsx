@@ -804,6 +804,20 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
       url: item.url || "",
       source: displayOrganization(item.organization),
       topic: primaryTopic,
+      metadata: {
+        documentId: item.document_id,
+        organization: item.organization,
+        sourceKind: item.source_kind,
+        docType: item.doc_type,
+        speaker: item.speaker,
+        date: item.date,
+        publishedAt: item.published_at,
+        wordCount: item.word_count,
+        keywords: item.keywords || [],
+        topics: item.topics || [],
+        sentimentLabel: item.sentiment_label,
+        sentimentScore: item.sentiment_score,
+      },
     });
   }, [savedItems]);
 

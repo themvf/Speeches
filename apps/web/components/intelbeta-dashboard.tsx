@@ -495,6 +495,12 @@ export function IntelBetaDashboard({
       url: article.url,
       source: source.label,
       topic: primaryTopic,
+      metadata: {
+        feedKey: article.feed_key,
+        author: article.author,
+        publishedAt: article.published_at || "",
+        toneLabel: article.tone_label,
+      },
     });
   };
 
