@@ -530,6 +530,24 @@ export function IntelBetaDashboard({
             background: "linear-gradient(180deg, rgba(8,17,29,0.92), rgba(10,21,34,0.98))",
           }}
         >
+          <a
+            href="/research"
+            style={{
+              display: "block",
+              marginBottom: 14,
+              padding: "7px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(79,213,255,0.15)",
+              background: "rgba(79,213,255,0.05)",
+              color: "#4fd5ff",
+              fontSize: 11,
+              fontWeight: 500,
+              textDecoration: "none",
+              lineHeight: 1.35,
+            }}
+          >
+            Search all regulatory documents →
+          </a>
           <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
             Topics
           </div>
