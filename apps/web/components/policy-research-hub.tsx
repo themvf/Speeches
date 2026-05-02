@@ -2,6 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BookmarkButton } from "@/components/bookmark-button";
+import { useSavedItems } from "@/hooks/use-saved-items";
 import { expandQuery } from "@/lib/synonyms";
 
 type HubMode = "home" | "operations" | "analytics" | "chats";
@@ -253,6 +255,10 @@ function displayOrganization(value: string): string {
     return "News";
   }
   return raw;
+}
+
+function savedDocumentId(item: DocumentItem): string {
+  return `doc:${item.document_id}`;
 }
 
 function exactSpeakerName(item: DocumentItem): string {
@@ -575,6 +581,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
   const [docDetails, setDocDetails] = useState<Record<string, DocumentDetailData>>({});
   const [docDetailLoading, setDocDetailLoading] = useState<Record<string, boolean>>({});
   const [docDetailError, setDocDetailError] = useState<Record<string, string>>({});
+  const savedItems = useSavedItems();
   const [q, setQ] = useState(searchParams.get("q") || "");
   const [org, setOrg] = useState(searchParams.get("org") || "");
   const [source, setSource] = useState(searchParams.get("source_kind") || searchParams.get("source") || "");
@@ -787,6 +794,18 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
       void loadDocDetail(docId);
     }
   }, [docDetailLoading, docDetails, loadDocDetail]);
+
+  const toggleDocumentSave = useCallback((item: DocumentItem) => {
+    const primaryTopic = (item.topics || [])[0] || (item.keywords || [])[0];
+    savedItems.toggle({
+      id: savedDocumentId(item),
+      type: "doc",
+      title: item.title || "Untitled document",
+      url: item.url || "",
+      source: displayOrganization(item.organization),
+      topic: primaryTopic,
+    });
+  }, [savedItems]);
 
   const applyCorpusChipFilter = useCallback((value: string, kind: "tag" | "keyword") => {
     const term = String(value || "").trim();
@@ -1092,12 +1111,16 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                     const primaryAnalysis = pickPrimaryAnalysis(detail);
                     const analysisActionLabel = detailLoading ? "Loading Analysis..." : isExpanded ? "Hide Analysis" : "Open Analysis";
                     const semanticSnippet = semanticSnippets[d.document_id];
+                    const itemSaved = savedItems.isSaved(savedDocumentId(d));
 
                     return (
                       <Fragment key={d.document_id}>
                         <tr>
                           <td>
-                            <p className="feed-title">{d.title || "Untitled"}</p>
+                            <div className="flex items-start gap-2">
+                              <p className="feed-title min-w-0 flex-1">{d.title || "Untitled"}</p>
+                              <BookmarkButton saved={itemSaved} onToggle={() => toggleDocumentSave(d)} />
+                            </div>
                             {semanticSnippet && (
                               <p className="mt-1 text-[11px] leading-relaxed text-[color:var(--ink-faint)] line-clamp-2 italic">
                                 {semanticSnippet}

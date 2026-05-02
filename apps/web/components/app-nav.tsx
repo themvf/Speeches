@@ -14,7 +14,8 @@ type NavItem = {
     | "/intelligence"
     | "/intelbeta"
     | "/enforcement"
-    | "/market";
+    | "/market"
+    | "/saved";
   label: string;
   prefetch?: boolean;
 };
@@ -25,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/intelbeta", label: "Intelligence Feed", prefetch: true },
   { href: "/enforcement", label: "Enforcement", prefetch: true },
   { href: "/market", label: "Market", prefetch: true },
+  { href: "/saved", label: "Saved", prefetch: true },
   { href: "/notices", label: "Rulemakings & Comments", prefetch: true },
   { href: "/chats", label: "Agentic Chats", prefetch: true }
 ];
@@ -68,7 +70,7 @@ export function AppNav() {
           Policy Research Hub
         </Link>
 
-        <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+        <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex">
           {NAV_ITEMS.map((item) => {
             const active = isActive(pathname, item.href);
             return (
@@ -91,7 +93,7 @@ export function AppNav() {
           aria-expanded={open}
           aria-controls="mobile-nav-drawer"
           aria-label="Toggle navigation"
-          className="min-h-11 min-w-11 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-3 text-sm font-semibold text-[color:var(--ink)] md:hidden"
+          className="min-h-11 min-w-11 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-3 text-sm font-semibold text-[color:var(--ink)] lg:hidden"
         >
           {open ? "Close" : "Menu"}
         </button>
@@ -99,11 +101,11 @@ export function AppNav() {
 
       {open ? (
         <>
-          <div className="fixed inset-0 z-40 bg-black/35 md:hidden" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div className="fixed inset-0 z-40 bg-black/35 lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />
           <nav
             id="mobile-nav-drawer"
             aria-label="Mobile"
-            className="fixed inset-y-0 left-0 z-50 w-72 border-r border-[color:var(--line)] bg-[color:rgba(6,15,24,0.98)] p-5 md:hidden"
+            className="fixed inset-y-0 left-0 z-50 w-72 border-r border-[color:var(--line)] bg-[color:rgba(6,15,24,0.98)] p-5 lg:hidden"
           >
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Navigate</p>
             <div className="mt-3 space-y-2">

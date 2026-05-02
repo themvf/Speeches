@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
+import { BookmarkButton } from "@/components/bookmark-button";
+import { useSavedItems } from "@/hooks/use-saved-items";
 
 type TopicFilter = string | "ALL";
 
@@ -52,6 +54,18 @@ const FEED_META: Record<string, FeedMeta> = {
   rss_nytimes_com_services_xml_rss_nyt_technology_xml: { label: "NYT Tech", code: "NYTT", color: "#74c0fc" },
   rss_nytimes_com_services_xml_rss_nyt_politics_xml: { label: "NYT Politics", code: "NYTP", color: "#ff8787" },
 };
+
+function getFeedMeta(feedKey: string): FeedMeta {
+  return FEED_META[feedKey] ?? {
+    label: feedKey,
+    code: feedKey.slice(0, 4).toUpperCase(),
+    color: "#8fa7c8",
+  };
+}
+
+function savedArticleId(article: StoredRssArticle): string {
+  return `article:${article.id}`;
+}
 
 const TONE_STYLE: Record<string, { color: string; bg: string; label: string; short: string; glyph: string }> = {
   positive: {
@@ -223,17 +237,17 @@ function FeedRow({
   rules,
   active,
   onSelect,
+  saved,
+  onToggleSave,
 }: {
   article: StoredRssArticle;
   rules: TopicRuleView[];
   active: boolean;
   onSelect: () => void;
+  saved: boolean;
+  onToggleSave: () => void;
 }) {
-  const source = FEED_META[article.feed_key] ?? {
-    label: article.feed_key,
-    code: article.feed_key.slice(0, 4).toUpperCase(),
-    color: "#8fa7c8",
-  };
+  const source = getFeedMeta(article.feed_key);
   const matchedTopics = getMatchingTopics(article, rules).slice(0, 3);
   const description = ellipsize(article.description ?? "", 82);
 
@@ -241,7 +255,7 @@ function FeedRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px",
+        gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px 24px",
         gap: 14,
         alignItems: "start",
         padding: "10px 0",
@@ -278,6 +292,7 @@ function FeedRow({
           <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
         ))}
       </div>
+      <BookmarkButton saved={saved} onToggle={onToggleSave} />
     </div>
   );
 }
@@ -285,16 +300,16 @@ function FeedRow({
 function FeaturedCard({
   article,
   rules,
+  saved,
+  onToggleSave,
 }: {
   article: StoredRssArticle;
   rules: TopicRuleView[];
+  saved: boolean;
+  onToggleSave: () => void;
 }) {
   const matchedTopics = getMatchingTopics(article, rules);
-  const source = FEED_META[article.feed_key] ?? {
-    label: article.feed_key,
-    code: article.feed_key.slice(0, 4).toUpperCase(),
-    color: "#8fa7c8",
-  };
+  const source = getFeedMeta(article.feed_key);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
 
   return (
@@ -309,7 +324,7 @@ function FeaturedCard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 240px",
+          gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 240px 24px",
           gap: 14,
           alignItems: "start",
         }}
@@ -380,6 +395,7 @@ function FeaturedCard({
             {matchedTopics.length > 0 ? matchedTopics.map((topic) => topic.label).join(", ") : "Unmapped"}
           </div>
         </div>
+        <BookmarkButton saved={saved} onToggle={onToggleSave} size={16} />
       </div>
     </div>
   );
@@ -400,6 +416,7 @@ export function IntelBetaDashboard({
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newCount, setNewCount] = useState(0);
   const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
+  const savedItems = useSavedItems();
 
   const visibleTopicRules = useMemo(() => normalizeTopicRules(topicRules), [topicRules]);
   const matchedArticles = useMemo(
@@ -467,6 +484,19 @@ export function IntelBetaDashboard({
   }, [filtered, selectedArticleId]);
 
   const featured = filtered.find((article) => article.id === selectedArticleId) ?? filtered[0] ?? null;
+
+  const toggleArticleSave = (article: StoredRssArticle) => {
+    const source = getFeedMeta(article.feed_key);
+    const primaryTopic = getMatchingTopics(article, visibleTopicRules)[0]?.label;
+    savedItems.toggle({
+      id: savedArticleId(article),
+      type: "article",
+      title: decodeEntities(article.title || "Untitled article"),
+      url: article.url,
+      source: source.label,
+      topic: primaryTopic,
+    });
+  };
 
   return (
     <div
@@ -609,7 +639,7 @@ export function IntelBetaDashboard({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px",
+                gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px 24px",
                 gap: 14,
                 paddingBottom: 8,
                 color: "#5f7390",
@@ -624,6 +654,7 @@ export function IntelBetaDashboard({
               <div>Snt</div>
               <div>Headline</div>
               <div style={{ textAlign: "right" }}>Tags</div>
+              <div aria-hidden="true" />
             </div>
 
             {filtered.length === 0 ? (
@@ -633,7 +664,13 @@ export function IntelBetaDashboard({
             ) : (
               filtered.map((article) =>
                 article.id === featured?.id ? (
-                  <FeaturedCard key={article.id} article={article} rules={visibleTopicRules} />
+                  <FeaturedCard
+                    key={article.id}
+                    article={article}
+                    rules={visibleTopicRules}
+                    saved={savedItems.isSaved(savedArticleId(article))}
+                    onToggleSave={() => toggleArticleSave(article)}
+                  />
                 ) : (
                   <FeedRow
                     key={article.id}
@@ -641,6 +678,8 @@ export function IntelBetaDashboard({
                     rules={visibleTopicRules}
                     active={article.id === selectedArticleId}
                     onSelect={() => setSelectedArticleId(article.id)}
+                    saved={savedItems.isSaved(savedArticleId(article))}
+                    onToggleSave={() => toggleArticleSave(article)}
                   />
                 )
               )
