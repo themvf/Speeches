@@ -8,7 +8,6 @@ import {
   decodeEntities,
   getMatchingTopics,
   normalizeTopicRules,
-  type TopicMatch,
   type TopicRuleView,
 } from "@/lib/intel-topic-matching";
 
@@ -65,62 +64,6 @@ const TONE_STYLE: Record<string, { color: string; bg: string; label: string; sho
     glyph: "◆",
   },
 };
-
-function normalizeMatchText(text: string): string {
-  return decodeEntities(text || "")
-    .toLowerCase()
-    .replace(/[’‘]/g, "'")
-    .replace(/[“”]/g, '"');
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function keywordPattern(keyword: string): RegExp | null {
-  const normalized = normalizeMatchText(keyword).replace(/\s+/g, " ").trim();
-  if (!normalized) return null;
-
-  const parts = normalized.split(/\s+/).map(escapeRegExp);
-  const source = parts.join("[\\s\\-–—_/]+");
-  return new RegExp(`(^|[^a-z0-9])${source}(?=$|[^a-z0-9])`, "i");
-}
-
-function keywordMatches(text: string, keyword: string): boolean {
-  const pattern = keywordPattern(keyword);
-  return pattern ? pattern.test(text) : false;
-}
-
-function keywordSpecificity(keyword: string): number {
-  const normalized = normalizeMatchText(keyword).replace(/\s+/g, " ").trim();
-  const compact = normalized.replace(/[^a-z0-9]/g, "");
-  const wordCount = normalized ? normalized.split(/\s+/).length : 0;
-  const acronymBoost = compact.length > 0 && compact.length <= 3 ? 8 : 0;
-  return Math.min(28, compact.length + Math.max(0, wordCount - 1) * 6 + acronymBoost);
-}
-
-function keywordScore(keyword: string, title: string, description: string): number {
-  const specificity = keywordSpecificity(keyword);
-  if (keywordMatches(title, keyword)) {
-    return 100 + specificity;
-  }
-  if (keywordMatches(description, keyword)) {
-    return 50 + specificity;
-  }
-  return 0;
-}
-
-function getTopicMatches(article: StoredRssArticle, rules: TopicRuleView[]): TopicMatch[] {
-  const title = normalizeMatchText(article.title);
-  const description = normalizeMatchText(article.description ?? "");
-  return rules
-    .map((rule) => {
-      const score = rule.keywords.reduce((best, keyword) => Math.max(best, keywordScore(keyword, title, description)), 0);
-      return { rule, score };
-    })
-    .filter((match) => match.score > 0)
-    .sort((a, b) => b.score - a.score || a.rule.sort_order - b.rule.sort_order || a.rule.label.localeCompare(b.rule.label));
-}
 
 function matchesTopic(article: StoredRssArticle, rule: TopicRuleView | null, topicMatchesByArticleId: Map<number, TopicRuleView[]>): boolean {
   if (!rule) return true;
