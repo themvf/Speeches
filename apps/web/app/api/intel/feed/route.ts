@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = req.nextUrl;
-  const limit = Math.min(Number(searchParams.get("limit") ?? "100"), 200);
+  const limit = Math.min(Number(searchParams.get("limit") ?? "100"), 400);
   const feedKey = searchParams.get("feedKey") ?? undefined;
   const sinceParam = searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : undefined;

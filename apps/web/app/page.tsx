@@ -15,7 +15,7 @@ export default async function HomePage() {
   let initialTopicRules: StoredRssTopicRule[] = [];
   try {
     [initialArticles, initialTopicRules] = await Promise.all([
-      getRecentArticles({ limit: 200 }),
+      getRecentArticles({ limit: 400 }),
       getTopicRules(true),
     ]);
   } catch {

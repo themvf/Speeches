@@ -437,7 +437,7 @@ export function IntelBetaDashboard({
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch("/api/intel/feed?limit=200", { cache: "no-store" });
+        const res = await fetch("/api/intel/feed?limit=400", { cache: "no-store" });
         if (!res.ok) return;
         const json = (await res.json()) as {
           ok: boolean;
