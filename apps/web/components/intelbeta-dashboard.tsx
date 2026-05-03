@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 import { BookmarkButton } from "@/components/bookmark-button";
 import { useSavedItems } from "@/hooks/use-saved-items";
@@ -122,9 +122,9 @@ function getTopicMatches(article: StoredRssArticle, rules: TopicRuleView[]): Top
     .sort((a, b) => b.score - a.score || a.rule.sort_order - b.rule.sort_order || a.rule.label.localeCompare(b.rule.label));
 }
 
-function matchesTopic(article: StoredRssArticle, rule: TopicRuleView | null, rules: TopicRuleView[]): boolean {
+function matchesTopic(article: StoredRssArticle, rule: TopicRuleView | null, topicMatchesByArticleId: Map<number, TopicRuleView[]>): boolean {
   if (!rule) return true;
-  return getMatchingTopics(article, rules).some((item) => item.topic_key === rule.topic_key);
+  return (topicMatchesByArticleId.get(article.id) ?? []).some((item) => item.topic_key === rule.topic_key);
 }
 
 function matchesSearch(article: StoredRssArticle, searchTerm: string): boolean {
@@ -158,8 +158,16 @@ function ellipsize(text: string, max = 120): string {
   return value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
 }
 
-function topicCount(articles: StoredRssArticle[], rule: TopicRuleView, rules: TopicRuleView[]): number {
-  return articles.filter((article) => matchesTopic(article, rule, rules)).length;
+function articleListSignature(articles: StoredRssArticle[]): string {
+  const first = articles[0];
+  const last = articles[articles.length - 1];
+  return `${articles.length}:${first?.id ?? ""}:${first?.fetched_at ?? ""}:${last?.id ?? ""}:${last?.fetched_at ?? ""}`;
+}
+
+function topicRulesSignature(rules: StoredRssTopicRule[]): string {
+  return rules
+    .map((rule) => `${rule.id}:${rule.topic_key}:${rule.active}:${rule.sort_order}:${rule.updated_at}:${rule.keywords}`)
+    .join("|");
 }
 
 function TopicPill({ label }: { label: string }) {
@@ -256,21 +264,21 @@ function TopicButton({
 
 function FeedRow({
   article,
-  rules,
+  matchedTopics,
   active,
   onSelect,
   saved,
   onToggleSave,
 }: {
   article: StoredRssArticle;
-  rules: TopicRuleView[];
+  matchedTopics: TopicRuleView[];
   active: boolean;
   onSelect: () => void;
   saved: boolean;
   onToggleSave: () => void;
 }) {
   const source = getFeedMeta(article.feed_key);
-  const matchedTopics = getMatchingTopics(article, rules).slice(0, 3);
+  const visibleTopics = matchedTopics.slice(0, 3);
   const description = ellipsize(article.description ?? "", 82);
 
   return (
@@ -310,7 +318,7 @@ function FeedRow({
         ) : null}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-        {matchedTopics.map((topic) => (
+        {visibleTopics.map((topic) => (
           <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
         ))}
       </div>
@@ -321,16 +329,15 @@ function FeedRow({
 
 function FeaturedCard({
   article,
-  rules,
+  matchedTopics,
   saved,
   onToggleSave,
 }: {
   article: StoredRssArticle;
-  rules: TopicRuleView[];
+  matchedTopics: TopicRuleView[];
   saved: boolean;
   onToggleSave: () => void;
 }) {
-  const matchedTopics = getMatchingTopics(article, rules);
   const source = getFeedMeta(article.feed_key);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
 
@@ -438,17 +445,36 @@ export function IntelBetaDashboard({
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newCount, setNewCount] = useState(0);
   const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
+  const articleSignatureRef = useRef(articleListSignature(initialArticles));
+  const topicRulesSignatureRef = useRef(topicRulesSignature(initialTopicRules));
   const savedItems = useSavedItems();
 
   const visibleTopicRules = useMemo(() => normalizeTopicRules(topicRules), [topicRules]);
-  const matchedArticles = useMemo(
-    () => articles.filter((a) => getMatchingTopics(a, visibleTopicRules).length > 0),
-    [articles, visibleTopicRules]
-  );
+  const topicIndex = useMemo(() => {
+    const topicMatchesByArticleId = new Map<number, TopicRuleView[]>();
+    const topicCounts = new Map<string, number>();
+    const matchedArticles: StoredRssArticle[] = [];
+
+    for (const article of articles) {
+      const matches = getMatchingTopics(article, visibleTopicRules);
+      topicMatchesByArticleId.set(article.id, matches);
+      if (matches.length === 0) {
+        continue;
+      }
+      matchedArticles.push(article);
+      for (const topic of matches) {
+        topicCounts.set(topic.topic_key, (topicCounts.get(topic.topic_key) ?? 0) + 1);
+      }
+    }
+
+    return { topicMatchesByArticleId, topicCounts, matchedArticles };
+  }, [articles, visibleTopicRules]);
+  const matchedArticles = topicIndex.matchedArticles;
   const selectedRule = selectedTopic === "ALL"
     ? null
     : visibleTopicRules.find((rule) => rule.topic_key === selectedTopic) ?? null;
   const searchTerm = search.trim().toLowerCase();
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   useEffect(() => {
     if (selectedTopic !== "ALL" && !visibleTopicRules.some((rule) => rule.topic_key === selectedTopic)) {
@@ -469,19 +495,32 @@ export function IntelBetaDashboard({
         const fresh = json.data.articles;
         const freshRules = json.data.topicRules;
         const newest = fresh[0]?.fetched_at ?? "";
+        let changed = false;
         if (newest && newest > newestFetchedAtRef.current) {
           const added = fresh.filter((article) => article.fetched_at > newestFetchedAtRef.current).length;
           newestFetchedAtRef.current = newest;
-          setArticles(fresh);
           setNewCount((count) => count + added);
           if (!selectedArticleId && fresh[0]?.id) {
             setSelectedArticleId(fresh[0].id);
           }
-        } else {
+        }
+
+        const nextArticleSignature = articleListSignature(fresh);
+        if (nextArticleSignature !== articleSignatureRef.current) {
+          articleSignatureRef.current = nextArticleSignature;
+          changed = true;
           setArticles(fresh);
         }
-        setTopicRules(freshRules);
-        setLastUpdated(new Date());
+
+        const nextTopicRulesSignature = topicRulesSignature(freshRules);
+        if (nextTopicRulesSignature !== topicRulesSignatureRef.current) {
+          topicRulesSignatureRef.current = nextTopicRulesSignature;
+          changed = true;
+          setTopicRules(freshRules);
+        }
+        if (changed) {
+          setLastUpdated(new Date());
+        }
       } catch {
         // silent; will retry next interval
       }
@@ -492,8 +531,12 @@ export function IntelBetaDashboard({
     return () => clearInterval(id);
   }, []);
 
-  const filtered = matchedArticles.filter(
-    (article) => matchesTopic(article, selectedRule, visibleTopicRules) && matchesSearch(article, searchTerm)
+  const filtered = useMemo(
+    () =>
+      matchedArticles.filter(
+        (article) => matchesTopic(article, selectedRule, topicIndex.topicMatchesByArticleId) && matchesSearch(article, deferredSearchTerm)
+      ),
+    [deferredSearchTerm, matchedArticles, selectedRule, topicIndex.topicMatchesByArticleId]
   );
   useEffect(() => {
     if (filtered.length === 0) {
@@ -509,7 +552,7 @@ export function IntelBetaDashboard({
 
   const toggleArticleSave = (article: StoredRssArticle) => {
     const source = getFeedMeta(article.feed_key);
-    const primaryTopic = getMatchingTopics(article, visibleTopicRules)[0]?.label;
+    const primaryTopic = topicIndex.topicMatchesByArticleId.get(article.id)?.[0]?.label;
     savedItems.toggle({
       id: savedArticleId(article),
       type: "article",
@@ -586,7 +629,7 @@ export function IntelBetaDashboard({
                 label={rule.label}
                 active={selectedTopic === rule.topic_key}
                 onClick={() => setSelectedTopic(rule.topic_key)}
-                count={topicCount(matchedArticles, rule, visibleTopicRules)}
+                count={topicIndex.topicCounts.get(rule.topic_key) ?? 0}
               />
             ))}
           </div>
@@ -713,7 +756,7 @@ export function IntelBetaDashboard({
                   <FeaturedCard
                     key={article.id}
                     article={article}
-                    rules={visibleTopicRules}
+                    matchedTopics={topicIndex.topicMatchesByArticleId.get(article.id) ?? []}
                     saved={savedItems.isSaved(savedArticleId(article))}
                     onToggleSave={() => toggleArticleSave(article)}
                   />
@@ -721,7 +764,7 @@ export function IntelBetaDashboard({
                   <FeedRow
                     key={article.id}
                     article={article}
-                    rules={visibleTopicRules}
+                    matchedTopics={topicIndex.topicMatchesByArticleId.get(article.id) ?? []}
                     active={article.id === selectedArticleId}
                     onSelect={() => setSelectedArticleId(article.id)}
                     saved={savedItems.isSaved(savedArticleId(article))}
