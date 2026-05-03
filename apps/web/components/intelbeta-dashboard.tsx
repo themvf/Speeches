@@ -4,53 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 import { BookmarkButton } from "@/components/bookmark-button";
 import { useSavedItems } from "@/hooks/use-saved-items";
+import {
+  decodeEntities,
+  getMatchingTopics,
+  normalizeTopicRules,
+  type TopicMatch,
+  type TopicRuleView,
+} from "@/lib/intel-topic-matching";
 
 type TopicFilter = string | "ALL";
-
-type TopicRuleView = {
-  topic_key: string;
-  label: string;
-  keywords: string[];
-  sort_order: number;
-};
-
-type TopicMatch = {
-  rule: TopicRuleView;
-  score: number;
-};
 
 type FeedMeta = {
   label: string;
   code: string;
   color: string;
 };
-
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, " ");
-}
-
-function parseKeywords(value: string): string[] {
-  return value
-    .split(/[\n,]+/)
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function normalizeTopicRules(rules: StoredRssTopicRule[]): TopicRuleView[] {
-  return rules
-    .filter((rule) => rule && rule.active)
-    .map((rule) => ({
-      topic_key: String(rule.topic_key || "").trim(),
-      label: String(rule.label || "").trim() || String(rule.topic_key || "").trim(),
-      keywords: parseKeywords(String(rule.keywords || "")),
-      sort_order: Number(rule.sort_order || 100),
-    }))
-    .filter((rule) => rule.topic_key && rule.label);
-}
 
 const FEED_META: Record<string, FeedMeta> = {
   wsj_us_business: { label: "WSJ Business", code: "WSJB", color: "#63a8ff" },
@@ -97,10 +65,6 @@ const TONE_STYLE: Record<string, { color: string; bg: string; label: string; sho
     glyph: "◆",
   },
 };
-
-function articleHaystack(article: StoredRssArticle): string {
-  return normalizeMatchText(`${article.title} ${article.description ?? ""}`);
-}
 
 function normalizeMatchText(text: string): string {
   return decodeEntities(text || "")
@@ -156,10 +120,6 @@ function getTopicMatches(article: StoredRssArticle, rules: TopicRuleView[]): Top
     })
     .filter((match) => match.score > 0)
     .sort((a, b) => b.score - a.score || a.rule.sort_order - b.rule.sort_order || a.rule.label.localeCompare(b.rule.label));
-}
-
-function getMatchingTopics(article: StoredRssArticle, rules: TopicRuleView[]): TopicRuleView[] {
-  return getTopicMatches(article, rules).map((match) => match.rule);
 }
 
 function matchesTopic(article: StoredRssArticle, rule: TopicRuleView | null, rules: TopicRuleView[]): boolean {

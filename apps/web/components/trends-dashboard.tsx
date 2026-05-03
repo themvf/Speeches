@@ -140,6 +140,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   doj_usao_press_release: "DOJ",
   cftc_press_release: "CFTC",
   newsapi_article: "News",
+  rss_news_feed: "News Feed",
   reddit_post: "Reddit",
   uploaded: "Uploaded",
 };
@@ -341,11 +342,13 @@ function TrendRow({
   score,
   expanded,
   onToggle,
+  recentWindowLabel,
 }: {
   trend: ScoredTrend;
   score: number;
   expanded: boolean;
   onToggle: () => void;
+  recentWindowLabel: string;
 }) {
   const momentum = getMomentum(trend.growth_pct);
   const sign = trend.growth_pct > 0 ? "+" : "";
@@ -381,7 +384,7 @@ function TrendRow({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-2 text-xs text-[color:var(--ink-faint)]">
               <span>{trend.total_mentions.toLocaleString()} mentions</span>
               <span aria-hidden>·</span>
-              <span>{trend.recent_mentions} in last 30d</span>
+              <span>{trend.recent_mentions} in {recentWindowLabel.toLowerCase()}</span>
               {trend.sources.length > 0 && (
                 <>
                   <span aria-hidden>·</span>
@@ -522,6 +525,7 @@ export function TrendsDashboard() {
     : null;
 
   const activeCategoryLabel = CATEGORIES.find((c) => c.value === categoryFilter)?.label ?? "";
+  const recentWindowLabel = RANGE_FILTERS.find((f) => f.value === rangeFilter)?.label ?? "Last 30 days";
 
   return (
     <div className="space-y-6">
@@ -635,6 +639,7 @@ export function TrendsDashboard() {
                   trend={trend}
                   score={trend._score}
                   expanded={expandedId === trend.id}
+                  recentWindowLabel={recentWindowLabel}
                   onToggle={() => setExpandedId((prev) => (prev === trend.id ? null : trend.id))}
                 />
               ))}
