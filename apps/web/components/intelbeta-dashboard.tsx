@@ -605,7 +605,7 @@ export function IntelBetaDashboard({
                 fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
               }}
             >
-              Intel Feed / {selectedRule ? selectedRule.label : "All"} / {filtered.length} Items
+              News Feed / {selectedRule ? selectedRule.label : "All"} / {filtered.length} matched ({articles.length} total)
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
