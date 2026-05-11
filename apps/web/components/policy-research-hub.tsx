@@ -472,62 +472,74 @@ function renderToneChips(items: string[], emptyLabel: string, onSelect?: (item: 
   );
 }
 
-function renderChatContent(content: string) {
+function renderInline(text: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**"))
+      return <strong key={i} className="font-semibold text-[color:var(--ink)]">{part.slice(2, -2)}</strong>;
+    if (part.startsWith("*") && part.endsWith("*"))
+      return <em key={i} className="italic">{part.slice(1, -1)}</em>;
+    if (part.startsWith("`") && part.endsWith("`"))
+      return <code key={i} className="rounded bg-[rgba(79,213,255,0.1)] px-1 py-0.5 font-mono text-xs text-[color:rgba(79,213,255,0.85)]">{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function ChatMarkdown({ content }: { content: string }) {
   const blocks = String(content || "")
     .replace(/\r\n?/g, "\n")
     .trim()
     .split(/\n{2,}/)
-    .map((block) => block.trim())
+    .map((b) => b.trim())
     .filter(Boolean);
 
-  if (!blocks.length) {
-    return <p className="mt-1 text-sm whitespace-pre-wrap">{content}</p>;
-  }
+  if (!blocks.length) return <p className="mt-1 text-sm whitespace-pre-wrap">{content}</p>;
 
   return (
     <div className="mt-2 space-y-3 text-sm text-[color:var(--ink)]">
-      {blocks.map((block, index) => {
-        const lines = block.split("\n").map((line) => line.trimEnd());
-        const nonEmptyLines = lines.map((line) => line.trim()).filter(Boolean);
-        if (!nonEmptyLines.length) {
-          return null;
-        }
+      {blocks.map((block, i) => {
+        const lines = block.split("\n").map((l) => l.trimEnd());
+        const nonEmpty = lines.map((l) => l.trim()).filter(Boolean);
+        if (!nonEmpty.length) return null;
 
-        const firstLine = nonEmptyLines[0];
-        if (/^##\s+/.test(firstLine)) {
+        const first = nonEmpty[0];
+
+        if (/^#{1,3}\s+/.test(first)) {
           return (
-            <div key={`block_${index}`} className="space-y-2">
+            <div key={i} className="space-y-2">
               <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
-                {firstLine.replace(/^##\s+/, "")}
+                {first.replace(/^#{1,3}\s+/, "")}
               </h3>
-              {nonEmptyLines.slice(1).length ? renderChatContent(nonEmptyLines.slice(1).join("\n\n")) : null}
+              {nonEmpty.length > 1 && (
+                <ChatMarkdown content={nonEmpty.slice(1).join("\n\n")} />
+              )}
             </div>
           );
         }
 
-        if (nonEmptyLines.every((line) => /^[-*]\s+/.test(line))) {
+        if (nonEmpty.every((l) => /^[-*]\s+/.test(l))) {
           return (
-            <ul key={`block_${index}`} className="list-disc space-y-1 pl-5">
-              {nonEmptyLines.map((line, itemIndex) => (
-                <li key={`item_${itemIndex}`}>{line.replace(/^[-*]\s+/, "")}</li>
+            <ul key={i} className="list-disc space-y-1 pl-5 text-[color:var(--ink-soft)]">
+              {nonEmpty.map((l, j) => (
+                <li key={j} className="leading-6">{renderInline(l.replace(/^[-*]\s+/, ""))}</li>
               ))}
             </ul>
           );
         }
 
-        if (nonEmptyLines.every((line) => /^\d+\.\s+/.test(line))) {
+        if (nonEmpty.every((l) => /^\d+\.\s+/.test(l))) {
           return (
-            <ol key={`block_${index}`} className="list-decimal space-y-1 pl-5">
-              {nonEmptyLines.map((line, itemIndex) => (
-                <li key={`item_${itemIndex}`}>{line.replace(/^\d+\.\s+/, "")}</li>
+            <ol key={i} className="list-decimal space-y-1 pl-5 text-[color:var(--ink-soft)]">
+              {nonEmpty.map((l, j) => (
+                <li key={j} className="leading-6">{renderInline(l.replace(/^\d+\.\s+/, ""))}</li>
               ))}
             </ol>
           );
         }
 
         return (
-          <p key={`block_${index}`} className="whitespace-pre-wrap leading-6 text-[color:var(--ink-soft)]">
-            {block}
+          <p key={i} className="leading-6 text-[color:var(--ink-soft)]">
+            {renderInline(block)}
           </p>
         );
       })}
@@ -1701,7 +1713,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   }`}
                 >
                   <p className="text-xs font-semibold uppercase">{m.role}</p>
-                  {renderChatContent(m.content)}
+                  <ChatMarkdown content={m.content} />
                   {m.model || m.retrieved_count ? (
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-slate-400">
                       {m.model ? <span>Model: {m.model}</span> : null}
