@@ -3,22 +3,53 @@
 import { useState } from "react";
 import type { DailyRecapRow, StoredRssTopicRule } from "@/lib/server/neon";
 
+function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+  return text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/).map((part, j) => {
+    if (part.startsWith("**") && part.endsWith("**"))
+      return <strong key={`${keyPrefix}-${j}`} className="font-semibold text-[color:var(--ink)]">{part.slice(2, -2)}</strong>;
+    if (part.startsWith("*") && part.endsWith("*"))
+      return <em key={`${keyPrefix}-${j}`} className="italic">{part.slice(1, -1)}</em>;
+    if (part.startsWith("`") && part.endsWith("`"))
+      return <code key={`${keyPrefix}-${j}`} className="rounded bg-[rgba(79,213,255,0.1)] px-1 font-mono text-xs text-[color:rgba(79,213,255,0.85)]">{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
 function ChatMarkdownSimple({ content }: { content: string }) {
-  const blocks = content.replace(/\r\n?/g, "\n").trim().split(/\n{2,}/).filter(Boolean);
+  const lines = content.replace(/\r\n?/g, "\n").trim().split("\n");
+
+  type Block = { type: "p"; text: string } | { type: "ul"; items: string[] };
+  const blocks: Block[] = [];
+
+  for (const line of lines) {
+    const bulletMatch = line.match(/^[-*]\s+(.+)/);
+    if (bulletMatch) {
+      const last = blocks[blocks.length - 1];
+      if (last?.type === "ul") last.items.push(bulletMatch[1]);
+      else blocks.push({ type: "ul", items: [bulletMatch[1]] });
+    } else if (line.trim() === "") {
+      // skip blank lines
+    } else {
+      blocks.push({ type: "p", text: line });
+    }
+  }
+
   return (
     <div className="space-y-2 text-sm text-[color:var(--ink-soft)]">
       {blocks.map((block, i) => {
-        const parts = block.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/);
-        const rendered = parts.map((part, j) => {
-          if (part.startsWith("**") && part.endsWith("**"))
-            return <strong key={j} className="font-semibold text-[color:var(--ink)]">{part.slice(2, -2)}</strong>;
-          if (part.startsWith("*") && part.endsWith("*"))
-            return <em key={j} className="italic">{part.slice(1, -1)}</em>;
-          if (part.startsWith("`") && part.endsWith("`"))
-            return <code key={j} className="rounded bg-[rgba(79,213,255,0.1)] px-1 font-mono text-xs text-[color:rgba(79,213,255,0.85)]">{part.slice(1, -1)}</code>;
-          return part;
-        });
-        return <p key={i} className="leading-6">{rendered}</p>;
+        if (block.type === "ul") {
+          return (
+            <ul key={i} className="space-y-1 pl-1">
+              {block.items.map((item, j) => (
+                <li key={j} className="flex gap-2 leading-6">
+                  <span className="mt-[3px] shrink-0 text-[color:var(--accent)] opacity-60">•</span>
+                  <span>{renderInline(item, `${i}-${j}`)}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        return <p key={i} className="leading-6">{renderInline(block.text, String(i))}</p>;
       })}
     </div>
   );
