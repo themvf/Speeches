@@ -7,12 +7,13 @@ import {
   type StoredRssArticle,
 } from "@/lib/server/neon";
 import { getOpenAiConfig } from "@/lib/server/env";
-import { getMatchingTopics, normalizeTopicRules } from "@/lib/intel-topic-matching";
+import { getTopicMatches, normalizeTopicRules } from "@/lib/intel-topic-matching";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MAX_ARTICLES_PER_TOPIC = 20;
+const MIN_MATCH_SCORE = 70; // excludes description-only matches on short keywords
 
 async function generateTopicSummary(
   topicLabel: string,
@@ -24,7 +25,7 @@ async function generateTopicSummary(
     .map((a) => `- ${a.title}${a.description ? `: ${a.description}` : ""}`)
     .join("\n");
 
-  const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${articles.length} news articles about "${topicLabel}" from the past 24 hours. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Be direct and analytical. Synthesize — do not quote or list articles individually.\n\nArticles:\n${articleList}`;
+  const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${articles.length} news articles about "${topicLabel}" from the past 24 hours. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Be direct and analytical. Synthesize — do not quote or list articles individually. If an article is only tangentially related, incorporate any relevant angle rather than refusing to summarize.\n\nArticles:\n${articleList}`;
 
   const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
     method: "POST",
@@ -76,9 +77,11 @@ export async function POST(): Promise<NextResponse> {
       topicArticleMap.set(rule.topic_key, []);
     }
     for (const article of articles) {
-      const matched = getMatchingTopics(article, selectedRules);
-      for (const rule of matched) {
-        topicArticleMap.get(rule.topic_key)?.push(article);
+      const matches = getTopicMatches(article, selectedRules);
+      for (const { rule, score } of matches) {
+        if (score >= MIN_MATCH_SCORE) {
+          topicArticleMap.get(rule.topic_key)?.push(article);
+        }
       }
     }
 
