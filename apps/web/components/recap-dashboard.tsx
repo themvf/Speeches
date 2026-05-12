@@ -135,19 +135,13 @@ export function RecapDashboard({
 
   const isToday = viewDate === todayIso;
 
-  const formatDate = (iso: string) =>
-    new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-
-  const shiftDate = async (days: number) => {
-    const d = new Date(viewDate + "T12:00:00");
-    d.setDate(d.getDate() + days);
-    const next = d.toISOString().split("T")[0] as string;
-    if (next > todayIso) return;
-    setViewDate(next);
+  const loadDate = async (date: string) => {
+    if (date === viewDate) return;
+    setViewDate(date);
     setLoadingDate(true);
     setGenerateError(null);
     try {
-      const res = await fetch(`/api/intel/recap?date=${next}`);
+      const res = await fetch(`/api/intel/recap?date=${date}`);
       const json = (await res.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
       if (json.ok && json.data) setRecap(json.data.recap);
     } finally {
@@ -183,7 +177,11 @@ export function RecapDashboard({
     setGenerating(true);
     setGenerateError(null);
     try {
-      const res = await fetch("/api/intel/recap/generate", { method: "POST" });
+      const res = await fetch("/api/intel/recap/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: viewDate }),
+      });
       let json: { ok: boolean; error?: string };
       try {
         json = (await res.json()) as { ok: boolean; error?: string };
@@ -195,7 +193,7 @@ export function RecapDashboard({
         setGenerateError(json.error ?? `Generation failed (HTTP ${res.status}).`);
         return;
       }
-      const recapRes = await fetch("/api/intel/recap");
+      const recapRes = await fetch(`/api/intel/recap?date=${viewDate}`);
       const recapJson = (await recapRes.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
       if (recapJson.ok && recapJson.data) setRecap(recapJson.data.recap);
     } catch (err) {
@@ -248,35 +246,22 @@ export function RecapDashboard({
             <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--ink-faint)]">
               {isToday ? "Today's Recap" : "Recap"}
             </h2>
-            <div className="mt-1 flex items-center gap-1">
-              <button
-                onClick={() => void shiftDate(-1)}
-                disabled={loadingDate || generating}
-                className="rounded px-1.5 py-0.5 text-xs text-[color:var(--ink-faint)] hover:bg-[color:rgba(79,213,255,0.1)] hover:text-[color:var(--ink)] disabled:opacity-40"
-                aria-label="Previous day"
-              >
-                ‹
-              </button>
-              <span className="text-xs text-[color:var(--ink-faint)]">{formatDate(viewDate)}</span>
-              <button
-                onClick={() => void shiftDate(1)}
-                disabled={isToday || loadingDate || generating}
-                className="rounded px-1.5 py-0.5 text-xs text-[color:var(--ink-faint)] hover:bg-[color:rgba(79,213,255,0.1)] hover:text-[color:var(--ink)] disabled:opacity-40"
-                aria-label="Next day"
-              >
-                ›
-              </button>
-            </div>
+            <input
+              type="date"
+              value={viewDate}
+              max={todayIso}
+              onChange={(e) => { if (e.target.value) void loadDate(e.target.value); }}
+              disabled={loadingDate || generating}
+              className="mt-1 rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-2 py-0.5 text-xs text-[color:var(--ink-faint)] [color-scheme:dark] disabled:opacity-50"
+            />
           </div>
-          {isToday && (
-            <button
-              onClick={() => void generate()}
-              disabled={generating}
-              className="btn-solid shrink-0 px-4 py-1.5 text-sm disabled:opacity-50"
-            >
-              {generating ? "Generating…" : recap.length > 0 ? "Regenerate" : "Generate Recap"}
-            </button>
-          )}
+          <button
+            onClick={() => void generate()}
+            disabled={generating || loadingDate}
+            className="btn-solid shrink-0 px-4 py-1.5 text-sm disabled:opacity-50"
+          >
+            {generating ? "Generating…" : recap.length > 0 ? "Regenerate" : "Generate Recap"}
+          </button>
         </div>
 
         {generateError && (

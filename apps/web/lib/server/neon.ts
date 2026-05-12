@@ -409,40 +409,27 @@ export async function getRecentArticles(opts: {
   limit?: number;
   feedKey?: string;
   since?: Date;
+  until?: Date;
 } = {}): Promise<StoredRssArticle[]> {
   const sql = getSql();
   const limit = opts.limit ?? 50;
   const feedKey = opts.feedKey ?? null;
   const since = opts.since ? opts.since.toISOString() : null;
+  const until = opts.until ? opts.until.toISOString() : null;
 
   let query;
-  if (feedKey && since) {
-    query = sql`
-      SELECT * FROM rss_articles
-      WHERE feed_key = ${feedKey} AND fetched_at > ${since}
-      ORDER BY fetched_at DESC
-      LIMIT ${limit}
-    `;
+  if (feedKey && since && until) {
+    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} AND fetched_at > ${since} AND fetched_at <= ${until} ORDER BY fetched_at DESC LIMIT ${limit}`;
+  } else if (feedKey && since) {
+    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} AND fetched_at > ${since} ORDER BY fetched_at DESC LIMIT ${limit}`;
   } else if (feedKey) {
-    query = sql`
-      SELECT * FROM rss_articles
-      WHERE feed_key = ${feedKey}
-      ORDER BY fetched_at DESC
-      LIMIT ${limit}
-    `;
+    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} ORDER BY fetched_at DESC LIMIT ${limit}`;
+  } else if (since && until) {
+    query = sql`SELECT * FROM rss_articles WHERE fetched_at > ${since} AND fetched_at <= ${until} ORDER BY fetched_at DESC LIMIT ${limit}`;
   } else if (since) {
-    query = sql`
-      SELECT * FROM rss_articles
-      WHERE fetched_at > ${since}
-      ORDER BY fetched_at DESC
-      LIMIT ${limit}
-    `;
+    query = sql`SELECT * FROM rss_articles WHERE fetched_at > ${since} ORDER BY fetched_at DESC LIMIT ${limit}`;
   } else {
-    query = sql`
-      SELECT * FROM rss_articles
-      ORDER BY fetched_at DESC
-      LIMIT ${limit}
-    `;
+    query = sql`SELECT * FROM rss_articles ORDER BY fetched_at DESC LIMIT ${limit}`;
   }
   return (await query) as unknown as StoredRssArticle[];
 }

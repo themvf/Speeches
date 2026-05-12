@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   getRecapSettings,
   getTopicRules,
@@ -49,20 +49,31 @@ async function generateTopicSummary(
   return json.choices[0]?.message?.content?.trim() ?? "";
 }
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const cfg = getOpenAiConfig();
     if (!cfg.apiKey) {
       return NextResponse.json({ ok: false, error: "OpenAI not configured (OPENAI_API_KEY missing)" }, { status: 500 });
     }
 
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recapDate = new Date().toISOString().split("T")[0];
+    const body = await req.json().catch(() => ({})) as { date?: string };
+    const todayIso = new Date().toISOString().split("T")[0] as string;
+    const recapDate = body.date ?? todayIso;
+
+    // For today: last 24h. For a past date: midnight-to-midnight of that day.
+    let since: Date;
+    let until: Date | undefined;
+    if (recapDate === todayIso) {
+      since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    } else {
+      since = new Date(recapDate + "T00:00:00Z");
+      until = new Date(recapDate + "T23:59:59Z");
+    }
 
     const [selectedTopicKeys, rawRules, articles] = await Promise.all([
       getRecapSettings(),
       getTopicRules(true),
-      getRecentArticles({ limit: 400, since }),
+      getRecentArticles({ limit: 400, since, until }),
     ]);
 
     if (selectedTopicKeys.length === 0) {
