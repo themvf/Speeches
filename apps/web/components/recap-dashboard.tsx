@@ -105,16 +105,22 @@ export function RecapDashboard({
     setGenerateError(null);
     try {
       const res = await fetch("/api/intel/recap/generate", { method: "POST" });
-      const json = (await res.json()) as { ok: boolean; error?: string };
+      let json: { ok: boolean; error?: string };
+      try {
+        json = (await res.json()) as { ok: boolean; error?: string };
+      } catch {
+        setGenerateError(`Server error ${res.status}: ${res.statusText || "non-JSON response"}`);
+        return;
+      }
       if (!json.ok) {
-        setGenerateError(json.error ?? "Generation failed.");
+        setGenerateError(json.error ?? `Generation failed (HTTP ${res.status}).`);
         return;
       }
       const recapRes = await fetch("/api/intel/recap");
       const recapJson = (await recapRes.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
       if (recapJson.ok && recapJson.data) setRecap(recapJson.data.recap);
-    } catch {
-      setGenerateError("Something went wrong. Please try again.");
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : String(err));
     } finally {
       setGenerating(false);
     }
