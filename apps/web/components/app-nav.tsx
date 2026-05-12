@@ -14,6 +14,7 @@ type NavItem = {
     | "/intelligence"
     | "/intelbeta"
     | "/research"
+    | "/recap"
     | "/enforcement"
     | "/market"
     | "/saved";
@@ -24,6 +25,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "News Feed", prefetch: true },
   { href: "/research", label: "Research", prefetch: true },
+  { href: "/recap", label: "Recap", prefetch: true },
   { href: "/trends", label: "Trends", prefetch: true },
   { href: "/enforcement", label: "Enforcement", prefetch: true },
   { href: "/market", label: "Market", prefetch: true },

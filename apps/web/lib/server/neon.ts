@@ -25,6 +25,19 @@ export type StoredRssTopicRule = {
   updated_at: string;
 };
 
+export type DailyRecapRow = {
+  id: number;
+  recap_date: string;
+  topic_key: string;
+  topic_label: string;
+  summary: string;
+  article_count: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  generated_at: string;
+};
+
 export type RssFeed = {
   id: number;
   label: string;
@@ -254,6 +267,28 @@ export async function ensureSchema(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS recap_settings (
+      id         SERIAL PRIMARY KEY,
+      topic_keys TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS daily_recaps (
+      id             SERIAL PRIMARY KEY,
+      recap_date     DATE NOT NULL,
+      topic_key      TEXT NOT NULL,
+      topic_label    TEXT NOT NULL,
+      summary        TEXT NOT NULL,
+      article_count  INTEGER NOT NULL DEFAULT 0,
+      positive_count INTEGER NOT NULL DEFAULT 0,
+      negative_count INTEGER NOT NULL DEFAULT 0,
+      neutral_count  INTEGER NOT NULL DEFAULT 0,
+      generated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (recap_date, topic_key)
+    )
+  `;
   await seedDefaultFeeds(sql);
   await seedDefaultTopicRules(sql);
 }
@@ -405,4 +440,53 @@ export async function getRecentArticles(opts: {
     `;
   }
   return (await query) as unknown as StoredRssArticle[];
+}
+
+export async function getRecapSettings(): Promise<string[]> {
+  await ensureSchema();
+  const sql = getSql();
+  const rows = (await sql`SELECT topic_keys FROM recap_settings LIMIT 1`) as unknown as { topic_keys: string }[];
+  const raw = rows[0]?.topic_keys ?? "";
+  return raw ? raw.split(",").map((k) => k.trim()).filter(Boolean) : [];
+}
+
+export async function saveRecapSettings(topicKeys: string[]): Promise<void> {
+  await ensureSchema();
+  const sql = getSql();
+  const value = topicKeys.join(",");
+  const existing = (await sql`SELECT id FROM recap_settings LIMIT 1`) as unknown as { id: number }[];
+  if (existing.length > 0) {
+    await sql`UPDATE recap_settings SET topic_keys = ${value}, updated_at = now() WHERE id = ${existing[0].id}`;
+  } else {
+    await sql`INSERT INTO recap_settings (topic_keys) VALUES (${value})`;
+  }
+}
+
+export async function getTodaysRecap(): Promise<DailyRecapRow[]> {
+  await ensureSchema();
+  const sql = getSql();
+  return (await sql`
+    SELECT * FROM daily_recaps
+    WHERE recap_date = CURRENT_DATE
+    ORDER BY topic_label ASC
+  `) as unknown as DailyRecapRow[];
+}
+
+export async function saveRecapRows(rows: Omit<DailyRecapRow, "id" | "generated_at">[]): Promise<void> {
+  await ensureSchema();
+  const sql = getSql();
+  for (const row of rows) {
+    await sql`
+      INSERT INTO daily_recaps (recap_date, topic_key, topic_label, summary, article_count, positive_count, negative_count, neutral_count)
+      VALUES (${row.recap_date}, ${row.topic_key}, ${row.topic_label}, ${row.summary}, ${row.article_count}, ${row.positive_count}, ${row.negative_count}, ${row.neutral_count})
+      ON CONFLICT (recap_date, topic_key) DO UPDATE
+      SET summary        = EXCLUDED.summary,
+          topic_label    = EXCLUDED.topic_label,
+          article_count  = EXCLUDED.article_count,
+          positive_count = EXCLUDED.positive_count,
+          negative_count = EXCLUDED.negative_count,
+          neutral_count  = EXCLUDED.neutral_count,
+          generated_at   = now()
+    `;
+  }
 }
