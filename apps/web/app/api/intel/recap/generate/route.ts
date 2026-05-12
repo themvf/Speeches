@@ -24,7 +24,7 @@ async function generateTopicSummary(
     .map((a) => `- ${a.title}${a.description ? `: ${a.description}` : ""}`)
     .join("\n");
 
-  const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${articles.length} news articles about "${topicLabel}" from the past 24 hours. Structure your response as:\n1. A 2–3 sentence executive summary of the most important developments.\n2. 3–5 bullet points covering key regulatory signals, notable events, and emerging trends.\n\nBe direct and analytical. Synthesize — do not quote or list articles individually.\n\nArticles:\n${articleList}`;
+  const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${articles.length} news articles about "${topicLabel}" from the past 24 hours. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Be direct and analytical. Synthesize — do not quote or list articles individually.\n\nArticles:\n${articleList}`;
 
   const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
     method: "POST",
