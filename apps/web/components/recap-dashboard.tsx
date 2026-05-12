@@ -67,30 +67,43 @@ function ToneBar({ positive, negative, neutral }: { positive: number; negative: 
   );
 }
 
+function SourceLink({ s }: { s: RecapSource }) {
+  return (
+    <a
+      href={s.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-xs text-[color:var(--ink-faint)] hover:text-[color:var(--accent)] hover:underline"
+    >
+      {s.title}{s.speaker ? ` — ${s.speaker}` : ""}
+    </a>
+  );
+}
+
 function SourcesList({ sources }: { sources: RecapSource[] }) {
   if (!sources.length) return null;
+
+  const docs = sources.filter((s) => s.source_type === "document");
+  const news = sources.filter((s) => s.source_type !== "document");
+
   return (
-    <div className="mt-4 border-t border-[color:var(--line)] pt-3">
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Sources</p>
-      <ul className="space-y-1.5">
-        {sources.map((s, i) => (
-          <li key={i} className="flex items-start gap-2">
-            {s.source_type === "document" ? (
-              <span className="mt-px shrink-0 rounded bg-[color:rgba(79,213,255,0.12)] px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">Doc</span>
-            ) : (
-              <span className="mt-px shrink-0 rounded bg-[color:rgba(255,255,255,0.06)] px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-[color:var(--ink-faint)]">News</span>
-            )}
-            <a
-              href={s.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-[color:var(--ink-faint)] hover:text-[color:var(--accent)] hover:underline"
-            >
-              {s.title}{s.speaker ? ` — ${s.speaker}` : ""}
-            </a>
-          </li>
-        ))}
-      </ul>
+    <div className="mt-4 space-y-3 border-t border-[color:var(--line)] pt-3">
+      {docs.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--accent)]">Regulatory Documents</p>
+          <ul className="space-y-1">
+            {docs.map((s, i) => <li key={i}><SourceLink s={s} /></li>)}
+          </ul>
+        </div>
+      )}
+      {news.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">News</p>
+          <ul className="space-y-1">
+            {news.map((s, i) => <li key={i}><SourceLink s={s} /></li>)}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
