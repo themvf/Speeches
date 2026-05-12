@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MAX_ARTICLES_PER_TOPIC = 20;
-const MIN_MATCH_SCORE = 70; // excludes description-only matches on short keywords
+const MIN_MATCH_SCORE = 100; // requires a title match; description-only matches are too noisy for recap
 
 async function generateTopicSummary(
   topicLabel: string,
