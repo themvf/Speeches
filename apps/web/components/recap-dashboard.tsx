@@ -128,6 +128,7 @@ export function RecapDashboard({
   const [recap, setRecap] = useState<DailyRecapRow[]>(initialRecap);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [skippedTopics, setSkippedTopics] = useState<{ topic_key: string; topic_label: string }[]>([]);
   const [loadingDate, setLoadingDate] = useState(false);
 
   const todayIso = new Date().toISOString().split("T")[0] as string;
@@ -140,6 +141,7 @@ export function RecapDashboard({
     setViewDate(date);
     setLoadingDate(true);
     setGenerateError(null);
+    setSkippedTopics([]);
     try {
       const res = await fetch(`/api/intel/recap?date=${date}`);
       const json = (await res.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
@@ -182,7 +184,7 @@ export function RecapDashboard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: viewDate }),
       });
-      let json: { ok: boolean; error?: string };
+      let json: { ok: boolean; error?: string; data?: { skipped?: { topic_key: string; topic_label: string }[] } };
       try {
         json = (await res.json()) as { ok: boolean; error?: string };
       } catch {
@@ -193,6 +195,7 @@ export function RecapDashboard({
         setGenerateError(json.error ?? `Generation failed (HTTP ${res.status}).`);
         return;
       }
+      setSkippedTopics(json.data?.skipped ?? []);
       const recapRes = await fetch(`/api/intel/recap?date=${viewDate}`);
       const recapJson = (await recapRes.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
       if (recapJson.ok && recapJson.data) setRecap(recapJson.data.recap);
@@ -296,7 +299,13 @@ export function RecapDashboard({
           </div>
         )}
 
-        {!generating && recap.length === 0 && (
+        {!generating && !loadingDate && skippedTopics.length > 0 && (
+          <p className="mt-3 text-xs text-[color:var(--ink-faint)]">
+            No matching articles for: {skippedTopics.map((t) => t.topic_label).join(", ")}
+          </p>
+        )}
+
+        {!generating && !loadingDate && recap.length === 0 && skippedTopics.length === 0 && (
           <p className="mt-4 text-sm text-[color:var(--ink-faint)]">
             {isToday ? "No recap for today yet. Select your topics above and click Generate." : "No recap stored for this date."}
           </p>

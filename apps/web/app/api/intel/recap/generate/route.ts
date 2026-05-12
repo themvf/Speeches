@@ -97,10 +97,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
+    const skipped: { topic_key: string; topic_label: string }[] = [];
 
     for (const rule of selectedRules) {
       const topicArticles = topicArticleMap.get(rule.topic_key) ?? [];
-      if (topicArticles.length === 0) continue;
+      if (topicArticles.length === 0) {
+        skipped.push({ topic_key: rule.topic_key, topic_label: rule.label });
+        continue;
+      }
 
       const summary = await generateTopicSummary(rule.label, topicArticles, cfg);
 
@@ -124,7 +128,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }]);
     }
 
-    return NextResponse.json({ ok: true, data: { date: recapDate, topics: results } });
+    return NextResponse.json({ ok: true, data: { date: recapDate, topics: results, skipped } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[recap/generate]", message);
