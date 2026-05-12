@@ -83,16 +83,25 @@ function SourceLink({ s }: { s: RecapSource }) {
 function SourcesList({ sources }: { sources: RecapSource[] }) {
   if (!sources.length) return null;
 
-  const docs = sources.filter((s) => s.source_type === "document");
+  const secSpeeches = sources.filter((s) => s.source_type === "document" && s.source_kind === "sec_speech");
+  const otherDocs = sources.filter((s) => s.source_type === "document" && s.source_kind !== "sec_speech");
   const news = sources.filter((s) => s.source_type !== "document");
 
   return (
     <div className="mt-4 space-y-3 border-t border-[color:var(--line)] pt-3">
-      {docs.length > 0 && (
+      {secSpeeches.length > 0 && (
         <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--accent)]">Regulatory Documents</p>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--accent)]">SEC Speeches</p>
           <ul className="space-y-1">
-            {docs.map((s, i) => <li key={i}><SourceLink s={s} /></li>)}
+            {secSpeeches.map((s, i) => <li key={i}><SourceLink s={s} /></li>)}
+          </ul>
+        </div>
+      )}
+      {otherDocs.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(79,213,255,0.6)]">Documents</p>
+          <ul className="space-y-1">
+            {otherDocs.map((s, i) => <li key={i}><SourceLink s={s} /></li>)}
           </ul>
         </div>
       )}

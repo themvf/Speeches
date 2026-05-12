@@ -39,6 +39,7 @@ type RecapItem = {
   matchText?: string;  // overrides description for topic matching; for corpus docs = enrichment tags + keywords
   url: string;
   source_type: "article" | "document";
+  source_kind?: string; // e.g. "sec_speech", "custom" — used for UI labeling
   speaker?: string;
   tone_label?: "positive" | "neutral" | "negative" | null;
 };
@@ -174,6 +175,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           matchText,
           url: doc.metadata.url,
           source_type: "document" as const,
+          source_kind: doc.metadata.source_kind || undefined,
           speaker: doc.metadata.speaker || undefined,
         };
       });
@@ -184,7 +186,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
     const skipped: { topic_key: string; topic_label: string }[] = [];
 
-    for (const rule of selectedRules) {
+    await Promise.all(selectedRules.map(async (rule) => {
       const topicItems: RecapItem[] = [
         ...(articleMap.get(rule.topic_key) ?? []),
         ...(corpusMap.get(rule.topic_key) ?? []),
@@ -192,7 +194,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       if (topicItems.length === 0) {
         skipped.push({ topic_key: rule.topic_key, topic_label: rule.label });
-        continue;
+        return;
       }
 
       const summary = await generateTopicSummary(rule.label, topicItems, cfg);
@@ -205,6 +207,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         title: i.title,
         url: i.url,
         source_type: i.source_type,
+        source_kind: i.source_kind,
         speaker: i.speaker,
       }));
 
@@ -221,7 +224,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         neutral_count,
         sources,
       }]);
-    }
+    }));
 
     return NextResponse.json({ ok: true, data: { date: recapDate, topics: results, skipped } });
   } catch (err) {
