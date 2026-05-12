@@ -117,7 +117,7 @@ export function getApiRuntimeInfo() {
 export function getOpenAiConfig(): OpenAiConfig {
   return {
     apiKey: readEnv("OPENAI_API_KEY", ""),
-    model: readEnv("OPENAI_CHAT_MODEL", "gpt-5.1"),
+    model: readEnv("OPENAI_CHAT_MODEL", "gpt-4.1"),
     baseUrl: readEnv("OPENAI_BASE_URL", "https://api.openai.com/v1")
   };
 }

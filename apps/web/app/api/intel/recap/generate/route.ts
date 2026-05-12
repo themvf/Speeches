@@ -40,7 +40,10 @@ async function generateTopicSummary(
     }),
   });
 
-  if (!res.ok) throw new Error(`OpenAI error ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`OpenAI error ${res.status}: ${body.slice(0, 300)}`);
+  }
   const json = (await res.json()) as { choices: { message: { content: string } }[] };
   return json.choices[0]?.message?.content?.trim() ?? "";
 }
