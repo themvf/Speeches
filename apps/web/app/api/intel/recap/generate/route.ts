@@ -4,28 +4,43 @@ import {
   getTopicRules,
   getRecentArticles,
   saveRecapRows,
-  type StoredRssArticle,
+  type RecapSource,
 } from "@/lib/server/neon";
+import { loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-store";
 import { getOpenAiConfig } from "@/lib/server/env";
-import { getTopicMatches, normalizeTopicRules } from "@/lib/intel-topic-matching";
+import { getTopicMatches, normalizeTopicRules, type TopicRuleView } from "@/lib/intel-topic-matching";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const MAX_ARTICLES_PER_TOPIC = 20;
-const MIN_MATCH_SCORE = 100; // requires a title match; description-only matches are too noisy for recap
+const MAX_ITEMS_PER_TOPIC = 20;
+const MIN_MATCH_SCORE = 100;
+
+type RecapItem = {
+  title: string;
+  description: string;
+  url: string;
+  source_type: "article" | "document";
+  speaker?: string;
+  tone_label?: "positive" | "neutral" | "negative" | null;
+};
 
 async function generateTopicSummary(
   topicLabel: string,
-  articles: StoredRssArticle[],
+  items: RecapItem[],
   cfg: { apiKey: string; model: string; baseUrl: string }
 ): Promise<string> {
-  const articleList = articles
-    .slice(0, MAX_ARTICLES_PER_TOPIC)
-    .map((a) => `- ${a.title}${a.description ? `: ${a.description}` : ""}`)
+  const itemList = items
+    .slice(0, MAX_ITEMS_PER_TOPIC)
+    .map((item) => {
+      const prefix = item.source_type === "document"
+        ? `[Regulatory Document${item.speaker ? ` — ${item.speaker}` : ""}]`
+        : "[News]";
+      return `- ${prefix} ${item.title}${item.description ? `: ${item.description}` : ""}`;
+    })
     .join("\n");
 
-  const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${articles.length} news articles about "${topicLabel}" from the past 24 hours. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Be direct and analytical. Synthesize — do not quote or list articles individually. If an article is only tangentially related, incorporate any relevant angle rather than refusing to summarize.\n\nArticles:\n${articleList}`;
+  const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${items.length} sources about "${topicLabel}" from the past 24 hours. Sources are labeled [News] or [Regulatory Document]. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Prioritize regulatory documents over news when relevant. Be direct and analytical. Synthesize — do not quote or list sources individually.\n\nSources:\n${itemList}`;
 
   const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
     method: "POST",
@@ -36,7 +51,7 @@ async function generateTopicSummary(
     body: JSON.stringify({
       model: cfg.model,
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 600,
+      max_tokens: 700,
       temperature: 0.4,
     }),
   });
@@ -47,6 +62,23 @@ async function generateTopicSummary(
   }
   const json = (await res.json()) as { choices: { message: { content: string } }[] };
   return json.choices[0]?.message?.content?.trim() ?? "";
+}
+
+function buildTopicItemMap(
+  rules: TopicRuleView[],
+  items: RecapItem[]
+): Map<string, RecapItem[]> {
+  const map = new Map<string, RecapItem[]>();
+  for (const rule of rules) map.set(rule.topic_key, []);
+  for (const item of items) {
+    const matches = getTopicMatches(item, rules);
+    for (const { rule, score } of matches) {
+      if (score >= MIN_MATCH_SCORE) {
+        map.get(rule.topic_key)?.push(item);
+      }
+    }
+  }
+  return map;
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -60,7 +92,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const todayIso = new Date().toISOString().split("T")[0] as string;
     const recapDate = body.date ?? todayIso;
 
-    // For today: last 24h. For a past date: midnight-to-midnight of that day.
     let since: Date;
     let until: Date | undefined;
     if (recapDate === todayIso) {
@@ -70,10 +101,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       until = new Date(recapDate + "T23:59:59Z");
     }
 
-    const [selectedTopicKeys, rawRules, articles] = await Promise.all([
+    const [selectedTopicKeys, rawRules, articles, corpusDocs, enrichmentState] = await Promise.all([
       getRecapSettings(),
       getTopicRules(true),
       getRecentArticles({ limit: 400, since, until }),
+      loadCorpusDocuments(),
+      loadEnrichmentState(),
     ]);
 
     if (selectedTopicKeys.length === 0) {
@@ -83,44 +116,76 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const rules = normalizeTopicRules(rawRules);
     const selectedRules = rules.filter((r) => selectedTopicKeys.includes(r.topic_key));
 
-    const topicArticleMap = new Map<string, StoredRssArticle[]>();
-    for (const rule of selectedRules) {
-      topicArticleMap.set(rule.topic_key, []);
-    }
-    for (const article of articles) {
-      const matches = getTopicMatches(article, selectedRules);
-      for (const { rule, score } of matches) {
-        if (score >= MIN_MATCH_SCORE) {
-          topicArticleMap.get(rule.topic_key)?.push(article);
-        }
-      }
-    }
+    // Convert RSS articles to RecapItems
+    const articleItems: RecapItem[] = articles.map((a) => ({
+      title: a.title,
+      description: a.description ?? "",
+      url: a.url,
+      source_type: "article",
+      tone_label: a.tone_label,
+    }));
+
+    // Filter corpus docs by date and convert to RecapItems
+    const enrichmentEntries = enrichmentState.entries ?? {};
+    const corpusItems: RecapItem[] = corpusDocs
+      .filter((doc) => doc.metadata.date?.slice(0, 10) === recapDate)
+      .map((doc) => {
+        const enrichment = enrichmentEntries[doc.metadata.document_id];
+        const description =
+          enrichment?.enrichment?.summary ||
+          doc.metadata.summary ||
+          doc.content.full_text.slice(0, 400);
+        return {
+          title: doc.metadata.title,
+          description,
+          url: doc.metadata.url,
+          source_type: "document" as const,
+          speaker: doc.metadata.speaker || undefined,
+        };
+      });
+
+    const allItems = [...articleItems, ...corpusItems];
+
+    // Build per-topic item maps (articles and corpus docs matched separately so we
+    // can apply the same score threshold to both)
+    const articleMap = buildTopicItemMap(selectedRules, articleItems);
+    const corpusMap = buildTopicItemMap(selectedRules, corpusItems);
 
     const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
     const skipped: { topic_key: string; topic_label: string }[] = [];
 
     for (const rule of selectedRules) {
-      const topicArticles = topicArticleMap.get(rule.topic_key) ?? [];
-      if (topicArticles.length === 0) {
+      const topicItems: RecapItem[] = [
+        ...(articleMap.get(rule.topic_key) ?? []),
+        ...(corpusMap.get(rule.topic_key) ?? []),
+      ];
+
+      if (topicItems.length === 0) {
         skipped.push({ topic_key: rule.topic_key, topic_label: rule.label });
         continue;
       }
 
-      const summary = await generateTopicSummary(rule.label, topicArticles, cfg);
+      const summary = await generateTopicSummary(rule.label, topicItems, cfg);
 
-      const positive_count = topicArticles.filter((a) => a.tone_label === "positive").length;
-      const negative_count = topicArticles.filter((a) => a.tone_label === "negative").length;
-      const neutral_count = topicArticles.filter((a) => a.tone_label === "neutral").length;
-      const sources = topicArticles.slice(0, MAX_ARTICLES_PER_TOPIC).map((a) => ({ title: a.title, url: a.url }));
+      const positive_count = topicItems.filter((i) => i.tone_label === "positive").length;
+      const negative_count = topicItems.filter((i) => i.tone_label === "negative").length;
+      const neutral_count = topicItems.filter((i) => i.tone_label === "neutral").length;
 
-      results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicArticles.length, summary });
+      const sources: RecapSource[] = topicItems.slice(0, MAX_ITEMS_PER_TOPIC).map((i) => ({
+        title: i.title,
+        url: i.url,
+        source_type: i.source_type,
+        speaker: i.speaker,
+      }));
+
+      results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicItems.length, summary });
 
       await saveRecapRows([{
         recap_date: recapDate,
         topic_key: rule.topic_key,
         topic_label: rule.label,
         summary,
-        article_count: topicArticles.length,
+        article_count: topicItems.length,
         positive_count,
         negative_count,
         neutral_count,

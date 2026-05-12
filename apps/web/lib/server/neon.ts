@@ -25,7 +25,7 @@ export type StoredRssTopicRule = {
   updated_at: string;
 };
 
-export type RecapSource = { title: string; url: string };
+export type RecapSource = { title: string; url: string; source_type: "article" | "document"; speaker?: string };
 
 export type DailyRecapRow = {
   id: number;

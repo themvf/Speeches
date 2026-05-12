@@ -72,16 +72,21 @@ function SourcesList({ sources }: { sources: RecapSource[] }) {
   return (
     <div className="mt-4 border-t border-[color:var(--line)] pt-3">
       <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Sources</p>
-      <ul className="space-y-1">
+      <ul className="space-y-1.5">
         {sources.map((s, i) => (
-          <li key={i}>
+          <li key={i} className="flex items-start gap-2">
+            {s.source_type === "document" ? (
+              <span className="mt-px shrink-0 rounded bg-[color:rgba(79,213,255,0.12)] px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">Doc</span>
+            ) : (
+              <span className="mt-px shrink-0 rounded bg-[color:rgba(255,255,255,0.06)] px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-[color:var(--ink-faint)]">News</span>
+            )}
             <a
               href={s.url}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-[color:var(--ink-faint)] hover:text-[color:var(--accent)] hover:underline"
             >
-              {s.title}
+              {s.title}{s.speaker ? ` — ${s.speaker}` : ""}
             </a>
           </li>
         ))}
