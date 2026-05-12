@@ -14,11 +14,16 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MAX_ITEMS_PER_TOPIC = 20;
-const MIN_MATCH_SCORE = 100;
+// Articles require a title match (100+) to avoid false positives from passing mentions.
+// Corpus docs use enrichment tags/keywords for matching — LLM-curated, so a
+// description-level match (50+) is reliable.
+const MIN_ARTICLE_SCORE = 100;
+const MIN_CORPUS_SCORE = 50;
 
 type RecapItem = {
   title: string;
-  description: string;
+  description: string; // used in the LLM prompt
+  matchText?: string;  // overrides description for topic matching; for corpus docs = enrichment tags + keywords
   url: string;
   source_type: "article" | "document";
   speaker?: string;
@@ -64,16 +69,23 @@ async function generateTopicSummary(
   return json.choices[0]?.message?.content?.trim() ?? "";
 }
 
-function buildTopicItemMap(
+function matchItemsToTopics(
+  items: RecapItem[],
   rules: TopicRuleView[],
-  items: RecapItem[]
+  minScore: number
 ): Map<string, RecapItem[]> {
   const map = new Map<string, RecapItem[]>();
   for (const rule of rules) map.set(rule.topic_key, []);
+
   for (const item of items) {
-    const matches = getTopicMatches(item, rules);
+    // Use matchText (enrichment tags/keywords) if provided, otherwise fall back to description
+    const matchInput = {
+      title: item.title,
+      description: item.matchText ?? item.description,
+    };
+    const matches = getTopicMatches(matchInput, rules);
     for (const { rule, score } of matches) {
-      if (score >= MIN_MATCH_SCORE) {
+      if (score >= minScore) {
         map.get(rule.topic_key)?.push(item);
       }
     }
@@ -116,7 +128,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const rules = normalizeTopicRules(rawRules);
     const selectedRules = rules.filter((r) => selectedTopicKeys.includes(r.topic_key));
 
-    // Convert RSS articles to RecapItems
+    // RSS articles — matched by title keyword (strict threshold)
     const articleItems: RecapItem[] = articles.map((a) => ({
       title: a.title,
       description: a.description ?? "",
@@ -125,31 +137,36 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       tone_label: a.tone_label,
     }));
 
-    // Filter corpus docs by date and convert to RecapItems
+    // Corpus docs — filter by date, match via enrichment tags + keywords (relaxed threshold)
     const enrichmentEntries = enrichmentState.entries ?? {};
     const corpusItems: RecapItem[] = corpusDocs
       .filter((doc) => doc.metadata.date?.slice(0, 10) === recapDate)
       .map((doc) => {
         const enrichment = enrichmentEntries[doc.metadata.document_id];
+        const tags: string[] = enrichment?.enrichment?.tags ?? [];
+        const keywords: string[] = enrichment?.enrichment?.keywords ?? [];
+
+        // matchText = enrichment tags + keywords joined; used for topic matching
+        const matchText = [...tags, ...keywords].join(" ") || undefined;
+
+        // description = enrichment summary for the LLM prompt
         const description =
           enrichment?.enrichment?.summary ||
           doc.metadata.summary ||
           doc.content.full_text.slice(0, 400);
+
         return {
           title: doc.metadata.title,
           description,
+          matchText,
           url: doc.metadata.url,
           source_type: "document" as const,
           speaker: doc.metadata.speaker || undefined,
         };
       });
 
-    const allItems = [...articleItems, ...corpusItems];
-
-    // Build per-topic item maps (articles and corpus docs matched separately so we
-    // can apply the same score threshold to both)
-    const articleMap = buildTopicItemMap(selectedRules, articleItems);
-    const corpusMap = buildTopicItemMap(selectedRules, corpusItems);
+    const articleMap = matchItemsToTopics(articleItems, selectedRules, MIN_ARTICLE_SCORE);
+    const corpusMap = matchItemsToTopics(corpusItems, selectedRules, MIN_CORPUS_SCORE);
 
     const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
     const skipped: { topic_key: string; topic_label: string }[] = [];
