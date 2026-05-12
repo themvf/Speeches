@@ -128,8 +128,32 @@ export function RecapDashboard({
   const [recap, setRecap] = useState<DailyRecapRow[]>(initialRecap);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [loadingDate, setLoadingDate] = useState(false);
 
-  const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const todayIso = new Date().toISOString().split("T")[0] as string;
+  const [viewDate, setViewDate] = useState<string>(todayIso);
+
+  const isToday = viewDate === todayIso;
+
+  const formatDate = (iso: string) =>
+    new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+  const shiftDate = async (days: number) => {
+    const d = new Date(viewDate + "T12:00:00");
+    d.setDate(d.getDate() + days);
+    const next = d.toISOString().split("T")[0] as string;
+    if (next > todayIso) return;
+    setViewDate(next);
+    setLoadingDate(true);
+    setGenerateError(null);
+    try {
+      const res = await fetch(`/api/intel/recap?date=${next}`);
+      const json = (await res.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
+      if (json.ok && json.data) setRecap(json.data.recap);
+    } finally {
+      setLoadingDate(false);
+    }
+  };
 
   const toggleTopic = (key: string) => {
     setSelectedKeys((prev) => {
@@ -221,16 +245,38 @@ export function RecapDashboard({
       <section className="panel p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--ink-faint)]">Today&apos;s Recap</h2>
-            <p className="mt-0.5 text-xs text-[color:var(--ink-faint)]">{today}</p>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--ink-faint)]">
+              {isToday ? "Today's Recap" : "Recap"}
+            </h2>
+            <div className="mt-1 flex items-center gap-1">
+              <button
+                onClick={() => void shiftDate(-1)}
+                disabled={loadingDate || generating}
+                className="rounded px-1.5 py-0.5 text-xs text-[color:var(--ink-faint)] hover:bg-[color:rgba(79,213,255,0.1)] hover:text-[color:var(--ink)] disabled:opacity-40"
+                aria-label="Previous day"
+              >
+                ‹
+              </button>
+              <span className="text-xs text-[color:var(--ink-faint)]">{formatDate(viewDate)}</span>
+              <button
+                onClick={() => void shiftDate(1)}
+                disabled={isToday || loadingDate || generating}
+                className="rounded px-1.5 py-0.5 text-xs text-[color:var(--ink-faint)] hover:bg-[color:rgba(79,213,255,0.1)] hover:text-[color:var(--ink)] disabled:opacity-40"
+                aria-label="Next day"
+              >
+                ›
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => void generate()}
-            disabled={generating}
-            className="btn-solid shrink-0 px-4 py-1.5 text-sm disabled:opacity-50"
-          >
-            {generating ? "Generating…" : recap.length > 0 ? "Regenerate" : "Generate Recap"}
-          </button>
+          {isToday && (
+            <button
+              onClick={() => void generate()}
+              disabled={generating}
+              className="btn-solid shrink-0 px-4 py-1.5 text-sm disabled:opacity-50"
+            >
+              {generating ? "Generating…" : recap.length > 0 ? "Regenerate" : "Generate Recap"}
+            </button>
+          )}
         </div>
 
         {generateError && (
@@ -255,7 +301,11 @@ export function RecapDashboard({
           </div>
         )}
 
-        {!generating && recap.length > 0 && (
+        {loadingDate && (
+          <p className="mt-4 text-sm text-[color:var(--ink-faint)]">Loading…</p>
+        )}
+
+        {!generating && !loadingDate && recap.length > 0 && (
           <div className="mt-4 space-y-3">
             {recap.map((row) => <RecapCard key={row.topic_key} row={row} />)}
           </div>
@@ -263,7 +313,7 @@ export function RecapDashboard({
 
         {!generating && recap.length === 0 && (
           <p className="mt-4 text-sm text-[color:var(--ink-faint)]">
-            No recap for today yet. Select your topics above and click Generate.
+            {isToday ? "No recap for today yet. Select your topics above and click Generate." : "No recap stored for this date."}
           </p>
         )}
       </section>

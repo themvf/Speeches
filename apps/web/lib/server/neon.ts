@@ -467,14 +467,20 @@ export async function saveRecapSettings(topicKeys: string[]): Promise<void> {
   }
 }
 
-export async function getTodaysRecap(): Promise<DailyRecapRow[]> {
+export async function getTodaysRecap(date?: string): Promise<DailyRecapRow[]> {
   await ensureSchema();
   const sql = getSql();
-  const rows = (await sql`
-    SELECT * FROM daily_recaps
-    WHERE recap_date = CURRENT_DATE
-    ORDER BY topic_label ASC
-  `) as unknown as (Omit<DailyRecapRow, "sources"> & { sources: string })[];
+  const rows = date
+    ? (await sql`
+        SELECT * FROM daily_recaps
+        WHERE recap_date = ${date}::date
+        ORDER BY topic_label ASC
+      `) as unknown as (Omit<DailyRecapRow, "sources"> & { sources: string })[]
+    : (await sql`
+        SELECT * FROM daily_recaps
+        WHERE recap_date = CURRENT_DATE
+        ORDER BY topic_label ASC
+      `) as unknown as (Omit<DailyRecapRow, "sources"> & { sources: string })[];
   return rows.map((r) => ({ ...r, sources: JSON.parse(r.sources || "[]") as RecapSource[] }));
 }
 
