@@ -46,63 +46,69 @@ async function generateTopicSummary(
 }
 
 export async function POST(): Promise<NextResponse> {
-  const cfg = getOpenAiConfig();
-  if (!cfg.apiKey) {
-    return NextResponse.json({ ok: false, error: "OpenAI not configured" }, { status: 500 });
-  }
-
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const recapDate = new Date().toISOString().split("T")[0];
-
-  const [selectedTopicKeys, rawRules, articles] = await Promise.all([
-    getRecapSettings(),
-    getTopicRules(true),
-    getRecentArticles({ limit: 400, since }),
-  ]);
-
-  if (selectedTopicKeys.length === 0) {
-    return NextResponse.json({ ok: false, error: "No topics selected. Save topic settings first." }, { status: 400 });
-  }
-
-  const rules = normalizeTopicRules(rawRules);
-  const selectedRules = rules.filter((r) => selectedTopicKeys.includes(r.topic_key));
-
-  const topicArticleMap = new Map<string, StoredRssArticle[]>();
-  for (const rule of selectedRules) {
-    topicArticleMap.set(rule.topic_key, []);
-  }
-  for (const article of articles) {
-    const matched = getMatchingTopics(article, selectedRules);
-    for (const rule of matched) {
-      topicArticleMap.get(rule.topic_key)?.push(article);
+  try {
+    const cfg = getOpenAiConfig();
+    if (!cfg.apiKey) {
+      return NextResponse.json({ ok: false, error: "OpenAI not configured (OPENAI_API_KEY missing)" }, { status: 500 });
     }
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recapDate = new Date().toISOString().split("T")[0];
+
+    const [selectedTopicKeys, rawRules, articles] = await Promise.all([
+      getRecapSettings(),
+      getTopicRules(true),
+      getRecentArticles({ limit: 400, since }),
+    ]);
+
+    if (selectedTopicKeys.length === 0) {
+      return NextResponse.json({ ok: false, error: "No topics selected. Save topic settings first." }, { status: 400 });
+    }
+
+    const rules = normalizeTopicRules(rawRules);
+    const selectedRules = rules.filter((r) => selectedTopicKeys.includes(r.topic_key));
+
+    const topicArticleMap = new Map<string, StoredRssArticle[]>();
+    for (const rule of selectedRules) {
+      topicArticleMap.set(rule.topic_key, []);
+    }
+    for (const article of articles) {
+      const matched = getMatchingTopics(article, selectedRules);
+      for (const rule of matched) {
+        topicArticleMap.get(rule.topic_key)?.push(article);
+      }
+    }
+
+    const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
+
+    for (const rule of selectedRules) {
+      const topicArticles = topicArticleMap.get(rule.topic_key) ?? [];
+      if (topicArticles.length === 0) continue;
+
+      const summary = await generateTopicSummary(rule.label, topicArticles, cfg);
+
+      const positive_count = topicArticles.filter((a) => a.tone_label === "positive").length;
+      const negative_count = topicArticles.filter((a) => a.tone_label === "negative").length;
+      const neutral_count = topicArticles.filter((a) => a.tone_label === "neutral").length;
+
+      results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicArticles.length, summary });
+
+      await saveRecapRows([{
+        recap_date: recapDate,
+        topic_key: rule.topic_key,
+        topic_label: rule.label,
+        summary,
+        article_count: topicArticles.length,
+        positive_count,
+        negative_count,
+        neutral_count,
+      }]);
+    }
+
+    return NextResponse.json({ ok: true, data: { date: recapDate, topics: results } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[recap/generate]", message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-
-  const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
-
-  for (const rule of selectedRules) {
-    const topicArticles = topicArticleMap.get(rule.topic_key) ?? [];
-    if (topicArticles.length === 0) continue;
-
-    const summary = await generateTopicSummary(rule.label, topicArticles, cfg);
-
-    const positive_count = topicArticles.filter((a) => a.tone_label === "positive").length;
-    const negative_count = topicArticles.filter((a) => a.tone_label === "negative").length;
-    const neutral_count = topicArticles.filter((a) => a.tone_label === "neutral").length;
-
-    results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicArticles.length, summary });
-
-    await saveRecapRows([{
-      recap_date: recapDate,
-      topic_key: rule.topic_key,
-      topic_label: rule.label,
-      summary,
-      article_count: topicArticles.length,
-      positive_count,
-      negative_count,
-      neutral_count,
-    }]);
-  }
-
-  return NextResponse.json({ ok: true, data: { date: recapDate, topics: results } });
 }
