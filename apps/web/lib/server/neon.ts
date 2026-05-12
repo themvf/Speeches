@@ -25,6 +25,8 @@ export type StoredRssTopicRule = {
   updated_at: string;
 };
 
+export type RecapSource = { title: string; url: string };
+
 export type DailyRecapRow = {
   id: number;
   recap_date: string;
@@ -35,6 +37,7 @@ export type DailyRecapRow = {
   positive_count: number;
   negative_count: number;
   neutral_count: number;
+  sources: RecapSource[];
   generated_at: string;
 };
 
@@ -285,10 +288,12 @@ export async function ensureSchema(): Promise<void> {
       positive_count INTEGER NOT NULL DEFAULT 0,
       negative_count INTEGER NOT NULL DEFAULT 0,
       neutral_count  INTEGER NOT NULL DEFAULT 0,
+      sources        TEXT NOT NULL DEFAULT '[]',
       generated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (recap_date, topic_key)
     )
   `;
+  await sql`ALTER TABLE daily_recaps ADD COLUMN IF NOT EXISTS sources TEXT NOT NULL DEFAULT '[]'`;
   await seedDefaultFeeds(sql);
   await seedDefaultTopicRules(sql);
 }
@@ -465,20 +470,22 @@ export async function saveRecapSettings(topicKeys: string[]): Promise<void> {
 export async function getTodaysRecap(): Promise<DailyRecapRow[]> {
   await ensureSchema();
   const sql = getSql();
-  return (await sql`
+  const rows = (await sql`
     SELECT * FROM daily_recaps
     WHERE recap_date = CURRENT_DATE
     ORDER BY topic_label ASC
-  `) as unknown as DailyRecapRow[];
+  `) as unknown as (Omit<DailyRecapRow, "sources"> & { sources: string })[];
+  return rows.map((r) => ({ ...r, sources: JSON.parse(r.sources || "[]") as RecapSource[] }));
 }
 
 export async function saveRecapRows(rows: Omit<DailyRecapRow, "id" | "generated_at">[]): Promise<void> {
   await ensureSchema();
   const sql = getSql();
   for (const row of rows) {
+    const sourcesJson = JSON.stringify(row.sources ?? []);
     await sql`
-      INSERT INTO daily_recaps (recap_date, topic_key, topic_label, summary, article_count, positive_count, negative_count, neutral_count)
-      VALUES (${row.recap_date}, ${row.topic_key}, ${row.topic_label}, ${row.summary}, ${row.article_count}, ${row.positive_count}, ${row.negative_count}, ${row.neutral_count})
+      INSERT INTO daily_recaps (recap_date, topic_key, topic_label, summary, article_count, positive_count, negative_count, neutral_count, sources)
+      VALUES (${row.recap_date}, ${row.topic_key}, ${row.topic_label}, ${row.summary}, ${row.article_count}, ${row.positive_count}, ${row.negative_count}, ${row.neutral_count}, ${sourcesJson})
       ON CONFLICT (recap_date, topic_key) DO UPDATE
       SET summary        = EXCLUDED.summary,
           topic_label    = EXCLUDED.topic_label,
@@ -486,6 +493,7 @@ export async function saveRecapRows(rows: Omit<DailyRecapRow, "id" | "generated_
           positive_count = EXCLUDED.positive_count,
           negative_count = EXCLUDED.negative_count,
           neutral_count  = EXCLUDED.neutral_count,
+          sources        = EXCLUDED.sources,
           generated_at   = now()
     `;
   }

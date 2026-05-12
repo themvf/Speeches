@@ -93,6 +93,7 @@ export async function POST(): Promise<NextResponse> {
       const positive_count = topicArticles.filter((a) => a.tone_label === "positive").length;
       const negative_count = topicArticles.filter((a) => a.tone_label === "negative").length;
       const neutral_count = topicArticles.filter((a) => a.tone_label === "neutral").length;
+      const sources = topicArticles.slice(0, MAX_ARTICLES_PER_TOPIC).map((a) => ({ title: a.title, url: a.url }));
 
       results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicArticles.length, summary });
 
@@ -105,6 +106,7 @@ export async function POST(): Promise<NextResponse> {
         positive_count,
         negative_count,
         neutral_count,
+        sources,
       }]);
     }
 

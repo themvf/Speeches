@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DailyRecapRow, StoredRssTopicRule } from "@/lib/server/neon";
+import type { DailyRecapRow, RecapSource, StoredRssTopicRule } from "@/lib/server/neon";
 
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   return text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/).map((part, j) => {
@@ -67,6 +67,29 @@ function ToneBar({ positive, negative, neutral }: { positive: number; negative: 
   );
 }
 
+function SourcesList({ sources }: { sources: RecapSource[] }) {
+  if (!sources.length) return null;
+  return (
+    <div className="mt-4 border-t border-[color:var(--line)] pt-3">
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Sources</p>
+      <ul className="space-y-1">
+        {sources.map((s, i) => (
+          <li key={i}>
+            <a
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-[color:var(--ink-faint)] hover:text-[color:var(--accent)] hover:underline"
+            >
+              {s.title}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function RecapCard({ row }: { row: DailyRecapRow }) {
   const generatedAt = new Date(row.generated_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   return (
@@ -84,6 +107,7 @@ function RecapCard({ row }: { row: DailyRecapRow }) {
       <div className="mt-3">
         <ChatMarkdownSimple content={row.summary} />
       </div>
+      <SourcesList sources={row.sources ?? []} />
     </div>
   );
 }
