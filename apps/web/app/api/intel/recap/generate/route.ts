@@ -14,6 +14,19 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MAX_ITEMS_PER_TOPIC = 20;
+
+function normalizeDocDate(dateStr: string): string | null {
+  if (!dateStr) return null;
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.slice(0, 10);
+  // Try JS Date parsing for "May 11, 2026", "11/05/2026", etc.
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 // Articles require a title match (100+) to avoid false positives from passing mentions.
 // Corpus docs use enrichment tags/keywords for matching — LLM-curated, so a
 // description-level match (50+) is reliable.
@@ -140,7 +153,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Corpus docs — filter by date, match via enrichment tags + keywords (relaxed threshold)
     const enrichmentEntries = enrichmentState.entries ?? {};
     const corpusItems: RecapItem[] = corpusDocs
-      .filter((doc) => doc.metadata.date?.slice(0, 10) === recapDate)
+      .filter((doc) => normalizeDocDate(doc.metadata.date) === recapDate)
       .map((doc) => {
         const enrichment = enrichmentEntries[doc.metadata.document_id];
         const tags: string[] = enrichment?.enrichment?.tags ?? [];
