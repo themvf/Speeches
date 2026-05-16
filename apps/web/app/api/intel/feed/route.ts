@@ -25,7 +25,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       getTopicRules(true),
     ]);
 
-    const latestFetchedAt = articles[0]?.fetched_at ? new Date(articles[0].fetched_at).getTime() : 0;
+    const latestFetchedAt = articles.reduce((max, a) => {
+      const t = a.fetched_at ? new Date(a.fetched_at).getTime() : 0;
+      return t > max ? t : max;
+    }, 0);
     const ageMs = latestFetchedAt > 0 ? Date.now() - latestFetchedAt : Number.POSITIVE_INFINITY;
     const needsRefresh = !feedKey && !since && ageMs > 8 * 60_000;
 

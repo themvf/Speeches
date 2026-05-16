@@ -171,8 +171,12 @@ export function RecapDashboard({
     setSkippedTopics([]);
     try {
       const res = await fetch(`/api/intel/recap?date=${date}`);
+      if (!res.ok) { setGenerateError(`Failed to load recap for ${date} (${res.status})`); return; }
       const json = (await res.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
       if (json.ok && json.data) setRecap(json.data.recap);
+      else if (!json.ok) setGenerateError(json.data ? "Unexpected response" : `No recap found for ${date}`);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "Network error");
     } finally {
       setLoadingDate(false);
     }

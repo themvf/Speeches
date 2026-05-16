@@ -56,7 +56,7 @@ export async function GET() {
       if (!isNews) {
         return false;
       }
-      const updatedAt = toMs(String(m.last_reviewed_or_updated || m.updated_date || custom.updated_at || ""));
+      const updatedAt = toMs(String(m.last_reviewed_or_updated || m.updated_date || ""));
       return updatedAt > 0 && nowMs - updatedAt <= recentWindowMs;
     }).length;
 

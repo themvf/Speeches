@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { downloadGcsJson, uploadGcsJson } from "@/lib/server/gcs-loader";
+import { invalidateDocumentCaches } from "@/lib/server/data-store";
 import type { CustomDocumentsPayload } from "@/lib/server/types";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,7 @@ export async function DELETE(
       return NextResponse.json({ ok: false, error: "Failed to write to GCS" }, { status: 500 });
     }
 
+    invalidateDocumentCaches();
     return NextResponse.json({ ok: true, deleted_from: blob });
   }
 

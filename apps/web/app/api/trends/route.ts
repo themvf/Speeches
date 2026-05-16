@@ -219,8 +219,8 @@ export async function GET(request: Request) {
       const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
-      const cutoffStr = cutoff.toISOString().slice(0, 10);
-      trends = trends.filter((t) => t.last_seen >= cutoffStr);
+      const cutoffMs = cutoff.getTime();
+      trends = trends.filter((t) => new Date(t.last_seen).getTime() >= cutoffMs);
     }
 
     // Filter by source kind

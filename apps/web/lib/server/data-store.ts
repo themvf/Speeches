@@ -690,6 +690,11 @@ function clearCacheKey(cacheKey: string): void {
   cache.delete(cacheKey);
 }
 
+export function invalidateDocumentCaches(): void {
+  clearCacheKey("sec_speeches");
+  clearCacheKey("custom_documents");
+}
+
 export async function loadSecSpeeches(): Promise<CustomDocumentsPayload> {
   return loadFromSource({
     cacheKey: "sec_speeches",
