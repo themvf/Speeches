@@ -43,18 +43,21 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
 
   const feeds: Array<{ feedKey: string; label: string; fetched: number; inserted: number; error?: string }> = [];
   let totalInserted = 0;
+  let failedCount = 0;
 
   for (const result of feedResults) {
     if (result.status === "fulfilled") {
       feeds.push(result.value);
       totalInserted += result.value.inserted;
     } else {
+      failedCount++;
       feeds.push({ feedKey: "unknown", label: "unknown", fetched: 0, inserted: 0, error: String(result.reason) });
     }
   }
 
-  return NextResponse.json({
-    ok: true,
-    data: { inserted: totalInserted, feeds },
-  });
+  const allFailed = failedCount > 0 && failedCount === feedResults.length;
+  return NextResponse.json(
+    { ok: !allFailed, data: { inserted: totalInserted, failed_count: failedCount, feeds } },
+    { status: allFailed ? 500 : 200 }
+  );
 }

@@ -8,7 +8,12 @@ function isAdminPath(pathname: string) {
     pathname !== "/api/admin/login";
 }
 
-export function middleware(req: NextRequest) {
+async function hashSecret(secret: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (!isAdminPath(pathname) || pathname === LOGIN_PATH) {
@@ -17,12 +22,11 @@ export function middleware(req: NextRequest) {
 
   const secret = process.env.ADMIN_SECRET;
   if (!secret) {
-    // If no secret is configured, block access entirely rather than allow it open
     return new NextResponse("Admin access is not configured.", { status: 503 });
   }
 
   const cookie = req.cookies.get(COOKIE);
-  if (cookie?.value === secret) {
+  if (cookie?.value && cookie.value === await hashSecret(secret)) {
     return NextResponse.next();
   }
 

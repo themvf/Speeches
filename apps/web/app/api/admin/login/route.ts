@@ -1,7 +1,12 @@
+import { createHash } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 
 const COOKIE = "admin_auth";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+function hashSecret(secret: string): string {
+  return createHash("sha256").update(secret).digest("hex");
+}
 
 export async function POST(req: NextRequest) {
   const secret = process.env.ADMIN_SECRET;
@@ -21,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(COOKIE, secret, {
+  res.cookies.set(COOKIE, hashSecret(secret), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
