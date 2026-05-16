@@ -154,7 +154,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Corpus docs — filter by date, match via enrichment tags + keywords (relaxed threshold)
     const enrichmentEntries = enrichmentState.entries ?? {};
     const corpusItems: RecapItem[] = corpusDocs
-      .filter((doc) => normalizeDocDate(doc.metadata.date) === recapDate)
+      .filter((doc) => {
+        const dateStr = doc.metadata.published_date || doc.metadata.date || "";
+        return normalizeDocDate(dateStr) === recapDate;
+      })
       .map((doc) => {
         const enrichment = enrichmentEntries[doc.metadata.document_id];
         const tags: string[] = enrichment?.enrichment?.tags ?? [];

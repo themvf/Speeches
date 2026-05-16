@@ -82,7 +82,9 @@ def check_enrichment_failures(bucket_name: str, credentials_info: dict) -> dict[
         data = json.loads(blob.download_as_text(encoding="utf-8"))
         entries = data.get("entries", {})
 
-        failed = [
+        cutoff = (_utc_now() - timedelta(hours=25)).isoformat()
+
+        all_failed = [
             {
                 "doc_id": k,
                 "title": v.get("title", ""),
@@ -93,9 +95,17 @@ def check_enrichment_failures(bucket_name: str, credentials_info: dict) -> dict[
             for k, v in entries.items()
             if v.get("status") == "failed"
         ]
-        failed.sort(key=lambda x: x["updated_at"], reverse=True)
+        all_failed.sort(key=lambda x: x["updated_at"], reverse=True)
 
-        return {"count": len(failed), "failed_docs": failed[:10]}
+        # Only count failures updated in the last 25h as new — avoids daily issue spam
+        # from documents that have been persistently failing for weeks.
+        recent_failed = [d for d in all_failed if d["updated_at"] >= cutoff]
+
+        return {
+            "count": len(recent_failed),
+            "total_historical": len(all_failed),
+            "failed_docs": all_failed[:10],
+        }
     except Exception as e:
         return {"error": str(e), "count": 0, "failed_docs": []}
 
@@ -186,7 +196,12 @@ def build_report(results: dict[str, Any]) -> tuple[str, str, int]:
         sections.append(f"### Warning: Enrichment Check Error\n{en['error']}")
     elif en.get("count", 0) > 0:
         failure_count += en["count"]
-        lines = [f"### FAIL: Enrichment Failures ({en['count']} total, showing up to 10)\n"]
+        historical = en.get("total_historical", en["count"])
+        header = f"### FAIL: Enrichment Failures ({en['count']} new in last 24h"
+        if historical > en["count"]:
+            header += f", {historical} total historical"
+        header += ", showing up to 10)\n"
+        lines = [header]
         for d in en.get("failed_docs", []):
             title_trunc = d["title"][:80] + ("…" if len(d["title"]) > 80 else "")
             lines.append(f"- `{d['doc_id']}` [{d['org_key']}] {title_trunc}")
@@ -194,7 +209,9 @@ def build_report(results: dict[str, Any]) -> tuple[str, str, int]:
                 lines.append(f"  - Error: `{d['error'][:120]}`")
         sections.append("\n".join(lines))
     else:
-        sections.append("### OK: Enrichment\nNo failed enrichment entries.")
+        historical = en.get("total_historical", 0)
+        note = f" ({historical} historical failures exist but are not new)" if historical > 0 else ""
+        sections.append(f"### OK: Enrichment\nNo new enrichment failures in the last 24h.{note}")
 
     # GCS connectivity
     gcs = results.get("gcs", {})

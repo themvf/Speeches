@@ -313,17 +313,23 @@ function FeedManagerSection() {
   }
 
   async function handleToggle(feed: RssFeed) {
-    await fetch(`/api/admin/feeds/${feed.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: !feed.active }),
-    });
-    setFeeds((p) => p.map((f) => f.id === feed.id ? { ...f, active: !f.active } : f));
+    try {
+      const res = await fetch(`/api/admin/feeds/${feed.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !feed.active }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? "Toggle failed"); return; }
+      setFeeds((p) => p.map((f) => f.id === feed.id ? { ...f, active: !f.active } : f));
+    } catch { setError("Network error"); }
   }
 
   async function handleDelete(id: number) {
-    await fetch(`/api/admin/feeds/${id}`, { method: "DELETE" });
-    setFeeds((p) => p.filter((f) => f.id !== id));
+    try {
+      const res = await fetch(`/api/admin/feeds/${id}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? "Delete failed"); return; }
+      setFeeds((p) => p.filter((f) => f.id !== id));
+    } catch { setError("Network error"); }
   }
 
   return (
@@ -423,20 +429,26 @@ function TopicRulesSection() {
   async function handleSave(rule: TopicRule) {
     setSaving(rule.id);
     const d = drafts[rule.id] ?? {};
-    await fetch(`/api/admin/topic-rules/${rule.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(d),
-    });
-    setRules((p) => p.map((r) => r.id === rule.id ? { ...r, ...d } : r));
-    setDrafts((p) => { const n = { ...p }; delete n[rule.id]; return n; });
-    setSaving(null);
+    try {
+      const res = await fetch(`/api/admin/topic-rules/${rule.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(d),
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setError(j.error ?? "Save failed"); return; }
+      setRules((p) => p.map((r) => r.id === rule.id ? { ...r, ...d } : r));
+      setDrafts((p) => { const n = { ...p }; delete n[rule.id]; return n; });
+    } catch { setError("Network error"); }
+    finally { setSaving(null); }
   }
 
   async function handleDelete(id: number) {
-    await fetch(`/api/admin/topic-rules/${id}`, { method: "DELETE" });
-    setRules((p) => p.filter((r) => r.id !== id));
-    if (expanded === id) setExpanded(null);
+    try {
+      const res = await fetch(`/api/admin/topic-rules/${id}`, { method: "DELETE" });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setError(j.error ?? "Delete failed"); return; }
+      setRules((p) => p.filter((r) => r.id !== id));
+      if (expanded === id) setExpanded(null);
+    } catch { setError("Network error"); }
   }
 
   async function handleAdd() {
