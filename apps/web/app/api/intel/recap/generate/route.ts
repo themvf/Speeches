@@ -124,7 +124,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     } else {
       since = new Date(recapDate + "T00:00:00Z");
-      until = new Date(recapDate + "T23:59:59Z");
+      const nextDay = new Date(since); nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      until = nextDay;
     }
 
     const [selectedTopicKeys, rawRules, articles, corpusDocs, enrichmentState] = await Promise.all([

@@ -52,7 +52,8 @@ export async function PUT(request: Request) {
       organization_label: normalizeText(body.organization_label || "News") || "News",
       domains: normalizeText(body.domains),
       exclude_domains: normalizeText(body.exclude_domains),
-      tags_csv: normalizeText(body.tags_csv)
+      tags_csv: normalizeText(body.tags_csv),
+      doj_usao_exclude_terms: normalizeText(body.doj_usao_exclude_terms)
     };
 
     const saved = await saveNewsConnectorSettings(payload);

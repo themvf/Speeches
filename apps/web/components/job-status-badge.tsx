@@ -12,6 +12,7 @@ type RunStatus = {
 
 const POLL_INTERVAL_ACTIVE = 12_000;  // 12s while queued/in_progress
 const POLL_INTERVAL_IDLE   = 60_000;  // 60s when completed
+const POLL_INTERVAL_ERROR  = 30_000;  // 30s retry after network/API error
 
 function statusLabel(run: RunStatus): string {
   if (run.status === "queued") return "Queued";
@@ -61,9 +62,13 @@ export function JobStatusBadge({ workflowFile }: { workflowFile: string }) {
         timerRef.current = setTimeout(() => { void poll(); }, interval);
       } else {
         setError(data.error ?? "Unknown error");
+        timerRef.current = setTimeout(() => { void poll(); }, POLL_INTERVAL_ERROR);
       }
     } catch {
-      if (mountedRef.current) setError("Network error");
+      if (mountedRef.current) {
+        setError("Network error");
+        timerRef.current = setTimeout(() => { void poll(); }, POLL_INTERVAL_ERROR);
+      }
     }
   }, [workflowFile]);
 

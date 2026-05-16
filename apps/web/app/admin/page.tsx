@@ -1108,7 +1108,8 @@ function DocumentLibrarySection() {
           <select
             value={filters.source_kind}
             onChange={(e) => applyFilters({ source_kind: e.target.value })}
-            className="form-control px-2 py-1.5 text-sm"
+            disabled={!initialized}
+            className="form-control px-2 py-1.5 text-sm disabled:opacity-40"
           >
             <option value="">All sources</option>
             {(facets?.sources ?? []).map((s) => (
@@ -1118,7 +1119,8 @@ function DocumentLibrarySection() {
           <select
             value={filters.status}
             onChange={(e) => applyFilters({ status: e.target.value })}
-            className="form-control px-2 py-1.5 text-sm"
+            disabled={!initialized}
+            className="form-control px-2 py-1.5 text-sm disabled:opacity-40"
           >
             <option value="">All statuses</option>
             {(facets?.statuses ?? []).map((s) => (
