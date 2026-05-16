@@ -3,10 +3,10 @@ import { NextResponse } from "next/server";
 const REPO = "themvf/Speeches";
 
 export async function POST(req: Request) {
-  const token = process.env.GITHUB_ADMIN_TOKEN;
+  const token = process.env.GITHUB_ACTIONS_TOKEN;
   if (!token) {
     return NextResponse.json(
-      { ok: false, error: "GITHUB_ADMIN_TOKEN is not configured in environment variables" },
+      { ok: false, error: "GITHUB_ACTIONS_TOKEN is not configured in environment variables" },
       { status: 500 }
     );
   }

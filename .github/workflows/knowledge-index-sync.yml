@@ -1,0 +1,46 @@
+name: Knowledge Index Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "Org key to sync (e.g. sec, finra). Leave blank to sync all orgs."
+        required: false
+        default: ""
+      force_rebuild:
+        description: "Force rebuild — delete and recreate vector stores from scratch."
+        required: false
+        default: "false"
+        type: boolean
+      dry_run:
+        description: "Dry run — plan only, no OpenAI or GCS writes."
+        required: false
+        default: "false"
+        type: boolean
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install openai google-cloud-storage
+
+      - name: Run sync
+        run: |
+          python sync_knowledge_index.py \
+            ${{ inputs.org != '' && format('--org {0}', inputs.org) || '' }} \
+            ${{ inputs.force_rebuild == 'true' && '--force-rebuild' || '' }} \
+            ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+          GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}

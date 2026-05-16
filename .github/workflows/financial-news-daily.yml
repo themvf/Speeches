@@ -2,6 +2,7 @@ name: Daily Financial News Pipeline
 
 on:
   schedule:
+    - cron: "0 8 * * *"
     - cron: "17 11 * * *"
     - cron: "17 12 * * *"
   workflow_dispatch:
@@ -64,12 +65,13 @@ jobs:
         run: |
           python - <<'PY'
           import os
-          from datetime import datetime
+          from datetime import datetime, timezone
           from zoneinfo import ZoneInfo
 
           now = datetime.now(ZoneInfo("America/New_York"))
+          utc_now = datetime.now(timezone.utc)
           event_name = os.getenv("GITHUB_EVENT_NAME", "")
-          run_now = event_name == "workflow_dispatch" or now.hour == 7
+          run_now = event_name == "workflow_dispatch" or now.hour == 7 or utc_now.hour == 8
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"run_now={'true' if run_now else 'false'}\n")

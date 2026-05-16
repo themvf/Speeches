@@ -368,6 +368,43 @@ export async function getTopicRules(onlyActive = true): Promise<StoredRssTopicRu
   return rows as unknown as StoredRssTopicRule[];
 }
 
+export async function addTopicRule(data: {
+  topicKey: string;
+  label: string;
+  keywords: string;
+  active: boolean;
+  sortOrder: number;
+}): Promise<StoredRssTopicRule> {
+  const sql = getSql();
+  const rows = (await sql`
+    INSERT INTO rss_topic_rules (topic_key, label, keywords, active, sort_order)
+    VALUES (${data.topicKey}, ${data.label}, ${data.keywords}, ${data.active}, ${data.sortOrder})
+    RETURNING *
+  `) as unknown as StoredRssTopicRule[];
+  return rows[0];
+}
+
+export async function updateTopicRule(
+  id: number,
+  data: { label?: string; keywords?: string; active?: boolean; sortOrder?: number }
+): Promise<void> {
+  const sql = getSql();
+  await sql`
+    UPDATE rss_topic_rules SET
+      label      = COALESCE(${data.label ?? null}, label),
+      keywords   = COALESCE(${data.keywords ?? null}, keywords),
+      active     = COALESCE(${data.active ?? null}, active),
+      sort_order = COALESCE(${data.sortOrder ?? null}, sort_order),
+      updated_at = NOW()
+    WHERE id = ${id}
+  `;
+}
+
+export async function deleteTopicRule(id: number): Promise<void> {
+  const sql = getSql();
+  await sql`DELETE FROM rss_topic_rules WHERE id = ${id}`;
+}
+
 export async function upsertRssArticles(articles: RssArticle[], feedKey: string): Promise<number> {
   if (articles.length === 0) return 0;
   const sql = getSql();
