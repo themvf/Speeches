@@ -9,6 +9,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = normalizeText(searchParams.get("q"));
   if (!q) return fail("Missing q", "MISSING_Q", 400, requestId);
+  if (q.length > 2000) return fail("Query too long (max 2000 characters).", "QUERY_TOO_LONG", 400, requestId);
 
   const topK = toInt(searchParams.get("topK"), 20, 5, 50);
 

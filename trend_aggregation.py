@@ -425,7 +425,7 @@ def _generate_description(
 ) -> str:
     """Generate a 2-sentence description for a trend using up to 3 doc summaries."""
     if client is None or not summaries:
-        return f"Emerging trend around {trend_label} across regulatory and financial documents."
+        return ""
 
     snippets = "\n\n".join(f"- {s[:400]}" for s in summaries[:3])
     prompt = (

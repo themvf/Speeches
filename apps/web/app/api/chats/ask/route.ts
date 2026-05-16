@@ -70,6 +70,9 @@ export async function POST(request: Request) {
     if (!prompt) {
       return fail("Prompt is required.", "CHAT_PROMPT_REQUIRED", 400, requestId);
     }
+    if (prompt.length > 4000) {
+      return fail("Prompt exceeds maximum length of 4000 characters.", "CHAT_PROMPT_TOO_LONG", 400, requestId);
+    }
 
     const openAi = getOpenAiConfig();
     if (!openAi.apiKey) {
@@ -82,7 +85,7 @@ export async function POST(request: Request) {
     }
 
     const topK = clampInt(body.top_k, 8, 1, 12);
-    const history = normalizeHistory(body.history);
+    const history = normalizeHistory(body.history).slice(-6);
 
     const [corpusDocs, enrichment, vectorState] = await Promise.all([
       loadCorpusDocuments(),
@@ -113,11 +116,7 @@ export async function POST(request: Request) {
 
     return ok(result, requestId);
   } catch (error) {
-    return fail(
-      `Failed to answer chat request: ${error instanceof Error ? error.message : "Unknown error"}`,
-      "CHAT_ANSWER_FAILED",
-      500,
-      requestId
-    );
+    console.error("[chats/ask]", error);
+    return fail("Failed to answer chat request.", "CHAT_ANSWER_FAILED", 500, requestId);
   }
 }

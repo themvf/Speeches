@@ -426,53 +426,62 @@ export function IntelBetaDashboard({
   }, [selectedTopic, visibleTopicRules]);
 
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let errStreak = 0;
+    let mounted = true;
+
     const poll = async () => {
       try {
         const res = await fetch("/api/intel/feed?limit=400", { cache: "no-store" });
-        if (!res.ok) return;
-        const json = (await res.json()) as {
-          ok: boolean;
-          data: { articles: StoredRssArticle[]; topicRules: StoredRssTopicRule[]; generatedAt: string };
-        };
-        if (!json.ok) return;
-        const fresh = json.data.articles;
-        const freshRules = json.data.topicRules;
-        const newest = fresh[0]?.fetched_at ?? "";
-        let changed = false;
-        if (newest && newest > newestFetchedAtRef.current) {
-          const added = fresh.filter((article) => article.fetched_at > newestFetchedAtRef.current).length;
-          newestFetchedAtRef.current = newest;
-          setNewCount((count) => count + added);
-          if (!selectedArticleId && fresh[0]?.id) {
-            setSelectedArticleId(fresh[0].id);
+        if (!res.ok) { errStreak++; }
+        else {
+          const json = (await res.json()) as {
+            ok: boolean;
+            data: { articles: StoredRssArticle[]; topicRules: StoredRssTopicRule[]; generatedAt: string };
+          };
+          if (!json.ok) { errStreak++; }
+          else {
+            errStreak = 0;
+            const fresh = json.data.articles;
+            const freshRules = json.data.topicRules;
+            const newest = fresh[0]?.fetched_at ?? "";
+            let changed = false;
+            if (newest && newest > newestFetchedAtRef.current) {
+              const added = fresh.filter((article) => article.fetched_at > newestFetchedAtRef.current).length;
+              newestFetchedAtRef.current = newest;
+              setNewCount((count) => count + added);
+              if (!selectedArticleId && fresh[0]?.id) {
+                setSelectedArticleId(fresh[0].id);
+              }
+            }
+            const nextArticleSignature = articleListSignature(fresh);
+            if (nextArticleSignature !== articleSignatureRef.current) {
+              articleSignatureRef.current = nextArticleSignature;
+              changed = true;
+              setArticles(fresh);
+            }
+            const nextTopicRulesSignature = topicRulesSignature(freshRules);
+            if (nextTopicRulesSignature !== topicRulesSignatureRef.current) {
+              topicRulesSignatureRef.current = nextTopicRulesSignature;
+              changed = true;
+              setTopicRules(freshRules);
+            }
+            if (changed) setLastUpdated(new Date());
           }
         }
-
-        const nextArticleSignature = articleListSignature(fresh);
-        if (nextArticleSignature !== articleSignatureRef.current) {
-          articleSignatureRef.current = nextArticleSignature;
-          changed = true;
-          setArticles(fresh);
-        }
-
-        const nextTopicRulesSignature = topicRulesSignature(freshRules);
-        if (nextTopicRulesSignature !== topicRulesSignatureRef.current) {
-          topicRulesSignatureRef.current = nextTopicRulesSignature;
-          changed = true;
-          setTopicRules(freshRules);
-        }
-        if (changed) {
-          setLastUpdated(new Date());
-        }
       } catch {
-        // silent; will retry next interval
+        errStreak++;
+      }
+      if (mounted) {
+        // Exponential backoff on errors: 15s → 30s → 60s → 120s (cap)
+        const delay = errStreak > 0 ? Math.min(15_000 * (2 ** (errStreak - 1)), 120_000) : 15_000;
+        timeoutId = setTimeout(() => { void poll(); }, delay);
       }
     };
 
     void poll();
-    const id = setInterval(poll, 15_000);
-    return () => clearInterval(id);
-  }, []);
+    return () => { mounted = false; if (timeoutId) clearTimeout(timeoutId); };
+  }, [selectedArticleId]);
 
   const filtered = useMemo(
     () =>
