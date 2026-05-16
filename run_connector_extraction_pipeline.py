@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -142,8 +143,8 @@ def _load_existing_speech_url_keys(storage: Any) -> set[str]:
                 key = core._url_match_key(metadata.get("url", ""))
                 if key:
                     keys.add(key)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"WARNING: GCS speech load failed — URL deduplication will be incomplete: {e}", file=sys.stderr)
 
     local_file = core.DATA_DIR / "all_speeches_final.json"
     if local_file.exists():
@@ -156,8 +157,8 @@ def _load_existing_speech_url_keys(storage: Any) -> set[str]:
                 key = core._url_match_key(metadata.get("url", ""))
                 if key:
                     keys.add(key)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"WARNING: Local speech file read failed — URL deduplication will be incomplete: {e}", file=sys.stderr)
 
     return keys
 

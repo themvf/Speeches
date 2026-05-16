@@ -365,8 +365,8 @@ def _sync_org(
         try:
             client.vector_stores.delete(replaced_id)
             print(f"  [{org_key}] deleted old store {replaced_id}")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  [{org_key}] WARNING: failed to delete old store {replaced_id} (resource leak): {e}", file=sys.stderr)
 
     return {"org_key": org_key, "uploaded": uploaded_count, "deleted": deleted_count, "failed": len(failed), "total": len(next_docs)}
 

@@ -346,8 +346,8 @@ def _load_json_store(
         try:
             with open(local_path, "r", encoding="utf-8") as f:
                 return normalize_fn(json.load(f))
-        except Exception:
-            pass
+        except Exception as e:
+            _stderr(f"Local load failed for {local_path}: {e}")
     return normalize_fn(default_factory())
 
 

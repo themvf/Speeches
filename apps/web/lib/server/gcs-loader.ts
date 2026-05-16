@@ -113,7 +113,9 @@ export async function downloadGcsJson<T>(blobName: string): Promise<T | null> {
     }
     const [text] = await file.download();
     return JSON.parse(text.toString("utf-8")) as T;
-  } catch {
+  } catch (err) {
+    console.error(`[gcs] downloadGcsJson failed for "${blobName}":`, err);
+    cachedError = `Download failed for ${blobName}: ${String(err)}`;
     return null;
   }
 }
@@ -136,7 +138,8 @@ export async function uploadGcsJson(blobName: string, payload: unknown): Promise
       }
     });
     return true;
-  } catch {
+  } catch (err) {
+    console.error(`[gcs] uploadGcsJson failed for "${blobName}":`, err);
     return false;
   }
 }

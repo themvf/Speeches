@@ -32,10 +32,13 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install openai google-cloud-storage
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run sync
         run: |
+          set -euo pipefail
           python sync_knowledge_index.py \
             ${{ inputs.org != '' && format('--org {0}', inputs.org) || '' }} \
             ${{ inputs.force_rebuild == 'true' && '--force-rebuild' || '' }} \
