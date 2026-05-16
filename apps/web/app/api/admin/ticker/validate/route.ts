@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { fetchYahooQuote } from "@/lib/server/yahoo";
 
 export async function POST(req: Request) {
-  const { symbol } = await req.json();
-  if (!symbol || typeof symbol !== "string") {
+  let body: { symbol?: unknown };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+  const { symbol } = body;
+  if (!symbol || typeof symbol !== "string" || !symbol.trim()) {
     return NextResponse.json({ error: "symbol required" }, { status: 400 });
   }
 

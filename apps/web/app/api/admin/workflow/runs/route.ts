@@ -1,6 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { getGithubActionsConfig } from "@/lib/server/env";
 
-const REPO = "themvf/Speeches";
+const ALLOWED_WORKFLOWS = new Set([
+  "financial-news-daily.yml",
+  "financial-news-ingest.yml",
+  "financial-news-enrich.yml",
+  "financial-news-enrich-scheduled.yml",
+  "sec-speech-sync.yml",
+  "knowledge-index-sync.yml",
+  "trends-daily.yml",
+  "policy-extraction.yml",
+  "intelligence-evidence.yml",
+  "aml-news-ingest.yml",
+  "daily-health-check.yml",
+]);
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const token = process.env.GITHUB_ACTIONS_TOKEN;
@@ -12,8 +25,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!workflow) {
     return NextResponse.json({ ok: false, error: "workflow param required" }, { status: 400 });
   }
+  if (!ALLOWED_WORKFLOWS.has(workflow)) {
+    return NextResponse.json({ ok: false, error: "Unknown workflow" }, { status: 400 });
+  }
 
-  const url = `https://api.github.com/repos/${REPO}/actions/workflows/${encodeURIComponent(workflow)}/runs?per_page=1`;
+  const { owner, repo } = getGithubActionsConfig();
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?per_page=1`;
 
   const ghRes = await fetch(url, {
     headers: {

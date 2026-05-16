@@ -38,8 +38,8 @@ SEC_SPEECHES_BLOB = "all_speeches.json"
 TRENDS_BLOB = "trends_daily.json"
 TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 
-CHAT_MODEL = "gpt-5.1"
-CHAT_MODEL_FALLBACKS = ["gpt-4o", "gpt-4o-mini"]
+CHAT_MODEL = "gpt-4o"
+CHAT_MODEL_FALLBACKS = ["gpt-4o-mini"]
 DEFAULT_MIN_MENTIONS = 5
 
 # Fixed taxonomy of top-level regulatory/financial trend categories.

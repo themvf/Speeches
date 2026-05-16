@@ -6,17 +6,25 @@ const MAX_TICKERS = 10;
 
 export async function GET() {
   const tickers = await getTickerConfig();
-  return NextResponse.json(tickers);
+  return NextResponse.json({ ok: true, data: tickers });
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
+  let body: unknown;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!Array.isArray(body)) {
     return NextResponse.json({ error: "Expected an array" }, { status: 400 });
   }
-  const tickers = (body as TickerEntry[]).slice(0, MAX_TICKERS);
+  const validated: TickerEntry[] = [];
+  for (const entry of (body as unknown[]).slice(0, MAX_TICKERS)) {
+    if (!entry || typeof entry !== "object") continue;
+    const { symbol, name } = entry as Record<string, unknown>;
+    if (typeof symbol !== "string" || !symbol.trim()) continue;
+    if (typeof name !== "string" || !name.trim()) continue;
+    validated.push({ symbol: symbol.trim().toUpperCase(), name: name.trim() } as TickerEntry);
+  }
   try {
-    await setTickerConfig(tickers);
+    await setTickerConfig(validated);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: msg }, { status: 500 });

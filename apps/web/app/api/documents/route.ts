@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     const toDate = parseDate(url.searchParams.get("date_to"));
     const docIdsParam = normalizeText(url.searchParams.get("doc_ids"));
     const allowedDocIds = docIdsParam
-      ? new Set(docIdsParam.split(",").map((s) => s.trim()).filter(Boolean))
+      ? new Set(docIdsParam.split(",").slice(0, 100).map((s) => s.trim()).filter(Boolean))
       : null;
 
     const [corpusDocs, enrichment] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);

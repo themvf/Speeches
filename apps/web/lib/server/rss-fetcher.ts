@@ -61,9 +61,14 @@ function parseRssDate(text: string): Date | null {
   return Number.isFinite(d.getTime()) ? d : null;
 }
 
-function normalizeGuid(raw: string, fallbackUrl: string): string {
+function normalizeGuid(raw: string, fallbackUrl: string, title: string): string {
   const s = raw.trim() || fallbackUrl.trim();
-  return s || `rss:${Date.now()}:${Math.random()}`;
+  if (s) return s;
+  // Deterministic fallback so the same article always gets the same GUID
+  const seed = `${title}:${fallbackUrl}`.slice(0, 200);
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) { h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0; }
+  return `rss:fallback:${(h >>> 0).toString(16)}`;
 }
 
 export async function fetchRssFeed(feedUrl: string, maxItems = 50): Promise<RssArticle[]> {
@@ -73,6 +78,7 @@ export async function fetchRssFeed(feedUrl: string, maxItems = 50): Promise<RssA
   });
   if (!resp.ok) throw new Error(`RSS fetch failed: ${resp.status} ${feedUrl}`);
   const xml = await resp.text();
+  if (xml.length > 2_000_000) throw new Error(`RSS feed response too large (${xml.length} bytes): ${feedUrl}`);
 
   const itemRe = /<item[\s>]([\s\S]*?)<\/item>/gi;
   const results: RssArticle[] = [];
@@ -85,7 +91,7 @@ export async function fetchRssFeed(feedUrl: string, maxItems = 50): Promise<RssA
     const description = decodeEntities(stripHtml(extractTag(block, "description") || extractTag(block, "summary")));
     const author = decodeEntities(extractTag(block, "dc:creator") || extractTag(block, "author"));
     const pubDate = extractTag(block, "pubDate") || extractTag(block, "published") || extractTag(block, "updated");
-    const guid = normalizeGuid(extractTag(block, "guid"), url);
+    const guid = normalizeGuid(extractTag(block, "guid"), url, title);
 
     if (!title || !url) continue;
 
