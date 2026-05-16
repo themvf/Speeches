@@ -456,15 +456,15 @@ export async function getRecentArticles(opts: {
 
   let query;
   if (feedKey && since && until) {
-    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} AND fetched_at > ${since} AND fetched_at <= ${until} ORDER BY fetched_at DESC LIMIT ${limit}`;
+    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} AND COALESCE(published_at, fetched_at) > ${since} AND COALESCE(published_at, fetched_at) <= ${until} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey && since) {
-    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} AND fetched_at > ${since} ORDER BY fetched_at DESC LIMIT ${limit}`;
+    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} AND COALESCE(published_at, fetched_at) > ${since} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey) {
     query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} ORDER BY fetched_at DESC LIMIT ${limit}`;
   } else if (since && until) {
-    query = sql`SELECT * FROM rss_articles WHERE fetched_at > ${since} AND fetched_at <= ${until} ORDER BY fetched_at DESC LIMIT ${limit}`;
+    query = sql`SELECT * FROM rss_articles WHERE COALESCE(published_at, fetched_at) > ${since} AND COALESCE(published_at, fetched_at) <= ${until} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
   } else if (since) {
-    query = sql`SELECT * FROM rss_articles WHERE fetched_at > ${since} ORDER BY fetched_at DESC LIMIT ${limit}`;
+    query = sql`SELECT * FROM rss_articles WHERE COALESCE(published_at, fetched_at) > ${since} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
   } else {
     query = sql`SELECT * FROM rss_articles ORDER BY fetched_at DESC LIMIT ${limit}`;
   }

@@ -186,7 +186,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
     const skipped: { topic_key: string; topic_label: string }[] = [];
 
-    await Promise.all(selectedRules.map(async (rule) => {
+    const settled = await Promise.allSettled(selectedRules.map(async (rule) => {
       const topicItems: RecapItem[] = [
         ...(articleMap.get(rule.topic_key) ?? []),
         ...(corpusMap.get(rule.topic_key) ?? []),
@@ -211,8 +211,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         speaker: i.speaker,
       }));
 
-      results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicItems.length, summary });
-
       await saveRecapRows([{
         recap_date: recapDate,
         topic_key: rule.topic_key,
@@ -224,7 +222,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         neutral_count,
         sources,
       }]);
+
+      results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicItems.length, summary });
     }));
+
+    for (const outcome of settled) {
+      if (outcome.status === "rejected") {
+        console.error("[recap/generate] topic failed:", outcome.reason);
+      }
+    }
 
     return NextResponse.json({ ok: true, data: { date: recapDate, topics: results, skipped } });
   } catch (err) {
