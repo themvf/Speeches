@@ -13,6 +13,7 @@ const ALLOWED_WORKFLOWS = new Set([
   "intelligence-evidence.yml",
   "aml-news-ingest.yml",
   "daily-health-check.yml",
+  "python-tests.yml",
 ]);
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
