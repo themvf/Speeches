@@ -260,7 +260,7 @@ function MiniSparkline({ points, color }: { points: TrendSparklinePoint[]; color
 
 /* ── MoverCard ────────────────────────────────────────────────────────── */
 
-function MoverCard({ trend, type }: { trend: ScoredTrend; type: "rising" | "declining" }) {
+function _MoverCard({ trend, type }: { trend: ScoredTrend; type: "rising" | "declining" }) {
   const momentum = getMomentum(trend.growth_pct);
   const sign = trend.growth_pct > 0 ? "+" : "";
   const accentColor = type === "rising" ? "#4fd5ff" : "#f87171";
@@ -507,16 +507,6 @@ export function TrendsDashboard() {
       .sort((a, b) => b._score - a._score);
   }, [payload, categoryFilter, search]);
 
-  // Top movers (sorted separately from the main list)
-  const topRisers = useMemo<ScoredTrend[]>(() =>
-    [...scoredTrends].sort((a, b) => b.growth_pct - a.growth_pct).filter((t) => t.growth_pct > 0).slice(0, 3),
-    [scoredTrends]
-  );
-  const topDecliners = useMemo<ScoredTrend[]>(() =>
-    [...scoredTrends].sort((a, b) => a.growth_pct - b.growth_pct).filter((t) => t.growth_pct < -10).slice(0, 3),
-    [scoredTrends]
-  );
-  const showMovers = topRisers.length > 0 || topDecliners.length > 0;
 
   const generatedAt = payload?.generated_at
     ? new Date(payload.generated_at).toLocaleString("en-US", {

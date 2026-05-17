@@ -279,7 +279,7 @@ function countBy(values: string[]): Record<string, number> {
   }, {});
 }
 
-function agencyKey(agency: Agency): AgencyKey {
+function _agencyKey(agency: Agency): AgencyKey {
   return agency === "SEC" ? "sec" : "finra";
 }
 

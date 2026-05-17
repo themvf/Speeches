@@ -163,7 +163,7 @@ function quoteTerm(term: string): string {
   return /\s/.test(normalized) ? `"${normalized.replace(/"/g, "")}"` : normalized;
 }
 
-function buildOrQuery(terms: readonly string[]): string {
+function _buildOrQuery(terms: readonly string[]): string {
   const queryTerms = unique(terms.map(quoteTerm).filter(Boolean));
   if (queryTerms.length === 0) {
     return "";
@@ -449,7 +449,7 @@ export function mapGdeltDocArticlesToProductCategoryEvidence(
   return evidence;
 }
 
-function mapGdeltDocArticlesToKnownFocusAreaEvidence(
+function _mapGdeltDocArticlesToKnownFocusAreaEvidence(
   category: ProductCategory,
   articles: readonly GdeltDocArticle[],
   focusArea: ProductFocusArea,

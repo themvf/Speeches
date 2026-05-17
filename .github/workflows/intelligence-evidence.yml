@@ -78,6 +78,10 @@ jobs:
         if: github.event_name != 'schedule'
         run: npm run test:theme-intelligence
 
+      - name: Lint
+        if: github.event_name != 'schedule'
+        run: npm run lint
+
       - name: Typecheck
         if: github.event_name != 'schedule'
         run: npm run typecheck

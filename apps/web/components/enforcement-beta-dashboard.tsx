@@ -77,7 +77,7 @@ function dateMs(value: string): number {
   return Number.isNaN(ms) ? 0 : ms;
 }
 
-function monthDateRange(month: string): { from: string; to: string } {
+function _monthDateRange(month: string): { from: string; to: string } {
   const [yearStr, monStr] = month.split("-");
   const lastDay = new Date(Date.UTC(Number(yearStr), Number(monStr), 0)).getUTCDate();
   return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, "0")}` };
@@ -190,7 +190,7 @@ function QualityBar({
   );
 }
 
-function HeatmapPanel({
+function _HeatmapPanel({
   agency,
   data,
   months
@@ -705,18 +705,6 @@ export function EnforcementBetaDashboard() {
     });
   }, [actionType, citation, dateFrom, dateTo, docType, outcome, payload, query, semanticDocIds, semanticMode, viewMode]);
 
-  const visibleAgencies = useMemo(() => {
-    if (!payload) {
-      return [];
-    }
-    if (viewMode === "sec") {
-      return [payload.agencies.sec];
-    }
-    if (viewMode === "finra") {
-      return [payload.agencies.finra];
-    }
-    return [payload.agencies.sec, payload.agencies.finra];
-  }, [payload, viewMode]);
 
   if (loading) {
     return (
