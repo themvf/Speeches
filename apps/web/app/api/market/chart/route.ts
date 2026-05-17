@@ -7,10 +7,12 @@ const YH = { "User-Agent": "Mozilla/5.0 (compatible; market-data/1.0)" };
 type ChartPoint = { t: number; c: number };
 
 async function fetchYahooHistory(symbol: string): Promise<ChartPoint[] | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`,
-      { next: { revalidate: 3600 }, headers: YH }
+      { next: { revalidate: 3600 }, headers: YH, signal: controller.signal }
     );
     if (!res.ok) return null;
     const json = await res.json();
@@ -25,14 +27,16 @@ async function fetchYahooHistory(symbol: string): Promise<ChartPoint[] | null> {
       if (c != null && c > 0) points.push({ t: ts, c });
     });
     return points.length ? points : null;
-  } catch { return null; }
+  } catch { return null; } finally { clearTimeout(timer); }
 }
 
 async function fetchCryptoHistory(id: string): Promise<ChartPoint[] | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(
       `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=365`,
-      { next: { revalidate: 3600 } }
+      { next: { revalidate: 3600 }, signal: controller.signal }
     );
     if (!res.ok) return null;
     const json = await res.json();
@@ -45,7 +49,7 @@ async function fetchCryptoHistory(id: string): Promise<ChartPoint[] | null> {
       if (day !== lastDay) { daily.push({ t: Math.floor(ms / 1000), c }); lastDay = day; }
     }
     return daily.length ? daily : null;
-  } catch { return null; }
+  } catch { return null; } finally { clearTimeout(timer); }
 }
 
 export async function GET(request: Request) {

@@ -392,15 +392,23 @@ async function callOpenAiResponses(payload: Record<string, unknown>): Promise<Op
     throw new Error("OPENAI_API_KEY is not configured for the web app.");
   }
 
-  const response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/responses`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${cfg.apiKey}`
-    },
-    body: JSON.stringify(payload),
-    cache: "no-store"
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  let response: Response;
+  try {
+    response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/responses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cfg.apiKey}`
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   const text = await response.text();
   let json: OpenAiResponsePayload | null = null;

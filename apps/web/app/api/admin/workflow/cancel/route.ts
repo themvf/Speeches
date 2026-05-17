@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const REPO = "themvf/Speeches";
+import { getGithubActionsConfig } from "@/lib/server/env";
 
 export async function POST(req: Request): Promise<NextResponse> {
   const token = process.env.GITHUB_ACTIONS_TOKEN;
@@ -20,17 +19,24 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "workflow required" }, { status: 400 });
   }
 
+  const { owner, repo } = getGithubActionsConfig();
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
 
-  // Fetch the most recent run for this workflow
-  const runsRes = await fetch(
-    `https://api.github.com/repos/${REPO}/actions/workflows/${encodeURIComponent(workflow)}/runs?per_page=1`,
-    { headers, cache: "no-store" }
-  );
+  const runsController = new AbortController();
+  const runsTimer = setTimeout(() => runsController.abort(), 10_000);
+  let runsRes: Response;
+  try {
+    runsRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?per_page=1`,
+      { headers, cache: "no-store", signal: runsController.signal }
+    );
+  } finally {
+    clearTimeout(runsTimer);
+  }
 
   if (!runsRes.ok) {
     const d = await runsRes.json().catch(() => ({}));
@@ -52,11 +58,17 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "Run is already completed" }, { status: 409 });
   }
 
-  // Cancel the run (GitHub returns 202 on success)
-  const cancelRes = await fetch(
-    `https://api.github.com/repos/${REPO}/actions/runs/${run.id}/cancel`,
-    { method: "POST", headers }
-  );
+  const cancelController = new AbortController();
+  const cancelTimer = setTimeout(() => cancelController.abort(), 10_000);
+  let cancelRes: Response;
+  try {
+    cancelRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/actions/runs/${run.id}/cancel`,
+      { method: "POST", headers, signal: cancelController.signal }
+    );
+  } finally {
+    clearTimeout(cancelTimer);
+  }
 
   if (!cancelRes.ok && cancelRes.status !== 202) {
     const d = await cancelRes.json().catch(() => ({}));

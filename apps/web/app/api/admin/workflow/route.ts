@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const REPO = "themvf/Speeches";
+import { getGithubActionsConfig } from "@/lib/server/env";
 
 export async function POST(req: Request) {
   const token = process.env.GITHUB_ACTIONS_TOKEN;
@@ -28,18 +27,27 @@ export async function POST(req: Request) {
     Object.entries(inputs).filter(([, v]) => v !== "")
   );
 
-  const url = `https://api.github.com/repos/${REPO}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`;
+  const { owner, repo, ref } = getGithubActionsConfig();
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`;
 
-  const ghRes = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ ref: "main", inputs: filteredInputs }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  let ghRes: Response;
+  try {
+    ghRes = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ref, inputs: filteredInputs }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   // GitHub returns 204 No Content on success
   if (ghRes.status === 204) {

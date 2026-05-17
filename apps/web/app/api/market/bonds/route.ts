@@ -8,14 +8,17 @@ export const revalidate = 3600;
 async function fetchTreasuryXml(year: number, month: number): Promise<string | null> {
   const mm = String(month).padStart(2, "0");
   const url = `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value_month=${year}${mm}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; MarketDashboard/1.0)" },
       next: { revalidate: 3600 },
+      signal: controller.signal,
     });
     if (!res.ok) return null;
     return res.text();
-  } catch { return null; }
+  } catch { return null; } finally { clearTimeout(timer); }
 }
 
 function extractField(block: string, field: string): number | null {

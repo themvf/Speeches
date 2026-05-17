@@ -22,10 +22,12 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get("limit") ?? "20", 10)));
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(
       `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${limit}&page=1&sparkline=false&price_change_percentage=7d%2C30d`,
-      { next: { revalidate: 120 } }
+      { next: { revalidate: 120 }, signal: controller.signal }
     );
 
     if (!res.ok) {
@@ -58,5 +60,5 @@ export async function GET(request: Request) {
       500,
       requestId
     );
-  }
+  } finally { clearTimeout(timer); }
 }

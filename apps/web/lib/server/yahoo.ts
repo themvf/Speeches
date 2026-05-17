@@ -23,10 +23,12 @@ export function mapMarketState(state?: string): MarketStatus {
 }
 
 export async function fetchYahooQuote(symbol: string, revalidate = 300): Promise<YahooQuote | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`,
-      { next: { revalidate }, headers: YH }
+      { next: { revalidate }, headers: YH, signal: controller.signal }
     );
     if (!res.ok) return null;
     const json = await res.json();
@@ -43,14 +45,16 @@ export async function fetchYahooQuote(symbol: string, revalidate = 300): Promise
       name: String(meta.longName ?? meta.shortName ?? symbol),
       status: mapMarketState(meta.marketState as string),
     };
-  } catch { return null; }
+  } catch { return null; } finally { clearTimeout(timer); }
 }
 
 export async function fetchYahooCandles(symbol: string, revalidate = 3600): Promise<YahooCandle | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`,
-      { next: { revalidate }, headers: YH }
+      { next: { revalidate }, headers: YH, signal: controller.signal }
     );
     if (!res.ok) return null;
     const json = await res.json();
@@ -66,5 +70,5 @@ export async function fetchYahooCandles(symbol: string, revalidate = 3600): Prom
       if (price != null && price > 0) { t.push(ts); c.push(price); }
     });
     return t.length ? { t, c } : null;
-  } catch { return null; }
+  } catch { return null; } finally { clearTimeout(timer); }
 }

@@ -20,10 +20,12 @@ const YH = { "User-Agent": "Mozilla/5.0 (compatible; market-data/1.0)" };
 async function fetchYahooQuote(symbol: string): Promise<{
   price: number; change: number; changePct: number;
 } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`,
-      { next: { revalidate: 120 }, headers: YH }
+      { next: { revalidate: 120 }, headers: YH, signal: controller.signal }
     );
     if (!res.ok) return null;
     const json = await res.json();
@@ -34,7 +36,7 @@ async function fetchYahooQuote(symbol: string): Promise<{
     const change    = (meta.regularMarketChange    ?? (price - prev)) as number;
     const changePct = (meta.regularMarketChangePercent ?? (prev ? ((price - prev) / prev) * 100 : 0)) as number;
     return { price, change, changePct };
-  } catch { return null; }
+  } catch { return null; } finally { clearTimeout(timer); }
 }
 
 export async function GET() {
