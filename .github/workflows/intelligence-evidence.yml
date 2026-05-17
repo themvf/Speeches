@@ -103,3 +103,6 @@ jobs:
         env:
           EVIDENCE_CATEGORY: CAPITAL_FORMATION
         run: npm run test:aml-evidence-endpoint
+
+      - name: Smoke Test Core App Endpoints
+        run: npm run test:app-endpoints
