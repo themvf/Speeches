@@ -1,6 +1,9 @@
 name: Knowledge Index Sync
 
 on:
+  workflow_run:
+    workflows: ["SEC Speech Sync (Scheduled)", "Policy Extraction (On Demand)"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       org:
@@ -18,8 +21,13 @@ on:
         default: "false"
         type: boolean
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   sync:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
