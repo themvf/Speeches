@@ -71,11 +71,19 @@ function normalizeGuid(raw: string, fallbackUrl: string, title: string): string 
   return `rss:fallback:${(h >>> 0).toString(16)}`;
 }
 
-export async function fetchRssFeed(feedUrl: string, maxItems = 50): Promise<RssArticle[]> {
-  const resp = await fetch(feedUrl, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; PolicyHubBot/1.0)" },
-    next: { revalidate: 0 },
-  });
+export async function fetchRssFeed(feedUrl: string, maxItems = 50, timeoutMs = 10_000): Promise<RssArticle[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let resp: Response;
+  try {
+    resp = await fetch(feedUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; PolicyHubBot/1.0)" },
+      next: { revalidate: 0 },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!resp.ok) throw new Error(`RSS fetch failed: ${resp.status} ${feedUrl}`);
   const xml = await resp.text();
   if (xml.length > 2_000_000) throw new Error(`RSS feed response too large (${xml.length} bytes): ${feedUrl}`);
