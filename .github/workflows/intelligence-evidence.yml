@@ -57,7 +57,7 @@ jobs:
         working-directory: apps/web
     env:
       GDELT_LIVE_REQUIRED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.require_live_matches == 'true' && '1' || '0' }}
-      AML_EVIDENCE_ENDPOINT_URL: "${{ vars.PRODUCTION_BASE_URL || 'https://speeches-zeta.vercel.app' }}/api/intelligence/gdelt-evidence?category=AML"
+      EVIDENCE_ENDPOINT_BASE: "${{ vars.PRODUCTION_BASE_URL || 'https://speeches-zeta.vercel.app' }}/api/intelligence/gdelt-evidence"
 
     steps:
       - name: Checkout
