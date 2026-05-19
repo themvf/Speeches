@@ -9,6 +9,7 @@ import {
 import { loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-store";
 import { getOpenAiConfig } from "@/lib/server/env";
 import { getTopicMatches, normalizeTopicRules, type TopicRuleView } from "@/lib/intel-topic-matching";
+import { getClientIp, getGenerateGlobalLimiter, getGenerateIpLimiter, isRateLimited } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -108,6 +109,14 @@ function matchItemsToTopics(
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const ip = getClientIp(req.headers);
+  if (await isRateLimited(getGenerateIpLimiter(), ip)) {
+    return NextResponse.json({ ok: false, error: "Rate limit exceeded. Please slow down." }, { status: 429 });
+  }
+  if (await isRateLimited(getGenerateGlobalLimiter(), "global")) {
+    return NextResponse.json({ ok: false, error: "Server is busy. Please try again shortly." }, { status: 429 });
+  }
+
   try {
     const cfg = getOpenAiConfig();
     if (!cfg.apiKey) {

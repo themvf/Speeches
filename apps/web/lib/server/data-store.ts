@@ -640,7 +640,8 @@ function readLocalJson(fileName: string): unknown | null {
   }
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf-8"));
-  } catch {
+  } catch (err) {
+    console.error(`[data-store] readLocalJson failed for ${fileName}:`, err);
     return null;
   }
 }
@@ -651,7 +652,8 @@ function writeLocalJson(fileName: string, payload: unknown): boolean {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
     return true;
-  } catch {
+  } catch (err) {
+    console.error(`[data-store] writeLocalJson failed for ${fileName}:`, err);
     return false;
   }
 }

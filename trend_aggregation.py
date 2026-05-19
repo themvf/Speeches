@@ -339,11 +339,14 @@ def _load_gcs_json(storage: GCSStorage, blob_name: str) -> Any:
 
 
 def _save_gcs_json(storage: GCSStorage, blob_name: str, payload: Any) -> None:
-    blob = storage.bucket.blob(blob_name)
-    blob.upload_from_string(
-        json.dumps(payload, indent=2, default=str),
-        content_type="application/json",
-    )
+    try:
+        blob = storage.bucket.blob(blob_name)
+        blob.upload_from_string(
+            json.dumps(payload, indent=2, default=str),
+            content_type="application/json",
+        )
+    except Exception as exc:
+        _stderr(f"[error] failed to save {blob_name}: {exc}")
 
 
 def _build_gcs_storage() -> Optional[GCSStorage]:

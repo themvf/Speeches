@@ -120,7 +120,11 @@ def _download(bucket, blob_name: str) -> Any:
     blob = bucket.blob(blob_name)
     if not blob.exists():
         return None
-    return json.loads(blob.download_as_text(encoding="utf-8"))
+    raw = blob.download_as_text(encoding="utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Failed to parse JSON from GCS blob '{blob_name}': {exc}") from exc
 
 
 def _upload_json(bucket, blob_name: str, payload: Any) -> None:

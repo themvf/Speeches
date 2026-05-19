@@ -2,7 +2,7 @@ name: Knowledge Index Sync
 
 on:
   workflow_run:
-    workflows: ["SEC Speech Sync (Scheduled)", "Policy Extraction (On Demand)"]
+    workflows: ["SEC Speech Sync (Scheduled)", "Policy Extraction (On Demand)", "Policy Extraction (Scheduled)"]
     types: [completed]
   workflow_dispatch:
     inputs:

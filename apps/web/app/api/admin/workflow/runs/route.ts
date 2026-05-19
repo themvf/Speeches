@@ -10,6 +10,7 @@ const ALLOWED_WORKFLOWS = new Set([
   "knowledge-index-sync.yml",
   "trends-daily.yml",
   "policy-extraction.yml",
+  "policy-extraction-scheduled.yml",
   "intelligence-evidence.yml",
   "aml-news-ingest.yml",
   "daily-health-check.yml",
@@ -33,14 +34,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const { owner, repo } = getGithubActionsConfig();
   const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?per_page=1`;
 
-  const ghRes = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-    next: { revalidate: 0 },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  let ghRes: Response;
+  try {
+    ghRes = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: controller.signal,
+      next: { revalidate: 0 },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!ghRes.ok) {
     const data = await ghRes.json().catch(() => ({}));

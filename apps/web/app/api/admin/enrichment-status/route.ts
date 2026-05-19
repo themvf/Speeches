@@ -83,6 +83,7 @@ export async function GET(): Promise<NextResponse> {
       },
     });
   } catch (err) {
+    console.error("[admin/enrichment-status]", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }

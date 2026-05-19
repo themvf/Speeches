@@ -194,3 +194,83 @@ Exit code 1 only on critical failures; search timeout surfaces as a warning.
 
 ### `apps/web/app/api/settings/connectors/news/route.ts`
 - `doj_usao_exclude_terms` field was missing from the payload saved to GCS. Added to normalisation.
+
+---
+
+## Silent Failure Audit Pass 4
+
+### `apps/web/components/recap-dashboard.tsx`
+- `saveSettings()`: Was fire-and-forget — no `res.ok` check, always called `setSettingsSaved(true)` even on HTTP error. Fixed to check `res.ok` and surface the error.
+- Post-generate recap reload: Missing `res.ok` check before calling `.json()`. Fixed.
+- `loadDate`: Replaced unhelpful "Unexpected response" message with `json.error ?? \`No recap found for ${date}\``.
+
+### `apps/web/lib/server/neon.ts`
+- `getTodaysRecap`: Unguarded `JSON.parse(r.sources)` would throw for a single corrupt DB row, crashing all recap data for that date. Now wrapped in try/catch with per-row error logging.
+
+### `apps/web/app/api/admin/workflow/runs/route.ts`
+- Missing `AbortController` timeout on GitHub API fetch. Added 10s timeout (consistent with other GitHub API calls).
+
+### `apps/web/app/admin/page.tsx`
+- `KnowledgeIndexSection.dispatch()`: `res.json()` called without try/catch — a 502 with a non-JSON body would throw and fall to the catch silently. Fixed with `.catch(() => ({ ok: false }))` and now also checks `res.ok`.
+
+### `apps/web/lib/server/data-store.ts`
+- `readLocalJson`: Catch block was silent on parse failure. Added `console.error`.
+- `writeLocalJson`: Catch block was silent on write failure. Added `console.error`.
+
+### `apps/web/app/api/enforcement/heatmap/route.ts` and `apps/web/app/api/finra/heatmap/route.ts`
+- Catch blocks had no error logging. Added `console.error` before `return fail(...)`.
+
+### `apps/web/app/api/admin/enrichment-status/route.ts`
+- Catch block missing `console.error`. Added.
+
+### `apps/web/app/api/intel/recap/settings/route.ts`
+- Both GET and POST catch blocks missing `console.error`. Added to both.
+
+### `apps/web/app/api/intel/feed/route.ts`
+- `Promise.allSettled` results on feed refresh were never inspected. Added a loop to log any rejections.
+
+### `trend_aggregation.py`
+- `_save_gcs_json`: No error handling — a GCS upload failure would propagate up uncaught. Wrapped in try/except with `_stderr` logging.
+
+### `sync_knowledge_index.py`
+- `_download`: `json.loads` failure gave no context about which blob failed. Now raises `ValueError` with blob name included.
+
+---
+
+## Rate Limiting
+
+### `apps/web/lib/server/rate-limit.ts` (new)
+- Shared rate-limit module using `@upstash/ratelimit` + existing Upstash Redis credentials.
+- Fails **open** on Redis errors — a Redis outage never blocks legitimate traffic.
+- Per-route limiters, each namespaced with a Redis key prefix to avoid collisions.
+
+| Limiter | Limit | Identifier |
+|---|---|---|
+| Search | 20 req/min | Per IP |
+| Feed | 30 req/min | Per IP |
+| Generate (IP) | 3 req/min | Per IP |
+| Generate (global) | 10 req/min | Fixed key `"global"` |
+
+### Routes wired
+- `apps/web/app/api/search/route.ts` — per-IP limit (20/min). Protects OpenAI embedding calls.
+- `apps/web/app/api/intel/feed/route.ts` — per-IP limit (30/min). Prevents RSS re-fetch storms.
+- `apps/web/app/api/intel/recap/generate/route.ts` — per-IP (3/min) **and** global (10/min). Protects expensive multi-topic OpenAI calls and 60s Vercel function slots against distributed abuse.
+
+### npm audit
+- Fixed `fast-xml-parser`, `fast-xml-builder`, `flatted`, `brace-expansion` vulnerabilities via `npm audit fix`.
+- 7 remaining low/moderate vulns in `@google-cloud/storage` and `next` transitive deps — fixes require breaking downgrades; left in place.
+
+---
+
+## Scheduled Policy Extraction
+
+### `.github/workflows/policy-extraction-scheduled.yml` (new)
+- Previously, `Policy Extraction (On Demand)` had no `schedule:` trigger, so DOJ press releases, SEC enforcement litigation, and other regulatory documents only flowed in when manually dispatched from the admin panel. Today's DOJ output (25 releases) sat undiscovered until manual trigger.
+- New scheduled workflow runs twice daily at 10:00 UTC (6 AM ET, covers overnight) and 22:00 UTC (6 PM ET, covers business day).
+- Uses a matrix strategy (`max-parallel: 1`, `fail-fast: false`) to run three connectors sequentially:
+  - `doj_usao_press_release`
+  - `sec_enforcement_litigation`
+  - `sec_speech` (note: also covered by separate `sec-speech-sync.yml`; redundant but harmless)
+- Same Python script (`run_connector_extraction_pipeline.py`) and defaults as the on-demand workflow.
+- Added `policy-extraction-scheduled.yml` to the `ALLOWED_WORKFLOWS` allowlist in `apps/web/app/api/admin/workflow/runs/route.ts`.
+- Added `"Policy Extraction (Scheduled)"` to the `workflow_run.workflows` list in `knowledge-index-sync.yml` so newly extracted documents are auto-indexed in the OpenAI vector store after each scheduled run.

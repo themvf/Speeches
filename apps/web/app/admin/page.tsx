@@ -138,8 +138,8 @@ function KnowledgeIndexSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workflow, inputs }),
       });
-      const d = await res.json();
-      setDispatchStatus((p) => ({ ...p, [key]: d.ok ? "ok" : "error" }));
+      const d = await res.json().catch(() => ({ ok: false })) as { ok: boolean };
+      setDispatchStatus((p) => ({ ...p, [key]: (res.ok && d.ok) ? "ok" : "error" }));
     } catch {
       setDispatchStatus((p) => ({ ...p, [key]: "error" }));
     } finally {

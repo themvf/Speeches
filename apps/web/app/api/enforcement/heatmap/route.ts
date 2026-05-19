@@ -225,7 +225,8 @@ export async function GET() {
     };
 
     return ok(payload, requestId);
-  } catch {
+  } catch (err) {
+    console.error("[enforcement/heatmap]", err);
     return fail(
       "Failed to load enforcement heatmap data",
       "HEATMAP_ERROR",

@@ -160,7 +160,8 @@ export async function GET() {
     };
 
     return ok(payload, requestId);
-  } catch {
+  } catch (err) {
+    console.error("[finra/heatmap]", err);
     return fail(
       "Failed to load FINRA heatmap data",
       "HEATMAP_ERROR",

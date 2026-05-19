@@ -174,7 +174,7 @@ export function RecapDashboard({
       if (!res.ok) { setGenerateError(`Failed to load recap for ${date} (${res.status})`); return; }
       const json = (await res.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
       if (json.ok && json.data) setRecap(json.data.recap);
-      else if (!json.ok) setGenerateError(json.data ? "Unexpected response" : `No recap found for ${date}`);
+      else if (!json.ok) setGenerateError((json as { error?: string }).error ?? `No recap found for ${date}`);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : "Network error");
     } finally {
@@ -195,12 +195,19 @@ export function RecapDashboard({
   const saveSettings = async () => {
     setSettingsSaving(true);
     try {
-      await fetch("/api/intel/recap/settings", {
+      const res = await fetch("/api/intel/recap/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topicKeys: [...selectedKeys] }),
       });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        setGenerateError(d.error ?? `Save failed (HTTP ${res.status})`);
+        return;
+      }
       setSettingsSaved(true);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "Network error");
     } finally {
       setSettingsSaving(false);
     }
@@ -228,6 +235,10 @@ export function RecapDashboard({
       }
       setSkippedTopics(json.data?.skipped ?? []);
       const recapRes = await fetch(`/api/intel/recap?date=${viewDate}`);
+      if (!recapRes.ok) {
+        setGenerateError(`Failed to reload recap (HTTP ${recapRes.status})`);
+        return;
+      }
       const recapJson = (await recapRes.json()) as { ok: boolean; data?: { recap: DailyRecapRow[] } };
       if (recapJson.ok && recapJson.data) setRecap(recapJson.data.recap);
     } catch (err) {

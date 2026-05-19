@@ -7,10 +7,16 @@ import {
   getTopicRules,
   upsertRssArticles,
 } from "@/lib/server/neon";
+import { getClientIp, getFeedLimiter, isRateLimited } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  const ip = getClientIp(req.headers);
+  if (await isRateLimited(getFeedLimiter(), ip)) {
+    return NextResponse.json({ ok: false, error: "Rate limit exceeded. Please slow down." }, { status: 429 });
+  }
+
   const { searchParams } = req.nextUrl;
   const limit = Math.min(Number(searchParams.get("limit") ?? "100"), 400);
   const feedKey = searchParams.get("feedKey") ?? undefined;
@@ -34,12 +40,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (needsRefresh) {
       const activeFeeds = await getFeeds(true);
-      await Promise.allSettled(
+      const refreshResults = await Promise.allSettled(
         activeFeeds.map(async (feed) => {
           const feedArticles = await fetchRssFeed(feed.feed_url, 50);
           await upsertRssArticles(feedArticles, feed.feed_key);
         })
       );
+      for (const result of refreshResults) {
+        if (result.status === "rejected") {
+          console.error("[intel/feed] feed refresh failed:", result.reason);
+        }
+      }
       articles = await getRecentArticles({ limit, feedKey, since });
     }
 

@@ -1,11 +1,18 @@
 import { createRequestId, fail, normalizeText, ok, toInt } from "@/lib/server/api-utils";
 import { fetchSemanticDocIds } from "@/lib/server/openai-chat";
+import { getClientIp, getSearchLimiter, isRateLimited } from "@/lib/server/rate-limit";
 import { listActiveVectorStores, loadVectorStoreState } from "@/lib/server/vector-state";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const requestId = createRequestId();
+
+  const ip = getClientIp(request.headers);
+  if (await isRateLimited(getSearchLimiter(), ip)) {
+    return fail("Rate limit exceeded. Please slow down.", "RATE_LIMITED", 429, requestId);
+  }
+
   const { searchParams } = new URL(request.url);
   const q = normalizeText(searchParams.get("q"));
   if (!q) return fail("Missing q", "MISSING_Q", 400, requestId);

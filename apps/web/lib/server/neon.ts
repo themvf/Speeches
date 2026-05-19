@@ -505,7 +505,15 @@ export async function getTodaysRecap(date?: string): Promise<DailyRecapRow[]> {
         WHERE recap_date = CURRENT_DATE
         ORDER BY topic_label ASC
       `) as unknown as (Omit<DailyRecapRow, "sources"> & { sources: string })[];
-  return rows.map((r) => ({ ...r, sources: JSON.parse(r.sources || "[]") as RecapSource[] }));
+  return rows.map((r) => {
+    let sources: RecapSource[] = [];
+    try {
+      sources = JSON.parse(r.sources || "[]") as RecapSource[];
+    } catch (err) {
+      console.error(`[neon] getTodaysRecap: failed to parse sources for topic ${r.topic_key}:`, err);
+    }
+    return { ...r, sources };
+  });
 }
 
 export async function saveRecapRows(rows: Omit<DailyRecapRow, "id" | "generated_at">[]): Promise<void> {

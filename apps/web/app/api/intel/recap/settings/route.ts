@@ -8,6 +8,7 @@ export async function GET(): Promise<NextResponse> {
     const topicKeys = await getRecapSettings();
     return NextResponse.json({ ok: true, data: { topicKeys } });
   } catch (err) {
+    console.error("[recap/settings GET]", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     await saveRecapSettings(topicKeys);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    console.error("[recap/settings POST]", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
