@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IntelBetaDashboard } from "@/components/intelbeta-dashboard";
+import { NewsFeedWorkspace } from "@/components/news-feed-workspace";
 import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 
@@ -24,7 +24,7 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto w-full max-w-[1800px] px-3 py-4 md:px-5">
-      <IntelBetaDashboard initialArticles={initialArticles} initialTopicRules={initialTopicRules} />
+      <NewsFeedWorkspace initialArticles={initialArticles} initialTopicRules={initialTopicRules} />
     </main>
   );
 }

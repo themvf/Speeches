@@ -1,11 +1,5 @@
-import type { Metadata } from "next";
-import { PolicyResearchHub } from "@/components/policy-research-hub";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Research | Policy Research Hub",
-  description: "Search and explore primary regulatory documents with AI analysis.",
-};
-
-export default function ResearchPage() {
-  return <PolicyResearchHub mode="home" />;
+export default function ResearchRedirectPage() {
+  redirect("/?mode=research");
 }
