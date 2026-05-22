@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
+import type { DocumentListItem } from "@/lib/server/types";
 import { BookmarkButton } from "@/components/bookmark-button";
 import { useSavedItems } from "@/hooks/use-saved-items";
 import {
@@ -19,6 +20,16 @@ type FeedMeta = {
   color: string;
 };
 
+type FeedItem = StoredRssArticle & {
+  item_type?: "article" | "document";
+  document_id?: string;
+  organization?: string;
+  source_kind?: string;
+  doc_type?: string;
+  topics?: string[];
+  keywords?: string[];
+};
+
 const FEED_META: Record<string, FeedMeta> = {
   wsj_us_business: { label: "WSJ Business", code: "WSJB", color: "#63a8ff" },
   wsj_markets: { label: "WSJ Markets", code: "WSJM", color: "#ffc857" },
@@ -30,6 +41,21 @@ const FEED_META: Record<string, FeedMeta> = {
 };
 
 function getFeedMeta(feedKey: string): FeedMeta {
+  if (feedKey.startsWith("document_")) {
+    const sourceKind = feedKey.replace(/^document_/, "");
+    const normalized = sourceKind.replace(/[_-]+/g, " ").trim();
+    const code = normalized
+      .split(" ")
+      .map((word) => word.charAt(0))
+      .join("")
+      .toUpperCase()
+      .slice(0, 4) || "DOC";
+    return {
+      label: normalized.replace(/\b\w/g, (ch) => ch.toUpperCase()) || "Document",
+      code,
+      color: "#4fd5ff",
+    };
+  }
   return FEED_META[feedKey] ?? {
     label: feedKey,
     code: feedKey.slice(0, 4).toUpperCase(),
@@ -37,7 +63,10 @@ function getFeedMeta(feedKey: string): FeedMeta {
   };
 }
 
-function savedArticleId(article: StoredRssArticle): string {
+function savedArticleId(article: FeedItem): string {
+  if (article.item_type === "document" && article.document_id) {
+    return `document:${article.document_id}`;
+  }
   return `article:${article.id}`;
 }
 
@@ -65,14 +94,23 @@ const TONE_STYLE: Record<string, { color: string; bg: string; label: string; sho
   },
 };
 
-function matchesTopic(article: StoredRssArticle, rule: TopicRuleView | null, topicMatchesByArticleId: Map<number, TopicRuleView[]>): boolean {
+function matchesTopic(article: FeedItem, rule: TopicRuleView | null, topicMatchesByArticleId: Map<number, TopicRuleView[]>): boolean {
   if (!rule) return true;
   return (topicMatchesByArticleId.get(article.id) ?? []).some((item) => item.topic_key === rule.topic_key);
 }
 
-function matchesSearch(article: StoredRssArticle, searchTerm: string): boolean {
+function matchesSearch(article: FeedItem, searchTerm: string): boolean {
   if (!searchTerm) return true;
-  const haystack = `${article.title} ${article.description ?? ""} ${article.author ?? ""}`.toLowerCase();
+  const haystack = [
+    article.title,
+    article.description ?? "",
+    article.author ?? "",
+    article.organization ?? "",
+    article.source_kind ?? "",
+    article.doc_type ?? "",
+    ...(article.topics ?? []),
+    ...(article.keywords ?? []),
+  ].join(" ").toLowerCase();
   return haystack.includes(searchTerm);
 }
 
@@ -101,10 +139,50 @@ function ellipsize(text: string, max = 120): string {
   return value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
 }
 
-function articleListSignature(articles: StoredRssArticle[]): string {
+function articleListSignature(articles: FeedItem[]): string {
   const first = articles[0];
   const last = articles[articles.length - 1];
   return `${articles.length}:${first?.id ?? ""}:${first?.fetched_at ?? ""}:${last?.id ?? ""}:${last?.fetched_at ?? ""}`;
+}
+
+function stableNegativeId(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return -Math.max(1, Math.abs(hash));
+}
+
+function documentDescription(document: DocumentListItem): string {
+  return [
+    document.doc_type,
+    document.speaker ? `By ${document.speaker}` : "",
+    (document.topics || []).slice(0, 5).join(", "),
+    (document.keywords || []).slice(0, 5).join(", "),
+  ].filter(Boolean).join(" | ");
+}
+
+function documentToFeedItem(document: DocumentListItem): FeedItem {
+  const publishedAt = document.published_at || document.date || document.updated_at || new Date(0).toISOString();
+  return {
+    id: stableNegativeId(document.document_id),
+    guid: document.document_id,
+    feed_key: `document_${document.source_kind || "document"}`,
+    title: document.title || "Untitled document",
+    url: document.url,
+    description: documentDescription(document),
+    author: document.speaker || document.organization || "Document",
+    published_at: publishedAt,
+    tone_label: document.sentiment_label || null,
+    fetched_at: publishedAt,
+    item_type: "document",
+    document_id: document.document_id,
+    organization: document.organization,
+    source_kind: document.source_kind,
+    doc_type: document.doc_type,
+    topics: document.topics || [],
+    keywords: document.keywords || [],
+  };
 }
 
 function topicRulesSignature(rules: StoredRssTopicRule[]): string {
@@ -213,7 +291,7 @@ function FeedRow({
   saved,
   onToggleSave,
 }: {
-  article: StoredRssArticle;
+  article: FeedItem;
   matchedTopics: TopicRuleView[];
   active: boolean;
   onSelect: () => void;
@@ -222,7 +300,7 @@ function FeedRow({
 }) {
   const source = getFeedMeta(article.feed_key);
   const visibleTopics = matchedTopics.slice(0, 3);
-  const description = ellipsize(article.description ?? "", 82);
+  const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
 
   return (
     <div
@@ -259,6 +337,11 @@ function FeedRow({
         {description ? (
           <div style={{ color: "#7f8faa", fontSize: 12, marginTop: 3, lineHeight: 1.45 }}>{description}</div>
         ) : null}
+        {article.item_type === "document" ? (
+          <div style={{ color: "#4fd5ff", fontSize: 10, marginTop: 5, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+            Primary document
+          </div>
+        ) : null}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {visibleTopics.map((topic) => (
@@ -276,7 +359,7 @@ function FeaturedCard({
   saved,
   onToggleSave,
 }: {
-  article: StoredRssArticle;
+  article: FeedItem;
   matchedTopics: TopicRuleView[];
   saved: boolean;
   onToggleSave: () => void;
@@ -357,9 +440,9 @@ function FeaturedCard({
           }}
         >
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Author</div>
-          <div style={{ color: "#d7e1ef" }}>{decodeEntities(article.author || "News Desk")}</div>
+          <div style={{ color: "#d7e1ef" }}>{decodeEntities(article.author || (article.item_type === "document" ? "Document" : "News Desk"))}</div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Source</div>
-          <div style={{ color: "#d7e1ef" }}>{source.label}</div>
+          <div style={{ color: "#d7e1ef" }}>{article.organization || source.label}</div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Impact</div>
           <div style={{ color: TONE_STYLE[tone].color, fontWeight: 700 }}>{TONE_STYLE[tone].label.toUpperCase()}</div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Topics</div>
@@ -376,15 +459,23 @@ function FeaturedCard({
 export function IntelBetaDashboard({
   initialArticles,
   initialTopicRules,
+  initialDocuments = [],
 }: {
   initialArticles: StoredRssArticle[];
   initialTopicRules: StoredRssTopicRule[];
+  initialDocuments?: DocumentListItem[];
 }) {
   const [articles, setArticles] = useState<StoredRssArticle[]>(initialArticles);
+  const documentFeedItems = useMemo(() => initialDocuments.map(documentToFeedItem), [initialDocuments]);
+  const feedItems = useMemo<FeedItem[]>(
+    () => [...articles, ...documentFeedItems]
+      .sort((a, b) => new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime()),
+    [articles, documentFeedItems]
+  );
   const [topicRules, setTopicRules] = useState<StoredRssTopicRule[]>(initialTopicRules);
   const [selectedTopic, setSelectedTopic] = useState<TopicFilter>("ALL");
   const [search, setSearch] = useState("");
-  const [selectedArticleId, setSelectedArticleId] = useState<number | null>(initialArticles[0]?.id ?? null);
+  const [selectedArticleId, setSelectedArticleId] = useState<number | null>(feedItems[0]?.id ?? null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newCount, setNewCount] = useState(0);
   const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
@@ -396,12 +487,12 @@ export function IntelBetaDashboard({
   const topicIndex = useMemo(() => {
     const topicMatchesByArticleId = new Map<number, TopicRuleView[]>();
     const topicCounts = new Map<string, number>();
-    const matchedArticles: StoredRssArticle[] = [];
+    const matchedArticles: FeedItem[] = [];
 
-    for (const article of articles) {
+    for (const article of feedItems) {
       const matches = getMatchingTopics(article, visibleTopicRules);
       topicMatchesByArticleId.set(article.id, matches);
-      if (matches.length === 0) {
+      if (matches.length === 0 && article.item_type !== "document") {
         continue;
       }
       matchedArticles.push(article);
@@ -411,7 +502,7 @@ export function IntelBetaDashboard({
     }
 
     return { topicMatchesByArticleId, topicCounts, matchedArticles };
-  }, [articles, visibleTopicRules]);
+  }, [feedItems, visibleTopicRules]);
   const matchedArticles = topicIndex.matchedArticles;
   const selectedRule = selectedTopic === "ALL"
     ? null
@@ -502,21 +593,23 @@ export function IntelBetaDashboard({
 
   const featured = filtered.find((article) => article.id === selectedArticleId) ?? filtered[0] ?? null;
 
-  const toggleArticleSave = (article: StoredRssArticle) => {
+  const toggleArticleSave = (article: FeedItem) => {
     const source = getFeedMeta(article.feed_key);
     const primaryTopic = topicIndex.topicMatchesByArticleId.get(article.id)?.[0]?.label;
     savedItems.toggle({
       id: savedArticleId(article),
-      type: "article",
+      type: article.item_type === "document" ? "doc" : "article",
       title: decodeEntities(article.title || "Untitled article"),
       url: article.url,
-      source: source.label,
+      source: article.organization || source.label,
       topic: primaryTopic,
       metadata: {
         feedKey: article.feed_key,
         author: article.author,
         publishedAt: article.published_at || "",
         toneLabel: article.tone_label,
+        documentId: article.document_id || "",
+        sourceKind: article.source_kind || "",
       },
     });
   };
@@ -563,7 +656,7 @@ export function IntelBetaDashboard({
               lineHeight: 1.35,
             }}
           >
-            Search all regulatory documents →
+            Search all regulatory documents
           </a>
           <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
             Topics
@@ -622,7 +715,7 @@ export function IntelBetaDashboard({
                 fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
               }}
             >
-              News Feed / {selectedRule ? selectedRule.label : "All"} / {filtered.length} matched ({articles.length} total)
+              News Feed / {selectedRule ? selectedRule.label : "All"} / {filtered.length} matched ({feedItems.length} total)
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
@@ -700,7 +793,7 @@ export function IntelBetaDashboard({
 
             {filtered.length === 0 ? (
               <div style={{ color: "#72839d", fontSize: 13, padding: "28px 0" }}>
-                {articles.length === 0 ? "No articles yet." : "No articles match the current filters."}
+                {feedItems.length === 0 ? "No feed items yet." : "No feed items match the current filters."}
               </div>
             ) : (
               filtered.map((article) =>
@@ -731,7 +824,7 @@ export function IntelBetaDashboard({
 
       <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 4px 0", color: "#5d708a", fontSize: 11 }}>
         <div>Updated {formatUpdated(lastUpdated.toISOString())}</div>
-        <div>{articles.length} tracked articles</div>
+        <div>{articles.length} articles + {documentFeedItems.length} research documents</div>
       </div>
     </div>
   );

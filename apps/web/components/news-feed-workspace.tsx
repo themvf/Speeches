@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { IntelBetaDashboard } from "@/components/intelbeta-dashboard";
 import { PolicyResearchHub } from "@/components/policy-research-hub";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
+import type { DocumentListItem } from "@/lib/server/types";
 
 type WorkspaceMode = "feed" | "research";
 
@@ -19,10 +20,12 @@ function modeButtonClass(active: boolean): string {
 
 export function NewsFeedWorkspace({
   initialArticles,
-  initialTopicRules
+  initialTopicRules,
+  initialDocuments
 }: {
   initialArticles: StoredRssArticle[];
   initialTopicRules: StoredRssTopicRule[];
+  initialDocuments: DocumentListItem[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -62,7 +65,11 @@ export function NewsFeedWorkspace({
       </section>
 
       {mode === "feed" ? (
-        <IntelBetaDashboard initialArticles={initialArticles} initialTopicRules={initialTopicRules} />
+        <IntelBetaDashboard
+          initialArticles={initialArticles}
+          initialTopicRules={initialTopicRules}
+          initialDocuments={initialDocuments}
+        />
       ) : (
         <div className="-mx-4 md:-mx-8">
           <PolicyResearchHub mode="home" />
