@@ -3,7 +3,7 @@
  * Run against production or a custom BASE_URL env var.
  *
  * Exit codes:
- *   0 = all critical tests passed (warnings allowed)
+ *   0 = all critical tests passed
  *   1 = one or more critical tests failed
  */
 
@@ -122,8 +122,8 @@ results.push(await runTest("GET /api/intel/recap", "critical", async () => {
   assert.ok(typeof json.ok === "boolean", "response must have ok field");
 }));
 
-// Search (vector-store-dependent — warn only)
-results.push(await runTest("GET /api/search", "warn", async () => {
+// Search
+results.push(await runTest("GET /api/search", "critical", async () => {
   const res = await fetchWithTimeout(`${BASE_URL}/api/search?q=enforcement&topK=3`);
   assert.ok(res.ok, `HTTP ${res.status}`);
   const json = await res.json() as { ok: boolean; data?: unknown };

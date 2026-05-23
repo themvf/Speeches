@@ -1261,6 +1261,15 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     return summary
 
 
+def _has_item_failures(summary: Dict[str, Any]) -> bool:
+    failed_items = summary.get("failed")
+    try:
+        count = int(summary.get("failed_count", 0) or 0)
+    except (TypeError, ValueError):
+        count = 0
+    return count > 0 or (isinstance(failed_items, list) and len(failed_items) > 0)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Connector extraction pipeline")
     parser.add_argument("--connector", required=True, choices=sorted(SUPPORTED_CONNECTORS))
@@ -1309,6 +1318,13 @@ def main() -> int:
         }
         core._write_summary(getattr(args, "summary_path", ""), payload)
         print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 1
+
+    if _has_item_failures(summary):
+        summary["ok"] = False
+        summary["error"] = f"{summary.get('failed_count', 0)} item-level extraction failure(s)."
+        core._write_summary(getattr(args, "summary_path", ""), summary)
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
         return 1
 
     summary["ok"] = True

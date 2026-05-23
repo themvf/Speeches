@@ -79,3 +79,10 @@ def test_non_doj_short_text_is_retained_instead_of_failing():
     assert record["metadata"]["title"] == "Example Short SEC FAQ"
     assert record["metadata"]["word_count"] == 2
     assert record["content"]["full_text"] == "Short body."
+
+
+def test_summary_with_item_failures_should_fail_process():
+    assert pipeline._has_item_failures({"failed_count": 1, "failed": [{"title": "bad"}]}) is True
+    assert pipeline._has_item_failures({"failed_count": 0, "failed": []}) is False
+    assert pipeline._has_item_failures({"failed_count": "2"}) is True
+    assert pipeline._has_item_failures({"failed": [{"title": "bad"}]}) is True

@@ -319,7 +319,7 @@ def main() -> None:
         with open(github_output, "a", encoding="utf-8") as f:
             f.write(f"has_failures={'true' if failure_count > 0 else 'false'}\n")
 
-    sys.exit(0)
+    sys.exit(1 if failure_count > 0 else 0)
 
 
 if __name__ == "__main__":
