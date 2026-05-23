@@ -455,7 +455,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data_content = data.get("content", {}) if isinstance(data.get("content", {}), dict) else {}
         text = str(data_content.get("full_text", "") or "").strip()
         if len(text.split()) < 80:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
 
         src_url = str(data_meta.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"sec-speech-{idx}", ".html")
@@ -503,7 +503,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 80:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         src_format = str(data.get("source_format", "") or entry.get("source_format", "html")).lower()
         source_ext = ".pdf" if src_format == "pdf" else ".html"
@@ -543,7 +543,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 80:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"litigation-release-{idx}", ".html")
         doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
@@ -594,7 +594,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 80:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"finra-regulatory-notice-{idx}", ".html")
         doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
@@ -639,7 +639,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 30:
-            raise RuntimeError("Extracted AWC text appears too short.")
+            print("WARNING: Extracted AWC text appears too short; retaining record.", file=sys.stderr)
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         pdf_url = str(data.get("pdf_url", "") or entry.get("pdf_url", "")).strip()
         source_ext = ".pdf" if pdf_url else ".html"
@@ -688,7 +688,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 20:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
 
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_format = str(data.get("source_format", "") or entry.get("source_format", "html")).strip().lower()
@@ -740,7 +740,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 20:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"finra-key-topic-{idx}", ".html")
 
@@ -838,7 +838,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 80:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"federal-reserve-doc-{idx}", ".html")
         doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
@@ -877,7 +877,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 80:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"cftc-press-release-{idx}", ".html")
         doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
@@ -914,7 +914,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 80:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"cftc-statement-{idx}", ".html")
         doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
@@ -961,7 +961,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 60:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
 
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"{connector}-{idx}", ".html")
@@ -1017,7 +1017,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 40:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
 
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"sifma-news-{idx}", ".html")
@@ -1074,7 +1074,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
         if len(text.split()) < 60:
-            raise RuntimeError("Extracted text appears too short.")
+            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
 
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         product_number = str(data.get("product_number", "") or entry.get("product_number", "")).strip().upper()

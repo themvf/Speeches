@@ -18,6 +18,21 @@ class ShortDOJScraper:
         }
 
 
+class ShortDocumentScraper:
+    def extract_document(self, url, **kwargs):
+        return {
+            "success": True,
+            "data": {
+                "url": url,
+                "title": kwargs.get("fallback_title", "Short Document"),
+                "date": kwargs.get("fallback_date", "May 23, 2026"),
+                "full_text": "Short body.",
+                "word_count": 2,
+                "source_format": "html",
+            },
+        }
+
+
 def test_doj_short_text_is_retained_as_metadata_fallback():
     entry = {
         "url": "https://www.justice.gov/usao-test/pr/example-short-release",
@@ -43,3 +58,24 @@ def test_doj_short_text_is_retained_as_metadata_fallback():
     assert metadata["body_word_count"] == 2
     assert "Example Short DOJ Press Release" in content["full_text"]
     assert "metadata-backed record is retained" in content["full_text"]
+
+
+def test_non_doj_short_text_is_retained_instead_of_failing():
+    entry = {
+        "url": "https://www.sec.gov/rules-regulations/staff-guidance/example-short-faq",
+        "title": "Example Short SEC FAQ",
+        "updated_date": "May 23, 2026",
+    }
+
+    record = pipeline._extract_record(
+        connector="sec_tm_faq",
+        scraper=ShortDocumentScraper(),
+        entry=entry,
+        idx=1,
+        base_url="https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions",
+    )
+
+    assert record["metadata"]["source_kind"] == "sec_tm_faq"
+    assert record["metadata"]["title"] == "Example Short SEC FAQ"
+    assert record["metadata"]["word_count"] == 2
+    assert record["content"]["full_text"] == "Short body."
