@@ -175,6 +175,33 @@ def _build_existing_custom_map(custom_payload: Dict[str, Any]) -> Dict[str, Dict
     return out
 
 
+def _build_short_text_fallback(
+    *,
+    title: str,
+    url: str,
+    date_text: str,
+    organization: str,
+    source_label: str,
+    extracted_text: str = "",
+) -> str:
+    """Create a transparent placeholder body when metadata is useful but body extraction is thin."""
+    parts = [
+        str(title or "").strip(),
+        f"Source: {str(source_label or organization or '').strip()}",
+        f"Organization: {str(organization or '').strip()}",
+        f"Date: {str(date_text or '').strip()}",
+        f"URL: {str(url or '').strip()}",
+    ]
+    short_text = str(extracted_text or "").strip()
+    if short_text:
+        parts.append(f"Extracted text snippet: {short_text}")
+    parts.append(
+        "Note: The source page was discovered successfully, but the article body extraction returned a short result. "
+        "This metadata-backed record is retained so the item can appear in feed, search, watchlist, and briefing workflows."
+    )
+    return "\n".join(part for part in parts if part).strip()
+
+
 def _status_for_entry(
     connector: str,
     entry: Dict[str, Any],
@@ -758,17 +785,26 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         )
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()
-        if len(text.split()) < 80:
-            raise RuntimeError("Extracted text appears too short.")
         src_url = str(data.get("url", "") or entry.get("url", "")).strip()
         source_name = _safe_source_name(src_url, f"doj-press-release-{idx}", ".html")
         doc_date = _parse_doc_date(data.get("date", "") or entry.get("date", ""))
         office = str(data.get("office", "") or entry.get("office", "")).strip() or "U.S. Attorney's Office"
+        title = str(data.get("title", "") or entry.get("title", "")).strip()
+        short_text_fallback = len(text.split()) < 80
+        if short_text_fallback:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=str(data.get("date", "") or entry.get("date", "")).strip(),
+                organization="DOJ",
+                source_label=office,
+                extracted_text=text,
+            )
 
         record = core._create_uploaded_document_record(
             text=text,
             organization="DOJ",
-            title=str(data.get("title", "") or entry.get("title", "")).strip(),
+            title=title,
             speaker=office,
             doc_date=doc_date,
             doc_type="Press Release",
@@ -786,6 +822,10 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["office"] = office
         metadata["published_date"] = str(entry.get("date", "") or "")
         metadata["updated_date"] = str(data.get("updated_date", "") or "")
+        if short_text_fallback:
+            metadata["extraction_mode"] = "metadata_fallback"
+            metadata["extraction_warnings"] = ["body_text_too_short"]
+            metadata["body_word_count"] = int(data.get("word_count", 0) or 0)
         return record
 
     if connector == "federal_reserve_speech_testimony":
