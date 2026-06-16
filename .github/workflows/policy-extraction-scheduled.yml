@@ -26,6 +26,7 @@ jobs:
       matrix:
         connector:
           - doj_usao_press_release
+          - finra_awc
           - sec_enforcement_litigation
           - sec_speech
     env:
