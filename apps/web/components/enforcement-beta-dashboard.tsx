@@ -12,6 +12,13 @@ import type {
 
 type ApiEnvelope<T> = { ok: boolean; data?: T; error?: string };
 type ViewMode = "combined" | "sec" | "finra";
+type AiEnforcementAnalysis = {
+  thesis: string;
+  why_it_matters: string[];
+  legal_theory: string[];
+  risk_signals: string[];
+  follow_up_questions: string[];
+};
 
 const HIDDEN_FINRA_RULES = new Set(["8310", "8311", "8313", "9216", "9143", "9144"]);
 
@@ -410,7 +417,35 @@ function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet
   const style = AGENCY_STYLE[action.agency];
   const citationPreview = action.citations.filter((c) => !isHiddenFinraCitation(action.agency, c.citation)).slice(0, 3);
   const analysis = buildActionAnalysis(action);
-  const row = (
+  const [aiAnalysis, setAiAnalysis] = useState<AiEnforcementAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
+
+  async function generateAiAnalysis() {
+    if (!action.document_id || analysisLoading) {
+      return;
+    }
+    setAnalysisLoading(true);
+    setAnalysisError("");
+    try {
+      const res = await fetch("/api/enforcement/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ document_id: action.document_id }),
+      });
+      const envelope = await res.json() as ApiEnvelope<{ analysis: AiEnforcementAnalysis }>;
+      if (!res.ok || !envelope.ok || !envelope.data?.analysis) {
+        throw new Error(envelope.error || "Analysis failed");
+      }
+      setAiAnalysis(envelope.data.analysis);
+    } catch (err) {
+      setAnalysisError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }
+
+  return (
     <div className="rounded-xl border border-[color:var(--line-soft)] bg-[color:rgba(6,15,24,0.46)] p-4 transition-colors hover:border-[color:var(--line-strong)]">
       <div className="flex flex-wrap items-center gap-2">
         <AgencyBadge agency={action.agency} />
@@ -424,9 +459,15 @@ function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet
         ) : null}
         <span className="ml-auto text-xs text-[color:var(--ink-faint)]">{formatDate(action.date)}</span>
       </div>
-      <h3 className="mt-3 text-sm font-semibold text-[color:var(--ink)]" style={{ letterSpacing: 0 }}>
-        {action.title}
-      </h3>
+      {action.url ? (
+        <a href={action.url} target="_blank" rel="noopener noreferrer" className="mt-3 block text-sm font-semibold text-[color:var(--ink)] hover:underline" style={{ letterSpacing: 0 }}>
+          {action.title}
+        </a>
+      ) : (
+        <h3 className="mt-3 text-sm font-semibold text-[color:var(--ink)]" style={{ letterSpacing: 0 }}>
+          {action.title}
+        </h3>
+      )}
       <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[color:var(--ink-faint)]">
         <span>{action.action_type}</span>
         <span style={{ color: "rgba(216,231,246,0.34)" }}>|</span>
@@ -459,7 +500,17 @@ function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet
         ))}
       </div>
       <div className="mt-3 border-t border-[color:var(--line-soft)] pt-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Analysis</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Analysis</p>
+          <button
+            type="button"
+            onClick={generateAiAnalysis}
+            disabled={analysisLoading || !action.document_id}
+            className="rounded-full border border-[color:var(--line-soft)] px-2 py-1 text-[10px] font-semibold uppercase text-[color:var(--ink-faint)] transition-colors hover:border-[color:var(--line-strong)] hover:text-[color:var(--ink)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {analysisLoading ? "Analyzing..." : aiAnalysis ? "Refresh AI Analysis" : "OpenAI Analysis"}
+          </button>
+        </div>
         <p className="mt-1.5 text-xs leading-relaxed text-[color:var(--ink)]">{analysis.lead}</p>
         <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
           {analysis.points.slice(0, 3).map((point) => (
@@ -471,18 +522,39 @@ function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet
         {analysis.points[3] ? (
           <p className="mt-1.5 text-[11px] leading-relaxed text-[color:rgba(255,202,87,0.78)]">{analysis.points[3]}</p>
         ) : null}
+        {analysisError ? (
+          <p className="mt-2 text-[11px] leading-relaxed text-red-300">{analysisError}</p>
+        ) : null}
+        {aiAnalysis ? (
+          <div className="mt-3 rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(9,21,34,0.56)] p-3">
+            <p className="text-xs font-semibold leading-relaxed text-[color:var(--ink)]">{aiAnalysis.thesis}</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <AnalysisColumn title="Why It Matters" items={aiAnalysis.why_it_matters} />
+              <AnalysisColumn title="Legal Theory" items={aiAnalysis.legal_theory} />
+              <AnalysisColumn title="Risk Signals" items={aiAnalysis.risk_signals} />
+              <AnalysisColumn title="Follow-Up" items={aiAnalysis.follow_up_questions} />
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
+}
 
-  if (!action.url) {
-    return row;
-  }
-
+function AnalysisColumn({ title, items }: { title: string; items: string[] }) {
   return (
-    <a href={action.url} target="_blank" rel="noopener noreferrer" className="block">
-      {row}
-    </a>
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">{title}</p>
+      <ul className="mt-1.5 space-y-1">
+        {items.length ? items.map((item) => (
+          <li key={item} className="text-[11px] leading-relaxed text-[color:var(--ink-faint)]">
+            {item}
+          </li>
+        )) : (
+          <li className="text-[11px] leading-relaxed text-[color:var(--ink-faint)]">No specific point returned.</li>
+        )}
+      </ul>
+    </div>
   );
 }
 
