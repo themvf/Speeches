@@ -1,11 +1,17 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
-import { loadCorpusDocuments, loadEnrichmentState, parseComparableDate } from "@/lib/server/data-store";
-import { jsonValueToAnalysis, type EnforcementAiAnalysis } from "@/lib/server/enforcement-analysis";
+import { loadCorpusDocuments, loadEnrichmentState, parseComparableDate, saveEnrichmentState } from "@/lib/server/data-store";
+import {
+  analysisToJsonValue,
+  generateEnforcementAnalysis,
+  jsonValueToAnalysis,
+  type EnforcementAiAnalysis
+} from "@/lib/server/enforcement-analysis";
 import type { CustomDocumentRecord, EnrichmentEntry } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 55;
 
 type Agency = "SEC" | "FINRA";
 type AgencyKey = "sec" | "finra";
@@ -80,6 +86,10 @@ const SEC_STANDALONE_SECTION_RE =
   /\b(?:Section|Sec\.?|section|\u00a7)\s+(10\([ab]\)|13\([a-z]\)|15\([ab]\)|17\([a-c]\)|17A\([a-z]\)|21C|204\(a\)|206\(\d\)|207)\b/g;
 const SECTION_TOKEN_RE = /\b(?:\d{1,3}[A-Za-z]?|21C)(?:\([a-z0-9]+\)){0,3}(?:-[0-9]+)?\b/g;
 const MONEY_RE = /\$[0-9][0-9,]*(?:\.[0-9]+)?(?:\s*(?:million|billion))?/gi;
+const AUTO_ANALYSIS_LIMIT = Math.max(
+  0,
+  Math.min(10, Number.parseInt(process.env.ENFORCEMENT_AUTO_ANALYSIS_LIMIT || "3", 10) || 3)
+);
 
 export interface EnforcementBetaCitation {
   citation: string;
@@ -665,14 +675,103 @@ function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
+function baseEnrichmentEntry(doc: CustomDocumentRecord, existing?: EnrichmentEntry): EnrichmentEntry {
+  const metadata = metadataRecord(doc);
+  const docId = text(metadata.document_id);
+  return {
+    doc_id: docId,
+    organization: text(metadata.organization) || "SEC",
+    org_key: "sec",
+    title: text(metadata.title),
+    speaker: text(metadata.speaker),
+    date: text(metadata.published_date) || text(metadata.date),
+    url: text(metadata.url),
+    doc_type: text(metadata.doc_type) || "Litigation Release",
+    word_count: Number.parseInt(text(metadata.word_count), 10) || 0,
+    status: text(existing?.status) || "enriched",
+    error: text(existing?.error),
+    model: text(existing?.model),
+    pipeline_version: text(existing?.pipeline_version) || "v1",
+    updated_at: new Date().toISOString(),
+    enrichment: existing?.enrichment || {
+      summary: "",
+      tags: [],
+      keywords: [],
+      entities: [],
+      stance: {},
+      comment_position: {},
+      evidence_spans: [],
+      confidence: 0,
+    },
+    review: existing?.review || { decision: "pending", notes: "", reviewed_at: "" },
+    sentiment: existing?.sentiment,
+    enforcement_analysis: existing?.enforcement_analysis,
+    reward: existing?.reward,
+    auto_review: existing?.auto_review,
+  };
+}
+
+async function ensureRecentSavedAnalyses(
+  secDocs: CustomDocumentRecord[],
+  enrichmentEntries: Record<string, EnrichmentEntry>,
+  enrichmentState: Awaited<ReturnType<typeof loadEnrichmentState>>
+): Promise<Record<string, EnrichmentEntry>> {
+  if (AUTO_ANALYSIS_LIMIT <= 0) {
+    return enrichmentEntries;
+  }
+
+  const missing = secDocs
+    .filter((doc) => {
+      const docId = text(doc.metadata?.document_id);
+      return docId && !jsonValueToAnalysis(enrichmentEntries[docId]?.enforcement_analysis);
+    })
+    .sort((a, b) =>
+      parseComparableDate(text(b.metadata?.published_date) || text(b.metadata?.date)) -
+      parseComparableDate(text(a.metadata?.published_date) || text(a.metadata?.date))
+    )
+    .slice(0, AUTO_ANALYSIS_LIMIT);
+
+  if (!missing.length) {
+    return enrichmentEntries;
+  }
+
+  const nextEntries = { ...enrichmentEntries };
+  let changed = false;
+  for (const doc of missing) {
+    const docId = text(doc.metadata?.document_id);
+    try {
+      const generated = await generateEnforcementAnalysis(doc);
+      nextEntries[docId] = {
+        ...baseEnrichmentEntry(doc, nextEntries[docId]),
+        model: generated.model,
+        status: text(nextEntries[docId]?.status) || "enriched",
+        error: "",
+        updated_at: new Date().toISOString(),
+        enforcement_analysis: analysisToJsonValue(generated.analysis, generated.model),
+      };
+      changed = true;
+    } catch (error) {
+      console.error(`[enforcement/beta] auto analysis failed for ${docId}:`, error);
+    }
+  }
+
+  if (changed) {
+    enrichmentState.entries = nextEntries;
+    await saveEnrichmentState(enrichmentState);
+  }
+  return nextEntries;
+}
+
 export async function GET() {
   const requestId = createRequestId();
 
   try {
     const [corpus, enrichmentState] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
-    const enrichmentEntries = enrichmentState.entries || {};
+    let enrichmentEntries = enrichmentState.entries || {};
     const { months, monthIndex } = buildMonths();
-    const sec = buildAgencyPayload("SEC", corpus.filter(isSecEnforcementDoc), months, monthIndex, enrichmentEntries);
+    const secDocs = corpus.filter(isSecEnforcementDoc);
+    enrichmentEntries = await ensureRecentSavedAnalyses(secDocs, enrichmentEntries, enrichmentState);
+    const sec = buildAgencyPayload("SEC", secDocs, months, monthIndex, enrichmentEntries);
     const finra = buildAgencyPayload("FINRA", corpus.filter(isFinraAwcDoc), months, monthIndex, enrichmentEntries);
     const combinedActions = [...sec.actions, ...finra.actions].sort(
       (a, b) => parseComparableDate(b.date) - parseComparableDate(a.date)
