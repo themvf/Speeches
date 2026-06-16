@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 import type { DocumentListItem } from "@/lib/server/types";
 import { BookmarkButton } from "@/components/bookmark-button";
@@ -29,6 +29,46 @@ type FeedItem = StoredRssArticle & {
   topics?: string[];
   keywords?: string[];
 };
+
+interface ApiEnvelope<T> {
+  ok: boolean;
+  data?: T;
+  error?: string;
+}
+
+interface DocumentDetailData {
+  metadata: {
+    document_id: string;
+    published_at: string;
+  };
+  content: {
+    full_text: string;
+    paragraphs: string[];
+    sentences: string[];
+  };
+  enrichment: {
+    status: string;
+    summary: string;
+    tags: string[];
+    keywords: string[];
+    entities: string[];
+    evidence_spans: Array<Record<string, unknown>>;
+    stance: Record<string, unknown>;
+    comment_position: Record<string, unknown>;
+    confidence: number;
+  };
+  review: {
+    decision: string;
+    notes: string;
+    reviewed_at: string;
+  };
+  sentiment: {
+    score: number;
+    label: string;
+    rationale: string;
+    status: string;
+  } | null;
+}
 
 const FEED_META: Record<string, FeedMeta> = {
   wsj_us_business: { label: "WSJ Business", code: "WSJB", color: "#63a8ff" },
@@ -137,6 +177,115 @@ function formatUpdated(dateStr: string | null): string {
 function ellipsize(text: string, max = 120): string {
   const value = decodeEntities(text || "");
   return value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  const payload = (await res.json()) as ApiEnvelope<T>;
+  if (!res.ok || !payload.ok || payload.data === undefined) {
+    throw new Error(payload.error || `Request failed with ${res.status}`);
+  }
+  return payload.data;
+}
+
+function statusClass(value: string): string {
+  const s = String(value || "").toLowerCase();
+  if (["enriched", "reviewed", "success"].includes(s)) return "status-chip status-success";
+  if (["fallback_enriched", "queued", "running"].includes(s)) return "status-chip status-warn";
+  if (["failed", "rejected"].includes(s)) return "status-chip status-failure";
+  return "status-chip status-neutral";
+}
+
+function analysisChipClass(value: string): string {
+  const label = String(value || "").toLowerCase();
+  if (["supportive", "supports", "aligned", "favorable", "positive"].includes(label)) return "status-chip status-success";
+  if (["opposed", "opposes", "critical", "negative", "adverse"].includes(label)) return "status-chip status-failure";
+  if (["mixed", "qualified", "partially_supportive"].includes(label)) return "status-chip status-warn";
+  return "status-chip status-neutral";
+}
+
+function formatAnalysisLabel(value: string): string {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function readStringField(value: unknown, key: string): string {
+  if (!value || typeof value !== "object") return "";
+  const out = (value as Record<string, unknown>)[key];
+  return typeof out === "string" ? out.trim() : "";
+}
+
+function readNumberField(value: unknown, key: string): number {
+  if (!value || typeof value !== "object") return 0;
+  const out = Number.parseFloat(String((value as Record<string, unknown>)[key] ?? "0"));
+  return Number.isFinite(out) ? out : 0;
+}
+
+function pickPrimaryAnalysis(detail: DocumentDetailData | null | undefined): {
+  kind: "position" | "stance" | "summary" | "";
+  label: string;
+  tone: string;
+  rationale: string;
+  confidence: number;
+} {
+  if (!detail) return { kind: "", label: "", tone: "", rationale: "", confidence: 0 };
+
+  const positionLabel = readStringField(detail.enrichment.comment_position, "label").toLowerCase();
+  const positionRationale = readStringField(detail.enrichment.comment_position, "rationale");
+  const positionConfidence = readNumberField(detail.enrichment.comment_position, "confidence");
+  if (positionLabel && positionLabel !== "not_applicable" && positionLabel !== "unclear") {
+    return {
+      kind: "position",
+      label: positionLabel,
+      tone: positionLabel,
+      rationale: positionRationale,
+      confidence: Math.max(0, Math.min(1, positionConfidence)),
+    };
+  }
+
+  const stanceLabel = readStringField(detail.enrichment.stance, "label").toLowerCase();
+  const stanceTarget = readStringField(detail.enrichment.stance, "target");
+  if (stanceLabel && stanceLabel !== "unclear" && stanceLabel !== "not_applicable") {
+    return {
+      kind: "stance",
+      label: stanceTarget ? `${stanceLabel} (${stanceTarget})` : stanceLabel,
+      tone: stanceLabel,
+      rationale: "",
+      confidence: Math.max(0, Math.min(1, Number(detail.enrichment.confidence || 0))),
+    };
+  }
+
+  if (detail.enrichment.summary) {
+    return { kind: "summary", label: "summary_ready", tone: "summary_ready", rationale: "", confidence: 0 };
+  }
+
+  return { kind: "", label: "", tone: "", rationale: "", confidence: 0 };
+}
+
+function renderAnalysisChips(items: string[], emptyLabel: string) {
+  if (!items.length) {
+    return <span style={{ color: "#6f819d", fontSize: 12 }}>{emptyLabel}</span>;
+  }
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {items.slice(0, 8).map((item) => (
+        <span key={item} className="tone-chip">
+          {item}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function articleListSignature(articles: FeedItem[]): string {
@@ -290,6 +439,9 @@ function FeedRow({
   onSelect,
   saved,
   onToggleSave,
+  analysisOpen,
+  analysisLabel,
+  onToggleAnalysis,
 }: {
   article: FeedItem;
   matchedTopics: TopicRuleView[];
@@ -297,6 +449,9 @@ function FeedRow({
   onSelect: () => void;
   saved: boolean;
   onToggleSave: () => void;
+  analysisOpen: boolean;
+  analysisLabel: string;
+  onToggleAnalysis: () => void;
 }) {
   const source = getFeedMeta(article.feed_key);
   const visibleTopics = matchedTopics.slice(0, 3);
@@ -342,6 +497,29 @@ function FeedRow({
             Primary document
           </div>
         ) : null}
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAnalysis();
+            }}
+            style={{
+              border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
+              background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
+              color: analysisOpen ? "#e8f7ff" : "#9fb0c7",
+              borderRadius: 999,
+              padding: "4px 9px",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            {analysisLabel}
+          </button>
+        </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {visibleTopics.map((topic) => (
@@ -358,11 +536,17 @@ function FeaturedCard({
   matchedTopics,
   saved,
   onToggleSave,
+  analysisOpen,
+  analysisLabel,
+  onToggleAnalysis,
 }: {
   article: FeedItem;
   matchedTopics: TopicRuleView[];
   saved: boolean;
   onToggleSave: () => void;
+  analysisOpen: boolean;
+  analysisLabel: string;
+  onToggleAnalysis: () => void;
 }) {
   const source = getFeedMeta(article.feed_key);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
@@ -452,6 +636,148 @@ function FeaturedCard({
         </div>
         <BookmarkButton saved={saved} onToggle={onToggleSave} size={16} />
       </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, paddingLeft: 214 }}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleAnalysis();
+          }}
+          style={{
+            border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
+            background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
+            color: analysisOpen ? "#e8f7ff" : "#9fb0c7",
+            borderRadius: 999,
+            padding: "5px 10px",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+          }}
+        >
+          {analysisLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FeedAnalysisPanel({
+  article,
+  matchedTopics,
+  detail,
+  loading,
+  error,
+  retry,
+}: {
+  article: FeedItem;
+  matchedTopics: TopicRuleView[];
+  detail: DocumentDetailData | undefined;
+  loading: boolean;
+  error: string;
+  retry: () => void;
+}) {
+  const source = getFeedMeta(article.feed_key);
+  const primaryAnalysis = pickPrimaryAnalysis(detail);
+  const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
+  const decodedDescription = decodeEntities(article.description || "");
+  const topicLabels = matchedTopics.map((topic) => topic.label);
+  const articleSummary = decodedDescription || "No feed summary is available for this article yet.";
+
+  if (article.item_type === "document") {
+    if (loading) {
+      return <p style={{ color: "#9fb0c7", fontSize: 13 }}>Loading analysis...</p>;
+    }
+
+    if (error) {
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <p style={{ color: "#ff8aa0", fontSize: 13 }}>{error}</p>
+          <button type="button" className="link-inline text-xs" onClick={retry}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    if (!detail) {
+      return <p style={{ color: "#7f8faa", fontSize: 13 }}>No analysis is available for this document.</p>;
+    }
+
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(220px,0.55fr)", gap: 18 }}>
+        <div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <span className={statusClass(detail.enrichment.status)}>{detail.enrichment.status || "not_enriched"}</span>
+            <span className="tone-chip">Review: {detail.review.decision || "pending"}</span>
+            {primaryAnalysis.kind === "position" ? (
+              <span className={analysisChipClass(primaryAnalysis.tone)}>
+                Position: {formatAnalysisLabel(primaryAnalysis.label)}
+              </span>
+            ) : primaryAnalysis.kind === "stance" ? (
+              <span className={analysisChipClass(primaryAnalysis.tone)}>
+                Stance: {formatAnalysisLabel(primaryAnalysis.label)}
+              </span>
+            ) : null}
+            {primaryAnalysis.confidence > 0 ? (
+              <span className="tone-chip">Confidence: {Math.round(primaryAnalysis.confidence * 100)}%</span>
+            ) : null}
+          </div>
+          <p style={{ marginTop: 10, color: "#c6d4e6", fontSize: 13, lineHeight: 1.65 }}>
+            {detail.enrichment.summary || "No summary is available for this document yet."}
+          </p>
+          {primaryAnalysis.rationale ? (
+            <p style={{ marginTop: 8, color: "#8899b1", fontSize: 12, lineHeight: 1.55 }}>{primaryAnalysis.rationale}</p>
+          ) : null}
+        </div>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              Tags
+            </p>
+            {renderAnalysisChips(detail.enrichment.tags, "No tags yet")}
+          </div>
+          <div>
+            <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              Keywords
+            </p>
+            {renderAnalysisChips(detail.enrichment.keywords, "No keywords yet")}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(220px,0.55fr)", gap: 18 }}>
+      <div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
+          <span className="tone-chip">Source: {source.label}</span>
+          <span className="tone-chip">Type: RSS article</span>
+        </div>
+        <p style={{ marginTop: 10, color: "#c6d4e6", fontSize: 13, lineHeight: 1.65 }}>{articleSummary}</p>
+        <p style={{ marginTop: 8, color: "#8899b1", fontSize: 12, lineHeight: 1.55 }}>
+          This feed-level analysis is based on the article headline, RSS summary, source, sentiment, and topic-rule matches. Open the source for the full article text.
+        </p>
+      </div>
+      <div style={{ display: "grid", gap: 12 }}>
+        <div>
+          <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Matched Topics
+          </p>
+          {renderAnalysisChips(topicLabels, "No mapped topics")}
+        </div>
+        <div>
+          <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Follow-Up
+          </p>
+          <p style={{ color: "#8ea0ba", fontSize: 12, lineHeight: 1.55 }}>
+            Review the source article, then save it if it should be promoted into research follow-up or briefing coverage.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -482,6 +808,10 @@ export function IntelBetaDashboard({
   const articleSignatureRef = useRef(articleListSignature(initialArticles));
   const topicRulesSignatureRef = useRef(topicRulesSignature(initialTopicRules));
   const savedItems = useSavedItems();
+  const [expandedAnalysis, setExpandedAnalysis] = useState<Record<string, boolean>>({});
+  const [docDetails, setDocDetails] = useState<Record<string, DocumentDetailData>>({});
+  const [docDetailLoading, setDocDetailLoading] = useState<Record<string, boolean>>({});
+  const [docDetailError, setDocDetailError] = useState<Record<string, string>>({});
 
   const visibleTopicRules = useMemo(() => normalizeTopicRules(topicRules), [topicRules]);
   const topicIndex = useMemo(() => {
@@ -592,6 +922,35 @@ export function IntelBetaDashboard({
   }, [filtered, selectedArticleId]);
 
   const featured = filtered.find((article) => article.id === selectedArticleId) ?? filtered[0] ?? null;
+
+  const loadDocDetail = useCallback(async (documentId: string) => {
+    const docId = String(documentId || "").trim();
+    if (!docId) return;
+    if (docDetails[docId] || docDetailLoading[docId]) return;
+
+    setDocDetailLoading((prev) => ({ ...prev, [docId]: true }));
+    setDocDetailError((prev) => ({ ...prev, [docId]: "" }));
+    try {
+      const detail = await fetchJson<DocumentDetailData>(`/api/documents/${encodeURIComponent(docId)}`);
+      setDocDetails((prev) => ({ ...prev, [docId]: detail }));
+    } catch (err) {
+      setDocDetailError((prev) => ({
+        ...prev,
+        [docId]: err instanceof Error ? err.message : "Failed to load analysis.",
+      }));
+    } finally {
+      setDocDetailLoading((prev) => ({ ...prev, [docId]: false }));
+    }
+  }, [docDetailLoading, docDetails]);
+
+  const toggleFeedAnalysis = useCallback((article: FeedItem) => {
+    const key = savedArticleId(article);
+    setExpandedAnalysis((prev) => ({ ...prev, [key]: !prev[key] }));
+
+    if (article.item_type === "document" && article.document_id && !docDetails[article.document_id] && !docDetailLoading[article.document_id]) {
+      void loadDocDetail(article.document_id);
+    }
+  }, [docDetailLoading, docDetails, loadDocDetail]);
 
   const toggleArticleSave = (article: FeedItem) => {
     const source = getFeedMeta(article.feed_key);
@@ -796,27 +1155,63 @@ export function IntelBetaDashboard({
                 {feedItems.length === 0 ? "No feed items yet." : "No feed items match the current filters."}
               </div>
             ) : (
-              filtered.map((article) =>
-                article.id === featured?.id ? (
-                  <FeaturedCard
-                    key={article.id}
-                    article={article}
-                    matchedTopics={topicIndex.topicMatchesByArticleId.get(article.id) ?? []}
-                    saved={savedItems.isSaved(savedArticleId(article))}
-                    onToggleSave={() => toggleArticleSave(article)}
-                  />
-                ) : (
-                  <FeedRow
-                    key={article.id}
-                    article={article}
-                    matchedTopics={topicIndex.topicMatchesByArticleId.get(article.id) ?? []}
-                    active={article.id === selectedArticleId}
-                    onSelect={() => setSelectedArticleId(article.id)}
-                    saved={savedItems.isSaved(savedArticleId(article))}
-                    onToggleSave={() => toggleArticleSave(article)}
-                  />
-                )
-              )
+              filtered.map((article) => {
+                const itemKey = savedArticleId(article);
+                const matchedTopicsForArticle = topicIndex.topicMatchesByArticleId.get(article.id) ?? [];
+                const analysisOpen = !!expandedAnalysis[itemKey];
+                const docId = article.document_id || "";
+                const detailLoading = docId ? !!docDetailLoading[docId] : false;
+                const detailError = docId ? docDetailError[docId] || "" : "";
+                const analysisLabel = detailLoading ? "Loading Analysis" : analysisOpen ? "Hide Analysis" : "Open Analysis";
+
+                return (
+                  <Fragment key={itemKey}>
+                    {article.id === featured?.id ? (
+                      <FeaturedCard
+                        article={article}
+                        matchedTopics={matchedTopicsForArticle}
+                        saved={savedItems.isSaved(itemKey)}
+                        onToggleSave={() => toggleArticleSave(article)}
+                        analysisOpen={analysisOpen}
+                        analysisLabel={analysisLabel}
+                        onToggleAnalysis={() => toggleFeedAnalysis(article)}
+                      />
+                    ) : (
+                      <FeedRow
+                        article={article}
+                        matchedTopics={matchedTopicsForArticle}
+                        active={article.id === selectedArticleId}
+                        onSelect={() => setSelectedArticleId(article.id)}
+                        saved={savedItems.isSaved(itemKey)}
+                        onToggleSave={() => toggleArticleSave(article)}
+                        analysisOpen={analysisOpen}
+                        analysisLabel={analysisLabel}
+                        onToggleAnalysis={() => toggleFeedAnalysis(article)}
+                      />
+                    )}
+                    {analysisOpen ? (
+                      <div
+                        style={{
+                          borderTop: "1px solid rgba(112, 142, 187, 0.12)",
+                          background: "rgba(5, 13, 23, 0.62)",
+                          padding: "14px 16px 16px",
+                        }}
+                      >
+                        <FeedAnalysisPanel
+                          article={article}
+                          matchedTopics={matchedTopicsForArticle}
+                          detail={docId ? docDetails[docId] : undefined}
+                          loading={detailLoading}
+                          error={detailError}
+                          retry={() => {
+                            if (docId) void loadDocDetail(docId);
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </Fragment>
+                );
+              })
             )}
           </div>
         </main>
