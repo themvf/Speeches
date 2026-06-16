@@ -70,6 +70,19 @@ interface DocumentDetailData {
   } | null;
 }
 
+interface FeedItemAnalysis {
+  thesis: string;
+  why_it_matters: string[];
+  risk_signals: string[];
+  follow_up_questions: string[];
+  keywords: string[];
+  individuals: string[];
+  entities: string[];
+  model: string;
+  generated_at: string;
+  fallback: boolean;
+}
+
 const FEED_META: Record<string, FeedMeta> = {
   wsj_us_business: { label: "WSJ Business", code: "WSJB", color: "#63a8ff" },
   wsj_markets: { label: "WSJ Markets", code: "WSJM", color: "#ffc857" },
@@ -163,6 +176,15 @@ function formatRelativeTime(dateStr: string | null): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function feedItemDate(article: Pick<FeedItem, "published_at" | "fetched_at">): string {
+  return article.published_at || article.fetched_at || "";
+}
+
+function feedItemDateMs(article: Pick<FeedItem, "published_at" | "fetched_at">): number {
+  const ms = new Date(feedItemDate(article)).getTime();
+  return Number.isFinite(ms) ? ms : 0;
 }
 
 function formatClock(date: Date): string {
@@ -291,7 +313,9 @@ function renderAnalysisChips(items: string[], emptyLabel: string) {
 function articleListSignature(articles: FeedItem[]): string {
   const first = articles[0];
   const last = articles[articles.length - 1];
-  return `${articles.length}:${first?.id ?? ""}:${first?.fetched_at ?? ""}:${last?.id ?? ""}:${last?.fetched_at ?? ""}`;
+  const firstDate = first ? feedItemDate(first) : "";
+  const lastDate = last ? feedItemDate(last) : "";
+  return `${articles.length}:${first?.id ?? ""}:${firstDate}:${last?.id ?? ""}:${lastDate}`;
 }
 
 function stableNegativeId(value: string): number {
@@ -471,7 +495,7 @@ function FeedRow({
       }}
       onClick={onSelect}
     >
-      <div style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(article.fetched_at)}</div>
+      <div style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</div>
       <div style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</div>
       <ToneChip label={article.tone_label} />
       <div style={{ minWidth: 0 }}>
@@ -568,7 +592,7 @@ function FeaturedCard({
           alignItems: "start",
         }}
       >
-        <div style={{ color: "#8fa7c8", fontSize: 12 }}>{formatRelativeTime(article.fetched_at)}</div>
+        <div style={{ color: "#8fa7c8", fontSize: 12 }}>{formatRelativeTime(feedItemDate(article))}</div>
         <div style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</div>
         <ToneChip label={tone} />
         <div style={{ minWidth: 0 }}>
@@ -666,6 +690,10 @@ function FeaturedCard({
 function FeedAnalysisPanel({
   article,
   matchedTopics,
+  analysis,
+  analysisLoading,
+  analysisError,
+  retryAnalysis,
   detail,
   loading,
   error,
@@ -673,6 +701,10 @@ function FeedAnalysisPanel({
 }: {
   article: FeedItem;
   matchedTopics: TopicRuleView[];
+  analysis: FeedItemAnalysis | undefined;
+  analysisLoading: boolean;
+  analysisError: string;
+  retryAnalysis: () => void;
   detail: DocumentDetailData | undefined;
   loading: boolean;
   error: string;
@@ -684,6 +716,78 @@ function FeedAnalysisPanel({
   const decodedDescription = decodeEntities(article.description || "");
   const topicLabels = matchedTopics.map((topic) => topic.label);
   const articleSummary = decodedDescription || "No feed summary is available for this article yet.";
+  const analysisModel = analysis?.fallback ? `${analysis.model} fallback` : analysis?.model;
+  const analysisBlock = analysisLoading ? (
+    <p style={{ color: "#9fb0c7", fontSize: 13 }}>Generating analysis...</p>
+  ) : analysisError ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <p style={{ color: "#ff8aa0", fontSize: 13 }}>{analysisError}</p>
+      <button type="button" className="link-inline text-xs" onClick={retryAnalysis}>
+        Retry
+      </button>
+    </div>
+  ) : analysis ? (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
+          <span className="tone-chip">Source: {source.label}</span>
+          {analysisModel ? <span className="tone-chip">Model: {analysisModel}</span> : null}
+        </div>
+        <p style={{ marginTop: 10, color: "#dbe7f5", fontSize: 14, fontWeight: 700, lineHeight: 1.55 }}>
+          {analysis.thesis}
+        </p>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
+        <div>
+          <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Why It Matters
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 16, color: "#b7c7dc", fontSize: 12, lineHeight: 1.6 }}>
+            {analysis.why_it_matters.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+        <div>
+          <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Risk Signals
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 16, color: "#b7c7dc", fontSize: 12, lineHeight: 1.6 }}>
+            {analysis.risk_signals.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+        <div>
+          <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Keywords
+          </p>
+          {renderAnalysisChips(analysis.keywords, "No keywords extracted")}
+        </div>
+        <div>
+          <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Individuals
+          </p>
+          {renderAnalysisChips(analysis.individuals, "No individuals identified")}
+        </div>
+        <div>
+          <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Entities
+          </p>
+          {renderAnalysisChips(analysis.entities, "No entities identified")}
+        </div>
+      </div>
+      <div>
+        <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          Follow-Up
+        </p>
+        <ul style={{ margin: 0, paddingLeft: 16, color: "#8ea0ba", fontSize: 12, lineHeight: 1.6 }}>
+          {analysis.follow_up_questions.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      </div>
+    </div>
+  ) : (
+    <p style={{ color: "#7f8faa", fontSize: 13 }}>Open analysis is preparing this item.</p>
+  );
 
   if (article.item_type === "document") {
     if (loading) {
@@ -706,7 +810,10 @@ function FeedAnalysisPanel({
     }
 
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(220px,0.55fr)", gap: 18 }}>
+      <div style={{ display: "grid", gap: 18 }}>
+        {analysisBlock}
+        <div style={{ height: 1, background: "rgba(112, 142, 187, 0.12)" }} />
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(220px,0.55fr)", gap: 18 }}>
         <div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <span className={statusClass(detail.enrichment.status)}>{detail.enrichment.status || "not_enriched"}</span>
@@ -746,21 +853,15 @@ function FeedAnalysisPanel({
           </div>
         </div>
       </div>
+      </div>
     );
   }
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(220px,0.55fr)", gap: 18 }}>
       <div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
-          <span className="tone-chip">Source: {source.label}</span>
-          <span className="tone-chip">Type: RSS article</span>
-        </div>
+        {analysisBlock}
         <p style={{ marginTop: 10, color: "#c6d4e6", fontSize: 13, lineHeight: 1.65 }}>{articleSummary}</p>
-        <p style={{ marginTop: 8, color: "#8899b1", fontSize: 12, lineHeight: 1.55 }}>
-          This feed-level analysis is based on the article headline, RSS summary, source, sentiment, and topic-rule matches. Open the source for the full article text.
-        </p>
       </div>
       <div style={{ display: "grid", gap: 12 }}>
         <div>
@@ -795,7 +896,7 @@ export function IntelBetaDashboard({
   const documentFeedItems = useMemo(() => initialDocuments.map(documentToFeedItem), [initialDocuments]);
   const feedItems = useMemo<FeedItem[]>(
     () => [...articles, ...documentFeedItems]
-      .sort((a, b) => new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime()),
+      .sort((a, b) => feedItemDateMs(b) - feedItemDateMs(a)),
     [articles, documentFeedItems]
   );
   const [topicRules, setTopicRules] = useState<StoredRssTopicRule[]>(initialTopicRules);
@@ -804,7 +905,7 @@ export function IntelBetaDashboard({
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(feedItems[0]?.id ?? null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newCount, setNewCount] = useState(0);
-  const newestFetchedAtRef = useRef<string>(initialArticles[0]?.fetched_at ?? "");
+  const newestFetchedAtRef = useRef<string>(initialArticles[0] ? feedItemDate(initialArticles[0]) : "");
   const articleSignatureRef = useRef(articleListSignature(initialArticles));
   const topicRulesSignatureRef = useRef(topicRulesSignature(initialTopicRules));
   const savedItems = useSavedItems();
@@ -812,6 +913,9 @@ export function IntelBetaDashboard({
   const [docDetails, setDocDetails] = useState<Record<string, DocumentDetailData>>({});
   const [docDetailLoading, setDocDetailLoading] = useState<Record<string, boolean>>({});
   const [docDetailError, setDocDetailError] = useState<Record<string, string>>({});
+  const [feedAnalyses, setFeedAnalyses] = useState<Record<string, FeedItemAnalysis>>({});
+  const [feedAnalysisLoading, setFeedAnalysisLoading] = useState<Record<string, boolean>>({});
+  const [feedAnalysisError, setFeedAnalysisError] = useState<Record<string, string>>({});
 
   const visibleTopicRules = useMemo(() => normalizeTopicRules(topicRules), [topicRules]);
   const topicIndex = useMemo(() => {
@@ -865,10 +969,10 @@ export function IntelBetaDashboard({
             errStreak = 0;
             const fresh = json.data.articles;
             const freshRules = json.data.topicRules;
-            const newest = fresh[0]?.fetched_at ?? "";
+            const newest = fresh[0] ? feedItemDate(fresh[0]) : "";
             let changed = false;
             if (newest && newest > newestFetchedAtRef.current) {
-              const added = fresh.filter((article) => article.fetched_at > newestFetchedAtRef.current).length;
+              const added = fresh.filter((article) => feedItemDate(article) > newestFetchedAtRef.current).length;
               newestFetchedAtRef.current = newest;
               setNewCount((count) => count + added);
               if (!selectedArticleId && fresh[0]?.id) {
@@ -943,14 +1047,51 @@ export function IntelBetaDashboard({
     }
   }, [docDetailLoading, docDetails]);
 
+  const loadFeedAnalysis = useCallback(async (article: FeedItem) => {
+    const itemKey = savedArticleId(article);
+    if (feedAnalyses[itemKey] || feedAnalysisLoading[itemKey]) return;
+    const source = getFeedMeta(article.feed_key);
+    const topics = topicIndex.topicMatchesByArticleId.get(article.id)?.map((topic) => topic.label) ?? [];
+
+    setFeedAnalysisLoading((prev) => ({ ...prev, [itemKey]: true }));
+    setFeedAnalysisError((prev) => ({ ...prev, [itemKey]: "" }));
+    try {
+      const payload = await fetchJson<{ analysis: FeedItemAnalysis }>("/api/intel/analyze", {
+        method: "POST",
+        body: JSON.stringify({
+          title: decodeEntities(article.title || ""),
+          description: decodeEntities(article.description || ""),
+          url: article.url || "",
+          source: article.organization || source.label,
+          author: article.author || "",
+          published_at: feedItemDate(article),
+          tone_label: article.tone_label || "",
+          topics,
+          item_type: article.item_type || "article",
+        }),
+      });
+      setFeedAnalyses((prev) => ({ ...prev, [itemKey]: payload.analysis }));
+    } catch (err) {
+      setFeedAnalysisError((prev) => ({
+        ...prev,
+        [itemKey]: err instanceof Error ? err.message : "Failed to generate analysis.",
+      }));
+    } finally {
+      setFeedAnalysisLoading((prev) => ({ ...prev, [itemKey]: false }));
+    }
+  }, [feedAnalyses, feedAnalysisLoading, topicIndex.topicMatchesByArticleId]);
+
   const toggleFeedAnalysis = useCallback((article: FeedItem) => {
     const key = savedArticleId(article);
     setExpandedAnalysis((prev) => ({ ...prev, [key]: !prev[key] }));
 
+    if (!feedAnalyses[key] && !feedAnalysisLoading[key]) {
+      void loadFeedAnalysis(article);
+    }
     if (article.item_type === "document" && article.document_id && !docDetails[article.document_id] && !docDetailLoading[article.document_id]) {
       void loadDocDetail(article.document_id);
     }
-  }, [docDetailLoading, docDetails, loadDocDetail]);
+  }, [docDetailLoading, docDetails, feedAnalyses, feedAnalysisLoading, loadDocDetail, loadFeedAnalysis]);
 
   const toggleArticleSave = (article: FeedItem) => {
     const source = getFeedMeta(article.feed_key);
@@ -1162,7 +1303,9 @@ export function IntelBetaDashboard({
                 const docId = article.document_id || "";
                 const detailLoading = docId ? !!docDetailLoading[docId] : false;
                 const detailError = docId ? docDetailError[docId] || "" : "";
-                const analysisLabel = detailLoading ? "Loading Analysis" : analysisOpen ? "Hide Analysis" : "Open Analysis";
+                const itemAnalysisLoading = !!feedAnalysisLoading[itemKey];
+                const itemAnalysisError = feedAnalysisError[itemKey] || "";
+                const analysisLabel = itemAnalysisLoading || detailLoading ? "Analyzing..." : analysisOpen ? "Hide Analysis" : "Open Analysis";
 
                 return (
                   <Fragment key={itemKey}>
@@ -1200,6 +1343,10 @@ export function IntelBetaDashboard({
                         <FeedAnalysisPanel
                           article={article}
                           matchedTopics={matchedTopicsForArticle}
+                          analysis={feedAnalyses[itemKey]}
+                          analysisLoading={itemAnalysisLoading}
+                          analysisError={itemAnalysisError}
+                          retryAnalysis={() => void loadFeedAnalysis(article)}
                           detail={docId ? docDetails[docId] : undefined}
                           loading={detailLoading}
                           error={detailError}
