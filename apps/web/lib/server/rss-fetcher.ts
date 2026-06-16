@@ -26,6 +26,110 @@ export const WSJ_FEEDS: Record<string, { label: string; feedUrl: string }> = {
   },
 };
 
+export const DEFAULT_RSS_FEEDS: Record<string, { label: string; feedUrl: string }> = {
+  ...WSJ_FEEDS,
+  sec_press_releases: {
+    label: "SEC Press Releases",
+    feedUrl: "https://www.sec.gov/news/pressreleases.rss",
+  },
+  sec_speeches_statements: {
+    label: "SEC Speeches and Statements",
+    feedUrl: "https://www.sec.gov/news/speeches-statements.rss",
+  },
+  sec_litigation_releases: {
+    label: "SEC Litigation Releases",
+    feedUrl: "https://www.sec.gov/enforcement-litigation/litigation-releases/rss",
+  },
+  sec_administrative_proceedings: {
+    label: "SEC Administrative Proceedings",
+    feedUrl: "https://www.sec.gov/enforcement-litigation/administrative-proceedings/rss",
+  },
+  sec_trading_suspensions: {
+    label: "SEC Trading Suspensions",
+    feedUrl: "https://www.sec.gov/enforcement-litigation/trading-suspensions/rss",
+  },
+  finra_notices: {
+    label: "FINRA Regulatory Notices",
+    feedUrl: "http://feeds.finra.org/FINRANotices",
+  },
+  finra_rule_filings: {
+    label: "FINRA Rule Filings",
+    feedUrl: "http://feeds.finra.org/FINRARuleFilings",
+  },
+  finra_dispute_resolution_rule_filings: {
+    label: "FINRA Dispute Resolution Rule Filings",
+    feedUrl: "http://feeds.finra.org/DisputeResolutionRuleFilings",
+  },
+  finra_news: {
+    label: "FINRA News Releases and Speeches",
+    feedUrl: "http://feeds.finra.org/FINRANews",
+  },
+  finra_upc_advisories: {
+    label: "FINRA UPC Advisories",
+    feedUrl: "http://feeds.finra.org/FINRAUPCAdvisories",
+  },
+  cftc_general_press_releases: {
+    label: "CFTC General Press Releases",
+    feedUrl: "https://www.cftc.gov/RSS/RSSGP/rssgp.xml",
+  },
+  cftc_enforcement_press_releases: {
+    label: "CFTC Enforcement Press Releases",
+    feedUrl: "https://www.cftc.gov/RSS/RSSENF/rssenf.xml",
+  },
+  cftc_speeches_testimony: {
+    label: "CFTC Speeches and Testimony",
+    feedUrl: "https://www.cftc.gov/RSS/RSSST/rssst.xml",
+  },
+  cftc_federal_register_proposed_rules: {
+    label: "CFTC Federal Register Proposed Rules",
+    feedUrl: "http://comments.cftc.gov/handlers/RSSHandler.ashx?type=Releases&category=Proposed%20Rule",
+  },
+  cftc_federal_register_final_rules: {
+    label: "CFTC Federal Register Final Rules",
+    feedUrl: "http://comments.cftc.gov/handlers/RSSHandler.ashx?type=Releases&category=Final%20Rule",
+  },
+  fed_all_press_releases: {
+    label: "Federal Reserve All Press Releases",
+    feedUrl: "https://www.federalreserve.gov/feeds/press_all.xml",
+  },
+  fed_banking_consumer_regulatory_policy: {
+    label: "Federal Reserve Banking and Consumer Regulatory Policy",
+    feedUrl: "https://www.federalreserve.gov/feeds/press_bcreg.xml",
+  },
+  fed_enforcement_actions: {
+    label: "Federal Reserve Enforcement Actions",
+    feedUrl: "https://www.federalreserve.gov/feeds/press_enforcement.xml",
+  },
+  fed_supervision_regulation_letters: {
+    label: "Federal Reserve Supervision and Regulation Letters",
+    feedUrl: "https://www.federalreserve.gov/feeds/bankinginfo-rss.xml",
+  },
+  occ_news_releases: {
+    label: "OCC News Releases",
+    feedUrl: "https://www.occ.gov/rss/occ_news.xml",
+  },
+  occ_bulletins: {
+    label: "OCC Bulletins",
+    feedUrl: "https://www.occ.gov/rss/occ_bulletins.xml",
+  },
+  occ_speeches: {
+    label: "OCC Speeches",
+    feedUrl: "https://www.occ.gov/rss/occ-speeches.xml",
+  },
+  occ_congressional_testimony: {
+    label: "OCC Congressional Testimony",
+    feedUrl: "https://www.occ.gov/rss/occ-congressional-testimony.xml",
+  },
+  cfpb_newsroom: {
+    label: "CFPB Newsroom",
+    feedUrl: "https://www.consumerfinance.gov/about-us/newsroom/feed/",
+  },
+  ftc_consumer_protection_press_releases: {
+    label: "FTC Consumer Protection Press Releases",
+    feedUrl: "https://www.ftc.gov/feeds/press-release-consumer-protection.xml",
+  },
+};
+
 function decodeEntities(text: string): string {
   return text
     .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))

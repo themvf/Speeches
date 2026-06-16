@@ -33,11 +33,21 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
 
   const activeFeeds = await getFeeds(true);
 
-  const feedResults = await Promise.allSettled(
+  const feedResults = await Promise.all(
     activeFeeds.map(async (feed) => {
-      const articles = await fetchRssFeed(feed.feed_url, 50);
-      const inserted = await upsertRssArticles(articles, feed.feed_key);
-      return { feedKey: feed.feed_key, label: feed.label, fetched: articles.length, inserted };
+      try {
+        const articles = await fetchRssFeed(feed.feed_url, 50);
+        const inserted = await upsertRssArticles(articles, feed.feed_key);
+        return { feedKey: feed.feed_key, label: feed.label, fetched: articles.length, inserted };
+      } catch (err) {
+        return {
+          feedKey: feed.feed_key,
+          label: feed.label,
+          fetched: 0,
+          inserted: 0,
+          error: String(err),
+        };
+      }
     })
   );
 
@@ -46,12 +56,10 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   let failedCount = 0;
 
   for (const result of feedResults) {
-    if (result.status === "fulfilled") {
-      feeds.push(result.value);
-      totalInserted += result.value.inserted;
-    } else {
+    feeds.push(result);
+    totalInserted += result.inserted;
+    if (result.error) {
       failedCount++;
-      feeds.push({ feedKey: "unknown", label: "unknown", fetched: 0, inserted: 0, error: String(result.reason) });
     }
   }
 

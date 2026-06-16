@@ -357,9 +357,59 @@ function TopCitationList({
   );
 }
 
+function titleCase(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function formatList(items: string[], fallback: string): string {
+  const clean = items.map((item) => item.trim()).filter(Boolean);
+  if (clean.length === 0) {
+    return fallback;
+  }
+  if (clean.length === 1) {
+    return clean[0];
+  }
+  return `${clean.slice(0, 2).join(", ")}${clean.length > 2 ? ` +${clean.length - 2} more` : ""}`;
+}
+
+function buildActionAnalysis(action: EnforcementBetaAction): { lead: string; points: string[] } {
+  const visibleCitations = action.citations.filter((citation) => !isHiddenFinraCitation(action.agency, citation.citation));
+  const citationText = formatList(visibleCitations.map((citation) => citation.citation), "no extracted statute or rule citation");
+  const entityText = formatList(
+    action.entities,
+    action.agency === "SEC" ? "the named defendant or respondent" : "the named firm or representative"
+  );
+  const sanctionText = formatList(action.sanctions, "no monetary sanction extracted");
+  const actionType = titleCase(action.action_type || "unknown");
+  const outcome = titleCase(action.outcome_status || "unknown");
+
+  const lead = action.agency === "SEC"
+    ? `${actionType} posture in ${action.forum || "SEC"} involving ${entityText}.`
+    : `${actionType} disciplinary matter involving ${entityText}.`;
+
+  const points = [
+    `Core hook: ${citationText}.`,
+    `Status: ${outcome}${action.forum ? ` in ${action.forum}` : ""}.`,
+    `Exposure signal: ${sanctionText}.`
+  ];
+
+  if (!action.data_quality.has_citations) {
+    points.push("Review need: citation extraction did not identify a statute or rule yet.");
+  } else if (visibleCitations.length >= 3) {
+    points.push("Pattern signal: multiple cited provisions may indicate broader conduct or control failures.");
+  }
+
+  return { lead, points };
+}
+
 function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet?: string }) {
   const style = AGENCY_STYLE[action.agency];
   const citationPreview = action.citations.filter((c) => !isHiddenFinraCitation(action.agency, c.citation)).slice(0, 3);
+  const analysis = buildActionAnalysis(action);
   const row = (
     <div className="rounded-xl border border-[color:var(--line-soft)] bg-[color:rgba(6,15,24,0.46)] p-4 transition-colors hover:border-[color:var(--line-strong)]">
       <div className="flex flex-wrap items-center gap-2">
@@ -407,6 +457,20 @@ function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet
             {sanction}
           </span>
         ))}
+      </div>
+      <div className="mt-3 border-t border-[color:var(--line-soft)] pt-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Analysis</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-[color:var(--ink)]">{analysis.lead}</p>
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
+          {analysis.points.slice(0, 3).map((point) => (
+            <p key={point} className="text-[11px] leading-relaxed text-[color:var(--ink-faint)]">
+              {point}
+            </p>
+          ))}
+        </div>
+        {analysis.points[3] ? (
+          <p className="mt-1.5 text-[11px] leading-relaxed text-[color:rgba(255,202,87,0.78)]">{analysis.points[3]}</p>
+        ) : null}
       </div>
     </div>
   );

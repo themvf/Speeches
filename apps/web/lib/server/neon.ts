@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
-import { WSJ_FEEDS } from "@/lib/server/rss-fetcher";
+import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
+import { TOPIC_RULE_RECOMMENDATIONS, formatTopicRuleKeywords } from "@/lib/topic-rule-recommendations";
 
 export type StoredRssArticle = {
   id: number;
@@ -52,73 +53,12 @@ export type RssFeed = {
 
 let _sql: ReturnType<typeof neon> | null = null;
 
-const DEFAULT_TOPIC_RULES: Array<{
-  topicKey: string;
-  label: string;
-  keywords: string;
-  sortOrder: number;
-}> = [
-  {
-    topicKey: "SECURITIES_REGULATION",
-    label: "Securities Regulation",
-    keywords: "sec, securities, disclosure, investor, exchange, registration",
-    sortOrder: 10,
-  },
-  {
-    topicKey: "CAPITAL_FORMATION",
-    label: "Capital Formation",
-    keywords: "ipo, spac, capital, offering, funding, venture, startup",
-    sortOrder: 20,
-  },
-  {
-    topicKey: "AML",
-    label: "AML",
-    keywords: "aml, money laundering, sanctions, bsa, finra, anti-money",
-    sortOrder: 30,
-  },
-  {
-    topicKey: "ENFORCEMENT",
-    label: "Enforcement",
-    keywords: "enforcement, fine, penalty, fraud, charges, lawsuit, settlement, indictment",
-    sortOrder: 40,
-  },
-  {
-    topicKey: "AI_TECH",
-    label: "AI & Tech",
-    keywords: "ai, artificial intelligence, machine learning, technology, fintech, automation",
-    sortOrder: 50,
-  },
-  {
-    topicKey: "CRYPTO",
-    label: "Crypto",
-    keywords: "crypto, bitcoin, blockchain, digital asset, stablecoin, ethereum, defi, nft",
-    sortOrder: 60,
-  },
-  {
-    topicKey: "CREDIT_MARKETS",
-    label: "Credit Markets",
-    keywords: "credit, bond, debt, yield, loan, lending, mortgage, default",
-    sortOrder: 70,
-  },
-  {
-    topicKey: "FINANCIAL_MARKETS",
-    label: "Financial Markets",
-    keywords: "market, stock, equity, trading, volatility, s&p, nasdaq, dow",
-    sortOrder: 80,
-  },
-  {
-    topicKey: "ECONOMIC_GROWTH",
-    label: "Economic Growth",
-    keywords: "economy, gdp, growth, inflation, fed, federal reserve, recession, jobs",
-    sortOrder: 90,
-  },
-  {
-    topicKey: "PREDICTION_MARKETS",
-    label: "Prediction Markets",
-    keywords: "prediction market, polymarket, kalshi, betting market, forecast, odds, contract",
-    sortOrder: 100,
-  },
-];
+const DEFAULT_TOPIC_RULES = TOPIC_RULE_RECOMMENDATIONS.map((rule) => ({
+  topicKey: rule.topicKey,
+  label: rule.label,
+  keywords: formatTopicRuleKeywords(rule.suggestedKeywords),
+  sortOrder: rule.sortOrder,
+}));
 
 function getSql() {
   if (!_sql) {
@@ -299,9 +239,7 @@ export async function ensureSchema(): Promise<void> {
 }
 
 async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
-  const existing = (await sql`SELECT COUNT(*) AS n FROM rss_feeds`) as unknown as { n: string }[];
-  if (parseInt(existing[0]?.n ?? "0", 10) > 0) return;
-  for (const [key, { label, feedUrl }] of Object.entries(WSJ_FEEDS)) {
+  for (const [key, { label, feedUrl }] of Object.entries(DEFAULT_RSS_FEEDS)) {
     await sql`
       INSERT INTO rss_feeds (label, feed_url, feed_key)
       VALUES (${label}, ${feedUrl}, ${key})
@@ -311,8 +249,6 @@ async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
 }
 
 async function seedDefaultTopicRules(sql: ReturnType<typeof neon>): Promise<void> {
-  const existing = (await sql`SELECT COUNT(*) AS n FROM rss_topic_rules`) as unknown as { n: string }[];
-  if (parseInt(existing[0]?.n ?? "0", 10) > 0) return;
   for (const rule of DEFAULT_TOPIC_RULES) {
     await sql`
       INSERT INTO rss_topic_rules (topic_key, label, keywords, active, sort_order)
@@ -323,6 +259,7 @@ async function seedDefaultTopicRules(sql: ReturnType<typeof neon>): Promise<void
 }
 
 export async function getFeeds(onlyActive = false): Promise<RssFeed[]> {
+  await ensureSchema();
   const sql = getSql();
   const rows = onlyActive
     ? await sql`SELECT * FROM rss_feeds WHERE active = true ORDER BY added_at ASC`

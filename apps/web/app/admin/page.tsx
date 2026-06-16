@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { JobStatusBadge } from "@/components/job-status-badge";
+import {
+  TOPIC_RULE_RECOMMENDATION_BY_KEY,
+  formatTopicRuleKeywords,
+  type TopicRuleRecommendation,
+} from "@/lib/topic-rule-recommendations";
 
 /* ─── Knowledge Index types ────────────────────────────────────────── */
 type OrgIndexStatus = {
@@ -399,6 +404,176 @@ function FeedManagerSection() {
 }
 
 /* ─── Topic Rules Manager ──────────────────────────────────────────── */
+type TopicReviewRow = {
+  rule: TopicRule;
+  recommendation?: TopicRuleRecommendation;
+  keywordCount: number;
+  broadTerms: string[];
+  missingSuggestions: string[];
+};
+
+function normalizeKeywordToken(value: string): string {
+  return value.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, "\"").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function splitTopicKeywords(value: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of value.split(/[\n,]+/)) {
+    const item = raw.trim();
+    const key = normalizeKeywordToken(item);
+    if (!item || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function getTopicReviewRow(rule: TopicRule, keywords: string): TopicReviewRow {
+  const recommendation = TOPIC_RULE_RECOMMENDATION_BY_KEY[rule.topic_key];
+  const currentKeywords = splitTopicKeywords(keywords);
+  const currentKeys = new Set(currentKeywords.map(normalizeKeywordToken));
+  const broadTerms = recommendation?.broadTerms.filter((term) => currentKeys.has(normalizeKeywordToken(term))) ?? [];
+  const missingSuggestions =
+    recommendation?.suggestedKeywords.filter((term) => !currentKeys.has(normalizeKeywordToken(term))).slice(0, 4) ?? [];
+
+  return {
+    rule,
+    recommendation,
+    keywordCount: currentKeywords.length,
+    broadTerms,
+    missingSuggestions,
+  };
+}
+
+function TopicRuleRecommendationPanel({
+  rule,
+  onStage,
+}: {
+  rule: TopicRule;
+  onStage: (rule: TopicRule) => void;
+}) {
+  const recommendation = TOPIC_RULE_RECOMMENDATION_BY_KEY[rule.topic_key];
+  if (!recommendation) return null;
+
+  return (
+    <div className="mb-3 border-b border-[color:var(--line)] pb-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Review Guidance</p>
+          <p className="text-sm leading-6 text-[color:var(--ink-soft)]">{recommendation.focus}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onStage(rule)}
+          className="rounded-lg border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold text-[color:var(--ink)] hover:border-[color:var(--accent)]"
+        >
+          Stage Suggested Keywords
+        </button>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div>
+          <p className="mb-1 text-xs font-semibold text-[color:var(--ink-faint)]">Avoid As Standalone Signals</p>
+          <p className="text-xs leading-5 text-[color:var(--ink-soft)]">{recommendation.broadTerms.join(", ")}</p>
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-semibold text-[color:var(--ink-faint)]">Suggested Precision Terms</p>
+          <p className="text-xs leading-5 text-[color:var(--ink-soft)]">{recommendation.suggestedKeywords.slice(0, 10).join(", ")}</p>
+        </div>
+      </div>
+      <ul className="mt-3 space-y-1">
+        {recommendation.notes.map((note) => (
+          <li key={note} className="text-xs leading-5 text-[color:var(--ink-faint)]">{note}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function TopicRulesReviewPanel({
+  loading,
+  rules,
+  rowsWithRecommendations,
+  rowsWithBroadTerms,
+  totalKeywordCount,
+  priorityRows,
+  onStage,
+}: {
+  loading: boolean;
+  rules: TopicRule[];
+  rowsWithRecommendations: TopicReviewRow[];
+  rowsWithBroadTerms: TopicReviewRow[];
+  totalKeywordCount: number;
+  priorityRows: TopicReviewRow[];
+  onStage: (rule: TopicRule) => void;
+}) {
+  if (loading || rules.length === 0) return null;
+
+  return (
+    <div className="mb-4 border-b border-[color:var(--line)] pb-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xl font-bold tabular-nums text-[color:var(--ink)]">{rules.length}</span>
+          <span className="text-xs text-[color:var(--ink-faint)]">Rules</span>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xl font-bold tabular-nums text-[#41d39d]">{rowsWithRecommendations.length}</span>
+          <span className="text-xs text-[color:var(--ink-faint)]">Reviewed</span>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className={`text-xl font-bold tabular-nums ${rowsWithBroadTerms.length ? "text-[color:var(--danger)]" : "text-[color:var(--ink)]"}`}>
+            {rowsWithBroadTerms.length}
+          </span>
+          <span className="text-xs text-[color:var(--ink-faint)]">Broad-Term Risk</span>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xl font-bold tabular-nums text-[color:var(--ink)]">{totalKeywordCount}</span>
+          <span className="text-xs text-[color:var(--ink-faint)]">Keywords</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Topic Quality Review</p>
+          <p className="text-sm leading-6 text-[color:var(--ink-soft)]">
+            Tighten broad single-word triggers, prefer phrase-level regulatory terms, and keep agency names from acting as topic signals by themselves.
+          </p>
+        </div>
+        <div className="space-y-3">
+          {priorityRows.length === 0 && (
+            <p className="text-sm text-[#41d39d]">No priority keyword issues found in the current rules.</p>
+          )}
+          {priorityRows.map((row) => (
+            <div key={row.rule.id} className="border-l border-[color:var(--line)] pl-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-[color:var(--ink)]">{row.rule.label}</span>
+                <span className="font-mono text-[10px] uppercase text-[color:var(--ink-faint)]">{row.rule.topic_key}</span>
+                {row.broadTerms.length > 0 && (
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--danger)]">Broad terms</span>
+                )}
+              </div>
+              {row.broadTerms.length > 0 && (
+                <p className="mt-1 text-xs text-[color:var(--ink-faint)]">Review: {row.broadTerms.join(", ")}</p>
+              )}
+              {row.missingSuggestions.length > 0 && (
+                <p className="mt-1 text-xs text-[color:var(--ink-faint)]">Add: {row.missingSuggestions.join(", ")}</p>
+              )}
+              {row.recommendation && (
+                <button
+                  type="button"
+                  onClick={() => onStage(row.rule)}
+                  className="mt-2 rounded-lg border border-[color:var(--line)] px-3 py-1 text-xs font-semibold text-[color:var(--ink)] hover:border-[color:var(--accent)]"
+                >
+                  Stage Suggested Keywords
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TopicRulesSection() {
   const [rules, setRules] = useState<TopicRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -429,11 +604,17 @@ function TopicRulesSection() {
   async function handleSave(rule: TopicRule) {
     setSaving(rule.id);
     const d = drafts[rule.id] ?? {};
+    const payload = {
+      label: d.label,
+      keywords: d.keywords,
+      active: d.active,
+      sortOrder: d.sort_order,
+    };
     try {
       const res = await fetch(`/api/admin/topic-rules/${rule.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(d),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) { const j = await res.json().catch(() => ({})); setError(j.error ?? "Save failed"); return; }
       setRules((p) => p.map((r) => r.id === rule.id ? { ...r, ...d } : r));
@@ -476,6 +657,23 @@ function TopicRulesSection() {
     finally { setAdding(false); }
   }
 
+  function stageSuggestedKeywords(rule: TopicRule) {
+    const recommendation = TOPIC_RULE_RECOMMENDATION_BY_KEY[rule.topic_key];
+    if (!recommendation) return;
+    draft(rule.id, { keywords: formatTopicRuleKeywords(recommendation.suggestedKeywords) });
+    setExpanded(rule.id);
+  }
+
+  const reviewRows = rules.map((rule) => getTopicReviewRow(rule, String(getValue(rule, "keywords") || "")));
+  const rowsWithRecommendations = reviewRows.filter((row) => row.recommendation);
+  const rowsWithBroadTerms = reviewRows.filter((row) => row.broadTerms.length > 0);
+  const rowsMissingSuggestions = reviewRows.filter((row) => row.missingSuggestions.length > 0);
+  const totalKeywordCount = reviewRows.reduce((sum, row) => sum + row.keywordCount, 0);
+  const priorityRows = [
+    ...rowsWithBroadTerms,
+    ...rowsMissingSuggestions.filter((row) => row.broadTerms.length === 0),
+  ].slice(0, 5);
+
   return (
     <section className="mb-8">
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Topic Rules</h2>
@@ -483,6 +681,15 @@ function TopicRulesSection() {
       <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
         {loading && <p className="text-xs text-[color:var(--ink-faint)]">Loading…</p>}
         {error && <p className="text-xs text-[color:var(--danger)]">{error}</p>}
+        <TopicRulesReviewPanel
+          loading={loading}
+          rules={rules}
+          rowsWithRecommendations={rowsWithRecommendations}
+          rowsWithBroadTerms={rowsWithBroadTerms}
+          totalKeywordCount={totalKeywordCount}
+          priorityRows={priorityRows}
+          onStage={stageSuggestedKeywords}
+        />
         <ul className="space-y-2">
           {rules.map((rule) => (
             <li key={rule.id} className="rounded-lg border border-[color:var(--line)]">
@@ -498,6 +705,7 @@ function TopicRulesSection() {
               </button>
               {expanded === rule.id && (
                 <div className="border-t border-[color:var(--line)] px-3 py-3">
+                  <TopicRuleRecommendationPanel rule={rule} onStage={stageSuggestedKeywords} />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-[color:var(--ink-faint)]">Label</label>
