@@ -446,6 +446,10 @@ function normalizeEnrichmentEntry(docId: string, value: unknown): EnrichmentEntr
       notes: normalizeString(reviewRaw.notes),
       reviewed_at: normalizeString(reviewRaw.reviewed_at)
     },
+    enforcement_analysis:
+      src.enforcement_analysis && typeof src.enforcement_analysis === "object"
+        ? src.enforcement_analysis as Record<string, unknown>
+        : undefined,
     reward: src.reward && typeof src.reward === "object" ? (src.reward as Record<string, unknown>) : {},
     auto_review: src.auto_review && typeof src.auto_review === "object" ? (src.auto_review as Record<string, unknown>) : {}
   } as EnrichmentEntry;
@@ -725,6 +729,38 @@ export async function loadEnrichmentState(): Promise<EnrichmentStatePayload> {
     normalize: normalizeEnrichmentStatePayload,
     emptyFactory: () => ({ version: 1, pipeline_version: "v1", updated_at: "", entries: {} })
   });
+}
+
+export async function saveEnrichmentState(payload: EnrichmentStatePayload): Promise<{
+  saved: boolean;
+  local_saved: boolean;
+  remote_saved: boolean;
+  state: EnrichmentStatePayload;
+}> {
+  const normalized = normalizeEnrichmentStatePayload({
+    ...payload,
+    updated_at: new Date().toISOString()
+  });
+
+  const cfg = getDataSourceConfig();
+  let remoteSaved = false;
+  let localSaved = false;
+
+  if (cfg.mode === "gcs" || cfg.mode === "auto") {
+    remoteSaved = await uploadGcsJson(ENRICHMENT_BLOB, normalized);
+  }
+  if (cfg.mode === "local" || cfg.mode === "auto" || !remoteSaved) {
+    localSaved = writeLocalJson(ENRICHMENT_BLOB, normalized);
+  }
+
+  clearCacheKey("enrichment_state");
+
+  return {
+    saved: remoteSaved || localSaved,
+    local_saved: localSaved,
+    remote_saved: remoteSaved,
+    state: normalized
+  };
 }
 
 export async function loadRuleSummaries(): Promise<RuleSummariesPayload> {

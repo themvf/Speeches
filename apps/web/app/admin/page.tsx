@@ -940,6 +940,9 @@ function EnrichmentPipelineSection() {
   const [dispatching, setDispatching] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<"idle" | "ok" | "error">("idle");
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [analysisLimit, setAnalysisLimit] = useState("10");
+  const [analysisRunning, setAnalysisRunning] = useState(false);
+  const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
 
   const [cancelling, setCancelling] = useState(false);
   const [cancelMsg, setCancelMsg] = useState<string | null>(null);
@@ -985,6 +988,25 @@ function EnrichmentPipelineSection() {
       setCancelMsg(d.ok ? "Cancelled" : (d.error ?? "Failed"));
     } catch { setCancelMsg("Network error"); }
     finally { setCancelling(false); }
+  }
+
+  async function handleEnforcementAnalysisBatch() {
+    setAnalysisRunning(true);
+    setAnalysisMessage(null);
+    try {
+      const res = await fetch("/api/admin/enforcement-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: analysisLimit, mode: "missing" }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || "Failed");
+      setAnalysisMessage(`Saved ${d.data.saved_count} analysis item${d.data.saved_count === 1 ? "" : "s"}${d.data.failed_count ? `; ${d.data.failed_count} failed` : ""}.`);
+    } catch (err) {
+      setAnalysisMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAnalysisRunning(false);
+    }
   }
 
   return (
@@ -1089,8 +1111,35 @@ function EnrichmentPipelineSection() {
           </>
         )}
 
-        {/* Dispatch controls */}
         <div className={`${data ? "border-t border-[color:var(--line)] pt-4" : ""}`}>
+          <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">SEC Enforcement Analysis</p>
+          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate OpenAI analysis for recent SEC litigation releases missing saved analysis. Saved results render automatically on Enforcement cards.</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[color:var(--ink-faint)]">Batch size</span>
+              <input
+                type="number"
+                min="1"
+                max="25"
+                value={analysisLimit}
+                onChange={(e) => setAnalysisLimit(e.target.value)}
+                className="form-control w-28 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleEnforcementAnalysisBatch}
+              disabled={analysisRunning}
+              className="btn-solid rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-40"
+            >
+              {analysisRunning ? "Generating..." : "Generate Missing Analysis"}
+            </button>
+            {analysisMessage ? <span className="text-xs text-[color:var(--ink-faint)]">{analysisMessage}</span> : null}
+          </div>
+        </div>
+
+        {/* Dispatch controls */}
+        <div className="mt-4 border-t border-[color:var(--line)] pt-4">
           <p className="mb-3 text-xs font-semibold text-[color:var(--ink-faint)]">Run Enrichment</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">

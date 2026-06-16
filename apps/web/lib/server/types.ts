@@ -141,6 +141,7 @@ export interface EnrichmentEntry {
   enrichment: EnrichmentPayload;
   review: EnrichmentReviewPayload;
   sentiment?: SentimentPayload;
+  enforcement_analysis?: Record<string, JsonValue>;
   reward?: Record<string, JsonValue>;
   auto_review?: Record<string, JsonValue>;
 }

@@ -1,6 +1,7 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
-import { loadCorpusDocuments, parseComparableDate } from "@/lib/server/data-store";
-import type { CustomDocumentRecord } from "@/lib/server/types";
+import { loadCorpusDocuments, loadEnrichmentState, parseComparableDate } from "@/lib/server/data-store";
+import { jsonValueToAnalysis, type EnforcementAiAnalysis } from "@/lib/server/enforcement-analysis";
+import type { CustomDocumentRecord, EnrichmentEntry } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -113,6 +114,7 @@ export interface EnforcementBetaAction {
     has_full_text: boolean;
     has_citations: boolean;
   };
+  ai_analysis?: EnforcementAiAnalysis | null;
 }
 
 export interface EnforcementBetaAgencyPayload {
@@ -546,12 +548,17 @@ function summarize(doc: CustomDocumentRecord): string {
   return text(paragraph || doc.content?.full_text || "").slice(0, 280);
 }
 
-function normalizeAction(doc: CustomDocumentRecord, agency: Agency): EnforcementBetaAction {
+function normalizeAction(
+  doc: CustomDocumentRecord,
+  agency: Agency,
+  enrichmentEntries: Record<string, EnrichmentEntry>
+): EnforcementBetaAction {
   const metadata = metadataRecord(doc);
   const fullText = text(doc.content?.full_text);
   const date = text(metadata.published_date) || text(metadata.date);
   const citations = agency === "SEC" ? extractSecCitations(fullText) : extractFinraCitations(fullText);
   const actionType = inferActionType(agency, metadata, fullText);
+  const docId = text(metadata.document_id);
   const entities = dedupeByKey(
     [
       ...arrayStrings(metadata.entities),
@@ -563,7 +570,7 @@ function normalizeAction(doc: CustomDocumentRecord, agency: Agency): Enforcement
   ).slice(0, 6);
 
   return {
-    document_id: text(metadata.document_id),
+    document_id: docId,
     agency,
     source_kind: text(metadata.source_kind) || (agency === "SEC" ? "sec_enforcement_litigation" : "finra_awc"),
     title: text(metadata.title) || "Untitled enforcement action",
@@ -586,7 +593,8 @@ function normalizeAction(doc: CustomDocumentRecord, agency: Agency): Enforcement
       has_date: Boolean(date),
       has_full_text: Boolean(fullText),
       has_citations: citations.length > 0
-    }
+    },
+    ai_analysis: jsonValueToAnalysis(enrichmentEntries[docId]?.enforcement_analysis)
   };
 }
 
@@ -620,10 +628,11 @@ function buildAgencyPayload(
   agency: Agency,
   docs: CustomDocumentRecord[],
   months: string[],
-  monthIndex: Map<string, number>
+  monthIndex: Map<string, number>,
+  enrichmentEntries: Record<string, EnrichmentEntry>
 ): EnforcementBetaAgencyPayload {
   const actions = docs
-    .map((doc) => normalizeAction(doc, agency))
+    .map((doc) => normalizeAction(doc, agency, enrichmentEntries))
     .sort((a, b) => parseComparableDate(b.date) - parseComparableDate(a.date));
   const citationActivity = buildCitationActivity(agency, actions, months, monthIndex);
   const maxCellValue = citationActivity.length
@@ -660,10 +669,11 @@ export async function GET() {
   const requestId = createRequestId();
 
   try {
-    const corpus = await loadCorpusDocuments();
+    const [corpus, enrichmentState] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
+    const enrichmentEntries = enrichmentState.entries || {};
     const { months, monthIndex } = buildMonths();
-    const sec = buildAgencyPayload("SEC", corpus.filter(isSecEnforcementDoc), months, monthIndex);
-    const finra = buildAgencyPayload("FINRA", corpus.filter(isFinraAwcDoc), months, monthIndex);
+    const sec = buildAgencyPayload("SEC", corpus.filter(isSecEnforcementDoc), months, monthIndex, enrichmentEntries);
+    const finra = buildAgencyPayload("FINRA", corpus.filter(isFinraAwcDoc), months, monthIndex, enrichmentEntries);
     const combinedActions = [...sec.actions, ...finra.actions].sort(
       (a, b) => parseComparableDate(b.date) - parseComparableDate(a.date)
     );

@@ -417,7 +417,7 @@ function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet
   const style = AGENCY_STYLE[action.agency];
   const citationPreview = action.citations.filter((c) => !isHiddenFinraCitation(action.agency, c.citation)).slice(0, 3);
   const analysis = buildActionAnalysis(action);
-  const [aiAnalysis, setAiAnalysis] = useState<AiEnforcementAnalysis | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<AiEnforcementAnalysis | null>(action.ai_analysis ?? null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
 
