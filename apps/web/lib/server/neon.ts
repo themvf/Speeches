@@ -1,4 +1,6 @@
 import { neon } from "@neondatabase/serverless";
+import { createHash } from "crypto";
+import type { FeedAnalysis } from "@/lib/server/feed-analysis";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
 import { TOPIC_RULE_RECOMMENDATIONS, formatTopicRuleKeywords } from "@/lib/topic-rule-recommendations";
@@ -14,6 +16,29 @@ export type StoredRssArticle = {
   published_at: string | null;
   tone_label: "positive" | "neutral" | "negative" | null;
   fetched_at: string;
+  analysis?: StoredRssArticleAnalysis | null;
+};
+
+export type MentionType = "keyword" | "individual" | "entity" | "topic";
+
+export type StoredRssArticleAnalysis = {
+  article_id: number;
+  guid: string;
+  source_hash: string;
+  status: "pending" | "enriched" | "failed" | "stale";
+  model: string;
+  generated_at: string;
+  thesis: string;
+  why_it_matters: string[];
+  risk_signals: string[];
+  follow_up_questions: string[];
+  keywords: string[];
+  individuals: string[];
+  entities: string[];
+  topics: string[];
+  analysis_text: string;
+  fallback: boolean;
+  error: string;
 };
 
 export type StoredRssTopicRule = {
@@ -171,6 +196,93 @@ function inferToneLabel(
   return "neutral";
 }
 
+function textArray(value: unknown, maxItems = 30): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of value) {
+    const text = String(item ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function normalizeMention(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/['"“”‘’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function rssArticleSourceHash(article: Pick<StoredRssArticle, "title" | "description" | "url" | "published_at" | "feed_key">): string {
+  return createHash("sha256")
+    .update([
+      article.feed_key || "",
+      article.title || "",
+      article.description || "",
+      article.url || "",
+      article.published_at || "",
+    ].join("\n"))
+    .digest("hex");
+}
+
+function buildAnalysisText(article: StoredRssArticle, analysis: FeedAnalysis, topics: string[]): string {
+  return [
+    `Title: ${article.title}`,
+    `Source: ${article.feed_key}`,
+    article.author ? `Author: ${article.author}` : "",
+    article.published_at ? `Published: ${article.published_at}` : "",
+    article.url ? `URL: ${article.url}` : "",
+    topics.length ? `Topics: ${topics.join(", ")}` : "",
+    "",
+    `Thesis: ${analysis.thesis}`,
+    "",
+    "Why it matters:",
+    ...analysis.why_it_matters.map((item) => `- ${item}`),
+    "",
+    "Risk signals:",
+    ...analysis.risk_signals.map((item) => `- ${item}`),
+    "",
+    "Follow-up:",
+    ...analysis.follow_up_questions.map((item) => `- ${item}`),
+    "",
+    analysis.keywords.length ? `Keywords: ${analysis.keywords.join(", ")}` : "",
+    analysis.individuals.length ? `Individuals: ${analysis.individuals.join(", ")}` : "",
+    analysis.entities.length ? `Entities: ${analysis.entities.join(", ")}` : "",
+    "",
+    article.description || "",
+  ].filter(Boolean).join("\n");
+}
+
+function normalizeAnalysisRow(row: Record<string, unknown> | null | undefined): StoredRssArticleAnalysis | null {
+  if (!row) return null;
+  return {
+    article_id: Number(row.article_id || 0),
+    guid: String(row.guid || ""),
+    source_hash: String(row.source_hash || ""),
+    status: String(row.status || "pending") as StoredRssArticleAnalysis["status"],
+    model: String(row.model || ""),
+    generated_at: String(row.generated_at || ""),
+    thesis: String(row.thesis || ""),
+    why_it_matters: textArray(row.why_it_matters, 8),
+    risk_signals: textArray(row.risk_signals, 8),
+    follow_up_questions: textArray(row.follow_up_questions, 8),
+    keywords: textArray(row.keywords, 20),
+    individuals: textArray(row.individuals, 20),
+    entities: textArray(row.entities, 30),
+    topics: textArray(row.topics, 20),
+    analysis_text: String(row.analysis_text || ""),
+    fallback: Boolean(row.fallback),
+    error: String(row.error || ""),
+  };
+}
+
 export async function ensureSchema(): Promise<void> {
   const sql = getSql();
   await sql`
@@ -189,6 +301,48 @@ export async function ensureSchema(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS rss_articles_fetched_at ON rss_articles (fetched_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS rss_articles_feed_key ON rss_articles (feed_key)`;
+  await sql`CREATE INDEX IF NOT EXISTS rss_articles_published_at ON rss_articles (published_at DESC)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS rss_article_analysis (
+      article_id          INTEGER PRIMARY KEY REFERENCES rss_articles(id) ON DELETE CASCADE,
+      guid                TEXT NOT NULL,
+      source_hash         TEXT NOT NULL,
+      status              TEXT NOT NULL DEFAULT 'pending',
+      model               TEXT NOT NULL DEFAULT '',
+      generated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      thesis              TEXT NOT NULL DEFAULT '',
+      why_it_matters      JSONB NOT NULL DEFAULT '[]'::jsonb,
+      risk_signals        JSONB NOT NULL DEFAULT '[]'::jsonb,
+      follow_up_questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+      keywords            TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      individuals         TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      entities            TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      topics              TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      analysis_text       TEXT NOT NULL DEFAULT '',
+      fallback            BOOLEAN NOT NULL DEFAULT false,
+      error               TEXT NOT NULL DEFAULT ''
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_guid ON rss_article_analysis (guid)`;
+  await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_status ON rss_article_analysis (status)`;
+  await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_keywords ON rss_article_analysis USING GIN (keywords)`;
+  await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_individuals ON rss_article_analysis USING GIN (individuals)`;
+  await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_entities ON rss_article_analysis USING GIN (entities)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS intelligence_mentions (
+      id               BIGSERIAL PRIMARY KEY,
+      source_type      TEXT NOT NULL,
+      source_id        TEXT NOT NULL,
+      mention_type     TEXT NOT NULL,
+      value            TEXT NOT NULL,
+      normalized_value TEXT NOT NULL,
+      confidence       DOUBLE PRECISION NOT NULL DEFAULT 1,
+      generated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (source_type, source_id, mention_type, normalized_value)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS intelligence_mentions_lookup ON intelligence_mentions (mention_type, normalized_value)`;
+  await sql`CREATE INDEX IF NOT EXISTS intelligence_mentions_source ON intelligence_mentions (source_type, source_id)`;
   await sql`
     CREATE TABLE IF NOT EXISTS rss_feeds (
       id       SERIAL PRIMARY KEY,
@@ -379,6 +533,140 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
   return inserted;
 }
 
+export async function getRssArticleById(articleId: number): Promise<StoredRssArticle | null> {
+  await ensureSchema();
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT a.*, to_jsonb(ra.*) AS analysis
+    FROM rss_articles a
+    LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
+    WHERE a.id = ${articleId}
+    LIMIT 1
+  `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
+  const row = rows[0];
+  return row ? { ...row, analysis: normalizeAnalysisRow(row.analysis) } : null;
+}
+
+export async function getRssArticlesNeedingAnalysis(limit = 10): Promise<StoredRssArticle[]> {
+  await ensureSchema();
+  const sql = getSql();
+  const cappedLimit = Math.max(1, Math.min(100, limit));
+  const rows = (await sql`
+    SELECT a.*, to_jsonb(ra.*) AS analysis
+    FROM rss_articles a
+    LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
+    WHERE ra.article_id IS NULL
+       OR ra.status IN ('pending', 'failed', 'stale')
+    ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
+    LIMIT ${cappedLimit}
+  `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
+  const direct = rows.map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }));
+  if (direct.length >= cappedLimit) return direct;
+
+  const recentRows = (await sql`
+    SELECT a.*, to_jsonb(ra.*) AS analysis
+    FROM rss_articles a
+    LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
+    WHERE ra.article_id IS NOT NULL
+    ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
+    LIMIT ${Math.max(cappedLimit * 4, 25)}
+  `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
+  const stale = recentRows
+    .map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }))
+    .filter((row) => row.analysis?.source_hash && row.analysis.source_hash !== rssArticleSourceHash(row));
+  return [...direct, ...stale].slice(0, cappedLimit);
+}
+
+export async function saveRssArticleAnalysis(article: StoredRssArticle, analysis: FeedAnalysis, topics: string[]): Promise<StoredRssArticleAnalysis> {
+  await ensureSchema();
+  const sql = getSql();
+  const sourceHash = rssArticleSourceHash(article);
+  const cleanedTopics = textArray(topics, 20);
+  const analysisText = buildAnalysisText(article, analysis, cleanedTopics);
+  const whyJson = JSON.stringify(textArray(analysis.why_it_matters, 8));
+  const riskJson = JSON.stringify(textArray(analysis.risk_signals, 8));
+  const followJson = JSON.stringify(textArray(analysis.follow_up_questions, 8));
+  const keywords = textArray(analysis.keywords, 20);
+  const individuals = textArray(analysis.individuals, 20);
+  const entities = textArray(analysis.entities, 30);
+
+  const rows = (await sql`
+    INSERT INTO rss_article_analysis (
+      article_id, guid, source_hash, status, model, generated_at, thesis,
+      why_it_matters, risk_signals, follow_up_questions,
+      keywords, individuals, entities, topics, analysis_text, fallback, error
+    )
+    VALUES (
+      ${article.id}, ${article.guid}, ${sourceHash}, 'enriched', ${analysis.model}, ${analysis.generated_at},
+      ${analysis.thesis}, ${whyJson}::jsonb, ${riskJson}::jsonb, ${followJson}::jsonb,
+      ${keywords}, ${individuals}, ${entities}, ${cleanedTopics}, ${analysisText}, ${analysis.fallback}, ''
+    )
+    ON CONFLICT (article_id) DO UPDATE SET
+      guid = EXCLUDED.guid,
+      source_hash = EXCLUDED.source_hash,
+      status = EXCLUDED.status,
+      model = EXCLUDED.model,
+      generated_at = EXCLUDED.generated_at,
+      thesis = EXCLUDED.thesis,
+      why_it_matters = EXCLUDED.why_it_matters,
+      risk_signals = EXCLUDED.risk_signals,
+      follow_up_questions = EXCLUDED.follow_up_questions,
+      keywords = EXCLUDED.keywords,
+      individuals = EXCLUDED.individuals,
+      entities = EXCLUDED.entities,
+      topics = EXCLUDED.topics,
+      analysis_text = EXCLUDED.analysis_text,
+      fallback = EXCLUDED.fallback,
+      error = ''
+    RETURNING *
+  `) as unknown as Record<string, unknown>[];
+
+  await saveIntelligenceMentions("rss_article", String(article.id), [
+    ...keywords.map((value) => ({ type: "keyword" as const, value })),
+    ...individuals.map((value) => ({ type: "individual" as const, value })),
+    ...entities.map((value) => ({ type: "entity" as const, value })),
+    ...cleanedTopics.map((value) => ({ type: "topic" as const, value })),
+  ]);
+
+  return normalizeAnalysisRow(rows[0]) as StoredRssArticleAnalysis;
+}
+
+export async function saveRssArticleAnalysisFailure(article: StoredRssArticle, error: string): Promise<void> {
+  await ensureSchema();
+  const sql = getSql();
+  await sql`
+    INSERT INTO rss_article_analysis (article_id, guid, source_hash, status, error)
+    VALUES (${article.id}, ${article.guid}, ${rssArticleSourceHash(article)}, 'failed', ${String(error || "").slice(0, 800)})
+    ON CONFLICT (article_id) DO UPDATE SET
+      source_hash = EXCLUDED.source_hash,
+      status = 'failed',
+      error = EXCLUDED.error,
+      generated_at = now()
+  `;
+}
+
+export async function saveIntelligenceMentions(
+  sourceType: string,
+  sourceId: string,
+  mentions: Array<{ type: MentionType; value: string; confidence?: number }>
+): Promise<void> {
+  const sql = getSql();
+  await sql`DELETE FROM intelligence_mentions WHERE source_type = ${sourceType} AND source_id = ${sourceId}`;
+  for (const mention of mentions) {
+    const value = String(mention.value || "").trim();
+    const normalized = normalizeMention(value);
+    if (!value || !normalized) continue;
+    await sql`
+      INSERT INTO intelligence_mentions (source_type, source_id, mention_type, value, normalized_value, confidence)
+      VALUES (${sourceType}, ${sourceId}, ${mention.type}, ${value}, ${normalized}, ${mention.confidence ?? 1})
+      ON CONFLICT (source_type, source_id, mention_type, normalized_value) DO UPDATE SET
+        value = EXCLUDED.value,
+        confidence = EXCLUDED.confidence,
+        generated_at = now()
+    `;
+  }
+}
+
 export async function getRecentArticles(opts: {
   limit?: number;
   feedKey?: string;
@@ -393,19 +681,20 @@ export async function getRecentArticles(opts: {
 
   let query;
   if (feedKey && since && until) {
-    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} AND COALESCE(published_at, fetched_at) > ${since} AND COALESCE(published_at, fetched_at) <= ${until} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey && since) {
-    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} AND COALESCE(published_at, fetched_at) > ${since} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey) {
-    query = sql`SELECT * FROM rss_articles WHERE feed_key = ${feedKey} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (since && until) {
-    query = sql`SELECT * FROM rss_articles WHERE COALESCE(published_at, fetched_at) > ${since} AND COALESCE(published_at, fetched_at) <= ${until} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (since) {
-    query = sql`SELECT * FROM rss_articles WHERE COALESCE(published_at, fetched_at) > ${since} ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else {
-    query = sql`SELECT * FROM rss_articles ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   }
-  return (await query) as unknown as StoredRssArticle[];
+  const rows = (await query) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
+  return rows.map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }));
 }
 
 export async function getRecapSettings(): Promise<string[]> {

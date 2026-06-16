@@ -28,6 +28,7 @@ type FeedItem = StoredRssArticle & {
   doc_type?: string;
   topics?: string[];
   keywords?: string[];
+  analysis?: unknown;
 };
 
 interface ApiEnvelope<T> {
@@ -81,6 +82,25 @@ interface FeedItemAnalysis {
   model: string;
   generated_at: string;
   fallback: boolean;
+}
+
+function toFeedItemAnalysis(value: unknown): FeedItemAnalysis | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const src = value as Partial<FeedItemAnalysis>;
+  const thesis = String(src.thesis || "").trim();
+  if (!thesis) return undefined;
+  return {
+    thesis,
+    why_it_matters: Array.isArray(src.why_it_matters) ? src.why_it_matters.map(String).filter(Boolean) : [],
+    risk_signals: Array.isArray(src.risk_signals) ? src.risk_signals.map(String).filter(Boolean) : [],
+    follow_up_questions: Array.isArray(src.follow_up_questions) ? src.follow_up_questions.map(String).filter(Boolean) : [],
+    keywords: Array.isArray(src.keywords) ? src.keywords.map(String).filter(Boolean) : [],
+    individuals: Array.isArray(src.individuals) ? src.individuals.map(String).filter(Boolean) : [],
+    entities: Array.isArray(src.entities) ? src.entities.map(String).filter(Boolean) : [],
+    model: String(src.model || ""),
+    generated_at: String(src.generated_at || ""),
+    fallback: Boolean(src.fallback),
+  };
 }
 
 const FEED_META: Record<string, FeedMeta> = {
@@ -316,6 +336,17 @@ function articleListSignature(articles: FeedItem[]): string {
   const firstDate = first ? feedItemDate(first) : "";
   const lastDate = last ? feedItemDate(last) : "";
   return `${articles.length}:${first?.id ?? ""}:${firstDate}:${last?.id ?? ""}:${lastDate}`;
+}
+
+function analysisMapFromFeedItems(items: FeedItem[]): Record<string, FeedItemAnalysis> {
+  const out: Record<string, FeedItemAnalysis> = {};
+  for (const item of items) {
+    const analysis = toFeedItemAnalysis(item.analysis);
+    if (analysis) {
+      out[savedArticleId(item)] = analysis;
+    }
+  }
+  return out;
 }
 
 function stableNegativeId(value: string): number {
@@ -913,7 +944,7 @@ export function IntelBetaDashboard({
   const [docDetails, setDocDetails] = useState<Record<string, DocumentDetailData>>({});
   const [docDetailLoading, setDocDetailLoading] = useState<Record<string, boolean>>({});
   const [docDetailError, setDocDetailError] = useState<Record<string, string>>({});
-  const [feedAnalyses, setFeedAnalyses] = useState<Record<string, FeedItemAnalysis>>({});
+  const [feedAnalyses, setFeedAnalyses] = useState<Record<string, FeedItemAnalysis>>(() => analysisMapFromFeedItems(feedItems));
   const [feedAnalysisLoading, setFeedAnalysisLoading] = useState<Record<string, boolean>>({});
   const [feedAnalysisError, setFeedAnalysisError] = useState<Record<string, string>>({});
 
@@ -949,6 +980,12 @@ export function IntelBetaDashboard({
       setSelectedTopic("ALL");
     }
   }, [selectedTopic, visibleTopicRules]);
+
+  useEffect(() => {
+    const savedAnalyses = analysisMapFromFeedItems(feedItems);
+    if (Object.keys(savedAnalyses).length === 0) return;
+    setFeedAnalyses((prev) => ({ ...savedAnalyses, ...prev }));
+  }, [feedItems]);
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -1059,6 +1096,8 @@ export function IntelBetaDashboard({
       const payload = await fetchJson<{ analysis: FeedItemAnalysis }>("/api/intel/analyze", {
         method: "POST",
         body: JSON.stringify({
+          article_id: article.item_type === "document" ? "" : article.id,
+          guid: article.guid || "",
           title: decodeEntities(article.title || ""),
           description: decodeEntities(article.description || ""),
           url: article.url || "",

@@ -943,6 +943,9 @@ function EnrichmentPipelineSection() {
   const [analysisLimit, setAnalysisLimit] = useState("10");
   const [analysisRunning, setAnalysisRunning] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
+  const [rssAnalysisLimit, setRssAnalysisLimit] = useState("10");
+  const [rssAnalysisRunning, setRssAnalysisRunning] = useState(false);
+  const [rssAnalysisMessage, setRssAnalysisMessage] = useState<string | null>(null);
 
   const [cancelling, setCancelling] = useState(false);
   const [cancelMsg, setCancelMsg] = useState<string | null>(null);
@@ -1006,6 +1009,25 @@ function EnrichmentPipelineSection() {
       setAnalysisMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setAnalysisRunning(false);
+    }
+  }
+
+  async function handleRssAnalysisBatch() {
+    setRssAnalysisRunning(true);
+    setRssAnalysisMessage(null);
+    try {
+      const res = await fetch("/api/admin/rss-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: rssAnalysisLimit }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || "Failed");
+      setRssAnalysisMessage(`Saved ${d.data.saved_count} RSS analysis item${d.data.saved_count === 1 ? "" : "s"}${d.data.failed_count ? `; ${d.data.failed_count} failed` : ""}.`);
+    } catch (err) {
+      setRssAnalysisMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRssAnalysisRunning(false);
     }
   }
 
@@ -1112,6 +1134,31 @@ function EnrichmentPipelineSection() {
         )}
 
         <div className={`${data ? "border-t border-[color:var(--line)] pt-4" : ""}`}>
+          <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">RSS Feed Analysis</p>
+          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate and persist OpenAI analysis for RSS Feed articles missing saved keywords, individuals, and entities. Saved results render automatically on Feed cards and populate the shared mention index.</p>
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[color:var(--ink-faint)]">Batch size</span>
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={rssAnalysisLimit}
+                onChange={(e) => setRssAnalysisLimit(e.target.value)}
+                className="form-control w-28 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleRssAnalysisBatch}
+              disabled={rssAnalysisRunning}
+              className="btn-solid rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-40"
+            >
+              {rssAnalysisRunning ? "Generating..." : "Generate RSS Analysis"}
+            </button>
+            {rssAnalysisMessage ? <span className="text-xs text-[color:var(--ink-faint)]">{rssAnalysisMessage}</span> : null}
+          </div>
+
           <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">SEC Enforcement Analysis</p>
           <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate OpenAI analysis for recent SEC litigation releases missing saved analysis. Saved results render automatically on Enforcement cards.</p>
           <div className="flex flex-wrap items-end gap-3">
