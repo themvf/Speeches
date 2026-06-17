@@ -313,12 +313,19 @@ class FINRARegulatoryNoticeScraper:
     ) -> List[Dict[str, str]]:
         merged = {}
         sources = []
+        errors = []
         if include_rss:
             try:
                 sources.extend(self._discover_from_rss(rss_url))
-            except Exception:
-                pass
-        sources.extend(self._discover_from_index(base_url, max_pages=max_pages))
+            except Exception as e:
+                errors.append(f"rss: {e}")
+        try:
+            sources.extend(self._discover_from_index(base_url, max_pages=max_pages))
+        except Exception as e:
+            errors.append(f"index: {e}")
+
+        if not sources and errors:
+            raise RuntimeError("; ".join(errors))
 
         for item in sources:
             key = _url_key(item.get("url", ""))

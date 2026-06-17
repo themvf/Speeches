@@ -175,6 +175,51 @@ def _build_existing_custom_map(custom_payload: Dict[str, Any]) -> Dict[str, Dict
     return out
 
 
+def _build_existing_custom_record_map(custom_payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for item in custom_payload.get("documents", []):
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        key = core._url_match_key(metadata.get("url", ""))
+        if key:
+            out[key] = item
+    return out
+
+
+def _repair_existing_finra_notice_metadata(entry: Dict[str, Any], existing_record: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not existing_record:
+        return None
+    metadata = existing_record.get("metadata", {}) if isinstance(existing_record.get("metadata", {}), dict) else {}
+    if not metadata:
+        return None
+
+    changed = False
+    date_text = _normalize_space(entry.get("date", ""))
+    if date_text and (
+        _normalize_space(metadata.get("published_date", "")) != date_text
+        or _normalize_space(metadata.get("date", "")) != date_text
+    ):
+        metadata["published_date"] = date_text
+        metadata["date"] = date_text
+        changed = True
+
+    for target_key, entry_key in [
+        ("effective_date", "effective_date"),
+        ("comment_deadline", "comment_deadline"),
+        ("notice_number", "notice_number"),
+        ("discovery_source", "discovery_source"),
+    ]:
+        value = _normalize_space(entry.get(entry_key, ""))
+        if value and _normalize_space(metadata.get(target_key, "")) != value:
+            metadata[target_key] = value
+            changed = True
+
+    if changed:
+        return _normalize_space(metadata.get("document_id", ""))
+    return None
+
+
 def _build_short_text_fallback(
     *,
     title: str,
@@ -1141,6 +1186,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
 
     custom_payload = core._load_custom_documents(storage)
     existing_custom = _build_existing_custom_map(custom_payload)
+    existing_custom_records = _build_existing_custom_record_map(custom_payload)
     existing_speech_keys = _load_existing_speech_url_keys(storage)
 
     scraper, discovered_raw, discovery_debug = _discover_connector(
@@ -1210,13 +1256,23 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
             if doc_id:
                 processed_doc_ids.append(doc_id)
         except Exception as exc:
-            failed.append(
-                {
-                    "url": str(entry.get("url", "") or ""),
-                    "title": str(entry.get("title", "") or ""),
-                    "error": str(exc),
-                }
+            key = core._url_match_key(entry.get("url", ""))
+            repaired_doc_id = (
+                _repair_existing_finra_notice_metadata(entry, existing_custom_records.get(key))
+                if args.connector == "finra_regulatory_notice"
+                else None
             )
+            if repaired_doc_id:
+                saved_updates += 1
+                processed_doc_ids.append(repaired_doc_id)
+            else:
+                failed.append(
+                    {
+                        "url": str(entry.get("url", "") or ""),
+                        "title": str(entry.get("title", "") or ""),
+                        "error": str(exc),
+                    }
+                )
 
     rule_summaries_rebuilt = False
     if not args.dry_run and (saved_new or saved_updates):
