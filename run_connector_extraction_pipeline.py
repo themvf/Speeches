@@ -580,6 +580,8 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["forum"] = inferred.get("forum", "unknown")
         metadata["alleged_violations"] = inferred.get("alleged_violations", [])
         metadata["outcome_status"] = inferred.get("outcome_status", "unknown")
+        metadata["respondents"] = inferred.get("respondents", [])
+        metadata["entities"] = inferred.get("entities", [])
         return record
 
     if connector == "finra_regulatory_notice":

@@ -713,6 +713,99 @@ def _extract_release_no(text: str = "", url: str = "") -> str:
     return ""
 
 
+def _dedupe_named_values(values: Sequence[Any], limit: int = 12) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for value in values:
+        label = _normalize_space(value)
+        label = re.sub(r"\s+([,.)])", r"\1", label).strip(" ,;:")
+        key = label.lower()
+        if not label or key in seen:
+            continue
+        seen.add(key)
+        out.append(label)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _split_case_caption_entities(value: str) -> List[str]:
+    cleaned = re.sub(
+        r"^\s*(?:securities\s+and\s+exchange\s+commission|sec)\s+v\.?\s+",
+        "",
+        str(value or ""),
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\bet\s+al\.?\b", "", cleaned, flags=re.IGNORECASE)
+    pieces = re.split(r"\s+(?:and|&)\s+|;\s*", cleaned)
+    out: List[str] = []
+    for piece in pieces:
+        piece = _normalize_space(piece)
+        if not piece:
+            continue
+        # Do not split inside entity suffixes like "Cancer Genetics, Inc."
+        subpieces = re.split(
+            r",\s+(?!(?:Inc\.?|LLC|L\.L\.C\.|Ltd\.?|Limited|Corp\.?|Corporation|Co\.?|Company|LP|L\.P\.|LLP|L\.L\.P\.)\b)",
+            piece,
+            flags=re.IGNORECASE,
+        )
+        out.extend(subpieces)
+    return _dedupe_named_values(out, limit=12)
+
+
+def _infer_enforcement_parties(title: str = "", text: str = "") -> Dict[str, List[str]]:
+    blob = f"{title}\n{text}"
+    respondents: List[str] = []
+    entities: List[str] = []
+
+    for match in re.finditer(r"\bSecurities\s+and\s+Exchange\s+Commission\s+v\.?\s+([^\n]+)", blob, flags=re.IGNORECASE):
+        respondents.extend(_split_case_caption_entities(match.group(1)))
+
+    for match in re.finditer(
+        r"\b(?:charges?|charged|filed\s+charges?)\s+(?:against\s+)?([A-Z][^.\n]{2,140}?)(?:\s+for\s+|\s+with\s+|,?\s+alleging\b|,?\s+in\s+connection\b|\.|\n)",
+        blob,
+    ):
+        phrase = match.group(1)
+        phrase = re.sub(r"^(?:the\s+)?(?:Commission|SEC)\s+", "", phrase, flags=re.IGNORECASE)
+        respondents.extend(_split_case_caption_entities(phrase))
+
+    entity_suffix_re = re.compile(
+        r"\b([A-Z][A-Za-z0-9&'.-]*(?:\s+[A-Z][A-Za-z0-9&'.-]*){0,7}"
+        r"(?:,\s*)?(?:Inc\.?|Incorporated|LLC|L\.L\.C\.|Ltd\.?|Limited|Corp\.?|Corporation|Co\.?|Company|LP|L\.P\.|LLP|L\.L\.P\.))"
+        r"(?=$|[^A-Za-z0-9])"
+    )
+    entities.extend(match.group(1) for match in entity_suffix_re.finditer(blob))
+
+    for match in re.finditer(
+        r"\b(?:stock|shares|securities)\s+of\s+([A-Z][A-Za-z0-9&'.-]*(?:\s+[A-Z][A-Za-z0-9&'.-]*){0,7})\b",
+        blob,
+    ):
+        entities.append(match.group(1))
+    for match in re.finditer(
+        r"\b([A-Z][A-Za-z0-9&'.-]*(?:\s+[A-Z][A-Za-z0-9&'.-]*){0,7})\s+(?:stock|shares|securities)\b",
+        blob,
+    ):
+        entities.append(match.group(1))
+
+    staff_or_regulator = {
+        "securities and exchange commission",
+        "sec",
+        "financial industry regulatory authority",
+        "u.s. attorney's office",
+        "fbi",
+    }
+    clean_respondents = [
+        item for item in _dedupe_named_values(respondents, limit=12)
+        if item.lower() not in staff_or_regulator
+    ]
+    respondent_keys = {item.lower() for item in clean_respondents}
+    clean_entities = [
+        item for item in _dedupe_named_values(entities, limit=12)
+        if item.lower() not in staff_or_regulator and item.lower() not in respondent_keys
+    ]
+    return {"respondents": clean_respondents, "entities": clean_entities}
+
+
 def _normalize_enforcement_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
     allowed_action_types = {"filing", "settlement", "judgment", "dismissal", "order", "other", "unknown"}
     allowed_forums = {"federal_court", "administrative", "state_court", "unknown"}
@@ -754,12 +847,21 @@ def _normalize_enforcement_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
         seen.add(key)
         cleaned_violations.append(label)
 
+    respondents = payload.get("respondents", [])
+    if not isinstance(respondents, list):
+        respondents = []
+    entities = payload.get("entities", [])
+    if not isinstance(entities, list):
+        entities = []
+
     return {
         "release_no": release_no,
         "action_type": action_type,
         "forum": forum,
         "alleged_violations": cleaned_violations,
         "outcome_status": outcome_status,
+        "respondents": _dedupe_named_values(respondents, limit=12),
+        "entities": _dedupe_named_values(entities, limit=12),
     }
 
 
@@ -825,6 +927,7 @@ def _infer_enforcement_metadata(
         if needle in blob and label.lower() not in seen:
             seen.add(label.lower())
             alleged_violations.append(label)
+    parties = _infer_enforcement_parties(title=title, text=text)
 
     return _normalize_enforcement_metadata(
         {
@@ -833,6 +936,8 @@ def _infer_enforcement_metadata(
             "forum": forum,
             "alleged_violations": alleged_violations,
             "outcome_status": outcome_status,
+            "respondents": parties.get("respondents", []),
+            "entities": parties.get("entities", []),
         }
     )
 

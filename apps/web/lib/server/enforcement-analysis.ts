@@ -4,6 +4,7 @@ import type { CustomDocumentRecord, JsonValue } from "@/lib/server/types";
 
 export interface EnforcementAiAnalysis {
   thesis: string;
+  entities: string[];
   why_it_matters: string[];
   legal_theory: string[];
   risk_signals: string[];
@@ -54,6 +55,7 @@ export function jsonValueToAnalysis(value: unknown): EnforcementAiAnalysis | nul
   }
   return {
     thesis: normalizeText(value.thesis),
+    entities: stringList(value.entities, 8),
     why_it_matters: stringList(value.why_it_matters, 4),
     legal_theory: stringList(value.legal_theory, 4),
     risk_signals: stringList(value.risk_signals, 4),
@@ -102,6 +104,7 @@ function coerceAnalysis(raw: unknown): EnforcementAiAnalysis {
   const src = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
   return {
     thesis: normalizeText(src.thesis).slice(0, 280),
+    entities: stringList(src.entities, 8),
     why_it_matters: stringList(src.why_it_matters, 4),
     legal_theory: stringList(src.legal_theory, 4),
     risk_signals: stringList(src.risk_signals, 4),
@@ -149,8 +152,11 @@ async function callOpenAi(input: string, model: string): Promise<string> {
       instructions: [
         "You are an enforcement analyst writing for securities compliance, legal, and risk teams.",
         "Analyze only the supplied enforcement release text and metadata. Do not invent facts.",
-        "Return strict JSON with keys: thesis, why_it_matters, legal_theory, risk_signals, follow_up_questions.",
-        "Each list should contain concise, specific bullets. Avoid generic statements.",
+        "Return strict JSON with keys: thesis, entities, why_it_matters, legal_theory, risk_signals, follow_up_questions.",
+        "entities must list named defendants/respondents, issuers, companies, funds, offering vehicles, broker-dealers, securities, or other market participants involved in the alleged conduct. Do not include SEC staff, courts, or assisting agencies unless they are defendants/respondents.",
+        "why_it_matters must explain concrete market, investor-protection, compliance, or supervision significance from the release. Do not use generic enforcement boilerplate.",
+        "risk_signals must identify specific red flags from the release, such as account usage, timing, compensation, disclosure gaps, controls failures, harmed investor class, or transaction structure.",
+        "Each list should contain concise, specific bullets tied to facts in the release.",
       ].join("\n"),
       input,
       text: {
@@ -163,12 +169,13 @@ async function callOpenAi(input: string, model: string): Promise<string> {
             additionalProperties: false,
             properties: {
               thesis: { type: "string" },
+              entities: { type: "array", items: { type: "string" } },
               why_it_matters: { type: "array", items: { type: "string" } },
               legal_theory: { type: "array", items: { type: "string" } },
               risk_signals: { type: "array", items: { type: "string" } },
               follow_up_questions: { type: "array", items: { type: "string" } },
             },
-            required: ["thesis", "why_it_matters", "legal_theory", "risk_signals", "follow_up_questions"],
+            required: ["thesis", "entities", "why_it_matters", "legal_theory", "risk_signals", "follow_up_questions"],
           },
         },
       },

@@ -39,6 +39,8 @@ def _parse_date_text(value: str) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
         return None
+    if _is_relative_date_text(text):
+        return None
     text = (
         text.replace("Jan.", "Jan")
         .replace("Feb.", "Feb")
@@ -67,7 +69,21 @@ def _parse_date_text(value: str) -> Optional[datetime]:
     return None
 
 
+def _is_relative_date_text(value: str) -> bool:
+    text = _normalize_space(value).lower()
+    if not text:
+        return False
+    return bool(
+        re.search(
+            r"\b(?:just now|today|yesterday|\d+\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months)\s+ago)\b",
+            text,
+        )
+    )
+
+
 def _date_to_display(value: str) -> str:
+    if _is_relative_date_text(value):
+        return ""
     parsed = _parse_date_text(value)
     if parsed is None:
         return str(value or "").strip()
@@ -112,11 +128,29 @@ def _parse_xml_root(text: str) -> ET.Element:
 
 
 def _extract_labeled_date(text: str, label: str) -> str:
-    pattern = rf"{re.escape(label)}\s*:\s*([A-Za-z]{{3,9}}\.?\s+\d{{1,2}},\s+\d{{4}})"
+    pattern = (
+        rf"{re.escape(label)}\s*:\s*"
+        r"((?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+)?"
+        r"[A-Za-z]{3,9}\.?\s+\d{1,2},\s+\d{4})"
+    )
     match = re.search(pattern, str(text or ""), flags=re.IGNORECASE)
     if match:
         return _date_to_display(match.group(1))
     return ""
+
+
+def _extract_publication_date_from_text(text: str) -> str:
+    for label in ("Published Date", "Publication Date"):
+        value = _extract_labeled_date(text, label)
+        if value:
+            return value
+    match = re.search(
+        r"\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+"
+        r"[A-Za-z]{3,9}\.?\s+\d{1,2},\s+\d{4}\b",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    )
+    return _date_to_display(match.group(0)) if match else ""
 
 
 class FINRARegulatoryNoticeScraper:
@@ -342,6 +376,8 @@ class FINRARegulatoryNoticeScraper:
         if pub_el is not None:
             pub_text = _normalize_space(pub_el.get_text(" ", strip=True))
             published_date = _extract_labeled_date(pub_text, "Published Date") or _date_to_display(pub_text)
+        if not published_date:
+            published_date = _extract_publication_date_from_text(article.get_text("\n"))
         if not published_date:
             published_date = _date_to_display(fallback_date)
 

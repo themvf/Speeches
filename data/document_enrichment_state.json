@@ -158686,7 +158686,18 @@
           "complaint",
           "litigation"
         ],
-        "entities": [],
+        "entities": [
+          {
+            "name": "Bruce Cameron Conway",
+            "type": "person",
+            "mentions": 3
+          },
+          {
+            "name": "Cancer Genetics, Inc.",
+            "type": "company",
+            "mentions": 3
+          }
+        ],
         "stance": {
           "label": "neutral",
           "target": ""

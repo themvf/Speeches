@@ -33,6 +33,34 @@ class ShortDocumentScraper:
         }
 
 
+class ConwayLitigationScraper:
+    def extract_document(self, url, **kwargs):
+        text = (
+            "U.S. SECURITIES AND EXCHANGE COMMISSION\n"
+            "Litigation Release No. 26370 / August 11, 2025\n"
+            "Securities and Exchange Commission v. Conway\n"
+            "SEC Charges Texas Resident with Insider Trading\n"
+            "On August 7, 2025, the Securities and Exchange Commission filed charges against "
+            "Bruce Cameron Conway, a resident of Dallas, Texas, for insider trading in advance "
+            "of the August 24, 2020 announcement that Cancer Genetics, Inc. would merge with a "
+            "privately held biotechnology company.\n"
+            "According to the SEC's complaint, Conway purchased Cancer Genetics shares in fifteen "
+            "accounts belonging to him, various family members, and family-owned trusts."
+        )
+        return {
+            "success": True,
+            "data": {
+                "url": url,
+                "title": "Bruce Cameron Conway",
+                "date": "August 11, 2025",
+                "release_no": "LR-26370",
+                "full_text": text,
+                "word_count": len(text.split()),
+                "source_format": "html",
+            },
+        }
+
+
 def test_doj_short_text_is_retained_as_metadata_fallback():
     entry = {
         "url": "https://www.justice.gov/usao-test/pr/example-short-release",
@@ -79,6 +107,29 @@ def test_non_doj_short_text_is_retained_instead_of_failing():
     assert record["metadata"]["title"] == "Example Short SEC FAQ"
     assert record["metadata"]["word_count"] == 2
     assert record["content"]["full_text"] == "Short body."
+
+
+def test_sec_litigation_record_infers_respondents_and_entities():
+    entry = {
+        "url": "https://www.sec.gov/enforcement-litigation/litigation-releases/lr-26370",
+        "title": "Bruce Cameron Conway",
+        "date": "August 11, 2025",
+        "release_no": "LR-26370",
+    }
+
+    record = pipeline._extract_record(
+        connector="sec_enforcement_litigation",
+        scraper=ConwayLitigationScraper(),
+        entry=entry,
+        idx=1,
+        base_url="https://www.sec.gov/enforcement-litigation/litigation-releases",
+    )
+
+    metadata = record["metadata"]
+    assert "Bruce Cameron Conway" in metadata["respondents"]
+    assert "Cancer Genetics, Inc." in metadata["entities"]
+    assert metadata["action_type"] == "filing"
+    assert "Insider Trading" in metadata["alleged_violations"]
 
 
 def test_summary_with_item_failures_should_fail_process():

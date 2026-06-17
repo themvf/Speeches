@@ -14,6 +14,7 @@ type ApiEnvelope<T> = { ok: boolean; data?: T; error?: string };
 type ViewMode = "combined" | "sec" | "finra";
 type AiEnforcementAnalysis = {
   thesis: string;
+  entities?: string[];
   why_it_matters: string[];
   legal_theory: string[];
   risk_signals: string[];
@@ -529,6 +530,7 @@ function ActionRow({ action, snippet }: { action: EnforcementBetaAction; snippet
           <div className="mt-3 rounded-lg border border-[color:var(--line-soft)] bg-[color:rgba(9,21,34,0.56)] p-3">
             <p className="text-xs font-semibold leading-relaxed text-[color:var(--ink)]">{aiAnalysis.thesis}</p>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <AnalysisColumn title="Entities" items={aiAnalysis.entities ?? action.entities} />
               <AnalysisColumn title="Why It Matters" items={aiAnalysis.why_it_matters} />
               <AnalysisColumn title="Legal Theory" items={aiAnalysis.legal_theory} />
               <AnalysisColumn title="Risk Signals" items={aiAnalysis.risk_signals} />
