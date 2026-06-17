@@ -236,6 +236,21 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+
+  return matches;
+}
+
 function statusClass(value: string): string {
   const s = String(value || "").toLowerCase();
   if (["enriched", "reviewed", "success"].includes(s)) return "status-chip status-success";
@@ -497,6 +512,7 @@ function FeedRow({
   analysisOpen,
   analysisLabel,
   onToggleAnalysis,
+  compact = false,
 }: {
   article: FeedItem;
   matchedTopics: TopicRuleView[];
@@ -507,10 +523,93 @@ function FeedRow({
   analysisOpen: boolean;
   analysisLabel: string;
   onToggleAnalysis: () => void;
+  compact?: boolean;
 }) {
   const source = getFeedMeta(article.feed_key);
   const visibleTopics = matchedTopics.slice(0, 3);
   const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
+  const analysisButtonStyle = {
+    border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
+    background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
+    color: analysisOpen ? "#e8f7ff" : "#9fb0c7",
+    borderRadius: 999,
+    padding: compact ? "8px 12px" : "4px 9px",
+    fontSize: compact ? 11 : 10,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+    cursor: "pointer",
+  };
+
+  if (compact) {
+    return (
+      <div
+        style={{
+          display: "grid",
+          gap: 10,
+          padding: "12px 0",
+          borderTop: "1px solid rgba(112, 142, 187, 0.12)",
+          background: active ? "rgba(67, 112, 186, 0.08)" : "transparent",
+          cursor: "pointer",
+          minWidth: 0,
+        }}
+        onClick={onSelect}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+            <span style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</span>
+            <span style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</span>
+            <ToneChip label={article.tone_label} />
+          </div>
+          <div onClick={(e) => e.stopPropagation()}>
+            <BookmarkButton saved={saved} onToggle={onToggleSave} />
+          </div>
+        </div>
+
+        <div style={{ minWidth: 0 }}>
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "#edf3fb",
+              fontSize: 15,
+              fontWeight: 650,
+              textDecoration: "none",
+              lineHeight: 1.35,
+            }}
+          >
+            {decodeEntities(article.title)}
+          </a>
+          {description ? (
+            <div style={{ color: "#7f8faa", fontSize: 12, marginTop: 5, lineHeight: 1.45 }}>{description}</div>
+          ) : null}
+          {article.item_type === "document" ? (
+            <div style={{ color: "#4fd5ff", fontSize: 10, marginTop: 6, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+              Primary document
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {visibleTopics.map((topic) => (
+            <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleAnalysis();
+          }}
+          style={{ ...analysisButtonStyle, justifySelf: "start" }}
+        >
+          {analysisLabel}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -559,18 +658,7 @@ function FeedRow({
               e.stopPropagation();
               onToggleAnalysis();
             }}
-            style={{
-              border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
-              background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
-              color: analysisOpen ? "#e8f7ff" : "#9fb0c7",
-              borderRadius: 999,
-              padding: "4px 9px",
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              cursor: "pointer",
-            }}
+            style={analysisButtonStyle}
           >
             {analysisLabel}
           </button>
@@ -594,6 +682,7 @@ function FeaturedCard({
   analysisOpen,
   analysisLabel,
   onToggleAnalysis,
+  compact = false,
 }: {
   article: FeedItem;
   matchedTopics: TopicRuleView[];
@@ -602,9 +691,94 @@ function FeaturedCard({
   analysisOpen: boolean;
   analysisLabel: string;
   onToggleAnalysis: () => void;
+  compact?: boolean;
 }) {
   const source = getFeedMeta(article.feed_key);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
+  const analysisButtonStyle = {
+    border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
+    background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
+    color: analysisOpen ? "#e8f7ff" : "#9fb0c7",
+    borderRadius: 999,
+    padding: compact ? "8px 12px" : "5px 10px",
+    fontSize: compact ? 11 : 11,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+    cursor: "pointer",
+  };
+
+  if (compact) {
+    return (
+      <div
+        style={{
+          borderTop: "1px solid rgba(112, 142, 187, 0.16)",
+          borderBottom: "1px solid rgba(112, 142, 187, 0.16)",
+          padding: "14px 0 16px",
+          marginBottom: 4,
+          display: "grid",
+          gap: 11,
+          minWidth: 0,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+            <span style={{ color: "#8fa7c8", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</span>
+            <span style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</span>
+            <ToneChip label={tone} />
+          </div>
+          <BookmarkButton saved={saved} onToggle={onToggleSave} size={16} />
+        </div>
+
+        <div style={{ minWidth: 0 }}>
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "#f4f7fc",
+              fontWeight: 700,
+              fontSize: 16,
+              lineHeight: 1.38,
+              textDecoration: "none",
+            }}
+          >
+            {decodeEntities(article.title)}
+          </a>
+          {article.description ? (
+            <div style={{ marginTop: 9, color: "#b8c6d8", fontSize: 13, lineHeight: 1.55 }}>
+              {ellipsize(article.description, 180)}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {matchedTopics.slice(0, 4).map((topic) => (
+            <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", color: "#8da0bc", fontSize: 11 }}>
+          <span>{decodeEntities(article.author || (article.item_type === "document" ? "Document" : "News Desk"))}</span>
+          <span aria-hidden="true">/</span>
+          <span>{article.organization || source.label}</span>
+          <span aria-hidden="true">/</span>
+          <span style={{ color: TONE_STYLE[tone].color, fontWeight: 700 }}>{TONE_STYLE[tone].label}</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleAnalysis();
+          }}
+          style={{ ...analysisButtonStyle, justifySelf: "start" }}
+        >
+          {analysisLabel}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -698,18 +872,7 @@ function FeaturedCard({
             e.stopPropagation();
             onToggleAnalysis();
           }}
-          style={{
-            border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
-            background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
-            color: analysisOpen ? "#e8f7ff" : "#9fb0c7",
-            borderRadius: 999,
-            padding: "5px 10px",
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            cursor: "pointer",
-          }}
+          style={analysisButtonStyle}
         >
           {analysisLabel}
         </button>
@@ -729,6 +892,7 @@ function FeedAnalysisPanel({
   loading,
   error,
   retry,
+  compact = false,
 }: {
   article: FeedItem;
   matchedTopics: TopicRuleView[];
@@ -740,6 +904,7 @@ function FeedAnalysisPanel({
   loading: boolean;
   error: string;
   retry: () => void;
+  compact?: boolean;
 }) {
   const source = getFeedMeta(article.feed_key);
   const primaryAnalysis = pickPrimaryAnalysis(detail);
@@ -748,6 +913,9 @@ function FeedAnalysisPanel({
   const topicLabels = matchedTopics.map((topic) => topic.label);
   const articleSummary = decodedDescription || "No feed summary is available for this article yet.";
   const analysisModel = analysis?.fallback ? `${analysis.model} fallback` : analysis?.model;
+  const mainGridColumns = compact ? "1fr" : "minmax(0,1.45fr) minmax(220px,0.55fr)";
+  const twoColumnGrid = compact ? "1fr" : "repeat(2, minmax(0, 1fr))";
+  const threeColumnGrid = compact ? "1fr" : "repeat(3, minmax(0, 1fr))";
   const analysisBlock = analysisLoading ? (
     <p style={{ color: "#9fb0c7", fontSize: 13 }}>Generating analysis...</p>
   ) : analysisError ? (
@@ -769,7 +937,7 @@ function FeedAnalysisPanel({
           {analysis.thesis}
         </p>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: twoColumnGrid, gap: 14 }}>
         <div>
           <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
             Why It Matters
@@ -787,7 +955,7 @@ function FeedAnalysisPanel({
           </ul>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: threeColumnGrid, gap: 14 }}>
         <div>
           <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
             Keywords
@@ -844,7 +1012,7 @@ function FeedAnalysisPanel({
       <div style={{ display: "grid", gap: 18 }}>
         {analysisBlock}
         <div style={{ height: 1, background: "rgba(112, 142, 187, 0.12)" }} />
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(220px,0.55fr)", gap: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: mainGridColumns, gap: compact ? 14 : 18 }}>
         <div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <span className={statusClass(detail.enrichment.status)}>{detail.enrichment.status || "not_enriched"}</span>
@@ -889,7 +1057,7 @@ function FeedAnalysisPanel({
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(220px,0.55fr)", gap: 18 }}>
+    <div style={{ display: "grid", gridTemplateColumns: mainGridColumns, gap: compact ? 14 : 18 }}>
       <div>
         {analysisBlock}
         <p style={{ marginTop: 10, color: "#c6d4e6", fontSize: 13, lineHeight: 1.65 }}>{articleSummary}</p>
@@ -974,6 +1142,7 @@ export function IntelBetaDashboard({
     : visibleTopicRules.find((rule) => rule.topic_key === selectedTopic) ?? null;
   const searchTerm = search.trim().toLowerCase();
   const deferredSearchTerm = useDeferredValue(searchTerm);
+  const isMobile = useMediaQuery("(max-width: 760px)");
 
   useEffect(() => {
     if (selectedTopic !== "ALL" && !visibleTopicRules.some((rule) => rule.topic_key === selectedTopic)) {
@@ -1122,7 +1291,11 @@ export function IntelBetaDashboard({
 
   const toggleFeedAnalysis = useCallback((article: FeedItem) => {
     const key = savedArticleId(article);
-    setExpandedAnalysis((prev) => ({ ...prev, [key]: !prev[key] }));
+    setExpandedAnalysis((prev) => {
+      const shouldOpen = !prev[key];
+      if (isMobile) return shouldOpen ? { [key]: true } : {};
+      return { ...prev, [key]: shouldOpen };
+    });
 
     if (!feedAnalyses[key] && !feedAnalysisLoading[key]) {
       void loadFeedAnalysis(article);
@@ -1130,7 +1303,7 @@ export function IntelBetaDashboard({
     if (article.item_type === "document" && article.document_id && !docDetails[article.document_id] && !docDetailLoading[article.document_id]) {
       void loadDocDetail(article.document_id);
     }
-  }, [docDetailLoading, docDetails, feedAnalyses, feedAnalysisLoading, loadDocDetail, loadFeedAnalysis]);
+  }, [docDetailLoading, docDetails, feedAnalyses, feedAnalysisLoading, isMobile, loadDocDetail, loadFeedAnalysis]);
 
   const toggleArticleSave = (article: FeedItem) => {
     const source = getFeedMeta(article.feed_key);
@@ -1164,7 +1337,7 @@ export function IntelBetaDashboard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "168px minmax(0, 1fr)",
+          gridTemplateColumns: isMobile ? "1fr" : "168px minmax(0, 1fr)",
           gap: 0,
           border: "1px solid rgba(99, 127, 170, 0.18)",
           background: "linear-gradient(180deg, rgba(8,16,28,0.96), rgba(9,20,31,0.96))",
@@ -1174,51 +1347,102 @@ export function IntelBetaDashboard({
       >
         <aside
           style={{
-            borderRight: "1px solid rgba(99, 127, 170, 0.16)",
-            padding: "14px 10px 18px",
+            borderRight: isMobile ? "none" : "1px solid rgba(99, 127, 170, 0.16)",
+            borderBottom: isMobile ? "1px solid rgba(99, 127, 170, 0.16)" : "none",
+            padding: isMobile ? "12px" : "14px 10px 18px",
             background: "linear-gradient(180deg, rgba(8,17,29,0.92), rgba(10,21,34,0.98))",
           }}
         >
-          <a
-            href="/research"
-            style={{
-              display: "block",
-              marginBottom: 14,
-              padding: "7px 10px",
-              borderRadius: 8,
-              border: "1px solid rgba(79,213,255,0.15)",
-              background: "rgba(79,213,255,0.05)",
-              color: "#4fd5ff",
-              fontSize: 11,
-              fontWeight: 500,
-              textDecoration: "none",
-              lineHeight: 1.35,
-            }}
-          >
-            Search all regulatory documents
-          </a>
-          <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
-            Topics
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <TopicButton
-              label="All Topics"
-              active={selectedTopic === "ALL"}
-              onClick={() => setSelectedTopic("ALL")}
-              count={matchedArticles.length}
-            />
-            {visibleTopicRules.map((rule) => (
-              <TopicButton
-                key={rule.topic_key}
-                label={rule.label}
-                active={selectedTopic === rule.topic_key}
-                onClick={() => setSelectedTopic(rule.topic_key)}
-                count={topicIndex.topicCounts.get(rule.topic_key) ?? 0}
-              />
-            ))}
-          </div>
+          {isMobile ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <a
+                href="/research"
+                style={{
+                  display: "block",
+                  padding: "9px 10px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(79,213,255,0.15)",
+                  background: "rgba(79,213,255,0.05)",
+                  color: "#4fd5ff",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  lineHeight: 1.35,
+                }}
+              >
+                Search all regulatory documents
+              </a>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase" }}>
+                  Topics
+                </span>
+                <select
+                  value={selectedTopic}
+                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  style={{
+                    width: "100%",
+                    minHeight: 40,
+                    background: "rgba(14, 24, 39, 0.9)",
+                    border: "1px solid rgba(90, 118, 162, 0.28)",
+                    color: "#d9e7f7",
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="ALL">All Topics ({matchedArticles.length})</option>
+                  {visibleTopicRules.map((rule) => (
+                    <option key={rule.topic_key} value={rule.topic_key}>
+                      {rule.label} ({topicIndex.topicCounts.get(rule.topic_key) ?? 0})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : (
+            <>
+              <a
+                href="/research"
+                style={{
+                  display: "block",
+                  marginBottom: 14,
+                  padding: "7px 10px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(79,213,255,0.15)",
+                  background: "rgba(79,213,255,0.05)",
+                  color: "#4fd5ff",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  lineHeight: 1.35,
+                }}
+              >
+                Search all regulatory documents
+              </a>
+              <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
+                Topics
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <TopicButton
+                  label="All Topics"
+                  active={selectedTopic === "ALL"}
+                  onClick={() => setSelectedTopic("ALL")}
+                  count={matchedArticles.length}
+                />
+                {visibleTopicRules.map((rule) => (
+                  <TopicButton
+                    key={rule.topic_key}
+                    label={rule.label}
+                    active={selectedTopic === rule.topic_key}
+                    onClick={() => setSelectedTopic(rule.topic_key)}
+                    count={topicIndex.topicCounts.get(rule.topic_key) ?? 0}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
-          <div style={{ marginTop: 22 }}>
+          {!isMobile ? <div style={{ marginTop: 22 }}>
             <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
               Legend
             </div>
@@ -1230,19 +1454,20 @@ export function IntelBetaDashboard({
                 </div>
               ))}
             </div>
-          </div>
+          </div> : null}
         </aside>
 
         <main style={{ minWidth: 0 }}>
           <div
             style={{
               display: "flex",
-              alignItems: "center",
+              alignItems: isMobile ? "stretch" : "center",
               justifyContent: "space-between",
-              gap: 16,
-              padding: "14px 16px 10px",
+              gap: isMobile ? 10 : 16,
+              padding: isMobile ? "12px" : "14px 16px 10px",
               borderBottom: "1px solid rgba(99, 127, 170, 0.16)",
               flexWrap: "wrap",
+              flexDirection: isMobile ? "column" : "row",
             }}
           >
             <div
@@ -1257,13 +1482,14 @@ export function IntelBetaDashboard({
               News Feed / {selectedRule ? selectedRule.label : "All"} / {filtered.length} matched ({feedItems.length} total)
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 10 : 14, flexWrap: "wrap" }}>
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="search..."
                 style={{
-                  width: 220,
+                  width: isMobile ? "100%" : 220,
+                  minHeight: isMobile ? 40 : undefined,
                   background: "rgba(14, 24, 39, 0.9)",
                   border: "1px solid rgba(90, 118, 162, 0.18)",
                   color: "#d9e7f7",
@@ -1308,8 +1534,8 @@ export function IntelBetaDashboard({
             </button>
           ) : null}
 
-          <div style={{ padding: "12px 16px 18px" }}>
-            <div
+          <div style={{ padding: isMobile ? "0 12px 14px" : "12px 16px 18px" }}>
+            {!isMobile ? <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px 24px",
@@ -1328,7 +1554,7 @@ export function IntelBetaDashboard({
               <div>Headline</div>
               <div style={{ textAlign: "right" }}>Tags</div>
               <div aria-hidden="true" />
-            </div>
+            </div> : null}
 
             {filtered.length === 0 ? (
               <div style={{ color: "#72839d", fontSize: 13, padding: "28px 0" }}>
@@ -1357,6 +1583,7 @@ export function IntelBetaDashboard({
                         analysisOpen={analysisOpen}
                         analysisLabel={analysisLabel}
                         onToggleAnalysis={() => toggleFeedAnalysis(article)}
+                        compact={isMobile}
                       />
                     ) : (
                       <FeedRow
@@ -1369,6 +1596,7 @@ export function IntelBetaDashboard({
                         analysisOpen={analysisOpen}
                         analysisLabel={analysisLabel}
                         onToggleAnalysis={() => toggleFeedAnalysis(article)}
+                        compact={isMobile}
                       />
                     )}
                     {analysisOpen ? (
@@ -1376,7 +1604,7 @@ export function IntelBetaDashboard({
                         style={{
                           borderTop: "1px solid rgba(112, 142, 187, 0.12)",
                           background: "rgba(5, 13, 23, 0.62)",
-                          padding: "14px 16px 16px",
+                          padding: isMobile ? "12px 0 16px" : "14px 16px 16px",
                         }}
                       >
                         <FeedAnalysisPanel
@@ -1392,6 +1620,7 @@ export function IntelBetaDashboard({
                           retry={() => {
                             if (docId) void loadDocDetail(docId);
                           }}
+                          compact={isMobile}
                         />
                       </div>
                     ) : null}
@@ -1403,7 +1632,17 @@ export function IntelBetaDashboard({
         </main>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 4px 0", color: "#5d708a", fontSize: 11 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 8,
+          flexDirection: isMobile ? "column" : "row",
+          padding: "10px 4px 0",
+          color: "#5d708a",
+          fontSize: 11,
+        }}
+      >
         <div>Updated {formatUpdated(lastUpdated.toISOString())}</div>
         <div>{articles.length} articles + {documentFeedItems.length} research documents</div>
       </div>
