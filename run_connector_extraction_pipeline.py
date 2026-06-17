@@ -1241,6 +1241,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     saved_new = 0
     saved_updates = 0
     failed: List[Dict[str, Any]] = []
+    skipped_blocked: List[Dict[str, Any]] = []
     processed_doc_ids: List[str] = []
 
     for idx, entry in enumerate(selected, 1):
@@ -1265,6 +1266,14 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
             if repaired_doc_id:
                 saved_updates += 1
                 processed_doc_ids.append(repaired_doc_id)
+            elif args.connector == "finra_regulatory_notice" and "403" in str(exc):
+                skipped_blocked.append(
+                    {
+                        "url": str(entry.get("url", "") or ""),
+                        "title": str(entry.get("title", "") or ""),
+                        "reason": "FINRA blocked detail-page fetch and no existing record was available to repair.",
+                    }
+                )
             else:
                 failed.append(
                     {
@@ -1309,6 +1318,8 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "saved_updates": saved_updates,
         "failed_count": len(failed),
         "failed": failed[:25],
+        "skipped_blocked_count": len(skipped_blocked),
+        "skipped_blocked": skipped_blocked[:25],
         "excluded_preview": excluded[:25],
         "status_counts": status_counts,
         "discovery_debug": discovery_debug if isinstance(discovery_debug, dict) else {},
