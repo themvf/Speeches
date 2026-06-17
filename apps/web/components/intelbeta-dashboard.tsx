@@ -382,7 +382,7 @@ function documentDescription(document: DocumentListItem): string {
 }
 
 function documentToFeedItem(document: DocumentListItem): FeedItem {
-  const publishedAt = document.published_at || document.date || document.updated_at || new Date(0).toISOString();
+  const publishedAt = document.published_at || document.date || new Date(0).toISOString();
   return {
     id: stableNegativeId(document.document_id),
     guid: document.document_id,

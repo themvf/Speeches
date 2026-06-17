@@ -64,6 +64,27 @@ function dedupList(items: string[]): string[] {
   return out;
 }
 
+function extractPublishedDateFromText(value: unknown): string {
+  const text = normalizeString(value);
+  if (!text) {
+    return "";
+  }
+  const match = text.match(/\bPublished Date\s*:\s*([A-Za-z]{3,9}\.?\s+\d{1,2},\s+\d{4})\b/i);
+  return match ? normalizeString(match[1]).replace(/\bSept\./i, "Sep").replace(/\./g, "") : "";
+}
+
+function normalizeDocumentPublishedDate(metadata: Record<string, unknown>, fullText: string): string {
+  const sourceKind = normalizeString(metadata.source_kind).toLowerCase();
+  if (sourceKind === "finra_regulatory_notice") {
+    return (
+      extractPublishedDateFromText(fullText) ||
+      normalizeString(metadata.published_date) ||
+      normalizeString(metadata.date)
+    );
+  }
+  return normalizeString(metadata.published_date) || normalizeString(metadata.date);
+}
+
 const TOPIC_ACRONYMS = new Set(["SEC", "DOJ", "FINRA", "CFTC", "FOMC", "FDIC", "OCC", "CFPB", "AML", "KYC", "ESG"]);
 
 function canonicalFacetToken(value: string): string {
@@ -223,6 +244,9 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     : [];
   const fullText = normalizeString(contentRaw.full_text);
 
+  const sourceKind = normalizeString(metadataRaw.source_kind) || inferSourceKind(metadataRaw);
+  const publishedDate = normalizeDocumentPublishedDate({ ...metadataRaw, source_kind: sourceKind }, fullText);
+
   const metadata = {
     document_id: normalizeString(metadataRaw.document_id) || corpusDocId(metadataRaw, fullText),
     title: normalizeString(metadataRaw.title),
@@ -237,10 +261,10 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     source_local_path: normalizeString(metadataRaw.source_local_path),
     source_gcs_path: normalizeString(metadataRaw.source_gcs_path),
     tags: normalizeString(metadataRaw.tags),
-    source_kind: normalizeString(metadataRaw.source_kind),
+    source_kind: sourceKind,
     source_family: normalizeString(metadataRaw.source_family),
     source_index_url: normalizeString(metadataRaw.source_index_url),
-    published_date: normalizeString(metadataRaw.published_date),
+    published_date: publishedDate,
     updated_date: normalizeString(metadataRaw.updated_date),
     last_reviewed_or_updated: normalizeString(metadataRaw.last_reviewed_or_updated),
     notice_type: normalizeString(metadataRaw.notice_type),
@@ -336,7 +360,7 @@ function normalizeSecSpeechRecord(speech: unknown): CustomDocumentRecord | null 
   const organization = normalizeOrgLabel(metadataRaw.organization || metadataRaw.org || "SEC");
   const sourceKind = inferSourceKind(metadataRaw);
   const docType = normalizeString(metadataRaw.doc_type) || "Speech";
-  const publishedDate = normalizeString(metadataRaw.published_date) || normalizeString(metadataRaw.date);
+  const publishedDate = normalizeDocumentPublishedDate({ ...metadataRaw, source_kind: sourceKind }, fullText);
   const updatedDate = normalizeString(metadataRaw.updated_date) || normalizeString(metadataRaw.extraction_date);
 
   const metadata = {

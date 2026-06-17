@@ -519,7 +519,7 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
           url = EXCLUDED.url,
           description = EXCLUDED.description,
           author = EXCLUDED.author,
-          published_at = EXCLUDED.published_at,
+          published_at = COALESCE(EXCLUDED.published_at, rss_articles.published_at),
           feed_key = EXCLUDED.feed_key,
           tone_label = CASE
             WHEN rss_articles.tone_label IS NULL THEN EXCLUDED.tone_label
