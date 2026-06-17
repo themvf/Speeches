@@ -111,6 +111,17 @@ const FEED_META: Record<string, FeedMeta> = {
   rss_nytimes_com_services_xml_rss_nyt_business_xml: { label: "NYT Business", code: "NYTB", color: "#ffe066" },
   rss_nytimes_com_services_xml_rss_nyt_technology_xml: { label: "NYT Tech", code: "NYTT", color: "#74c0fc" },
   rss_nytimes_com_services_xml_rss_nyt_politics_xml: { label: "NYT Politics", code: "NYTP", color: "#ff8787" },
+  coindesk: { label: "CoinDesk", code: "CDSK", color: "#f0b90b" },
+  cointelegraph: { label: "Cointelegraph", code: "CTEL", color: "#f3c969" },
+  decrypt: { label: "Decrypt", code: "DECR", color: "#8ce99a" },
+  the_block: { label: "The Block", code: "BLCK", color: "#63e6be" },
+  cisa_cybersecurity_advisories: { label: "CISA", code: "CISA", color: "#4dabf7" },
+  bleepingcomputer: { label: "BleepingComputer", code: "BLC", color: "#74c0fc" },
+  krebs_on_security: { label: "Krebs on Security", code: "KRBS", color: "#ffa8a8" },
+  the_hacker_news: { label: "The Hacker News", code: "THN", color: "#ff8787" },
+  dark_reading: { label: "Dark Reading", code: "DARK", color: "#b197fc" },
+  securityweek: { label: "SecurityWeek", code: "SECW", color: "#91a7ff" },
+  microsoft_security_blog: { label: "Microsoft Security Blog", code: "MSFT", color: "#69db7c" },
 };
 
 function getFeedMeta(feedKey: string): FeedMeta {

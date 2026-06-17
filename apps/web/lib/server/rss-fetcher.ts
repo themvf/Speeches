@@ -128,6 +128,50 @@ export const DEFAULT_RSS_FEEDS: Record<string, { label: string; feedUrl: string 
     label: "FTC Consumer Protection Press Releases",
     feedUrl: "https://www.ftc.gov/feeds/press-release-consumer-protection.xml",
   },
+  coindesk: {
+    label: "CoinDesk",
+    feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+  },
+  cointelegraph: {
+    label: "Cointelegraph",
+    feedUrl: "https://cointelegraph.com/rss",
+  },
+  decrypt: {
+    label: "Decrypt",
+    feedUrl: "https://decrypt.co/feed",
+  },
+  the_block: {
+    label: "The Block",
+    feedUrl: "https://www.theblock.co/rss.xml",
+  },
+  cisa_cybersecurity_advisories: {
+    label: "CISA Cybersecurity Advisories",
+    feedUrl: "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+  },
+  bleepingcomputer: {
+    label: "BleepingComputer",
+    feedUrl: "https://www.bleepingcomputer.com/feed/",
+  },
+  krebs_on_security: {
+    label: "Krebs on Security",
+    feedUrl: "https://krebsonsecurity.com/feed/",
+  },
+  the_hacker_news: {
+    label: "The Hacker News",
+    feedUrl: "https://feeds.feedburner.com/TheHackersNews",
+  },
+  dark_reading: {
+    label: "Dark Reading",
+    feedUrl: "https://www.darkreading.com/rss.xml",
+  },
+  securityweek: {
+    label: "SecurityWeek",
+    feedUrl: "https://www.securityweek.com/feed/",
+  },
+  microsoft_security_blog: {
+    label: "Microsoft Security Blog",
+    feedUrl: "https://www.microsoft.com/en-us/security/blog/feed/",
+  },
 };
 
 function decodeEntities(text: string): string {
