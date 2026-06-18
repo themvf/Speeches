@@ -951,6 +951,8 @@ export function buildDocumentListItems(
 }
 
 export function selectNewsFeedDocuments(items: DocumentListItem[]): DocumentListItem[] {
+  const feedDocumentLimit = 250;
+  const pinnedSourceKinds = new Set(["bloomberg_apify_article"]);
   const dated = items
     .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
     .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
@@ -960,10 +962,10 @@ export function selectNewsFeedDocuments(items: DocumentListItem[]): DocumentList
     if (item.document_id) selected.set(item.document_id, item);
   };
 
-  dated.slice(0, 250).forEach(add);
+  dated.slice(0, feedDocumentLimit).forEach(add);
 
   for (const item of dated) {
-    if (item.source_kind === "sec_speech" || item.source_kind === "bloomberg_apify_article") {
+    if (pinnedSourceKinds.has(item.source_kind)) {
       add(item);
     }
   }

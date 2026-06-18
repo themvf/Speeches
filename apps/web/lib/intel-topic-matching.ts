@@ -10,6 +10,7 @@ export interface TopicRuleView {
   topic_key: string;
   label: string;
   keywords: string[];
+  keywordMatchers: TopicKeywordMatcher[];
   sort_order: number;
 }
 
@@ -21,6 +22,12 @@ export interface TopicArticleInput {
 export interface TopicMatch {
   rule: TopicRuleView;
   score: number;
+}
+
+interface TopicKeywordMatcher {
+  keyword: string;
+  pattern: RegExp | null;
+  specificity: number;
 }
 
 export function decodeEntities(text: string): string {
@@ -45,12 +52,16 @@ export function parseKeywords(value: string): string[] {
 export function normalizeTopicRules(rules: TopicRuleInput[]): TopicRuleView[] {
   return rules
     .filter((rule) => rule && rule.active)
-    .map((rule) => ({
-      topic_key: String(rule.topic_key || "").trim(),
-      label: String(rule.label || "").trim() || String(rule.topic_key || "").trim(),
-      keywords: parseKeywords(String(rule.keywords || "")),
-      sort_order: Number(rule.sort_order || 100),
-    }))
+    .map((rule) => {
+      const keywords = parseKeywords(String(rule.keywords || ""));
+      return {
+        topic_key: String(rule.topic_key || "").trim(),
+        label: String(rule.label || "").trim() || String(rule.topic_key || "").trim(),
+        keywords,
+        keywordMatchers: keywords.map(compileKeywordMatcher),
+        sort_order: Number(rule.sort_order || 100),
+      };
+    })
     .filter((rule) => rule.topic_key && rule.label);
 }
 
@@ -74,9 +85,25 @@ function keywordPattern(keyword: string): RegExp | null {
   return new RegExp(`(^|[^a-z0-9])${source}(?=$|[^a-z0-9])`, "i");
 }
 
-function keywordMatches(text: string, keyword: string): boolean {
-  const pattern = keywordPattern(keyword);
-  return pattern ? pattern.test(text) : false;
+function compileKeywordMatcher(keyword: string): TopicKeywordMatcher {
+  return {
+    keyword,
+    pattern: keywordPattern(keyword),
+    specificity: keywordSpecificity(keyword),
+  };
+}
+
+function keywordMatcherScore(matcher: TopicKeywordMatcher, title: string, description: string): number {
+  if (!matcher.pattern) {
+    return 0;
+  }
+  if (matcher.pattern.test(title)) {
+    return 100 + matcher.specificity;
+  }
+  if (matcher.pattern.test(description)) {
+    return 50 + matcher.specificity;
+  }
+  return 0;
 }
 
 function keywordSpecificity(keyword: string): number {
@@ -87,23 +114,13 @@ function keywordSpecificity(keyword: string): number {
   return Math.min(28, compact.length + Math.max(0, wordCount - 1) * 6 + acronymBoost);
 }
 
-function keywordScore(keyword: string, title: string, description: string): number {
-  const specificity = keywordSpecificity(keyword);
-  if (keywordMatches(title, keyword)) {
-    return 100 + specificity;
-  }
-  if (keywordMatches(description, keyword)) {
-    return 50 + specificity;
-  }
-  return 0;
-}
-
 export function getTopicMatches(article: TopicArticleInput, rules: TopicRuleView[]): TopicMatch[] {
   const title = normalizeMatchText(article.title);
   const description = normalizeMatchText(article.description ?? "");
   return rules
     .map((rule) => {
-      const score = rule.keywords.reduce((best, keyword) => Math.max(best, keywordScore(keyword, title, description)), 0);
+      const matchers = rule.keywordMatchers || rule.keywords.map(compileKeywordMatcher);
+      const score = matchers.reduce((best, matcher) => Math.max(best, keywordMatcherScore(matcher, title, description)), 0);
       return { rule, score };
     })
     .filter((match) => match.score > 0)
