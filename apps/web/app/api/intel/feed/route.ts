@@ -6,6 +6,7 @@ import {
   loadEnrichmentState,
   selectNewsFeedDocuments,
 } from "@/lib/server/data-store";
+import { compactFeedArticles } from "@/lib/server/feed-payload";
 import {
   ensureSchema,
   getFeeds,
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const feedKey = searchParams.get("feedKey") ?? undefined;
   const sinceParam = searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : undefined;
+  const refresh = searchParams.get("refresh") === "1";
 
   try {
     await ensureSchema();
@@ -43,7 +45,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return t > max ? t : max;
     }, 0);
     const ageMs = latestFetchedAt > 0 ? Date.now() - latestFetchedAt : Number.POSITIVE_INFINITY;
-    const needsRefresh = !feedKey && !since && ageMs > 8 * 60_000;
+    const needsRefresh = refresh && !feedKey && !since && ageMs > 8 * 60_000;
 
     if (needsRefresh) {
       const activeFeeds = await getFeeds(true);
@@ -77,7 +79,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       {
         ok: true,
-        data: { articles, topicRules, documents, generatedAt: new Date().toISOString() },
+        data: { articles: compactFeedArticles(articles), topicRules, documents, generatedAt: new Date().toISOString() },
       },
       {
         headers: {

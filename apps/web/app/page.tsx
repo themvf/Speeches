@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { NewsFeedWorkspace } from "@/components/news-feed-workspace";
 import { buildDocumentListItems, loadCorpusDocuments, loadEnrichmentState, selectNewsFeedDocuments } from "@/lib/server/data-store";
+import { compactFeedArticles } from "@/lib/server/feed-payload";
 import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 import type { DocumentListItem } from "@/lib/server/types";
@@ -23,7 +24,7 @@ export default async function HomePage() {
       loadCorpusDocuments(),
       loadEnrichmentState(),
     ]);
-    initialArticles = articles;
+    initialArticles = compactFeedArticles(articles);
     initialTopicRules = topicRules;
     initialDocuments = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
   } catch {
