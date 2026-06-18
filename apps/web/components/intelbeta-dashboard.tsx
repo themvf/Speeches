@@ -14,7 +14,7 @@ import {
 
 type TopicFilter = string | "ALL";
 type SidebarTab = "topics" | "sources";
-type SourceFilter = "ALL" | "SEC" | "FINRA" | "DOJ" | "WSJ";
+type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ";
 
 type FeedMeta = {
   label: string;
@@ -106,6 +106,16 @@ function toFeedItemAnalysis(value: unknown): FeedItemAnalysis | undefined {
 }
 
 const FEED_META: Record<string, FeedMeta> = {
+  sec_press_releases: { label: "SEC Press Releases", code: "SEC", color: "#7cc4ff" },
+  sec_speeches_statements: { label: "SEC Speeches and Statements", code: "SEC", color: "#7cc4ff" },
+  sec_litigation_releases: { label: "SEC Litigation Releases", code: "SEC", color: "#ff8aa0" },
+  sec_administrative_proceedings: { label: "SEC Administrative Proceedings", code: "SEC", color: "#ff8aa0" },
+  sec_trading_suspensions: { label: "SEC Trading Suspensions", code: "SEC", color: "#ff8aa0" },
+  finra_notices: { label: "FINRA Regulatory Notices", code: "FINRA", color: "#77d7a8" },
+  finra_rule_filings: { label: "FINRA Rule Filings", code: "FINRA", color: "#77d7a8" },
+  finra_dispute_resolution_rule_filings: { label: "FINRA Dispute Resolution Rule Filings", code: "FINRA", color: "#77d7a8" },
+  finra_news: { label: "FINRA News Releases and Speeches", code: "FINRA", color: "#77d7a8" },
+  finra_upc_advisories: { label: "FINRA UPC Advisories", code: "FINRA", color: "#77d7a8" },
   wsj_us_business: { label: "WSJ Business", code: "WSJB", color: "#63a8ff" },
   wsj_markets: { label: "WSJ Markets", code: "WSJM", color: "#ffc857" },
   wsj_opinion: { label: "WSJ Opinion", code: "WSJO", color: "#b88fff" },
@@ -127,7 +137,8 @@ const FEED_META: Record<string, FeedMeta> = {
 };
 
 const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
-  { key: "SEC", label: "SEC" },
+  { key: "SEC_SPEECHES", label: "SEC Speeches" },
+  { key: "SEC_ENFORCEMENT", label: "SEC Enforcement" },
   { key: "FINRA", label: "FINRA" },
   { key: "DOJ", label: "DOJ" },
   { key: "WSJ", label: "WSJ" },
@@ -174,27 +185,40 @@ function articleSourceText(article: FeedItem): string {
 
 function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boolean {
   if (sourceFilter === "ALL") return true;
+  const feedKey = String(article.feed_key || "").toLowerCase();
+  const sourceKind = String(article.source_kind || "").toLowerCase();
+  const url = String(article.url || "").toLowerCase();
   const text = articleSourceText(article);
-  if (sourceFilter === "SEC") {
+  if (sourceFilter === "SEC_SPEECHES") {
     return (
-      text.includes("sec_") ||
-      text.includes("document_sec") ||
-      text.includes("securities and exchange commission") ||
-      /\bsec\b/.test(text)
+      feedKey === "sec_speeches_statements" ||
+      sourceKind === "sec_speech" ||
+      url.includes("/newsroom/speeches-statements/") ||
+      url.includes("/news/speeches-statements/")
+    );
+  }
+  if (sourceFilter === "SEC_ENFORCEMENT") {
+    return (
+      feedKey === "sec_litigation_releases" ||
+      feedKey === "sec_administrative_proceedings" ||
+      feedKey === "sec_trading_suspensions" ||
+      sourceKind === "sec_enforcement_litigation" ||
+      url.includes("/enforcement-litigation/")
     );
   }
   if (sourceFilter === "FINRA") {
-    return text.includes("finra") || text.includes("financial industry regulatory authority");
+    return feedKey.startsWith("finra_") || sourceKind.startsWith("finra_") || text.includes("finra") || text.includes("financial industry regulatory authority");
   }
   if (sourceFilter === "DOJ") {
     return (
+      sourceKind.startsWith("doj_") ||
       text.includes("doj") ||
       text.includes("justice.gov") ||
       text.includes("department of justice") ||
       text.includes("justice department")
     );
   }
-  return text.includes("wsj_") || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
+  return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
 }
 
 function savedArticleId(article: FeedItem): string {
