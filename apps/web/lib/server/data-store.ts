@@ -324,7 +324,18 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     extraction_warnings: Array.isArray(metadataRaw.extraction_warnings)
       ? metadataRaw.extraction_warnings.map((item) => normalizeString(item)).filter(Boolean)
       : [],
-    summary: normalizeString(metadataRaw.summary)
+    summary: normalizeString(metadataRaw.summary),
+    source_name: normalizeString(metadataRaw.source_name),
+    authors: Array.isArray(metadataRaw.authors)
+      ? metadataRaw.authors.map((item) => normalizeString(item)).filter(Boolean)
+      : splitCsv(normalizeString(metadataRaw.authors)),
+    keywords: Array.isArray(metadataRaw.keywords)
+      ? metadataRaw.keywords.map((item) => normalizeString(item)).filter(Boolean)
+      : splitCsv(normalizeString(metadataRaw.keywords)),
+    apify_actor_id: normalizeString(metadataRaw.apify_actor_id),
+    apify_raw_keys: Array.isArray(metadataRaw.apify_raw_keys)
+      ? metadataRaw.apify_raw_keys.map((item) => normalizeString(item)).filter(Boolean)
+      : []
   };
 
   return {

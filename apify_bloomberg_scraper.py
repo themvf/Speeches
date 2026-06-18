@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -19,9 +20,59 @@ def _clean(value: Any) -> str:
     return " ".join(str(value or "").strip().split())
 
 
-def _first_text(item: Dict[str, Any], keys: List[str]) -> str:
+def _maybe_json(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text or text[0] not in "[{":
+        return value
+    try:
+        return json.loads(text)
+    except Exception:
+        return value
+
+
+def _walk_values(value: Any) -> List[Any]:
+    value = _maybe_json(value)
+    out = [value]
+    if isinstance(value, dict):
+        for child in value.values():
+            out.extend(_walk_values(child))
+    elif isinstance(value, list):
+        for child in value:
+            out.extend(_walk_values(child))
+    return out
+
+
+def _find_key_value(value: Any, keys: List[str]) -> Any:
+    normalized_keys = {key.lower().replace("_", "").replace("-", "") for key in keys}
+    value = _maybe_json(value)
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_norm = str(key).lower().replace("_", "").replace("-", "")
+            if key_norm in normalized_keys:
+                return _maybe_json(child)
+        for child in value.values():
+            found = _find_key_value(child, keys)
+            if found not in (None, "", [], {}):
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_key_value(child, keys)
+            if found not in (None, "", [], {}):
+                return found
+    return None
+
+
+def _first_text(item: Dict[str, Any], keys: List[str], *, deep: bool = True) -> str:
     for key in keys:
         value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return _clean(value)
+        if isinstance(value, (int, float)):
+            return str(value)
+    if deep:
+        value = _find_key_value(item, keys)
         if isinstance(value, str) and value.strip():
             return _clean(value)
         if isinstance(value, (int, float)):
@@ -29,32 +80,40 @@ def _first_text(item: Dict[str, Any], keys: List[str]) -> str:
     return ""
 
 
-def _first_list_text(item: Dict[str, Any], keys: List[str]) -> List[str]:
+def _coerce_list_text(value: Any) -> List[str]:
     out: List[str] = []
     seen = set()
-    for key in keys:
-        value = item.get(key)
-        raw_items: List[Any]
-        if isinstance(value, list):
-            raw_items = value
-        elif isinstance(value, str) and value.strip():
-            raw_items = [part.strip() for part in value.replace(";", ",").split(",")]
+    if isinstance(value, list):
+        raw_items = value
+    elif isinstance(value, dict):
+        raw_items = list(value.values())
+    elif isinstance(value, str) and value.strip():
+        raw_items = [part.strip() for part in re.split(r"[,;|]+", value)]
+    else:
+        raw_items = []
+    for raw in raw_items:
+        if isinstance(raw, dict):
+            candidate = _clean(raw.get("name") or raw.get("title") or raw.get("text") or raw.get("value") or raw.get("label"))
         else:
-            raw_items = []
-        for raw in raw_items:
-            if isinstance(raw, dict):
-                candidate = _clean(raw.get("name") or raw.get("title") or raw.get("text") or raw.get("value"))
-            else:
-                candidate = _clean(raw)
-            key_norm = candidate.lower()
-            if candidate and key_norm not in seen:
-                seen.add(key_norm)
-                out.append(candidate)
+            candidate = _clean(raw)
+        key_norm = candidate.lower()
+        if candidate and key_norm not in seen:
+            seen.add(key_norm)
+            out.append(candidate)
     return out
 
 
+def _first_list_text(item: Dict[str, Any], keys: List[str]) -> List[str]:
+    for key in keys:
+        values = _coerce_list_text(item.get(key))
+        if values:
+            return values
+    value = _find_key_value(item, keys)
+    return _coerce_list_text(value)
+
+
 def _request_url(item: Dict[str, Any]) -> str:
-    for key in ["url", "canonicalUrl", "articleUrl", "pageUrl", "link", "sourceUrl"]:
+    for key in ["url", "canonicalUrl", "articleUrl", "pageUrl", "link", "sourceUrl", "article_url"]:
         value = _first_text(item, [key])
         if value:
             return value
@@ -80,16 +139,26 @@ def _body_text(item: Dict[str, Any]) -> str:
     parts: List[str] = []
     for key in [
         "articleText",
+        "article_text",
         "fullText",
+        "full_text",
         "text",
         "content",
         "body",
         "markdown",
         "articleBody",
+        "article_body",
+        "bodyText",
+        "body_text",
+        "paragraphs",
         "description",
         "summary",
+        "contentText",
+        "content_text",
     ]:
         value = item.get(key)
+        if value in (None, "", [], {}):
+            value = _find_key_value(item, [key])
         if isinstance(value, str) and value.strip():
             cleaned = value.strip()
             if cleaned not in parts:
@@ -99,6 +168,26 @@ def _body_text(item: Dict[str, Any]) -> str:
             if text and text not in parts:
                 parts.append(text)
     return "\n\n".join(parts).strip()
+
+
+def _sanitize_debug(value: Any, depth: int = 0) -> Any:
+    value = _maybe_json(value)
+    if depth > 3:
+        return "[truncated]"
+    if isinstance(value, dict):
+        out: Dict[str, Any] = {}
+        for key, child in list(value.items())[:40]:
+            key_text = str(key)
+            if re.search(r"token|secret|password|proxy|cookie|auth|credential", key_text, re.I):
+                out[key_text] = "[redacted]"
+            else:
+                out[key_text] = _sanitize_debug(child, depth + 1)
+        return out
+    if isinstance(value, list):
+        return [_sanitize_debug(child, depth + 1) for child in value[:5]]
+    if isinstance(value, str):
+        return value[:500] + ("..." if len(value) > 500 else "")
+    return value
 
 
 class ApifyBloombergNewsScraper:
@@ -220,6 +309,7 @@ class ApifyBloombergNewsScraper:
         raw_items = self._fetch_dataset_items(dataset_id)
         docs = [self._normalize_item(item, idx) for idx, item in enumerate(raw_items, 1)]
         docs = [doc for doc in docs if doc.get("url") or doc.get("title")]
+        sample = raw_items[0] if raw_items else {}
         self.last_discovery_debug = {
             "actor_id": self.actor_id,
             "run_id": str(run.get("id", "")),
@@ -228,11 +318,14 @@ class ApifyBloombergNewsScraper:
             "normalized_count": len(docs),
             "used_custom_input": bool(os.getenv("APIFY_BLOOMBERG_INPUT_JSON", "").strip()),
             "used_custom_proxy": bool(self.proxy_url),
+            "sample_item_keys": sorted(str(key) for key in sample.keys()) if isinstance(sample, dict) else [],
+            "sample_item_preview": _sanitize_debug(sample) if isinstance(sample, dict) else {},
+            "sample_normalized_preview": _sanitize_debug(docs[0]) if docs else {},
         }
         return docs
 
     def _normalize_item(self, item: Dict[str, Any], idx: int) -> Dict[str, Any]:
-        title = _first_text(item, ["title", "headline", "name", "articleTitle"])
+        title = _first_text(item, ["title", "headline", "name", "articleTitle", "article_title"])
         url = _request_url(item)
         text = _body_text(item)
         date = _first_text(
@@ -241,15 +334,19 @@ class ApifyBloombergNewsScraper:
                 "publishedAt",
                 "published_at",
                 "publishedDate",
+                "published_date",
                 "datePublished",
+                "date_published",
                 "date",
+                "publishDate",
+                "publish_date",
                 "time",
                 "timestamp",
             ],
         )
-        authors = _first_list_text(item, ["authors", "author", "byline"])
-        keywords = _first_list_text(item, ["keywords", "tags", "topics", "categories"])
-        summary = _first_text(item, ["summary", "description", "dek", "subheadline"])
+        authors = _first_list_text(item, ["authors", "author", "byline", "bylines"])
+        keywords = _first_list_text(item, ["keywords", "tags", "topics", "categories", "section"])
+        summary = _first_text(item, ["summary", "description", "dek", "subheadline", "subtitle"])
         return {
             "url": url,
             "title": title or f"Bloomberg article {idx}",
