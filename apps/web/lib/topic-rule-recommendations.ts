@@ -75,6 +75,34 @@ export const TOPIC_RULE_RECOMMENDATIONS: readonly TopicRuleRecommendation[] = [
     ]
   },
   {
+    topicKey: "PRE_IPO",
+    label: "Pre-IPO & Private Secondary Markets",
+    sortOrder: 25,
+    focus: "Pre-IPO share transactions, private-company secondary markets, tender offers, employee liquidity, and restricted stock.",
+    suggestedKeywords: [
+      "pre-IPO shares",
+      "pre IPO shares",
+      "pre-IPO marketplace",
+      "private shares",
+      "private company shares",
+      "private secondary",
+      "secondary market",
+      "private secondary market",
+      "private company tender offer",
+      "employee liquidity",
+      "late-stage private company",
+      "unicorn secondary",
+      "restricted stock",
+      "tender offer",
+      "secondary sale"
+    ],
+    broadTerms: ["restricted stock", "tender offer"],
+    notes: [
+      "This narrows the old Pre-IPO topic so ordinary IPO and private-placement coverage stays in Capital Formation.",
+      "The best signals are private-secondary and employee-liquidity phrases rather than IPO by itself."
+    ]
+  },
+  {
     topicKey: "AML",
     label: "AML",
     sortOrder: 30,
@@ -173,6 +201,36 @@ export const TOPIC_RULE_RECOMMENDATIONS: readonly TopicRuleRecommendation[] = [
     notes: [
       "Keep AI as an exact acronym, but do not rely on generic technology alone.",
       "Cyber and infrastructure terms catch regulated tech stories that are not strictly AI."
+    ]
+  },
+  {
+    topicKey: "TECH",
+    label: "Fintech & RegTech Infrastructure",
+    sortOrder: 55,
+    focus: "Financial technology, regulatory technology, compliance automation, broker platforms, and regulated infrastructure.",
+    suggestedKeywords: [
+      "fintech",
+      "regtech",
+      "compliance technology",
+      "surveillance technology",
+      "trade surveillance",
+      "regulatory reporting technology",
+      "cloud migration",
+      "API integration",
+      "digital onboarding",
+      "robo-adviser",
+      "broker platform",
+      "wealthtech",
+      "compliance automation",
+      "supervisory technology",
+      "technology infrastructure",
+      "financial technology",
+      "regulatory technology"
+    ],
+    broadTerms: ["fintech", "regtech"],
+    notes: [
+      "This repurposes the old generic Tech bucket into a financial and regulatory infrastructure topic.",
+      "Avoid standalone tech, software, hardware, platform, digital, cloud, and API unless paired with financial or regulatory context."
     ]
   },
   {
