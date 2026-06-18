@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRssFeed } from "@/lib/server/rss-fetcher";
 import {
+  buildDocumentListItems,
+  loadCorpusDocuments,
+  loadEnrichmentState,
+  selectNewsFeedDocuments,
+} from "@/lib/server/data-store";
+import {
   ensureSchema,
   getFeeds,
   getRecentArticles,
@@ -62,10 +68,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       articles = await getRecentArticles({ limit, feedKey, since });
     }
 
+    const [corpusDocs, enrichment] = await Promise.all([
+      loadCorpusDocuments(),
+      loadEnrichmentState(),
+    ]);
+    const documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
+
     return NextResponse.json(
       {
         ok: true,
-        data: { articles, topicRules, generatedAt: new Date().toISOString() },
+        data: { articles, topicRules, documents, generatedAt: new Date().toISOString() },
       },
       {
         headers: {

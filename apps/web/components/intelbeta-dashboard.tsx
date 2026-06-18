@@ -444,6 +444,18 @@ function articleListSignature(articles: FeedItem[]): string {
   return `${articles.length}:${first?.id ?? ""}:${firstDate}:${last?.id ?? ""}:${lastDate}`;
 }
 
+function documentListSignature(documents: DocumentListItem[]): string {
+  const first = documents[0];
+  const last = documents[documents.length - 1];
+  return [
+    documents.length,
+    first?.document_id ?? "",
+    first?.published_at || first?.date || "",
+    last?.document_id ?? "",
+    last?.published_at || last?.date || "",
+  ].join(":");
+}
+
 function analysisMapFromFeedItems(items: FeedItem[]): Record<string, FeedItemAnalysis> {
   const out: Record<string, FeedItemAnalysis> = {};
   for (const item of items) {
@@ -1190,7 +1202,8 @@ export function IntelBetaDashboard({
   initialDocuments?: DocumentListItem[];
 }) {
   const [articles, setArticles] = useState<StoredRssArticle[]>(initialArticles);
-  const documentFeedItems = useMemo(() => initialDocuments.map(documentToFeedItem), [initialDocuments]);
+  const [documents, setDocuments] = useState<DocumentListItem[]>(initialDocuments);
+  const documentFeedItems = useMemo(() => documents.map(documentToFeedItem), [documents]);
   const feedItems = useMemo<FeedItem[]>(
     () => [...articles, ...documentFeedItems]
       .sort((a, b) => feedItemDateMs(b) - feedItemDateMs(a)),
@@ -1206,6 +1219,7 @@ export function IntelBetaDashboard({
   const [newCount, setNewCount] = useState(0);
   const newestFetchedAtRef = useRef<string>(initialArticles[0] ? feedItemDate(initialArticles[0]) : "");
   const articleSignatureRef = useRef(articleListSignature(initialArticles));
+  const documentSignatureRef = useRef(documentListSignature(initialDocuments));
   const topicRulesSignatureRef = useRef(topicRulesSignature(initialTopicRules));
   const savedItems = useSavedItems();
   const [expandedAnalysis, setExpandedAnalysis] = useState<Record<string, boolean>>({});
@@ -1287,13 +1301,19 @@ export function IntelBetaDashboard({
         else {
           const json = (await res.json()) as {
             ok: boolean;
-            data: { articles: StoredRssArticle[]; topicRules: StoredRssTopicRule[]; generatedAt: string };
+            data: {
+              articles: StoredRssArticle[];
+              topicRules: StoredRssTopicRule[];
+              documents?: DocumentListItem[];
+              generatedAt: string;
+            };
           };
           if (!json.ok) { errStreak++; }
           else {
             errStreak = 0;
             const fresh = json.data.articles;
             const freshRules = json.data.topicRules;
+            const freshDocuments = json.data.documents ?? [];
             const newest = fresh[0] ? feedItemDate(fresh[0]) : "";
             let changed = false;
             if (newest && newest > newestFetchedAtRef.current) {
@@ -1309,6 +1329,12 @@ export function IntelBetaDashboard({
               articleSignatureRef.current = nextArticleSignature;
               changed = true;
               setArticles(fresh);
+            }
+            const nextDocumentSignature = documentListSignature(freshDocuments);
+            if (json.data.documents && nextDocumentSignature !== documentSignatureRef.current) {
+              documentSignatureRef.current = nextDocumentSignature;
+              changed = true;
+              setDocuments(freshDocuments);
             }
             const nextTopicRulesSignature = topicRulesSignature(freshRules);
             if (nextTopicRulesSignature !== topicRulesSignatureRef.current) {

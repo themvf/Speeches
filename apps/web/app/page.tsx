@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { NewsFeedWorkspace } from "@/components/news-feed-workspace";
-import { buildDocumentListItems, loadCorpusDocuments, loadEnrichmentState, parseComparableDate } from "@/lib/server/data-store";
+import { buildDocumentListItems, loadCorpusDocuments, loadEnrichmentState, selectNewsFeedDocuments } from "@/lib/server/data-store";
 import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 import type { DocumentListItem } from "@/lib/server/types";
@@ -11,28 +11,6 @@ export const metadata: Metadata = {
   title: "News Feed | Policy Research Hub",
   description: "Live regulatory news stream filtered by topic.",
 };
-
-function selectFeedDocuments(items: DocumentListItem[]): DocumentListItem[] {
-  const dated = items
-    .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
-    .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
-
-  const selected = new Map<string, DocumentListItem>();
-  const add = (item: DocumentListItem) => {
-    if (item.document_id) selected.set(item.document_id, item);
-  };
-
-  dated.slice(0, 250).forEach(add);
-
-  for (const item of dated) {
-    if (item.source_kind === "sec_speech" || item.source_kind === "bloomberg_apify_article") {
-      add(item);
-    }
-  }
-
-  return [...selected.values()]
-    .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
-}
 
 export default async function HomePage() {
   let initialArticles: StoredRssArticle[] = [];
@@ -47,7 +25,7 @@ export default async function HomePage() {
     ]);
     initialArticles = articles;
     initialTopicRules = topicRules;
-    initialDocuments = selectFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
+    initialDocuments = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
   } catch {
     // DB not yet configured or schema not created; start with empty feed.
   }
