@@ -18,7 +18,7 @@ DEFAULT_ACTOR_ID = "xtracto/bloomberg-news-article-scraper"
 
 def _fix_mojibake(value: str) -> str:
     text = str(value or "")
-    if not any(marker in text for marker in ("Ã", "Â", "â€", "â")):
+    if not any(marker in text for marker in ("\u00c3", "\u00c2", "\u00e2")):
         return text
     try:
         repaired = text.encode("latin1").decode("utf-8")
