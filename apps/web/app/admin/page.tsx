@@ -39,6 +39,22 @@ type FieldDef =
   | { name: string; label: string; type: "select"; default?: string; options: { value: string; label: string }[] }
   | { name: string; label: string; type: "boolean"; default?: "true" | "false" };
 
+type AdminJobState = {
+  job_id: string;
+  provider?: string;
+  workflow?: string;
+  status: "queued" | "running" | "success" | "failed" | "unknown";
+  status_url?: string;
+  github_run_id?: number;
+  html_url?: string;
+  created_at?: string;
+  started_at?: string;
+  updated_at?: string;
+  finished_at?: string;
+  conclusion?: string;
+  artifacts?: string[];
+};
+
 /* ─── Workflow definitions ─────────────────────────────────────────── */
 const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
   {
@@ -923,6 +939,174 @@ function WorkflowPanel({
 }
 
 /* ─── Enrichment Pipeline types ────────────────────────────────────── */
+function BloombergOnDemandSection() {
+  const [limit, setLimit] = useState("10");
+  const [maxPages, setMaxPages] = useState("10");
+  const [selection, setSelection] = useState<"new_or_updated" | "all">("new_or_updated");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [running, setRunning] = useState(false);
+  const [status, setStatus] = useState<"idle" | "ok" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [job, setJob] = useState<AdminJobState | null>(null);
+
+  async function runBloombergLatest() {
+    setRunning(true);
+    setStatus("idle");
+    setError(null);
+    setJob(null);
+
+    try {
+      const res = await fetch("/api/jobs/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connector: "bloomberg_latest_apify",
+          selection,
+          limit: Math.max(1, Number.parseInt(limit || "10", 10) || 10),
+          max_pages: Math.max(1, Number.parseInt(maxPages || "10", 10) || 10),
+          base_url: baseUrl.trim(),
+          include_pdfs: "true",
+          include_rss: "true",
+        }),
+      });
+      const payload = await res.json().catch(() => null) as { ok?: boolean; data?: AdminJobState; error?: string } | null;
+      if (!res.ok || !payload?.ok || !payload.data?.job_id) {
+        throw new Error(payload?.error || `HTTP ${res.status}`);
+      }
+      setJob(payload.data);
+      setStatus("ok");
+    } catch (e) {
+      setStatus("error");
+      setError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!job?.job_id || ["success", "failed"].includes(job.status)) return;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const res = await fetch(`/api/jobs/${encodeURIComponent(job.job_id)}`, { cache: "no-store" });
+        const payload = await res.json().catch(() => null) as { ok?: boolean; data?: AdminJobState } | null;
+        if (!cancelled && res.ok && payload?.ok && payload.data) {
+          setJob(payload.data);
+        }
+      } catch {
+        // Keep the last known status visible.
+      }
+    }, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [job?.job_id, job?.status]);
+
+  const latestStatus = job?.status || "idle";
+  const isActive = latestStatus === "queued" || latestStatus === "running";
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
+        Bloomberg Apify Pull
+      </h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">
+        Discover recent Bloomberg URLs through Apify, extract full article text, and save them into the corpus.
+      </p>
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[color:var(--ink-faint)]">Selection</label>
+            <select
+              value={selection}
+              onChange={(e) => setSelection(e.target.value === "all" ? "all" : "new_or_updated")}
+              className="form-control px-2 py-1.5 text-sm"
+            >
+              <option value="new_or_updated">New or Updated</option>
+              <option value="all">All (re-extract)</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[color:var(--ink-faint)]">Article limit</label>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              className="form-control px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[color:var(--ink-faint)]">Discovery limit</label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={maxPages}
+              onChange={(e) => setMaxPages(e.target.value)}
+              className="form-control px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[color:var(--ink-faint)]">Section URL override</label>
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="Optional Bloomberg section URL"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-[color:var(--line)] pt-4">
+          <button
+            type="button"
+            onClick={runBloombergLatest}
+            disabled={running || isActive}
+            className="btn-solid rounded-xl px-5 py-2 text-sm font-semibold disabled:opacity-40"
+          >
+            {running ? "Dispatching..." : isActive ? "Running..." : "Pull Latest Bloomberg"}
+          </button>
+          {status === "error" && (
+            <span className="text-sm text-[color:var(--danger)]">
+              Failed{error ? `: ${error}` : ""}
+            </span>
+          )}
+          {job ? (
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span
+                className={
+                  job.status === "success"
+                    ? "text-[color:var(--ok)]"
+                    : job.status === "failed"
+                      ? "text-[color:var(--danger)]"
+                      : "text-[color:var(--accent)]"
+                }
+              >
+                {job.status}
+              </span>
+              {job.html_url ? (
+                <a href={job.html_url} target="_blank" rel="noopener noreferrer" className="link-inline text-xs">
+                  Open GitHub run
+                </a>
+              ) : null}
+              {job.artifacts?.length ? (
+                <span className="text-xs text-[color:var(--ink-faint)]">Artifact: {job.artifacts.join(", ")}</span>
+              ) : null}
+            </div>
+          ) : null}
+          <span className="ml-auto">
+            <JobStatusBadge workflowFile="policy-extraction.yml" />
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 type OrgEnrichmentStatus = { org_key: string; org_label: string; total: number; enriched: number; failed: number; pending: number };
 type FailedDoc = { doc_id: string; title: string; org_key: string; org_label: string; error: string; updated_at: string };
 type EnrichmentStatusData = {
@@ -1962,6 +2146,8 @@ export default function AdminPage() {
 
       {/* ── Workflows ──────────────────────────────────────────────── */}
       <SectionDivider label="GitHub Actions" />
+
+      <BloombergOnDemandSection />
 
       <WorkflowPanel
         title="Policy Extraction"
