@@ -147,6 +147,10 @@ function getFeedMeta(feedKey: string): FeedMeta {
   };
 }
 
+function feedSourceLabel(article: FeedItem, source: FeedMeta): string {
+  return decodeEntities(article.organization || source.label || article.feed_key || "Unknown");
+}
+
 function savedArticleId(article: FeedItem): string {
   if (article.item_type === "document" && article.document_id) {
     return `document:${article.document_id}`;
@@ -537,6 +541,7 @@ function FeedRow({
   compact?: boolean;
 }) {
   const source = getFeedMeta(article.feed_key);
+  const sourceLabel = feedSourceLabel(article, source);
   const visibleTopics = matchedTopics.slice(0, 3);
   const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
   const analysisButtonStyle = {
@@ -569,7 +574,7 @@ function FeedRow({
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
             <span style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</span>
-            <span style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</span>
+            <span style={{ color: source.color, fontSize: 12, fontWeight: 700 }}>{sourceLabel}</span>
             <ToneChip label={article.tone_label} />
           </div>
           <div onClick={(e) => e.stopPropagation()}>
@@ -626,7 +631,7 @@ function FeedRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px 24px",
+        gridTemplateColumns: "80px 150px 66px minmax(0, 1fr) 220px 24px",
         gap: 14,
         alignItems: "start",
         padding: "10px 0",
@@ -637,7 +642,9 @@ function FeedRow({
       onClick={onSelect}
     >
       <div style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</div>
-      <div style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</div>
+      <div style={{ color: source.color, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sourceLabel}>
+        {sourceLabel}
+      </div>
       <ToneChip label={article.tone_label} />
       <div style={{ minWidth: 0 }}>
         <a
@@ -705,6 +712,7 @@ function FeaturedCard({
   compact?: boolean;
 }) {
   const source = getFeedMeta(article.feed_key);
+  const sourceLabel = feedSourceLabel(article, source);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
@@ -735,7 +743,7 @@ function FeaturedCard({
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
             <span style={{ color: "#8fa7c8", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</span>
-            <span style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</span>
+            <span style={{ color: source.color, fontSize: 12, fontWeight: 700 }}>{sourceLabel}</span>
             <ToneChip label={tone} />
           </div>
           <BookmarkButton saved={saved} onToggle={onToggleSave} size={16} />
@@ -772,7 +780,7 @@ function FeaturedCard({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", color: "#8da0bc", fontSize: 11 }}>
           <span>{decodeEntities(article.author || (article.item_type === "document" ? "Document" : "News Desk"))}</span>
           <span aria-hidden="true">/</span>
-          <span>{article.organization || source.label}</span>
+          <span>{sourceLabel}</span>
           <span aria-hidden="true">/</span>
           <span style={{ color: TONE_STYLE[tone].color, fontWeight: 700 }}>{TONE_STYLE[tone].label}</span>
         </div>
@@ -803,13 +811,15 @@ function FeaturedCard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 240px 24px",
+          gridTemplateColumns: "80px 150px 66px minmax(0, 1fr) 240px 24px",
           gap: 14,
           alignItems: "start",
         }}
       >
         <div style={{ color: "#8fa7c8", fontSize: 12 }}>{formatRelativeTime(feedItemDate(article))}</div>
-        <div style={{ color: source.color, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>{source.code}</div>
+        <div style={{ color: source.color, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sourceLabel}>
+          {sourceLabel}
+        </div>
         <ToneChip label={tone} />
         <div style={{ minWidth: 0 }}>
           <a
@@ -866,7 +876,7 @@ function FeaturedCard({
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Author</div>
           <div style={{ color: "#d7e1ef" }}>{decodeEntities(article.author || (article.item_type === "document" ? "Document" : "News Desk"))}</div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Source</div>
-          <div style={{ color: "#d7e1ef" }}>{article.organization || source.label}</div>
+          <div style={{ color: "#d7e1ef" }}>{sourceLabel}</div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Impact</div>
           <div style={{ color: TONE_STYLE[tone].color, fontWeight: 700 }}>{TONE_STYLE[tone].label.toUpperCase()}</div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Topics</div>
@@ -918,6 +928,7 @@ function FeedAnalysisPanel({
   compact?: boolean;
 }) {
   const source = getFeedMeta(article.feed_key);
+  const sourceLabel = feedSourceLabel(article, source);
   const primaryAnalysis = pickPrimaryAnalysis(detail);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
   const decodedDescription = decodeEntities(article.description || "");
@@ -941,7 +952,7 @@ function FeedAnalysisPanel({
       <div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
-          <span className="tone-chip">Source: {source.label}</span>
+          <span className="tone-chip">Source: {sourceLabel}</span>
           {analysisModel ? <span className="tone-chip">Model: {analysisModel}</span> : null}
         </div>
         <p style={{ marginTop: 10, color: "#dbe7f5", fontSize: 14, fontWeight: 700, lineHeight: 1.55 }}>
@@ -1549,7 +1560,7 @@ export function IntelBetaDashboard({
             {!isMobile ? <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "80px 54px 66px minmax(0, 1fr) 220px 24px",
+                gridTemplateColumns: "80px 150px 66px minmax(0, 1fr) 220px 24px",
                 gap: 14,
                 paddingBottom: 8,
                 color: "#5f7390",
@@ -1560,7 +1571,7 @@ export function IntelBetaDashboard({
               }}
             >
               <div>Time</div>
-              <div>Src</div>
+              <div>Source</div>
               <div>Snt</div>
               <div>Headline</div>
               <div style={{ textAlign: "right" }}>Tags</div>
