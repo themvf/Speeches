@@ -16,8 +16,21 @@ APIFY_API_BASE = "https://api.apify.com/v2"
 DEFAULT_ACTOR_ID = "xtracto/bloomberg-news-article-scraper"
 
 
+def _fix_mojibake(value: str) -> str:
+    text = str(value or "")
+    if not any(marker in text for marker in ("Ã", "Â", "â€", "â")):
+        return text
+    try:
+        repaired = text.encode("latin1").decode("utf-8")
+        if repaired.count("�") <= text.count("�"):
+            return repaired
+    except Exception:
+        pass
+    return text
+
+
 def _clean(value: Any) -> str:
-    return " ".join(str(value or "").strip().split())
+    return " ".join(_fix_mojibake(str(value or "").strip()).split())
 
 
 def _maybe_json(value: Any) -> Any:
@@ -164,7 +177,7 @@ def _body_text(item: Dict[str, Any]) -> str:
         if value in (None, "", [], {}):
             value = _find_key_value(item, [key])
         if isinstance(value, str) and value.strip():
-            cleaned = value.strip()
+            cleaned = _fix_mojibake(value.strip())
             if cleaned not in parts:
                 parts.append(cleaned)
         elif isinstance(value, list):
