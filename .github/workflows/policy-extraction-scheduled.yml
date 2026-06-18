@@ -24,12 +24,25 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        connector:
-          - doj_usao_press_release
-          - finra_awc
-          - sec_enforcement_litigation
-          - sec_speech
-          - bloomberg_apify_article
+        include:
+          - connector: doj_usao_press_release
+            extraction_limit: "25"
+            max_pages: "5"
+          - connector: finra_awc
+            extraction_limit: "25"
+            max_pages: "5"
+          - connector: sec_enforcement_litigation
+            extraction_limit: "25"
+            max_pages: "5"
+          - connector: sec_speech
+            extraction_limit: "25"
+            max_pages: "5"
+          - connector: bloomberg_latest_apify
+            extraction_limit: "10"
+            max_pages: "10"
+          - connector: bloomberg_apify_article
+            extraction_limit: "10"
+            max_pages: "10"
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
@@ -37,6 +50,8 @@ jobs:
       APIFY_PROXY_URL: ${{ secrets.APIFY_PROXY_URL }}
       APIFY_BLOOMBERG_ACTOR_ID: ${{ secrets.APIFY_BLOOMBERG_ACTOR_ID }}
       APIFY_BLOOMBERG_INPUT_JSON: ${{ secrets.APIFY_BLOOMBERG_INPUT_JSON }}
+      APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID: ${{ secrets.APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID }}
+      APIFY_BLOOMBERG_DISCOVERY_INPUT_JSON: ${{ secrets.APIFY_BLOOMBERG_DISCOVERY_INPUT_JSON }}
 
     steps:
       - name: Checkout
@@ -56,15 +71,19 @@ jobs:
       - name: Run ${{ matrix.connector }}
         run: |
           set -euo pipefail
-          if [ "${{ matrix.connector }}" = "bloomberg_apify_article" ] && [ -z "${APIFY_TOKEN:-}" ]; then
-            printf '%s\n' '{"ok":true,"connector":"bloomberg_apify_article","skipped":true,"reason":"APIFY_TOKEN is not configured for scheduled extraction."}' > "policy_extraction_summary_${{ matrix.connector }}.json"
+          if [[ "${{ matrix.connector }}" == bloomberg_* ]] && [ -z "${APIFY_TOKEN:-}" ]; then
+            printf '%s\n' '{"ok":true,"connector":"${{ matrix.connector }}","skipped":true,"reason":"APIFY_TOKEN is not configured for scheduled extraction."}' > "policy_extraction_summary_${{ matrix.connector }}.json"
+            exit 0
+          fi
+          if [ "${{ matrix.connector }}" = "bloomberg_latest_apify" ] && [ -z "${APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID:-}" ]; then
+            printf '%s\n' '{"ok":true,"connector":"bloomberg_latest_apify","skipped":true,"reason":"APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID is not configured for scheduled extraction."}' > "policy_extraction_summary_${{ matrix.connector }}.json"
             exit 0
           fi
           python run_connector_extraction_pipeline.py \
             --connector "${{ matrix.connector }}" \
             --selection new_or_updated \
-            --limit 25 \
-            --max-pages 5 \
+            --limit "${{ matrix.extraction_limit }}" \
+            --max-pages "${{ matrix.max_pages }}" \
             --include-pdfs true \
             --include-rss true \
             --require-remote-persistence \
