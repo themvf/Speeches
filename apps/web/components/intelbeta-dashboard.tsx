@@ -16,6 +16,8 @@ type TopicFilter = string | "ALL";
 type SidebarTab = "topics" | "sources";
 type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ";
 
+const FEED_RENDER_BATCH_SIZE = 80;
+
 type FeedMeta = {
   label: string;
   code: string;
@@ -1194,6 +1196,7 @@ export function IntelBetaDashboard({
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("topics");
   const [selectedTopic, setSelectedTopic] = useState<TopicFilter>("ALL");
   const [selectedSource, setSelectedSource] = useState<SourceFilter>("ALL");
+  const [visibleItemLimit, setVisibleItemLimit] = useState(FEED_RENDER_BATCH_SIZE);
   const [search, setSearch] = useState("");
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(feedItems[0]?.id ?? null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -1332,6 +1335,16 @@ export function IntelBetaDashboard({
       ),
     [deferredSearchTerm, matchedArticles, selectedRule, selectedSource, topicIndex.topicMatchesByArticleId]
   );
+  const visibleFiltered = useMemo(
+    () => filtered.slice(0, visibleItemLimit),
+    [filtered, visibleItemLimit]
+  );
+  const hasMoreFiltered = visibleFiltered.length < filtered.length;
+
+  useEffect(() => {
+    setVisibleItemLimit(FEED_RENDER_BATCH_SIZE);
+  }, [deferredSearchTerm, selectedSource, selectedTopic]);
+
   useEffect(() => {
     if (filtered.length === 0) {
       setSelectedArticleId(null);
@@ -1435,6 +1448,11 @@ export function IntelBetaDashboard({
         sourceKind: article.source_kind || "",
       },
     });
+  };
+
+  const selectSourceFilter = (source: SourceFilter) => {
+    setVisibleItemLimit(FEED_RENDER_BATCH_SIZE);
+    setSelectedSource(source);
   };
 
   return (
@@ -1546,7 +1564,7 @@ export function IntelBetaDashboard({
                 ) : (
                   <select
                     value={selectedSource}
-                    onChange={(e) => setSelectedSource(e.target.value as SourceFilter)}
+                    onChange={(e) => selectSourceFilter(e.target.value as SourceFilter)}
                     style={{
                       width: "100%",
                       minHeight: 40,
@@ -1649,7 +1667,7 @@ export function IntelBetaDashboard({
                     <TopicButton
                       label="All Sources"
                       active={selectedSource === "ALL"}
-                      onClick={() => setSelectedSource("ALL")}
+                      onClick={() => selectSourceFilter("ALL")}
                       count={matchedArticles.length}
                     />
                     {SOURCE_FILTERS.map((source) => (
@@ -1657,7 +1675,7 @@ export function IntelBetaDashboard({
                         key={source.key}
                         label={source.label}
                         active={selectedSource === source.key}
-                        onClick={() => setSelectedSource(source.key)}
+                        onClick={() => selectSourceFilter(source.key)}
                         count={sourceCounts.get(source.key) ?? 0}
                       />
                     ))}
@@ -1786,7 +1804,13 @@ export function IntelBetaDashboard({
                 {feedItems.length === 0 ? "No feed items yet." : "No feed items match the current filters."}
               </div>
             ) : (
-              filtered.map((article) => {
+              <>
+              {filtered.length > visibleFiltered.length ? (
+                <div style={{ color: "#72839d", fontSize: 12, padding: "4px 0 10px" }}>
+                  Showing {visibleFiltered.length} of {filtered.length} matched items. Refine search or load more for older results.
+                </div>
+              ) : null}
+              {visibleFiltered.map((article) => {
                 const itemKey = savedArticleId(article);
                 const matchedTopicsForArticle = topicIndex.topicMatchesByArticleId.get(article.id) ?? [];
                 const analysisOpen = !!expandedAnalysis[itemKey];
@@ -1851,7 +1875,29 @@ export function IntelBetaDashboard({
                     ) : null}
                   </Fragment>
                 );
-              })
+              })}
+              {hasMoreFiltered ? (
+                <div style={{ display: "flex", justifyContent: "center", padding: "16px 0 4px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setVisibleItemLimit((limit) => limit + FEED_RENDER_BATCH_SIZE)}
+                    style={{
+                      minHeight: 36,
+                      border: "1px solid rgba(79,213,255,0.28)",
+                      background: "rgba(79,213,255,0.08)",
+                      color: "#d9e7f7",
+                      borderRadius: 8,
+                      padding: "8px 14px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Load {Math.min(FEED_RENDER_BATCH_SIZE, filtered.length - visibleFiltered.length)} more
+                  </button>
+                </div>
+              ) : null}
+              </>
             )}
           </div>
         </main>
