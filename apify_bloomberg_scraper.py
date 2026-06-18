@@ -178,7 +178,7 @@ def _sanitize_debug(value: Any, depth: int = 0) -> Any:
         out: Dict[str, Any] = {}
         for key, child in list(value.items())[:40]:
             key_text = str(key)
-            if re.search(r"token|secret|password|proxy|cookie|auth|credential", key_text, re.I):
+            if re.search(r"token|secret|password|proxy|cookie|authorization|credential", key_text, re.I):
                 out[key_text] = "[redacted]"
             else:
                 out[key_text] = _sanitize_debug(child, depth + 1)
@@ -237,13 +237,10 @@ class ApifyBloombergNewsScraper:
             _cap_int_field(payload, "limit", max_pages)
 
         if self.proxy_url:
-            payload.setdefault(
-                "proxyConfiguration",
-                {
-                    "useApifyProxy": False,
-                    "proxyUrls": [self.proxy_url],
-                },
-            )
+            payload["proxyConfiguration"] = {
+                "useApifyProxy": False,
+                "proxyUrls": [self.proxy_url],
+            }
 
         return payload
 
@@ -347,6 +344,7 @@ class ApifyBloombergNewsScraper:
         authors = _first_list_text(item, ["authors", "author", "byline", "bylines"])
         keywords = _first_list_text(item, ["keywords", "tags", "topics", "categories", "section"])
         summary = _first_text(item, ["summary", "description", "dek", "subheadline", "subtitle"])
+        extraction_error = _first_text(item, ["error", "errorMessage", "error_message"], deep=False)
         return {
             "url": url,
             "title": title or f"Bloomberg article {idx}",
@@ -356,5 +354,6 @@ class ApifyBloombergNewsScraper:
             "summary": summary,
             "full_text": text,
             "source": _first_text(item, ["source", "siteName", "publisher"]) or "Bloomberg",
+            "extraction_error": extraction_error,
             "raw_item": item,
         }

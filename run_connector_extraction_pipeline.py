@@ -1182,6 +1182,9 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
 
     if connector == "bloomberg_apify_article":
         src_url = str(entry.get("url", "") or "").strip()
+        extraction_error = str(entry.get("extraction_error", "") or "").strip()
+        if extraction_error:
+            raise RuntimeError(f"Apify actor failed to extract article: {extraction_error}")
         text = str(entry.get("full_text", "") or "").strip()
         summary = str(entry.get("summary", "") or "").strip()
         title = str(entry.get("title", "") or "").strip() or "Bloomberg article"
