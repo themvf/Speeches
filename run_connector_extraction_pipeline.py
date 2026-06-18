@@ -191,6 +191,59 @@ def _build_existing_custom_record_map(custom_payload: Dict[str, Any]) -> Dict[st
     return out
 
 
+def _remove_duplicate_bloomberg_records(custom_payload: Dict[str, Any]) -> int:
+    docs_list = custom_payload.get("documents", [])
+    if not isinstance(docs_list, list):
+        return 0
+
+    groups: Dict[str, List[Tuple[int, Dict[str, Any]]]] = {}
+    for idx, item in enumerate(docs_list):
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        if _normalize_space(metadata.get("source_kind", "")).lower() != "bloomberg_apify_article":
+            continue
+        title_key = _normalize_space(metadata.get("title", "")).lower()
+        if title_key:
+            groups.setdefault(title_key, []).append((idx, item))
+
+    remove_indexes: set[int] = set()
+    for records in groups.values():
+        if len(records) <= 1:
+            continue
+
+        def score(pair: Tuple[int, Dict[str, Any]]) -> Tuple[int, int]:
+            _, record = pair
+            metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+            content = record.get("content", {}) if isinstance(record.get("content", {}), dict) else {}
+            date_text = _normalize_space(metadata.get("published_date") or metadata.get("date") or "")
+            url = _normalize_space(metadata.get("url", "")).lower()
+            full_text = str(content.get("full_text", "") or "")
+            word_count = len(full_text.split())
+            quality = word_count
+            if date_text:
+                quality += 10000
+                parsed = core._parse_date_text(date_text)
+                if parsed is not None:
+                    date_path = f"/{parsed.year:04d}-{parsed.month:02d}-{parsed.day:02d}/"
+                    alt_date_path = f"/{parsed.year:04d}/{parsed.month:02d}/{parsed.day:02d}/"
+                    if date_path in url or alt_date_path in url:
+                        quality += 5000
+            if _normalize_space(metadata.get("summary", "")):
+                quality += 1000
+            return (quality, -pair[0])
+
+        keep_idx = max(records, key=score)[0]
+        for idx, _ in records:
+            if idx != keep_idx:
+                remove_indexes.add(idx)
+
+    if not remove_indexes:
+        return 0
+    custom_payload["documents"] = [item for idx, item in enumerate(docs_list) if idx not in remove_indexes]
+    return len(remove_indexes)
+
+
 def _repair_existing_finra_notice_metadata(entry: Dict[str, Any], existing_record: Optional[Dict[str, Any]]) -> Optional[str]:
     if not existing_record:
         return None
@@ -1310,6 +1363,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     failed: List[Dict[str, Any]] = []
     skipped_blocked: List[Dict[str, Any]] = []
     processed_doc_ids: List[str] = []
+    duplicate_records_removed = 0
 
     for idx, entry in enumerate(selected, 1):
         try:
@@ -1350,6 +1404,9 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
                     }
                 )
 
+    if args.connector == "bloomberg_apify_article" and (saved_new or saved_updates):
+        duplicate_records_removed = _remove_duplicate_bloomberg_records(custom_payload)
+
     rule_summaries_rebuilt = False
     if not args.dry_run and (saved_new or saved_updates):
         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
@@ -1385,6 +1442,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "saved_updates": saved_updates,
         "failed_count": len(failed),
         "failed": failed[:25],
+        "duplicate_records_removed": duplicate_records_removed,
         "skipped_blocked_count": len(skipped_blocked),
         "skipped_blocked": skipped_blocked[:25],
         "excluded_preview": excluded[:25],
