@@ -172,7 +172,12 @@ function getFeedMeta(feedKey: string): FeedMeta {
 }
 
 function feedSourceLabel(article: FeedItem, source: FeedMeta): string {
-  return decodeEntities(article.organization || source.label || article.feed_key || "Unknown");
+  const organization = decodeEntities(article.organization || "").trim();
+  const author = decodeEntities(article.author || "").trim();
+  if (organization.toLowerCase() === "news" && author) {
+    return author;
+  }
+  return decodeEntities(organization || source.label || article.feed_key || "Unknown");
 }
 
 function articleSourceText(article: FeedItem): string {
@@ -181,6 +186,7 @@ function articleSourceText(article: FeedItem): string {
     article.feed_key,
     source.label,
     article.organization ?? "",
+    article.author ?? "",
     article.source_kind ?? "",
     article.doc_type ?? "",
     article.url ?? "",
