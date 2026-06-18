@@ -16,6 +16,7 @@ type TopicFilter = string | "ALL";
 type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG";
 
 const FEED_RENDER_BATCH_SIZE = 20;
+const LIVE_FEED_REFRESH_LIMIT = 250;
 
 type FeedMeta = {
   label: string;
@@ -1296,7 +1297,7 @@ export function IntelBetaDashboard({
 
     const poll = async () => {
       try {
-        const res = await fetch("/api/intel/feed?limit=400", { cache: "no-store" });
+        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}`, { cache: "no-store" });
         if (!res.ok) { errStreak++; }
         else {
           const json = (await res.json()) as {

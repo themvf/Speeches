@@ -950,9 +950,12 @@ export function buildDocumentListItems(
   });
 }
 
-export function selectNewsFeedDocuments(items: DocumentListItem[]): DocumentListItem[] {
-  const feedDocumentLimit = 250;
-  const pinnedSourceKinds = new Set(["bloomberg_apify_article"]);
+export function selectNewsFeedDocuments(
+  items: DocumentListItem[],
+  options: { limit?: number; pinnedSourceKinds?: string[] } = {}
+): DocumentListItem[] {
+  const feedDocumentLimit = Math.max(0, options.limit ?? 250);
+  const pinnedSourceKinds = new Set(options.pinnedSourceKinds ?? ["bloomberg_apify_article"]);
   const dated = items
     .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
     .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));

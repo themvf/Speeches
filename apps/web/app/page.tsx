@@ -13,20 +13,25 @@ export const metadata: Metadata = {
   description: "Live regulatory news stream filtered by topic.",
 };
 
+const INITIAL_FEED_ARTICLE_LIMIT = 100;
+const INITIAL_FEED_DOCUMENT_LIMIT = 80;
+
 export default async function HomePage() {
   let initialArticles: StoredRssArticle[] = [];
   let initialTopicRules: StoredRssTopicRule[] = [];
   let initialDocuments: DocumentListItem[] = [];
   try {
     const [articles, topicRules, corpusDocs, enrichment] = await Promise.all([
-      getRecentArticles({ limit: 400 }),
+      getRecentArticles({ limit: INITIAL_FEED_ARTICLE_LIMIT }),
       getTopicRules(true),
       loadCorpusDocuments(),
       loadEnrichmentState(),
     ]);
     initialArticles = compactFeedArticles(articles);
     initialTopicRules = topicRules;
-    initialDocuments = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
+    initialDocuments = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment), {
+      limit: INITIAL_FEED_DOCUMENT_LIMIT,
+    });
   } catch {
     // DB not yet configured or schema not created; start with empty feed.
   }
