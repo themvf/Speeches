@@ -16,7 +16,7 @@ type TopicFilter = string | "ALL";
 type SidebarTab = "topics" | "sources";
 type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ";
 
-const FEED_RENDER_BATCH_SIZE = 80;
+const FEED_RENDER_BATCH_SIZE = 20;
 
 type FeedMeta = {
   label: string;
@@ -1234,17 +1234,22 @@ export function IntelBetaDashboard({
     return { topicMatchesByArticleId, topicCounts, matchedArticles };
   }, [feedItems, visibleTopicRules]);
   const matchedArticles = topicIndex.matchedArticles;
-  const sourceCounts = useMemo(() => {
+  const sourceIndex = useMemo(() => {
+    const sourceMatchesByArticleId = new Map<number, Set<SourceFilter>>();
     const counts = new Map<SourceFilter, number>();
     for (const article of matchedArticles) {
+      const matches = new Set<SourceFilter>();
       for (const source of SOURCE_FILTERS) {
         if (matchesSourceFilter(article, source.key)) {
+          matches.add(source.key);
           counts.set(source.key, (counts.get(source.key) ?? 0) + 1);
         }
       }
+      sourceMatchesByArticleId.set(article.id, matches);
     }
-    return counts;
+    return { sourceCounts: counts, sourceMatchesByArticleId };
   }, [matchedArticles]);
+  const sourceCounts = sourceIndex.sourceCounts;
   const selectedRule = selectedTopic === "ALL"
     ? null
     : visibleTopicRules.find((rule) => rule.topic_key === selectedTopic) ?? null;
@@ -1330,10 +1335,10 @@ export function IntelBetaDashboard({
       matchedArticles.filter(
         (article) =>
           matchesTopic(article, selectedRule, topicIndex.topicMatchesByArticleId) &&
-          matchesSourceFilter(article, selectedSource) &&
+          (selectedSource === "ALL" || !!sourceIndex.sourceMatchesByArticleId.get(article.id)?.has(selectedSource)) &&
           matchesSearch(article, deferredSearchTerm)
       ),
-    [deferredSearchTerm, matchedArticles, selectedRule, selectedSource, topicIndex.topicMatchesByArticleId]
+    [deferredSearchTerm, matchedArticles, selectedRule, selectedSource, sourceIndex.sourceMatchesByArticleId, topicIndex.topicMatchesByArticleId]
   );
   const visibleFiltered = useMemo(
     () => filtered.slice(0, visibleItemLimit),
