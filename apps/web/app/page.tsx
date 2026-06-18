@@ -12,6 +12,28 @@ export const metadata: Metadata = {
   description: "Live regulatory news stream filtered by topic.",
 };
 
+function selectFeedDocuments(items: DocumentListItem[]): DocumentListItem[] {
+  const dated = items
+    .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
+    .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
+
+  const selected = new Map<string, DocumentListItem>();
+  const add = (item: DocumentListItem) => {
+    if (item.document_id) selected.set(item.document_id, item);
+  };
+
+  dated.slice(0, 250).forEach(add);
+
+  for (const item of dated) {
+    if (item.source_kind === "sec_speech") {
+      add(item);
+    }
+  }
+
+  return [...selected.values()]
+    .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
+}
+
 export default async function HomePage() {
   let initialArticles: StoredRssArticle[] = [];
   let initialTopicRules: StoredRssTopicRule[] = [];
@@ -25,10 +47,7 @@ export default async function HomePage() {
     ]);
     initialArticles = articles;
     initialTopicRules = topicRules;
-    initialDocuments = buildDocumentListItems(corpusDocs, enrichment)
-      .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
-      .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date))
-      .slice(0, 250);
+    initialDocuments = selectFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
   } catch {
     // DB not yet configured or schema not created; start with empty feed.
   }
