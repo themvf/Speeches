@@ -57,6 +57,7 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "cftc_press_release", label: "CFTC Press Release" },
       { value: "cftc_public_statement_remark", label: "CFTC Public Statement / Remark" },
       { value: "congress_crs_product", label: "Congress CRS Product" },
+      { value: "bloomberg_latest_apify", label: "Bloomberg Latest (Apify)" },
       { value: "bloomberg_apify_article", label: "Bloomberg Articles (Apify)" },
       { value: "finra_comment_letter", label: "FINRA Rule Comment Letter" },
       { value: "finra_awc", label: "FINRA AWC Disciplinary Actions" },

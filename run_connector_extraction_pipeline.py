@@ -48,6 +48,7 @@ SUPPORTED_CONNECTORS = {
     "sifma_news_item",
     "congress_crs_product",
     "bloomberg_apify_article",
+    "bloomberg_latest_apify",
 }
 
 
@@ -84,7 +85,7 @@ def _default_base_url(connector: str) -> str:
         return SIFMA_NEWS_DEFAULT_URL
     if connector == "congress_crs_product":
         return CONGRESS_CRS_PRODUCTS_DEFAULT_URL
-    if connector == "bloomberg_apify_article":
+    if connector in {"bloomberg_apify_article", "bloomberg_latest_apify"}:
         return APIFY_BLOOMBERG_DEFAULT_URL
     return ""
 
@@ -302,6 +303,72 @@ def _build_short_text_fallback(
         "This metadata-backed record is retained so the item can appear in feed, search, watchlist, and briefing workflows."
     )
     return "\n".join(part for part in parts if part).strip()
+
+
+def _build_bloomberg_article_record(
+    *,
+    entry: Dict[str, Any],
+    scraper: Any,
+    idx: int,
+    base_url: str,
+) -> Dict[str, Any]:
+    src_url = str(entry.get("url", "") or "").strip()
+    extraction_error = str(entry.get("extraction_error", "") or "").strip()
+    if extraction_error:
+        raise RuntimeError(f"Apify actor failed to extract article: {extraction_error}")
+
+    text = str(entry.get("full_text", "") or "").strip()
+    summary = str(entry.get("summary", "") or "").strip()
+    title = str(entry.get("title", "") or "").strip() or "Bloomberg article"
+    date_text = str(entry.get("date", "") or "").strip()
+    if len(text.split()) < 50:
+        text = _build_short_text_fallback(
+            title=title,
+            url=src_url,
+            date_text=date_text,
+            organization="Bloomberg",
+            source_label="Bloomberg via Apify",
+            extracted_text=text or summary,
+        )
+    doc_date = _parse_doc_date(date_text)
+    authors = entry.get("authors") if isinstance(entry.get("authors"), list) else []
+    author_text = ", ".join(str(author or "").strip() for author in authors if str(author or "").strip())
+    keywords = entry.get("keywords") if isinstance(entry.get("keywords"), list) else []
+    keyword_tags = [str(keyword or "").strip() for keyword in keywords if str(keyword or "").strip()]
+    tags = ["bloomberg", "financial-news", "apify", *keyword_tags[:8]]
+    source_name = _safe_source_name(src_url, f"bloomberg-apify-{idx}", ".html")
+
+    record = core._create_uploaded_document_record(
+        text=text,
+        organization="Bloomberg",
+        title=title,
+        speaker=author_text or "Bloomberg News",
+        doc_date=doc_date,
+        doc_type="Article",
+        source_url=src_url,
+        source_filename=source_name,
+        source_ext=".html",
+        source_local_path="",
+        source_gcs_path="",
+        tags_csv=",".join(tags),
+        source_kind="bloomberg_apify_article",
+    )
+    metadata = record.setdefault("metadata", {})
+    metadata["source_family"] = "bloomberg_apify_article"
+    metadata["source_index_url"] = base_url
+    metadata["published_date"] = date_text
+    metadata["summary"] = summary
+    metadata["source_name"] = str(entry.get("source", "") or "Bloomberg").strip()
+    metadata["authors"] = authors
+    metadata["keywords"] = keyword_tags
+    metadata["apify_actor_id"] = getattr(scraper, "actor_id", "")
+    raw_item = entry.get("raw_item")
+    if isinstance(raw_item, dict):
+        metadata["apify_raw_keys"] = sorted(str(key) for key in raw_item.keys())[:50]
+    discovery_raw = entry.get("discovery_raw_item")
+    if isinstance(discovery_raw, dict):
+        metadata["apify_discovery_raw_keys"] = sorted(str(key) for key in discovery_raw.keys())[:50]
+    return record
 
 
 def _status_for_entry(
@@ -541,6 +608,14 @@ def _discover_connector(connector: str, base_url: str, max_pages: int, include_p
         from apify_bloomberg_scraper import ApifyBloombergNewsScraper
 
         scraper = ApifyBloombergNewsScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "bloomberg_latest_apify":
+        from apify_bloomberg_scraper import ApifyBloombergLatestDiscoveryScraper
+
+        scraper = ApifyBloombergLatestDiscoveryScraper()
         docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
@@ -1234,59 +1309,25 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         return record
 
     if connector == "bloomberg_apify_article":
-        src_url = str(entry.get("url", "") or "").strip()
-        extraction_error = str(entry.get("extraction_error", "") or "").strip()
-        if extraction_error:
-            raise RuntimeError(f"Apify actor failed to extract article: {extraction_error}")
-        text = str(entry.get("full_text", "") or "").strip()
-        summary = str(entry.get("summary", "") or "").strip()
-        title = str(entry.get("title", "") or "").strip() or "Bloomberg article"
-        date_text = str(entry.get("date", "") or "").strip()
-        if len(text.split()) < 50:
-            text = _build_short_text_fallback(
-                title=title,
-                url=src_url,
-                date_text=date_text,
-                organization="Bloomberg",
-                source_label="Bloomberg via Apify",
-                extracted_text=text or summary,
-            )
-        doc_date = _parse_doc_date(date_text)
-        authors = entry.get("authors") if isinstance(entry.get("authors"), list) else []
-        author_text = ", ".join(str(author or "").strip() for author in authors if str(author or "").strip())
-        keywords = entry.get("keywords") if isinstance(entry.get("keywords"), list) else []
-        keyword_tags = [str(keyword or "").strip() for keyword in keywords if str(keyword or "").strip()]
-        tags = ["bloomberg", "financial-news", "apify", *keyword_tags[:8]]
-        source_name = _safe_source_name(src_url, f"bloomberg-apify-{idx}", ".html")
+        return _build_bloomberg_article_record(entry=entry, scraper=scraper, idx=idx, base_url=base_url)
 
-        record = core._create_uploaded_document_record(
-            text=text,
-            organization="Bloomberg",
-            title=title,
-            speaker=author_text or "Bloomberg News",
-            doc_date=doc_date,
-            doc_type="Article",
-            source_url=src_url,
-            source_filename=source_name,
-            source_ext=".html",
-            source_local_path="",
-            source_gcs_path="",
-            tags_csv=",".join(tags),
-            source_kind="bloomberg_apify_article",
-        )
-        metadata = record.setdefault("metadata", {})
-        metadata["source_family"] = "bloomberg_apify_article"
-        metadata["source_index_url"] = base_url
-        metadata["published_date"] = date_text
-        metadata["summary"] = summary
-        metadata["source_name"] = str(entry.get("source", "") or "Bloomberg").strip()
-        metadata["authors"] = authors
-        metadata["keywords"] = keyword_tags
-        metadata["apify_actor_id"] = getattr(scraper, "actor_id", "")
-        raw_item = entry.get("raw_item")
-        if isinstance(raw_item, dict):
-            metadata["apify_raw_keys"] = sorted(str(key) for key in raw_item.keys())[:50]
-        return record
+    if connector == "bloomberg_latest_apify":
+        from apify_bloomberg_scraper import ApifyBloombergNewsScraper
+
+        src_url = str(entry.get("url", "") or "").strip()
+        if not src_url:
+            raise RuntimeError("Bloomberg discovery item did not include a URL.")
+        extractor = ApifyBloombergNewsScraper()
+        docs = extractor.discover_documents(base_url=src_url, max_pages=1)
+        if not docs:
+            raise RuntimeError("Bloomberg article extractor returned no article records.")
+        extracted = dict(docs[0])
+        for key in ["title", "date", "authors", "keywords", "summary"]:
+            value = extracted.get(key)
+            if value in (None, "", [], {}):
+                extracted[key] = entry.get(key)
+        extracted["discovery_raw_item"] = entry.get("discovery_raw_item")
+        return _build_bloomberg_article_record(entry=extracted, scraper=extractor, idx=idx, base_url=base_url)
 
     raise RuntimeError(f"Unsupported connector: {connector}")
 
@@ -1301,7 +1342,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         raise RuntimeError(gcs_status)
 
     base_url = str(args.base_url or "").strip() or _default_base_url(args.connector)
-    if not base_url and args.connector != "bloomberg_apify_article":
+    if not base_url and args.connector not in {"bloomberg_apify_article", "bloomberg_latest_apify"}:
         raise RuntimeError(f"No base URL configured for connector '{args.connector}'.")
 
     custom_payload = core._load_custom_documents(storage)
@@ -1404,7 +1445,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
                     }
                 )
 
-    if args.connector == "bloomberg_apify_article" and (saved_new or saved_updates):
+    if args.connector in {"bloomberg_apify_article", "bloomberg_latest_apify"} and (saved_new or saved_updates):
         duplicate_records_removed = _remove_duplicate_bloomberg_records(custom_payload)
 
     rule_summaries_rebuilt = False

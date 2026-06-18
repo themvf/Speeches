@@ -918,6 +918,9 @@ export function buildDocumentListItems(
     const keywords = Array.isArray(enrich?.enrichment?.keywords)
       ? enrich?.enrichment?.keywords.map((item) => normalizeString(item)).filter(Boolean)
       : [];
+    const metadataKeywords = Array.isArray(m.keywords)
+      ? m.keywords.map((item) => normalizeString(item)).filter(Boolean)
+      : splitCsv(normalizeString(m.keywords));
 
     const topics = dedupList([...enrichTags, ...metadataTags]);
     const tags = dedupList([...metadataTags, ...enrichTags]);
@@ -934,7 +937,7 @@ export function buildDocumentListItems(
       published_at: normalizeString(m.published_date) || normalizeString(m.date),
       word_count: normalizeWordCount(m.word_count),
       tags,
-      keywords: dedupList(keywords),
+      keywords: dedupList([...keywords, ...metadataKeywords]),
       topics,
       ingest_status: "existing",
       enrichment_status: normalizeString(enrich?.status || "not_enriched") || "not_enriched",

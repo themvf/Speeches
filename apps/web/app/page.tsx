@@ -25,7 +25,7 @@ function selectFeedDocuments(items: DocumentListItem[]): DocumentListItem[] {
   dated.slice(0, 250).forEach(add);
 
   for (const item of dated) {
-    if (item.source_kind === "sec_speech") {
+    if (item.source_kind === "sec_speech" || item.source_kind === "bloomberg_apify_article") {
       add(item);
     }
   }

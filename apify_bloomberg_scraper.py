@@ -14,6 +14,7 @@ import requests
 
 APIFY_API_BASE = "https://api.apify.com/v2"
 DEFAULT_ACTOR_ID = "xtracto/bloomberg-news-article-scraper"
+DEFAULT_DISCOVERY_ACTOR_ID = ""
 
 
 def _fix_mojibake(value: str) -> str:
@@ -217,11 +218,15 @@ class ApifyBloombergNewsScraper:
         actor_id: Optional[str] = None,
         proxy_url: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
+        actor_env_key: str = "APIFY_BLOOMBERG_ACTOR_ID",
+        input_env_key: str = "APIFY_BLOOMBERG_INPUT_JSON",
+        default_actor_id: str = DEFAULT_ACTOR_ID,
     ) -> None:
         self.api_token = _clean(api_token or os.getenv("APIFY_TOKEN", ""))
-        self.actor_id = _clean(actor_id or os.getenv("APIFY_BLOOMBERG_ACTOR_ID", "") or DEFAULT_ACTOR_ID)
+        self.actor_id = _clean(actor_id or os.getenv(actor_env_key, "") or default_actor_id)
         self.proxy_url = _clean(proxy_url or os.getenv("APIFY_PROXY_URL", ""))
         self.timeout_seconds = int(timeout_seconds or os.getenv("APIFY_TIMEOUT_SECONDS", "900") or "900")
+        self.input_env_key = input_env_key
         self.last_discovery_debug: Dict[str, Any] = {}
 
     @property
@@ -235,23 +240,24 @@ class ApifyBloombergNewsScraper:
         }
 
     def _build_input(self, base_url: str, max_pages: int) -> Dict[str, Any]:
-        raw = os.getenv("APIFY_BLOOMBERG_INPUT_JSON", "").strip()
+        raw = os.getenv(self.input_env_key, "").strip()
         if raw:
             payload = json.loads(raw)
             if not isinstance(payload, dict):
-                raise RuntimeError("APIFY_BLOOMBERG_INPUT_JSON must be a JSON object.")
+                raise RuntimeError(f"{self.input_env_key} must be a JSON object.")
         else:
             payload = {}
 
         target_url = _clean(base_url)
         if target_url:
-            payload.setdefault("startUrls", [{"url": target_url}])
-            payload.setdefault("urls", [target_url])
+            payload["startUrls"] = [{"url": target_url}]
+            payload["urls"] = [target_url]
 
         if max_pages > 0:
             _cap_int_field(payload, "maxItems", max_pages)
             _cap_int_field(payload, "maxPages", max_pages)
             _cap_int_field(payload, "limit", max_pages)
+            _cap_int_field(payload, "maxItemsPerUrl", max_pages)
 
         if self.proxy_url:
             payload["proxyConfiguration"] = {
@@ -309,11 +315,12 @@ class ApifyBloombergNewsScraper:
             raise RuntimeError("Apify dataset endpoint returned an unexpected response.")
         return [item for item in payload if isinstance(item, dict)]
 
-    def discover_documents(self, *, base_url: str, max_pages: int) -> List[Dict[str, Any]]:
+    def run_actor_items(self, actor_input: Dict[str, Any]) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
         if not self.api_token:
             raise RuntimeError("APIFY_TOKEN is not configured.")
+        if not self.actor_id:
+            raise RuntimeError("Apify actor id is not configured.")
 
-        actor_input = self._build_input(base_url, max_pages)
         run = self._start_run(actor_input)
         completed = self._wait_for_run(str(run["id"]))
         dataset_id = _clean(completed.get("defaultDatasetId") or run.get("defaultDatasetId"))
@@ -321,17 +328,26 @@ class ApifyBloombergNewsScraper:
             raise RuntimeError("Apify actor run did not return a default dataset id.")
 
         raw_items = self._fetch_dataset_items(dataset_id)
-        docs = [self._normalize_item(item, idx) for idx, item in enumerate(raw_items, 1)]
-        docs = [doc for doc in docs if doc.get("url") or doc.get("title")]
-        sample = raw_items[0] if raw_items else {}
-        self.last_discovery_debug = {
+        debug = {
             "actor_id": self.actor_id,
             "run_id": str(run.get("id", "")),
             "dataset_id": dataset_id,
             "raw_item_count": len(raw_items),
-            "normalized_count": len(docs),
-            "used_custom_input": bool(os.getenv("APIFY_BLOOMBERG_INPUT_JSON", "").strip()),
             "used_custom_proxy": bool(self.proxy_url),
+        }
+        return raw_items, debug
+
+    def discover_documents(self, *, base_url: str, max_pages: int) -> List[Dict[str, Any]]:
+        actor_input = self._build_input(base_url, max_pages)
+        raw_items, debug = self.run_actor_items(actor_input)
+        docs = [self._normalize_item(item, idx) for idx, item in enumerate(raw_items, 1)]
+        docs = [doc for doc in docs if doc.get("url") or doc.get("title")]
+        sample = raw_items[0] if raw_items else {}
+        self.last_discovery_debug = {
+            **debug,
+            "raw_item_count": len(raw_items),
+            "normalized_count": len(docs),
+            "used_custom_input": bool(os.getenv(self.input_env_key, "").strip()),
             "sample_item_keys": sorted(str(key) for key in sample.keys()) if isinstance(sample, dict) else [],
             "sample_item_preview": _sanitize_debug(sample) if isinstance(sample, dict) else {},
             "sample_normalized_preview": _sanitize_debug(docs[0]) if docs else {},
@@ -374,4 +390,76 @@ class ApifyBloombergNewsScraper:
             "source": _first_text(item, ["source", "siteName", "publisher"]) or "Bloomberg",
             "extraction_error": extraction_error,
             "raw_item": item,
+        }
+
+
+class ApifyBloombergLatestDiscoveryScraper(ApifyBloombergNewsScraper):
+    """Discovers recent Bloomberg article URLs from a Bloomberg section/search actor."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(
+            actor_env_key="APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID",
+            input_env_key="APIFY_BLOOMBERG_DISCOVERY_INPUT_JSON",
+            default_actor_id=DEFAULT_DISCOVERY_ACTOR_ID,
+            **kwargs,
+        )
+
+    def _build_discovery_input(self, base_url: str, max_pages: int) -> Dict[str, Any]:
+        payload = self._build_input(base_url="", max_pages=max_pages)
+        target_url = _clean(base_url)
+        if target_url:
+            payload["searchUrls"] = [target_url]
+        if max_pages > 0:
+            _cap_int_field(payload, "maxItemsPerUrl", max_pages)
+        return payload
+
+    def discover_documents(self, *, base_url: str, max_pages: int) -> List[Dict[str, Any]]:
+        actor_input = self._build_discovery_input(base_url, max_pages)
+        raw_items, debug = self.run_actor_items(actor_input)
+        docs: List[Dict[str, Any]] = []
+        seen_urls = set()
+        for idx, item in enumerate(raw_items, 1):
+            normalized = self._normalize_discovery_item(item, idx)
+            url = _clean(normalized.get("url", ""))
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            docs.append(normalized)
+
+        sample = raw_items[0] if raw_items else {}
+        self.last_discovery_debug = {
+            **debug,
+            "raw_item_count": len(raw_items),
+            "normalized_count": len(docs),
+            "used_custom_input": bool(os.getenv(self.input_env_key, "").strip()),
+            "sample_item_keys": sorted(str(key) for key in sample.keys()) if isinstance(sample, dict) else [],
+            "sample_item_preview": _sanitize_debug(sample) if isinstance(sample, dict) else {},
+            "sample_normalized_preview": _sanitize_debug(docs[0]) if docs else {},
+        }
+        return docs
+
+    def _normalize_discovery_item(self, item: Dict[str, Any], idx: int) -> Dict[str, Any]:
+        return {
+            "url": _request_url(item),
+            "title": _first_text(item, ["headline", "title", "name", "articleTitle", "article_title"]) or f"Bloomberg article {idx}",
+            "date": _first_text(
+                item,
+                [
+                    "publishedAt",
+                    "published_at",
+                    "published",
+                    "publishedDate",
+                    "published_date",
+                    "datePublished",
+                    "date_published",
+                    "date",
+                    "updatedAt",
+                    "updated_at",
+                ],
+            ),
+            "authors": _first_list_text(item, ["authors", "author", "byline", "bylines"]),
+            "keywords": _first_list_text(item, ["keywords", "tags", "topics", "contentTags", "categories", "label", "brand"]),
+            "summary": _first_text(item, ["summary", "description", "dek", "subheadline", "subtitle"]),
+            "source": "Bloomberg",
+            "discovery_raw_item": item,
         }

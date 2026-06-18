@@ -14,7 +14,7 @@ import {
 
 type TopicFilter = string | "ALL";
 type SidebarTab = "topics" | "sources";
-type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ";
+type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG";
 
 const FEED_RENDER_BATCH_SIZE = 20;
 
@@ -136,6 +136,7 @@ const FEED_META: Record<string, FeedMeta> = {
   dark_reading: { label: "Dark Reading", code: "DARK", color: "#b197fc" },
   securityweek: { label: "SecurityWeek", code: "SECW", color: "#91a7ff" },
   microsoft_security_blog: { label: "Microsoft Security Blog", code: "MSFT", color: "#69db7c" },
+  document_bloomberg_apify_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
 };
 
 const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
@@ -144,6 +145,7 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "FINRA", label: "FINRA" },
   { key: "DOJ", label: "DOJ" },
   { key: "WSJ", label: "WSJ" },
+  { key: "BLOOMBERG", label: "Bloomberg" },
 ];
 
 function getFeedMeta(feedKey: string): FeedMeta {
@@ -220,7 +222,10 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
       text.includes("justice department")
     );
   }
-  return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
+  if (sourceFilter === "WSJ") {
+    return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
+  }
+  return sourceKind === "bloomberg_apify_article" || text.includes("bloomberg.com") || text.includes("bloomberg");
 }
 
 function savedArticleId(article: FeedItem): string {
