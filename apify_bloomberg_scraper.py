@@ -113,13 +113,17 @@ def _first_list_text(item: Dict[str, Any], keys: List[str]) -> List[str]:
 
 
 def _request_url(item: Dict[str, Any]) -> str:
-    for key in ["url", "canonicalUrl", "articleUrl", "pageUrl", "link", "sourceUrl", "article_url"]:
-        value = _first_text(item, [key])
+    for key in ["longURL", "url", "canonicalUrl", "articleUrl", "pageUrl", "link", "sourceUrl", "article_url"]:
+        value = _first_text(item, [key], deep=False)
         if value:
             return value
     request = item.get("request")
     if isinstance(request, dict):
         value = _first_text(request, ["loadedUrl", "url"])
+        if value:
+            return value
+    for key in ["canonicalUrl", "articleUrl", "sourceUrl", "article_url", "longURL"]:
+        value = _first_text(item, [key], deep=True)
         if value:
             return value
     return ""
@@ -330,6 +334,7 @@ class ApifyBloombergNewsScraper:
             [
                 "publishedAt",
                 "published_at",
+                "published",
                 "publishedDate",
                 "published_date",
                 "datePublished",
@@ -342,7 +347,7 @@ class ApifyBloombergNewsScraper:
             ],
         )
         authors = _first_list_text(item, ["authors", "author", "byline", "bylines"])
-        keywords = _first_list_text(item, ["keywords", "tags", "topics", "categories", "section"])
+        keywords = _first_list_text(item, ["keywords", "tags", "topics", "contentTags", "categories", "section", "brand", "secondaryBrands"])
         summary = _first_text(item, ["summary", "description", "dek", "subheadline", "subtitle"])
         extraction_error = _first_text(item, ["error", "errorMessage", "error_message"], deep=False)
         return {
