@@ -29,9 +29,14 @@ jobs:
           - finra_awc
           - sec_enforcement_litigation
           - sec_speech
+          - bloomberg_apify_article
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      APIFY_PROXY_URL: ${{ secrets.APIFY_PROXY_URL }}
+      APIFY_BLOOMBERG_ACTOR_ID: ${{ secrets.APIFY_BLOOMBERG_ACTOR_ID }}
+      APIFY_BLOOMBERG_INPUT_JSON: ${{ secrets.APIFY_BLOOMBERG_INPUT_JSON }}
 
     steps:
       - name: Checkout
@@ -51,6 +56,10 @@ jobs:
       - name: Run ${{ matrix.connector }}
         run: |
           set -euo pipefail
+          if [ "${{ matrix.connector }}" = "bloomberg_apify_article" ] && [ -z "${APIFY_TOKEN:-}" ]; then
+            printf '%s\n' '{"ok":true,"connector":"bloomberg_apify_article","skipped":true,"reason":"APIFY_TOKEN is not configured for scheduled extraction."}' > "policy_extraction_summary_${{ matrix.connector }}.json"
+            exit 0
+          fi
           python run_connector_extraction_pipeline.py \
             --connector "${{ matrix.connector }}" \
             --selection new_or_updated \

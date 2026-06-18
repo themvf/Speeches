@@ -77,6 +77,11 @@ export interface CustomDocumentMetadata {
   extraction_mode?: string;
   extraction_warnings?: string[];
   summary?: string;
+  source_name?: string;
+  authors?: string[];
+  keywords?: string[];
+  apify_actor_id?: string;
+  apify_raw_keys?: string[];
 }
 
 export interface CustomDocumentContent {
