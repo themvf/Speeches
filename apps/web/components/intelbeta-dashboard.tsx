@@ -13,7 +13,6 @@ import {
 } from "@/lib/intel-topic-matching";
 
 type TopicFilter = string | "ALL";
-type SidebarTab = "topics" | "sources";
 type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG";
 
 const FEED_RENDER_BATCH_SIZE = 20;
@@ -1198,7 +1197,6 @@ export function IntelBetaDashboard({
     [articles, documentFeedItems]
   );
   const [topicRules, setTopicRules] = useState<StoredRssTopicRule[]>(initialTopicRules);
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("topics");
   const [selectedTopic, setSelectedTopic] = useState<TopicFilter>("ALL");
   const [selectedSource, setSelectedSource] = useState<SourceFilter>("ALL");
   const [visibleItemLimit, setVisibleItemLimit] = useState(FEED_RENDER_BATCH_SIZE);
@@ -1512,88 +1510,56 @@ export function IntelBetaDashboard({
                 Search all regulatory documents
               </a>
               <label style={{ display: "grid", gap: 6 }}>
-                <span style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  <button
-                    type="button"
-                    onClick={() => setSidebarTab("topics")}
-                    style={{
-                      minHeight: 34,
-                      borderRadius: 7,
-                      border: sidebarTab === "topics" ? "1px solid rgba(79,213,255,0.52)" : "1px solid rgba(90, 118, 162, 0.18)",
-                      background: sidebarTab === "topics" ? "rgba(79,213,255,0.14)" : "rgba(14, 24, 39, 0.72)",
-                      color: sidebarTab === "topics" ? "#dbe7f5" : "#8ea0ba",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Topics
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSidebarTab("sources")}
-                    style={{
-                      minHeight: 34,
-                      borderRadius: 7,
-                      border: sidebarTab === "sources" ? "1px solid rgba(79,213,255,0.52)" : "1px solid rgba(90, 118, 162, 0.18)",
-                      background: sidebarTab === "sources" ? "rgba(79,213,255,0.14)" : "rgba(14, 24, 39, 0.72)",
-                      color: sidebarTab === "sources" ? "#dbe7f5" : "#8ea0ba",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Sources
-                  </button>
-                </span>
                 <span style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase" }}>
-                  {sidebarTab === "topics" ? "Topics" : "Sources"}
+                  Topics
                 </span>
-                {sidebarTab === "topics" ? (
-                  <select
-                    value={selectedTopic}
-                    onChange={(e) => setSelectedTopic(e.target.value)}
-                    style={{
-                      width: "100%",
-                      minHeight: 40,
-                      background: "rgba(14, 24, 39, 0.9)",
-                      border: "1px solid rgba(90, 118, 162, 0.28)",
-                      color: "#d9e7f7",
-                      borderRadius: 6,
-                      padding: "8px 10px",
-                      fontSize: 13,
-                    }}
-                  >
-                    <option value="ALL">All Topics ({matchedArticles.length})</option>
-                    {visibleTopicRules.map((rule) => (
-                      <option key={rule.topic_key} value={rule.topic_key}>
-                        {rule.label} ({topicIndex.topicCounts.get(rule.topic_key) ?? 0})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <select
-                    value={selectedSource}
-                    onChange={(e) => selectSourceFilter(e.target.value as SourceFilter)}
-                    style={{
-                      width: "100%",
-                      minHeight: 40,
-                      background: "rgba(14, 24, 39, 0.9)",
-                      border: "1px solid rgba(90, 118, 162, 0.28)",
-                      color: "#d9e7f7",
-                      borderRadius: 6,
-                      padding: "8px 10px",
-                      fontSize: 13,
-                    }}
-                  >
-                    <option value="ALL">All Sources ({matchedArticles.length})</option>
-                    {SOURCE_FILTERS.map((source) => (
-                      <option key={source.key} value={source.key}>
-                        {source.label} ({sourceCounts.get(source.key) ?? 0})
-                      </option>
-                    ))}
-                  </select>
-                )}
+                <select
+                  value={selectedTopic}
+                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  style={{
+                    width: "100%",
+                    minHeight: 40,
+                    background: "rgba(14, 24, 39, 0.9)",
+                    border: "1px solid rgba(90, 118, 162, 0.28)",
+                    color: "#d9e7f7",
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="ALL">All Topics ({matchedArticles.length})</option>
+                  {visibleTopicRules.map((rule) => (
+                    <option key={rule.topic_key} value={rule.topic_key}>
+                      {rule.label} ({topicIndex.topicCounts.get(rule.topic_key) ?? 0})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase" }}>
+                  Sources
+                </span>
+                <select
+                  value={selectedSource}
+                  onChange={(e) => selectSourceFilter(e.target.value as SourceFilter)}
+                  style={{
+                    width: "100%",
+                    minHeight: 40,
+                    background: "rgba(14, 24, 39, 0.9)",
+                    border: "1px solid rgba(90, 118, 162, 0.28)",
+                    color: "#d9e7f7",
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="ALL">All Sources ({matchedArticles.length})</option>
+                  {SOURCE_FILTERS.map((source) => (
+                    <option key={source.key} value={source.key}>
+                      {source.label} ({sourceCounts.get(source.key) ?? 0})
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
           ) : (
@@ -1616,81 +1582,45 @@ export function IntelBetaDashboard({
               >
                 Search all regulatory documents
               </a>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 12 }}>
-                <button
-                  type="button"
-                  onClick={() => setSidebarTab("topics")}
-                  style={{
-                    minHeight: 32,
-                    borderRadius: 7,
-                    border: sidebarTab === "topics" ? "1px solid rgba(79,213,255,0.52)" : "1px solid rgba(90, 118, 162, 0.16)",
-                    background: sidebarTab === "topics" ? "rgba(79,213,255,0.14)" : "rgba(14, 24, 39, 0.54)",
-                    color: sidebarTab === "topics" ? "#dbe7f5" : "#8ea0ba",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Topics
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSidebarTab("sources")}
-                  style={{
-                    minHeight: 32,
-                    borderRadius: 7,
-                    border: sidebarTab === "sources" ? "1px solid rgba(79,213,255,0.52)" : "1px solid rgba(90, 118, 162, 0.16)",
-                    background: sidebarTab === "sources" ? "rgba(79,213,255,0.14)" : "rgba(14, 24, 39, 0.54)",
-                    color: sidebarTab === "sources" ? "#dbe7f5" : "#8ea0ba",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Sources
-                </button>
-              </div>
               <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
-                {sidebarTab === "topics" ? "Topics" : "Sources"}
+                Topics
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {sidebarTab === "topics" ? (
-                  <>
-                    <TopicButton
-                      label="All Topics"
-                      active={selectedTopic === "ALL"}
-                      onClick={() => setSelectedTopic("ALL")}
-                      count={matchedArticles.length}
-                    />
-                    {visibleTopicRules.map((rule) => (
-                      <TopicButton
-                        key={rule.topic_key}
-                        label={rule.label}
-                        active={selectedTopic === rule.topic_key}
-                        onClick={() => setSelectedTopic(rule.topic_key)}
-                        count={topicIndex.topicCounts.get(rule.topic_key) ?? 0}
-                      />
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    <TopicButton
-                      label="All Sources"
-                      active={selectedSource === "ALL"}
-                      onClick={() => selectSourceFilter("ALL")}
-                      count={matchedArticles.length}
-                    />
-                    {SOURCE_FILTERS.map((source) => (
-                      <TopicButton
-                        key={source.key}
-                        label={source.label}
-                        active={selectedSource === source.key}
-                        onClick={() => selectSourceFilter(source.key)}
-                        count={sourceCounts.get(source.key) ?? 0}
-                      />
-                    ))}
-                  </>
-                )}
+                <TopicButton
+                  label="All Topics"
+                  active={selectedTopic === "ALL"}
+                  onClick={() => setSelectedTopic("ALL")}
+                  count={matchedArticles.length}
+                />
+                {visibleTopicRules.map((rule) => (
+                  <TopicButton
+                    key={rule.topic_key}
+                    label={rule.label}
+                    active={selectedTopic === rule.topic_key}
+                    onClick={() => setSelectedTopic(rule.topic_key)}
+                    count={topicIndex.topicCounts.get(rule.topic_key) ?? 0}
+                  />
+                ))}
+              </div>
+              <div style={{ color: "#5f7390", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", margin: "18px 0 10px" }}>
+                Sources
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <TopicButton
+                  label="All Sources"
+                  active={selectedSource === "ALL"}
+                  onClick={() => selectSourceFilter("ALL")}
+                  count={matchedArticles.length}
+                />
+                {SOURCE_FILTERS.map((source) => (
+                  <TopicButton
+                    key={source.key}
+                    label={source.label}
+                    active={selectedSource === source.key}
+                    onClick={() => selectSourceFilter(source.key)}
+                    count={sourceCounts.get(source.key) ?? 0}
+                  />
+                ))}
               </div>
             </>
           )}
