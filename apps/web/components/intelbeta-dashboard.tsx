@@ -234,6 +234,10 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   return sourceKind === "bloomberg_apify_article" || text.includes("bloomberg.com") || text.includes("bloomberg");
 }
 
+function isBloombergApifyArticle(article: FeedItem): boolean {
+  return article.item_type === "document" && String(article.source_kind || "").toLowerCase() === "bloomberg_apify_article";
+}
+
 function savedArticleId(article: FeedItem): string {
   if (article.item_type === "document" && article.document_id) {
     return `document:${article.document_id}`;
@@ -443,6 +447,135 @@ function renderAnalysisChips(items: string[], emptyLabel: string) {
   );
 }
 
+function FullArticleModal({
+  article,
+  detail,
+  loading,
+  error,
+  onClose,
+  retry,
+  compact,
+}: {
+  article: FeedItem;
+  detail: DocumentDetailData | undefined;
+  loading: boolean;
+  error: string;
+  onClose: () => void;
+  retry: () => void;
+  compact: boolean;
+}) {
+  const paragraphs = detail?.content.paragraphs?.length
+    ? detail.content.paragraphs
+    : detail?.content.full_text
+      ? detail.content.full_text.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)
+      : [];
+  const sourceLabel = feedSourceLabel(article, getFeedMeta(article.feed_key));
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Full Bloomberg article"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 80,
+        display: "flex",
+        alignItems: compact ? "stretch" : "center",
+        justifyContent: "center",
+        padding: compact ? 0 : 24,
+        background: "rgba(2, 8, 14, 0.74)",
+        backdropFilter: "blur(6px)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(960px, 100%)",
+          maxHeight: compact ? "100vh" : "86vh",
+          display: "grid",
+          gridTemplateRows: "auto minmax(0, 1fr)",
+          border: "1px solid rgba(79,213,255,0.24)",
+          borderRadius: compact ? 0 : 8,
+          background: "linear-gradient(180deg, rgba(8,18,30,0.98), rgba(5,13,23,0.98))",
+          boxShadow: "0 28px 90px rgba(0,0,0,0.54)",
+          overflow: "hidden",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 14,
+            padding: compact ? "14px 14px 12px" : "18px 20px 14px",
+            borderBottom: "1px solid rgba(112,142,187,0.16)",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <span className="tone-chip">{sourceLabel}</span>
+              <span className="tone-chip">{formatRelativeTime(feedItemDate(article))}</span>
+              {article.author ? <span className="tone-chip">By {decodeEntities(article.author)}</span> : null}
+            </div>
+            <h2 style={{ margin: 0, color: "#f4f7fc", fontSize: compact ? 17 : 20, lineHeight: 1.35 }}>
+              {decodeEntities(article.title || "Bloomberg article")}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close article"
+            style={{
+              minWidth: 34,
+              minHeight: 34,
+              borderRadius: 999,
+              border: "1px solid rgba(112,142,187,0.24)",
+              background: "rgba(14,24,39,0.72)",
+              color: "#dbe7f5",
+              cursor: "pointer",
+              fontSize: 18,
+              lineHeight: 1,
+            }}
+          >
+            x
+          </button>
+        </div>
+        <div style={{ overflow: "auto", padding: compact ? "14px" : "18px 20px 22px" }}>
+          {loading ? (
+            <p style={{ color: "#9fb0c7", fontSize: 13 }}>Loading article text...</p>
+          ) : error ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <p style={{ color: "#ff8aa0", fontSize: 13 }}>{error}</p>
+              <button type="button" className="link-inline text-xs" onClick={retry}>
+                Retry
+              </button>
+            </div>
+          ) : paragraphs.length ? (
+            <article style={{ display: "grid", gap: 13, color: "#d8e4f4", fontSize: compact ? 14 : 15, lineHeight: 1.72 }}>
+              {paragraphs.map((paragraph, idx) => (
+                <p key={`${idx}_${paragraph.slice(0, 20)}`} style={{ margin: 0 }}>
+                  {decodeEntities(paragraph)}
+                </p>
+              ))}
+            </article>
+          ) : (
+            <p style={{ color: "#9fb0c7", fontSize: 13 }}>No stored article text is available yet.</p>
+          )}
+          {article.url ? (
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(112,142,187,0.14)" }}>
+              <a href={article.url} target="_blank" rel="noopener noreferrer" className="link-inline text-xs">
+                Open original Bloomberg page
+              </a>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function articleListSignature(articles: FeedItem[]): string {
   const first = articles[0];
   const last = articles[articles.length - 1];
@@ -622,6 +755,7 @@ function FeedRow({
   analysisOpen,
   analysisLabel,
   onToggleAnalysis,
+  onOpenFullArticle,
   compact = false,
 }: {
   article: FeedItem;
@@ -633,12 +767,14 @@ function FeedRow({
   analysisOpen: boolean;
   analysisLabel: string;
   onToggleAnalysis: () => void;
+  onOpenFullArticle?: () => void;
   compact?: boolean;
 }) {
   const source = getFeedMeta(article.feed_key);
   const sourceLabel = feedSourceLabel(article, source);
   const visibleTopics = matchedTopics.slice(0, 3);
   const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
+  const showFullArticle = isBloombergApifyArticle(article) && !!onOpenFullArticle;
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
     background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
@@ -708,16 +844,30 @@ function FeedRow({
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleAnalysis();
-          }}
-          style={{ ...analysisButtonStyle, justifySelf: "start" }}
-        >
-          {analysisLabel}
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAnalysis();
+            }}
+            style={{ ...analysisButtonStyle, justifySelf: "start" }}
+          >
+            {analysisLabel}
+          </button>
+          {showFullArticle ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFullArticle?.();
+              }}
+              style={{ ...analysisButtonStyle, justifySelf: "start" }}
+            >
+              Read Article
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -764,7 +914,7 @@ function FeedRow({
             Primary document
           </div>
         ) : null}
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
             onClick={(e) => {
@@ -775,6 +925,18 @@ function FeedRow({
           >
             {analysisLabel}
           </button>
+          {showFullArticle ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFullArticle?.();
+              }}
+              style={analysisButtonStyle}
+            >
+              Read Article
+            </button>
+          ) : null}
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -795,6 +957,7 @@ function FeaturedCard({
   analysisOpen,
   analysisLabel,
   onToggleAnalysis,
+  onOpenFullArticle,
   compact = false,
 }: {
   article: FeedItem;
@@ -804,11 +967,13 @@ function FeaturedCard({
   analysisOpen: boolean;
   analysisLabel: string;
   onToggleAnalysis: () => void;
+  onOpenFullArticle?: () => void;
   compact?: boolean;
 }) {
   const source = getFeedMeta(article.feed_key);
   const sourceLabel = feedSourceLabel(article, source);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
+  const showFullArticle = isBloombergApifyArticle(article) && !!onOpenFullArticle;
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
     background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
@@ -880,16 +1045,30 @@ function FeaturedCard({
           <span style={{ color: TONE_STYLE[tone].color, fontWeight: 700 }}>{TONE_STYLE[tone].label}</span>
         </div>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleAnalysis();
-          }}
-          style={{ ...analysisButtonStyle, justifySelf: "start" }}
-        >
-          {analysisLabel}
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAnalysis();
+            }}
+            style={{ ...analysisButtonStyle, justifySelf: "start" }}
+          >
+            {analysisLabel}
+          </button>
+          {showFullArticle ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFullArticle?.();
+              }}
+              style={{ ...analysisButtonStyle, justifySelf: "start" }}
+            >
+              Read Article
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -981,7 +1160,7 @@ function FeaturedCard({
         </div>
         <BookmarkButton saved={saved} onToggle={onToggleSave} size={16} />
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 12, paddingLeft: 214 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, paddingLeft: 214 }}>
         <button
           type="button"
           onClick={(e) => {
@@ -992,6 +1171,18 @@ function FeaturedCard({
         >
           {analysisLabel}
         </button>
+        {showFullArticle ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenFullArticle?.();
+            }}
+            style={analysisButtonStyle}
+          >
+            Read Article
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -1233,6 +1424,7 @@ export function IntelBetaDashboard({
   const [docDetails, setDocDetails] = useState<Record<string, DocumentDetailData>>({});
   const [docDetailLoading, setDocDetailLoading] = useState<Record<string, boolean>>({});
   const [docDetailError, setDocDetailError] = useState<Record<string, string>>({});
+  const [fullArticleDocId, setFullArticleDocId] = useState("");
   const [feedAnalyses, setFeedAnalyses] = useState<Record<string, FeedItemAnalysis>>(() => analysisMapFromFeedItems(feedItems));
   const [feedAnalysisLoading, setFeedAnalysisLoading] = useState<Record<string, boolean>>({});
   const [feedAnalysisError, setFeedAnalysisError] = useState<Record<string, string>>({});
@@ -1469,6 +1661,30 @@ export function IntelBetaDashboard({
       void loadDocDetail(article.document_id);
     }
   }, [docDetailLoading, docDetails, feedAnalyses, feedAnalysisLoading, isMobile, loadDocDetail, loadFeedAnalysis]);
+
+  const openFullArticle = useCallback((article: FeedItem) => {
+    const docId = article.document_id || "";
+    if (!docId) return;
+    setFullArticleDocId(docId);
+    if (!docDetails[docId] && !docDetailLoading[docId]) {
+      void loadDocDetail(docId);
+    }
+  }, [docDetailLoading, docDetails, loadDocDetail]);
+
+  const fullArticle = fullArticleDocId
+    ? feedItems.find((item) => item.document_id === fullArticleDocId) ?? null
+    : null;
+
+  useEffect(() => {
+    if (!fullArticleDocId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFullArticleDocId("");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fullArticleDocId]);
 
   const toggleArticleSave = (article: FeedItem) => {
     const source = getFeedMeta(article.feed_key);
@@ -1805,6 +2021,7 @@ export function IntelBetaDashboard({
                         analysisOpen={analysisOpen}
                         analysisLabel={analysisLabel}
                         onToggleAnalysis={() => toggleFeedAnalysis(article)}
+                        onOpenFullArticle={() => openFullArticle(article)}
                         compact={isMobile}
                       />
                     ) : (
@@ -1818,6 +2035,7 @@ export function IntelBetaDashboard({
                         analysisOpen={analysisOpen}
                         analysisLabel={analysisLabel}
                         onToggleAnalysis={() => toggleFeedAnalysis(article)}
+                        onOpenFullArticle={() => openFullArticle(article)}
                         compact={isMobile}
                       />
                     )}
@@ -1875,6 +2093,20 @@ export function IntelBetaDashboard({
           </div>
         </main>
       </div>
+
+      {fullArticle ? (
+        <FullArticleModal
+          article={fullArticle}
+          detail={fullArticleDocId ? docDetails[fullArticleDocId] : undefined}
+          loading={fullArticleDocId ? !!docDetailLoading[fullArticleDocId] : false}
+          error={fullArticleDocId ? docDetailError[fullArticleDocId] || "" : ""}
+          onClose={() => setFullArticleDocId("")}
+          retry={() => {
+            if (fullArticleDocId) void loadDocDetail(fullArticleDocId);
+          }}
+          compact={isMobile}
+        />
+      ) : null}
 
       <div
         style={{
