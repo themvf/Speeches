@@ -500,6 +500,211 @@ export const TOPIC_RULE_RECOMMENDATIONS: readonly TopicRuleRecommendation[] = [
       "This separates issuer disclosure and governance from general securities regulation.",
       "Form names and proxy terms provide the cleanest classification signals."
     ]
+  },
+  {
+    topicKey: "COMMODITIES_ENERGY_MARKETS",
+    label: "Commodities & Energy Markets",
+    sortOrder: 160,
+    focus: "Oil, gas, power, commodities futures, supply disruption, and energy-market risk.",
+    suggestedKeywords: [
+      "commodities",
+      "commodities futures",
+      "commodity futures",
+      "oil prices",
+      "crude oil",
+      "brent crude",
+      "WTI",
+      "natural gas",
+      "energy markets",
+      "energy prices",
+      "power markets",
+      "electricity markets",
+      "CFTC",
+      "Strait of Hormuz",
+      "shipping chokepoint",
+      "supply disruption",
+      "geopolitical risk premium"
+    ],
+    broadTerms: ["commodities", "oil", "gas", "energy"],
+    notes: [
+      "This prevents oil, gas, and commodities-futures coverage from being forced into generic Financial Markets.",
+      "Prefer market, futures, or supply-risk phrases over standalone energy terms when precision matters."
+    ]
+  },
+  {
+    topicKey: "GEOPOLITICAL_TRADE_RISK",
+    label: "Geopolitical & Trade Risk",
+    sortOrder: 170,
+    focus: "Geopolitical events, trade policy, tariffs, export controls, sanctions risk, and cross-border supply-chain disruption.",
+    suggestedKeywords: [
+      "geopolitical risk",
+      "trade policy",
+      "tariff",
+      "tariffs",
+      "export controls",
+      "import restrictions",
+      "supply chain",
+      "supply chains",
+      "sanctions risk",
+      "foreign policy",
+      "shipping lanes",
+      "Strait of Hormuz",
+      "Iran",
+      "China",
+      "national security",
+      "cross-border restrictions",
+      "trade war",
+      "maritime security"
+    ],
+    broadTerms: ["Iran", "China", "national security"],
+    notes: [
+      "Country names are intentionally broad and should be monitored for false positives.",
+      "The highest precision terms are trade-policy, export-control, sanctions-risk, and shipping-lane phrases."
+    ]
+  },
+  {
+    topicKey: "SRO_RULEMAKING_ARBITRATION",
+    label: "SRO Rulemaking & Arbitration",
+    sortOrder: 180,
+    focus: "FINRA and exchange rule filings, SRO notices, arbitration procedures, and dispute-resolution infrastructure.",
+    suggestedKeywords: [
+      "proposed rule change",
+      "rule filing",
+      "SR-FINRA",
+      "SR-CBOE",
+      "SR-NYSE",
+      "SR-NASDAQ",
+      "FINRA arbitration",
+      "dispute resolution",
+      "arbitration procedure",
+      "self-regulatory organization",
+      "SRO rulemaking",
+      "FINRA rules",
+      "arbitration forum",
+      "customer arbitration",
+      "industry arbitration"
+    ],
+    broadTerms: ["rule filing", "dispute resolution"],
+    notes: [
+      "This separates procedural SRO rulemaking from general Securities Regulation.",
+      "SR-form prefixes are clean signals for exchange and FINRA rule filings."
+    ]
+  },
+  {
+    topicKey: "BANKING_PAYMENTS",
+    label: "Banking & Payments",
+    sortOrder: 190,
+    focus: "Bank supervision, deposits, bank capital, payment rails, card networks, and money movement infrastructure.",
+    suggestedKeywords: [
+      "bank",
+      "banking",
+      "deposits",
+      "deposit insurance",
+      "payments",
+      "payment rails",
+      "card network",
+      "ACH",
+      "wire transfer",
+      "cross-border payments",
+      "real-time payments",
+      "instant payments",
+      "bank merger",
+      "bank capital",
+      "liquidity coverage",
+      "net interest income",
+      "Basel",
+      "Federal Reserve supervision"
+    ],
+    broadTerms: ["bank", "banking", "payments"],
+    notes: [
+      "Bank alone can be broad, but recent corpus coverage supports separating banking from macro and credit.",
+      "Payments terms are useful for fintech, stablecoin, and banking-infrastructure crossovers."
+    ]
+  },
+  {
+    topicKey: "CONSUMER_PROTECTION_DECEPTIVE_PRACTICES",
+    label: "Consumer Protection & Deceptive Practices",
+    sortOrder: 200,
+    focus: "FTC actions, deceptive advertising, subscription traps, unfair practices, junk fees, and consumer redress.",
+    suggestedKeywords: [
+      "FTC",
+      "consumer protection",
+      "deceptive advertising",
+      "deceptive claims",
+      "subscription scheme",
+      "unfair practices",
+      "unfair or deceptive",
+      "junk fees",
+      "refunds",
+      "consumer fraud",
+      "misleading claims",
+      "negative option",
+      "dark patterns",
+      "telemarketing",
+      "consumer redress"
+    ],
+    broadTerms: ["FTC", "refunds"],
+    notes: [
+      "This prevents FTC and consumer-fraud items from being misrouted into generic Enforcement only.",
+      "Best used with unfair, deceptive, subscription, fee, or redress language."
+    ]
+  },
+  {
+    topicKey: "DATA_PRIVACY_DIGITAL_IDENTITY",
+    label: "Data Privacy & Digital Identity",
+    sortOrder: 210,
+    focus: "Privacy, identity verification, personal data, biometrics, data brokers, and digital identity policy.",
+    suggestedKeywords: [
+      "data privacy",
+      "personal data",
+      "consumer data",
+      "digital identity",
+      "identity verification",
+      "eID",
+      "biometrics",
+      "privacy rule",
+      "data broker",
+      "data security",
+      "identity fraud",
+      "AI identity",
+      "personal identification code",
+      "authentication",
+      "credential theft"
+    ],
+    broadTerms: ["authentication", "data security"],
+    notes: [
+      "This separates privacy and identity issues from cyber incident response.",
+      "Digital identity terms are useful for AI-agent, KYC, and e-government coverage."
+    ]
+  },
+  {
+    topicKey: "INVESTMENT_PRODUCTS_DERIVATIVES",
+    label: "Investment Products & Derivatives",
+    sortOrder: 220,
+    focus: "ETFs, derivatives, structured products, funds, annuities, and retail investment product design.",
+    suggestedKeywords: [
+      "ETF",
+      "exchange-traded fund",
+      "options",
+      "futures",
+      "swaps",
+      "derivatives",
+      "structured product",
+      "annuity",
+      "mutual fund",
+      "closed-end fund",
+      "interval fund",
+      "leveraged ETF",
+      "inverse ETF",
+      "covered call ETF",
+      "yield product",
+      "retail structured notes"
+    ],
+    broadTerms: ["options", "futures", "derivatives"],
+    notes: [
+      "This separates product wrappers and derivatives from generic Financial Markets.",
+      "It will overlap with Crypto and Market Structure, but the overlap is analytically useful when products are the story."
+    ]
   }
 ];
 
