@@ -85,6 +85,17 @@ const DEFAULT_TOPIC_RULES = TOPIC_RULE_RECOMMENDATIONS.map((rule) => ({
   sortOrder: rule.sortOrder,
 }));
 
+const TOPIC_TAXONOMY_UPSERT_KEYS = new Set([
+  "PREDICTION_MARKETS",
+  "COMMODITIES_ENERGY_MARKETS",
+  "GEOPOLITICAL_TRADE_RISK",
+  "SRO_RULEMAKING_ARBITRATION",
+  "BANKING_PAYMENTS",
+  "CONSUMER_PROTECTION_DECEPTIVE_PRACTICES",
+  "DATA_PRIVACY_DIGITAL_IDENTITY",
+  "INVESTMENT_PRODUCTS_DERIVATIVES",
+]);
+
 function getSql() {
   if (!_sql) {
     const url = process.env.DATABASE_URL;
@@ -390,6 +401,7 @@ export async function ensureSchema(): Promise<void> {
   await sql`ALTER TABLE daily_recaps ADD COLUMN IF NOT EXISTS sources TEXT NOT NULL DEFAULT '[]'`;
   await seedDefaultFeeds(sql);
   await seedDefaultTopicRules(sql);
+  await applyTopicTaxonomyMigrations(sql);
 }
 
 async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
@@ -410,6 +422,28 @@ async function seedDefaultTopicRules(sql: ReturnType<typeof neon>): Promise<void
       ON CONFLICT (topic_key) DO NOTHING
     `;
   }
+}
+
+async function applyTopicTaxonomyMigrations(sql: ReturnType<typeof neon>): Promise<void> {
+  for (const rule of DEFAULT_TOPIC_RULES.filter((item) => TOPIC_TAXONOMY_UPSERT_KEYS.has(item.topicKey))) {
+    await sql`
+      INSERT INTO rss_topic_rules (topic_key, label, keywords, active, sort_order, updated_at)
+      VALUES (${rule.topicKey}, ${rule.label}, ${rule.keywords}, true, ${rule.sortOrder}, NOW())
+      ON CONFLICT (topic_key) DO UPDATE
+      SET
+        label = EXCLUDED.label,
+        keywords = EXCLUDED.keywords,
+        active = true,
+        sort_order = EXCLUDED.sort_order,
+        updated_at = NOW()
+    `;
+  }
+
+  await sql`
+    UPDATE rss_topic_rules
+    SET active = false, updated_at = NOW()
+    WHERE topic_key = 'PREMARKETS'
+  `;
 }
 
 export async function getFeeds(onlyActive = false): Promise<RssFeed[]> {

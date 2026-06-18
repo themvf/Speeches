@@ -340,11 +340,16 @@ export const TOPIC_RULE_RECOMMENDATIONS: readonly TopicRuleRecommendation[] = [
       "forecast market",
       "Kalshi",
       "Polymarket",
+      "PredictIt",
       "CFTC event contracts",
       "CFTC prediction markets",
       "political betting",
       "sports event contract",
-      "odds contract"
+      "odds contract",
+      "Commodity Futures Trading Commission",
+      "CME Group",
+      "Robinhood",
+      "prediction-markets"
     ],
     broadTerms: ["forecast", "odds", "contract", "prediction"],
     notes: [
