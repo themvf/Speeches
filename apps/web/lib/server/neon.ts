@@ -86,6 +86,7 @@ const DEFAULT_TOPIC_RULES = TOPIC_RULE_RECOMMENDATIONS.map((rule) => ({
 }));
 
 const TOPIC_TAXONOMY_UPSERT_KEYS = new Set([
+  "AI_TECH",
   "PRE_IPO",
   "PREDICTION_MARKETS",
   "TECH",
@@ -97,6 +98,14 @@ const TOPIC_TAXONOMY_UPSERT_KEYS = new Set([
   "DATA_PRIVACY_DIGITAL_IDENTITY",
   "INVESTMENT_PRODUCTS_DERIVATIVES",
 ]);
+
+const DEPRECATED_RSS_FEED_KEYS = [
+  "bleepingcomputer",
+  "the_hacker_news",
+  "dark_reading",
+  "securityweek",
+  "microsoft_security_blog",
+] as const;
 
 function getSql() {
   if (!_sql) {
@@ -402,6 +411,7 @@ export async function ensureSchema(): Promise<void> {
   `;
   await sql`ALTER TABLE daily_recaps ADD COLUMN IF NOT EXISTS sources TEXT NOT NULL DEFAULT '[]'`;
   await seedDefaultFeeds(sql);
+  await applyFeedSourceMigrations(sql);
   await seedDefaultTopicRules(sql);
   await applyTopicTaxonomyMigrations(sql);
 }
@@ -414,6 +424,21 @@ async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
       ON CONFLICT (feed_url) DO NOTHING
     `;
   }
+}
+
+async function applyFeedSourceMigrations(sql: ReturnType<typeof neon>): Promise<void> {
+  await sql`
+    UPDATE rss_feeds
+    SET active = false
+    WHERE feed_key = ANY(${DEPRECATED_RSS_FEED_KEYS})
+       OR feed_url = ANY(${[
+         "https://www.bleepingcomputer.com/feed/",
+         "https://feeds.feedburner.com/TheHackersNews",
+         "https://www.darkreading.com/rss.xml",
+         "https://www.securityweek.com/feed/",
+         "https://www.microsoft.com/en-us/security/blog/feed/",
+       ]})
+  `;
 }
 
 async function seedDefaultTopicRules(sql: ReturnType<typeof neon>): Promise<void> {

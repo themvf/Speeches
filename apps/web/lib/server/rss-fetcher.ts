@@ -148,29 +148,77 @@ export const DEFAULT_RSS_FEEDS: Record<string, { label: string; feedUrl: string 
     label: "CISA Cybersecurity Advisories",
     feedUrl: "https://www.cisa.gov/cybersecurity-advisories/all.xml",
   },
-  bleepingcomputer: {
-    label: "BleepingComputer",
-    feedUrl: "https://www.bleepingcomputer.com/feed/",
-  },
   krebs_on_security: {
     label: "Krebs on Security",
     feedUrl: "https://krebsonsecurity.com/feed/",
   },
-  the_hacker_news: {
-    label: "The Hacker News",
-    feedUrl: "https://feeds.feedburner.com/TheHackersNews",
+  gibson_dunn_sec_sentinel: {
+    label: "Gibson Dunn SEC Sentinel",
+    feedUrl: "https://secsentinel.gibsondunn.com/feed/",
   },
-  dark_reading: {
-    label: "Dark Reading",
-    feedUrl: "https://www.darkreading.com/rss.xml",
+  gibson_dunn_securities_regulation_monitor: {
+    label: "Gibson Dunn Securities Regulation and Corporate Governance Monitor",
+    feedUrl: "https://themonitor.gibsondunn.com/feed/",
   },
-  securityweek: {
-    label: "SecurityWeek",
-    feedUrl: "https://www.securityweek.com/feed/",
+  cleary_enforcement_watch: {
+    label: "Cleary Enforcement Watch",
+    feedUrl: "https://www.clearyenforcementwatch.com/feed/",
   },
-  microsoft_security_blog: {
-    label: "Microsoft Security Blog",
-    feedUrl: "https://www.microsoft.com/en-us/security/blog/feed/",
+  cooley_pubco: {
+    label: "Cooley PubCo",
+    feedUrl: "https://cooleypubco.com/feed/",
+  },
+  cooley_cyber_data_privacy: {
+    label: "Cooley Cyber/Data/Privacy",
+    feedUrl: "https://cdp.cooley.com/feed/",
+  },
+  cooley_governance_beat: {
+    label: "Cooley Governance Beat",
+    feedUrl: "https://governancebeat.cooley.com/feed/",
+  },
+  latham_global_financial_regulatory_blog: {
+    label: "Latham Global Financial Regulatory Blog",
+    feedUrl: "https://www.globalfinregblog.com/feed/",
+  },
+  latham_london: {
+    label: "Latham.London",
+    feedUrl: "https://www.latham.london/feed/",
+  },
+  covington_inside_privacy: {
+    label: "Covington Inside Privacy",
+    feedUrl: "https://www.insideprivacy.com/feed/",
+  },
+  covington_global_policy_watch: {
+    label: "Covington Global Policy Watch",
+    feedUrl: "https://www.globalpolicywatch.com/feed/",
+  },
+  covington_inside_government_contracts: {
+    label: "Covington Inside Government Contracts",
+    feedUrl: "https://www.insidegovernmentcontracts.com/feed/",
+  },
+  ballard_spahr_consumer_finance_monitor: {
+    label: "Ballard Spahr Consumer Finance Monitor",
+    feedUrl: "https://www.consumerfinancemonitor.com/feed/",
+  },
+  kelley_drye_ad_law_access: {
+    label: "Kelley Drye Ad Law Access",
+    feedUrl: "https://www.kelleydrye.com/viewpoints/blogs/ad-law-access/rss",
+  },
+  norton_rose_fulbright_data_protection_report: {
+    label: "Norton Rose Fulbright Data Protection Report",
+    feedUrl: "https://www.dataprotectionreport.com/feed/",
+  },
+  squire_patton_boggs_privacy_world: {
+    label: "Squire Patton Boggs Privacy World",
+    feedUrl: "https://www.privacyworld.blog/feed/",
+  },
+  bradley_financial_services_perspectives: {
+    label: "Bradley Financial Services Perspectives",
+    feedUrl: "https://www.financialservicesperspectives.com/feed/",
+  },
+  bradley_eye_on_enforcement: {
+    label: "Bradley Eye on Enforcement",
+    feedUrl: "https://www.eyeonenforcement.com/feed/",
   },
 };
 

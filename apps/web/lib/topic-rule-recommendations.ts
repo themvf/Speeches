@@ -173,9 +173,9 @@ export const TOPIC_RULE_RECOMMENDATIONS: readonly TopicRuleRecommendation[] = [
   },
   {
     topicKey: "AI_TECH",
-    label: "AI & Tech",
+    label: "Artificial Intelligence",
     sortOrder: 50,
-    focus: "AI, predictive analytics, financial technology, automation, cyber risk, and regulated technology infrastructure.",
+    focus: "Artificial intelligence, generative AI, machine learning, model governance, predictive analytics, and AI-related market or compliance risk.",
     suggestedKeywords: [
       "AI",
       "artificial intelligence",
@@ -183,24 +183,21 @@ export const TOPIC_RULE_RECOMMENDATIONS: readonly TopicRuleRecommendation[] = [
       "machine learning",
       "large language model",
       "LLM",
+      "AI model",
+      "foundation model",
+      "model governance",
+      "model risk",
+      "algorithmic accountability",
       "predictive data analytics",
       "algorithmic trading",
       "algorithm",
       "automation",
-      "robo-adviser",
-      "fintech",
-      "cybersecurity",
-      "cyber risk",
-      "data breach",
-      "Reg SCI",
-      "technology infrastructure",
-      "cloud",
-      "data center"
+      "robo-adviser"
     ],
-    broadTerms: ["technology"],
+    broadTerms: ["algorithm", "automation"],
     notes: [
-      "Keep AI as an exact acronym, but do not rely on generic technology alone.",
-      "Cyber and infrastructure terms catch regulated tech stories that are not strictly AI."
+      "This is now intentionally AI-only; fintech, regtech, cyber, and infrastructure stories should route to their own topics.",
+      "AI is retained as an exact acronym, but generic technology terms are excluded to reduce false positives."
     ]
   },
   {
