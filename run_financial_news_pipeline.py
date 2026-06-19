@@ -1097,6 +1097,15 @@ def _heuristic_enrichment(doc: Dict[str, Any]) -> Dict[str, Any]:
     text = str(doc.get("full_text", "") or "")
     lower = text.lower()
     comment_position = _infer_comment_position(doc, text)
+
+    def has_topic_term(term: str) -> bool:
+        needle = str(term or "").strip().lower()
+        if not needle:
+            return False
+        if re.fullmatch(r"[a-z0-9]{1,3}", needle):
+            return re.search(rf"\b{re.escape(needle)}\b", lower) is not None
+        return needle in lower
+
     topic_rules = {
         "crypto_assets": ["crypto", "token", "digital asset", "blockchain", "stablecoin", "bitcoin", "ether"],
         "enforcement": ["enforcement", "violation", "charges", "penalty", "compliance", "investigation"],
@@ -1107,7 +1116,7 @@ def _heuristic_enrichment(doc: Dict[str, Any]) -> Dict[str, Any]:
         "ai_technology": ["artificial intelligence", "ai", "machine learning", "automation", "algorithm"],
         "cybersecurity": ["cyber", "security breach", "incident response", "ransomware", "cybersecurity"],
     }
-    tags = [tag for tag, needles in topic_rules.items() if any(n in lower for n in needles)]
+    tags = [tag for tag, needles in topic_rules.items() if any(has_topic_term(n) for n in needles)]
     if not tags:
         tags = ["general_policy"]
 

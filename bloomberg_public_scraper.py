@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
@@ -94,6 +94,32 @@ def _parse_date_text(value: Any) -> Optional[datetime]:
 def _date_to_display(value: Any) -> str:
     parsed = _parse_date_text(value)
     return parsed.strftime("%B %d, %Y") if parsed is not None else str(value or "").strip()
+
+
+def _date_to_storage(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    iso_candidate = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        parsed_iso = datetime.fromisoformat(iso_candidate)
+        if parsed_iso.tzinfo is None:
+            parsed_iso = parsed_iso.replace(tzinfo=timezone.utc)
+        return parsed_iso.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    except Exception:
+        pass
+    try:
+        parsed = parsedate_to_datetime(text)
+        if parsed is not None:
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    except Exception:
+        pass
+    parsed = _parse_date_text(text)
+    if parsed is None:
+        return text
+    return parsed.replace(microsecond=0).isoformat()
 
 
 def _url_key(url: str) -> str:
@@ -243,7 +269,7 @@ class BloombergPublicNewsScraper:
                 elif local == "link" and not entry.get("url"):
                     entry["url"] = text or _normalize_space(child.get("href", ""))
                 elif local in {"pubDate", "published", "updated"} and not entry.get("date"):
-                    entry["date"] = _date_to_display(text)
+                    entry["date"] = _date_to_storage(text)
                 elif local in {"description", "summary"} and not entry.get("summary"):
                     entry["summary"] = _strip_html(child.text or "")
                 elif local in {"creator", "author"} and not entry.get("author"):
@@ -384,7 +410,7 @@ class BloombergPublicNewsScraper:
             "data": {
                 "url": target,
                 "title": title,
-                "date": _date_to_display(date_text),
+                "date": _date_to_storage(date_text),
                 "full_text": full_text,
                 "summary": summary,
                 "author": author,

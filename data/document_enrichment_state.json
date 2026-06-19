@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pipeline_version": "v1",
-  "updated_at": "2026-03-02T02:47:55Z",
+  "updated_at": "2026-06-19T12:56:30Z",
   "entries": {
     "cd0f87afb94a397e3d7fe926": {
       "doc_id": "cd0f87afb94a397e3d7fe926",
@@ -169978,6 +169978,2097 @@
           "review_component": 0.6,
           "status_multiplier": 1.0
         }
+      }
+    },
+    "d639af931c197a849bf399f2": {
+      "doc_id": "d639af931c197a849bf399f2",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "India Stock Regulator Lets Firms Buy Back Shares From Market",
+      "speaker": "Samie Modak",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/india-stock-regulator-lets-firms-buy-back-shares-from-market",
+      "doc_type": "Article",
+      "word_count": 79,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:50:14Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "India Stock Regulator Lets Firms Buy Back Shares From Market",
+        "tags": [
+          "ai_technology"
+        ],
+        "keywords": [
+          "india",
+          "regulator",
+          "market",
+          "source",
+          "bloomberg",
+          "feed",
+          "stock",
+          "lets",
+          "firms",
+          "back",
+          "shares",
+          "public"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "supportive",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "e7494982c02f436de05844fa": {
+      "doc_id": "e7494982c02f436de05844fa",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Stocks Slide as Iran Nuclear Talks Hit Early Snag: Markets Wrap",
+      "speaker": "Andre Janse Van Vuuren, Julien Ponthus",
+      "date": "June 18, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-18/asian-stocks-to-rise-as-us-iran-deal-lifts-mood-markets-wrap",
+      "doc_type": "Article",
+      "word_count": 95,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:50:14Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Stocks Slide as Iran Nuclear Talks Hit Early Snag: Markets Wrap",
+        "tags": [
+          "ai_technology"
+        ],
+        "keywords": [
+          "stocks",
+          "iran",
+          "source",
+          "bloomberg",
+          "feed",
+          "note",
+          "slide",
+          "nuclear",
+          "talks",
+          "early",
+          "snag",
+          "markets"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "7be978cb6c11b6202c20b135": {
+      "doc_id": "7be978cb6c11b6202c20b135",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Vitol Won Emergency Zambia Fuel Supply Deal That IMF Questioned",
+      "speaker": "Matthew Hill, Archie Hunter",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/vitol-won-emergency-zambia-fuel-supply-deal-that-imf-questioned",
+      "doc_type": "Article",
+      "word_count": 88,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:50:14Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Vitol Won Emergency Zambia Fuel Supply Deal That IMF Questioned",
+        "tags": [
+          "funds_asset_mgmt",
+          "ai_technology"
+        ],
+        "keywords": [
+          "vitol",
+          "emergency",
+          "zambia",
+          "source",
+          "bloomberg",
+          "feed",
+          "fuel",
+          "supply",
+          "deal",
+          "questioned",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "b45bbe4ff1b685bef00304ca": {
+      "doc_id": "b45bbe4ff1b685bef00304ca",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Gold Set for Weekly Loss on Hawkish Fed and Peace Deal Jitters",
+      "speaker": "Yihui Xie",
+      "date": "June 18, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-18/gold-set-for-weekly-loss-as-hawkish-fed-outweighs-peace-deal",
+      "doc_type": "Article",
+      "word_count": 88,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:50:14Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Gold Set for Weekly Loss on Hawkish Fed and Peace Deal Jitters",
+        "tags": [
+          "ai_technology"
+        ],
+        "keywords": [
+          "gold",
+          "weekly",
+          "loss",
+          "peace",
+          "deal",
+          "source",
+          "bloomberg",
+          "feed",
+          "hawkish",
+          "jitters",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "73b7a0b7302243924339ae8c": {
+      "doc_id": "73b7a0b7302243924339ae8c",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Ambani’s Jio Could Be India’s Biggest IPO",
+      "speaker": "Bloomberg News",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/videos/2026-06-19/ambani-s-jio-could-be-india-s-biggest-ipo-video",
+      "doc_type": "Article",
+      "word_count": 98,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:55:17Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Ambani’s Jio Could Be India’s Biggest IPO",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "source",
+          "bloomberg",
+          "ambani",
+          "india",
+          "biggest",
+          "feed",
+          "public",
+          "organization",
+          "date",
+          "june",
+          "extracted",
+          "text"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "145a2edbc99324348682aea8": {
+      "doc_id": "145a2edbc99324348682aea8",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "India Stock Regulator Lets Firms Buy Back Shares From Market",
+      "speaker": "Samie Modak",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/india-stock-regulator-lets-firms-buy-back-shares-from-market",
+      "doc_type": "Article",
+      "word_count": 77,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:55:17Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "India Stock Regulator Lets Firms Buy Back Shares From Market",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "india",
+          "regulator",
+          "market",
+          "source",
+          "bloomberg",
+          "feed",
+          "stock",
+          "lets",
+          "firms",
+          "back",
+          "shares",
+          "public"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "supportive",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "160348e62708a30f5788f69b": {
+      "doc_id": "160348e62708a30f5788f69b",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Stocks Slide as Iran Nuclear Talks Hit Early Snag: Markets Wrap",
+      "speaker": "Andre Janse Van Vuuren, Julien Ponthus",
+      "date": "June 18, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-18/asian-stocks-to-rise-as-us-iran-deal-lifts-mood-markets-wrap",
+      "doc_type": "Article",
+      "word_count": 93,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:55:17Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Stocks Slide as Iran Nuclear Talks Hit Early Snag: Markets Wrap",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "stocks",
+          "iran",
+          "source",
+          "bloomberg",
+          "feed",
+          "note",
+          "slide",
+          "nuclear",
+          "talks",
+          "early",
+          "snag",
+          "markets"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "ce21fe6fc44b9b1e5e2a878f": {
+      "doc_id": "ce21fe6fc44b9b1e5e2a878f",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Vitol Won Emergency Zambia Fuel Supply Deal That IMF Questioned",
+      "speaker": "Matthew Hill, Archie Hunter",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/vitol-won-emergency-zambia-fuel-supply-deal-that-imf-questioned",
+      "doc_type": "Article",
+      "word_count": 86,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:55:17Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Vitol Won Emergency Zambia Fuel Supply Deal That IMF Questioned",
+        "tags": [
+          "funds_asset_mgmt"
+        ],
+        "keywords": [
+          "vitol",
+          "emergency",
+          "zambia",
+          "source",
+          "bloomberg",
+          "feed",
+          "fuel",
+          "supply",
+          "deal",
+          "questioned",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "b8840a33c4a0cf9c2d48ab48": {
+      "doc_id": "b8840a33c4a0cf9c2d48ab48",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Gold Set for Weekly Loss on Hawkish Fed and Peace Deal Jitters",
+      "speaker": "Yihui Xie",
+      "date": "June 18, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-18/gold-set-for-weekly-loss-as-hawkish-fed-outweighs-peace-deal",
+      "doc_type": "Article",
+      "word_count": 86,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:55:17Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Gold Set for Weekly Loss on Hawkish Fed and Peace Deal Jitters",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "gold",
+          "weekly",
+          "loss",
+          "peace",
+          "deal",
+          "source",
+          "bloomberg",
+          "feed",
+          "hawkish",
+          "jitters",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "b656e2174c566a1bbd1bbcaf": {
+      "doc_id": "b656e2174c566a1bbd1bbcaf",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "India Stock Regulator Lets Firms Buy Back Shares From Market",
+      "speaker": "Samie Modak",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/india-stock-regulator-lets-firms-buy-back-shares-from-market",
+      "doc_type": "Article",
+      "word_count": 77,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "India Stock Regulator Lets Firms Buy Back Shares From Market",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "india",
+          "regulator",
+          "market",
+          "source",
+          "bloomberg",
+          "feed",
+          "stock",
+          "lets",
+          "firms",
+          "back",
+          "shares",
+          "public"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "supportive",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "d053353bc6499c85b7b6163a": {
+      "doc_id": "d053353bc6499c85b7b6163a",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Stocks Slide as Iran Nuclear Talks Hit Early Snag: Markets Wrap",
+      "speaker": "Andre Janse Van Vuuren, Julien Ponthus",
+      "date": "June 18, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-18/asian-stocks-to-rise-as-us-iran-deal-lifts-mood-markets-wrap",
+      "doc_type": "Article",
+      "word_count": 93,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Stocks Slide as Iran Nuclear Talks Hit Early Snag: Markets Wrap",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "stocks",
+          "iran",
+          "source",
+          "bloomberg",
+          "feed",
+          "note",
+          "slide",
+          "nuclear",
+          "talks",
+          "early",
+          "snag",
+          "markets"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "63c324c5874b12781e11e7db": {
+      "doc_id": "63c324c5874b12781e11e7db",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Vitol Won Emergency Zambia Fuel Supply Deal That IMF Questioned",
+      "speaker": "Matthew Hill, Archie Hunter",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/vitol-won-emergency-zambia-fuel-supply-deal-that-imf-questioned",
+      "doc_type": "Article",
+      "word_count": 86,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Vitol Won Emergency Zambia Fuel Supply Deal That IMF Questioned",
+        "tags": [
+          "funds_asset_mgmt"
+        ],
+        "keywords": [
+          "vitol",
+          "emergency",
+          "zambia",
+          "source",
+          "bloomberg",
+          "feed",
+          "fuel",
+          "supply",
+          "deal",
+          "questioned",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "ed47e7fe6ebc922f445839aa": {
+      "doc_id": "ed47e7fe6ebc922f445839aa",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Gold Set for Weekly Loss on Hawkish Fed and Peace Deal Jitters",
+      "speaker": "Yihui Xie",
+      "date": "June 18, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-18/gold-set-for-weekly-loss-as-hawkish-fed-outweighs-peace-deal",
+      "doc_type": "Article",
+      "word_count": 86,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Gold Set for Weekly Loss on Hawkish Fed and Peace Deal Jitters",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "gold",
+          "weekly",
+          "loss",
+          "peace",
+          "deal",
+          "source",
+          "bloomberg",
+          "feed",
+          "hawkish",
+          "jitters",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "e03576f85382240b5d55e09b": {
+      "doc_id": "e03576f85382240b5d55e09b",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Ambani’s Jio Could Be India’s Biggest IPO",
+      "speaker": "Bloomberg News",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/videos/2026-06-19/ambani-s-jio-could-be-india-s-biggest-ipo-video",
+      "doc_type": "Article",
+      "word_count": 96,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Ambani’s Jio Could Be India’s Biggest IPO",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "source",
+          "bloomberg",
+          "ambani",
+          "india",
+          "biggest",
+          "feed",
+          "public",
+          "organization",
+          "date",
+          "extracted",
+          "text",
+          "snippet"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "ad82f32b441eab9897dedd1d": {
+      "doc_id": "ad82f32b441eab9897dedd1d",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "‘Take Risk’: Canada Regulator Cuts Bank Capital Level to Boost Lending",
+      "speaker": "Christine Dobby",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/-take-risk-canada-regulator-cuts-bank-capital-level-to-boost-lending",
+      "doc_type": "Article",
+      "word_count": 94,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.426,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.6667,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "‘Take Risk’: Canada Regulator Cuts Bank Capital Level to Boost Lending",
+        "tags": [
+          "ai_technology"
+        ],
+        "keywords": [
+          "canada",
+          "regulator",
+          "capital",
+          "source",
+          "bloomberg",
+          "feed",
+          "take",
+          "risk",
+          "cuts",
+          "bank",
+          "level",
+          "boost"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "critical",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [
+          {
+            "claim": "Potentially relevant policy statement",
+            "snippet": "‘Take Risk’: Canada Regulator Cuts Bank Capital Level to Boost Lending"
+          },
+          {
+            "claim": "Potentially relevant policy statement",
+            "snippet": "URL: https://www.bloomberg.com/news/articles/2026-06-19/-take-risk-canada-regulator-cuts-bank-capital-level-to-boost-lending"
+          }
+        ],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "53c6b2bbf02109ee7a8ec283": {
+      "doc_id": "53c6b2bbf02109ee7a8ec283",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Asian Oil Buyers Brace for Flood of Crude From Persian Gulf",
+      "speaker": "Serene Cheong",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/newsletters/2026-06-19/asian-oil-buyers-brace-for-flood-of-crude-from-persian-gulf",
+      "doc_type": "Article",
+      "word_count": 73,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Asian Oil Buyers Brace for Flood of Crude From Persian Gulf",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "source",
+          "bloomberg",
+          "feed",
+          "asian",
+          "buyers",
+          "brace",
+          "flood",
+          "crude",
+          "persian",
+          "gulf",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "65543af2ca54d10c46d7dd10": {
+      "doc_id": "65543af2ca54d10c46d7dd10",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Ambani’s Jio Platforms Files For Long-Awaited India IPO",
+      "speaker": "Sanjai P R, Rajesh Mascarenhas",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/mukesh-ambani-says-jio-platforms-to-file-its-ipo-papers-friday",
+      "doc_type": "Article",
+      "word_count": 87,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Ambani’s Jio Platforms Files For Long-Awaited India IPO",
+        "tags": [
+          "investor_protection"
+        ],
+        "keywords": [
+          "ambani",
+          "platforms",
+          "india",
+          "source",
+          "bloomberg",
+          "public",
+          "feed",
+          "files",
+          "long-awaited",
+          "organization",
+          "date",
+          "extracted"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "53f1b0b909be2ac0316b5378": {
+      "doc_id": "53f1b0b909be2ac0316b5378",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Andy Burnham Win Puts UK PM Under Pressure & US-Iran Talks Called Off | The Pulse 6/19/2026",
+      "speaker": "Bloomberg News",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/videos/2026-06-19/the-pulse-6-19-2026-video",
+      "doc_type": "Article",
+      "word_count": 68,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "\"The Pulse With Francine Lacqua\" is all about conversations with high profile guests in the beating heart of global business, economics, finance and politics. Based in London, we go wherever the story is, bringing you exclusive interviews and market-moving scoops. Today's guests: Mark Haefele, UBS G",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "guests",
+          "global",
+          "politics",
+          "pulse",
+          "francine",
+          "lacqua",
+          "conversations",
+          "high",
+          "profile",
+          "beating",
+          "heart",
+          "business"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "b9674b2eff45a28018909b3a": {
+      "doc_id": "b9674b2eff45a28018909b3a",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Iran War Fuels Renewables Interest, Multilateral Lender Says",
+      "speaker": "Selcuk Gokoluk",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/iran-war-fuels-interest-in-renewables-multilateral-lender-says",
+      "doc_type": "Article",
+      "word_count": 85,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Iran War Fuels Renewables Interest, Multilateral Lender Says",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "iran",
+          "renewables",
+          "interest",
+          "source",
+          "bloomberg",
+          "feed",
+          "fuels",
+          "multilateral",
+          "lender",
+          "says",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "df3c7aff617de1dc56531756": {
+      "doc_id": "df3c7aff617de1dc56531756",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Czech Billionaire Premier Feuds With Central Bank Over Rate Hike",
+      "speaker": "Michal Kubala, Peter Laca",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/czech-billionaire-premier-feuds-with-central-bank-over-rate-hike",
+      "doc_type": "Article",
+      "word_count": 83,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Czech Billionaire Premier Feuds With Central Bank Over Rate Hike",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "czech",
+          "central",
+          "bank",
+          "source",
+          "bloomberg",
+          "public",
+          "feed",
+          "billionaire",
+          "premier",
+          "feuds",
+          "rate",
+          "hike"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "critical",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "d2c70556a8b489365f5a4883": {
+      "doc_id": "d2c70556a8b489365f5a4883",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "The Dollar Is Riding High Thanks to a Newly Hawkish Fed",
+      "speaker": "Phil Serafino",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/newsletters/2026-06-19/the-dollar-is-riding-high-thanks-to-a-newly-hawkish-fed",
+      "doc_type": "Article",
+      "word_count": 64,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "The Dollar Is Riding High Thanks to a Newly Hawkish Fed",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "source",
+          "bloomberg",
+          "feed",
+          "dollar",
+          "riding",
+          "high",
+          "thanks",
+          "newly",
+          "hawkish",
+          "public",
+          "organization",
+          "date"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "e08294045fb9703d25822504": {
+      "doc_id": "e08294045fb9703d25822504",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "UK Bonds Fall as Burnham Win Leaves Markets Speculating on Risks",
+      "speaker": "Alice Atkins, James Hirai",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/uk-bonds-fall-as-burnham-win-oil-prices-renew-fiscal-concerns",
+      "doc_type": "Article",
+      "word_count": 85,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.426,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.6667,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "UK Bonds Fall as Burnham Win Leaves Markets Speculating on Risks",
+        "tags": [
+          "investor_protection"
+        ],
+        "keywords": [
+          "bonds",
+          "burnham",
+          "source",
+          "bloomberg",
+          "feed",
+          "fall",
+          "leaves",
+          "markets",
+          "speculating",
+          "risks",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "cautious",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [
+          {
+            "claim": "Potentially relevant policy statement",
+            "snippet": "UK Bonds Fall as Burnham Win Leaves Markets Speculating on Risks"
+          },
+          {
+            "claim": "Potentially relevant policy statement",
+            "snippet": "Extracted text snippet: The UK’s government bonds fell after Andy Burnham’s victory in a special election renewed political uncertainty, prompting investors to demand a higher premium to hold the country’s debt."
+          }
+        ],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "67c7e5258de0394c31730a9c": {
+      "doc_id": "67c7e5258de0394c31730a9c",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "World Cup Mints Big Prediction Winners and Million-Dollar Losers",
+      "speaker": "Emily Nicolle, Ira Boudway, Carolyn Silverman",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/world-cup-mints-big-prediction-winners-million-dollar-losers",
+      "doc_type": "Article",
+      "word_count": 85,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "World Cup Mints Big Prediction Winners and Million-Dollar Losers",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "world",
+          "prediction",
+          "million-dollar",
+          "source",
+          "bloomberg",
+          "public",
+          "feed",
+          "mints",
+          "winners",
+          "losers",
+          "organization",
+          "date"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "c53d592604907ecf21bde52b": {
+      "doc_id": "c53d592604907ecf21bde52b",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Vance Delays Iran Talks, Andy Burnham's Victory | The Opening Trade 6/19/2026",
+      "speaker": "Bloomberg News",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/videos/2026-06-19/the-opening-trade-6-19-2026-video",
+      "doc_type": "Article",
+      "word_count": 128,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Talks between the US and Iran that had been planned for Friday in Switzerland will not take place, Reuters reported, citing a Swiss Foreign Ministry statement. Vice President JD Vance will not depart Thursday night for the face-to-face negotiations, the White House had said earlier. The pound edged",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "open",
+          "talks",
+          "between",
+          "iran",
+          "planned",
+          "friday",
+          "switzerland",
+          "take",
+          "place",
+          "reuters",
+          "reported",
+          "citing"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "8b6adb3086d615d34886603b": {
+      "doc_id": "8b6adb3086d615d34886603b",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Lane Says It’s Hard to Argue ECB Shouldn’t Have Hiked Rates",
+      "speaker": "William Horobin",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/lane-says-it-s-hard-to-argue-that-ecb-shouldn-t-have-hiked-rates",
+      "doc_type": "Article",
+      "word_count": 81,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Lane Says It’s Hard to Argue ECB Shouldn’t Have Hiked Rates",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "lane",
+          "argue",
+          "source",
+          "bloomberg",
+          "feed",
+          "says",
+          "hard",
+          "shouldn",
+          "hiked",
+          "rates",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "153989d0adb1cfd9c054147d": {
+      "doc_id": "153989d0adb1cfd9c054147d",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Oil Steadies as Traders Assess Hormuz and Lingering Tensions",
+      "speaker": "Grant Smith, Rong Wei Neo, Gabriel Levin",
+      "date": "June 18, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-18/latest-oil-market-news-and-analysis-for-june-19",
+      "doc_type": "Article",
+      "word_count": 94,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Oil Steadies as Traders Assess Hormuz and Lingering Tensions",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "hormuz",
+          "source",
+          "bloomberg",
+          "feed",
+          "steadies",
+          "traders",
+          "assess",
+          "lingering",
+          "tensions",
+          "public",
+          "organization",
+          "date"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "a17f66407bd8f98a3af8e11a": {
+      "doc_id": "a17f66407bd8f98a3af8e11a",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Santander Surpasses Inditex as Spain’s Most Valuable Company",
+      "speaker": "Macarena Munoz Montijano",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/santander-surpasses-inditex-as-spain-s-most-valuable-company",
+      "doc_type": "Article",
+      "word_count": 76,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Santander Surpasses Inditex as Spain’s Most Valuable Company",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "santander",
+          "inditex",
+          "spain",
+          "most",
+          "valuable",
+          "company",
+          "source",
+          "bloomberg",
+          "feed",
+          "surpasses",
+          "public",
+          "organization"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "c96c2f74f3ed5bd8e2b9bcf2": {
+      "doc_id": "c96c2f74f3ed5bd8e2b9bcf2",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "Indian Banks Line Up $2.5 Billion Debt Sales Using RBI Swap",
+      "speaker": "Saikat Das, Bhaskar Dutta",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/indian-banks-line-up-2-5-billion-debt-sales-using-rbi-swap",
+      "doc_type": "Article",
+      "word_count": 101,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.306,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 0.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "Indian Banks Line Up $2.5 Billion Debt Sales Using RBI Swap",
+        "tags": [
+          "general_policy"
+        ],
+        "keywords": [
+          "billion",
+          "source",
+          "bloomberg",
+          "feed",
+          "bank",
+          "india",
+          "indian",
+          "banks",
+          "line",
+          "debt",
+          "sales",
+          "using"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
+      }
+    },
+    "7095cc0417a5316d2c91a45d": {
+      "doc_id": "7095cc0417a5316d2c91a45d",
+      "organization": "Bloomberg",
+      "org_key": "bloomberg",
+      "title": "US Stocks Draw Record Weekly Inflows as Investors Pile Into Tech",
+      "speaker": "Michael Msika",
+      "date": "June 19, 2026",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-19/us-stocks-draw-record-weekly-inflows-as-investors-pile-into-tech",
+      "doc_type": "Article",
+      "word_count": 78,
+      "status": "fallback_enriched",
+      "error": "OpenAI client unavailable; using heuristic enrichment.",
+      "model": "gpt-5-mini",
+      "pipeline_version": "v1",
+      "updated_at": "2026-06-19T12:56:30Z",
+      "review": {
+        "decision": "pending",
+        "notes": ""
+      },
+      "reward": {
+        "score": 0.486,
+        "components": {
+          "schema_validity": 1.0,
+          "evidence_quality": 1.0,
+          "confidence": 0.35,
+          "review_component": 0.6,
+          "status_multiplier": 0.6
+        }
+      },
+      "enrichment": {
+        "summary": "US Stocks Draw Record Weekly Inflows as Investors Pile Into Tech",
+        "tags": [
+          "investor_protection"
+        ],
+        "keywords": [
+          "record",
+          "stocks",
+          "inflows",
+          "investors",
+          "source",
+          "bloomberg",
+          "feed",
+          "draw",
+          "weekly",
+          "pile",
+          "tech",
+          "public"
+        ],
+        "entities": [],
+        "stance": {
+          "label": "neutral",
+          "target": ""
+        },
+        "comment_position": {
+          "label": "not_applicable",
+          "confidence": 0.0,
+          "rationale": ""
+        },
+        "evidence_spans": [
+          {
+            "claim": "Potentially relevant policy statement",
+            "snippet": "US Stocks Draw Record Weekly Inflows as Investors Pile Into Tech"
+          },
+          {
+            "claim": "Potentially relevant policy statement",
+            "snippet": "URL: https://www.bloomberg.com/news/articles/2026-06-19/us-stocks-draw-record-weekly-inflows-as-investors-pile-into-tech"
+          },
+          {
+            "claim": "Potentially relevant policy statement",
+            "snippet": "Extracted text snippet: US stocks attracted record inflows last week as investors piled into the technology sector, according to Bank of America Corp. strategists."
+          }
+        ],
+        "enforcement": {
+          "release_no": "",
+          "action_type": "unknown",
+          "forum": "unknown",
+          "alleged_violations": [],
+          "outcome_status": "unknown",
+          "respondents": [],
+          "entities": []
+        },
+        "confidence": 0.35
       }
     }
   }
