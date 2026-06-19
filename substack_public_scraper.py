@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -112,7 +113,9 @@ def _json_object(value: str) -> Dict[str, Any]:
 
 class SubstackPublicScraper:
     def __init__(self, min_delay_seconds: float = 0.25) -> None:
-        self.session = curl_requests.Session(impersonate="chrome") if curl_requests is not None else requests.Session()
+        self._uses_curl_cffi = curl_requests is not None
+        self.session = curl_requests.Session(impersonate="chrome") if self._uses_curl_cffi else requests.Session()
+        self.proxy_url = _normalize_space(os.getenv("SUBSTACK_PROXY_URL", ""))
         self.session.headers.update(
             {
                 "User-Agent": (
@@ -136,7 +139,13 @@ class SubstackPublicScraper:
 
     def _get_json(self, url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         self._rate_limit()
-        response = self.session.get(url, params=params, timeout=45)
+        request_options: Dict[str, Any] = {"params": params, "timeout": 45}
+        if self.proxy_url:
+            if self._uses_curl_cffi:
+                request_options["proxy"] = self.proxy_url
+            else:
+                request_options["proxies"] = {"http": self.proxy_url, "https": self.proxy_url}
+        response = self.session.get(url, **request_options)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
@@ -145,12 +154,17 @@ class SubstackPublicScraper:
 
     def _warm_search_session(self, keyword: str) -> None:
         self._rate_limit()
-        response = self.session.get(
-            f"https://substack.com/search/{quote(keyword, safe='')}",
-            params={"searching": "all_posts"},
-            timeout=45,
-            allow_redirects=True,
-        )
+        request_options: Dict[str, Any] = {
+            "params": {"searching": "all_posts"},
+            "timeout": 45,
+            "allow_redirects": True,
+        }
+        if self.proxy_url:
+            if self._uses_curl_cffi:
+                request_options["proxy"] = self.proxy_url
+            else:
+                request_options["proxies"] = {"http": self.proxy_url, "https": self.proxy_url}
+        response = self.session.get(f"https://substack.com/search/{quote(keyword, safe='')}", **request_options)
         response.raise_for_status()
 
     def discover_documents(
@@ -175,6 +189,7 @@ class SubstackPublicScraper:
             "search_url": SUBSTACK_SEARCH_URL,
             "keywords": search_terms,
             "pages_per_keyword": pages_per_keyword,
+            "proxy_configured": bool(self.proxy_url),
             "requests": [],
             "errors": [],
         }
