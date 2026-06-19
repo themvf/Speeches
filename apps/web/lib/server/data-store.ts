@@ -955,7 +955,7 @@ export function selectNewsFeedDocuments(
   options: { limit?: number; pinnedSourceKinds?: string[] } = {}
 ): DocumentListItem[] {
   const feedDocumentLimit = Math.max(0, options.limit ?? 250);
-  const pinnedSourceKinds = new Set(options.pinnedSourceKinds ?? ["bloomberg_apify_article"]);
+  const pinnedSourceKinds = new Set(options.pinnedSourceKinds ?? ["bloomberg_apify_article", "bloomberg_public_article"]);
   const dated = items
     .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
     .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));

@@ -13,6 +13,8 @@ import {
   getRecentArticles,
   getTopicRules,
   upsertRssArticles,
+  type StoredRssArticle,
+  type StoredRssTopicRule,
 } from "@/lib/server/neon";
 import { getClientIp, getFeedLimiter, isRateLimited } from "@/lib/server/rate-limit";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
@@ -33,41 +35,46 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const refresh = searchParams.get("refresh") === "1";
 
   try {
-    await ensureSchema();
+    let articles: StoredRssArticle[] = [];
+    let topicRules: StoredRssTopicRule[] = [];
 
-    let [articles, topicRules] = await Promise.all([
-      getRecentArticles({ limit, feedKey, since }),
-      getTopicRules(true),
-    ]);
+    if (process.env.DATABASE_URL) {
+      await ensureSchema();
 
-    const latestFetchedAt = articles.reduce((max, a) => {
-      const t = a.fetched_at ? new Date(a.fetched_at).getTime() : 0;
-      return t > max ? t : max;
-    }, 0);
-    const ageMs = latestFetchedAt > 0 ? Date.now() - latestFetchedAt : Number.POSITIVE_INFINITY;
-    const needsRefresh = refresh && !feedKey && !since && ageMs > 8 * 60_000;
+      [articles, topicRules] = await Promise.all([
+        getRecentArticles({ limit, feedKey, since }),
+        getTopicRules(true),
+      ]);
 
-    if (needsRefresh) {
-      const activeFeeds = await getFeeds(true);
-      let insertedCount = 0;
-      const refreshResults = await Promise.allSettled(
-        activeFeeds.map(async (feed) => {
-          const feedArticles = await fetchRssFeed(feed.feed_url, 50);
-          return upsertRssArticles(feedArticles, feed.feed_key);
-        })
-      );
-      for (const result of refreshResults) {
-        if (result.status === "rejected") {
-          console.error("[intel/feed] feed refresh failed:", result.reason);
-        } else {
-          insertedCount += result.value;
+      const latestFetchedAt = articles.reduce((max, a) => {
+        const t = a.fetched_at ? new Date(a.fetched_at).getTime() : 0;
+        return t > max ? t : max;
+      }, 0);
+      const ageMs = latestFetchedAt > 0 ? Date.now() - latestFetchedAt : Number.POSITIVE_INFINITY;
+      const needsRefresh = refresh && !feedKey && !since && ageMs > 8 * 60_000;
+
+      if (needsRefresh) {
+        const activeFeeds = await getFeeds(true);
+        let insertedCount = 0;
+        const refreshResults = await Promise.allSettled(
+          activeFeeds.map(async (feed) => {
+            const feedArticles = await fetchRssFeed(feed.feed_url, 50);
+            return upsertRssArticles(feedArticles, feed.feed_key);
+          })
+        );
+        for (const result of refreshResults) {
+          if (result.status === "rejected") {
+            console.error("[intel/feed] feed refresh failed:", result.reason);
+          } else {
+            insertedCount += result.value;
+          }
         }
+        const analysisLimit = Math.max(0, Math.min(10, Number.parseInt(process.env.RSS_AUTO_ANALYSIS_LIMIT || "3", 10) || 3));
+        if (insertedCount > 0 && analysisLimit > 0) {
+          await analyzeMissingRssArticles(analysisLimit);
+        }
+        articles = await getRecentArticles({ limit, feedKey, since });
       }
-      const analysisLimit = Math.max(0, Math.min(10, Number.parseInt(process.env.RSS_AUTO_ANALYSIS_LIMIT || "3", 10) || 3));
-      if (insertedCount > 0 && analysisLimit > 0) {
-        await analyzeMissingRssArticles(analysisLimit);
-      }
-      articles = await getRecentArticles({ limit, feedKey, since });
     }
 
     const [corpusDocs, enrichment] = await Promise.all([

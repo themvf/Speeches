@@ -19,8 +19,8 @@ on:
           - cftc_press_release
           - cftc_public_statement_remark
           - congress_crs_product
-          - bloomberg_latest_apify
-          - bloomberg_apify_article
+          - bloomberg_public_latest
+          - bloomberg_public_article
         default: sec_enforcement_litigation
       selection:
         description: "Extraction selection scope"
@@ -71,12 +71,6 @@ jobs:
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
-      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-      APIFY_PROXY_URL: ${{ secrets.APIFY_PROXY_URL }}
-      APIFY_BLOOMBERG_ACTOR_ID: ${{ secrets.APIFY_BLOOMBERG_ACTOR_ID }}
-      APIFY_BLOOMBERG_INPUT_JSON: ${{ secrets.APIFY_BLOOMBERG_INPUT_JSON }}
-      APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID: ${{ secrets.APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID }}
-      APIFY_BLOOMBERG_DISCOVERY_INPUT_JSON: ${{ secrets.APIFY_BLOOMBERG_DISCOVERY_INPUT_JSON }}
       CONNECTOR: ${{ github.event.inputs.connector }}
       SELECTION: ${{ github.event.inputs.selection || 'new_or_updated' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '25' }}

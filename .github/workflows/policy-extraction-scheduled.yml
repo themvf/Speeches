@@ -37,21 +37,15 @@ jobs:
           - connector: sec_speech
             extraction_limit: "25"
             max_pages: "5"
-          - connector: bloomberg_latest_apify
+          - connector: bloomberg_public_latest
             extraction_limit: "10"
             max_pages: "10"
-          - connector: bloomberg_apify_article
+          - connector: bloomberg_public_article
             extraction_limit: "10"
             max_pages: "10"
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
-      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-      APIFY_PROXY_URL: ${{ secrets.APIFY_PROXY_URL }}
-      APIFY_BLOOMBERG_ACTOR_ID: ${{ secrets.APIFY_BLOOMBERG_ACTOR_ID }}
-      APIFY_BLOOMBERG_INPUT_JSON: ${{ secrets.APIFY_BLOOMBERG_INPUT_JSON }}
-      APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID: ${{ secrets.APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID }}
-      APIFY_BLOOMBERG_DISCOVERY_INPUT_JSON: ${{ secrets.APIFY_BLOOMBERG_DISCOVERY_INPUT_JSON }}
 
     steps:
       - name: Checkout
@@ -71,14 +65,6 @@ jobs:
       - name: Run ${{ matrix.connector }}
         run: |
           set -euo pipefail
-          if [[ "${{ matrix.connector }}" == bloomberg_* ]] && [ -z "${APIFY_TOKEN:-}" ]; then
-            printf '%s\n' '{"ok":true,"connector":"${{ matrix.connector }}","skipped":true,"reason":"APIFY_TOKEN is not configured for scheduled extraction."}' > "policy_extraction_summary_${{ matrix.connector }}.json"
-            exit 0
-          fi
-          if [ "${{ matrix.connector }}" = "bloomberg_latest_apify" ] && [ -z "${APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID:-}" ]; then
-            printf '%s\n' '{"ok":true,"connector":"bloomberg_latest_apify","skipped":true,"reason":"APIFY_BLOOMBERG_DISCOVERY_ACTOR_ID is not configured for scheduled extraction."}' > "policy_extraction_summary_${{ matrix.connector }}.json"
-            exit 0
-          fi
           python run_connector_extraction_pipeline.py \
             --connector "${{ matrix.connector }}" \
             --selection new_or_updated \

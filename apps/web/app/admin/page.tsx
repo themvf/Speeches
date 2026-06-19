@@ -73,8 +73,8 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "cftc_press_release", label: "CFTC Press Release" },
       { value: "cftc_public_statement_remark", label: "CFTC Public Statement / Remark" },
       { value: "congress_crs_product", label: "Congress CRS Product" },
-      { value: "bloomberg_latest_apify", label: "Bloomberg Latest (Apify)" },
-      { value: "bloomberg_apify_article", label: "Bloomberg Articles (Apify)" },
+      { value: "bloomberg_public_latest", label: "Bloomberg Latest (Public RSS)" },
+      { value: "bloomberg_public_article", label: "Bloomberg Article (Public)" },
       { value: "finra_comment_letter", label: "FINRA Rule Comment Letter" },
       { value: "finra_awc", label: "FINRA AWC Disciplinary Actions" },
       { value: "treasury_featured_story", label: "Treasury Featured Story" },
@@ -960,7 +960,7 @@ function BloombergOnDemandSection() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          connector: "bloomberg_latest_apify",
+          connector: "bloomberg_public_latest",
           selection,
           limit: Math.max(1, Number.parseInt(limit || "10", 10) || 10),
           max_pages: Math.max(1, Number.parseInt(maxPages || "10", 10) || 10),
@@ -1009,10 +1009,10 @@ function BloombergOnDemandSection() {
   return (
     <section className="mb-8">
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
-        Bloomberg Apify Pull
+        Bloomberg Public Pull
       </h2>
       <p className="mb-3 text-xs text-[color:var(--ink-faint)]">
-        Discover recent Bloomberg URLs through Apify, extract full article text, and save them into the corpus.
+        Discover recent Bloomberg URLs from public RSS feeds, extract public article text when available, and save them into the corpus.
       </p>
       <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">

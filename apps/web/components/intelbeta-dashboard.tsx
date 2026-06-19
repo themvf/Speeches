@@ -137,6 +137,7 @@ const FEED_META: Record<string, FeedMeta> = {
   securityweek: { label: "SecurityWeek", code: "SECW", color: "#91a7ff" },
   microsoft_security_blog: { label: "Microsoft Security Blog", code: "MSFT", color: "#69db7c" },
   document_bloomberg_apify_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
+  document_bloomberg_public_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
 };
 
 const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
@@ -231,11 +232,12 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   if (sourceFilter === "WSJ") {
     return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
   }
-  return sourceKind === "bloomberg_apify_article" || text.includes("bloomberg.com") || text.includes("bloomberg");
+  return sourceKind === "bloomberg_apify_article" || sourceKind === "bloomberg_public_article" || text.includes("bloomberg.com") || text.includes("bloomberg");
 }
 
-function isBloombergApifyArticle(article: FeedItem): boolean {
-  return article.item_type === "document" && String(article.source_kind || "").toLowerCase() === "bloomberg_apify_article";
+function isBloombergArticle(article: FeedItem): boolean {
+  const sourceKind = String(article.source_kind || "").toLowerCase();
+  return article.item_type === "document" && (sourceKind === "bloomberg_apify_article" || sourceKind === "bloomberg_public_article");
 }
 
 function savedArticleId(article: FeedItem): string {
@@ -774,7 +776,7 @@ function FeedRow({
   const sourceLabel = feedSourceLabel(article, source);
   const visibleTopics = matchedTopics.slice(0, 3);
   const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
-  const showFullArticle = isBloombergApifyArticle(article) && !!onOpenFullArticle;
+  const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
     background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
@@ -973,7 +975,7 @@ function FeaturedCard({
   const source = getFeedMeta(article.feed_key);
   const sourceLabel = feedSourceLabel(article, source);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
-  const showFullArticle = isBloombergApifyArticle(article) && !!onOpenFullArticle;
+  const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
     background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
