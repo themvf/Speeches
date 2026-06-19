@@ -941,6 +941,10 @@ export function buildDocumentListItems(
       topics,
       ingest_status: "existing",
       enrichment_status: normalizeString(enrich?.status || "not_enriched") || "not_enriched",
+      enrichment_summary: normalizeString(enrich?.enrichment?.summary),
+      enrichment_model: normalizeString(enrich?.model),
+      enrichment_confidence:
+        typeof enrich?.enrichment?.confidence === "number" ? enrich.enrichment.confidence : 0,
       review_decision: reviewDecision,
       updated_at:
         normalizeString(m.last_reviewed_or_updated) || normalizeString(m.updated_date) || normalizeString(enrich?.updated_at),

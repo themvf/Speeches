@@ -618,6 +618,10 @@ function stableNegativeId(value: string): number {
 }
 
 function documentDescription(document: DocumentListItem): string {
+  const summary = decodeEntities(document.enrichment_summary || "").trim();
+  if (summary) {
+    return summary;
+  }
   return [
     document.doc_type,
     document.speaker ? `By ${document.speaker}` : "",

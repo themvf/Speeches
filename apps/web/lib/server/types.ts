@@ -246,6 +246,9 @@ export interface DocumentListItem {
   topics: string[];
   ingest_status: string;
   enrichment_status: string;
+  enrichment_summary?: string;
+  enrichment_model?: string;
+  enrichment_confidence?: number;
   review_decision: string;
   updated_at: string;
   sentiment_label: "positive" | "negative" | "neutral" | "";
