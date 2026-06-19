@@ -13,6 +13,11 @@ from urllib.parse import quote, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    from curl_cffi import requests as curl_requests
+except ImportError:  # pragma: no cover - requests remains a supported local fallback.
+    curl_requests = None
+
 
 SUBSTACK_SEARCH_URL = "https://substack.com/api/v1/post/search"
 DEFAULT_KEYWORDS = ["securities", "financial industry", "decentralized finance"]
@@ -107,7 +112,7 @@ def _json_object(value: str) -> Dict[str, Any]:
 
 class SubstackPublicScraper:
     def __init__(self, min_delay_seconds: float = 0.25) -> None:
-        self.session = requests.Session()
+        self.session = curl_requests.Session(impersonate="chrome") if curl_requests is not None else requests.Session()
         self.session.headers.update(
             {
                 "User-Agent": (
@@ -116,6 +121,7 @@ class SubstackPublicScraper:
                 ),
                 "Accept": "application/json,text/plain,*/*",
                 "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://substack.com/",
             }
         )
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
@@ -136,6 +142,16 @@ class SubstackPublicScraper:
         if not isinstance(payload, dict):
             raise RuntimeError(f"Substack returned a non-object response for {url}")
         return payload
+
+    def _warm_search_session(self, keyword: str) -> None:
+        self._rate_limit()
+        response = self.session.get(
+            f"https://substack.com/search/{quote(keyword, safe='')}",
+            params={"searching": "all_posts"},
+            timeout=45,
+            allow_redirects=True,
+        )
+        response.raise_for_status()
 
     def discover_documents(
         self,
@@ -165,6 +181,10 @@ class SubstackPublicScraper:
 
         for keyword in search_terms:
             feed_session_id = ""
+            try:
+                self._warm_search_session(keyword)
+            except Exception as exc:
+                debug["errors"].append(f"{keyword} session warmup: {exc}")
             for page in range(pages_per_keyword):
                 params: Dict[str, Any] = {
                     "query": keyword,

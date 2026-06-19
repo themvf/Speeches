@@ -1488,6 +1488,9 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         keywords=_parse_filter_terms(getattr(args, "keywords", "")) or None,
     )
     discovered = [item for item in discovered_raw if isinstance(item, dict)]
+    if args.connector == "substack_public_article" and not discovered and discovery_debug.get("errors"):
+        errors = "; ".join(str(item) for item in discovery_debug.get("errors", [])[:3])
+        raise RuntimeError(f"Substack discovery failed: {errors}")
     exclude_terms = _parse_filter_terms(getattr(args, "exclude_terms", ""))
     excluded: List[Dict[str, Any]] = []
     filtered_discovered: List[Dict[str, Any]] = []
