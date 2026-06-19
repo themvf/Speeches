@@ -259,6 +259,27 @@ def _remove_duplicate_bloomberg_records(custom_payload: Dict[str, Any]) -> int:
     return len(remove_indexes)
 
 
+def _remove_legacy_bloomberg_apify_records(custom_payload: Dict[str, Any]) -> int:
+    docs_list = custom_payload.get("documents", [])
+    if not isinstance(docs_list, list):
+        return 0
+
+    kept: List[Dict[str, Any]] = []
+    removed = 0
+    for item in docs_list:
+        if not isinstance(item, dict):
+            kept.append(item)
+            continue
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        if _normalize_space(metadata.get("source_kind", "")).lower() == "bloomberg_apify_article":
+            removed += 1
+            continue
+        kept.append(item)
+    if removed:
+        custom_payload["documents"] = kept
+    return removed
+
+
 def _repair_existing_finra_notice_metadata(entry: Dict[str, Any], existing_record: Optional[Dict[str, Any]]) -> Optional[str]:
     if not existing_record:
         return None
@@ -1431,6 +1452,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     skipped_blocked: List[Dict[str, Any]] = []
     processed_doc_ids: List[str] = []
     duplicate_records_removed = 0
+    legacy_bloomberg_records_removed = 0
 
     for idx, entry in enumerate(selected, 1):
         try:
@@ -1473,6 +1495,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
 
     if args.connector in BLOOMBERG_CONNECTORS and (saved_new or saved_updates):
         duplicate_records_removed = _remove_duplicate_bloomberg_records(custom_payload)
+        legacy_bloomberg_records_removed = _remove_legacy_bloomberg_apify_records(custom_payload)
 
     rule_summaries_rebuilt = False
     if not args.dry_run and (saved_new or saved_updates):
@@ -1510,6 +1533,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "failed_count": len(failed),
         "failed": failed[:25],
         "duplicate_records_removed": duplicate_records_removed,
+        "legacy_bloomberg_records_removed": legacy_bloomberg_records_removed,
         "skipped_blocked_count": len(skipped_blocked),
         "skipped_blocked": skipped_blocked[:25],
         "excluded_preview": excluded[:25],
