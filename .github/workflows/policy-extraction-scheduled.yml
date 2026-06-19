@@ -37,12 +37,6 @@ jobs:
           - connector: sec_speech
             extraction_limit: "25"
             max_pages: "5"
-          - connector: bloomberg_public_latest
-            extraction_limit: "10"
-            max_pages: "10"
-          - connector: bloomberg_public_article
-            extraction_limit: "10"
-            max_pages: "10"
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}

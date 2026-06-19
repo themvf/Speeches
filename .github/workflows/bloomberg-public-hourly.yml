@@ -1,0 +1,90 @@
+name: Bloomberg Public Feed Hourly
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      extraction_limit:
+        description: "Max Bloomberg items to extract"
+        required: false
+        default: "20"
+      max_pages:
+        description: "Max Bloomberg RSS items to discover"
+        required: false
+        default: "20"
+      enrich_limit:
+        description: "Max Bloomberg items to enrich"
+        required: false
+        default: "20"
+      model:
+        description: "Optional OpenAI model override"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bloomberg-public-hourly
+  cancel-in-progress: false
+
+jobs:
+  bloomberg-public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '20' }}
+      MAX_PAGES: ${{ github.event.inputs.max_pages || '20' }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '20' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Extract Bloomberg Public Feed
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector bloomberg_public_latest \
+            --selection new_or_updated \
+            --limit "${EXTRACTION_LIMIT}" \
+            --max-pages "${MAX_PAGES}" \
+            --include-pdfs false \
+            --include-rss false \
+            --require-remote-persistence \
+            --summary-path bloomberg_public_extraction_summary.json
+
+      - name: Enrich Bloomberg Public Feed
+        run: |
+          set -euo pipefail
+          args=(enrich --require-remote-persistence --mode only_missing_or_failed --source-kind bloomberg_public_article --limit "${ENRICH_LIMIT}" --summary-path bloomberg_public_enrich_summary.json)
+          if [ -n "${ENRICH_MODEL}" ]; then
+            args+=(--model "${ENRICH_MODEL}")
+          fi
+          python run_financial_news_pipeline.py "${args[@]}"
+
+      - name: Upload Bloomberg Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bloomberg-public-hourly-${{ github.run_id }}
+          path: |
+            bloomberg_public_extraction_summary.json
+            bloomberg_public_enrich_summary.json
+          if-no-files-found: ignore
