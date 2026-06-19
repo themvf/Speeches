@@ -8,6 +8,7 @@ import { useSavedItems } from "@/hooks/use-saved-items";
 import {
   decodeEntities,
   getMatchingTopics,
+  normalizeMatchText,
   normalizeTopicRules,
   type TopicRuleView,
 } from "@/lib/intel-topic-matching";
@@ -192,6 +193,59 @@ function articleSourceText(article: FeedItem): string {
     article.doc_type ?? "",
     article.url ?? "",
   ].join(" ").toLowerCase();
+}
+
+function fallbackDocumentTopicMatches(article: FeedItem, rules: TopicRuleView[]): TopicRuleView[] {
+  if (article.item_type !== "document") return [];
+  const text = normalizeMatchText([
+    article.title,
+    article.description ?? "",
+    article.doc_type ?? "",
+    article.topics?.join(" ") ?? "",
+    article.keywords?.join(" ") ?? "",
+    article.url ?? "",
+  ].join(" "));
+  const topicKeys = new Set<string>();
+
+  if (/\b(crude|crude oil|oil|brent|wti|natural gas|lng|energy prices|persian gulf|hormuz)\b/.test(text)) {
+    topicKeys.add("COMMODITIES_ENERGY_MARKETS");
+  }
+  if (/\b(persian gulf|hormuz|iran|tariff|sanctions|shipping lanes|trade war|export controls)\b/.test(text)) {
+    topicKeys.add("GEOPOLITICAL_TRADE_RISK");
+  }
+  if (/\b(ipo|initial public offering|public offering|share sale|listing)\b/.test(text)) {
+    topicKeys.add("CAPITAL_FORMATION");
+  }
+  if (/\b(central bank|interest rate|hawkish fed|federal reserve|ecb|bank capital)\b/.test(text)) {
+    topicKeys.add("BANKING_PAYMENTS");
+    topicKeys.add("ECONOMIC_GROWTH");
+  }
+
+  if (topicKeys.size === 0) return [];
+  const fallbackLabels: Record<string, { label: string; sort_order: number }> = {
+    COMMODITIES_ENERGY_MARKETS: { label: "Commodities & Energy Markets", sort_order: 160 },
+    GEOPOLITICAL_TRADE_RISK: { label: "Geopolitical & Trade Risk", sort_order: 170 },
+    CAPITAL_FORMATION: { label: "Capital Formation", sort_order: 20 },
+    BANKING_PAYMENTS: { label: "Banking & Payments", sort_order: 90 },
+    ECONOMIC_GROWTH: { label: "Economic Growth", sort_order: 120 },
+  };
+
+  return [...topicKeys]
+    .map((key) => {
+      const configured = rules.find((rule) => rule.topic_key === key);
+      if (configured) return configured;
+      const fallback = fallbackLabels[key];
+      if (!fallback) return null;
+      return {
+        topic_key: key,
+        label: fallback.label,
+        keywords: [],
+        keywordMatchers: [],
+        sort_order: fallback.sort_order,
+      };
+    })
+    .filter((topic): topic is TopicRuleView => Boolean(topic))
+    .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
 }
 
 function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boolean {
@@ -1442,7 +1496,8 @@ export function IntelBetaDashboard({
     const matchedArticles: FeedItem[] = [];
 
     for (const article of feedItems) {
-      const matches = getMatchingTopics(article, visibleTopicRules);
+      const directMatches = getMatchingTopics(article, visibleTopicRules);
+      const matches = directMatches.length > 0 ? directMatches : fallbackDocumentTopicMatches(article, visibleTopicRules);
       topicMatchesByArticleId.set(article.id, matches);
       if (matches.length === 0 && article.item_type !== "document") {
         continue;
