@@ -1,0 +1,97 @@
+name: Substack Public Search Every 3 Hours
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      keywords:
+        description: "Comma-separated Substack search keywords"
+        required: false
+        default: "securities,financial industry,decentralized finance"
+      max_pages:
+        description: "Search result pages per keyword"
+        required: false
+        default: "1"
+      extraction_limit:
+        description: "Maximum retained posts to extract"
+        required: false
+        default: "60"
+      enrich_limit:
+        description: "Maximum Substack posts to enrich"
+        required: false
+        default: "60"
+      model:
+        description: "OpenAI model for relevance and enrichment"
+        required: false
+        default: "gpt-5-mini"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: substack-public-3hour
+  cancel-in-progress: false
+
+jobs:
+  substack-public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      KEYWORDS: ${{ github.event.inputs.keywords || 'securities,financial industry,decentralized finance' }}
+      MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '60' }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '60' }}
+      MODEL: ${{ github.event.inputs.model || 'gpt-5-mini' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Extract and Filter Substack Public Posts
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector substack_public_article \
+            --keywords "${KEYWORDS}" \
+            --relevance-model "${MODEL}" \
+            --selection new_or_updated \
+            --limit "${EXTRACTION_LIMIT}" \
+            --max-pages "${MAX_PAGES}" \
+            --require-remote-persistence \
+            --summary-path substack_public_extraction_summary.json
+
+      - name: Enrich Retained Substack Posts
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --mode only_missing_or_failed \
+            --source-kind substack_public_article \
+            --limit "${ENRICH_LIMIT}" \
+            --model "${MODEL}" \
+            --summary-path substack_public_enrich_summary.json
+
+      - name: Upload Substack Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: substack-public-3hour-${{ github.run_id }}
+          path: |
+            substack_public_extraction_summary.json
+            substack_public_enrich_summary.json
+          if-no-files-found: ignore

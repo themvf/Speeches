@@ -29,6 +29,7 @@ TREASURY_STATEMENTS_REMARKS_DEFAULT_URL = "https://home.treasury.gov/news/press-
 SIFMA_NEWS_DEFAULT_URL = "https://www.sifma.org/news"
 CONGRESS_CRS_PRODUCTS_DEFAULT_URL = "https://www.congress.gov/crs-products"
 BLOOMBERG_PUBLIC_DEFAULT_URL = ""
+SUBSTACK_PUBLIC_DEFAULT_URL = "https://substack.com/api/v1/post/search"
 
 BLOOMBERG_CONNECTORS = {
     "bloomberg_public_article",
@@ -60,6 +61,7 @@ SUPPORTED_CONNECTORS = {
     "bloomberg_public_latest",
     "bloomberg_apify_article",
     "bloomberg_latest_apify",
+    "substack_public_article",
 }
 
 
@@ -98,6 +100,8 @@ def _default_base_url(connector: str) -> str:
         return CONGRESS_CRS_PRODUCTS_DEFAULT_URL
     if connector in BLOOMBERG_CONNECTORS:
         return BLOOMBERG_PUBLIC_DEFAULT_URL
+    if connector == "substack_public_article":
+        return SUBSTACK_PUBLIC_DEFAULT_URL
     return ""
 
 
@@ -544,7 +548,14 @@ def _status_for_entry(
     return "existing"
 
 
-def _discover_connector(connector: str, base_url: str, max_pages: int, include_pdfs: bool, include_rss: bool) -> Tuple[Any, List[Dict[str, Any]], Dict[str, Any]]:
+def _discover_connector(
+    connector: str,
+    base_url: str,
+    max_pages: int,
+    include_pdfs: bool,
+    include_rss: bool,
+    keywords: Optional[List[str]] = None,
+) -> Tuple[Any, List[Dict[str, Any]], Dict[str, Any]]:
     if connector == "sec_speech":
         from speech_analyzer import SECSpeechAnalyzer
 
@@ -647,6 +658,14 @@ def _discover_connector(connector: str, base_url: str, max_pages: int, include_p
 
         scraper = BloombergPublicNewsScraper()
         docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "substack_public_article":
+        from substack_public_scraper import SubstackPublicScraper
+
+        scraper = SubstackPublicScraper()
+        docs = scraper.discover_documents(keywords=keywords, max_pages=max_pages)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
 
@@ -1376,6 +1395,69 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
             source_kind="bloomberg_public_article",
         )
 
+    if connector == "substack_public_article":
+        extracted = scraper.extract_document(entry)
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "") or "Substack public extraction failed."))
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or "Substack post"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        summary = str(data.get("summary", "") or entry.get("summary", "")).strip()
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 50:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=date_text,
+                organization="Substack",
+                source_label="Substack public search",
+                extracted_text=text or summary,
+            )
+        authors = data.get("authors") if isinstance(data.get("authors"), list) else []
+        author_text = ", ".join(str(author or "").strip() for author in authors if str(author or "").strip())
+        publication_name = str(data.get("publication_name", "") or entry.get("publication_name", "")).strip()
+        post_tags = data.get("post_tags") if isinstance(data.get("post_tags"), list) else []
+        matched_keywords = entry.get("matched_keywords") if isinstance(entry.get("matched_keywords"), list) else []
+        tags = ["substack", "financial-news", "public-feed", *matched_keywords, *post_tags[:8]]
+        post_type = str(data.get("post_type", "") or entry.get("post_type", "newsletter")).strip().lower()
+        doc_type = "Podcast" if post_type == "podcast" else "Article"
+        source_name = _safe_source_name(src_url, f"substack-public-{idx}", ".html")
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="Substack",
+            title=title,
+            speaker=author_text or publication_name or "Substack Author",
+            doc_date=_parse_doc_date(date_text),
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=",".join(str(tag).strip() for tag in tags if str(tag).strip()),
+            source_kind="substack_public_article",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "substack_public_article"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["summary"] = summary
+        metadata["publication_name"] = publication_name
+        metadata["authors"] = authors
+        metadata["post_tags"] = post_tags
+        metadata["matched_keywords"] = matched_keywords
+        metadata["substack_post_id"] = entry.get("substack_post_id")
+        metadata["audience"] = str(data.get("audience", "") or entry.get("audience", "")).strip()
+        metadata["access_limited"] = bool(data.get("access_limited", False))
+        metadata["reaction_count"] = int(data.get("reaction_count", 0) or 0)
+        metadata["comment_count"] = int(data.get("comment_count", 0) or 0)
+        metadata["relevance_classification"] = str(entry.get("relevance_classification", "")).strip()
+        metadata["relevance_confidence"] = float(entry.get("relevance_confidence", 0.0) or 0.0)
+        metadata["relevance_reason"] = str(entry.get("relevance_reason", "")).strip()
+        metadata["connector_mode"] = "public"
+        return record
+
     raise RuntimeError(f"Unsupported connector: {connector}")
 
 
@@ -1403,12 +1485,24 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         max_pages=max(1, int(args.max_pages)),
         include_pdfs=bool(args.include_pdfs),
         include_rss=bool(args.include_rss),
+        keywords=_parse_filter_terms(getattr(args, "keywords", "")) or None,
     )
     discovered = [item for item in discovered_raw if isinstance(item, dict)]
     exclude_terms = _parse_filter_terms(getattr(args, "exclude_terms", ""))
     excluded: List[Dict[str, Any]] = []
     filtered_discovered: List[Dict[str, Any]] = []
-    if args.connector == "doj_usao_press_release" and exclude_terms:
+    if args.connector == "substack_public_article":
+        model = str(getattr(args, "relevance_model", "") or "gpt-5-mini").strip()
+        client = core._get_openai_client(secrets_payload)
+        filtered_discovered, excluded = scraper.filter_institutional_finance(
+            discovered,
+            client=client,
+            model=model,
+        )
+        discovery_debug["relevance_model"] = model
+        discovery_debug["relevance_included_count"] = len(filtered_discovered)
+        discovery_debug["relevance_excluded_count"] = len(excluded)
+    elif args.connector == "doj_usao_press_release" and exclude_terms:
         for entry in discovered:
             matched_terms = _match_filter_terms(
                 [
@@ -1522,6 +1616,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "include_pdfs": bool(args.include_pdfs),
         "include_rss": bool(args.include_rss),
         "exclude_terms": exclude_terms,
+        "keywords": _parse_filter_terms(getattr(args, "keywords", "")),
         "discovered_count": len(discovered),
         "filtered_count": len(filtered_discovered),
         "excluded_count": len(excluded),
@@ -1565,6 +1660,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-pdfs", default="")
     parser.add_argument("--include-rss", default="")
     parser.add_argument("--exclude-terms", default="")
+    parser.add_argument("--keywords", default="")
+    parser.add_argument("--relevance-model", default="gpt-5-mini")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--require-remote-persistence", action="store_true")
     parser.add_argument("--summary-path", default="")

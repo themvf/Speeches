@@ -139,6 +139,7 @@ const FEED_META: Record<string, FeedMeta> = {
   microsoft_security_blog: { label: "Microsoft Security Blog", code: "MSFT", color: "#69db7c" },
   document_bloomberg_apify_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_bloomberg_public_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
+  document_substack_public_article: { label: "Substack", code: "SUB", color: "#f26b38" },
 };
 
 const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
