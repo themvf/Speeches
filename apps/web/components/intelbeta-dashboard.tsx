@@ -14,7 +14,7 @@ import {
 } from "@/lib/intel-topic-matching";
 
 type TopicFilter = string | "ALL";
-type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG";
+type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG" | "SUBSTACK";
 
 const FEED_RENDER_BATCH_SIZE = 20;
 const LIVE_FEED_REFRESH_LIMIT = 250;
@@ -149,6 +149,7 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "DOJ", label: "DOJ" },
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
+  { key: "SUBSTACK", label: "Substack" },
 ];
 
 function getFeedMeta(feedKey: string): FeedMeta {
@@ -287,7 +288,13 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   if (sourceFilter === "WSJ") {
     return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
   }
-  return sourceKind === "bloomberg_apify_article" || sourceKind === "bloomberg_public_article" || text.includes("bloomberg.com") || text.includes("bloomberg");
+  if (sourceFilter === "BLOOMBERG") {
+    return sourceKind === "bloomberg_apify_article" || sourceKind === "bloomberg_public_article" || text.includes("bloomberg.com") || text.includes("bloomberg");
+  }
+  if (sourceFilter === "SUBSTACK") {
+    return sourceKind === "substack_public_article" || text.includes("substack.com");
+  }
+  return false;
 }
 
 function isBloombergArticle(article: FeedItem): boolean {
