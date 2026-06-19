@@ -99,6 +99,8 @@ const TOPIC_TAXONOMY_UPSERT_KEYS = new Set([
   "INVESTMENT_PRODUCTS_DERIVATIVES",
 ]);
 
+const DEPRECATED_TOPIC_RULE_KEYS = ["PREMARKETS", "AI"] as const;
+
 const DEPRECATED_RSS_FEED_KEYS = [
   "bleepingcomputer",
   "the_hacker_news",
@@ -469,7 +471,8 @@ async function applyTopicTaxonomyMigrations(sql: ReturnType<typeof neon>): Promi
   await sql`
     UPDATE rss_topic_rules
     SET active = false, updated_at = NOW()
-    WHERE topic_key = 'PREMARKETS'
+    WHERE topic_key = ANY(${DEPRECATED_TOPIC_RULE_KEYS})
+      AND active = true
   `;
 }
 
