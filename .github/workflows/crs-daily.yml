@@ -41,8 +41,8 @@ jobs:
           python run_connector_extraction_pipeline.py \
             --connector congress_crs_product \
             --selection new_or_updated \
-            --limit 500 \
-            --max-pages 5 \
+            --limit 200 \
+            --max-pages 2 \
             --require-remote-persistence \
             --summary-path crs_daily_summary.json
 
