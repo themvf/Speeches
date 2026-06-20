@@ -130,7 +130,8 @@ export function listActiveVectorStores(state: VectorStoreStatePayload): Array<{ 
   const rows: Array<{ org_key: string; org_label: string; vector_store_id: string }> = [];
   for (const [orgKey, value] of Object.entries(state.stores || {})) {
     const vectorStoreId = normalizeString(value?.vector_store_id);
-    if (!vectorStoreId) {
+    const documentCount = Math.max(value?.doc_count_indexed || 0, Object.keys(value?.docs || {}).length);
+    if (!vectorStoreId || documentCount <= 0) {
       continue;
     }
     rows.push({

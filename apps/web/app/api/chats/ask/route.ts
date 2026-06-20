@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
 import { askVectorStoreChat, type ChatHistoryMessage } from "@/lib/server/openai-chat";
-import { buildDocumentListItems, loadCorpusDocuments, loadEnrichmentState, parseComparableDate } from "@/lib/server/data-store";
+import { parseComparableDate } from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
 import { getOpenAiConfig } from "@/lib/server/env";
 import { getClientIp, getGenerateGlobalLimiter, getGenerateIpLimiter, isRateLimited } from "@/lib/server/rate-limit";
-import { listActiveVectorStores, loadVectorStoreState } from "@/lib/server/vector-state";
+import type { DocumentListItem } from "@/lib/server/types";
+import { listActiveVectorStores, loadVectorStoreState, type VectorStoreStatePayload } from "@/lib/server/vector-state";
 
 export const runtime = "nodejs";
 
@@ -57,6 +58,41 @@ function latestIndexedDate(items: Array<{ published_at?: string; date?: string }
   return latestText;
 }
 
+function buildIndexedDocumentItems(state: VectorStoreStatePayload): DocumentListItem[] {
+  const items: DocumentListItem[] = [];
+  for (const [orgKey, store] of Object.entries(state.stores || {})) {
+    for (const [documentId, value] of Object.entries(store.docs || {})) {
+      const doc = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+      const date = normalizeText(doc.date);
+      items.push({
+        document_id: documentId,
+        title: normalizeText(doc.title) || normalizeText(doc.filename) || "Unknown document",
+        organization: store.org_label || orgKey.toUpperCase(),
+        source_kind: orgKey,
+        doc_type: "Document",
+        speaker: normalizeText(doc.speaker),
+        url: normalizeText(doc.url),
+        date,
+        published_at: date,
+        word_count: 0,
+        tags: [],
+        keywords: [],
+        topics: [],
+        ingest_status: "existing",
+        enrichment_status: "not_enriched",
+        enrichment_summary: "",
+        enrichment_model: "",
+        enrichment_confidence: 0,
+        review_decision: "pending",
+        updated_at: normalizeText(doc.indexed_at),
+        sentiment_label: "",
+        sentiment_score: 0
+      });
+    }
+  }
+  return items;
+}
+
 export async function POST(request: NextRequest) {
   const requestId = createRequestId();
   const ip = getClientIp(request.headers);
@@ -96,12 +132,7 @@ export async function POST(request: NextRequest) {
     const topK = clampInt(body.top_k, 8, 1, 12);
     const history = normalizeHistory(body.history).slice(-6);
 
-    const [corpusDocs, enrichment, vectorState] = await Promise.all([
-      loadCorpusDocuments(),
-      loadEnrichmentState(),
-      loadVectorStoreState()
-    ]);
-
+    const vectorState = await loadVectorStoreState();
     const vectorStores = listActiveVectorStores(vectorState);
     if (!vectorStores.length) {
       return fail(
@@ -112,7 +143,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const items = buildDocumentListItems(corpusDocs, enrichment);
+    const items = buildIndexedDocumentItems(vectorState);
     const result = await askVectorStoreChat({
       prompt,
       history,
