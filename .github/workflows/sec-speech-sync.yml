@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sec-speech-sync
+  group: policy-document-pipeline
   cancel-in-progress: false
 
 jobs:
