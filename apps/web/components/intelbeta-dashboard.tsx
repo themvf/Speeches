@@ -14,7 +14,7 @@ import {
 } from "@/lib/intel-topic-matching";
 
 type TopicFilter = string | "ALL";
-type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_PRESS_RELEASES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "CFTC" | "CRS" | "WSJ" | "BLOOMBERG" | "SUBSTACK" | "NEWS";
+type SourceFilter = string;
 
 const FEED_RENDER_BATCH_SIZE = 20;
 const LIVE_FEED_REFRESH_LIMIT = 250;
@@ -149,7 +149,7 @@ const FEED_META: Record<string, FeedMeta> = {
   document_sec_speech: { label: "SEC Speech", code: "SEC", color: "#7cc4ff" },
 };
 
-const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
+const SOURCE_FILTERS: Array<{ key: string; label: string }> = [
   { key: "SEC_SPEECHES", label: "SEC Speeches" },
   { key: "SEC_PRESS_RELEASES", label: "SEC Press Releases" },
   { key: "SEC_ENFORCEMENT", label: "SEC Enforcement" },
@@ -160,7 +160,22 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
   { key: "SUBSTACK", label: "Substack" },
-  { key: "NEWS", label: "News" },
+  // Individual RSS feed sources
+  { key: "mw_top_stories", label: "MarketWatch" },
+  { key: "rss_nytimes_com_services_xml_rss_nyt_business_xml", label: "NYT Business" },
+  { key: "rss_nytimes_com_services_xml_rss_nyt_technology_xml", label: "NYT Tech" },
+  { key: "rss_nytimes_com_services_xml_rss_nyt_politics_xml", label: "NYT Politics" },
+  { key: "coindesk", label: "CoinDesk" },
+  { key: "cointelegraph", label: "Cointelegraph" },
+  { key: "decrypt", label: "Decrypt" },
+  { key: "the_block", label: "The Block" },
+  { key: "cisa_cybersecurity_advisories", label: "CISA" },
+  { key: "bleepingcomputer", label: "BleepingComputer" },
+  { key: "krebs_on_security", label: "Krebs on Security" },
+  { key: "the_hacker_news", label: "The Hacker News" },
+  { key: "dark_reading", label: "Dark Reading" },
+  { key: "securityweek", label: "SecurityWeek" },
+  { key: "microsoft_security_blog", label: "Microsoft Security Blog" },
 ];
 
 function getFeedMeta(feedKey: string): FeedMeta {
@@ -330,26 +345,8 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   if (sourceFilter === "SUBSTACK") {
     return sourceKind === "substack_public_article" || text.includes("substack.com");
   }
-  if (sourceFilter === "NEWS") {
-    return (
-      feedKey === "mw_top_stories" ||
-      feedKey.startsWith("rss_nytimes_com") ||
-      feedKey === "coindesk" ||
-      feedKey === "cointelegraph" ||
-      feedKey === "decrypt" ||
-      feedKey === "the_block" ||
-      feedKey === "cisa_cybersecurity_advisories" ||
-      feedKey === "bleepingcomputer" ||
-      feedKey === "krebs_on_security" ||
-      feedKey === "the_hacker_news" ||
-      feedKey === "dark_reading" ||
-      feedKey === "securityweek" ||
-      feedKey === "microsoft_security_blog" ||
-      sourceKind === "newsapi_article" ||
-      sourceKind === "rss_news_feed"
-    );
-  }
-  return false;
+  // Fall back to matching FEED_META keys directly (used by individual RSS feed filters)
+  return feedKey === sourceFilter || sourceKind === sourceFilter;
 }
 
 function isBloombergArticle(article: FeedItem): boolean {
