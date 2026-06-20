@@ -3,7 +3,7 @@ import { BriefingDashboard } from "@/components/briefing-dashboard";
 import { buildDocumentListItems, buildDocumentsFacets, loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-store";
 import type { DocumentsFacets } from "@/lib/server/types";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Briefings | Policy Research Hub",

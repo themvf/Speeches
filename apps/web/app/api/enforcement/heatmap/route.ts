@@ -2,8 +2,7 @@ import { createRequestId, fail, ok } from "@/lib/server/api-utils";
 import { loadCorpusDocuments } from "@/lib/server/data-store";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 300;
 
 /* ─── FINRA rule labels ──────────────────────────────────────────────────── */
 const FINRA_RULE_LABELS: Record<string, string> = {

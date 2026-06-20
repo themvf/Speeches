@@ -6,7 +6,7 @@ import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 import type { DocumentListItem } from "@/lib/server/types";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "News Feed | Policy Research Hub",

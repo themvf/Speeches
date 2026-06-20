@@ -9,8 +9,7 @@ import {
 import type { CustomDocumentRecord, EnrichmentEntry } from "@/lib/server/types";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 300;
 export const maxDuration = 55;
 
 type Agency = "SEC" | "FINRA";

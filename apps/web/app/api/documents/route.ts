@@ -9,6 +9,7 @@ import { buildFullTextById, filterDocumentListItems, normalizeFacetToken } from 
 import { createRequestId, fail, normalizeText, ok, parseDate, toInt } from "@/lib/server/api-utils";
 
 export const runtime = "nodejs";
+export const revalidate = 300;
 
 export async function GET(request: Request) {
   const requestId = createRequestId();

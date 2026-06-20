@@ -4,6 +4,7 @@ import { normalizeFacetToken } from "@/lib/server/document-query";
 import type { GraphResponseData } from "@/lib/server/types";
 
 export const runtime = "nodejs";
+export const revalidate = 300;
 
 function parseBoolean(value: string | null): boolean {
   const normalized = String(value || "")

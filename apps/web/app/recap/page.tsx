@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getRecapSettings, getTopicRules, getTodaysRecap } from "@/lib/server/neon";
 import { RecapDashboard } from "@/components/recap-dashboard";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Daily Recap | Policy Research Hub",

@@ -4,6 +4,7 @@ import type { CustomDocumentMetadata, CustomDocumentRecord, EnrichmentEntry, Rul
 import { buildNoticeOverview, emptyNoticeOverview, isEnrichedCommentStatus, type NoticeOverview } from "@/lib/notices-overview";
 
 export const runtime = "nodejs";
+export const revalidate = 300;
 
 interface NoticeCommentItem {
   document_id: string;

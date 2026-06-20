@@ -3,6 +3,7 @@ import { getApiRuntimeInfo } from "@/lib/server/env";
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
 
 export const runtime = "nodejs";
+export const revalidate = 300;
 
 function toMs(value: string): number {
   const ms = Date.parse(String(value || ""));

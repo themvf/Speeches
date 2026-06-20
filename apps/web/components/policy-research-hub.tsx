@@ -561,7 +561,6 @@ function headerFor(mode: HubMode): { title: string; subtitle: string } {
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
-    cache: "no-store",
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers as Record<string, string> | undefined) }
   });
@@ -713,7 +712,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
         const signal = semanticAbortRef.current.signal;
         try {
           const expanded = expandQuery(qTrimmed);
-          const res = await fetch(`/api/search?q=${encodeURIComponent(expanded)}&topK=30`, { signal, cache: "no-store" });
+          const res = await fetch(`/api/search?q=${encodeURIComponent(expanded)}&topK=30`, { signal });
           const envelope = (await res.json()) as { ok: boolean; data?: { document_ids: string[]; snippets: Record<string, string> }; error?: string };
           if (envelope.ok && envelope.data?.document_ids?.length) {
             setSemanticSnippets(envelope.data.snippets || {});
@@ -964,7 +963,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
       }
     };
     void poll();
-    const id = setInterval(() => void poll(), 4000);
+    const id = setInterval(() => void poll(), 10_000);
     return () => {
       canceled = true;
       clearInterval(id);

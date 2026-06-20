@@ -10,6 +10,7 @@ import { buildFullTextById, filterDocumentListItems } from "@/lib/server/documen
 import type { TimelineBucket, TimelineResponseData } from "@/lib/server/types";
 
 export const runtime = "nodejs";
+export const revalidate = 300;
 
 type TimelineGrain = TimelineResponseData["grain"];
 

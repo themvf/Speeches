@@ -5,6 +5,7 @@ import { getRecentArticles, getTopicRules, type StoredRssArticle, type StoredRss
 import { getMatchingTopics, normalizeTopicRules, type TopicRuleView } from "@/lib/intel-topic-matching";
 
 export const runtime = "nodejs";
+export const revalidate = 300;
 
 const LIVE_NEWS_ARTICLE_LIMIT = 400;
 const LIVE_NEWS_SOURCE_KIND = "rss_news_feed";
