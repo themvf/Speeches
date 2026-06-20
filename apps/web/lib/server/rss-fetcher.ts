@@ -220,6 +220,22 @@ export const DEFAULT_RSS_FEEDS: Record<string, { label: string; feedUrl: string 
     label: "Bradley Eye on Enforcement",
     feedUrl: "https://www.eyeonenforcement.com/feed/",
   },
+  harvard_corp_gov_forum: {
+    label: "Harvard Law School Forum on Corporate Governance",
+    feedUrl: "https://corpgov.law.harvard.edu/feed/",
+  },
+  cls_blue_sky_blog: {
+    label: "CLS Blue Sky Blog",
+    feedUrl: "https://clsbluesky.law.columbia.edu/feed/",
+  },
+  the_corporate_counsel_net: {
+    label: "TheCorporateCounsel.net",
+    feedUrl: "https://www.thecorporatecounsel.net/blog/feed/",
+  },
+  securities_law_exchange: {
+    label: "Securities Law Exchange",
+    feedUrl: "https://www.securitieslawexchange.com/feed/",
+  },
 };
 
 function decodeEntities(text: string): string {

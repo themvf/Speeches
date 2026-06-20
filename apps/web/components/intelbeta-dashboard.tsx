@@ -176,6 +176,10 @@ const FEED_META: Record<string, FeedMeta> = {
   squire_patton_boggs_privacy_world: { label: "Squire Patton Privacy", code: "SPB", color: "#a9e34b" },
   bradley_financial_services_perspectives: { label: "Bradley Financial", code: "BRDL", color: "#f0b90b" },
   bradley_eye_on_enforcement: { label: "Bradley Enforcement", code: "BRDL", color: "#f0b90b" },
+  harvard_corp_gov_forum: { label: "Harvard Corp Gov Forum", code: "HLS", color: "#c0392b" },
+  cls_blue_sky_blog: { label: "CLS Blue Sky Blog", code: "CLS", color: "#2980b9" },
+  the_corporate_counsel_net: { label: "TheCorporateCounsel.net", code: "TCC", color: "#8e44ad" },
+  securities_law_exchange: { label: "Securities Law Exchange", code: "SLX", color: "#27ae60" },
   document_bloomberg_apify_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_bloomberg_public_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_substack_public_article: { label: "Substack", code: "SUB", color: "#f26b38" },
@@ -212,6 +216,11 @@ const SOURCE_FILTERS: Array<{ key: string; label: string }> = [
   { key: "NORTON_ROSE", label: "Norton Rose Fulbright" },
   { key: "SQUIRE_PATTON_BOGGS", label: "Squire Patton Boggs" },
   { key: "BRADLEY", label: "Bradley" },
+  // Academic & governance blogs
+  { key: "harvard_corp_gov_forum", label: "Harvard Corp Gov Forum" },
+  { key: "cls_blue_sky_blog", label: "CLS Blue Sky Blog" },
+  { key: "the_corporate_counsel_net", label: "TheCorporateCounsel.net" },
+  { key: "securities_law_exchange", label: "Securities Law Exchange" },
   // Individual RSS feed sources
   { key: "mw_top_stories", label: "MarketWatch" },
   { key: "rss_nytimes_com_services_xml_rss_nyt_business_xml", label: "NYT Business" },
