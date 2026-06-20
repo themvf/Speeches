@@ -137,3 +137,39 @@ def test_summary_with_item_failures_should_fail_process():
     assert pipeline._has_item_failures({"failed_count": 0, "failed": []}) is False
     assert pipeline._has_item_failures({"failed_count": "2"}) is True
     assert pipeline._has_item_failures({"failed": [{"title": "bad"}]}) is True
+
+
+def test_crs_status_treats_equivalent_date_formats_as_existing():
+    entry = {
+        "url": "https://www.congress.gov/crs-product/R48978",
+        "title": "Example CRS Report",
+        "date": "June 9, 2026",
+        "doc_type": "Report",
+        "authors": "",
+    }
+    existing = {
+        "title": "Example CRS Report",
+        "published_date": "June 09, 2026",
+        "doc_type": "Report",
+        "speaker": "Congressional Research Service",
+    }
+
+    assert pipeline._status_for_entry("congress_crs_product", entry, existing, set()) == "existing"
+
+
+def test_crs_status_detects_actual_date_change():
+    entry = {
+        "url": "https://www.congress.gov/crs-product/R48978",
+        "title": "Example CRS Report",
+        "date": "June 10, 2026",
+        "doc_type": "Report",
+        "authors": "",
+    }
+    existing = {
+        "title": "Example CRS Report",
+        "published_date": "June 09, 2026",
+        "doc_type": "Report",
+        "speaker": "Congressional Research Service",
+    }
+
+    assert pipeline._status_for_entry("congress_crs_product", entry, existing, set()) == "update_available"

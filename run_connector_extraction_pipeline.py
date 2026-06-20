@@ -506,8 +506,15 @@ def _status_for_entry(
         return "existing"
 
     if connector == "congress_crs_product":
-        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
-        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_date_raw = existing_meta.get("published_date") or existing_meta.get("date") or ""
+        incoming_date_raw = entry.get("date", "")
+        existing_date = core._parse_single_date(existing_date_raw)
+        incoming_date = core._parse_single_date(incoming_date_raw)
+        date_changed = (
+            existing_date != incoming_date
+            if existing_date is not None and incoming_date is not None
+            else _normalize_space(existing_date_raw) != _normalize_space(incoming_date_raw)
+        )
         existing_title = _normalize_space(existing_meta.get("title", ""))
         incoming_title = _normalize_space(entry.get("title", ""))
         existing_author = _normalize_space(existing_meta.get("speaker", ""))
@@ -515,7 +522,7 @@ def _status_for_entry(
         existing_doc_type = _normalize_space(existing_meta.get("doc_type", ""))
         incoming_doc_type = _normalize_space(entry.get("doc_type", ""))
         if (
-            (incoming_date and existing_date and incoming_date != existing_date)
+            date_changed
             or (incoming_title and existing_title and incoming_title != existing_title)
             or (incoming_author and existing_author and incoming_author != existing_author)
             or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
