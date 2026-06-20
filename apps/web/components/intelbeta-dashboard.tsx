@@ -18,6 +18,7 @@ type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ"
 
 const FEED_RENDER_BATCH_SIZE = 20;
 const LIVE_FEED_REFRESH_LIMIT = 250;
+const LIVE_FEED_POLL_INTERVAL_MS = 60 * 60_000;
 
 type FeedMeta = {
   label: string;
@@ -1564,7 +1565,7 @@ export function IntelBetaDashboard({
 
     const poll = async () => {
       try {
-        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}`, { cache: "no-store" });
+        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}`);
         if (!res.ok) { errStreak++; }
         else {
           const json = (await res.json()) as {
@@ -1617,8 +1618,10 @@ export function IntelBetaDashboard({
         errStreak++;
       }
       if (mounted) {
-        // Exponential backoff on errors: 15s → 30s → 60s → 120s (cap)
-        const delay = errStreak > 0 ? Math.min(15_000 * (2 ** (errStreak - 1)), 120_000) : 15_000;
+        // Retry transient failures promptly, but successful feed refreshes run hourly.
+        const delay = errStreak > 0
+          ? Math.min(15_000 * (2 ** (errStreak - 1)), 120_000)
+          : LIVE_FEED_POLL_INTERVAL_MS;
         timeoutId = setTimeout(() => { void poll(); }, delay);
       }
     };

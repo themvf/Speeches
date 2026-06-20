@@ -90,7 +90,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       },
       {
         headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Cache-Control": refresh
+            ? "no-store, no-cache, must-revalidate, proxy-revalidate"
+            : "public, s-maxage=3600, stale-while-revalidate=86400",
         },
       }
     );

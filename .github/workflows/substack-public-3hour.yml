@@ -76,7 +76,24 @@ jobs:
             --require-remote-persistence \
             --summary-path substack_public_extraction_summary.json
 
+      - name: Check for Substack Changes
+        id: extraction_summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("substack_public_extraction_summary.json")
+          payload = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+          changed_count = int(payload.get("saved_new", 0) or 0) + int(payload.get("saved_updates", 0) or 0)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"changed_count={changed_count}\n")
+          print(f"Substack new or updated documents: {changed_count}")
+          PY
+
       - name: Enrich Retained Substack Posts
+        if: steps.extraction_summary.outputs.changed_count != '0'
         run: |
           set -euo pipefail
           python run_financial_news_pipeline.py enrich \
