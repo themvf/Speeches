@@ -14,7 +14,7 @@ import {
 } from "@/lib/intel-topic-matching";
 
 type TopicFilter = string | "ALL";
-type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG" | "SUBSTACK";
+type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_PRESS_RELEASES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "CFTC" | "CRS" | "WSJ" | "BLOOMBERG" | "SUBSTACK" | "NEWS";
 
 const FEED_RENDER_BATCH_SIZE = 20;
 const LIVE_FEED_REFRESH_LIMIT = 250;
@@ -141,16 +141,26 @@ const FEED_META: Record<string, FeedMeta> = {
   document_bloomberg_apify_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_bloomberg_public_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_substack_public_article: { label: "Substack", code: "SUB", color: "#f26b38" },
+  document_cftc_press_release: { label: "CFTC", code: "CFTC", color: "#a9e34b" },
+  document_cftc_public_statement_remark: { label: "CFTC", code: "CFTC", color: "#a9e34b" },
+  document_congress_crs_product: { label: "CRS", code: "CRS", color: "#74c0fc" },
+  document_doj_usao_press_release: { label: "DOJ", code: "DOJ", color: "#f783ac" },
+  document_sec_enforcement_litigation: { label: "SEC Enforcement", code: "SEC", color: "#ff8aa0" },
+  document_sec_speech: { label: "SEC Speech", code: "SEC", color: "#7cc4ff" },
 };
 
 const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
   { key: "SEC_SPEECHES", label: "SEC Speeches" },
+  { key: "SEC_PRESS_RELEASES", label: "SEC Press Releases" },
   { key: "SEC_ENFORCEMENT", label: "SEC Enforcement" },
   { key: "FINRA", label: "FINRA" },
   { key: "DOJ", label: "DOJ" },
+  { key: "CFTC", label: "CFTC" },
+  { key: "CRS", label: "CRS" },
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
   { key: "SUBSTACK", label: "Substack" },
+  { key: "NEWS", label: "News" },
 ];
 
 function getFeedMeta(feedKey: string): FeedMeta {
@@ -265,6 +275,14 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
       url.includes("/news/speeches-statements/")
     );
   }
+  if (sourceFilter === "SEC_PRESS_RELEASES") {
+    return (
+      feedKey === "sec_press_releases" ||
+      sourceKind === "sec_press_release" ||
+      url.includes("/newsroom/press-releases/") ||
+      url.includes("/news/press-releases/")
+    );
+  }
   if (sourceFilter === "SEC_ENFORCEMENT") {
     return (
       feedKey === "sec_litigation_releases" ||
@@ -286,6 +304,23 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
       text.includes("justice department")
     );
   }
+  if (sourceFilter === "CFTC") {
+    return (
+      sourceKind === "cftc_press_release" ||
+      sourceKind === "cftc_public_statement_remark" ||
+      text.includes("cftc") ||
+      text.includes("cftc.gov") ||
+      text.includes("commodity futures trading commission")
+    );
+  }
+  if (sourceFilter === "CRS") {
+    return (
+      sourceKind === "congress_crs_product" ||
+      text.includes("congressional research service") ||
+      url.includes("/crs-product/") ||
+      url.includes("crsreports.congress.gov")
+    );
+  }
   if (sourceFilter === "WSJ") {
     return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
   }
@@ -294,6 +329,25 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "SUBSTACK") {
     return sourceKind === "substack_public_article" || text.includes("substack.com");
+  }
+  if (sourceFilter === "NEWS") {
+    return (
+      feedKey === "mw_top_stories" ||
+      feedKey.startsWith("rss_nytimes_com") ||
+      feedKey === "coindesk" ||
+      feedKey === "cointelegraph" ||
+      feedKey === "decrypt" ||
+      feedKey === "the_block" ||
+      feedKey === "cisa_cybersecurity_advisories" ||
+      feedKey === "bleepingcomputer" ||
+      feedKey === "krebs_on_security" ||
+      feedKey === "the_hacker_news" ||
+      feedKey === "dark_reading" ||
+      feedKey === "securityweek" ||
+      feedKey === "microsoft_security_blog" ||
+      sourceKind === "newsapi_article" ||
+      sourceKind === "rss_news_feed"
+    );
   }
   return false;
 }
