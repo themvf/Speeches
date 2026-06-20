@@ -1300,12 +1300,13 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
 
     if connector == "congress_crs_product":
         extracted = scraper.extract_document(
-            entry.get("url", ""),
+            entry.get("mirror_url", "") or entry.get("url", ""),
             fallback_title=entry.get("title", ""),
             fallback_date=entry.get("date", ""),
             fallback_doc_type=entry.get("doc_type", ""),
             fallback_authors=entry.get("authors", ""),
             fallback_product_number=entry.get("product_number", ""),
+            canonical_url_override=entry.get("url", ""),
         )
         data = extracted.get("data", {})
         text = str(data.get("full_text", "") or "").strip()

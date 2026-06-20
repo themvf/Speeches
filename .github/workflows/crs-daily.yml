@@ -19,7 +19,6 @@ jobs:
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
-      CRS_PROXY_URL: ${{ secrets.APIFY_PROXY_URL }}
 
     steps:
       - name: Checkout

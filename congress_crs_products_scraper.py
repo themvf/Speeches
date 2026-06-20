@@ -11,6 +11,7 @@ scraper uses ``curl_cffi`` with a browser impersonation profile.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
@@ -26,6 +27,8 @@ from curl_cffi import requests as cffi_requests
 CONGRESS_HOME_URL = "https://www.congress.gov"
 CRS_PRODUCTS_BROWSE_URL = f"{CONGRESS_HOME_URL}/crs-products"
 CRS_PRODUCTS_SEARCH_URL = f"{CONGRESS_HOME_URL}/index.php/quick-search/crs-products"
+EVERY_CRS_HOME_URL = "https://www.everycrsreport.com"
+EVERY_CRS_INDEX_URL = f"{EVERY_CRS_HOME_URL}/all-reports.html"
 
 
 def _is_challenge_html(text: Any) -> bool:
@@ -326,7 +329,7 @@ class CongressCRSProductsScraper:
             raise ValueError("URL is required")
         self._rate_limit()
         request_kwargs: Dict[str, Any] = {"timeout": timeout, "allow_redirects": True}
-        if self.proxy_url:
+        if self.proxy_url and "congress.gov" in (urlparse(target).netloc or "").lower():
             request_kwargs["proxy"] = self.proxy_url
         response = self.session.get(target, **request_kwargs)
         response.raise_for_status()
@@ -335,6 +338,54 @@ class CongressCRSProductsScraper:
                 "Congress.gov returned a Cloudflare challenge page; configure CRS_PROXY_URL for hosted runs."
             )
         return response
+
+    def _discover_from_mirror(self, max_pages: int) -> List[Dict[str, Any]]:
+        response = self._fetch_html(EVERY_CRS_INDEX_URL, timeout=120)
+        soup = BeautifulSoup(response.text, "html.parser")
+        max_items = max(1, int(max_pages or 1)) * 100
+        out: List[Dict[str, Any]] = []
+        for container in soup.select("div.crs-report"):
+            if not isinstance(container, Tag):
+                continue
+            anchor = container.select_one("a[href^='/reports/']")
+            if not isinstance(anchor, Tag):
+                continue
+            href = _normalize_space(anchor.get("href", ""))
+            product_number = _extract_product_number("", href)
+            if not product_number:
+                continue
+            metadata_text = _normalize_space(container.get_text(" ", strip=True))
+            dates = re.findall(r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}\b", metadata_text)
+            out.append(
+                {
+                    "url": f"{CONGRESS_HOME_URL}/crs-product/{product_number}",
+                    "mirror_url": urljoin(EVERY_CRS_HOME_URL, href),
+                    "title": _normalize_space(anchor.get_text(" ", strip=True)) or product_number,
+                    "date": dates[-1] if dates else "",
+                    "doc_type": _infer_doc_type(product_number),
+                    "product_number": product_number,
+                    "authors": "",
+                    "topics": [],
+                    "source_format": "html",
+                    "listing_page": EVERY_CRS_INDEX_URL,
+                }
+            )
+            if len(out) >= max_items:
+                break
+        if not out:
+            raise RuntimeError("EveryCRSReport index returned no CRS products.")
+        self.last_discovery_debug = {
+            "base_url": CRS_PRODUCTS_BROWSE_URL,
+            "mirror_index_url": EVERY_CRS_INDEX_URL,
+            "max_pages_requested": max_pages,
+            "page_size": 100,
+            "proxy_configured": bool(self.proxy_url),
+            "discovery_mode": "everycrsreport_static_index",
+            "listing_added": len(out),
+            "total_unique": len(out),
+            "stop_reason": "limit_reached" if len(out) >= max_items else "pagination_exhausted",
+        }
+        return out
 
     def _discover_from_listing_page(self, page_url: str) -> Tuple[List[Dict[str, Any]], str]:
         response = self._fetch_html(page_url, timeout=60)
@@ -381,6 +432,8 @@ class CongressCRSProductsScraper:
         return out, next_page
 
     def discover_documents(self, base_url: str = CRS_PRODUCTS_BROWSE_URL, max_pages: int = 3) -> List[Dict[str, Any]]:
+        if _url_key(base_url) == _url_key(CRS_PRODUCTS_BROWSE_URL):
+            return self._discover_from_mirror(max_pages)
         start_url = _normalize_listing_url(base_url)
         max_pages = max(1, int(max_pages or 1))
 
@@ -454,6 +507,7 @@ class CongressCRSProductsScraper:
         fallback_doc_type: str = "",
         fallback_authors: str = "",
         fallback_product_number: str = "",
+        canonical_url_override: str = "",
     ) -> Dict[str, Any]:
         response = self._fetch_html(url, timeout=75)
         soup = BeautifulSoup(response.text, "html.parser")
@@ -464,7 +518,18 @@ class CongressCRSProductsScraper:
         canonical_link = soup.find("link", rel="canonical")
         if isinstance(canonical_link, Tag):
             canonical_url = _normalize_space(canonical_link.get("href", ""))
-        final_url = canonical_url or _url_without_query(str(getattr(response, "url", url) or url))
+        final_url = _normalize_space(canonical_url_override) or canonical_url or _url_without_query(str(getattr(response, "url", url) or url))
+
+        mirror_metadata: Dict[str, Any] = {}
+        if "everycrsreport.com" in (urlparse(str(url or "")).netloc or "").lower():
+            metadata_url = re.sub(r"\.html(?:\?.*)?$", ".json", str(url or ""))
+            try:
+                metadata_response = self._fetch_html(metadata_url, timeout=45)
+                parsed_metadata = json.loads(metadata_response.text)
+                if isinstance(parsed_metadata, dict):
+                    mirror_metadata = parsed_metadata
+            except Exception:
+                mirror_metadata = {}
 
         title = ""
         for selector in ("main h1", "article h1", "h1"):
@@ -476,6 +541,10 @@ class CongressCRSProductsScraper:
                 break
         if not title:
             title = _normalize_space(fallback_title) or _extract_product_number(final_url) or "CRS Product"
+
+        versions = [item for item in mirror_metadata.get("versions", []) if isinstance(item, dict)] if isinstance(mirror_metadata.get("versions", []), list) else []
+        latest_version = max(versions, key=lambda item: _parse_date_text(item.get("date", "")) or datetime.min) if versions else {}
+        title = _normalize_space(latest_version.get("title", "")) or title
 
         candidates: List[Tag] = []
         seen_candidates = set()
@@ -521,10 +590,12 @@ class CongressCRSProductsScraper:
         publication_date = _extract_field(r"Publication Date:\s*([^\n]+)", overview_text)
         authors = _extract_field(r"Author(?:s)?:\s*([^\n]+)", overview_text) or _normalize_space(fallback_authors)
         topics = _split_semicolon_list(_extract_field(r"Topics?:\s*([^\n]+)", overview_text))
+        if not topics and isinstance(mirror_metadata.get("topics"), list):
+            topics = [_normalize_space(item) for item in mirror_metadata["topics"] if _normalize_space(item)]
 
         if not doc_type:
             doc_type = _normalize_space(fallback_doc_type) or _infer_doc_type(product_number)
-        date_value = _date_to_display(publication_date or fallback_date or _extract_first_date(overview_text))
+        date_value = _date_to_display(latest_version.get("date", "") or publication_date or fallback_date or _extract_first_date(overview_text))
 
         pdf_url = ""
         for anchor in soup.select("a[href]"):
@@ -536,6 +607,11 @@ class CongressCRSProductsScraper:
             if "/pdf" in href or label.lower().startswith("download pdf"):
                 pdf_url = full_url
                 break
+        if isinstance(latest_version.get("formats"), list):
+            for item in latest_version["formats"]:
+                if isinstance(item, dict) and str(item.get("format", "")).upper() == "PDF":
+                    pdf_url = _normalize_space(item.get("url", ""))
+                    break
 
         return {
             "success": True,
