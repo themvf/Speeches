@@ -21,7 +21,7 @@ import hashlib
 import json
 import os
 import sys
-import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
@@ -224,35 +224,82 @@ def _ensure_vector_store(client: OpenAI, existing_id: str, label: str, force_reb
     return store.id, True, existing_id
 
 
-def _upload_doc(client: OpenAI, vector_store_id: str, doc: dict) -> dict:
+UPLOAD_BATCH_SIZE = 500
+UPLOAD_WORKERS = 12
+
+
+def _upload_file(client: OpenAI, doc: dict) -> str:
     content = doc["_rendered"].encode("utf-8")
     filename = doc["filename"]
     max_attempts = 3
-    tmp_path = None
     for attempt in range(1, max_attempts + 1):
         try:
-            with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
-                f.write(content)
-                tmp_path = f.name
-            with open(tmp_path, "rb") as f:
-                uploaded = client.vector_stores.files.upload_and_poll(
-                    vector_store_id=vector_store_id,
-                    file=(filename, f, "text/plain"),
-                )
-            file_id = str(getattr(uploaded, "id", "") or "")
-            return {"file_id": file_id, "vector_store_file_id": file_id}
+            uploaded = client.files.create(
+                file=(filename, content, "text/plain"),
+                purpose="assistants",
+            )
+            return str(getattr(uploaded, "id", "") or "")
         except Exception as exc:
             msg = str(exc).lower()
             retryable = any(t in msg for t in ["rate limit", "timeout", "temporar", "502", "503", "504", "connection"])
             if attempt >= max_attempts or not retryable:
                 raise
-            import time
             time.sleep(min(8, 2**attempt))
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-                tmp_path = None
     raise RuntimeError("Upload failed after retries")
+
+
+def _upload_doc_batch(client: OpenAI, vector_store_id: str, targets: list[tuple[str, dict]]) -> tuple[dict[str, str], list[dict]]:
+    """Upload files concurrently, then attach and poll once for the whole batch."""
+    uploaded: dict[str, str] = {}
+    failed: list[dict] = []
+
+    with ThreadPoolExecutor(max_workers=min(UPLOAD_WORKERS, len(targets))) as pool:
+        future_map = {pool.submit(_upload_file, client, doc): doc_id for doc_id, doc in targets}
+        for future in as_completed(future_map):
+            doc_id = future_map[future]
+            try:
+                file_id = future.result()
+                if not file_id:
+                    raise RuntimeError("OpenAI returned an empty file ID")
+                uploaded[doc_id] = file_id
+            except Exception as exc:
+                failed.append({"doc_id": doc_id, "stage": "upload", "error": str(exc)})
+
+    if not uploaded:
+        return {}, failed
+
+    try:
+        batch = client.vector_stores.file_batches.create_and_poll(
+            vector_store_id=vector_store_id,
+            file_ids=list(uploaded.values()),
+        )
+    except Exception as exc:
+        failed.extend({"doc_id": doc_id, "stage": "attach", "error": str(exc)} for doc_id in uploaded)
+        return {}, failed
+
+    failed_count = int(getattr(getattr(batch, "file_counts", None), "failed", 0) or 0)
+    if failed_count == 0:
+        return uploaded, failed
+
+    attached: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=min(UPLOAD_WORKERS, len(uploaded))) as pool:
+        future_map = {
+            pool.submit(client.vector_stores.files.retrieve, file_id, vector_store_id=vector_store_id): (doc_id, file_id)
+            for doc_id, file_id in uploaded.items()
+        }
+        for future in as_completed(future_map):
+            doc_id, file_id = future_map[future]
+            try:
+                vector_file = future.result()
+                status = str(getattr(vector_file, "status", "") or "")
+                if status == "completed":
+                    attached[doc_id] = file_id
+                else:
+                    error = getattr(vector_file, "last_error", None)
+                    failed.append({"doc_id": doc_id, "stage": "attach", "error": str(error or status or "unknown status")})
+            except Exception as exc:
+                failed.append({"doc_id": doc_id, "stage": "attach", "error": str(exc)})
+    return attached, failed
 
 
 def _delete_doc(client: OpenAI, vector_store_id: str, entry: dict) -> None:
@@ -323,23 +370,23 @@ def _sync_org(
             failed.append({"doc_id": doc_id, "stage": "delete", "error": str(exc)})
 
     upload_targets = [(d, current_docs[d]) for d in (add_ids + update_ids) if d in current_docs]
-    max_workers = min(6, max(1, len(upload_targets)))
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        future_map = {pool.submit(_upload_doc, client, vector_store_id, doc): (doc_id, doc) for doc_id, doc in upload_targets}
-        for future in as_completed(future_map):
-            doc_id, doc = future_map[future]
-            try:
-                ref = future.result()
-                next_docs[doc_id] = {k: v for k, v in doc.items() if k != "_rendered"} | {
-                    "file_id": ref["file_id"],
-                    "vector_store_file_id": ref["vector_store_file_id"],
-                    "indexed_at": _utc_now(),
-                }
-                uploaded_count += 1
-                print(f"  [{org_key}] uploaded {doc_id}")
-            except Exception as exc:
-                print(f"  [{org_key}] upload failed {doc_id}: {exc}", file=sys.stderr)
-                failed.append({"doc_id": doc_id, "stage": "upload", "error": str(exc)})
+    for offset in range(0, len(upload_targets), UPLOAD_BATCH_SIZE):
+        batch_targets = upload_targets[offset:offset + UPLOAD_BATCH_SIZE]
+        attached, batch_failures = _upload_doc_batch(client, vector_store_id, batch_targets)
+        failed.extend(batch_failures)
+        docs_by_id = dict(batch_targets)
+        for doc_id, file_id in attached.items():
+            doc = docs_by_id[doc_id]
+            next_docs[doc_id] = {k: v for k, v in doc.items() if k != "_rendered"} | {
+                "file_id": file_id,
+                "vector_store_file_id": file_id,
+                "indexed_at": _utc_now(),
+            }
+            uploaded_count += 1
+        print(
+            f"  [{org_key}] batch {offset // UPLOAD_BATCH_SIZE + 1} "
+            f"attached={len(attached)} failed={len(batch_failures)}"
+        )
 
     org_state.update({
         "org_label": label,
