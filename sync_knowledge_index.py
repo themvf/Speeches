@@ -226,6 +226,8 @@ def _ensure_vector_store(client: OpenAI, existing_id: str, label: str, force_reb
 
 UPLOAD_BATCH_SIZE = 500
 UPLOAD_WORKERS = 12
+BATCH_POLL_INTERVAL_SECONDS = 2
+BATCH_POLL_TIMEOUT_SECONDS = 300
 
 
 def _upload_file(client: OpenAI, doc: dict) -> str:
@@ -248,7 +250,40 @@ def _upload_file(client: OpenAI, doc: dict) -> str:
     raise RuntimeError("Upload failed after retries")
 
 
-def _upload_doc_batch(client: OpenAI, vector_store_id: str, targets: list[tuple[str, dict]]) -> tuple[dict[str, str], list[dict]]:
+def _batch_file_ids_by_status(client: OpenAI, vector_store_id: str, batch_id: str, status: str) -> set[str]:
+    page = client.vector_stores.file_batches.list_files(
+        batch_id,
+        vector_store_id=vector_store_id,
+        filter=status,
+        limit=100,
+    )
+    file_ids: set[str] = set()
+    while True:
+        file_ids.update(str(item.id) for item in page.data)
+        if not page.has_next_page():
+            return file_ids
+        page = page.get_next_page()
+
+
+def _create_and_poll_file_batch(client: OpenAI, vector_store_id: str, file_ids: list[str]):
+    batch = client.vector_stores.file_batches.create(
+        vector_store_id=vector_store_id,
+        file_ids=file_ids,
+    )
+    deadline = time.monotonic() + BATCH_POLL_TIMEOUT_SECONDS
+    while str(getattr(batch, "status", "") or "") == "in_progress":
+        if time.monotonic() >= deadline:
+            return batch, True
+        time.sleep(BATCH_POLL_INTERVAL_SECONDS)
+        batch = client.vector_stores.file_batches.retrieve(batch.id, vector_store_id=vector_store_id)
+    return batch, False
+
+
+def _upload_doc_batch(
+    client: OpenAI,
+    vector_store_id: str,
+    targets: list[tuple[str, dict]],
+) -> tuple[dict[str, str], list[dict], set[str]]:
     """Upload files concurrently, then attach and poll once for the whole batch."""
     uploaded: dict[str, str] = {}
     failed: list[dict] = []
@@ -266,40 +301,55 @@ def _upload_doc_batch(client: OpenAI, vector_store_id: str, targets: list[tuple[
                 failed.append({"doc_id": doc_id, "stage": "upload", "error": str(exc)})
 
     if not uploaded:
-        return {}, failed
+        return {}, failed, set()
 
     try:
-        batch = client.vector_stores.file_batches.create_and_poll(
-            vector_store_id=vector_store_id,
-            file_ids=list(uploaded.values()),
-        )
+        batch, timed_out = _create_and_poll_file_batch(client, vector_store_id, list(uploaded.values()))
     except Exception as exc:
         failed.extend({"doc_id": doc_id, "stage": "attach", "error": str(exc)} for doc_id in uploaded)
-        return {}, failed
+        return {}, failed, set()
 
     failed_count = int(getattr(getattr(batch, "file_counts", None), "failed", 0) or 0)
-    if failed_count == 0:
-        return uploaded, failed
+    if failed_count == 0 and not timed_out:
+        return uploaded, failed, set()
 
-    attached: dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=min(UPLOAD_WORKERS, len(uploaded))) as pool:
+    failed_file_ids = _batch_file_ids_by_status(client, vector_store_id, batch.id, "failed")
+    pending_file_ids = (
+        _batch_file_ids_by_status(client, vector_store_id, batch.id, "in_progress")
+        if timed_out
+        else set()
+    )
+    doc_ids_by_file_id = {file_id: doc_id for doc_id, file_id in uploaded.items()}
+    pending_doc_ids = {doc_ids_by_file_id[file_id] for file_id in pending_file_ids if file_id in doc_ids_by_file_id}
+
+    for file_id in failed_file_ids:
+        doc_id = doc_ids_by_file_id.get(file_id)
+        if doc_id:
+            failed.append({"doc_id": doc_id, "stage": "attach", "error": "OpenAI vector ingestion failed"})
+
+    attached = {doc_id: file_id for doc_id, file_id in uploaded.items() if file_id not in failed_file_ids}
+    return attached, failed, pending_doc_ids
+
+
+def _reconcile_pending_docs(client: OpenAI, vector_store_id: str, indexed_docs: dict) -> None:
+    pending = [(doc_id, entry) for doc_id, entry in indexed_docs.items() if entry.get("index_status") == "pending"]
+    if not pending:
+        return
+    with ThreadPoolExecutor(max_workers=min(UPLOAD_WORKERS, len(pending))) as pool:
         future_map = {
-            pool.submit(client.vector_stores.files.retrieve, file_id, vector_store_id=vector_store_id): (doc_id, file_id)
-            for doc_id, file_id in uploaded.items()
+            pool.submit(client.vector_stores.files.retrieve, entry["file_id"], vector_store_id=vector_store_id): doc_id
+            for doc_id, entry in pending
         }
         for future in as_completed(future_map):
-            doc_id, file_id = future_map[future]
+            doc_id = future_map[future]
             try:
-                vector_file = future.result()
-                status = str(getattr(vector_file, "status", "") or "")
-                if status == "completed":
-                    attached[doc_id] = file_id
-                else:
-                    error = getattr(vector_file, "last_error", None)
-                    failed.append({"doc_id": doc_id, "stage": "attach", "error": str(error or status or "unknown status")})
-            except Exception as exc:
-                failed.append({"doc_id": doc_id, "stage": "attach", "error": str(exc)})
-    return attached, failed
+                status = str(getattr(future.result(), "status", "") or "")
+            except Exception:
+                continue
+            if status == "completed":
+                indexed_docs[doc_id].pop("index_status", None)
+            elif status in {"failed", "cancelled"}:
+                indexed_docs.pop(doc_id, None)
 
 
 def _delete_doc(client: OpenAI, vector_store_id: str, entry: dict) -> None:
@@ -354,6 +404,16 @@ def _sync_org(
     if created_new:
         add_ids, update_ids, remove_ids, unchanged_ids = sorted(current_ids), [], [], []
         indexed_docs = {}
+    else:
+        _reconcile_pending_docs(client, vector_store_id, indexed_docs)
+        indexed_ids = set(indexed_docs)
+        add_ids = sorted(current_ids - indexed_ids)
+        remove_ids = sorted(indexed_ids - current_ids)
+        update_ids = sorted(
+            d for d in (current_ids & indexed_ids)
+            if indexed_docs[d].get("content_hash") != current_docs[d]["content_hash"]
+        )
+        unchanged_ids = sorted((current_ids & indexed_ids) - set(update_ids))
 
     next_docs: dict = {d: indexed_docs[d] for d in unchanged_ids if d in indexed_docs}
     failed: list[dict] = []
@@ -372,7 +432,7 @@ def _sync_org(
     upload_targets = [(d, current_docs[d]) for d in (add_ids + update_ids) if d in current_docs]
     for offset in range(0, len(upload_targets), UPLOAD_BATCH_SIZE):
         batch_targets = upload_targets[offset:offset + UPLOAD_BATCH_SIZE]
-        attached, batch_failures = _upload_doc_batch(client, vector_store_id, batch_targets)
+        attached, batch_failures, pending_doc_ids = _upload_doc_batch(client, vector_store_id, batch_targets)
         failed.extend(batch_failures)
         docs_by_id = dict(batch_targets)
         for doc_id, file_id in attached.items():
@@ -382,10 +442,12 @@ def _sync_org(
                 "vector_store_file_id": file_id,
                 "indexed_at": _utc_now(),
             }
+            if doc_id in pending_doc_ids:
+                next_docs[doc_id]["index_status"] = "pending"
             uploaded_count += 1
         print(
             f"  [{org_key}] batch {offset // UPLOAD_BATCH_SIZE + 1} "
-            f"attached={len(attached)} failed={len(batch_failures)}"
+            f"attached={len(attached)} pending={len(pending_doc_ids)} failed={len(batch_failures)}"
         )
 
     org_state.update({

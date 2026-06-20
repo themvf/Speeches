@@ -18,18 +18,40 @@ class _Files:
 
 
 class _FileBatches:
-    def __init__(self, failed=0):
+    def __init__(self, failed=0, pending=None):
         self.failed = failed
+        self.pending = pending or []
         self.calls = []
 
-    def create_and_poll(self, *, vector_store_id, file_ids):
+    def create(self, *, vector_store_id, file_ids):
         self.calls.append((vector_store_id, file_ids))
-        return SimpleNamespace(file_counts=SimpleNamespace(failed=self.failed))
+        status = "in_progress" if self.pending else "completed"
+        return SimpleNamespace(id="batch-1", status=status, file_counts=SimpleNamespace(failed=self.failed))
+
+    def retrieve(self, batch_id, *, vector_store_id):
+        return SimpleNamespace(id=batch_id, status="completed", file_counts=SimpleNamespace(failed=self.failed))
+
+    def list_files(self, batch_id, *, vector_store_id, filter, limit):
+        if filter == "failed":
+            ids = ["file-doc-2.txt"] if self.failed else []
+        elif filter == "in_progress":
+            ids = self.pending
+        else:
+            ids = []
+        return _Page(ids)
 
 
-def _client(*, failed=0, statuses=None):
+class _Page:
+    def __init__(self, file_ids):
+        self.data = [SimpleNamespace(id=file_id) for file_id in file_ids]
+
+    def has_next_page(self):
+        return False
+
+
+def _client(*, failed=0, pending=None, statuses=None):
     files = _Files(statuses=statuses)
-    batches = _FileBatches(failed=failed)
+    batches = _FileBatches(failed=failed, pending=pending)
     return SimpleNamespace(
         files=files,
         vector_stores=SimpleNamespace(files=files, file_batches=batches),
@@ -46,9 +68,10 @@ def _targets():
 def test_upload_doc_batch_attaches_uploaded_files_once():
     client = _client()
 
-    attached, failures = sync._upload_doc_batch(client, "vs-1", _targets())
+    attached, failures, pending = sync._upload_doc_batch(client, "vs-1", _targets())
 
     assert failures == []
+    assert pending == set()
     assert attached == {
         "doc-1": "file-doc-1.txt",
         "doc-2": "file-doc-2.txt",
@@ -69,13 +92,40 @@ def test_upload_doc_batch_reports_only_failed_attachments():
         statuses={"file-doc-2.txt": "failed"},
     )
 
-    attached, failures = sync._upload_doc_batch(client, "vs-1", _targets())
+    attached, failures, pending = sync._upload_doc_batch(client, "vs-1", _targets())
 
     assert attached == {"doc-1": "file-doc-1.txt"}
+    assert pending == set()
     assert failures == [
         {
             "doc_id": "doc-2",
             "stage": "attach",
-            "error": "failed",
+            "error": "OpenAI vector ingestion failed",
         }
     ]
+
+
+def test_upload_doc_batch_persists_pending_files_after_poll_timeout(monkeypatch):
+    client = _client(pending=["file-doc-2.txt"])
+    monkeypatch.setattr(sync, "BATCH_POLL_TIMEOUT_SECONDS", 0)
+
+    attached, failures, pending = sync._upload_doc_batch(client, "vs-1", _targets())
+
+    assert failures == []
+    assert attached == {
+        "doc-1": "file-doc-1.txt",
+        "doc-2": "file-doc-2.txt",
+    }
+    assert pending == {"doc-2"}
+
+
+def test_reconcile_pending_docs_removes_failed_and_clears_completed():
+    client = _client(statuses={"file-failed": "failed"})
+    indexed_docs = {
+        "completed": {"file_id": "file-completed", "index_status": "pending"},
+        "failed": {"file_id": "file-failed", "index_status": "pending"},
+    }
+
+    sync._reconcile_pending_docs(client, "vs-1", indexed_docs)
+
+    assert indexed_docs == {"completed": {"file_id": "file-completed"}}
