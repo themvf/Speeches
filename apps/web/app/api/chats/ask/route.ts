@@ -1,7 +1,9 @@
+import { type NextRequest } from "next/server";
 import { askVectorStoreChat, type ChatHistoryMessage } from "@/lib/server/openai-chat";
 import { buildDocumentListItems, loadCorpusDocuments, loadEnrichmentState, parseComparableDate } from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
 import { getOpenAiConfig } from "@/lib/server/env";
+import { getClientIp, getGenerateGlobalLimiter, getGenerateIpLimiter, isRateLimited } from "@/lib/server/rate-limit";
 import { listActiveVectorStores, loadVectorStoreState } from "@/lib/server/vector-state";
 
 export const runtime = "nodejs";
@@ -55,8 +57,15 @@ function latestIndexedDate(items: Array<{ published_at?: string; date?: string }
   return latestText;
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const requestId = createRequestId();
+  const ip = getClientIp(request.headers);
+  if (await isRateLimited(getGenerateIpLimiter(), ip)) {
+    return fail("Rate limit exceeded. Please slow down.", "RATE_LIMITED", 429, requestId);
+  }
+  if (await isRateLimited(getGenerateGlobalLimiter(), "global")) {
+    return fail("Server is busy. Please try again shortly.", "GLOBAL_RATE_LIMITED", 429, requestId);
+  }
 
   try {
     let body: Record<string, unknown> = {};
