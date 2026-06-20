@@ -220,6 +220,7 @@ const SOURCE_FILTERS: Array<{ key: string; label: string }> = [
   { key: "harvard_corp_gov_forum", label: "Harvard Corp Gov Forum" },
   { key: "cls_blue_sky_blog", label: "CLS Blue Sky Blog" },
   { key: "the_corporate_counsel_net", label: "TheCorporateCounsel.net" },
+  { key: "cooley_pubco", label: "Cooley PubCo" },
   { key: "securities_law_exchange", label: "Securities Law Exchange" },
   // Individual RSS feed sources
   { key: "mw_top_stories", label: "MarketWatch" },
