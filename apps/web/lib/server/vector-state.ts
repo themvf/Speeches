@@ -6,6 +6,10 @@ import { downloadGcsJson } from "@/lib/server/gcs-loader";
 
 const VECTOR_STATE_BLOB = "openai_vector_store_state.json";
 const SEC_SPEECHES_LOCAL_FILE = "all_speeches_final.json";
+const CACHE_TTL_MS = 300_000; // 5 minutes
+
+type VectorStateCacheEntry = { loadedAt: number; data: VectorStoreStatePayload };
+let vectorStateCache: VectorStateCacheEntry | null = null;
 
 export interface VectorStoreEntry {
   org_label: string;
@@ -113,6 +117,11 @@ function normalizeVectorState(raw: unknown): VectorStoreStatePayload {
 }
 
 export async function loadVectorStoreState(): Promise<VectorStoreStatePayload> {
+  const now = Date.now();
+  if (vectorStateCache && now - vectorStateCache.loadedAt < CACHE_TTL_MS) {
+    return vectorStateCache.data;
+  }
+
   const cfg = getDataSourceConfig();
   let raw: unknown | null = null;
 
@@ -123,7 +132,9 @@ export async function loadVectorStoreState(): Promise<VectorStoreStatePayload> {
     raw = readLocalVectorState();
   }
 
-  return normalizeVectorState(raw);
+  const data = normalizeVectorState(raw);
+  vectorStateCache = { loadedAt: now, data };
+  return data;
 }
 
 export function listActiveVectorStores(state: VectorStoreStatePayload): Array<{ org_key: string; org_label: string; vector_store_id: string }> {

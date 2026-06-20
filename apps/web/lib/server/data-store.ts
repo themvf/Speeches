@@ -25,7 +25,7 @@ const RULE_SUMMARIES_BLOB = "rule_summaries.json";
 const SETTINGS_BLOB = "news_connector_settings.json";
 const TRENDS_BLOB = "trends_daily.json";
 
-const CACHE_TTL_MS = 15_000;
+const CACHE_TTL_MS = 300_000; // 5 minutes
 
 type CacheEntry<T> = {
   loadedAt: number;
