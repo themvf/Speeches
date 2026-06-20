@@ -24,7 +24,7 @@ on:
       model:
         description: "OpenAI model for relevance and enrichment"
         required: false
-        default: "gpt-5-mini"
+        default: "gpt-4o-mini"
 
 permissions:
   contents: read
@@ -46,7 +46,7 @@ jobs:
       MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '60' }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '60' }}
-      MODEL: ${{ github.event.inputs.model || 'gpt-5-mini' }}
+      MODEL: ${{ github.event.inputs.model || 'gpt-4o-mini' }}
 
     steps:
       - name: Checkout

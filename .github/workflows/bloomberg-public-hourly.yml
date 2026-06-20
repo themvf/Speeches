@@ -20,7 +20,7 @@ on:
       model:
         description: "Optional OpenAI model override"
         required: false
-        default: ""
+        default: "gpt-4o-mini"
 
 permissions:
   contents: read
@@ -40,7 +40,7 @@ jobs:
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '20' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '20' }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '20' }}
-      ENRICH_MODEL: ${{ github.event.inputs.model || '' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || 'gpt-4o-mini' }}
 
     steps:
       - name: Checkout

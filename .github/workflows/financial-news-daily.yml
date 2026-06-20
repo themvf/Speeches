@@ -24,6 +24,10 @@ on:
         required: false
         type: boolean
         default: false
+      model:
+        description: "Optional model override for enrichment"
+        required: false
+        default: "gpt-4o-mini"
 
 permissions:
   contents: read
@@ -45,6 +49,7 @@ jobs:
       LOOKBACK_DAYS_OVERRIDE: ${{ github.event.inputs.lookback_days || '' }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '' }}
       HEURISTIC_ONLY: ${{ github.event.inputs.heuristic_only || 'false' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || 'gpt-4o-mini' }}
 
     steps:
       - name: Checkout
@@ -131,6 +136,9 @@ jobs:
           fi
           if [ "${HEURISTIC_ONLY}" = "true" ]; then
             args+=(--heuristic-only)
+          fi
+          if [ -n "${ENRICH_MODEL}" ]; then
+            args+=(--model "${ENRICH_MODEL}")
           fi
           python run_financial_news_pipeline.py "${args[@]}"
 
