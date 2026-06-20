@@ -138,6 +138,44 @@ const FEED_META: Record<string, FeedMeta> = {
   dark_reading: { label: "Dark Reading", code: "DARK", color: "#b197fc" },
   securityweek: { label: "SecurityWeek", code: "SECW", color: "#91a7ff" },
   microsoft_security_blog: { label: "Microsoft Security Blog", code: "MSFT", color: "#69db7c" },
+  // CFTC RSS feeds
+  cftc_general_press_releases: { label: "CFTC Press Releases", code: "CFTC", color: "#a9e34b" },
+  cftc_enforcement_press_releases: { label: "CFTC Enforcement", code: "CFTC", color: "#a9e34b" },
+  cftc_speeches_testimony: { label: "CFTC Speeches", code: "CFTC", color: "#a9e34b" },
+  cftc_federal_register_proposed_rules: { label: "CFTC Proposed Rules", code: "CFTC", color: "#a9e34b" },
+  cftc_federal_register_final_rules: { label: "CFTC Final Rules", code: "CFTC", color: "#a9e34b" },
+  // Federal Reserve
+  fed_all_press_releases: { label: "Federal Reserve", code: "FED", color: "#74c0fc" },
+  fed_banking_consumer_regulatory_policy: { label: "Fed Banking Policy", code: "FED", color: "#74c0fc" },
+  fed_enforcement_actions: { label: "Fed Enforcement", code: "FED", color: "#74c0fc" },
+  fed_supervision_regulation_letters: { label: "Fed Supervision Letters", code: "FED", color: "#74c0fc" },
+  // OCC
+  occ_news_releases: { label: "OCC News", code: "OCC", color: "#69db7c" },
+  occ_bulletins: { label: "OCC Bulletins", code: "OCC", color: "#69db7c" },
+  occ_speeches: { label: "OCC Speeches", code: "OCC", color: "#69db7c" },
+  occ_congressional_testimony: { label: "OCC Testimony", code: "OCC", color: "#69db7c" },
+  // CFPB
+  cfpb_newsroom: { label: "CFPB", code: "CFPB", color: "#ffa94d" },
+  // FTC
+  ftc_consumer_protection_press_releases: { label: "FTC", code: "FTC", color: "#f783ac" },
+  // Law firms
+  gibson_dunn_sec_sentinel: { label: "Gibson Dunn SEC Sentinel", code: "GD", color: "#91a7ff" },
+  gibson_dunn_securities_regulation_monitor: { label: "Gibson Dunn Corp Gov", code: "GD", color: "#91a7ff" },
+  cleary_enforcement_watch: { label: "Cleary Enforcement Watch", code: "CLR", color: "#74c0fc" },
+  cooley_pubco: { label: "Cooley PubCo", code: "COOL", color: "#63e6be" },
+  cooley_cyber_data_privacy: { label: "Cooley Cyber/Privacy", code: "COOL", color: "#63e6be" },
+  cooley_governance_beat: { label: "Cooley Governance", code: "COOL", color: "#63e6be" },
+  latham_global_financial_regulatory_blog: { label: "Latham Global Fin Reg", code: "LAT", color: "#ffd43b" },
+  latham_london: { label: "Latham London", code: "LAT", color: "#ffd43b" },
+  covington_inside_privacy: { label: "Covington Inside Privacy", code: "COV", color: "#ff8fa3" },
+  covington_global_policy_watch: { label: "Covington Global Policy", code: "COV", color: "#ff8fa3" },
+  covington_inside_government_contracts: { label: "Covington Gov Contracts", code: "COV", color: "#ff8fa3" },
+  ballard_spahr_consumer_finance_monitor: { label: "Ballard Spahr Finance", code: "BSP", color: "#b197fc" },
+  kelley_drye_ad_law_access: { label: "Kelley Drye Ad Law", code: "KD", color: "#74c0fc" },
+  norton_rose_fulbright_data_protection_report: { label: "Norton Rose Data Protection", code: "NRF", color: "#ffa94d" },
+  squire_patton_boggs_privacy_world: { label: "Squire Patton Privacy", code: "SPB", color: "#a9e34b" },
+  bradley_financial_services_perspectives: { label: "Bradley Financial", code: "BRDL", color: "#f0b90b" },
+  bradley_eye_on_enforcement: { label: "Bradley Enforcement", code: "BRDL", color: "#f0b90b" },
   document_bloomberg_apify_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_bloomberg_public_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_substack_public_article: { label: "Substack", code: "SUB", color: "#f26b38" },
@@ -160,6 +198,20 @@ const SOURCE_FILTERS: Array<{ key: string; label: string }> = [
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
   { key: "SUBSTACK", label: "Substack" },
+  // Banking regulators group
+  { key: "BANKING_REGULATORS", label: "Banking Regulators" },
+  // Law firms — group + individual
+  { key: "LAW_FIRMS", label: "Law Firms" },
+  { key: "GIBSON_DUNN", label: "Gibson Dunn" },
+  { key: "CLEARY", label: "Cleary" },
+  { key: "COOLEY", label: "Cooley" },
+  { key: "LATHAM", label: "Latham" },
+  { key: "COVINGTON", label: "Covington" },
+  { key: "BALLARD_SPAHR", label: "Ballard Spahr" },
+  { key: "KELLEY_DRYE", label: "Kelley Drye" },
+  { key: "NORTON_ROSE", label: "Norton Rose Fulbright" },
+  { key: "SQUIRE_PATTON_BOGGS", label: "Squire Patton Boggs" },
+  { key: "BRADLEY", label: "Bradley" },
   // Individual RSS feed sources
   { key: "mw_top_stories", label: "MarketWatch" },
   { key: "rss_nytimes_com_services_xml_rss_nyt_business_xml", label: "NYT Business" },
@@ -321,6 +373,7 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "CFTC") {
     return (
+      feedKey.startsWith("cftc_") ||
       sourceKind === "cftc_press_release" ||
       sourceKind === "cftc_public_statement_remark" ||
       text.includes("cftc") ||
@@ -328,6 +381,43 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
       text.includes("commodity futures trading commission")
     );
   }
+  if (sourceFilter === "BANKING_REGULATORS") {
+    return (
+      feedKey.startsWith("fed_") ||
+      feedKey.startsWith("occ_") ||
+      feedKey === "cfpb_newsroom" ||
+      feedKey.startsWith("ftc_") ||
+      text.includes("federal reserve") ||
+      text.includes("federalreserve.gov") ||
+      text.includes("occ.gov") ||
+      text.includes("consumerfinance.gov") ||
+      text.includes("ftc.gov")
+    );
+  }
+  if (sourceFilter === "LAW_FIRMS") {
+    return (
+      feedKey.startsWith("gibson_dunn_") ||
+      feedKey.startsWith("cleary_") ||
+      feedKey.startsWith("cooley_") ||
+      feedKey.startsWith("latham_") ||
+      feedKey.startsWith("covington_") ||
+      feedKey.startsWith("ballard_spahr_") ||
+      feedKey.startsWith("kelley_drye_") ||
+      feedKey.startsWith("norton_rose_") ||
+      feedKey.startsWith("squire_patton_boggs_") ||
+      feedKey.startsWith("bradley_")
+    );
+  }
+  if (sourceFilter === "GIBSON_DUNN") return feedKey.startsWith("gibson_dunn_");
+  if (sourceFilter === "CLEARY") return feedKey.startsWith("cleary_");
+  if (sourceFilter === "COOLEY") return feedKey.startsWith("cooley_");
+  if (sourceFilter === "LATHAM") return feedKey.startsWith("latham_");
+  if (sourceFilter === "COVINGTON") return feedKey.startsWith("covington_");
+  if (sourceFilter === "BALLARD_SPAHR") return feedKey.startsWith("ballard_spahr_");
+  if (sourceFilter === "KELLEY_DRYE") return feedKey.startsWith("kelley_drye_");
+  if (sourceFilter === "NORTON_ROSE") return feedKey.startsWith("norton_rose_");
+  if (sourceFilter === "SQUIRE_PATTON_BOGGS") return feedKey.startsWith("squire_patton_boggs_");
+  if (sourceFilter === "BRADLEY") return feedKey.startsWith("bradley_");
   if (sourceFilter === "CRS") {
     return (
       sourceKind === "congress_crs_product" ||
