@@ -60,6 +60,17 @@ class CongressCRSProductsScraperTests(unittest.TestCase):
             scraper._fetch_html("https://www.congress.gov/crs-products")
 
     @patch.object(CongressCRSProductsScraper, "_fetch_html")
+    def test_discovery_rejects_empty_listing_page(self, mock_fetch_html):
+        mock_fetch_html.return_value = _FakeResponse(
+            "<html><title>Congress.gov</title><body>No matching results</body></html>",
+            "https://www.congress.gov/index.php/quick-search/crs-products?pageSize=100",
+        )
+        scraper = CongressCRSProductsScraper(min_delay_seconds=0)
+
+        with self.assertRaisesRegex(RuntimeError, "listing returned no products"):
+            scraper.discover_documents(max_pages=1)
+
+    @patch.object(CongressCRSProductsScraper, "_fetch_html")
     def test_discover_documents_parses_listing_results(self, mock_fetch_html):
         html = """
         <html>

@@ -371,6 +371,13 @@ class CongressCRSProductsScraper:
             )
 
         next_page = _find_next_page_url(soup, str(getattr(response, "url", page_url) or page_url))
+        if not out:
+            title = _normalize_space(soup.title.get_text(" ", strip=True) if soup.title else "")
+            snippet = _normalize_space(soup.get_text(" ", strip=True))[:300]
+            raise RuntimeError(
+                "Congress.gov CRS listing returned no products "
+                f"(title={title!r}, snippet={snippet!r})."
+            )
         return out, next_page
 
     def discover_documents(self, base_url: str = CRS_PRODUCTS_BROWSE_URL, max_pages: int = 3) -> List[Dict[str, Any]]:
