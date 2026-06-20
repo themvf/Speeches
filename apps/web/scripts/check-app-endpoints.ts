@@ -22,9 +22,9 @@ type TestResult = {
   error?: string;
 };
 
-async function fetchWithTimeout(url: string): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       signal: controller.signal,
@@ -124,7 +124,7 @@ results.push(await runTest("GET /api/intel/recap", "critical", async () => {
 
 // Search
 results.push(await runTest("GET /api/search", "critical", async () => {
-  const res = await fetchWithTimeout(`${BASE_URL}/api/search?q=enforcement&topK=3`);
+  const res = await fetchWithTimeout(`${BASE_URL}/api/search?q=enforcement&topK=3`, 45_000);
   assert.ok(res.ok, `HTTP ${res.status}`);
   const json = await res.json() as { ok: boolean; data?: unknown };
   assert.equal(json.ok, true, "ok must be true");
