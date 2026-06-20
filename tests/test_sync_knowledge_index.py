@@ -1,6 +1,13 @@
 from types import SimpleNamespace
 
+import pytest
+
 import sync_knowledge_index as sync
+
+
+@pytest.fixture(autouse=True)
+def _disable_poll_delay(monkeypatch):
+    monkeypatch.setattr(sync, "BATCH_POLL_INTERVAL_SECONDS", 0)
 
 
 class _Files:

@@ -271,12 +271,13 @@ def _create_and_poll_file_batch(client: OpenAI, vector_store_id: str, file_ids: 
         file_ids=file_ids,
     )
     deadline = time.monotonic() + BATCH_POLL_TIMEOUT_SECONDS
-    while str(getattr(batch, "status", "") or "") == "in_progress":
-        if time.monotonic() >= deadline:
-            return batch, True
+    while True:
         time.sleep(BATCH_POLL_INTERVAL_SECONDS)
-        batch = client.vector_stores.file_batches.retrieve(batch.id, vector_store_id=vector_store_id)
-    return batch, False
+        pending_ids = _batch_file_ids_by_status(client, vector_store_id, batch.id, "in_progress")
+        if not pending_ids:
+            return batch.id, False
+        if time.monotonic() >= deadline:
+            return batch.id, True
 
 
 def _upload_doc_batch(
@@ -304,18 +305,14 @@ def _upload_doc_batch(
         return {}, failed, set()
 
     try:
-        batch, timed_out = _create_and_poll_file_batch(client, vector_store_id, list(uploaded.values()))
+        batch_id, timed_out = _create_and_poll_file_batch(client, vector_store_id, list(uploaded.values()))
     except Exception as exc:
         failed.extend({"doc_id": doc_id, "stage": "attach", "error": str(exc)} for doc_id in uploaded)
         return {}, failed, set()
 
-    failed_count = int(getattr(getattr(batch, "file_counts", None), "failed", 0) or 0)
-    if failed_count == 0 and not timed_out:
-        return uploaded, failed, set()
-
-    failed_file_ids = _batch_file_ids_by_status(client, vector_store_id, batch.id, "failed")
+    failed_file_ids = _batch_file_ids_by_status(client, vector_store_id, batch_id, "failed")
     pending_file_ids = (
-        _batch_file_ids_by_status(client, vector_store_id, batch.id, "in_progress")
+        _batch_file_ids_by_status(client, vector_store_id, batch_id, "in_progress")
         if timed_out
         else set()
     )
