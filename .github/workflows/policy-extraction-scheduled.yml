@@ -38,6 +38,7 @@ jobs:
             extraction_limit: "25"
             max_pages: "5"
     env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
 
@@ -69,10 +70,41 @@ jobs:
             --require-remote-persistence \
             --summary-path "policy_extraction_summary_${{ matrix.connector }}.json"
 
-      - name: Upload Extraction Summary
+      - name: Check for ${{ matrix.connector }} Changes
+        id: extraction_summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          connector = "${{ matrix.connector }}"
+          path = Path(f"policy_extraction_summary_{connector}.json")
+          payload = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+          changed_count = int(payload.get("saved_new", 0) or 0) + int(payload.get("saved_updates", 0) or 0)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"changed_count={changed_count}\n")
+          print(f"{connector} new or updated documents: {changed_count}")
+          PY
+
+      - name: Enrich ${{ matrix.connector }}
+        if: steps.extraction_summary.outputs.changed_count != '0'
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --source-kind "${{ matrix.connector }}" \
+            --mode only_missing_or_failed \
+            --doc-ids-from-summary "policy_extraction_summary_${{ matrix.connector }}.json" \
+            --model gpt-4o-mini \
+            --summary-path "policy_enrich_summary_${{ matrix.connector }}.json"
+
+      - name: Upload Summaries
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: policy-extraction-summary-${{ matrix.connector }}-${{ github.run_id }}
-          path: "policy_extraction_summary_${{ matrix.connector }}.json"
+          path: |
+            policy_extraction_summary_${{ matrix.connector }}.json
+            policy_enrich_summary_${{ matrix.connector }}.json
           if-no-files-found: ignore
