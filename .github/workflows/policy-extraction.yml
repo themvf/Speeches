@@ -67,10 +67,11 @@ concurrency:
 jobs:
   extract-policy-docs:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      CRS_PROXY_URL: ${{ secrets.APIFY_PROXY_URL }}
       CONNECTOR: ${{ github.event.inputs.connector }}
       SELECTION: ${{ github.event.inputs.selection || 'new_or_updated' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '25' }}

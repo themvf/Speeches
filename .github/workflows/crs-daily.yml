@@ -1,0 +1,56 @@
+name: CRS Reports Daily
+
+on:
+  schedule:
+    - cron: "30 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: policy-extraction-scheduled
+  cancel-in-progress: false
+
+jobs:
+  ingest-crs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      CRS_PROXY_URL: ${{ secrets.APIFY_PROXY_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ingest New or Updated CRS Reports
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector congress_crs_product \
+            --selection new_or_updated \
+            --limit 500 \
+            --max-pages 5 \
+            --require-remote-persistence \
+            --summary-path crs_daily_summary.json
+
+      - name: Upload CRS Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crs-daily-summary-${{ github.run_id }}
+          path: crs_daily_summary.json
+          if-no-files-found: ignore

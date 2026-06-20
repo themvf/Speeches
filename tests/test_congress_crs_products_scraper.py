@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from congress_crs_products_scraper import (
     CRS_PRODUCTS_BROWSE_URL,
@@ -37,6 +37,27 @@ class CongressCRSProductsScraperTests(unittest.TestCase):
         self.assertEqual(_infer_doc_type("IF12852"), "In Focus")
         self.assertEqual(_infer_doc_type("IN12458"), "Insight")
         self.assertEqual(_infer_doc_type("LSB11328"), "Legal Sidebar")
+
+    @patch.dict("os.environ", {"CRS_PROXY_URL": "http://proxy.example:8000"})
+    def test_fetch_html_uses_configured_proxy(self):
+        scraper = CongressCRSProductsScraper(min_delay_seconds=0)
+        response = _FakeResponse("<html><body>OK</body></html>", "https://www.congress.gov/crs-products")
+        scraper.session.get = Mock(return_value=response)
+
+        scraper._fetch_html("https://www.congress.gov/crs-products")
+
+        self.assertEqual(scraper.session.get.call_args.kwargs["proxy"], "http://proxy.example:8000")
+
+    def test_fetch_html_rejects_cloudflare_challenge(self):
+        scraper = CongressCRSProductsScraper(min_delay_seconds=0)
+        response = _FakeResponse(
+            "<html><title>Just a moment...</title>Enable JavaScript and cookies to continue</html>",
+            "https://www.congress.gov/crs-products",
+        )
+        scraper.session.get = Mock(return_value=response)
+
+        with self.assertRaisesRegex(RuntimeError, "Cloudflare challenge"):
+            scraper._fetch_html("https://www.congress.gov/crs-products")
 
     @patch.object(CongressCRSProductsScraper, "_fetch_html")
     def test_discover_documents_parses_listing_results(self, mock_fetch_html):
@@ -83,6 +104,7 @@ class CongressCRSProductsScraperTests(unittest.TestCase):
         self.assertEqual(docs[0]["authors"], "Gettinger, Daniel M.")
         self.assertEqual(docs[0]["topics"], ["Defense & Intelligence", "Appropriations"])
         self.assertEqual(scraper.last_discovery_debug["pages"][0]["returned_items"], 2)
+        self.assertFalse(scraper.last_discovery_debug["proxy_configured"])
         self.assertIn("page=2", scraper.last_discovery_debug["pages"][0]["next_page_url"])
 
     @patch.object(CongressCRSProductsScraper, "_fetch_html")

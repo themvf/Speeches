@@ -11,6 +11,7 @@ scraper uses ``curl_cffi`` with a browser impersonation profile.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from datetime import datetime
@@ -25,6 +26,15 @@ from curl_cffi import requests as cffi_requests
 CONGRESS_HOME_URL = "https://www.congress.gov"
 CRS_PRODUCTS_BROWSE_URL = f"{CONGRESS_HOME_URL}/crs-products"
 CRS_PRODUCTS_SEARCH_URL = f"{CONGRESS_HOME_URL}/index.php/quick-search/crs-products"
+
+
+def _is_challenge_html(text: Any) -> bool:
+    blob = str(text or "").lower()
+    return (
+        "enable javascript and cookies to continue" in blob
+        or "challenge-platform" in blob
+        or "just a moment" in blob and "cloudflare" in blob
+    )
 
 
 def _normalize_space(text: Any) -> str:
@@ -300,6 +310,7 @@ class CongressCRSProductsScraper:
             }
         )
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
+        self.proxy_url = _normalize_space(os.getenv("CRS_PROXY_URL", ""))
         self._last_request_ts = 0.0
         self.last_discovery_debug: Dict[str, Any] = {}
 
@@ -314,8 +325,15 @@ class CongressCRSProductsScraper:
         if not target:
             raise ValueError("URL is required")
         self._rate_limit()
-        response = self.session.get(target, timeout=timeout, allow_redirects=True)
+        request_kwargs: Dict[str, Any] = {"timeout": timeout, "allow_redirects": True}
+        if self.proxy_url:
+            request_kwargs["proxy"] = self.proxy_url
+        response = self.session.get(target, **request_kwargs)
         response.raise_for_status()
+        if _is_challenge_html(response.text):
+            raise RuntimeError(
+                "Congress.gov returned a Cloudflare challenge page; configure CRS_PROXY_URL for hosted runs."
+            )
         return response
 
     def _discover_from_listing_page(self, page_url: str) -> Tuple[List[Dict[str, Any]], str]:
@@ -367,6 +385,7 @@ class CongressCRSProductsScraper:
             "base_url": base_url,
             "normalized_start_url": start_url,
             "max_pages_requested": max_pages,
+            "proxy_configured": bool(self.proxy_url),
             "pages": [],
             "listing_added": 0,
             "total_unique": 0,
