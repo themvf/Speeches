@@ -461,11 +461,24 @@ async function runFileSearchCall(model: string, question: string, vectorStoreIds
 }
 
 async function searchVectorStores(model: string, question: string, vectorStoreIds: string[], topK: number): Promise<FileSearchResult[]> {
-  const retrievalBatches = chunkList(vectorStoreIds, 2);
+  const retrievalBatches = chunkList(vectorStoreIds, 3);
   const allResults: FileSearchResult[] = [];
+  const failures: unknown[] = [];
   for (const batch of retrievalBatches) {
-    const batchResults = await runFileSearchCall(model, question, batch, topK);
-    allResults.push(...batchResults);
+    const settled = await Promise.allSettled(
+      batch.map((vectorStoreId) => runFileSearchCall(model, question, [vectorStoreId], topK))
+    );
+    for (const result of settled) {
+      if (result.status === "fulfilled") {
+        allResults.push(...result.value);
+      } else {
+        failures.push(result.reason);
+        console.warn("[openai-chat] Skipping unavailable vector store:", result.reason);
+      }
+    }
+  }
+  if (failures.length === vectorStoreIds.length) {
+    throw failures[0] instanceof Error ? failures[0] : new Error("No configured vector stores were accessible.");
   }
   return mergeFileSearchResults(allResults, Math.max(topK * 4, 16));
 }
