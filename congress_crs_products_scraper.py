@@ -313,7 +313,9 @@ class CongressCRSProductsScraper:
             }
         )
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
-        self.proxy_url = _normalize_space(os.getenv("CRS_PROXY_URL", ""))
+        self.proxy_url = _normalize_space(
+            os.getenv("CRS_PROXY_URL", "") or os.getenv("RESIDENTIAL_PROXY_URL", "")
+        )
         self._last_request_ts = 0.0
         self.last_discovery_debug: Dict[str, Any] = {}
 
@@ -335,7 +337,8 @@ class CongressCRSProductsScraper:
         response.raise_for_status()
         if _is_challenge_html(response.text):
             raise RuntimeError(
-                "Congress.gov returned a Cloudflare challenge page; configure CRS_PROXY_URL for hosted runs."
+                "Congress.gov returned a Cloudflare challenge page; configure CRS_PROXY_URL "
+                "or RESIDENTIAL_PROXY_URL for hosted runs."
             )
         return response
 

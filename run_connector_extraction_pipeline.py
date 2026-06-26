@@ -125,6 +125,89 @@ def _parse_filter_terms(value: Any) -> List[str]:
     return terms
 
 
+def _load_current_topic_rules() -> List[Dict[str, Any]]:
+    try:
+        from neon_feeds import get_topic_rules
+
+        rules = get_topic_rules(only_active=True)
+        if isinstance(rules, list) and rules:
+            return [rule for rule in rules if isinstance(rule, dict)]
+    except Exception:
+        pass
+
+    try:
+        from neon_feeds import DEFAULT_TOPIC_RULES
+
+        return [dict(rule, active=True) for rule in DEFAULT_TOPIC_RULES if isinstance(rule, dict)]
+    except Exception:
+        return []
+
+
+def _topic_rule_terms(rule: Dict[str, Any]) -> List[str]:
+    raw_terms = _parse_filter_terms(rule.get("keywords", ""))
+    label = _normalize_space(rule.get("label", ""))
+    if label:
+        raw_terms.append(label.lower())
+
+    terms: List[str] = []
+    seen = set()
+    for term in raw_terms:
+        cleaned = _normalize_space(term).lower()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        terms.append(cleaned)
+    return terms
+
+
+def _topic_rules_to_search_terms(rules: List[Dict[str, Any]]) -> List[str]:
+    terms: List[str] = []
+    seen = set()
+    for rule in sorted(rules, key=lambda item: int(item.get("sort_order", 100) or 100)):
+        for term in _topic_rule_terms(rule):
+            if term in seen:
+                continue
+            seen.add(term)
+            terms.append(term)
+    return terms
+
+
+def _annotate_topic_matches(entry: Dict[str, Any], rules: List[Dict[str, Any]]) -> None:
+    if not rules:
+        return
+    haystack = " ".join(
+        str(part or "")
+        for part in [
+            entry.get("title", ""),
+            entry.get("summary", ""),
+            entry.get("preview_text", ""),
+            entry.get("publication_name", ""),
+            " ".join(entry.get("post_tags", []) if isinstance(entry.get("post_tags"), list) else []),
+            " ".join(entry.get("matched_keywords", []) if isinstance(entry.get("matched_keywords"), list) else []),
+            " ".join(entry.get("feed_tags", []) if isinstance(entry.get("feed_tags"), list) else []),
+        ]
+    ).lower()
+    matched_keys: List[str] = []
+    matched_labels: List[str] = []
+    matched_terms: List[str] = []
+    for rule in rules:
+        rule_terms = _topic_rule_terms(rule)
+        hits = [term for term in rule_terms if term and term in haystack]
+        if not hits:
+            continue
+        key = _normalize_space(rule.get("topic_key", ""))
+        label = _normalize_space(rule.get("label", ""))
+        if key:
+            matched_keys.append(key)
+        if label:
+            matched_labels.append(label)
+        matched_terms.extend(hits)
+    if matched_keys or matched_terms:
+        entry["matched_topic_keys"] = matched_keys
+        entry["matched_topic_labels"] = matched_labels
+        entry["matched_topic_keywords"] = matched_terms[:20]
+
+
 def _match_filter_terms(parts: List[Any], terms: List[str]) -> List[str]:
     if not terms:
         return []
@@ -672,7 +755,11 @@ def _discover_connector(
         from substack_public_scraper import SubstackPublicScraper
 
         scraper = SubstackPublicScraper()
-        docs = scraper.discover_documents(keywords=keywords, max_pages=max_pages)
+        docs = scraper.discover_documents(
+            keywords=keywords,
+            max_pages=max_pages,
+            include_feeds=include_rss,
+        )
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
 
@@ -1413,13 +1500,14 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         date_text = str(data.get("date", "") or entry.get("date", "")).strip()
         summary = str(data.get("summary", "") or entry.get("summary", "")).strip()
         text = str(data.get("full_text", "") or "").strip()
+        discovery_mode = str(entry.get("discovery_mode", "") or "search").strip()
         if len(text.split()) < 50:
             text = _build_short_text_fallback(
                 title=title,
                 url=src_url,
                 date_text=date_text,
                 organization="Substack",
-                source_label="Substack public search",
+                source_label="Substack public feed" if "feed" in discovery_mode else "Substack public search",
                 extracted_text=text or summary,
             )
         authors = data.get("authors") if isinstance(data.get("authors"), list) else []
@@ -1427,7 +1515,8 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         publication_name = str(data.get("publication_name", "") or entry.get("publication_name", "")).strip()
         post_tags = data.get("post_tags") if isinstance(data.get("post_tags"), list) else []
         matched_keywords = entry.get("matched_keywords") if isinstance(entry.get("matched_keywords"), list) else []
-        tags = ["substack", "financial-news", "public-feed", *matched_keywords, *post_tags[:8]]
+        feed_tags = entry.get("feed_tags") if isinstance(entry.get("feed_tags"), list) else []
+        tags = ["substack", "financial-news", "public-feed", discovery_mode, *feed_tags, *matched_keywords, *post_tags[:8]]
         post_type = str(data.get("post_type", "") or entry.get("post_type", "newsletter")).strip().lower()
         doc_type = "Podcast" if post_type == "podcast" else "Article"
         source_name = _safe_source_name(src_url, f"substack-public-{idx}", ".html")
@@ -1454,7 +1543,14 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["publication_name"] = publication_name
         metadata["authors"] = authors
         metadata["post_tags"] = post_tags
+        metadata["feed_url"] = str(entry.get("feed_url", "") or "").strip()
+        metadata["feed_tags"] = feed_tags
+        metadata["discovery_mode"] = discovery_mode
+        metadata["discovery_modes"] = entry.get("discovery_modes") if isinstance(entry.get("discovery_modes"), list) else []
         metadata["matched_keywords"] = matched_keywords
+        metadata["matched_topic_keys"] = entry.get("matched_topic_keys") if isinstance(entry.get("matched_topic_keys"), list) else []
+        metadata["matched_topic_labels"] = entry.get("matched_topic_labels") if isinstance(entry.get("matched_topic_labels"), list) else []
+        metadata["matched_topic_keywords"] = entry.get("matched_topic_keywords") if isinstance(entry.get("matched_topic_keywords"), list) else []
         metadata["substack_post_id"] = entry.get("substack_post_id")
         metadata["audience"] = str(data.get("audience", "") or entry.get("audience", "")).strip()
         metadata["access_limited"] = bool(data.get("access_limited", False))
@@ -1486,6 +1582,11 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     existing_custom = _build_existing_custom_map(custom_payload)
     existing_custom_records = _build_existing_custom_record_map(custom_payload)
     existing_speech_keys = _load_existing_speech_url_keys(storage)
+    topic_rules = _load_current_topic_rules() if args.connector == "substack_public_article" else []
+    explicit_keywords = _parse_filter_terms(getattr(args, "keywords", ""))
+    discovery_keywords = explicit_keywords or (
+        _topic_rules_to_search_terms(topic_rules) if args.connector == "substack_public_article" else []
+    )
 
     scraper, discovered_raw, discovery_debug = _discover_connector(
         connector=args.connector,
@@ -1493,9 +1594,15 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         max_pages=max(1, int(args.max_pages)),
         include_pdfs=bool(args.include_pdfs),
         include_rss=bool(args.include_rss),
-        keywords=_parse_filter_terms(getattr(args, "keywords", "")) or None,
+        keywords=discovery_keywords or None,
     )
     discovered = [item for item in discovered_raw if isinstance(item, dict)]
+    if args.connector == "substack_public_article":
+        for entry in discovered:
+            _annotate_topic_matches(entry, topic_rules)
+        discovery_debug["topic_rule_count"] = len(topic_rules)
+        discovery_debug["topic_keywords_used"] = discovery_keywords
+        discovery_debug["topic_keywords_source"] = "cli" if explicit_keywords else "rss_topic_rules"
     if args.connector == "substack_public_article" and not discovered and discovery_debug.get("errors"):
         errors = "; ".join(str(item) for item in discovery_debug.get("errors", [])[:3])
         raise RuntimeError(f"Substack discovery failed: {errors}")
@@ -1695,7 +1802,7 @@ def main() -> int:
         args.include_pdfs = _to_bool(include_pdfs_raw)
 
     if include_rss_raw == "":
-        args.include_rss = args.connector == "finra_regulatory_notice"
+        args.include_rss = args.connector in {"finra_regulatory_notice", "substack_public_article"}
     else:
         args.include_rss = _to_bool(include_rss_raw)
 

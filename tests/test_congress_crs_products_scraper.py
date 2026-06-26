@@ -50,6 +50,20 @@ class CongressCRSProductsScraperTests(unittest.TestCase):
 
         self.assertEqual(scraper.session.get.call_args.kwargs["proxy"], "http://proxy.example:8000")
 
+    @patch.dict(
+        "os.environ",
+        {"RESIDENTIAL_PROXY_URL": "http://residential.example:8000"},
+        clear=True,
+    )
+    def test_fetch_html_uses_residential_proxy_fallback(self):
+        scraper = CongressCRSProductsScraper(min_delay_seconds=0)
+        response = _FakeResponse("<html><body>OK</body></html>", "https://www.congress.gov/crs-products")
+        scraper.session.get = Mock(return_value=response)
+
+        scraper._fetch_html("https://www.congress.gov/crs-products")
+
+        self.assertEqual(scraper.session.get.call_args.kwargs["proxy"], "http://residential.example:8000")
+
     def test_fetch_html_rejects_cloudflare_challenge(self):
         scraper = CongressCRSProductsScraper(min_delay_seconds=0)
         response = _FakeResponse(

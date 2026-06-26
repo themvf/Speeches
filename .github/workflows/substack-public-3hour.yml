@@ -1,4 +1,4 @@
-name: Substack Public Search Every 3 Hours
+name: Substack Public Sources Every 3 Hours
 
 on:
   schedule:
@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       keywords:
-        description: "Comma-separated Substack search keywords"
+        description: "Optional comma-separated Substack search keywords. Leave blank to use current Intel Feed topic-rule keywords."
         required: false
-        default: "securities,financial industry,decentralized finance"
+        default: ""
       max_pages:
         description: "Search result pages per keyword"
         required: false
@@ -41,8 +41,9 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
-      SUBSTACK_PROXY_URL: ${{ secrets.APIFY_PROXY_URL }}
-      KEYWORDS: ${{ github.event.inputs.keywords || 'securities,financial industry,decentralized finance' }}
+      RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
+      SUBSTACK_PROXY_URL: ${{ secrets.SUBSTACK_PROXY_URL || secrets.RESIDENTIAL_PROXY_URL || secrets.APIFY_PROXY_URL }}
+      KEYWORDS: ${{ github.event.inputs.keywords || '' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '60' }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '60' }}
@@ -63,7 +64,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Extract and Filter Substack Public Posts
+      - name: Extract and Filter Substack Public Sources
         run: |
           set -euo pipefail
           python run_connector_extraction_pipeline.py \

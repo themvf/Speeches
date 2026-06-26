@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import quote, urlparse
@@ -22,6 +23,48 @@ except ImportError:  # pragma: no cover - requests remains a supported local fal
 
 SUBSTACK_SEARCH_URL = "https://substack.com/api/v1/post/search"
 DEFAULT_KEYWORDS = ["securities", "financial industry", "decentralized finance"]
+DEFAULT_FEEDS: List[Dict[str, str]] = [
+    {
+        "label": "Capitol Account",
+        "feed_url": "https://www.capitolaccountdc.com/feed",
+        "tags_csv": "capitol-account,financial-regulation,washington-policy",
+    },
+    {
+        "label": "FinRegRag",
+        "feed_url": "https://www.finregrag.com/feed",
+        "tags_csv": "finregrag,financial-regulation,policy-commentary",
+    },
+    {
+        "label": "Bank Reg Blog",
+        "feed_url": "https://bankregblog.substack.com/feed",
+        "tags_csv": "bank-reg-blog,bank-regulation,financial-policy",
+    },
+    {
+        "label": "The Public Interest by Better Markets",
+        "feed_url": "https://bettermarkets.substack.com/feed",
+        "tags_csv": "better-markets,market-structure,financial-stability",
+    },
+    {
+        "label": "DeFi Education Fund",
+        "feed_url": "https://defieducationfund.substack.com/feed",
+        "tags_csv": "defi-education-fund,defi,crypto-policy",
+    },
+    {
+        "label": "Trustless Policy",
+        "feed_url": "https://trustlesspolicy.substack.com/feed",
+        "tags_csv": "trustless-policy,crypto-policy,market-structure",
+    },
+    {
+        "label": "Fintech Business Weekly",
+        "feed_url": "https://fintechbusinessweekly.substack.com/feed",
+        "tags_csv": "fintech-business-weekly,fintech,banking",
+    },
+    {
+        "label": "The Dig",
+        "feed_url": "https://thedig.substack.com/feed",
+        "tags_csv": "the-dig,accounting,audit,governance",
+    },
+]
 
 
 def _normalize_space(value: Any) -> str:
@@ -70,6 +113,40 @@ def _html_to_text(value: Any) -> str:
     return _normalize_space(soup.get_text(" ", strip=True))
 
 
+def _xml_local_name(tag: str) -> str:
+    raw = str(tag or "")
+    return raw.rsplit("}", 1)[-1] if "}" in raw else raw
+
+
+def _strip_html(value: Any) -> str:
+    soup = BeautifulSoup(str(value or ""), "html.parser")
+    return _normalize_space(soup.get_text(" ", strip=True))
+
+
+def _substack_slug_from_url(url: Any) -> str:
+    parsed = urlparse(str(url or "").strip())
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    if not segments:
+        return ""
+    if "p" in segments:
+        idx = segments.index("p")
+        if idx + 1 < len(segments):
+            return _normalize_space(segments[idx + 1])
+    return _normalize_space(segments[-1])
+
+
+def _feed_config(value: Any) -> Dict[str, str]:
+    if isinstance(value, dict):
+        feed_url = _normalize_space(value.get("feed_url") or value.get("url") or "")
+        return {
+            "label": _normalize_space(value.get("label", "")),
+            "feed_url": feed_url,
+            "tags_csv": _normalize_space(value.get("tags_csv", "")),
+        }
+    feed_url = _normalize_space(value)
+    return {"label": "", "feed_url": feed_url, "tags_csv": ""}
+
+
 def _response_text(response: Any) -> str:
     output_text = getattr(response, "output_text", None)
     if output_text:
@@ -114,8 +191,16 @@ def _json_object(value: str) -> Dict[str, Any]:
 class SubstackPublicScraper:
     def __init__(self, min_delay_seconds: float = 0.25) -> None:
         self._uses_curl_cffi = curl_requests is not None
-        self.session = curl_requests.Session(impersonate="chrome") if self._uses_curl_cffi else requests.Session()
-        self.proxy_url = _normalize_space(os.getenv("SUBSTACK_PROXY_URL", ""))
+        self.session = (
+            curl_requests.Session(impersonate="chrome")
+            if self._uses_curl_cffi
+            else requests.Session()
+        )
+        self.proxy_url = _normalize_space(
+            os.getenv("SUBSTACK_PROXY_URL", "")
+            or os.getenv("RESIDENTIAL_PROXY_URL", "")
+            or os.getenv("APIFY_PROXY_URL", "")
+        )
         self.session.headers.update(
             {
                 "User-Agent": (
@@ -137,14 +222,19 @@ class SubstackPublicScraper:
             time.sleep(self.min_delay_seconds - elapsed)
         self._last_request_ts = time.time()
 
-    def _get_json(self, url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get_json(
+        self, url: str, *, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         self._rate_limit()
         request_options: Dict[str, Any] = {"params": params, "timeout": 45}
         if self.proxy_url:
             if self._uses_curl_cffi:
                 request_options["proxy"] = self.proxy_url
             else:
-                request_options["proxies"] = {"http": self.proxy_url, "https": self.proxy_url}
+                request_options["proxies"] = {
+                    "http": self.proxy_url,
+                    "https": self.proxy_url,
+                }
         response = self.session.get(url, **request_options)
         response.raise_for_status()
         payload = response.json()
@@ -163,15 +253,163 @@ class SubstackPublicScraper:
             if self._uses_curl_cffi:
                 request_options["proxy"] = self.proxy_url
             else:
-                request_options["proxies"] = {"http": self.proxy_url, "https": self.proxy_url}
-        response = self.session.get(f"https://substack.com/search/{quote(keyword, safe='')}", **request_options)
+                request_options["proxies"] = {
+                    "http": self.proxy_url,
+                    "https": self.proxy_url,
+                }
+        response = self.session.get(
+            f"https://substack.com/search/{quote(keyword, safe='')}", **request_options
+        )
         response.raise_for_status()
+
+    def _get_text(self, url: str) -> str:
+        self._rate_limit()
+        request_options: Dict[str, Any] = {"timeout": 45, "allow_redirects": True}
+        if self.proxy_url:
+            if self._uses_curl_cffi:
+                request_options["proxy"] = self.proxy_url
+            else:
+                request_options["proxies"] = {
+                    "http": self.proxy_url,
+                    "https": self.proxy_url,
+                }
+        response = self.session.get(url, **request_options)
+        response.raise_for_status()
+        return str(response.text or "")
+
+    def discover_feed_documents(
+        self,
+        *,
+        feeds: Optional[Iterable[Any]] = None,
+        max_items_per_feed: int = 20,
+    ) -> List[Dict[str, Any]]:
+        feed_configs = []
+        seen_feeds = set()
+        for raw in feeds or DEFAULT_FEEDS:
+            cfg = _feed_config(raw)
+            feed_url = cfg["feed_url"]
+            if not feed_url or feed_url.lower() in seen_feeds:
+                continue
+            seen_feeds.add(feed_url.lower())
+            feed_configs.append(cfg)
+
+        limit = max(1, int(max_items_per_feed or 20))
+        discovered: Dict[str, Dict[str, Any]] = {}
+        debug: Dict[str, Any] = {
+            "mode": "curated_substack_feeds",
+            "feeds": feed_configs,
+            "max_items_per_feed": limit,
+            "requests": [],
+            "errors": [],
+        }
+
+        for cfg in feed_configs:
+            feed_url = cfg["feed_url"]
+            try:
+                raw_xml = self._get_text(feed_url)
+                root = ET.fromstring(raw_xml)
+            except Exception as exc:
+                debug["errors"].append(f"{feed_url}: {exc}")
+                continue
+
+            channel_title = cfg["label"]
+            channel = root.find("channel")
+            if channel is not None:
+                title_node = channel.find("title")
+                if title_node is not None and _normalize_space(title_node.text):
+                    channel_title = channel_title or _normalize_space(title_node.text)
+
+            items = root.findall(".//item")
+            if not items:
+                items = root.findall(".//{http://www.w3.org/2005/Atom}entry")
+            debug["requests"].append({"feed_url": feed_url, "result_count": len(items)})
+
+            for position, item in enumerate(items[:limit], 1):
+                entry: Dict[str, Any] = {}
+                categories: List[str] = []
+                authors: List[str] = []
+                for child in item:
+                    local = _xml_local_name(child.tag)
+                    text = _normalize_space(child.text or "")
+                    if local == "title" and not entry.get("title"):
+                        entry["title"] = text
+                    elif local == "link" and not entry.get("url"):
+                        entry["url"] = text or _normalize_space(child.get("href", ""))
+                    elif local in {"guid", "id"} and not entry.get("guid"):
+                        entry["guid"] = text
+                    elif local in {"pubDate", "published", "updated"} and not entry.get(
+                        "date"
+                    ):
+                        entry["date"] = text
+                    elif local in {
+                        "description",
+                        "summary",
+                        "encoded",
+                    } and not entry.get("summary"):
+                        entry["summary"] = _strip_html(child.text or "")
+                    elif local in {"creator", "name"} and text:
+                        authors.append(text)
+                    elif local == "author" and text:
+                        authors.append(text)
+                    elif local == "category" and text:
+                        categories.append(text)
+
+                    if local == "link" and not entry.get("url"):
+                        href = _normalize_space(child.get("href", ""))
+                        if href:
+                            entry["url"] = href
+
+                url = _normalize_space(entry.get("url", ""))
+                title = _normalize_space(entry.get("title", ""))
+                slug = _substack_slug_from_url(url)
+                if not url or not title or not slug:
+                    continue
+
+                key = url.lower().rstrip("/")
+                discovered[key] = {
+                    "url": url,
+                    "title": title,
+                    "date": _normalize_space(entry.get("date", "")),
+                    "slug": slug,
+                    "substack_post_id": _normalize_space(entry.get("guid", "")),
+                    "publication_id": "",
+                    "publication_name": channel_title,
+                    "authors": authors,
+                    "summary": _normalize_space(entry.get("summary", "")),
+                    "preview_text": _normalize_space(entry.get("summary", "")),
+                    "post_tags": categories,
+                    "post_type": "newsletter",
+                    "audience": "",
+                    "free_unlock_required": False,
+                    "wordcount": 0,
+                    "reaction_count": 0,
+                    "comment_count": 0,
+                    "matched_keywords": [],
+                    "search_position": position,
+                    "feed_url": feed_url,
+                    "feed_tags": [
+                        tag.strip()
+                        for tag in str(cfg.get("tags_csv", "") or "").split(",")
+                        if tag.strip()
+                    ],
+                    "discovery_mode": "feed",
+                    "discovery_modes": ["feed"],
+                }
+
+        results = list(discovered.values())
+        results.sort(key=lambda item: str(item.get("date", "")), reverse=True)
+        debug["items_found"] = len(results)
+        self.last_discovery_debug = debug
+        return results
 
     def discover_documents(
         self,
         *,
         keywords: Optional[Iterable[str]] = None,
         max_pages: int = 1,
+        feeds: Optional[Iterable[Any]] = None,
+        include_feeds: bool = False,
+        max_items_per_feed: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         search_terms = []
         seen_terms = set()
@@ -217,16 +455,32 @@ class SubstackPublicScraper:
                     debug["errors"].append(f"{keyword} page {page}: {exc}")
                     break
 
-                feed_session_id = _normalize_space(payload.get("feedSessionId", "")) or feed_session_id
-                posts = payload.get("results") if isinstance(payload.get("results"), list) else []
-                publications = payload.get("publications") if isinstance(payload.get("publications"), list) else []
+                feed_session_id = (
+                    _normalize_space(payload.get("feedSessionId", ""))
+                    or feed_session_id
+                )
+                posts = (
+                    payload.get("results")
+                    if isinstance(payload.get("results"), list)
+                    else []
+                )
+                publications = (
+                    payload.get("publications")
+                    if isinstance(payload.get("publications"), list)
+                    else []
+                )
                 publication_names = {
                     str(pub.get("id")): _normalize_space(pub.get("name", ""))
                     for pub in publications
                     if isinstance(pub, dict) and pub.get("id") is not None
                 }
                 debug["requests"].append(
-                    {"keyword": keyword, "page": page, "result_count": len(posts), "more": bool(payload.get("more"))}
+                    {
+                        "keyword": keyword,
+                        "page": page,
+                        "result_count": len(posts),
+                        "more": bool(payload.get("more")),
+                    }
                 )
 
                 for position, post in enumerate(posts, 1):
@@ -246,27 +500,78 @@ class SubstackPublicScraper:
                         continue
                     discovered[key] = {
                         "url": url,
-                        "title": _normalize_space(post.get("title", "")) or "Substack post",
+                        "title": _normalize_space(post.get("title", ""))
+                        or "Substack post",
                         "date": _normalize_space(post.get("post_date", "")),
                         "slug": slug,
                         "substack_post_id": post.get("id"),
                         "publication_id": post.get("publication_id"),
-                        "publication_name": publication_names.get(str(post.get("publication_id")), ""),
+                        "publication_name": publication_names.get(
+                            str(post.get("publication_id")), ""
+                        ),
                         "authors": _post_authors(post),
-                        "summary": _normalize_space(post.get("subtitle") or post.get("description") or ""),
-                        "preview_text": _normalize_space(post.get("truncated_body_text", "")),
+                        "summary": _normalize_space(
+                            post.get("subtitle") or post.get("description") or ""
+                        ),
+                        "preview_text": _normalize_space(
+                            post.get("truncated_body_text", "")
+                        ),
                         "post_tags": _post_tags(post),
                         "post_type": _normalize_space(post.get("type", "newsletter")),
                         "audience": _normalize_space(post.get("audience", "")),
-                        "free_unlock_required": bool(post.get("free_unlock_required", False)),
+                        "free_unlock_required": bool(
+                            post.get("free_unlock_required", False)
+                        ),
                         "wordcount": int(post.get("wordcount", 0) or 0),
                         "reaction_count": int(post.get("reaction_count", 0) or 0),
                         "comment_count": int(post.get("comment_count", 0) or 0),
                         "matched_keywords": [keyword],
                         "search_position": position,
+                        "discovery_mode": "search",
+                        "discovery_modes": ["search"],
                     }
                 if not payload.get("more"):
                     break
+
+        if include_feeds:
+            feed_results = self.discover_feed_documents(
+                feeds=feeds,
+                max_items_per_feed=max_items_per_feed
+                or max(10, pages_per_keyword * 10),
+            )
+            feed_debug = dict(self.last_discovery_debug)
+            for feed_entry in feed_results:
+                url_key = (
+                    _normalize_space(feed_entry.get("url", "")).lower().rstrip("/")
+                )
+                post_key = _normalize_space(feed_entry.get("substack_post_id", ""))
+                existing = discovered.get(post_key) if post_key else None
+                if existing is None:
+                    existing = next(
+                        (
+                            item
+                            for item in discovered.values()
+                            if _normalize_space(item.get("url", "")).lower().rstrip("/")
+                            == url_key
+                        ),
+                        None,
+                    )
+                if existing is None:
+                    discovered[post_key or url_key] = feed_entry
+                    continue
+
+                existing["feed_url"] = _normalize_space(feed_entry.get("feed_url", ""))
+                existing["feed_tags"] = _string_list(feed_entry.get("feed_tags"))
+                existing["publication_name"] = _normalize_space(
+                    existing.get("publication_name", "")
+                ) or _normalize_space(feed_entry.get("publication_name", ""))
+                modes = existing.setdefault("discovery_modes", [])
+                if "feed" not in modes:
+                    modes.append("feed")
+                existing["discovery_mode"] = "search+feed"
+
+            debug["feed_discovery"] = feed_debug
+            debug["include_feeds"] = True
 
         results = list(discovered.values())
         results.sort(key=lambda item: str(item.get("date", "")), reverse=True)
@@ -276,19 +581,25 @@ class SubstackPublicScraper:
 
     def extract_document(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         url = _normalize_space(entry.get("url", ""))
-        slug = _normalize_space(entry.get("slug", ""))
+        slug = _normalize_space(entry.get("slug", "")) or _substack_slug_from_url(url)
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or not slug:
             raise ValueError("A valid Substack canonical URL and slug are required")
-        detail_url = f"{parsed.scheme}://{parsed.netloc}/api/v1/posts/{quote(slug, safe='')}"
+        detail_url = (
+            f"{parsed.scheme}://{parsed.netloc}/api/v1/posts/{quote(slug, safe='')}"
+        )
         post = self._get_json(detail_url)
 
         audience = _normalize_space(post.get("audience") or entry.get("audience", ""))
-        free_unlock_required = bool(post.get("free_unlock_required", entry.get("free_unlock_required", False)))
+        free_unlock_required = bool(
+            post.get("free_unlock_required", entry.get("free_unlock_required", False))
+        )
         is_public = audience == "everyone" and not free_unlock_required
         body_html = str(post.get("body_html", "") or "") if is_public else ""
         full_text = _html_to_text(body_html) if body_html else ""
-        preview = _normalize_space(post.get("truncated_body_text") or entry.get("preview_text", ""))
+        preview = _normalize_space(
+            post.get("truncated_body_text") or entry.get("preview_text", "")
+        )
         if not full_text:
             full_text = preview
 
@@ -297,20 +608,32 @@ class SubstackPublicScraper:
             "data": {
                 "url": _normalize_space(post.get("canonical_url") or url),
                 "title": _normalize_space(post.get("title") or entry.get("title", "")),
-                "date": _normalize_space(post.get("post_date") or entry.get("date", "")),
+                "date": _normalize_space(
+                    post.get("post_date") or entry.get("date", "")
+                ),
                 "authors": _post_authors(post) or _string_list(entry.get("authors")),
                 "publication_name": _normalize_space(entry.get("publication_name", "")),
-                "summary": _normalize_space(post.get("subtitle") or post.get("description") or entry.get("summary", "")),
+                "summary": _normalize_space(
+                    post.get("subtitle")
+                    or post.get("description")
+                    or entry.get("summary", "")
+                ),
                 "full_text": full_text,
                 "preview_text": preview,
                 "post_tags": _post_tags(post) or _string_list(entry.get("post_tags")),
-                "post_type": _normalize_space(post.get("type") or entry.get("post_type", "newsletter")),
+                "post_type": _normalize_space(
+                    post.get("type") or entry.get("post_type", "newsletter")
+                ),
                 "audience": audience,
                 "free_unlock_required": free_unlock_required,
                 "access_limited": not is_public,
                 "wordcount": int(post.get("wordcount", entry.get("wordcount", 0)) or 0),
-                "reaction_count": int(post.get("reaction_count", entry.get("reaction_count", 0)) or 0),
-                "comment_count": int(post.get("comment_count", entry.get("comment_count", 0)) or 0),
+                "reaction_count": int(
+                    post.get("reaction_count", entry.get("reaction_count", 0)) or 0
+                ),
+                "comment_count": int(
+                    post.get("comment_count", entry.get("comment_count", 0)) or 0
+                ),
                 "detail_url": detail_url,
             },
         }
@@ -345,8 +668,8 @@ class SubstackPublicScraper:
             ]
             instruction = (
                 "Classify Substack search results for an institutional financial-policy news feed. "
-                "Return raw JSON only as {\"decisions\":[{\"post_id\":string,\"classification\":string,"
-                "\"confidence\":number,\"reason\":string}]}. classification must be one of "
+                'Return raw JSON only as {"decisions":[{"post_id":string,"classification":string,'
+                '"confidence":number,"reason":string}]}. classification must be one of '
                 "institutional_finance, personal_finance, ambiguous. Institutional finance includes securities "
                 "regulation, capital markets, banking, payments, asset management, financial institutions, "
                 "financial technology, decentralized finance, market structure, and financial policy. Personal "
@@ -361,16 +684,28 @@ class SubstackPublicScraper:
                 input=json.dumps({"candidates": candidates}, ensure_ascii=True),
             )
             parsed = _json_object(_response_text(response))
-            raw_decisions = parsed.get("decisions") if isinstance(parsed.get("decisions"), list) else []
+            raw_decisions = (
+                parsed.get("decisions")
+                if isinstance(parsed.get("decisions"), list)
+                else []
+            )
             for decision in raw_decisions:
                 if not isinstance(decision, dict):
                     continue
                 post_id = _normalize_space(decision.get("post_id", ""))
-                classification = _normalize_space(decision.get("classification", "")).lower()
-                if classification not in {"institutional_finance", "personal_finance", "ambiguous"}:
+                classification = _normalize_space(
+                    decision.get("classification", "")
+                ).lower()
+                if classification not in {
+                    "institutional_finance",
+                    "personal_finance",
+                    "ambiguous",
+                }:
                     classification = "ambiguous"
                 try:
-                    confidence = max(0.0, min(1.0, float(decision.get("confidence", 0.0) or 0.0)))
+                    confidence = max(
+                        0.0, min(1.0, float(decision.get("confidence", 0.0) or 0.0))
+                    )
                 except (TypeError, ValueError):
                     confidence = 0.0
                 if post_id:
@@ -386,13 +721,20 @@ class SubstackPublicScraper:
             post_id = str(entry.get("substack_post_id") or entry.get("url", ""))
             decision = decisions.get(
                 post_id,
-                {"classification": "ambiguous", "confidence": 0.0, "reason": "No model decision returned."},
+                {
+                    "classification": "ambiguous",
+                    "confidence": 0.0,
+                    "reason": "No model decision returned.",
+                },
             )
             enriched = dict(entry)
             enriched["relevance_classification"] = decision["classification"]
             enriched["relevance_confidence"] = decision["confidence"]
             enriched["relevance_reason"] = decision["reason"]
-            if decision["classification"] == "personal_finance" and decision["confidence"] >= exclusion_threshold:
+            if (
+                decision["classification"] == "personal_finance"
+                and decision["confidence"] >= exclusion_threshold
+            ):
                 excluded.append(enriched)
             else:
                 included.append(enriched)
@@ -400,4 +742,9 @@ class SubstackPublicScraper:
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
