@@ -64,6 +64,31 @@ class CongressCRSProductsScraperTests(unittest.TestCase):
 
         self.assertEqual(scraper.session.get.call_args.kwargs["proxy"], "http://residential.example:8000")
 
+    @patch.dict(
+        "os.environ",
+        {"RESIDENTIAL_PROXY_URL": "proxy.example:8000:user:pa:ss"},
+        clear=True,
+    )
+    def test_fetch_html_normalizes_residential_proxy_shorthand(self):
+        scraper = CongressCRSProductsScraper(min_delay_seconds=0)
+        response = _FakeResponse("<html><body>OK</body></html>", "https://www.congress.gov/crs-products")
+        scraper.session.get = Mock(return_value=response)
+
+        scraper._fetch_html("https://www.congress.gov/crs-products")
+
+        self.assertEqual(scraper.session.get.call_args.kwargs["proxy"], "http://user:pa%3Ass@proxy.example:8000")
+
+    @patch.dict(
+        "os.environ",
+        {"RESIDENTIAL_PROXY_URL": "proxy.example:notaport:user:pass"},
+        clear=True,
+    )
+    def test_fetch_html_rejects_invalid_residential_proxy_port(self):
+        scraper = CongressCRSProductsScraper(min_delay_seconds=0)
+
+        with self.assertRaisesRegex(RuntimeError, "numeric port"):
+            scraper._fetch_html("https://www.congress.gov/crs-products")
+
     def test_fetch_html_rejects_cloudflare_challenge(self):
         scraper = CongressCRSProductsScraper(min_delay_seconds=0)
         response = _FakeResponse(

@@ -10,7 +10,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -147,6 +147,50 @@ def _feed_config(value: Any) -> Dict[str, str]:
     return {"label": "", "feed_url": feed_url, "tags_csv": ""}
 
 
+def _normalize_proxy_url(value: Any) -> Tuple[str, str]:
+    raw = _normalize_space(value)
+    if not raw:
+        return "", ""
+
+    candidate = raw
+    if "://" not in candidate:
+        parts = candidate.split(":")
+        if len(parts) >= 4 and parts[1].isdigit():
+            host = parts[0].strip()
+            port = parts[1].strip()
+            username = parts[2].strip()
+            password = ":".join(parts[3:]).strip()
+            if host and username:
+                candidate = (
+                    f"http://{quote(username, safe='')}:"
+                    f"{quote(password, safe='')}@{host}:{port}"
+                )
+        else:
+            candidate = f"http://{candidate}"
+
+    parsed = urlparse(candidate)
+    if parsed.scheme.lower() not in {"http", "https", "socks5", "socks5h"}:
+        return "", "Proxy URL must use http, https, socks5, or socks5h."
+    try:
+        port = parsed.port
+    except ValueError:
+        return "", "Proxy URL must include a numeric port between 0 and 65535."
+    if not parsed.hostname or port is None:
+        return "", "Proxy URL must include a host and numeric port."
+
+    host = parsed.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    auth = ""
+    if parsed.username is not None or parsed.password is not None:
+        auth = (
+            f"{quote(unquote(parsed.username or ''), safe='')}:"
+            f"{quote(unquote(parsed.password or ''), safe='')}@"
+        )
+    normalized = urlunparse((parsed.scheme.lower(), f"{auth}{host}:{port}", "", "", "", ""))
+    return normalized, ""
+
+
 def _response_text(response: Any) -> str:
     output_text = getattr(response, "output_text", None)
     if output_text:
@@ -196,7 +240,7 @@ class SubstackPublicScraper:
             if self._uses_curl_cffi
             else requests.Session()
         )
-        self.proxy_url = _normalize_space(
+        self.proxy_url, self.proxy_config_error = _normalize_proxy_url(
             os.getenv("SUBSTACK_PROXY_URL", "")
             or os.getenv("RESIDENTIAL_PROXY_URL", "")
             or os.getenv("APIFY_PROXY_URL", "")
@@ -222,9 +266,14 @@ class SubstackPublicScraper:
             time.sleep(self.min_delay_seconds - elapsed)
         self._last_request_ts = time.time()
 
+    def _validate_proxy_config(self) -> None:
+        if self.proxy_config_error:
+            raise RuntimeError(self.proxy_config_error)
+
     def _get_json(
         self, url: str, *, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
+        self._validate_proxy_config()
         self._rate_limit()
         request_options: Dict[str, Any] = {"params": params, "timeout": 45}
         if self.proxy_url:
@@ -243,6 +292,7 @@ class SubstackPublicScraper:
         return payload
 
     def _warm_search_session(self, keyword: str) -> None:
+        self._validate_proxy_config()
         self._rate_limit()
         request_options: Dict[str, Any] = {
             "params": {"searching": "all_posts"},
@@ -263,6 +313,7 @@ class SubstackPublicScraper:
         response.raise_for_status()
 
     def _get_text(self, url: str) -> str:
+        self._validate_proxy_config()
         self._rate_limit()
         request_options: Dict[str, Any] = {"timeout": 45, "allow_redirects": True}
         if self.proxy_url:
@@ -299,6 +350,8 @@ class SubstackPublicScraper:
             "mode": "curated_substack_feeds",
             "feeds": feed_configs,
             "max_items_per_feed": limit,
+            "proxy_configured": bool(self.proxy_url),
+            "proxy_config_error": self.proxy_config_error,
             "requests": [],
             "errors": [],
         }
@@ -428,6 +481,7 @@ class SubstackPublicScraper:
             "keywords": search_terms,
             "pages_per_keyword": pages_per_keyword,
             "proxy_configured": bool(self.proxy_url),
+            "proxy_config_error": self.proxy_config_error,
             "requests": [],
             "errors": [],
         }

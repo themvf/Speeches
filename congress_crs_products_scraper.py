@@ -18,7 +18,7 @@ import time
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, unquote, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup, Tag
 from curl_cffi import requests as cffi_requests
@@ -42,6 +42,50 @@ def _is_challenge_html(text: Any) -> bool:
 
 def _normalize_space(text: Any) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _normalize_proxy_url(value: Any) -> Tuple[str, str]:
+    raw = _normalize_space(value)
+    if not raw:
+        return "", ""
+
+    candidate = raw
+    if "://" not in candidate:
+        parts = candidate.split(":")
+        if len(parts) >= 4 and parts[1].isdigit():
+            host = parts[0].strip()
+            port = parts[1].strip()
+            username = parts[2].strip()
+            password = ":".join(parts[3:]).strip()
+            if host and username:
+                candidate = (
+                    f"http://{quote(username, safe='')}:"
+                    f"{quote(password, safe='')}@{host}:{port}"
+                )
+        else:
+            candidate = f"http://{candidate}"
+
+    parsed = urlparse(candidate)
+    if parsed.scheme.lower() not in {"http", "https", "socks5", "socks5h"}:
+        return "", "Proxy URL must use http, https, socks5, or socks5h."
+    try:
+        port = parsed.port
+    except ValueError:
+        return "", "Proxy URL must include a numeric port between 0 and 65535."
+    if not parsed.hostname or port is None:
+        return "", "Proxy URL must include a host and numeric port."
+
+    host = parsed.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    auth = ""
+    if parsed.username is not None or parsed.password is not None:
+        auth = (
+            f"{quote(unquote(parsed.username or ''), safe='')}:"
+            f"{quote(unquote(parsed.password or ''), safe='')}@"
+        )
+    normalized = urlunparse((parsed.scheme.lower(), f"{auth}{host}:{port}", "", "", "", ""))
+    return normalized, ""
 
 
 def _clean_multiline(text: Any) -> str:
@@ -313,7 +357,7 @@ class CongressCRSProductsScraper:
             }
         )
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
-        self.proxy_url = _normalize_space(
+        self.proxy_url, self.proxy_config_error = _normalize_proxy_url(
             os.getenv("CRS_PROXY_URL", "") or os.getenv("RESIDENTIAL_PROXY_URL", "")
         )
         self._last_request_ts = 0.0
@@ -325,7 +369,12 @@ class CongressCRSProductsScraper:
             time.sleep(self.min_delay_seconds - elapsed)
         self._last_request_ts = time.time()
 
+    def _validate_proxy_config(self):
+        if self.proxy_config_error:
+            raise RuntimeError(self.proxy_config_error)
+
     def _fetch_html(self, url: str, timeout: int = 60) -> Any:
+        self._validate_proxy_config()
         target = str(url or "").strip()
         if not target:
             raise ValueError("URL is required")
@@ -383,6 +432,7 @@ class CongressCRSProductsScraper:
             "max_pages_requested": max_pages,
             "page_size": 100,
             "proxy_configured": bool(self.proxy_url),
+            "proxy_config_error": self.proxy_config_error,
             "discovery_mode": "everycrsreport_static_index",
             "listing_added": len(out),
             "total_unique": len(out),
@@ -449,6 +499,7 @@ class CongressCRSProductsScraper:
             "normalized_start_url": start_url,
             "max_pages_requested": max_pages,
             "proxy_configured": bool(self.proxy_url),
+            "proxy_config_error": self.proxy_config_error,
             "pages": [],
             "listing_added": 0,
             "total_unique": 0,

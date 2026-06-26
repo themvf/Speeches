@@ -13,6 +13,28 @@ def test_substack_uses_residential_proxy_fallback(monkeypatch):
     assert scraper.proxy_url == "http://residential.example:8000"
 
 
+def test_substack_normalizes_residential_proxy_shorthand(monkeypatch):
+    monkeypatch.delenv("SUBSTACK_PROXY_URL", raising=False)
+    monkeypatch.delenv("APIFY_PROXY_URL", raising=False)
+    monkeypatch.setenv("RESIDENTIAL_PROXY_URL", "proxy.example:8000:user:pa:ss")
+
+    scraper = SubstackPublicScraper(min_delay_seconds=0)
+
+    assert scraper.proxy_url == "http://user:pa%3Ass@proxy.example:8000"
+    assert scraper.proxy_config_error == ""
+
+
+def test_substack_rejects_invalid_residential_proxy_port(monkeypatch):
+    monkeypatch.delenv("SUBSTACK_PROXY_URL", raising=False)
+    monkeypatch.delenv("APIFY_PROXY_URL", raising=False)
+    monkeypatch.setenv("RESIDENTIAL_PROXY_URL", "proxy.example:notaport:user:pass")
+
+    scraper = SubstackPublicScraper(min_delay_seconds=0)
+
+    assert scraper.proxy_url == ""
+    assert "numeric port" in scraper.proxy_config_error
+
+
 def _post(post_id, title, slug, keyword_text=""):
     return {
         "id": post_id,
