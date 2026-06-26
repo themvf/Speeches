@@ -1,0 +1,94 @@
+name: Securities Market Sources Daily
+
+on:
+  schedule:
+    # 12:30 UTC catches morning official-source updates without overlapping core policy extraction.
+    - cron: "30 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: securities-market-sources-daily
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - connector: finra_regulatory_notice
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: cftc_press_release
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: cftc_public_statement_remark
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: sec_press_release_rss
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: sec_administrative_proceeding
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: sec_trading_suspension
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: sec_federal_register
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: sec_pcaob_rulemaking
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: pcaob_update
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: msrb_press_release
+            extraction_limit: "25"
+            max_pages: "1"
+
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ${{ matrix.connector }}
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector "${{ matrix.connector }}" \
+            --selection new_or_updated \
+            --limit "${{ matrix.extraction_limit }}" \
+            --max-pages "${{ matrix.max_pages }}" \
+            --include-pdfs true \
+            --include-rss true \
+            --require-remote-persistence \
+            --summary-path "securities_market_source_${{ matrix.connector }}.json"
+
+      - name: Upload Extraction Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: securities-market-source-${{ matrix.connector }}-${{ github.run_id }}
+          path: "securities_market_source_${{ matrix.connector }}.json"
+          if-no-files-found: ignore

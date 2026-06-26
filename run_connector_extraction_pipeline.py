@@ -40,6 +40,16 @@ BLOOMBERG_CONNECTORS = {
     "bloomberg_latest_apify",
 }
 
+SECURITIES_MARKET_CONNECTORS = {
+    "sec_press_release_rss",
+    "sec_administrative_proceeding",
+    "sec_trading_suspension",
+    "sec_federal_register",
+    "sec_pcaob_rulemaking",
+    "pcaob_update",
+    "msrb_press_release",
+}
+
 SUPPORTED_CONNECTORS = {
     "sec_speech",
     "sec_tm_faq",
@@ -62,6 +72,7 @@ SUPPORTED_CONNECTORS = {
     "bloomberg_apify_article",
     "bloomberg_latest_apify",
     "substack_public_article",
+    *SECURITIES_MARKET_CONNECTORS,
 }
 
 
@@ -102,6 +113,10 @@ def _default_base_url(connector: str) -> str:
         return BLOOMBERG_PUBLIC_DEFAULT_URL
     if connector == "substack_public_article":
         return SUBSTACK_PUBLIC_DEFAULT_URL
+    if connector in SECURITIES_MARKET_CONNECTORS:
+        from securities_market_sources_scraper import SECURITIES_MARKET_SOURCES
+
+        return str(SECURITIES_MARKET_SOURCES.get(connector, {}).get("default_url", "") or "")
     return ""
 
 
@@ -760,6 +775,14 @@ def _discover_connector(
             max_pages=max_pages,
             include_feeds=include_rss,
         )
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector in SECURITIES_MARKET_CONNECTORS:
+        from securities_market_sources_scraper import SecuritiesMarketSourcesScraper
+
+        scraper = SecuritiesMarketSourcesScraper()
+        docs = scraper.discover_documents(source_key=connector, base_url=base_url, max_pages=max_pages)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
 
@@ -1489,6 +1512,58 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
             base_url=base_url,
             source_kind="bloomberg_public_article",
         )
+
+    if connector in SECURITIES_MARKET_CONNECTORS:
+        extracted = scraper.extract_document(entry)
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "") or "Securities market source extraction failed."))
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or "Securities Market Source"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 40:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=date_text,
+                organization=str(entry.get("organization", "") or "").strip() or "Securities Market Source",
+                source_label=str(entry.get("source_label", "") or connector).strip(),
+                extracted_text=text or str(data.get("summary", "") or entry.get("summary", "")).strip(),
+            )
+        source_format = str(data.get("source_format", "") or entry.get("source_format", "html")).strip().lower()
+        source_ext = ".pdf" if source_format == "pdf" else ".html"
+        source_name = _safe_source_name(src_url, f"{connector}-{idx}", source_ext)
+        organization = str(entry.get("organization", "") or "").strip() or "Securities Market Source"
+        doc_type = str(entry.get("doc_type", "") or "Document").strip() or "Document"
+        tags_csv = str(entry.get("tags_csv", "") or "securities-market,official-source").strip()
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization=organization,
+            title=title,
+            speaker=organization,
+            doc_date=_parse_doc_date(date_text),
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=source_ext,
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=tags_csv,
+            source_kind=connector,
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = connector
+        metadata["source_index_url"] = base_url
+        metadata["source_label"] = str(entry.get("source_label", "") or "").strip()
+        metadata["published_date"] = date_text
+        metadata["summary"] = str(data.get("summary", "") or entry.get("summary", "")).strip()
+        metadata["source_format"] = source_format
+        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        metadata["extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+        metadata["pdf_url"] = src_url if source_format == "pdf" else ""
+        return record
 
     if connector == "substack_public_article":
         extracted = scraper.extract_document(entry)

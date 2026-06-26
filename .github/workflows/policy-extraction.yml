@@ -18,6 +18,13 @@ on:
           - federal_reserve_speech_testimony
           - cftc_press_release
           - cftc_public_statement_remark
+          - sec_press_release_rss
+          - sec_administrative_proceeding
+          - sec_trading_suspension
+          - sec_federal_register
+          - sec_pcaob_rulemaking
+          - pcaob_update
+          - msrb_press_release
           - congress_crs_product
           - bloomberg_public_latest
           - bloomberg_public_article
