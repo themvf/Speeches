@@ -51,6 +51,31 @@ def test_substack_rejects_invalid_residential_proxy_port(monkeypatch):
     assert "numeric port" in scraper.proxy_config_error
 
 
+def test_substack_retries_direct_after_proxy_tunnel_error(monkeypatch):
+    monkeypatch.setenv("SUBSTACK_PROXY_URL", "http://proxy.example:8000")
+    scraper = SubstackPublicScraper(min_delay_seconds=0)
+    calls = []
+
+    class Response:
+        text = "ok"
+
+        def raise_for_status(self):
+            return None
+
+    class Session:
+        def get(self, url, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise RuntimeError("CONNECT tunnel failed, response 502")
+            return Response()
+
+    scraper.session = Session()
+
+    assert scraper._get_text("https://example.substack.com/feed") == "ok"
+    assert calls[0]["proxy"] == "http://proxy.example:8000"
+    assert "proxy" not in calls[1]
+
+
 def _post(post_id, title, slug, keyword_text=""):
     return {
         "id": post_id,

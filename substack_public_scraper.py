@@ -74,6 +74,22 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "")
+    if not raw:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _looks_like_proxy_tunnel_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "connect tunnel failed" in text
+        or "proxy error" in text
+        or "proxyerror" in text
+    )
+
+
 def _normalize_space(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
@@ -278,6 +294,7 @@ class SubstackPublicScraper:
         self.request_timeout_seconds = max(
             5.0, _env_float("SUBSTACK_REQUEST_TIMEOUT_SECONDS", 15.0)
         )
+        self.direct_proxy_fallback = _env_bool("SUBSTACK_DIRECT_PROXY_FALLBACK", True)
         self._last_request_ts = 0.0
         self.last_discovery_debug: Dict[str, Any] = {}
 
@@ -290,6 +307,21 @@ class SubstackPublicScraper:
     def _validate_proxy_config(self) -> None:
         if self.proxy_config_error:
             raise RuntimeError(self.proxy_config_error)
+
+    def _get_with_proxy_fallback(self, url: str, **request_options: Any) -> Any:
+        try:
+            return self.session.get(url, **request_options)
+        except Exception as exc:
+            if not (
+                self.proxy_url
+                and self.direct_proxy_fallback
+                and _looks_like_proxy_tunnel_error(exc)
+            ):
+                raise
+            direct_options = dict(request_options)
+            direct_options.pop("proxy", None)
+            direct_options.pop("proxies", None)
+            return self.session.get(url, **direct_options)
 
     def _get_json(
         self, url: str, *, params: Optional[Dict[str, Any]] = None
@@ -308,7 +340,7 @@ class SubstackPublicScraper:
                     "http": self.proxy_url,
                     "https": self.proxy_url,
                 }
-        response = self.session.get(url, **request_options)
+        response = self._get_with_proxy_fallback(url, **request_options)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
@@ -331,7 +363,7 @@ class SubstackPublicScraper:
                     "http": self.proxy_url,
                     "https": self.proxy_url,
                 }
-        response = self.session.get(
+        response = self._get_with_proxy_fallback(
             f"https://substack.com/search/{quote(keyword, safe='')}", **request_options
         )
         response.raise_for_status()
@@ -351,7 +383,7 @@ class SubstackPublicScraper:
                     "http": self.proxy_url,
                     "https": self.proxy_url,
                 }
-        response = self.session.get(url, **request_options)
+        response = self._get_with_proxy_fallback(url, **request_options)
         response.raise_for_status()
         return str(response.text or "")
 
