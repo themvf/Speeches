@@ -30,6 +30,7 @@ SIFMA_NEWS_DEFAULT_URL = "https://www.sifma.org/news"
 CONGRESS_CRS_PRODUCTS_DEFAULT_URL = "https://www.congress.gov/crs-products"
 BLOOMBERG_PUBLIC_DEFAULT_URL = ""
 SUBSTACK_PUBLIC_DEFAULT_URL = "https://substack.com/api/v1/post/search"
+WSJ_DOW_JONES_DEFAULT_URL = "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews"
 
 BLOOMBERG_CONNECTORS = {
     "bloomberg_public_article",
@@ -48,6 +49,12 @@ SECURITIES_MARKET_CONNECTORS = {
     "sec_pcaob_rulemaking",
     "pcaob_update",
     "msrb_press_release",
+}
+
+TRADE_MEDIA_CONNECTORS = {
+    "jdsupra_article",
+    "investmentnews_article",
+    "citywire_article",
 }
 
 SUPPORTED_CONNECTORS = {
@@ -72,6 +79,9 @@ SUPPORTED_CONNECTORS = {
     "bloomberg_apify_article",
     "bloomberg_latest_apify",
     "substack_public_article",
+    "wsj_dow_jones",
+    "reddit_post",
+    *TRADE_MEDIA_CONNECTORS,
     *SECURITIES_MARKET_CONNECTORS,
 }
 
@@ -113,6 +123,14 @@ def _default_base_url(connector: str) -> str:
         return BLOOMBERG_PUBLIC_DEFAULT_URL
     if connector == "substack_public_article":
         return SUBSTACK_PUBLIC_DEFAULT_URL
+    if connector == "wsj_dow_jones":
+        return WSJ_DOW_JONES_DEFAULT_URL
+    if connector == "reddit_post":
+        return "https://www.reddit.com/search.json"
+    if connector in TRADE_MEDIA_CONNECTORS:
+        from trade_media_scraper import TRADE_MEDIA_SOURCES
+
+        return str(TRADE_MEDIA_SOURCES.get(connector, {}).get("default_url", "") or "")
     if connector in SECURITIES_MARKET_CONNECTORS:
         from securities_market_sources_scraper import SECURITIES_MARKET_SOURCES
 
@@ -122,6 +140,18 @@ def _default_base_url(connector: str) -> str:
 
 def _normalize_space(value: Any) -> str:
     return " ".join(str(value or "").strip().split())
+
+
+def _is_generic_document_title(value: Any) -> bool:
+    return _normalize_space(value).lower() in {
+        "notice",
+        "rule",
+        "proposed rule",
+        "final rule",
+        "interim final rule",
+        "presidential document",
+        "correction",
+    }
 
 
 def _to_bool(value: Any) -> bool:
@@ -646,6 +676,23 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector in SECURITIES_MARKET_CONNECTORS:
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_title = _normalize_space(existing_meta.get("title", ""))
+        incoming_title = _normalize_space(entry.get("title", ""))
+        if (
+            (incoming_date and existing_date and incoming_date != existing_date)
+            or (
+                connector == "sec_federal_register"
+                and _is_generic_document_title(existing_title)
+                and incoming_title
+                and incoming_title != existing_title
+            )
+        ):
+            return "update_available"
+        return "existing"
+
     existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
     incoming_date = _normalize_space(entry.get("date") or entry.get("published_date") or "")
     if incoming_date and existing_date and incoming_date != existing_date:
@@ -660,6 +707,7 @@ def _discover_connector(
     include_pdfs: bool,
     include_rss: bool,
     keywords: Optional[List[str]] = None,
+    connector_settings: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Any, List[Dict[str, Any]], Dict[str, Any]]:
     if connector == "sec_speech":
         from speech_analyzer import SECSpeechAnalyzer
@@ -777,6 +825,75 @@ def _discover_connector(
         )
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector in TRADE_MEDIA_CONNECTORS:
+        from trade_media_scraper import TRADE_MEDIA_SOURCES, TradeMediaScraper
+
+        scraper = TradeMediaScraper()
+        source_cfg = TRADE_MEDIA_SOURCES.get(connector, {})
+        docs = scraper.discover_documents(
+            source_key=connector,
+            base_url=base_url or str(source_cfg.get("default_url", "") or ""),
+            max_pages=max_pages,
+            include_rss=include_rss,
+            search_query=str(source_cfg.get("default_search_query", "") or ""),
+        )
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "wsj_dow_jones":
+        from wsj_rss_scraper import WSJRssScraper
+
+        scraper = WSJRssScraper()
+        docs = scraper.discover_documents(feed_url=base_url, max_items=max(1, int(max_pages or 1)) * 25)
+        for item in docs:
+            item["url"] = str(item.get("source_url", "") or item.get("url", "")).strip()
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "reddit_post":
+        import os
+        from reddit_scraper import DEFAULT_SEARCH_TERMS, DEFAULT_TAGS, REDDIT_SEARCH_URL, RedditScraper
+
+        cfg = connector_settings if isinstance(connector_settings, dict) else {}
+        if cfg.get("enabled", True) is False:
+            scraper = RedditScraper()
+            return scraper, [], {"enabled": False, "reason": "Reddit connector disabled in settings."}
+
+        search_terms = keywords or cfg.get("search_terms") or DEFAULT_SEARCH_TERMS
+        subreddits = cfg.get("subreddits") or []
+        scraper = RedditScraper(
+            search_terms=[str(term) for term in search_terms if str(term or "").strip()],
+            subreddits=[str(sub) for sub in subreddits if str(sub or "").strip()],
+            sort=str(cfg.get("sort", "new") or "new"),
+            time_filter=str(cfg.get("time_filter", "week") or "week"),
+            limit_per_term=int(cfg.get("limit_per_term", 25) or 25),
+            tags_csv=str(cfg.get("tags_csv", DEFAULT_TAGS) or DEFAULT_TAGS),
+            client_id=str(cfg.get("client_id") or os.getenv("REDDIT_CLIENT_ID", "") or ""),
+            client_secret=str(cfg.get("client_secret") or os.getenv("REDDIT_CLIENT_SECRET", "") or ""),
+            user_agent=str(cfg.get("user_agent") or os.getenv("REDDIT_USER_AGENT", "") or "PolicyResearchHub/1.0"),
+        )
+        posts = scraper.discover_posts()
+        records = scraper.build_documents(posts=posts)
+        docs: List[Dict[str, Any]] = []
+        for record in records:
+            metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+            docs.append(
+                {
+                    "url": str(metadata.get("url", "") or "").strip(),
+                    "title": str(metadata.get("title", "") or "").strip(),
+                    "date": str(metadata.get("published_date", "") or metadata.get("date", "") or "").strip(),
+                    "_record": record,
+                }
+            )
+        return scraper, docs, {
+            "enabled": True,
+            "search_terms_count": len(search_terms),
+            "subreddit_count": len(subreddits),
+            "using_praw": bool(getattr(scraper, "using_praw", False)),
+            "errors": list(getattr(scraper, "errors", []) or []),
+            "source_index_url": REDDIT_SEARCH_URL,
+        }
 
     if connector in SECURITIES_MARKET_CONNECTORS:
         from securities_market_sources_scraper import SecuritiesMarketSourcesScraper
@@ -1637,6 +1754,117 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["connector_mode"] = "public"
         return record
 
+    if connector in TRADE_MEDIA_CONNECTORS:
+        from trade_media_scraper import TRADE_MEDIA_SOURCES
+
+        cfg = TRADE_MEDIA_SOURCES.get(connector, {})
+        source_label = str(cfg.get("label", "") or entry.get("source_name", "") or "Trade Media").strip()
+        extracted = scraper.extract_document(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_description=entry.get("description", ""),
+            fallback_source_name=source_label,
+        )
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "") or "Trade media extraction failed."))
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or "Trade Media Article"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 40:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=date_text,
+                organization=str(cfg.get("organization", "") or source_label),
+                source_label=source_label,
+                extracted_text=text or str(data.get("description", "") or entry.get("description", "")).strip(),
+            )
+        source_format = str(data.get("source_format", "") or entry.get("source_format", "html")).strip().lower()
+        source_ext = ".pdf" if source_format == "pdf" else ".html"
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization=str(cfg.get("organization", "") or source_label),
+            title=title,
+            speaker=str(data.get("source_name", "") or source_label),
+            doc_date=_parse_doc_date(date_text),
+            doc_type="Article",
+            source_url=src_url,
+            source_filename=_safe_source_name(src_url, f"{connector}-{idx}", source_ext),
+            source_ext=source_ext,
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=str(cfg.get("tags_csv", "") or "trade-media,financial-news"),
+            source_kind=connector,
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = connector
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["description"] = str(data.get("description", "") or entry.get("description", "")).strip()
+        metadata["source_name"] = source_label
+        metadata["source_format"] = source_format
+        metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        return record
+
+    if connector == "wsj_dow_jones":
+        extracted = scraper.extract_document(
+            entry.get("url", "") or entry.get("source_url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_description=entry.get("description", ""),
+            fallback_author=entry.get("author", ""),
+        )
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "") or "WSJ/Dow Jones extraction failed."))
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        src_url = str(data.get("url", "") or entry.get("url", "") or entry.get("source_url", "")).strip()
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or "WSJ/Dow Jones Article"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 40:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=date_text,
+                organization="WSJ / Dow Jones",
+                source_label="WSJ / Dow Jones RSS",
+                extracted_text=text or str(entry.get("description", "") or "").strip(),
+            )
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="WSJ / Dow Jones",
+            title=title,
+            speaker=str(data.get("author", "") or entry.get("author", "") or "WSJ / Dow Jones").strip(),
+            doc_date=_parse_doc_date(date_text),
+            doc_type="Article",
+            source_url=src_url,
+            source_filename=_safe_source_name(src_url, f"wsj-dow-jones-{idx}", ".html"),
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="wsj,dow-jones,business,financial-news",
+            source_kind="wsj_dow_jones",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "wsj_dow_jones"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["summary"] = str(entry.get("description", "") or "").strip()
+        metadata["guid"] = str(entry.get("guid", "") or "").strip()
+        metadata["extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+        metadata["source_format"] = str(data.get("source_format", "") or "html").strip()
+        return record
+
+    if connector == "reddit_post":
+        record = entry.get("_record")
+        if not isinstance(record, dict):
+            raise RuntimeError("Reddit discovery item did not include a built document record.")
+        return record
+
     raise RuntimeError(f"Unsupported connector: {connector}")
 
 
@@ -1658,6 +1886,11 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     existing_custom_records = _build_existing_custom_record_map(custom_payload)
     existing_speech_keys = _load_existing_speech_url_keys(storage)
     topic_rules = _load_current_topic_rules() if args.connector == "substack_public_article" else []
+    connector_settings: Optional[Dict[str, Any]] = None
+    if args.connector == "reddit_post":
+        settings = core._load_news_connector_settings(storage)
+        reddit_settings = settings.get("reddit", {}) if isinstance(settings, dict) else {}
+        connector_settings = reddit_settings if isinstance(reddit_settings, dict) else {}
     explicit_keywords = _parse_filter_terms(getattr(args, "keywords", ""))
     discovery_keywords = explicit_keywords or (
         _topic_rules_to_search_terms(topic_rules) if args.connector == "substack_public_article" else []
@@ -1670,6 +1903,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         include_pdfs=bool(args.include_pdfs),
         include_rss=bool(args.include_rss),
         keywords=discovery_keywords or None,
+        connector_settings=connector_settings,
     )
     discovered = [item for item in discovered_raw if isinstance(item, dict)]
     if args.connector == "substack_public_article":
@@ -1877,7 +2111,7 @@ def main() -> int:
         args.include_pdfs = _to_bool(include_pdfs_raw)
 
     if include_rss_raw == "":
-        args.include_rss = args.connector in {"finra_regulatory_notice", "substack_public_article"}
+        args.include_rss = args.connector in {"finra_regulatory_notice", "substack_public_article", *TRADE_MEDIA_CONNECTORS}
     else:
         args.include_rss = _to_bool(include_rss_raw)
 

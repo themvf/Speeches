@@ -1,0 +1,181 @@
+# Connector Schedule Audit
+
+Generated: 2026-06-28
+
+This audit separates four different concepts that currently overlap in the codebase:
+
+- Supported connector: accepted by `run_connector_extraction_pipeline.py`.
+- On-demand workflow option: selectable in `.github/workflows/policy-extraction.yml` or a dedicated workflow.
+- Scheduled workflow: has a GitHub Actions `schedule` cron or Vercel cron.
+- App RSS source: refreshed by the deployed app, not persisted through `custom_documents.json` unless a separate document connector exists.
+
+All GitHub Actions cron expressions are UTC. The Vercel cron in `apps/web/vercel.json` is also UTC.
+
+## Scheduled Workflows
+
+| Workflow | Purpose | Cron | Connectors or source family |
+|---|---|---:|---|
+| `.github/workflows/financial-news-daily.yml` | NewsAPI ingest plus enrichment | `0 8 * * *`, `17 11 * * *`, `17 12 * * *` | `newsapi_article` |
+| `.github/workflows/financial-news-enrich-scheduled.yml` | Backstop enrichment for NewsAPI articles | `30 9 * * *` | `newsapi_article` |
+| `.github/workflows/bloomberg-public-hourly.yml` | Bloomberg public feed extraction plus enrichment | `0 * * * *` | `bloomberg_public_latest` discovers `bloomberg_public_article` |
+| `.github/workflows/substack-public-3hour.yml` | Substack public search/feed extraction plus enrichment | `0 */3 * * *` | `substack_public_article` |
+| `.github/workflows/sec-speech-sync.yml` | Dedicated SEC speech sync | `0 3,11,19 * * *` | `sec_speech` |
+| `.github/workflows/policy-extraction-scheduled.yml` | Core policy document extraction | `0 10 * * *`, `0 22 * * *` | `doj_usao_press_release`, `finra_awc`, `sec_enforcement_litigation`, `sec_speech` |
+| `.github/workflows/securities-market-sources-daily.yml` | Securities market official sources | `30 12 * * *` | `finra_regulatory_notice`, `cftc_press_release`, `cftc_public_statement_remark`, `sec_press_release_rss`, `sec_administrative_proceeding`, `sec_trading_suspension`, `sec_federal_register`, `sec_pcaob_rulemaking`, `pcaob_update`, `msrb_press_release`, `sifma_news_item` |
+| `.github/workflows/connector-gap-6hour.yml` | Remaining runnable connectors and durable trade/RSS/social documents | `0 */6 * * *` | `federal_reserve_speech_testimony`, `treasury_statement_remark`, `treasury_press_release`, `treasury_featured_story`, `sec_tm_faq`, `finra_key_topic`, `jdsupra_article`, `investmentnews_article`, `citywire_article`, `wsj_dow_jones`, `reddit_post` |
+| `.github/workflows/crs-daily.yml` | CRS report extraction | `30 13 * * *` | `congress_crs_product` |
+| `.github/workflows/trends-daily.yml` | Daily trend aggregation from enriched docs | `45 13 * * *` | Derived output, not a source connector |
+| `.github/workflows/intelligence-evidence.yml` | GDELT evidence smoke tests | `0 9 * * *` | Live evidence verification, not a source connector |
+| `.github/workflows/daily-health-check.yml` | Workflow/GCS/RSS health report | `0 9 * * *` | Health checks, not a source connector |
+| `apps/web/vercel.json` | App RSS refresh endpoint | `*/10 * * * *` | `DEFAULT_RSS_FEEDS` into Neon RSS tables |
+
+## On-Demand Only Workflows
+
+| Workflow | Purpose | Scheduled? | Notes |
+|---|---|---:|---|
+| `.github/workflows/financial-news-ingest.yml` | Manual NewsAPI ingest | No | Scheduled equivalent exists in `financial-news-daily.yml`. |
+| `.github/workflows/financial-news-enrich.yml` | Manual financial-news enrichment | No | Scheduled equivalent exists in `financial-news-enrich-scheduled.yml`. |
+| `.github/workflows/policy-extraction.yml` | Manual connector extraction | No | Choice list is narrower than `SUPPORTED_CONNECTORS`. |
+| `.github/workflows/knowledge-index-sync.yml` | Manual/vector sync after ingestion | No | Also triggers from workflow runs, but no cron. |
+| `.github/workflows/aml-news-ingest.yml` | Manual AML-specific NewsAPI ingest | No | No continuous schedule. |
+| `.github/workflows/python-tests.yml` | Tests on push/PR/manual | No cron | Not an ingestion source. |
+
+## Connector Coverage
+
+| Connector or source kind | Source | Source URL | On-demand option? | Scheduled? | Cron / workflow | Status |
+|---|---|---|---:|---:|---|---|
+| `newsapi_article` | NewsAPI financial news | Configured in `data/news_connector_settings.json`; domains include Reuters, WSJ, Bloomberg, FT, CNBC, AP, MarketWatch, CoinDesk | Yes, `financial-news-ingest.yml` | Yes | `financial-news-daily.yml`: `0 8 * * *`, `17 11 * * *`, `17 12 * * *`; enrichment: `30 9 * * *` | Covered |
+| `aml_newsapi_article` | NewsAPI AML query | Query is embedded in `aml-news-ingest.yml` | Yes, dedicated manual workflow | No | None | Gap if AML-specific feed must be continuous |
+| `bloomberg_public_latest` | Bloomberg public latest feed | Connector default is empty; scraper discovers latest public feed | Yes | Yes | `bloomberg-public-hourly.yml`: `0 * * * *` | Covered |
+| `bloomberg_public_article` | Bloomberg public article extraction | Article URLs discovered by `bloomberg_public_latest` | Yes | Indirect | `bloomberg-public-hourly.yml`: `0 * * * *` | Covered through latest feed; direct article connector is manual |
+| `bloomberg_latest_apify` | Legacy Bloomberg alias | No default URL | No | No | None | Legacy alias; deprecate or map intentionally |
+| `bloomberg_apify_article` | Legacy Bloomberg alias | No default URL | No | No | None | Legacy alias; deprecate or map intentionally |
+| `substack_public_article` | Substack public search/feed | `https://substack.com/api/v1/post/search` | Yes, dedicated scheduled workflow dispatch | Yes | `substack-public-3hour.yml`: `0 */3 * * *` | Covered |
+| `jdsupra_article` | JD Supra legal/regulatory analysis | `https://www.jdsupra.com/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `investmentnews_article` | InvestmentNews wealth-management news | `https://www.investmentnews.com/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `citywire_article` | Citywire asset-management news | `https://citywire.com/us/news` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `wsj_dow_jones` | WSJ / Dow Jones durable RSS documents | `https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `reddit_post` | Reddit keyword/social discovery | Configured by `data/news_connector_settings.json`; defaults in `reddit_scraper.py` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered; Reddit credentials recommended |
+| `sec_speech` | SEC speeches and statements | `https://www.sec.gov/newsroom/speeches-statements` | Yes | Yes | `sec-speech-sync.yml`: `0 3,11,19 * * *`; also `policy-extraction-scheduled.yml`: `0 10 * * *`, `0 22 * * *` | Covered, possibly duplicated |
+| `sec_enforcement_litigation` | SEC litigation releases | `https://www.sec.gov/enforcement-litigation/litigation-releases` | Yes | Yes | `policy-extraction-scheduled.yml`: `0 10 * * *`, `0 22 * * *` | Covered |
+| `sec_tm_faq` | SEC trading markets FAQ | `https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `sec_press_release_rss` | SEC press releases | `https://www.sec.gov/news/pressreleases.rss` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `sec_administrative_proceeding` | SEC administrative proceedings | `https://www.sec.gov/enforcement-litigation/administrative-proceedings/rss` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `sec_trading_suspension` | SEC trading suspensions | `https://www.sec.gov/enforcement-litigation/trading-suspensions/rss` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `sec_federal_register` | SEC Federal Register materials | `https://www.federalregister.gov/articles/search.rss?conditions%5Bagency_ids%5D%5B%5D=466&order=newest` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `sec_pcaob_rulemaking` | SEC PCAOB rulemaking | `https://www.sec.gov/rules-regulations/public-company-accounting-oversight-board-rulemaking` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `doj_usao_press_release` | DOJ USAO press releases | `https://www.justice.gov/usao/pressreleases` | Yes | Yes | `policy-extraction-scheduled.yml`: `0 10 * * *`, `0 22 * * *` | Covered |
+| `finra_awc` | FINRA disciplinary actions / AWC | `https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions` | Yes | Yes | `policy-extraction-scheduled.yml`: `0 10 * * *`, `0 22 * * *` | Covered |
+| `finra_regulatory_notice` | FINRA regulatory notices | `https://www.finra.org/rules-guidance/notices` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `finra_key_topic` | FINRA key topics | `https://www.finra.org/rules-guidance/key-topics` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `finra_comment_letter` | FINRA comment letters for a notice URL | Requires a FINRA notice/rule URL override | Yes, with `base_url` override | No | None | Gap until a stable source URL list exists |
+| `federal_reserve_speech_testimony` | Federal Reserve speeches/testimony | `https://www.federalreserve.gov/newsevents/speeches-testimony.htm` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `cftc_press_release` | CFTC press releases | `https://www.cftc.gov/PressRoom/PressReleases` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `cftc_public_statement_remark` | CFTC public statements and remarks | `https://www.cftc.gov/PressRoom/SpeechesTestimony/index.htm` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `treasury_featured_story` | Treasury featured stories | `https://home.treasury.gov/news/featured-stories` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `treasury_press_release` | Treasury press releases | `https://home.treasury.gov/news/press-releases` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `treasury_statement_remark` | Treasury statements and remarks | `https://home.treasury.gov/news/press-releases/statements-remarks` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `sifma_news_item` | SIFMA news | `https://www.sifma.org/news` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered with `SIFMA_PROXY_URL` / `RESIDENTIAL_PROXY_URL` support |
+| `congress_crs_product` | Congressional Research Service reports | `https://www.congress.gov/crs-products` | Yes | Yes | `crs-daily.yml`: `30 13 * * *` | Covered |
+| `pcaob_update` | PCAOB updates | `https://pcaobus.org/all-updates-and-news-releases` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+| `msrb_press_release` | MSRB press releases | `https://www.msrb.org/Press-Releases` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
+
+## Scraper Modules Outside Full Schedule Coverage
+
+These files exist as scraper/source concepts but are not all scheduled as durable document-ingest connectors.
+
+| Scraper/module | Source family | Runner support | Schedule status | Gap |
+|---|---|---:|---:|---|
+| `trade_media_scraper.py` | `jdsupra_article`, `investmentnews_article`, `citywire_article` | Yes | Yes | Runs through `connector-gap-6hour.yml` every 6 hours. |
+| `wsj_rss_scraper.py` | `wsj_dow_jones` RSS article extraction | Yes | Yes | App RSS also refreshes every 10 minutes; durable document ingestion now runs through `connector-gap-6hour.yml` every 6 hours. |
+| `reddit_scraper.py` | `reddit_post` social/news discovery | Yes | Yes | Runs through `connector-gap-6hour.yml` every 6 hours using configured Reddit settings; Reddit API credentials are recommended for cloud reliability. |
+| `sec_rule_comments_scraper.py` | SEC rule comments | No, not in `SUPPORTED_CONNECTORS` | No | Rule-comment source kinds exist elsewhere, but this scraper is not scheduled through the connector runner. |
+| `regulations_gov_manual_scraper.py` | Regulations.gov rule/comment documents | No, not in `SUPPORTED_CONNECTORS` | No | Manual source only unless wired into runner and schedule. |
+| `sec_scraper_free.py`, `sec_speech_extractor.py`, `extract_all_speeches.py` | Legacy SEC speech extraction | Not the current scheduled runner path | Replaced by `sec_speech` scheduled runner | Keep as legacy/backfill unless needed. |
+| `apify_bloomberg_scraper.py` | Legacy Bloomberg/Apify extraction | Legacy aliases exist in runner | No direct schedule | Prefer public Bloomberg connector or remove aliases. |
+
+## App RSS Feed Sources
+
+These are app-level RSS feeds defined in `apps/web/lib/server/rss-fetcher.ts`. They are refreshed by Vercel cron `*/10 * * * *` through `/api/intel/rss-refresh`, stored in Neon RSS tables, and are separate from `custom_documents.json` document ingestion.
+
+| Feed key | Label | Feed URL | Cron |
+|---|---|---|---|
+| `wsj_us_business` | WSJ US Business | `https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews` | `*/10 * * * *` |
+| `wsj_markets` | WSJ Markets | `https://feeds.content.dowjones.io/public/rss/RSSMarketsMain` | `*/10 * * * *` |
+| `wsj_opinion` | WSJ Opinion | `https://feeds.content.dowjones.io/public/rss/RSSOpinion` | `*/10 * * * *` |
+| `mw_top_stories` | MarketWatch Top Stories | `https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines` | `*/10 * * * *` |
+| `sec_press_releases` | SEC Press Releases | `https://www.sec.gov/news/pressreleases.rss` | `*/10 * * * *` |
+| `sec_speeches_statements` | SEC Speeches and Statements | `https://www.sec.gov/news/speeches-statements.rss` | `*/10 * * * *` |
+| `sec_litigation_releases` | SEC Litigation Releases | `https://www.sec.gov/enforcement-litigation/litigation-releases/rss` | `*/10 * * * *` |
+| `sec_administrative_proceedings` | SEC Administrative Proceedings | `https://www.sec.gov/enforcement-litigation/administrative-proceedings/rss` | `*/10 * * * *` |
+| `sec_trading_suspensions` | SEC Trading Suspensions | `https://www.sec.gov/enforcement-litigation/trading-suspensions/rss` | `*/10 * * * *` |
+| `finra_notices` | FINRA Regulatory Notices | `http://feeds.finra.org/FINRANotices` | `*/10 * * * *` |
+| `finra_rule_filings` | FINRA Rule Filings | `http://feeds.finra.org/FINRARuleFilings` | `*/10 * * * *` |
+| `finra_dispute_resolution_rule_filings` | FINRA Dispute Resolution Rule Filings | `http://feeds.finra.org/DisputeResolutionRuleFilings` | `*/10 * * * *` |
+| `finra_news` | FINRA News Releases and Speeches | `http://feeds.finra.org/FINRANews` | `*/10 * * * *` |
+| `finra_upc_advisories` | FINRA UPC Advisories | `http://feeds.finra.org/FINRAUPCAdvisories` | `*/10 * * * *` |
+| `cftc_general_press_releases` | CFTC General Press Releases | `https://www.cftc.gov/RSS/RSSGP/rssgp.xml` | `*/10 * * * *` |
+| `cftc_enforcement_press_releases` | CFTC Enforcement Press Releases | `https://www.cftc.gov/RSS/RSSENF/rssenf.xml` | `*/10 * * * *` |
+| `cftc_speeches_testimony` | CFTC Speeches and Testimony | `https://www.cftc.gov/RSS/RSSST/rssst.xml` | `*/10 * * * *` |
+| `cftc_federal_register_proposed_rules` | CFTC Federal Register Proposed Rules | `http://comments.cftc.gov/handlers/RSSHandler.ashx?type=Releases&category=Proposed%20Rule` | `*/10 * * * *` |
+| `cftc_federal_register_final_rules` | CFTC Federal Register Final Rules | `http://comments.cftc.gov/handlers/RSSHandler.ashx?type=Releases&category=Final%20Rule` | `*/10 * * * *` |
+| `fed_all_press_releases` | Federal Reserve All Press Releases | `https://www.federalreserve.gov/feeds/press_all.xml` | `*/10 * * * *` |
+| `fed_banking_consumer_regulatory_policy` | Federal Reserve Banking and Consumer Regulatory Policy | `https://www.federalreserve.gov/feeds/press_bcreg.xml` | `*/10 * * * *` |
+| `fed_enforcement_actions` | Federal Reserve Enforcement Actions | `https://www.federalreserve.gov/feeds/press_enforcement.xml` | `*/10 * * * *` |
+| `fed_supervision_regulation_letters` | Federal Reserve Supervision and Regulation Letters | `https://www.federalreserve.gov/feeds/bankinginfo-rss.xml` | `*/10 * * * *` |
+| `occ_news_releases` | OCC News Releases | `https://www.occ.gov/rss/occ_news.xml` | `*/10 * * * *` |
+| `occ_bulletins` | OCC Bulletins | `https://www.occ.gov/rss/occ_bulletins.xml` | `*/10 * * * *` |
+| `occ_speeches` | OCC Speeches | `https://www.occ.gov/rss/occ-speeches.xml` | `*/10 * * * *` |
+| `occ_congressional_testimony` | OCC Congressional Testimony | `https://www.occ.gov/rss/occ-congressional-testimony.xml` | `*/10 * * * *` |
+| `cfpb_newsroom` | CFPB Newsroom | `https://www.consumerfinance.gov/about-us/newsroom/feed/` | `*/10 * * * *` |
+| `ftc_consumer_protection_press_releases` | FTC Consumer Protection Press Releases | `https://www.ftc.gov/feeds/press-release-consumer-protection.xml` | `*/10 * * * *` |
+| `coindesk` | CoinDesk | `https://www.coindesk.com/arc/outboundfeeds/rss/` | `*/10 * * * *` |
+| `cointelegraph` | Cointelegraph | `https://cointelegraph.com/rss` | `*/10 * * * *` |
+| `decrypt` | Decrypt | `https://decrypt.co/feed` | `*/10 * * * *` |
+| `the_block` | The Block | `https://www.theblock.co/rss.xml` | `*/10 * * * *` |
+| `cisa_cybersecurity_advisories` | CISA Cybersecurity Advisories | `https://www.cisa.gov/cybersecurity-advisories/all.xml` | `*/10 * * * *` |
+| `krebs_on_security` | Krebs on Security | `https://krebsonsecurity.com/feed/` | `*/10 * * * *` |
+| `gibson_dunn_sec_sentinel` | Gibson Dunn SEC Sentinel | `https://secsentinel.gibsondunn.com/feed/` | `*/10 * * * *` |
+| `gibson_dunn_securities_regulation_monitor` | Gibson Dunn Securities Regulation and Corporate Governance Monitor | `https://themonitor.gibsondunn.com/feed/` | `*/10 * * * *` |
+| `cleary_enforcement_watch` | Cleary Enforcement Watch | `https://www.clearyenforcementwatch.com/feed/` | `*/10 * * * *` |
+| `cooley_pubco` | Cooley PubCo | `https://cooleypubco.com/feed/` | `*/10 * * * *` |
+| `cooley_cyber_data_privacy` | Cooley Cyber/Data/Privacy | `https://cdp.cooley.com/feed/` | `*/10 * * * *` |
+| `cooley_governance_beat` | Cooley Governance Beat | `https://governancebeat.cooley.com/feed/` | `*/10 * * * *` |
+| `latham_global_financial_regulatory_blog` | Latham Global Financial Regulatory Blog | `https://www.globalfinregblog.com/feed/` | `*/10 * * * *` |
+| `latham_london` | Latham.London | `https://www.latham.london/feed/` | `*/10 * * * *` |
+| `covington_inside_privacy` | Covington Inside Privacy | `https://www.insideprivacy.com/feed/` | `*/10 * * * *` |
+| `covington_global_policy_watch` | Covington Global Policy Watch | `https://www.globalpolicywatch.com/feed/` | `*/10 * * * *` |
+| `covington_inside_government_contracts` | Covington Inside Government Contracts | `https://www.insidegovernmentcontracts.com/feed/` | `*/10 * * * *` |
+| `ballard_spahr_consumer_finance_monitor` | Ballard Spahr Consumer Finance Monitor | `https://www.consumerfinancemonitor.com/feed/` | `*/10 * * * *` |
+| `kelley_drye_ad_law_access` | Kelley Drye Ad Law Access | `https://www.kelleydrye.com/viewpoints/blogs/ad-law-access/rss` | `*/10 * * * *` |
+| `norton_rose_fulbright_data_protection_report` | Norton Rose Fulbright Data Protection Report | `https://www.dataprotectionreport.com/feed/` | `*/10 * * * *` |
+| `squire_patton_boggs_privacy_world` | Squire Patton Boggs Privacy World | `https://www.privacyworld.blog/feed/` | `*/10 * * * *` |
+| `bradley_financial_services_perspectives` | Bradley Financial Services Perspectives | `https://www.financialservicesperspectives.com/feed/` | `*/10 * * * *` |
+| `bradley_eye_on_enforcement` | Bradley Eye on Enforcement | `https://www.eyeonenforcement.com/feed/` | `*/10 * * * *` |
+
+## Gaps To Close
+
+Priority 1, supported by runner but not safely schedulable without source inputs:
+
+- `finra_comment_letter` requires a FINRA notice/rule URL override.
+
+Priority 2, source concepts exist but still require curated URL lists or a crawler design:
+
+- `sec_rule_comment`
+- `regulations_gov_comment`
+
+Priority 3, cleanup or document as intentionally legacy:
+
+- `bloomberg_latest_apify`
+- `bloomberg_apify_article`
+- `sec_scraper_free.py`
+- `sec_speech_extractor.py`
+- `extract_all_speeches.py`
+
+## Recommended Scheduling Changes
+
+1. Add a source-list config for URL-dependent comment connectors:
+   - FINRA comment letters need one or more source notice URLs.
+   - SEC rule comments and Regulations.gov comments need one or more rule/docket URLs.
+2. Add connector freshness metrics for every scheduled source kind, not just NewsAPI, so Admin can show `last workflow success`, `newest document`, `documents in feed`, and `stale` per connector.
+3. Consider whether OCC, CFPB, FTC, law-firm blogs, crypto feeds, and cyber feeds should remain app RSS rows only or become durable `custom_documents.json` document connectors.

@@ -61,6 +61,39 @@ class ConwayLitigationScraper:
         }
 
 
+class TradeMediaScraperStub:
+    def extract_document(self, url, **kwargs):
+        return {
+            "success": True,
+            "data": {
+                "url": url,
+                "title": kwargs.get("fallback_title", "Trade Article"),
+                "date": kwargs.get("fallback_date", "June 27, 2026"),
+                "source_name": kwargs.get("fallback_source_name", "JD Supra"),
+                "description": kwargs.get("fallback_description", ""),
+                "full_text": " ".join(["trade media regulatory analysis"] * 45),
+                "word_count": 180,
+                "source_format": "html",
+            },
+        }
+
+
+class WSJScraperStub:
+    def extract_document(self, url, **kwargs):
+        return {
+            "success": True,
+            "data": {
+                "url": url,
+                "title": kwargs.get("fallback_title", "WSJ Article"),
+                "date": kwargs.get("fallback_date", "June 27, 2026"),
+                "author": kwargs.get("fallback_author", "WSJ Staff"),
+                "full_text": " ".join(["dow jones markets article"] * 45),
+                "source_format": "html",
+                "extraction_mode": "rss_description",
+            },
+        }
+
+
 def test_doj_short_text_is_retained_as_metadata_fallback():
     entry = {
         "url": "https://www.justice.gov/usao-test/pr/example-short-release",
@@ -173,3 +206,79 @@ def test_crs_status_detects_actual_date_change():
     }
 
     assert pipeline._status_for_entry("congress_crs_product", entry, existing, set()) == "update_available"
+
+
+def test_gap_connectors_are_registered_with_defaults():
+    for connector in [
+        "federal_reserve_speech_testimony",
+        "treasury_statement_remark",
+        "treasury_press_release",
+        "treasury_featured_story",
+        "sec_tm_faq",
+        "finra_key_topic",
+        "jdsupra_article",
+        "investmentnews_article",
+        "citywire_article",
+        "wsj_dow_jones",
+        "reddit_post",
+    ]:
+        assert connector in pipeline.SUPPORTED_CONNECTORS
+        assert pipeline._default_base_url(connector)
+
+
+def test_trade_media_extract_record_builds_document():
+    entry = {
+        "url": "https://www.jdsupra.com/legalnews/example-123/",
+        "title": "Example JD Supra Article",
+        "date": "June 27, 2026",
+        "description": "A regulatory analysis summary.",
+    }
+
+    record = pipeline._extract_record(
+        connector="jdsupra_article",
+        scraper=TradeMediaScraperStub(),
+        entry=entry,
+        idx=1,
+        base_url="https://www.jdsupra.com/",
+    )
+
+    assert record["metadata"]["source_kind"] == "jdsupra_article"
+    assert record["metadata"]["organization"] == "JD Supra"
+    assert record["metadata"]["source_name"] == "JD Supra"
+    assert "trade media regulatory analysis" in record["content"]["full_text"]
+
+
+def test_wsj_dow_jones_extract_record_builds_document():
+    entry = {
+        "url": "https://www.wsj.com/articles/example",
+        "title": "Example WSJ Article",
+        "date": "June 27, 2026",
+        "description": "RSS summary",
+        "author": "WSJ Staff",
+    }
+
+    record = pipeline._extract_record(
+        connector="wsj_dow_jones",
+        scraper=WSJScraperStub(),
+        entry=entry,
+        idx=1,
+        base_url="https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews",
+    )
+
+    assert record["metadata"]["source_kind"] == "wsj_dow_jones"
+    assert record["metadata"]["organization"] == "WSJ / Dow Jones"
+    assert record["metadata"]["extraction_mode"] == "rss_description"
+
+
+def test_sec_federal_register_status_updates_generic_existing_title():
+    entry = {
+        "url": "https://www.federalregister.gov/documents/2026/06/29/example",
+        "title": "Self-Regulatory Organizations; Notice of Filing of Proposed Rule Change",
+        "date": "June 29, 2026",
+    }
+    existing = {
+        "title": "Notice",
+        "published_date": "June 29, 2026",
+    }
+
+    assert pipeline._status_for_entry("sec_federal_register", entry, existing, set()) == "update_available"

@@ -1,66 +1,66 @@
-name: Securities Market Sources Daily
+name: Connector Gap Ingest (6 Hour)
 
 on:
   schedule:
-    # 12:30 UTC catches morning official-source updates without overlapping core policy extraction.
-    - cron: "30 12 * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: securities-market-sources-daily
+  group: connector-gap-6hour
   cancel-in-progress: false
 
 jobs:
   extract:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       max-parallel: 1
       fail-fast: false
       matrix:
         include:
-          - connector: finra_regulatory_notice
+          - connector: federal_reserve_speech_testimony
             extraction_limit: "25"
             max_pages: "3"
-          - connector: cftc_press_release
+          - connector: treasury_statement_remark
             extraction_limit: "25"
             max_pages: "3"
-          - connector: cftc_public_statement_remark
+          - connector: treasury_press_release
             extraction_limit: "25"
             max_pages: "3"
-          - connector: sec_press_release_rss
-            extraction_limit: "25"
-            max_pages: "1"
-          - connector: sec_administrative_proceeding
-            extraction_limit: "25"
-            max_pages: "1"
-          - connector: sec_trading_suspension
-            extraction_limit: "25"
-            max_pages: "1"
-          - connector: sec_federal_register
-            extraction_limit: "25"
-            max_pages: "1"
-          - connector: sec_pcaob_rulemaking
-            extraction_limit: "25"
-            max_pages: "1"
-          - connector: pcaob_update
-            extraction_limit: "25"
-            max_pages: "1"
-          - connector: msrb_press_release
-            extraction_limit: "25"
-            max_pages: "1"
-          - connector: sifma_news_item
+          - connector: treasury_featured_story
             extraction_limit: "25"
             max_pages: "3"
+          - connector: sec_tm_faq
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: finra_key_topic
+            extraction_limit: "50"
+            max_pages: "1"
+          - connector: jdsupra_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: investmentnews_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: citywire_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: wsj_dow_jones
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: reddit_post
+            extraction_limit: "50"
+            max_pages: "1"
 
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
-      RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
-      SIFMA_PROXY_URL: ${{ secrets.SIFMA_PROXY_URL || secrets.RESIDENTIAL_PROXY_URL }}
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
 
     steps:
       - name: Checkout
@@ -88,12 +88,12 @@ jobs:
             --include-pdfs true \
             --include-rss true \
             --require-remote-persistence \
-            --summary-path "securities_market_source_${{ matrix.connector }}.json"
+            --summary-path "connector_gap_${{ matrix.connector }}.json"
 
       - name: Upload Extraction Summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: securities-market-source-${{ matrix.connector }}-${{ github.run_id }}
-          path: "securities_market_source_${{ matrix.connector }}.json"
+          name: connector-gap-${{ matrix.connector }}-${{ github.run_id }}
+          path: "connector_gap_${{ matrix.connector }}.json"
           if-no-files-found: ignore

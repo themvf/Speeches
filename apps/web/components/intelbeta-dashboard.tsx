@@ -14,7 +14,21 @@ import {
 } from "@/lib/intel-topic-matching";
 
 type TopicFilter = string | "ALL";
-type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG" | "SUBSTACK" | "NEWSAPI";
+type SourceFilter =
+  | "ALL"
+  | "SEC_SPEECHES"
+  | "SEC_ENFORCEMENT"
+  | "FINRA"
+  | "DOJ"
+  | "FED"
+  | "TREASURY"
+  | "WSJ"
+  | "BLOOMBERG"
+  | "SUBSTACK"
+  | "NEWSAPI"
+  | "SIFMA"
+  | "TRADE_MEDIA"
+  | "REDDIT";
 
 const FEED_RENDER_BATCH_SIZE = 20;
 const LIVE_FEED_REFRESH_LIMIT = 250;
@@ -113,6 +127,9 @@ const FEED_META: Record<string, FeedMeta> = {
   sec_press_releases: { label: "SEC Press Releases", code: "SEC", color: "#7cc4ff" },
   sec_speeches_statements: { label: "SEC Speeches and Statements", code: "SEC", color: "#7cc4ff" },
   document_sec_speech: { label: "SEC Speeches", code: "SEC", color: "#7cc4ff" },
+  document_sec_enforcement_litigation: { label: "SEC Enforcement", code: "SEC", color: "#ff8aa0" },
+  document_sec_administrative_proceeding: { label: "SEC Administrative Proceedings", code: "SEC", color: "#ff8aa0" },
+  document_sec_trading_suspension: { label: "SEC Trading Suspensions", code: "SEC", color: "#ff8aa0" },
   sec_litigation_releases: { label: "SEC Litigation Releases", code: "SEC", color: "#ff8aa0" },
   sec_administrative_proceedings: { label: "SEC Administrative Proceedings", code: "SEC", color: "#ff8aa0" },
   sec_trading_suspensions: { label: "SEC Trading Suspensions", code: "SEC", color: "#ff8aa0" },
@@ -143,6 +160,18 @@ const FEED_META: Record<string, FeedMeta> = {
   document_bloomberg_public_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_substack_public_article: { label: "Substack", code: "SUB", color: "#f26b38" },
   document_newsapi_article: { label: "NewsAPI", code: "NEWS", color: "#69db7c" },
+  document_sifma_news_item: { label: "SIFMA", code: "SIFMA", color: "#a5d8ff" },
+  document_federal_reserve_speech_testimony: { label: "Federal Reserve", code: "FED", color: "#91a7ff" },
+  document_treasury_featured_story: { label: "Treasury", code: "TRE", color: "#ffd43b" },
+  document_treasury_press_release: { label: "Treasury", code: "TRE", color: "#ffd43b" },
+  document_treasury_statement_remark: { label: "Treasury", code: "TRE", color: "#ffd43b" },
+  document_sec_tm_faq: { label: "SEC TM FAQ", code: "SEC", color: "#7cc4ff" },
+  document_finra_key_topic: { label: "FINRA Key Topics", code: "FINRA", color: "#77d7a8" },
+  document_jdsupra_article: { label: "JD Supra", code: "JDS", color: "#ffa94d" },
+  document_investmentnews_article: { label: "InvestmentNews", code: "INV", color: "#66d9e8" },
+  document_citywire_article: { label: "Citywire", code: "CITY", color: "#d0bfff" },
+  document_wsj_dow_jones: { label: "WSJ / Dow Jones", code: "WSJ", color: "#63a8ff" },
+  document_reddit_post: { label: "Reddit", code: "RDDT", color: "#ff922b" },
 };
 
 const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
@@ -150,10 +179,15 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "SEC_ENFORCEMENT", label: "SEC Enforcement" },
   { key: "FINRA", label: "FINRA" },
   { key: "DOJ", label: "DOJ" },
+  { key: "FED", label: "Federal Reserve" },
+  { key: "TREASURY", label: "Treasury" },
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
   { key: "SUBSTACK", label: "Substack" },
   { key: "NEWSAPI", label: "NewsAPI" },
+  { key: "SIFMA", label: "SIFMA" },
+  { key: "TRADE_MEDIA", label: "Trade Media" },
+  { key: "REDDIT", label: "Reddit" },
 ];
 
 function getFeedMeta(feedKey: string): FeedMeta {
@@ -303,9 +337,14 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   if (sourceFilter === "SEC_ENFORCEMENT") {
     return (
       feedKey === "sec_litigation_releases" ||
+      feedKey === "document_sec_enforcement_litigation" ||
+      feedKey === "document_sec_administrative_proceeding" ||
+      feedKey === "document_sec_trading_suspension" ||
       feedKey === "sec_administrative_proceedings" ||
       feedKey === "sec_trading_suspensions" ||
       sourceKind === "sec_enforcement_litigation" ||
+      sourceKind === "sec_administrative_proceeding" ||
+      sourceKind === "sec_trading_suspension" ||
       url.includes("/enforcement-litigation/")
     );
   }
@@ -321,8 +360,14 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
       text.includes("justice department")
     );
   }
+  if (sourceFilter === "FED") {
+    return sourceKind.startsWith("federal_reserve_") || text.includes("federal reserve") || text.includes("federalreserve.gov");
+  }
+  if (sourceFilter === "TREASURY") {
+    return sourceKind.startsWith("treasury_") || text.includes("treasury.gov") || text.includes("treasury");
+  }
   if (sourceFilter === "WSJ") {
-    return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
+    return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || sourceKind === "wsj_dow_jones" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
   }
   if (sourceFilter === "BLOOMBERG") {
     return sourceKind === "bloomberg_apify_article" || sourceKind === "bloomberg_public_article" || text.includes("bloomberg.com") || text.includes("bloomberg");
@@ -332,6 +377,15 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "NEWSAPI") {
     return sourceKind === "newsapi_article";
+  }
+  if (sourceFilter === "SIFMA") {
+    return sourceKind === "sifma_news_item" || text.includes("sifma");
+  }
+  if (sourceFilter === "TRADE_MEDIA") {
+    return sourceKind === "jdsupra_article" || sourceKind === "investmentnews_article" || sourceKind === "citywire_article";
+  }
+  if (sourceFilter === "REDDIT") {
+    return sourceKind === "reddit_post" || text.includes("reddit.com");
   }
   return false;
 }

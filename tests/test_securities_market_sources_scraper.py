@@ -95,3 +95,27 @@ def test_extract_document_from_html(monkeypatch):
     assert result["success"] is True
     assert result["data"]["title"] == "MSRB Rule Filing"
     assert "municipal securities" in result["data"]["full_text"]
+
+
+def test_extract_document_keeps_rss_title_when_page_heading_is_generic(monkeypatch):
+    html = """
+    <html><body>
+      <main>
+        <h1>Notice</h1>
+        <p>June 29, 2026</p>
+        <p>The Securities and Exchange Commission is publishing this Federal Register notice.</p>
+      </main>
+    </body></html>
+    """
+    scraper = SecuritiesMarketSourcesScraper(min_delay_seconds=0)
+    monkeypatch.setattr(scraper, "_fetch", lambda _url, timeout=90: _FakeResponse(text=html, url=_url))
+
+    result = scraper.extract_document(
+        {
+            "url": "https://www.federalregister.gov/documents/example",
+            "title": "Agency Information Collection Activities; Proposed Collection; Comment Request",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["data"]["title"] == "Agency Information Collection Activities; Proposed Collection; Comment Request"

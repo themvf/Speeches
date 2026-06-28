@@ -176,6 +176,18 @@ def _strip_html(value: Any) -> str:
     return _normalize_space(BeautifulSoup(str(value or ""), "html.parser").get_text(" ", strip=True))
 
 
+def _is_generic_document_heading(value: Any) -> bool:
+    return _normalize_space(value).lower() in {
+        "notice",
+        "rule",
+        "proposed rule",
+        "final rule",
+        "interim final rule",
+        "presidential document",
+        "correction",
+    }
+
+
 def _looks_like_pdf_url(url: Any) -> bool:
     return str(url or "").lower().split("?", 1)[0].endswith(".pdf")
 
@@ -437,6 +449,8 @@ class SecuritiesMarketSourcesScraper:
             page_title = _normalize_space(title_node.get_text(" ", strip=True) if title_node else "")
             fallback_title = str(entry.get("title", "") or "").strip()
             if page_title.lower() in {"press releases", "news releases", "all updates and news releases"}:
+                title = fallback_title or page_title
+            elif _is_generic_document_heading(page_title):
                 title = fallback_title or page_title
             else:
                 title = page_title or fallback_title

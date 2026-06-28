@@ -1,5 +1,6 @@
+import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from sifma_news_scraper import SIFMA_NEWS_URL, SIFMANewsScraper, _infer_sifma_doc_type, _is_sifma_detail_url
 
@@ -16,6 +17,43 @@ class _FakeResponse:
 
 
 class SIFMANewsScraperTests(unittest.TestCase):
+    @patch.dict(os.environ, {"SIFMA_PROXY_URL": "http://sifma-proxy.example:8000", "RESIDENTIAL_PROXY_URL": "http://residential.example:8000"})
+    def test_uses_sifma_proxy_before_residential_proxy(self):
+        scraper = SIFMANewsScraper(min_delay_seconds=0)
+
+        self.assertEqual(scraper.proxy_url, "http://sifma-proxy.example:8000")
+        self.assertEqual(scraper.proxy_config_error, "")
+
+    @patch.dict(os.environ, {"RESIDENTIAL_PROXY_URL": "proxy.example:8000:user:pa:ss"}, clear=True)
+    def test_uses_residential_proxy_fallback_and_normalizes_shorthand(self):
+        scraper = SIFMANewsScraper(min_delay_seconds=0)
+
+        self.assertEqual(scraper.proxy_url, "http://user:pa%3Ass@proxy.example:8000")
+        self.assertEqual(scraper.proxy_config_error, "")
+
+    @patch.dict(os.environ, {"SIFMA_PROXY_URL": "proxy.example:notaport:user:pass"}, clear=True)
+    def test_rejects_invalid_proxy_port(self):
+        scraper = SIFMANewsScraper(min_delay_seconds=0)
+
+        self.assertEqual(scraper.proxy_url, "")
+        self.assertIn("numeric port", scraper.proxy_config_error)
+
+    @patch.dict(os.environ, {"SIFMA_PROXY_URL": "http://sifma-proxy.example:8000"}, clear=True)
+    def test_fetch_html_passes_configured_proxy(self):
+        scraper = SIFMANewsScraper(min_delay_seconds=0)
+        scraper.session.get = Mock(return_value=_FakeResponse("<html></html>", SIFMA_NEWS_URL, 200))
+
+        scraper._fetch_html(SIFMA_NEWS_URL)
+
+        kwargs = scraper.session.get.call_args.kwargs
+        self.assertTrue(
+            kwargs.get("proxy") == "http://sifma-proxy.example:8000"
+            or kwargs.get("proxies") == {
+                "http": "http://sifma-proxy.example:8000",
+                "https": "http://sifma-proxy.example:8000",
+            }
+        )
+
     def test_detail_url_detection_excludes_listing_pages(self):
         self.assertFalse(_is_sifma_detail_url("https://www.sifma.org/news"))
         self.assertFalse(_is_sifma_detail_url("https://www.sifma.org/news/blog"))

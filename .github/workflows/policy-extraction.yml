@@ -13,11 +13,15 @@ on:
           - sec_enforcement_litigation
           - finra_awc
           - finra_regulatory_notice
+          - finra_comment_letter
           - finra_key_topic
           - doj_usao_press_release
           - federal_reserve_speech_testimony
           - cftc_press_release
           - cftc_public_statement_remark
+          - treasury_featured_story
+          - treasury_press_release
+          - treasury_statement_remark
           - sec_press_release_rss
           - sec_administrative_proceeding
           - sec_trading_suspension
@@ -26,6 +30,13 @@ on:
           - pcaob_update
           - msrb_press_release
           - congress_crs_product
+          - sifma_news_item
+          - jdsupra_article
+          - investmentnews_article
+          - citywire_article
+          - wsj_dow_jones
+          - reddit_post
+          - substack_public_article
           - bloomberg_public_latest
           - bloomberg_public_article
         default: sec_enforcement_litigation
@@ -80,6 +91,10 @@ jobs:
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
       CRS_PROXY_URL: ${{ secrets.CRS_PROXY_URL || secrets.RESIDENTIAL_PROXY_URL }}
+      SIFMA_PROXY_URL: ${{ secrets.SIFMA_PROXY_URL || secrets.RESIDENTIAL_PROXY_URL }}
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
       CONNECTOR: ${{ github.event.inputs.connector }}
       SELECTION: ${{ github.event.inputs.selection || 'new_or_updated' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '25' }}

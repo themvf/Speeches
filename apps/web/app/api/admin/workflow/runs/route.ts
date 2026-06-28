@@ -11,6 +11,8 @@ const ALLOWED_WORKFLOWS = new Set([
   "trends-daily.yml",
   "policy-extraction.yml",
   "policy-extraction-scheduled.yml",
+  "connector-gap-6hour.yml",
+  "securities-market-sources-daily.yml",
   "intelligence-evidence.yml",
   "aml-news-ingest.yml",
   "daily-health-check.yml",

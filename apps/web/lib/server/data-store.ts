@@ -965,7 +965,22 @@ export function selectNewsFeedDocuments(
       "bloomberg_apify_article",
       "bloomberg_public_article",
       "substack_public_article",
-      "newsapi_article"
+      "newsapi_article",
+      "sifma_news_item",
+      "federal_reserve_speech_testimony",
+      "treasury_featured_story",
+      "treasury_press_release",
+      "treasury_statement_remark",
+      "sec_tm_faq",
+      "finra_key_topic",
+      "jdsupra_article",
+      "investmentnews_article",
+      "citywire_article",
+      "wsj_dow_jones",
+      "reddit_post",
+      "sec_enforcement_litigation",
+      "sec_administrative_proceeding",
+      "sec_trading_suspension"
     ]
   );
   const dated = items
