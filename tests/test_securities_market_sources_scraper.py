@@ -144,3 +144,27 @@ def test_extract_document_prefers_listing_date_over_future_body_date(monkeypatch
 
     assert result["success"] is True
     assert result["data"]["date"] == "June 25, 2026"
+
+
+def test_extract_document_uses_metadata_fallback_when_detail_fetch_fails(monkeypatch):
+    scraper = SecuritiesMarketSourcesScraper(min_delay_seconds=0)
+
+    def _raise(_url, timeout=90):
+        raise RuntimeError("500 Server Error")
+
+    monkeypatch.setattr(scraper, "_fetch", _raise)
+
+    result = scraper.extract_document(
+        {
+            "url": "https://www.federalregister.gov/documents/example",
+            "title": "Submission for OMB Review; Comment Request; Extension: Rule 30e-1",
+            "date": "June 26, 2026",
+            "summary": "",
+            "source_format": "html",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["data"]["date"] == "June 26, 2026"
+    assert result["data"]["extraction_mode"] == "metadata_fallback"
+    assert "Submission for OMB Review" in result["data"]["full_text"]

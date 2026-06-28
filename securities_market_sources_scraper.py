@@ -433,7 +433,38 @@ class SecuritiesMarketSourcesScraper:
         url = _normalize_space(entry.get("url", ""))
         if not url:
             return {"success": False, "error": "No URL provided", "data": {}}
-        response = self._fetch(url, timeout=90)
+        try:
+            response = self._fetch(url, timeout=90)
+        except Exception as exc:
+            title = _normalize_space(entry.get("title", ""))
+            date_text = str(entry.get("date", "") or "").strip()
+            summary = str(entry.get("summary", "") or "").strip()
+            if title and (date_text or summary):
+                text = "\n".join(
+                    part
+                    for part in [
+                        title,
+                        f"Published Date: {date_text}" if date_text else "",
+                        summary,
+                        f"Source URL: {url}",
+                        f"Detail page fetch failed during ingest: {exc}",
+                    ]
+                    if part
+                ).strip()
+                return {
+                    "success": True,
+                    "data": {
+                        "url": url,
+                        "title": title,
+                        "date": _date_to_display(date_text),
+                        "summary": summary,
+                        "full_text": text,
+                        "source_format": str(entry.get("source_format", "html") or "html").strip(),
+                        "extraction_mode": "metadata_fallback",
+                        "word_count": len(text.split()),
+                    },
+                }
+            return {"success": False, "error": str(exc), "data": {}}
         final_url = str(getattr(response, "url", url) or url)
         source_format = "pdf" if _looks_like_pdf_url(final_url) else "html"
         if source_format == "pdf":
