@@ -67,6 +67,13 @@ DEFAULT_FEEDS: List[Dict[str, str]] = [
 ]
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 def _normalize_space(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
@@ -268,6 +275,9 @@ class SubstackPublicScraper:
             }
         )
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
+        self.request_timeout_seconds = max(
+            5.0, _env_float("SUBSTACK_REQUEST_TIMEOUT_SECONDS", 15.0)
+        )
         self._last_request_ts = 0.0
         self.last_discovery_debug: Dict[str, Any] = {}
 
@@ -286,7 +296,10 @@ class SubstackPublicScraper:
     ) -> Dict[str, Any]:
         self._validate_proxy_config()
         self._rate_limit()
-        request_options: Dict[str, Any] = {"params": params, "timeout": 45}
+        request_options: Dict[str, Any] = {
+            "params": params,
+            "timeout": self.request_timeout_seconds,
+        }
         if self.proxy_url:
             if self._uses_curl_cffi:
                 request_options["proxy"] = self.proxy_url
@@ -307,7 +320,7 @@ class SubstackPublicScraper:
         self._rate_limit()
         request_options: Dict[str, Any] = {
             "params": {"searching": "all_posts"},
-            "timeout": 45,
+            "timeout": self.request_timeout_seconds,
             "allow_redirects": True,
         }
         if self.proxy_url:
@@ -326,7 +339,10 @@ class SubstackPublicScraper:
     def _get_text(self, url: str) -> str:
         self._validate_proxy_config()
         self._rate_limit()
-        request_options: Dict[str, Any] = {"timeout": 45, "allow_redirects": True}
+        request_options: Dict[str, Any] = {
+            "timeout": self.request_timeout_seconds,
+            "allow_redirects": True,
+        }
         if self.proxy_url:
             if self._uses_curl_cffi:
                 request_options["proxy"] = self.proxy_url

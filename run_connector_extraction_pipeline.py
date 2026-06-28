@@ -239,11 +239,11 @@ def _topic_rules_to_search_terms(
 
 
 def _substack_topic_search_term_limit() -> int:
-    raw = os.getenv("SUBSTACK_TOPIC_SEARCH_TERM_LIMIT", "18")
+    raw = os.getenv("SUBSTACK_TOPIC_SEARCH_TERM_LIMIT", "9")
     try:
         return max(1, int(raw))
     except (TypeError, ValueError):
-        return 18
+        return 9
 
 
 def _annotate_topic_matches(entry: Dict[str, Any], rules: List[Dict[str, Any]]) -> None:
