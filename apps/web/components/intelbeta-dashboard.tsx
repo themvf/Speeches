@@ -14,7 +14,7 @@ import {
 } from "@/lib/intel-topic-matching";
 
 type TopicFilter = string | "ALL";
-type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG" | "SUBSTACK";
+type SourceFilter = "ALL" | "SEC_SPEECHES" | "SEC_ENFORCEMENT" | "FINRA" | "DOJ" | "WSJ" | "BLOOMBERG" | "SUBSTACK" | "NEWSAPI";
 
 const FEED_RENDER_BATCH_SIZE = 20;
 const LIVE_FEED_REFRESH_LIMIT = 250;
@@ -112,6 +112,7 @@ function toFeedItemAnalysis(value: unknown): FeedItemAnalysis | undefined {
 const FEED_META: Record<string, FeedMeta> = {
   sec_press_releases: { label: "SEC Press Releases", code: "SEC", color: "#7cc4ff" },
   sec_speeches_statements: { label: "SEC Speeches and Statements", code: "SEC", color: "#7cc4ff" },
+  document_sec_speech: { label: "SEC Speeches", code: "SEC", color: "#7cc4ff" },
   sec_litigation_releases: { label: "SEC Litigation Releases", code: "SEC", color: "#ff8aa0" },
   sec_administrative_proceedings: { label: "SEC Administrative Proceedings", code: "SEC", color: "#ff8aa0" },
   sec_trading_suspensions: { label: "SEC Trading Suspensions", code: "SEC", color: "#ff8aa0" },
@@ -141,6 +142,7 @@ const FEED_META: Record<string, FeedMeta> = {
   document_bloomberg_apify_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_bloomberg_public_article: { label: "Bloomberg", code: "BBG", color: "#ffb703" },
   document_substack_public_article: { label: "Substack", code: "SUB", color: "#f26b38" },
+  document_newsapi_article: { label: "NewsAPI", code: "NEWS", color: "#69db7c" },
 };
 
 const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
@@ -151,6 +153,7 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
   { key: "SUBSTACK", label: "Substack" },
+  { key: "NEWSAPI", label: "NewsAPI" },
 ];
 
 function getFeedMeta(feedKey: string): FeedMeta {
@@ -183,6 +186,38 @@ function feedSourceLabel(article: FeedItem, source: FeedMeta): string {
     return author;
   }
   return decodeEntities(organization || source.label || article.feed_key || "Unknown");
+}
+
+function isNewsApiArticle(article: FeedItem): boolean {
+  return article.item_type === "document" && String(article.source_kind || "").toLowerCase() === "newsapi_article";
+}
+
+function SourceProvenanceChip({ article }: { article: FeedItem }) {
+  if (!isNewsApiArticle(article)) {
+    return null;
+  }
+  return (
+    <span
+      title="Discovered through NewsAPI; source name is the original publisher."
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        width: "fit-content",
+        border: "1px solid rgba(105, 219, 124, 0.34)",
+        borderRadius: 4,
+        padding: "2px 5px",
+        color: "#9df0ad",
+        background: "rgba(105, 219, 124, 0.1)",
+        fontSize: 9,
+        fontWeight: 800,
+        lineHeight: 1.15,
+        letterSpacing: "0.09em",
+        textTransform: "uppercase",
+      }}
+    >
+      NewsAPI
+    </span>
+  );
 }
 
 function articleSourceText(article: FeedItem): string {
@@ -294,6 +329,9 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "SUBSTACK") {
     return sourceKind === "substack_public_article" || text.includes("substack.com");
+  }
+  if (sourceFilter === "NEWSAPI") {
+    return sourceKind === "newsapi_article";
   }
   return false;
 }
@@ -581,6 +619,7 @@ function FullArticleModal({
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
               <span className="tone-chip">{sourceLabel}</span>
+              <SourceProvenanceChip article={article} />
               <span className="tone-chip">{formatRelativeTime(feedItemDate(article))}</span>
               {article.author ? <span className="tone-chip">By {decodeEntities(article.author)}</span> : null}
             </div>
@@ -875,6 +914,7 @@ function FeedRow({
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
             <span style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</span>
             <span style={{ color: source.color, fontSize: 12, fontWeight: 700 }}>{sourceLabel}</span>
+            <SourceProvenanceChip article={article} />
             <ToneChip label={article.tone_label} />
           </div>
           <div onClick={(e) => e.stopPropagation()}>
@@ -956,8 +996,11 @@ function FeedRow({
       onClick={onSelect}
     >
       <div style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</div>
-      <div style={{ color: source.color, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sourceLabel}>
-        {sourceLabel}
+      <div style={{ display: "grid", gap: 4, minWidth: 0 }} title={sourceLabel}>
+        <span style={{ color: source.color, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {sourceLabel}
+        </span>
+        <SourceProvenanceChip article={article} />
       </div>
       <ToneChip label={article.tone_label} />
       <div style={{ minWidth: 0 }}>
@@ -1073,6 +1116,7 @@ function FeaturedCard({
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
             <span style={{ color: "#8fa7c8", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</span>
             <span style={{ color: source.color, fontSize: 12, fontWeight: 700 }}>{sourceLabel}</span>
+            <SourceProvenanceChip article={article} />
             <ToneChip label={tone} />
           </div>
           <BookmarkButton saved={saved} onToggle={onToggleSave} size={16} />
@@ -1160,8 +1204,11 @@ function FeaturedCard({
         }}
       >
         <div style={{ color: "#8fa7c8", fontSize: 12 }}>{formatRelativeTime(feedItemDate(article))}</div>
-        <div style={{ color: source.color, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sourceLabel}>
-          {sourceLabel}
+        <div style={{ display: "grid", gap: 4, minWidth: 0 }} title={sourceLabel}>
+          <span style={{ color: source.color, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {sourceLabel}
+          </span>
+          <SourceProvenanceChip article={article} />
         </div>
         <ToneChip label={tone} />
         <div style={{ minWidth: 0 }}>
@@ -1219,7 +1266,10 @@ function FeaturedCard({
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Author</div>
           <div style={{ color: "#d7e1ef" }}>{decodeEntities(article.author || (article.item_type === "document" ? "Document" : "News Desk"))}</div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Source</div>
-          <div style={{ color: "#d7e1ef" }}>{sourceLabel}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", color: "#d7e1ef" }}>
+            <span>{sourceLabel}</span>
+            <SourceProvenanceChip article={article} />
+          </div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Impact</div>
           <div style={{ color: TONE_STYLE[tone].color, fontWeight: 700 }}>{TONE_STYLE[tone].label.toUpperCase()}</div>
           <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>Topics</div>
@@ -1308,6 +1358,7 @@ function FeedAnalysisPanel({
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
           <span className="tone-chip">Source: {sourceLabel}</span>
+          <SourceProvenanceChip article={article} />
           {analysisModel ? <span className="tone-chip">Model: {analysisModel}</span> : null}
         </div>
         <p style={{ marginTop: 10, color: "#dbe7f5", fontSize: 14, fontWeight: 700, lineHeight: 1.55 }}>

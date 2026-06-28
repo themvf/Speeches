@@ -30,6 +30,7 @@ export interface CustomDocumentMetadata {
   source_kind: string;
   source_family: string;
   source_index_url: string;
+  published_at?: string;
   published_date: string;
   updated_date: string;
   last_reviewed_or_updated: string;

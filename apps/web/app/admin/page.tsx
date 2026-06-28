@@ -55,6 +55,35 @@ type AdminJobState = {
   artifacts?: string[];
 };
 
+type MetricsData = {
+  connector_audit?: {
+    newsapi?: {
+      total: number;
+      in_feed: number;
+      recent_24h: number;
+      recent_7d: number;
+      recent_30d: number;
+      newest: null | {
+        title: string;
+        url: string;
+        source_name: string;
+        published_at: string;
+        extraction_mode: string;
+      };
+      by_source: Array<{ source_name: string; count: number }>;
+    };
+    feed_documents?: {
+      total: number;
+      by_source_kind: Array<{ source_kind: string; count: number }>;
+    };
+  };
+  recent_ingest?: {
+    last_run_at: string;
+    processed_count: number;
+    failed_count: number;
+  };
+};
+
 /* ─── Workflow definitions ─────────────────────────────────────────── */
 const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
   {
@@ -131,6 +160,20 @@ const TRENDS_FIELDS: FieldDef[] = [
   { name: "min_mentions", label: "Min tag mentions", type: "number", default: "5" },
   { name: "dry_run", label: "Dry run (skip OpenAI calls)", type: "boolean", default: "false" },
 ];
+
+function fmtNumber(value: number | undefined): string {
+  return Number(value || 0).toLocaleString();
+}
+
+function fmtDateTime(value: string | undefined): string {
+  if (!value) {
+    return "Never";
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
 
 /* ─── Knowledge Index ──────────────────────────────────────────────── */
 function KnowledgeIndexSection() {
@@ -301,6 +344,117 @@ function KnowledgeIndexSection() {
 }
 
 /* ─── RSS Feed Manager ─────────────────────────────────────────────── */
+function ConnectorAuditSection() {
+  const [metrics, setMetrics] = useState<MetricsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/metrics")
+      .then((res) => res.json())
+      .then((payload) => {
+        if (payload?.ok) {
+          setMetrics(payload.data as MetricsData);
+          setError("");
+        } else {
+          setError(String(payload?.error || "Failed to load metrics."));
+        }
+      })
+      .catch(() => setError("Network error while loading connector metrics."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const newsapi = metrics?.connector_audit?.newsapi;
+  const feedDocs = metrics?.connector_audit?.feed_documents;
+  const newest = newsapi?.newest;
+  const newestMs = Date.parse(newest?.published_at || "");
+  const stale = Number.isFinite(newestMs) && Date.now() - newestMs > 7 * 24 * 60 * 60 * 1000;
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Connector Audit</h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Live corpus checks for NewsAPI presence, freshness, feed inclusion, and publisher mix.</p>
+
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        {loading ? <p className="text-xs text-[color:var(--ink-faint)]">Loading connector metrics...</p> : null}
+        {error ? <p className="text-xs text-[color:var(--danger)]">{error}</p> : null}
+        {!loading && !error ? (
+          <div className="grid gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              <article className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">NewsAPI Docs</p>
+                <p className="mt-1 text-xl font-semibold text-[color:var(--ink)]">{fmtNumber(newsapi?.total)}</p>
+              </article>
+              <article className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">In Feed</p>
+                <p className="mt-1 text-xl font-semibold text-[#41d39d]">{fmtNumber(newsapi?.in_feed)}</p>
+              </article>
+              <article className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">24h</p>
+                <p className="mt-1 text-xl font-semibold text-[color:var(--ink)]">{fmtNumber(newsapi?.recent_24h)}</p>
+              </article>
+              <article className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">7d</p>
+                <p className="mt-1 text-xl font-semibold text-[color:var(--ink)]">{fmtNumber(newsapi?.recent_7d)}</p>
+              </article>
+              <article className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">30d</p>
+                <p className="mt-1 text-xl font-semibold text-[color:var(--ink)]">{fmtNumber(newsapi?.recent_30d)}</p>
+              </article>
+            </div>
+
+            <div className={`rounded-lg border px-3 py-3 ${stale ? "border-[color:rgba(255,199,95,0.42)] bg-[color:rgba(255,199,95,0.08)]" : "border-[color:var(--line)]"}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Newest NewsAPI Article</p>
+                <JobStatusBadge workflowFile="financial-news-daily.yml" />
+              </div>
+              {newest ? (
+                <div className="mt-2 grid gap-1 text-sm">
+                  <a href={newest.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-[color:var(--ink)] hover:text-[color:var(--accent)]">
+                    {newest.title || "Untitled article"}
+                  </a>
+                  <p className="text-xs text-[color:var(--ink-faint)]">
+                    {newest.source_name || "Unknown source"} - {fmtDateTime(newest.published_at)} - {newest.extraction_mode || "unknown extraction mode"}
+                  </p>
+                  {stale ? <p className="text-xs text-[color:var(--warn)]">Newest stored NewsAPI article is more than 7 days old. Check the daily workflow run and GCS data source.</p> : null}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-[color:var(--danger)]">No NewsAPI documents found in the corpus.</p>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Top NewsAPI Publishers</p>
+                <div className="grid gap-1 text-xs">
+                  {(newsapi?.by_source || []).slice(0, 8).map((row) => (
+                    <div key={row.source_name || "Unknown"} className="flex justify-between gap-3 rounded border border-[color:rgba(255,255,255,0.05)] px-2 py-1.5">
+                      <span className="truncate text-[color:var(--ink)]">{row.source_name || "Unknown"}</span>
+                      <span className="tabular-nums text-[color:var(--ink-faint)]">{fmtNumber(row.count)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Feed Document Mix</p>
+                <div className="grid gap-1 text-xs">
+                  {(feedDocs?.by_source_kind || []).slice(0, 8).map((row) => (
+                    <div key={row.source_kind} className="flex justify-between gap-3 rounded border border-[color:rgba(255,255,255,0.05)] px-2 py-1.5">
+                      <span className="truncate text-[color:var(--ink)]">{row.source_kind}</span>
+                      <span className="tabular-nums text-[color:var(--ink-faint)]">{fmtNumber(row.count)}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]">Feed document set: {fmtNumber(feedDocs?.total)} corpus-backed items selected for display.</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function FeedManagerSection() {
   const [feeds, setFeeds] = useState<RssFeed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2131,6 +2285,9 @@ export default function AdminPage() {
       <KnowledgeIndexSection />
 
       {/* ── Intel Feed ─────────────────────────────────────────────── */}
+      <SectionDivider label="Connector Audit" />
+      <ConnectorAuditSection />
+
       <SectionDivider label="Intel Feed" />
       <FeedManagerSection />
       <TopicRulesSection />

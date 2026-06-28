@@ -934,7 +934,7 @@ export function buildDocumentListItems(
       speaker: normalizeString(m.speaker),
       url: normalizeString(m.url),
       date: normalizeString(m.date),
-      published_at: normalizeString(m.published_date) || normalizeString(m.date),
+      published_at: normalizeString(m.published_at) || normalizeString(m.published_date) || normalizeString(m.date),
       word_count: normalizeWordCount(m.word_count),
       tags,
       keywords: dedupList([...keywords, ...metadataKeywords]),
@@ -960,7 +960,13 @@ export function selectNewsFeedDocuments(
 ): DocumentListItem[] {
   const feedDocumentLimit = Math.max(0, options.limit ?? 250);
   const pinnedSourceKinds = new Set(
-    options.pinnedSourceKinds ?? ["bloomberg_apify_article", "bloomberg_public_article", "substack_public_article"]
+    options.pinnedSourceKinds ?? [
+      "sec_speech",
+      "bloomberg_apify_article",
+      "bloomberg_public_article",
+      "substack_public_article",
+      "newsapi_article"
+    ]
   );
   const dated = items
     .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
