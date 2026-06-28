@@ -152,6 +152,17 @@ def _normalize_proxy_url(value: Any) -> Tuple[str, str]:
     if not raw:
         return "", ""
 
+    for _ in range(2):
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'", "`"}:
+            raw = _normalize_space(raw[1:-1])
+
+    if "=" in raw and "://" in raw:
+        name, maybe_value = raw.split("=", 1)
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:_PROXY_URL|_PROXY|PROXY_URL|PROXY)", name.strip()):
+            raw = _normalize_space(maybe_value)
+            if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'", "`"}:
+                raw = _normalize_space(raw[1:-1])
+
     candidate = raw
     if "://" not in candidate:
         parts = candidate.split(":")

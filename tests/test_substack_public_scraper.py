@@ -1,6 +1,6 @@
 import json
 
-from substack_public_scraper import SubstackPublicScraper
+from substack_public_scraper import SubstackPublicScraper, _normalize_proxy_url
 
 
 def test_substack_uses_residential_proxy_fallback(monkeypatch):
@@ -22,6 +22,22 @@ def test_substack_normalizes_residential_proxy_shorthand(monkeypatch):
 
     assert scraper.proxy_url == "http://user:pa%3Ass@proxy.example:8000"
     assert scraper.proxy_config_error == ""
+
+
+def test_substack_normalizes_quoted_proxy_url():
+    proxy_url, error = _normalize_proxy_url('"http://user:pass@proxy.example:8000"')
+
+    assert proxy_url == "http://user:pass@proxy.example:8000"
+    assert error == ""
+
+
+def test_substack_normalizes_env_assignment_proxy_url():
+    proxy_url, error = _normalize_proxy_url(
+        "RESIDENTIAL_PROXY_URL=https://user:pass@proxy.example:8443"
+    )
+
+    assert proxy_url == "https://user:pass@proxy.example:8443"
+    assert error == ""
 
 
 def test_substack_rejects_invalid_residential_proxy_port(monkeypatch):
