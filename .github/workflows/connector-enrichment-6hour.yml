@@ -1,0 +1,98 @@
+name: Connector Enrichment (6 Hour)
+
+on:
+  schedule:
+    - cron: "30 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      enrich_limit:
+        description: "Max documents to enrich per source kind"
+        required: false
+        default: "50"
+      model:
+        description: "Optional OpenAI model override"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: connector-enrichment-6hour
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - source_kind: sec_speech
+          - source_kind: sec_enforcement_litigation
+          - source_kind: doj_usao_press_release
+          - source_kind: finra_awc
+          - source_kind: finra_regulatory_notice
+          - source_kind: cftc_press_release
+          - source_kind: cftc_public_statement_remark
+          - source_kind: sec_press_release_rss
+          - source_kind: sec_administrative_proceeding
+          - source_kind: sec_trading_suspension
+          - source_kind: sec_federal_register
+          - source_kind: sec_pcaob_rulemaking
+          - source_kind: pcaob_update
+          - source_kind: msrb_press_release
+          - source_kind: sifma_news_item
+          - source_kind: congress_crs_product
+          - source_kind: federal_reserve_speech_testimony
+          - source_kind: treasury_statement_remark
+          - source_kind: treasury_press_release
+          - source_kind: treasury_featured_story
+          - source_kind: sec_tm_faq
+          - source_kind: finra_key_topic
+          - source_kind: jdsupra_article
+          - source_kind: investmentnews_article
+          - source_kind: citywire_article
+          - source_kind: wsj_dow_jones
+          - source_kind: reddit_post
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '50' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Enrich ${{ matrix.source_kind }}
+        run: |
+          set -euo pipefail
+          args=(enrich --require-remote-persistence --mode only_missing_or_failed --source-kind "${{ matrix.source_kind }}" --limit "${ENRICH_LIMIT}" --summary-path "connector_enrichment_${{ matrix.source_kind }}.json")
+          if [ -n "${ENRICH_MODEL}" ]; then
+            args+=(--model "${ENRICH_MODEL}")
+          fi
+          python run_financial_news_pipeline.py "${args[@]}"
+
+      - name: Upload Enrichment Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connector-enrichment-${{ matrix.source_kind }}-${{ github.run_id }}
+          path: "connector_enrichment_${{ matrix.source_kind }}.json"
+          if-no-files-found: ignore

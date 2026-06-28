@@ -23,6 +23,7 @@ All GitHub Actions cron expressions are UTC. The Vercel cron in `apps/web/vercel
 | `.github/workflows/policy-extraction-scheduled.yml` | Core policy document extraction | `0 10 * * *`, `0 22 * * *` | `doj_usao_press_release`, `finra_awc`, `sec_enforcement_litigation`, `sec_speech` |
 | `.github/workflows/securities-market-sources-daily.yml` | Securities market official sources | `30 12 * * *` | `finra_regulatory_notice`, `cftc_press_release`, `cftc_public_statement_remark`, `sec_press_release_rss`, `sec_administrative_proceeding`, `sec_trading_suspension`, `sec_federal_register`, `sec_pcaob_rulemaking`, `pcaob_update`, `msrb_press_release`, `sifma_news_item` |
 | `.github/workflows/connector-gap-6hour.yml` | Remaining runnable connectors and durable trade/RSS/social documents | `0 */6 * * *` | `federal_reserve_speech_testimony`, `treasury_statement_remark`, `treasury_press_release`, `treasury_featured_story`, `sec_tm_faq`, `finra_key_topic`, `jdsupra_article`, `investmentnews_article`, `citywire_article`, `wsj_dow_jones`, `reddit_post` |
+| `.github/workflows/connector-enrichment-6hour.yml` | Backstop enrichment for scheduled custom-document connectors | `30 */6 * * *` | `only_missing_or_failed` enrichment for scheduled official, trade, RSS, social, CRS, SEC speech, DOJ, FINRA, CFTC, Treasury, Fed, SIFMA, and securities-market source kinds |
 | `.github/workflows/crs-daily.yml` | CRS report extraction | `30 13 * * *` | `congress_crs_product` |
 | `.github/workflows/trends-daily.yml` | Daily trend aggregation from enriched docs | `45 13 * * *` | Derived output, not a source connector |
 | `.github/workflows/intelligence-evidence.yml` | GDELT evidence smoke tests | `0 9 * * *` | Live evidence verification, not a source connector |
@@ -174,8 +175,9 @@ Priority 3, cleanup or document as intentionally legacy:
 
 ## Recommended Scheduling Changes
 
-1. Add a source-list config for URL-dependent comment connectors:
+1. Keep `.github/workflows/connector-enrichment-6hour.yml` enabled so newly ingested or failed custom-document enrichments are retried every 6 hours.
+2. Add a source-list config for URL-dependent comment connectors:
    - FINRA comment letters need one or more source notice URLs.
    - SEC rule comments and Regulations.gov comments need one or more rule/docket URLs.
-2. Add connector freshness metrics for every scheduled source kind, not just NewsAPI, so Admin can show `last workflow success`, `newest document`, `documents in feed`, and `stale` per connector.
-3. Consider whether OCC, CFPB, FTC, law-firm blogs, crypto feeds, and cyber feeds should remain app RSS rows only or become durable `custom_documents.json` document connectors.
+3. Add connector freshness metrics for every scheduled source kind, not just NewsAPI, so Admin can show `last workflow success`, `newest document`, `documents in feed`, and `stale` per connector.
+4. Consider whether OCC, CFPB, FTC, law-firm blogs, crypto feeds, and cyber feeds should remain app RSS rows only or become durable `custom_documents.json` document connectors.
