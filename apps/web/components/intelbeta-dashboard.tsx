@@ -448,7 +448,11 @@ function matchesSearch(article: FeedItem, searchTerm: string): boolean {
 
 function formatRelativeTime(dateStr: string | null): string {
   if (!dateStr) return "";
-  const ms = Date.now() - new Date(dateStr).getTime();
+  const parsed = new Date(dateStr);
+  const parsedMs = parsed.getTime();
+  if (!Number.isFinite(parsedMs)) return "";
+  const ms = Date.now() - parsedMs;
+  if (ms < 0) return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const mins = Math.floor(ms / 60_000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;

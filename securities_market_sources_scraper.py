@@ -462,7 +462,7 @@ class SecuritiesMarketSourcesScraper:
                 or soup
             )
             text = _clean_multiline(body.get_text("\n"))
-            date_text = _extract_first_date(text) or str(entry.get("date", "") or "").strip()
+            date_text = str(entry.get("date", "") or "").strip() or _extract_first_date(text)
             extraction_mode = "html"
         if not text.strip():
             text = str(entry.get("summary", "") or "").strip()

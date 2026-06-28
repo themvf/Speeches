@@ -119,3 +119,28 @@ def test_extract_document_keeps_rss_title_when_page_heading_is_generic(monkeypat
 
     assert result["success"] is True
     assert result["data"]["title"] == "Agency Information Collection Activities; Proposed Collection; Comment Request"
+
+
+def test_extract_document_prefers_listing_date_over_future_body_date(monkeypatch):
+    html = """
+    <html><body>
+      <main>
+        <h1>Financial Data Transparency Act Joint Data Standards</h1>
+        <p>Effective Date: October 01, 2026</p>
+        <p>The agencies are publishing this final joint rule.</p>
+      </main>
+    </body></html>
+    """
+    scraper = SecuritiesMarketSourcesScraper(min_delay_seconds=0)
+    monkeypatch.setattr(scraper, "_fetch", lambda _url, timeout=90: _FakeResponse(text=html, url=_url))
+
+    result = scraper.extract_document(
+        {
+            "url": "https://www.federalregister.gov/documents/example",
+            "title": "Financial Data Transparency Act Joint Data Standards",
+            "date": "June 25, 2026",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["data"]["date"] == "June 25, 2026"
