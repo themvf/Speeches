@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -205,16 +206,44 @@ def _topic_rule_terms(rule: Dict[str, Any]) -> List[str]:
     return terms
 
 
-def _topic_rules_to_search_terms(rules: List[Dict[str, Any]]) -> List[str]:
+def _topic_rules_to_search_terms(
+    rules: List[Dict[str, Any]], *, max_terms: Optional[int] = None
+) -> List[str]:
+    sorted_rules = sorted(rules, key=lambda item: int(item.get("sort_order", 100) or 100))
+    if max_terms is not None and max_terms > 0:
+        buckets = [_topic_rule_terms(rule) for rule in sorted_rules]
+        terms: List[str] = []
+        seen = set()
+        while len(terms) < max_terms and any(buckets):
+            for bucket in buckets:
+                while bucket:
+                    term = bucket.pop(0)
+                    if term in seen:
+                        continue
+                    seen.add(term)
+                    terms.append(term)
+                    break
+                if len(terms) >= max_terms:
+                    break
+        return terms
+
     terms: List[str] = []
     seen = set()
-    for rule in sorted(rules, key=lambda item: int(item.get("sort_order", 100) or 100)):
+    for rule in sorted_rules:
         for term in _topic_rule_terms(rule):
             if term in seen:
                 continue
             seen.add(term)
             terms.append(term)
     return terms
+
+
+def _substack_topic_search_term_limit() -> int:
+    raw = os.getenv("SUBSTACK_TOPIC_SEARCH_TERM_LIMIT", "18")
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return 18
 
 
 def _annotate_topic_matches(entry: Dict[str, Any], rules: List[Dict[str, Any]]) -> None:
@@ -1893,7 +1922,12 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         connector_settings = reddit_settings if isinstance(reddit_settings, dict) else {}
     explicit_keywords = _parse_filter_terms(getattr(args, "keywords", ""))
     discovery_keywords = explicit_keywords or (
-        _topic_rules_to_search_terms(topic_rules) if args.connector == "substack_public_article" else []
+        _topic_rules_to_search_terms(
+            topic_rules,
+            max_terms=_substack_topic_search_term_limit(),
+        )
+        if args.connector == "substack_public_article"
+        else []
     )
 
     scraper, discovered_raw, discovery_debug = _discover_connector(
@@ -1912,6 +1946,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         discovery_debug["topic_rule_count"] = len(topic_rules)
         discovery_debug["topic_keywords_used"] = discovery_keywords
         discovery_debug["topic_keywords_source"] = "cli" if explicit_keywords else "rss_topic_rules"
+        discovery_debug["topic_keywords_limit"] = 0 if explicit_keywords else _substack_topic_search_term_limit()
     if args.connector == "substack_public_article" and not discovered and discovery_debug.get("errors"):
         errors = "; ".join(str(item) for item in discovery_debug.get("errors", [])[:3])
         raise RuntimeError(f"Substack discovery failed: {errors}")
