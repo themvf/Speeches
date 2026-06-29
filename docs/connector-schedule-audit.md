@@ -2,6 +2,41 @@
 
 Generated: 2026-06-28
 
+Re-audit: 2026-06-29
+
+## 2026-06-29 Addendum
+
+The broad custom-document pipeline is mostly covered: scheduled extraction exists for the main official, trade-media, Reddit, CRS, Bloomberg, Substack, and NewsAPI paths, and `.github/workflows/connector-enrichment-6hour.yml` retries most scheduled custom-document source kinds every 6 hours.
+
+Remaining automatic-ingestion/enrichment gaps:
+
+1. `bloomberg_public_article` and `substack_public_article` are enriched inside their dedicated extraction workflows only when that run reports new or updated documents. They are not in the 6-hour connector enrichment backstop matrix, so missing, failed, or fallback enrichments may not retry automatically when a later extraction run has no changes.
+2. `finra_comment_letter` is supported by the connector runner and the manual workflow, but it has no stable default source list and no schedule. It still requires a FINRA notice/rule URL override.
+3. Streamlit/manual source kinds `sec_rule_release`, `sec_rule_comment`, `regulations_gov_rule`, and `regulations_gov_comment` are not in `SUPPORTED_CONNECTORS`, so they have no headless scheduled ingestion path and no source-kind entry in the scheduled enrichment matrix.
+4. The AML-specific NewsAPI workflow is manual only. It writes normal `newsapi_article` records, so the NewsAPI enrichment backstop can eventually enrich those records, but the AML query itself is not continuously ingested.
+5. The deployed app's RSS refresh stores feed rows in Neon and runs lightweight RSS item analysis, but most app RSS feeds do not become durable `custom_documents.json` records and therefore do not receive full document enrichment, review, vector indexing, or corpus-backed briefing treatment.
+6. `knowledge-index-sync.yml` runs after SEC speech and policy extraction workflows only. It does not automatically run after `financial-news-daily`, `financial-news-enrich-scheduled`, `bloomberg-public-hourly`, `substack-public-3hour`, `connector-gap-6hour`, `connector-enrichment-6hour`, `securities-market-sources-daily`, or `crs-daily`, so newly ingested/enriched non-policy sources may lag in vector search until manual sync or another triggering workflow.
+
+High-priority feed families that are currently RSS-analysis-only unless promoted by another connector:
+
+- FINRA rule filings, dispute-resolution rule filings, news, and UPC advisories.
+- Federal Reserve press releases, enforcement actions, and supervision/regulation letters.
+- OCC news, bulletins, speeches, and congressional testimony.
+- CFPB newsroom and FTC consumer-protection press releases.
+- CFTC Federal Register proposed/final rule RSS feeds.
+- WSJ Markets, WSJ Opinion, and MarketWatch Top Stories. The durable WSJ connector currently schedules only the default Dow Jones business RSS feed.
+- Crypto feeds: CoinDesk, Cointelegraph, Decrypt, and The Block.
+- Cyber feeds: CISA advisories and Krebs on Security.
+- Law-firm and legal-analysis RSS feeds that are only present in the app RSS layer.
+
+Recommended next changes:
+
+1. Add `bloomberg_public_article` and `substack_public_article` to `.github/workflows/connector-enrichment-6hour.yml`.
+2. Decide which RSS-only feeds should be promoted into durable custom-document connectors, starting with OCC, CFPB, FTC, Fed enforcement/SR letters, FINRA rule filings, CFTC Federal Register rules, and the remaining Dow Jones/MarketWatch feeds.
+3. Add source-list configuration for URL-dependent comment sources: FINRA comment letters, SEC rule comments/releases, and Regulations.gov rules/comments.
+4. Expand `knowledge-index-sync.yml` triggers or add a lower-frequency scheduled sync that covers all custom-document ingestion/enrichment workflows.
+5. Keep AML as manual if it is only an ad hoc research query; otherwise add a scheduled AML NewsAPI ingest and either same-run enrichment or a clearly labeled backstop check.
+
 This audit separates four different concepts that currently overlap in the codebase:
 
 - Supported connector: accepted by `run_connector_extraction_pipeline.py`.

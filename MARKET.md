@@ -80,6 +80,62 @@ Used for the Crypto tab. Rate limit: ~10–50 calls/min on the keyless free tier
 
 ---
 
+## Deferred: Stock Social Signals
+
+Hold off for now, but a future stock-signal feed could normalize X/Twitter posts, Reddit posts, news headlines, and filings into a common object for the market page:
+
+```json
+{
+  "type": "stock_signal",
+  "symbol": "TSLA",
+  "company": "Tesla Inc.",
+  "source": "x",
+  "source_id": "1728108619189874825",
+  "url": "https://x.com/elonmusk/status/1728108619189874825",
+  "text": "More than 10 per human on average",
+  "sentiment": "BULLISH",
+  "sentiment_score": 0.72,
+  "confidence": 0.81,
+  "signal_reason": "High-engagement post from company-linked account with positive product-demand framing.",
+  "engagement": {
+    "likes": 104121,
+    "reposts": 11311,
+    "replies": 6526,
+    "quotes": 2915,
+    "views": 291500
+  },
+  "author": {
+    "name": "Elon Musk",
+    "username": "elonmusk",
+    "followers": 172669889,
+    "verified": true
+  },
+  "market_context": {
+    "price": 184.21,
+    "change_pct": 2.14,
+    "market_state": "OPEN"
+  },
+  "created_at": "2023-11-24T17:49:36Z",
+  "processed_at": "2026-06-29T00:00:00Z"
+}
+```
+
+Recommended prototype path:
+
+1. Use `vladkens/twscrape` as an internal Python ingestion worker, not inside the Next.js request path.
+2. Query configured cashtags, ticker keywords, company accounts, and executive accounts.
+3. Normalize results into `StockSignal` records and persist them to GCS, JSON, or Neon.
+4. Add a route such as `GET /api/market/signals?symbol=TSLA`.
+5. Surface the result later as a "Signals" tab or per-ticker drawer on the market page.
+
+Notes:
+
+- `twscrape` is a strong prototype candidate because it supports X search, tweet details, user timelines, parsed tweet/user models, engagement fields, media, quoted tweets, account sessions, and SQLite-backed account rotation.
+- It depends on authorized X account cookies or sessions and private X endpoints, so reliability and terms-of-service risk need review before production use.
+- Keep the app source-agnostic so the collector can be swapped later for `twikit`, `Scweet`, official X API access, Reddit/news sources, or a paid provider such as TwitterAPI.io without changing the market UI/data model.
+
+---
+
 ## Internal API Routes
 
 All routes live under `app/api/market/` and follow the standard `{ ok, data, request_id }` envelope pattern.

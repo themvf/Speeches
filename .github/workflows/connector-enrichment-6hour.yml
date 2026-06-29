@@ -55,6 +55,8 @@ jobs:
           - source_kind: jdsupra_article
           - source_kind: investmentnews_article
           - source_kind: citywire_article
+          - source_kind: bloomberg_public_article
+          - source_kind: substack_public_article
           - source_kind: wsj_dow_jones
           - source_kind: reddit_post
 
