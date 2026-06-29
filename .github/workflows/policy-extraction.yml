@@ -34,6 +34,14 @@ on:
           - jdsupra_article
           - investmentnews_article
           - citywire_article
+          - ici_news_item
+          - isda_news_item
+          - mfa_news_item
+          - fia_news_item
+          - aba_news_item
+          - bpi_news_item
+          - icba_news_item
+          - lsta_news_item
           - wsj_dow_jones
           - reddit_post
           - substack_public_article

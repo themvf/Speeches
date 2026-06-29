@@ -48,6 +48,30 @@ jobs:
           - connector: citywire_article
             extraction_limit: "25"
             max_pages: "3"
+          - connector: ici_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: isda_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: mfa_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: fia_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: aba_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: bpi_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: icba_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: lsta_news_item
+            extraction_limit: "25"
+            max_pages: "2"
           - connector: wsj_dow_jones
             extraction_limit: "25"
             max_pages: "3"

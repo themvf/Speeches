@@ -8,6 +8,8 @@ Re-audit: 2026-06-29
 
 The broad custom-document pipeline is mostly covered: scheduled extraction exists for the main official, trade-media, Reddit, CRS, Bloomberg, Substack, and NewsAPI paths, and `.github/workflows/connector-enrichment-6hour.yml` retries most scheduled custom-document source kinds every 6 hours.
 
+2026-06-29 update: trade-association durable connectors were added for `ici_news_item`, `isda_news_item`, `mfa_news_item`, `fia_news_item`, `aba_news_item`, `bpi_news_item`, `icba_news_item`, and `lsta_news_item`. They run through `.github/workflows/connector-gap-6hour.yml` and retry through `.github/workflows/connector-enrichment-6hour.yml`.
+
 Remaining automatic-ingestion/enrichment gaps:
 
 1. `bloomberg_public_article` and `substack_public_article` are enriched inside their dedicated extraction workflows only when that run reports new or updated documents. They are not in the 6-hour connector enrichment backstop matrix, so missing, failed, or fallback enrichments may not retry automatically when a later extraction run has no changes.
@@ -112,6 +114,14 @@ All GitHub Actions cron expressions are UTC. The Vercel cron in `apps/web/vercel
 | `treasury_press_release` | Treasury press releases | `https://home.treasury.gov/news/press-releases` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `treasury_statement_remark` | Treasury statements and remarks | `https://home.treasury.gov/news/press-releases/statements-remarks` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `sifma_news_item` | SIFMA news | `https://www.sifma.org/news` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered with `SIFMA_PROXY_URL` / `RESIDENTIAL_PROXY_URL` support |
+| `ici_news_item` | Investment Company Institute news releases | `https://www.ici.org/news_%26_opinions/news-releases` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *`; enrichment: `connector-enrichment-6hour.yml` | Covered |
+| `isda_news_item` | ISDA news | `https://www.isda.org/category/news/?subcategories=24` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *`; enrichment: `connector-enrichment-6hour.yml` | Covered |
+| `mfa_news_item` | Managed Funds Association newsroom | `https://www.mfaalts.org/newsroom/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *`; enrichment: `connector-enrichment-6hour.yml` | Covered |
+| `fia_news_item` | FIA news | `https://www.fia.org/news` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *`; enrichment: `connector-enrichment-6hour.yml` | Covered |
+| `aba_news_item` | American Bankers Association press releases | `https://www.aba.com/about-us/press-room/press-releases` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *`; enrichment: `connector-enrichment-6hour.yml` | Covered |
+| `bpi_news_item` | Bank Policy Institute news | `https://bpi.com/news/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *`; enrichment: `connector-enrichment-6hour.yml` | Covered |
+| `icba_news_item` | ICBA news and articles | `https://www.icba.org/newsroom/news-and-articles` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *`; enrichment: `connector-enrichment-6hour.yml` | Covered |
+| `lsta_news_item` | LSTA news and resources | `https://www.lsta.org/news-resources/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *`; enrichment: `connector-enrichment-6hour.yml` | Covered |
 | `congress_crs_product` | Congressional Research Service reports | `https://www.congress.gov/crs-products` | Yes | Yes | `crs-daily.yml`: `30 13 * * *` | Covered |
 | `pcaob_update` | PCAOB updates | `https://pcaobus.org/all-updates-and-news-releases` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
 | `msrb_press_release` | MSRB press releases | `https://www.msrb.org/Press-Releases` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |

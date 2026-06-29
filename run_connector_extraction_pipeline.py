@@ -58,6 +58,17 @@ TRADE_MEDIA_CONNECTORS = {
     "citywire_article",
 }
 
+TRADE_ASSOCIATION_CONNECTORS = {
+    "ici_news_item",
+    "isda_news_item",
+    "mfa_news_item",
+    "fia_news_item",
+    "aba_news_item",
+    "bpi_news_item",
+    "icba_news_item",
+    "lsta_news_item",
+}
+
 SUPPORTED_CONNECTORS = {
     "sec_speech",
     "sec_tm_faq",
@@ -83,6 +94,7 @@ SUPPORTED_CONNECTORS = {
     "wsj_dow_jones",
     "reddit_post",
     *TRADE_MEDIA_CONNECTORS,
+    *TRADE_ASSOCIATION_CONNECTORS,
     *SECURITIES_MARKET_CONNECTORS,
 }
 
@@ -132,6 +144,10 @@ def _default_base_url(connector: str) -> str:
         from trade_media_scraper import TRADE_MEDIA_SOURCES
 
         return str(TRADE_MEDIA_SOURCES.get(connector, {}).get("default_url", "") or "")
+    if connector in TRADE_ASSOCIATION_CONNECTORS:
+        from trade_association_scraper import TRADE_ASSOCIATION_SOURCES
+
+        return str(TRADE_ASSOCIATION_SOURCES.get(connector, {}).get("default_url", "") or "")
     if connector in SECURITIES_MARKET_CONNECTORS:
         from securities_market_sources_scraper import SECURITIES_MARKET_SOURCES
 
@@ -866,6 +882,20 @@ def _discover_connector(
             max_pages=max_pages,
             include_rss=include_rss,
             search_query=str(source_cfg.get("default_search_query", "") or ""),
+        )
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector in TRADE_ASSOCIATION_CONNECTORS:
+        from trade_association_scraper import TRADE_ASSOCIATION_SOURCES, TradeAssociationScraper
+
+        scraper = TradeAssociationScraper()
+        source_cfg = TRADE_ASSOCIATION_SOURCES.get(connector, {})
+        docs = scraper.discover_documents(
+            source_key=connector,
+            base_url=base_url or str(source_cfg.get("default_url", "") or ""),
+            max_pages=max_pages,
+            include_rss=include_rss,
         )
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
@@ -1839,6 +1869,65 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
         return record
 
+    if connector in TRADE_ASSOCIATION_CONNECTORS:
+        from trade_association_scraper import TRADE_ASSOCIATION_SOURCES
+
+        cfg = TRADE_ASSOCIATION_SOURCES.get(connector, {})
+        organization = str(cfg.get("organization", "") or entry.get("organization", "") or "Trade Association").strip()
+        source_label = str(cfg.get("label", "") or entry.get("source_label", "") or organization).strip()
+        extracted = scraper.extract_document(
+            entry,
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_description=entry.get("description", ""),
+            fallback_source_name=source_label,
+        )
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "") or "Trade association extraction failed."))
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or "Trade Association Item"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 40:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=date_text,
+                organization=organization,
+                source_label=source_label,
+                extracted_text=text or str(data.get("description", "") or entry.get("description", "")).strip(),
+            )
+        source_format = str(data.get("source_format", "") or entry.get("source_format", "html")).strip().lower()
+        source_ext = ".pdf" if source_format == "pdf" else ".html"
+        doc_type = str(entry.get("doc_type", "") or cfg.get("doc_type", "") or "News Item").strip() or "News Item"
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization=organization,
+            title=title,
+            speaker=organization,
+            doc_date=_parse_doc_date(date_text),
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=_safe_source_name(src_url, f"{connector}-{idx}", source_ext),
+            source_ext=source_ext,
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=str(cfg.get("tags_csv", "") or entry.get("tags_csv", "") or "trade-association"),
+            source_kind=connector,
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = connector
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["description"] = str(data.get("description", "") or entry.get("description", "")).strip()
+        metadata["source_name"] = source_label
+        metadata["source_format"] = source_format
+        metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        metadata["extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+        return record
+
     if connector == "wsj_dow_jones":
         extracted = scraper.extract_document(
             entry.get("url", "") or entry.get("source_url", ""),
@@ -2146,7 +2235,12 @@ def main() -> int:
         args.include_pdfs = _to_bool(include_pdfs_raw)
 
     if include_rss_raw == "":
-        args.include_rss = args.connector in {"finra_regulatory_notice", "substack_public_article", *TRADE_MEDIA_CONNECTORS}
+        args.include_rss = args.connector in {
+            "finra_regulatory_notice",
+            "substack_public_article",
+            *TRADE_MEDIA_CONNECTORS,
+            *TRADE_ASSOCIATION_CONNECTORS,
+        }
     else:
         args.include_rss = _to_bool(include_rss_raw)
 
