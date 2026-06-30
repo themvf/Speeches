@@ -87,7 +87,7 @@ jobs:
           PY
 
       - name: Enrich Bloomberg Public Feed
-        if: steps.extraction_summary.outputs.changed_count != '0'
+        if: ${{ false }}
         run: |
           set -euo pipefail
           args=(enrich --require-remote-persistence --mode only_missing_or_failed --source-kind bloomberg_public_article --limit "${ENRICH_LIMIT}" --summary-path bloomberg_public_enrich_summary.json)

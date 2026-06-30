@@ -1,8 +1,6 @@
 name: Financial News Enrich (Scheduled)
 
 on:
-  schedule:
-    - cron: "30 9 * * *"
   workflow_dispatch:
     inputs:
       enrich_limit:

@@ -1,8 +1,6 @@
 name: Substack Public Sources Every 3 Hours
 
 on:
-  schedule:
-    - cron: "0 */3 * * *"
   workflow_dispatch:
     inputs:
       keywords:
@@ -94,7 +92,7 @@ jobs:
           PY
 
       - name: Enrich Retained Substack Posts
-        if: steps.extraction_summary.outputs.changed_count != '0'
+        if: ${{ false }}
         run: |
           set -euo pipefail
           python run_financial_news_pipeline.py enrich \

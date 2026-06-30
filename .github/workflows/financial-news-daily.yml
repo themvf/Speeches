@@ -115,7 +115,7 @@ jobs:
           PY
 
       - name: Run Financial News Enrichment
-        if: steps.timegate.outputs.run_now == 'true' && steps.ingest_summary.outputs.processed_count != '' && steps.ingest_summary.outputs.processed_count != '0'
+        if: ${{ false }}
         run: |
           set -euo pipefail
           args=(enrich --require-remote-persistence --doc-ids-from-summary financial_news_ingest_summary.json --summary-path financial_news_enrich_summary.json)

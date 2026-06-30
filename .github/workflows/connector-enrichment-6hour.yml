@@ -1,8 +1,6 @@
 name: Connector Enrichment (6 Hour)
 
 on:
-  schedule:
-    - cron: "30 */6 * * *"
   workflow_dispatch:
     inputs:
       enrich_limit:
@@ -51,10 +49,17 @@ jobs:
           - source_kind: treasury_press_release
           - source_kind: treasury_featured_story
           - source_kind: sec_tm_faq
-          - source_kind: finra_key_topic
           - source_kind: jdsupra_article
           - source_kind: investmentnews_article
           - source_kind: citywire_article
+          - source_kind: therecord_media_article
+          - source_kind: wired_article
+          - source_kind: tripwire_article
+          - source_kind: akamai_blog_article
+          - source_kind: ritholtz_article
+          - source_kind: ft_portfolios_market_commentary
+          - source_kind: liberty_street_economics_article
+          - source_kind: wealth_of_common_sense_article
           - source_kind: bloomberg_public_article
           - source_kind: substack_public_article
           - source_kind: ici_news_item
