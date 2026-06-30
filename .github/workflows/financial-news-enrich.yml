@@ -19,6 +19,14 @@ on:
         description: "Source kind to enrich"
         required: false
         default: "newsapi_article"
+      order:
+        description: "Candidate order before applying enrich_limit"
+        required: false
+        type: choice
+        options:
+          - recent
+          - stored
+        default: recent
       heuristic_only:
         description: "Use heuristic enrichment instead of hosted model enrichment"
         required: false
@@ -56,6 +64,7 @@ jobs:
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
       ENRICH_MODE: ${{ github.event.inputs.mode || 'only_missing_or_failed' }}
       SOURCE_KIND: ${{ github.event.inputs.source_kind || 'newsapi_article' }}
+      ENRICH_ORDER: ${{ github.event.inputs.order || 'recent' }}
       ENRICH_PROVIDER: ${{ github.event.inputs.provider || 'deepseek' }}
       ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
       HEURISTIC_ONLY: ${{ github.event.inputs.heuristic_only || 'false' }}
@@ -77,7 +86,7 @@ jobs:
       - name: Run Financial News Enrichment
         run: |
           set -euo pipefail
-          args=(enrich --require-remote-persistence --source-kind "${SOURCE_KIND}" --mode "${ENRICH_MODE}" --summary-path financial_news_enrich_summary.json)
+          args=(enrich --require-remote-persistence --source-kind "${SOURCE_KIND}" --mode "${ENRICH_MODE}" --order "${ENRICH_ORDER}" --summary-path financial_news_enrich_summary.json)
           if [ -n "${ENRICH_LIMIT}" ]; then
             args+=(--limit "${ENRICH_LIMIT}")
           fi

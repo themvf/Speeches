@@ -1825,6 +1825,14 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             filtered.append(candidate)
         candidates = filtered
 
+    order = str(args.order or "stored").strip().lower()
+    if order == "recent":
+        candidates = sorted(
+            candidates,
+            key=lambda item: _parse_date_text(item.get("date")) or datetime.min,
+            reverse=True,
+        )
+
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
     targets = candidates[:limit] if limit > 0 else []
 
@@ -1917,6 +1925,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         "provider": provider,
         "source_kind": args.source_kind,
         "mode_selection": args.mode,
+        "order": order,
         "requested_doc_ids": dedup_doc_ids,
         "candidate_count": len(candidates),
         "selected_count": len(targets),
@@ -1924,6 +1933,14 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         "enriched_count": enriched_count,
         "fallback_enriched_count": fallback_count,
         "used_models": used_models,
+        "selected_preview": [
+            {
+                "doc_id": str(item.get("doc_id", "") or ""),
+                "date": str(item.get("date", "") or ""),
+                "title": str(item.get("title", "") or "")[:220],
+            }
+            for item in targets[:25]
+        ],
         "dry_run": bool(args.dry_run),
         "rule_summaries_rebuilt": rule_summaries_rebuilt,
     }
@@ -1958,6 +1975,7 @@ def _build_parser() -> argparse.ArgumentParser:
     enrich.add_argument("--doc-id", action="append", default=[])
     enrich.add_argument("--doc-ids-from-summary", default="")
     enrich.add_argument("--limit", type=int, default=None)
+    enrich.add_argument("--order", choices=["stored", "recent"], default="stored")
     enrich.add_argument("--model", default="")
     enrich.add_argument("--provider", choices=["openai", "deepseek"], default=os.getenv("ENRICH_PROVIDER", "openai"))
     enrich.add_argument("--heuristic-only", action="store_true")
