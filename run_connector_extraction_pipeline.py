@@ -2201,6 +2201,18 @@ def _has_item_failures(summary: Dict[str, Any]) -> bool:
     return count > 0 or (isinstance(failed_items, list) and len(failed_items) > 0)
 
 
+def _should_fail_for_item_failures(connector: str, summary: Dict[str, Any]) -> bool:
+    if not _has_item_failures(summary):
+        return False
+    if connector == "substack_public_article":
+        try:
+            processed_count = int(summary.get("processed_count", 0) or 0)
+        except (TypeError, ValueError):
+            processed_count = 0
+        return processed_count <= 0
+    return True
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Connector extraction pipeline")
     parser.add_argument("--connector", required=True, choices=sorted(SUPPORTED_CONNECTORS))
@@ -2259,11 +2271,15 @@ def main() -> int:
         return 1
 
     if _has_item_failures(summary):
-        summary["ok"] = False
-        summary["error"] = f"{summary.get('failed_count', 0)} item-level extraction failure(s)."
-        core._write_summary(getattr(args, "summary_path", ""), summary)
-        print(json.dumps(summary, indent=2, ensure_ascii=False))
-        return 1
+        failure_message = f"{summary.get('failed_count', 0)} item-level extraction failure(s)."
+        if _should_fail_for_item_failures(args.connector, summary):
+            summary["ok"] = False
+            summary["error"] = failure_message
+            core._write_summary(getattr(args, "summary_path", ""), summary)
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
+            return 1
+        summary["partial_failure"] = True
+        summary["warning"] = failure_message
 
     summary["ok"] = True
     print(json.dumps(summary, indent=2, ensure_ascii=False))
