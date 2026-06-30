@@ -12,7 +12,7 @@ on:
         required: false
         default: "newsapi_article"
       model:
-        description: "Optional model override"
+        description: "Ignored while OpenAI enrichment is paused"
         required: false
         default: ""
 
@@ -28,12 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
       SOURCE_KIND: ${{ github.event.inputs.source_kind || 'newsapi_article' }}
-      ENRICH_MODEL: ${{ github.event.inputs.model || '' }}
 
     steps:
       - name: Checkout
@@ -56,9 +54,7 @@ jobs:
           if [ -n "${ENRICH_LIMIT}" ]; then
             args+=(--limit "${ENRICH_LIMIT}")
           fi
-          if [ -n "${ENRICH_MODEL}" ]; then
-            args+=(--model "${ENRICH_MODEL}")
-          fi
+          args+=(--heuristic-only)
           python run_financial_news_pipeline.py "${args[@]}"
 
       - name: Upload Enrichment Summary

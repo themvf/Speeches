@@ -15,12 +15,8 @@ on:
         description: "Maximum retained posts to extract"
         required: false
         default: "60"
-      enrich_limit:
-        description: "Maximum Substack posts to enrich"
-        required: false
-        default: "60"
       model:
-        description: "OpenAI model for relevance and enrichment"
+        description: "OpenAI model for relevance filtering"
         required: false
         default: "gpt-5-mini"
 
@@ -44,7 +40,6 @@ jobs:
       KEYWORDS: ${{ github.event.inputs.keywords || '' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '60' }}
-      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '60' }}
       MODEL: ${{ github.event.inputs.model || 'gpt-5-mini' }}
 
     steps:
@@ -90,18 +85,6 @@ jobs:
               output.write(f"changed_count={changed_count}\n")
           print(f"Substack new or updated documents: {changed_count}")
           PY
-
-      - name: Enrich Retained Substack Posts
-        if: ${{ false }}
-        run: |
-          set -euo pipefail
-          python run_financial_news_pipeline.py enrich \
-            --require-remote-persistence \
-            --mode only_missing_or_failed \
-            --source-kind substack_public_article \
-            --limit "${ENRICH_LIMIT}" \
-            --model "${MODEL}" \
-            --summary-path substack_public_enrich_summary.json
 
       - name: Write Skipped Substack Enrichment Summary
         run: |

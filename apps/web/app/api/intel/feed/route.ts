@@ -69,7 +69,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             insertedCount += result.value;
           }
         }
-        const analysisLimit = Math.max(0, Math.min(10, Number.parseInt(process.env.RSS_AUTO_ANALYSIS_LIMIT || "3", 10) || 3));
+        const analysisLimit = Math.max(0, Math.min(10, Number.parseInt(process.env.RSS_AUTO_ANALYSIS_LIMIT || "0", 10) || 0));
         if (insertedCount > 0 && analysisLimit > 0) {
           await analyzeMissingRssArticles(analysisLimit);
         }

@@ -8,7 +8,7 @@ on:
         required: false
         default: "50"
       model:
-        description: "Optional OpenAI model override"
+        description: "Ignored while OpenAI enrichment is paused"
         required: false
         default: ""
 
@@ -74,11 +74,9 @@ jobs:
           - source_kind: reddit_post
 
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '50' }}
-      ENRICH_MODEL: ${{ github.event.inputs.model || '' }}
 
     steps:
       - name: Checkout
@@ -98,10 +96,7 @@ jobs:
       - name: Enrich ${{ matrix.source_kind }}
         run: |
           set -euo pipefail
-          args=(enrich --require-remote-persistence --mode only_missing_or_failed --source-kind "${{ matrix.source_kind }}" --limit "${ENRICH_LIMIT}" --summary-path "connector_enrichment_${{ matrix.source_kind }}.json")
-          if [ -n "${ENRICH_MODEL}" ]; then
-            args+=(--model "${ENRICH_MODEL}")
-          fi
+          args=(enrich --require-remote-persistence --mode only_missing_or_failed --source-kind "${{ matrix.source_kind }}" --limit "${ENRICH_LIMIT}" --heuristic-only --summary-path "connector_enrichment_${{ matrix.source_kind }}.json")
           python run_financial_news_pipeline.py "${args[@]}"
 
       - name: Upload Enrichment Summary

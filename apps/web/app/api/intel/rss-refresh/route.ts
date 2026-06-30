@@ -65,7 +65,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   }
 
   const allFailed = failedCount > 0 && failedCount === feedResults.length;
-  const analysisLimit = Math.max(0, Math.min(25, Number.parseInt(process.env.RSS_AUTO_ANALYSIS_LIMIT || "5", 10) || 5));
+  const analysisLimit = Math.max(0, Math.min(25, Number.parseInt(process.env.RSS_AUTO_ANALYSIS_LIMIT || "0", 10) || 0));
   const analysis = analysisLimit > 0 && totalInserted > 0
     ? await analyzeMissingRssArticles(analysisLimit)
     : { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };

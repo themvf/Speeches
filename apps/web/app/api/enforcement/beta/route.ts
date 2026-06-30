@@ -88,7 +88,7 @@ const SECTION_TOKEN_RE = /\b(?:\d{1,3}[A-Za-z]?|21C)(?:\([a-z0-9]+\)){0,3}(?:-[0
 const MONEY_RE = /\$[0-9][0-9,]*(?:\.[0-9]+)?(?:\s*(?:million|billion))?/gi;
 const AUTO_ANALYSIS_LIMIT = Math.max(
   0,
-  Math.min(10, Number.parseInt(process.env.ENFORCEMENT_AUTO_ANALYSIS_LIMIT || "3", 10) || 3)
+  Math.min(10, Number.parseInt(process.env.ENFORCEMENT_AUTO_ANALYSIS_LIMIT || "0", 10) || 0)
 );
 
 export interface EnforcementBetaCitation {

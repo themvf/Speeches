@@ -15,15 +15,6 @@ on:
         description: "Override NewsAPI lookback window in days"
         required: false
         default: ""
-      enrich_limit:
-        description: "Max articles to enrich"
-        required: false
-        default: "10"
-      heuristic_only:
-        description: "Skip OpenAI and use heuristic enrichment only"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -38,13 +29,10 @@ jobs:
     timeout-minutes: 45
     env:
       NEWSAPI_API_KEY: ${{ secrets.NEWSAPI_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       INGEST_LIMIT: ${{ github.event.inputs.ingest_limit || '' }}
       LOOKBACK_DAYS_OVERRIDE: ${{ github.event.inputs.lookback_days || '' }}
-      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '' }}
-      HEURISTIC_ONLY: ${{ github.event.inputs.heuristic_only || 'false' }}
 
     steps:
       - name: Checkout
@@ -113,19 +101,6 @@ jobs:
               f.write(f"processed_count={processed_count}\n")
           print(json.dumps(payload, indent=2))
           PY
-
-      - name: Run Financial News Enrichment
-        if: ${{ false }}
-        run: |
-          set -euo pipefail
-          args=(enrich --require-remote-persistence --doc-ids-from-summary financial_news_ingest_summary.json --summary-path financial_news_enrich_summary.json)
-          if [ -n "${ENRICH_LIMIT}" ]; then
-            args+=(--limit "${ENRICH_LIMIT}")
-          fi
-          if [ "${HEURISTIC_ONLY}" = "true" ]; then
-            args+=(--heuristic-only)
-          fi
-          python run_financial_news_pipeline.py "${args[@]}"
 
       - name: Write Skipped Enrichment Summary
         if: steps.timegate.outputs.run_now == 'true'
