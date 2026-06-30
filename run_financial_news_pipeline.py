@@ -1826,10 +1826,24 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         candidates = filtered
 
     order = str(args.order or "stored").strip().lower()
+    future_dated_candidate_count = 0
     if order == "recent":
+        now_cutoff = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=1)
+        future_dated_candidate_count = sum(
+            1
+            for item in candidates
+            if (_parse_date_text(item.get("date")) is not None and _parse_date_text(item.get("date")) > now_cutoff)
+        )
+
+        def recent_rank(item: Dict[str, Any]) -> datetime:
+            parsed = _parse_date_text(item.get("date"))
+            if parsed is None or parsed > now_cutoff:
+                return datetime.min
+            return parsed
+
         candidates = sorted(
             candidates,
-            key=lambda item: _parse_date_text(item.get("date")) or datetime.min,
+            key=recent_rank,
             reverse=True,
         )
 
@@ -1926,6 +1940,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         "source_kind": args.source_kind,
         "mode_selection": args.mode,
         "order": order,
+        "future_dated_candidate_count": future_dated_candidate_count,
         "requested_doc_ids": dedup_doc_ids,
         "candidate_count": len(candidates),
         "selected_count": len(targets),
