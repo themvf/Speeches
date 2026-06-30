@@ -21,12 +21,16 @@ type SourceFilter =
   | "FINRA"
   | "DOJ"
   | "FED"
+  | "CFTC"
   | "TREASURY"
+  | "MARKET_SOURCES"
+  | "CONGRESS"
   | "WSJ"
   | "BLOOMBERG"
   | "SUBSTACK"
   | "NEWSAPI"
   | "SIFMA"
+  | "TRADE_ASSOCIATIONS"
   | "TRADE_MEDIA"
   | "REDDIT";
 
@@ -130,6 +134,9 @@ const FEED_META: Record<string, FeedMeta> = {
   document_sec_enforcement_litigation: { label: "SEC Enforcement", code: "SEC", color: "#ff8aa0" },
   document_sec_administrative_proceeding: { label: "SEC Administrative Proceedings", code: "SEC", color: "#ff8aa0" },
   document_sec_trading_suspension: { label: "SEC Trading Suspensions", code: "SEC", color: "#ff8aa0" },
+  document_sec_press_release_rss: { label: "SEC Press Releases", code: "SEC", color: "#7cc4ff" },
+  document_sec_federal_register: { label: "SEC Federal Register", code: "SEC", color: "#7cc4ff" },
+  document_sec_pcaob_rulemaking: { label: "SEC PCAOB Rulemaking", code: "SEC", color: "#7cc4ff" },
   sec_litigation_releases: { label: "SEC Litigation Releases", code: "SEC", color: "#ff8aa0" },
   sec_administrative_proceedings: { label: "SEC Administrative Proceedings", code: "SEC", color: "#ff8aa0" },
   sec_trading_suspensions: { label: "SEC Trading Suspensions", code: "SEC", color: "#ff8aa0" },
@@ -161,12 +168,27 @@ const FEED_META: Record<string, FeedMeta> = {
   document_substack_public_article: { label: "Substack", code: "SUB", color: "#f26b38" },
   document_newsapi_article: { label: "NewsAPI", code: "NEWS", color: "#69db7c" },
   document_sifma_news_item: { label: "SIFMA", code: "SIFMA", color: "#a5d8ff" },
+  document_ici_news_item: { label: "ICI", code: "ICI", color: "#a5d8ff" },
+  document_isda_news_item: { label: "ISDA", code: "ISDA", color: "#a5d8ff" },
+  document_mfa_news_item: { label: "Managed Funds Association", code: "MFA", color: "#a5d8ff" },
+  document_fia_news_item: { label: "FIA", code: "FIA", color: "#a5d8ff" },
+  document_aba_news_item: { label: "American Bankers Association", code: "ABA", color: "#a5d8ff" },
+  document_bpi_news_item: { label: "Bank Policy Institute", code: "BPI", color: "#a5d8ff" },
+  document_icba_news_item: { label: "ICBA", code: "ICBA", color: "#a5d8ff" },
+  document_lsta_news_item: { label: "LSTA", code: "LSTA", color: "#a5d8ff" },
   document_federal_reserve_speech_testimony: { label: "Federal Reserve", code: "FED", color: "#91a7ff" },
   document_treasury_featured_story: { label: "Treasury", code: "TRE", color: "#ffd43b" },
   document_treasury_press_release: { label: "Treasury", code: "TRE", color: "#ffd43b" },
   document_treasury_statement_remark: { label: "Treasury", code: "TRE", color: "#ffd43b" },
+  document_cftc_press_release: { label: "CFTC", code: "CFTC", color: "#ffd43b" },
+  document_cftc_public_statement_remark: { label: "CFTC", code: "CFTC", color: "#ffd43b" },
+  document_pcaob_update: { label: "PCAOB", code: "PCAOB", color: "#a5d8ff" },
+  document_msrb_press_release: { label: "MSRB", code: "MSRB", color: "#a5d8ff" },
+  document_congress_crs_product: { label: "Congress CRS", code: "CRS", color: "#b88fff" },
   document_sec_tm_faq: { label: "SEC TM FAQ", code: "SEC", color: "#7cc4ff" },
+  document_finra_regulatory_notice: { label: "FINRA Regulatory Notices", code: "FINRA", color: "#77d7a8" },
   document_finra_key_topic: { label: "FINRA Key Topics", code: "FINRA", color: "#77d7a8" },
+  document_finra_awc: { label: "FINRA AWC", code: "FINRA", color: "#77d7a8" },
   document_jdsupra_article: { label: "JD Supra", code: "JDS", color: "#ffa94d" },
   document_investmentnews_article: { label: "InvestmentNews", code: "INV", color: "#66d9e8" },
   document_citywire_article: { label: "Citywire", code: "CITY", color: "#d0bfff" },
@@ -180,12 +202,16 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "FINRA", label: "FINRA" },
   { key: "DOJ", label: "DOJ" },
   { key: "FED", label: "Federal Reserve" },
+  { key: "CFTC", label: "CFTC" },
   { key: "TREASURY", label: "Treasury" },
+  { key: "MARKET_SOURCES", label: "Market Sources" },
+  { key: "CONGRESS", label: "Congress" },
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
   { key: "SUBSTACK", label: "Substack" },
   { key: "NEWSAPI", label: "NewsAPI" },
   { key: "SIFMA", label: "SIFMA" },
+  { key: "TRADE_ASSOCIATIONS", label: "Trade Associations" },
   { key: "TRADE_MEDIA", label: "Trade Media" },
   { key: "REDDIT", label: "Reddit" },
 ];
@@ -363,8 +389,26 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   if (sourceFilter === "FED") {
     return sourceKind.startsWith("federal_reserve_") || text.includes("federal reserve") || text.includes("federalreserve.gov");
   }
+  if (sourceFilter === "CFTC") {
+    return sourceKind.startsWith("cftc_") || text.includes("cftc.gov") || text.includes("commodity futures trading commission");
+  }
   if (sourceFilter === "TREASURY") {
     return sourceKind.startsWith("treasury_") || text.includes("treasury.gov") || text.includes("treasury");
+  }
+  if (sourceFilter === "MARKET_SOURCES") {
+    return (
+      sourceKind === "sec_press_release_rss" ||
+      sourceKind === "sec_federal_register" ||
+      sourceKind === "sec_pcaob_rulemaking" ||
+      sourceKind === "pcaob_update" ||
+      sourceKind === "msrb_press_release" ||
+      text.includes("pcaobus.org") ||
+      text.includes("msrb.org") ||
+      text.includes("federalregister.gov")
+    );
+  }
+  if (sourceFilter === "CONGRESS") {
+    return sourceKind === "congress_crs_product" || text.includes("congress.gov") || text.includes("crs product");
   }
   if (sourceFilter === "WSJ") {
     return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || sourceKind === "wsj_dow_jones" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
@@ -380,6 +424,26 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "SIFMA") {
     return sourceKind === "sifma_news_item" || text.includes("sifma");
+  }
+  if (sourceFilter === "TRADE_ASSOCIATIONS") {
+    return (
+      sourceKind === "ici_news_item" ||
+      sourceKind === "isda_news_item" ||
+      sourceKind === "mfa_news_item" ||
+      sourceKind === "fia_news_item" ||
+      sourceKind === "aba_news_item" ||
+      sourceKind === "bpi_news_item" ||
+      sourceKind === "icba_news_item" ||
+      sourceKind === "lsta_news_item" ||
+      text.includes("ici.org") ||
+      text.includes("isda.org") ||
+      text.includes("mfaalts.org") ||
+      text.includes("fia.org") ||
+      text.includes("aba.com") ||
+      text.includes("bpi.com") ||
+      text.includes("icba.org") ||
+      text.includes("lsta.org")
+    );
   }
   if (sourceFilter === "TRADE_MEDIA") {
     return sourceKind === "jdsupra_article" || sourceKind === "investmentnews_article" || sourceKind === "citywire_article";

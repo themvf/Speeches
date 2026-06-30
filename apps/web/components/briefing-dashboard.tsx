@@ -109,7 +109,50 @@ function toggleValue(values: string[], value: string): string[] {
 }
 
 function sourceKindLabel(value: string): string {
-  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+  const labels: Record<string, string> = {
+    sec_speech: "SEC Speeches & Statements",
+    sec_tm_faq: "SEC Trading & Markets FAQ",
+    sec_enforcement_litigation: "SEC Enforcement Litigation",
+    sec_press_release_rss: "SEC Press Releases",
+    sec_administrative_proceeding: "SEC Administrative Proceedings",
+    sec_trading_suspension: "SEC Trading Suspensions",
+    sec_federal_register: "SEC Federal Register",
+    sec_pcaob_rulemaking: "SEC PCAOB Rulemaking",
+    finra_regulatory_notice: "FINRA Regulatory Notices",
+    finra_comment_letter: "FINRA Comment Letters",
+    finra_key_topic: "FINRA Key Topics",
+    finra_awc: "FINRA AWC Disciplinary Actions",
+    doj_usao_press_release: "DOJ USAO Press Releases",
+    federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
+    cftc_press_release: "CFTC Press Releases",
+    cftc_public_statement_remark: "CFTC Public Statements & Remarks",
+    pcaob_update: "PCAOB Updates",
+    msrb_press_release: "MSRB Press Releases",
+    treasury_featured_story: "Treasury Featured Stories",
+    treasury_press_release: "Treasury Press Releases",
+    treasury_statement_remark: "Treasury Statements & Remarks",
+    sifma_news_item: "SIFMA",
+    ici_news_item: "ICI",
+    isda_news_item: "ISDA",
+    mfa_news_item: "Managed Funds Association",
+    fia_news_item: "FIA",
+    aba_news_item: "American Bankers Association",
+    bpi_news_item: "Bank Policy Institute",
+    icba_news_item: "ICBA",
+    lsta_news_item: "LSTA",
+    bloomberg_public_article: "Bloomberg",
+    bloomberg_apify_article: "Bloomberg",
+    substack_public_article: "Substack",
+    jdsupra_article: "JD Supra",
+    investmentnews_article: "InvestmentNews",
+    citywire_article: "Citywire",
+    congress_crs_product: "Congress CRS Products",
+    wsj_dow_jones: "WSJ / Dow Jones",
+    reddit_post: "Reddit",
+    newsapi_article: "News",
+    uploaded: "Uploaded"
+  };
+  return labels[value] || value.replace(/[_-]+/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
 function MultiSelectGroup({

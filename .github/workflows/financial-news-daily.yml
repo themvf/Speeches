@@ -71,16 +71,9 @@ jobs:
           now = datetime.now(ZoneInfo("America/New_York"))
           utc_now = datetime.now(timezone.utc)
           event_name = os.getenv("GITHUB_EVENT_NAME", "")
-          # Match each cron trigger precisely by UTC hour to avoid DST double-fires:
-          #   0 8 * * *   → utc_now.hour == 8
-          #   17 11 * * * → utc_now.hour == 11 (EDT coverage, ~7:17 AM ET)
-          #   17 12 * * * → utc_now.hour == 12 (EST coverage, ~7:17 AM ET)
-          run_now = (
-              event_name == "workflow_dispatch"
-              or utc_now.hour == 8
-              or utc_now.hour == 11
-              or utc_now.hour == 12
-          )
+          # GitHub Actions scheduled workflows can start late. Trust the event
+          # type instead of checking the runner's wall-clock hour.
+          run_now = event_name in {"schedule", "workflow_dispatch"}
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"run_now={'true' if run_now else 'false'}\n")

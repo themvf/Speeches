@@ -135,17 +135,41 @@ interface ExtractFormState {
     | "sec_speech"
     | "sec_tm_faq"
     | "sec_enforcement_litigation"
+    | "sec_press_release_rss"
+    | "sec_administrative_proceeding"
+    | "sec_trading_suspension"
+    | "sec_federal_register"
+    | "sec_pcaob_rulemaking"
     | "finra_regulatory_notice"
     | "finra_comment_letter"
     | "finra_key_topic"
+    | "finra_awc"
     | "doj_usao_press_release"
     | "federal_reserve_speech_testimony"
     | "cftc_press_release"
     | "cftc_public_statement_remark"
+    | "pcaob_update"
+    | "msrb_press_release"
+    | "treasury_featured_story"
+    | "treasury_press_release"
+    | "treasury_statement_remark"
+    | "sifma_news_item"
+    | "ici_news_item"
+    | "isda_news_item"
+    | "mfa_news_item"
+    | "fia_news_item"
+    | "aba_news_item"
+    | "bpi_news_item"
+    | "icba_news_item"
+    | "lsta_news_item"
+    | "bloomberg_public_article"
+    | "substack_public_article"
     | "jdsupra_article"
     | "investmentnews_article"
     | "citywire_article"
-    | "congress_crs_product";
+    | "congress_crs_product"
+    | "wsj_dow_jones"
+    | "reddit_post";
   selection: "new_or_updated" | "all";
   limit: number;
   max_pages: number;
@@ -270,17 +294,42 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   sec_speech: "SEC Speeches & Statements",
   sec_tm_faq: "SEC Trading & Markets FAQ",
   sec_enforcement_litigation: "SEC Enforcement Litigation",
+  sec_press_release_rss: "SEC Press Releases",
+  sec_administrative_proceeding: "SEC Administrative Proceedings",
+  sec_trading_suspension: "SEC Trading Suspensions",
+  sec_federal_register: "SEC Federal Register",
+  sec_pcaob_rulemaking: "SEC PCAOB Rulemaking",
   finra_regulatory_notice: "FINRA Regulatory Notices",
   finra_comment_letter: "FINRA Comment Letters",
   finra_key_topic: "FINRA Key Topics",
+  finra_awc: "FINRA AWC Disciplinary Actions",
   doj_usao_press_release: "DOJ USAO Press Releases",
   federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
   cftc_press_release: "CFTC Press Releases",
   cftc_public_statement_remark: "CFTC Public Statements & Remarks",
+  pcaob_update: "PCAOB Updates",
+  msrb_press_release: "MSRB Press Releases",
+  treasury_featured_story: "Treasury Featured Stories",
+  treasury_press_release: "Treasury Press Releases",
+  treasury_statement_remark: "Treasury Statements & Remarks",
+  sifma_news_item: "SIFMA",
+  ici_news_item: "ICI",
+  isda_news_item: "ISDA",
+  mfa_news_item: "Managed Funds Association",
+  fia_news_item: "FIA",
+  aba_news_item: "American Bankers Association",
+  bpi_news_item: "Bank Policy Institute",
+  icba_news_item: "ICBA",
+  lsta_news_item: "LSTA",
+  bloomberg_public_article: "Bloomberg",
+  bloomberg_apify_article: "Bloomberg",
+  substack_public_article: "Substack",
   jdsupra_article: "JD Supra",
   investmentnews_article: "InvestmentNews",
   citywire_article: "Citywire",
   congress_crs_product: "Congress CRS Products",
+  wsj_dow_jones: "WSJ / Dow Jones",
+  reddit_post: "Reddit",
   newsapi_article: "News",
   uploaded: "Uploaded"
 };
@@ -305,17 +354,42 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   sec_speech: "Speech",
   sec_tm_faq: "FAQ",
   sec_enforcement_litigation: "Litigation Release",
+  sec_press_release_rss: "Press Release",
+  sec_administrative_proceeding: "Administrative Proceeding",
+  sec_trading_suspension: "Trading Suspension",
+  sec_federal_register: "Federal Register Notice",
+  sec_pcaob_rulemaking: "Rulemaking",
   finra_regulatory_notice: "Regulatory Notice",
   finra_comment_letter: "Comment Letter",
   finra_key_topic: "Key Topic",
+  finra_awc: "Disciplinary Action",
   doj_usao_press_release: "Press Release",
   federal_reserve_speech_testimony: "Testimony",
   cftc_press_release: "Press Release",
   cftc_public_statement_remark: "Statement",
+  pcaob_update: "Update",
+  msrb_press_release: "Press Release",
+  treasury_featured_story: "Featured Story",
+  treasury_press_release: "Press Release",
+  treasury_statement_remark: "Statement",
+  sifma_news_item: "News Item",
+  ici_news_item: "News Release",
+  isda_news_item: "News Item",
+  mfa_news_item: "News Item",
+  fia_news_item: "News Item",
+  aba_news_item: "Press Release",
+  bpi_news_item: "News Item",
+  icba_news_item: "News Item",
+  lsta_news_item: "News Item",
+  bloomberg_public_article: "Article",
+  bloomberg_apify_article: "Article",
+  substack_public_article: "Article",
   jdsupra_article: "Article",
   investmentnews_article: "Article",
   citywire_article: "Article",
   congress_crs_product: "CRS Product",
+  wsj_dow_jones: "Article",
+  reddit_post: "Post",
   newsapi_article: "News Article",
   uploaded: "Uploaded Document"
 };
@@ -1453,17 +1527,41 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="sec_speech">SEC Speeches &amp; Statements</option>
                   <option value="sec_enforcement_litigation">SEC Litigation Releases</option>
                   <option value="sec_tm_faq">SEC Trading & Markets FAQ</option>
+                  <option value="sec_press_release_rss">SEC Press Releases</option>
+                  <option value="sec_administrative_proceeding">SEC Administrative Proceedings</option>
+                  <option value="sec_trading_suspension">SEC Trading Suspensions</option>
+                  <option value="sec_federal_register">SEC Federal Register</option>
+                  <option value="sec_pcaob_rulemaking">SEC PCAOB Rulemaking</option>
                   <option value="finra_regulatory_notice">FINRA Regulatory Notices</option>
                   <option value="finra_comment_letter">FINRA Comment Letters (Rule URL)</option>
                   <option value="finra_key_topic">FINRA Key Topics</option>
+                  <option value="finra_awc">FINRA AWC Disciplinary Actions</option>
                   <option value="doj_usao_press_release">DOJ USAO Press Releases</option>
                   <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
                   <option value="cftc_press_release">CFTC Press Releases</option>
                   <option value="cftc_public_statement_remark">CFTC Public Statements &amp; Remarks</option>
+                  <option value="pcaob_update">PCAOB Updates</option>
+                  <option value="msrb_press_release">MSRB Press Releases</option>
+                  <option value="treasury_featured_story">Treasury Featured Stories</option>
+                  <option value="treasury_press_release">Treasury Press Releases</option>
+                  <option value="treasury_statement_remark">Treasury Statements &amp; Remarks</option>
+                  <option value="sifma_news_item">SIFMA News</option>
+                  <option value="ici_news_item">ICI News</option>
+                  <option value="isda_news_item">ISDA News</option>
+                  <option value="mfa_news_item">Managed Funds Association News</option>
+                  <option value="fia_news_item">FIA News</option>
+                  <option value="aba_news_item">American Bankers Association Press Releases</option>
+                  <option value="bpi_news_item">Bank Policy Institute News</option>
+                  <option value="icba_news_item">ICBA News</option>
+                  <option value="lsta_news_item">LSTA News</option>
+                  <option value="bloomberg_public_article">Bloomberg Article</option>
+                  <option value="substack_public_article">Substack Article</option>
                   <option value="jdsupra_article">JD Supra Articles</option>
                   <option value="investmentnews_article">InvestmentNews Articles</option>
                   <option value="citywire_article">Citywire Articles</option>
                   <option value="congress_crs_product">Congress CRS Products</option>
+                  <option value="wsj_dow_jones">WSJ / Dow Jones RSS</option>
+                  <option value="reddit_post">Reddit Posts</option>
                 </select>
                 <select
                   className="form-control px-2 py-1.5"
