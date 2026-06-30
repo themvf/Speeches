@@ -9,7 +9,6 @@ const SOURCE_KIND_TO_ORG: Record<string, string> = {
   sec_tm_faq: "sec",
   sec_enforcement_litigation: "sec",
   finra_regulatory_notice: "finra",
-  finra_key_topic: "finra",
   finra_comment_letter: "finra",
   finra_awc: "finra",
   doj_usao_press_release: "doj",
@@ -31,6 +30,14 @@ const SOURCE_KIND_TO_ORG: Record<string, string> = {
   jdsupra_article: "trade_media",
   investmentnews_article: "trade_media",
   citywire_article: "trade_media",
+  therecord_media_article: "trade_media",
+  wired_article: "trade_media",
+  tripwire_article: "trade_media",
+  akamai_blog_article: "trade_media",
+  ritholtz_article: "trade_media",
+  ft_portfolios_market_commentary: "trade_media",
+  liberty_street_economics_article: "trade_media",
+  wealth_of_common_sense_article: "trade_media",
   congress_crs_product: "congress",
 };
 

@@ -142,7 +142,6 @@ interface ExtractFormState {
     | "sec_pcaob_rulemaking"
     | "finra_regulatory_notice"
     | "finra_comment_letter"
-    | "finra_key_topic"
     | "finra_awc"
     | "doj_usao_press_release"
     | "federal_reserve_speech_testimony"
@@ -167,6 +166,14 @@ interface ExtractFormState {
     | "jdsupra_article"
     | "investmentnews_article"
     | "citywire_article"
+    | "therecord_media_article"
+    | "wired_article"
+    | "tripwire_article"
+    | "akamai_blog_article"
+    | "ritholtz_article"
+    | "ft_portfolios_market_commentary"
+    | "liberty_street_economics_article"
+    | "wealth_of_common_sense_article"
     | "congress_crs_product"
     | "wsj_dow_jones"
     | "reddit_post";
@@ -301,7 +308,6 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   sec_pcaob_rulemaking: "SEC PCAOB Rulemaking",
   finra_regulatory_notice: "FINRA Regulatory Notices",
   finra_comment_letter: "FINRA Comment Letters",
-  finra_key_topic: "FINRA Key Topics",
   finra_awc: "FINRA AWC Disciplinary Actions",
   doj_usao_press_release: "DOJ USAO Press Releases",
   federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
@@ -327,6 +333,14 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   jdsupra_article: "JD Supra",
   investmentnews_article: "InvestmentNews",
   citywire_article: "Citywire",
+  therecord_media_article: "The Record",
+  wired_article: "WIRED",
+  tripwire_article: "Tripwire",
+  akamai_blog_article: "Akamai Blog",
+  ritholtz_article: "The Big Picture",
+  ft_portfolios_market_commentary: "First Trust Market Commentary",
+  liberty_street_economics_article: "Liberty Street Economics",
+  wealth_of_common_sense_article: "A Wealth of Common Sense",
   congress_crs_product: "Congress CRS Products",
   wsj_dow_jones: "WSJ / Dow Jones",
   reddit_post: "Reddit",
@@ -361,7 +375,6 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   sec_pcaob_rulemaking: "Rulemaking",
   finra_regulatory_notice: "Regulatory Notice",
   finra_comment_letter: "Comment Letter",
-  finra_key_topic: "Key Topic",
   finra_awc: "Disciplinary Action",
   doj_usao_press_release: "Press Release",
   federal_reserve_speech_testimony: "Testimony",
@@ -387,6 +400,14 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   jdsupra_article: "Article",
   investmentnews_article: "Article",
   citywire_article: "Article",
+  therecord_media_article: "Article",
+  wired_article: "Article",
+  tripwire_article: "Article",
+  akamai_blog_article: "Article",
+  ritholtz_article: "Commentary",
+  ft_portfolios_market_commentary: "Market Commentary",
+  liberty_street_economics_article: "Economic Research",
+  wealth_of_common_sense_article: "Commentary",
   congress_crs_product: "CRS Product",
   wsj_dow_jones: "Article",
   reddit_post: "Post",
@@ -1534,7 +1555,6 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="sec_pcaob_rulemaking">SEC PCAOB Rulemaking</option>
                   <option value="finra_regulatory_notice">FINRA Regulatory Notices</option>
                   <option value="finra_comment_letter">FINRA Comment Letters (Rule URL)</option>
-                  <option value="finra_key_topic">FINRA Key Topics</option>
                   <option value="finra_awc">FINRA AWC Disciplinary Actions</option>
                   <option value="doj_usao_press_release">DOJ USAO Press Releases</option>
                   <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
@@ -1559,6 +1579,14 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="jdsupra_article">JD Supra Articles</option>
                   <option value="investmentnews_article">InvestmentNews Articles</option>
                   <option value="citywire_article">Citywire Articles</option>
+                  <option value="therecord_media_article">The Record Articles</option>
+                  <option value="wired_article">WIRED Articles</option>
+                  <option value="tripwire_article">Tripwire Articles</option>
+                  <option value="akamai_blog_article">Akamai Blog Articles</option>
+                  <option value="ritholtz_article">The Big Picture Articles</option>
+                  <option value="ft_portfolios_market_commentary">First Trust Market Commentary</option>
+                  <option value="liberty_street_economics_article">Liberty Street Economics</option>
+                  <option value="wealth_of_common_sense_article">A Wealth of Common Sense</option>
                   <option value="congress_crs_product">Congress CRS Products</option>
                   <option value="wsj_dow_jones">WSJ / Dow Jones RSS</option>
                   <option value="reddit_post">Reddit Posts</option>

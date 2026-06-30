@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-03-04T17:28:41Z",
+  "updated_at": "2026-06-30T00:00:00Z",
   "query": "(\"securities fraud\" OR \"wire fraud\" OR \"market manipulation\" OR \"insider trading\" OR \"ponzi\" OR \"crypto enforcement\" OR \"stablecoin regulation\" OR \"money laundering\" OR AML OR \"Generative AI\" OR \"Agentic AI\" OR \"private credit\" OR \"investors\") OR (SEC OR DOJ OR CFTC OR Treasury OR FinCEN OR Congress)",
   "lookback_days": 4,
   "max_pages": 6,
@@ -7,7 +7,7 @@
   "target_count": 100,
   "sort_by": "publishedAt",
   "organization_label": "Financial News",
-  "domains": "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com",
+  "domains": "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com,therecord.media,wired.com,tripwire.com,akamai.com,ritholtz.com,ftportfolios.com,libertystreeteconomics.newyorkfed.org,awealthofcommonsense.com",
   "exclude_domains": "",
   "tags_csv": "news,financial-regulation,fraud,crypto,securities",
   "reddit": {

@@ -220,6 +220,38 @@ export const DEFAULT_RSS_FEEDS: Record<string, { label: string; feedUrl: string 
     label: "Bradley Eye on Enforcement",
     feedUrl: "https://www.eyeonenforcement.com/feed/",
   },
+  the_record: {
+    label: "The Record",
+    feedUrl: "https://therecord.media/feed/",
+  },
+  wired_security: {
+    label: "WIRED Security",
+    feedUrl: "https://www.wired.com/feed/category/security/latest/rss",
+  },
+  tripwire_state_of_security: {
+    label: "Tripwire State of Security",
+    feedUrl: "https://www.tripwire.com/state-of-security/feed",
+  },
+  akamai_blog: {
+    label: "Akamai Blog",
+    feedUrl: "https://www.akamai.com/blog/rss.xml",
+  },
+  ritholtz_big_picture: {
+    label: "The Big Picture",
+    feedUrl: "https://ritholtz.com/feed/",
+  },
+  ft_portfolios_market_commentary: {
+    label: "First Trust Market Commentary",
+    feedUrl: "https://www.ftportfolios.com/Common/Rss/MarketCommentaryBlogFeed.aspx",
+  },
+  liberty_street_economics: {
+    label: "Liberty Street Economics",
+    feedUrl: "https://libertystreeteconomics.newyorkfed.org/feed/",
+  },
+  wealth_of_common_sense: {
+    label: "A Wealth of Common Sense",
+    feedUrl: "https://awealthofcommonsense.com/feed/",
+  },
 };
 
 function decodeEntities(text: string): string {

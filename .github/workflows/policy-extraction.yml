@@ -14,7 +14,6 @@ on:
           - finra_awc
           - finra_regulatory_notice
           - finra_comment_letter
-          - finra_key_topic
           - doj_usao_press_release
           - federal_reserve_speech_testimony
           - cftc_press_release
@@ -34,6 +33,14 @@ on:
           - jdsupra_article
           - investmentnews_article
           - citywire_article
+          - therecord_media_article
+          - wired_article
+          - tripwire_article
+          - akamai_blog_article
+          - ritholtz_article
+          - ft_portfolios_market_commentary
+          - liberty_street_economics_article
+          - wealth_of_common_sense_article
           - ici_news_item
           - isda_news_item
           - mfa_news_item

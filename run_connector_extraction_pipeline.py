@@ -18,7 +18,6 @@ SEC_TM_FAQ_DEFAULT_URL = "https://www.sec.gov/rules-regulations/staff-guidance/t
 SEC_LIT_DEFAULT_URL = "https://www.sec.gov/enforcement-litigation/litigation-releases"
 SEC_SPEECH_DEFAULT_URL = "https://www.sec.gov/newsroom/speeches-statements"
 FINRA_NOTICE_DEFAULT_URL = "https://www.finra.org/rules-guidance/notices"
-FINRA_TOPIC_DEFAULT_URL = "https://www.finra.org/rules-guidance/key-topics"
 FINRA_AWC_DEFAULT_URL = "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions"
 DOJ_DEFAULT_URL = "https://www.justice.gov/usao/pressreleases"
 FED_DEFAULT_URL = "https://www.federalreserve.gov/newsevents/speeches-testimony.htm"
@@ -56,6 +55,14 @@ TRADE_MEDIA_CONNECTORS = {
     "jdsupra_article",
     "investmentnews_article",
     "citywire_article",
+    "therecord_media_article",
+    "wired_article",
+    "tripwire_article",
+    "akamai_blog_article",
+    "ritholtz_article",
+    "ft_portfolios_market_commentary",
+    "liberty_street_economics_article",
+    "wealth_of_common_sense_article",
 }
 
 TRADE_ASSOCIATION_CONNECTORS = {
@@ -75,7 +82,6 @@ SUPPORTED_CONNECTORS = {
     "sec_enforcement_litigation",
     "finra_regulatory_notice",
     "finra_comment_letter",
-    "finra_key_topic",
     "finra_awc",
     "doj_usao_press_release",
     "federal_reserve_speech_testimony",
@@ -112,8 +118,6 @@ def _default_base_url(connector: str) -> str:
         return ""
     if connector == "finra_awc":
         return FINRA_AWC_DEFAULT_URL
-    if connector == "finra_key_topic":
-        return FINRA_TOPIC_DEFAULT_URL
     if connector == "doj_usao_press_release":
         return DOJ_DEFAULT_URL
     if connector == "federal_reserve_speech_testimony":
@@ -796,13 +800,6 @@ def _discover_connector(
         docs = scraper.discover_documents(notice_url=base_url, include_pdfs=include_pdfs)
         return scraper, docs, {}
 
-    if connector == "finra_key_topic":
-        from finra_key_topics_scraper import FINRAKeyTopicsScraper
-
-        scraper = FINRAKeyTopicsScraper()
-        docs = scraper.discover_documents(index_url=base_url)
-        return scraper, docs, {}
-
     if connector == "doj_usao_press_release":
         from doj_usao_press_release_scraper import DOJUSAOPressReleaseScraper
 
@@ -1259,50 +1256,6 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["commenter_org"] = commenter_org
         metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
         metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
-        return record
-
-    if connector == "finra_key_topic":
-        extracted = scraper.extract_document(
-            entry.get("url", ""),
-            fallback_title=entry.get("topic_name", "") or entry.get("title", ""),
-        )
-        data = extracted.get("data", {})
-        text = str(data.get("full_text", "") or "").strip()
-        if len(text.split()) < 20:
-            print("WARNING: Extracted text appears too short; retaining record.", file=sys.stderr)
-        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
-        source_name = _safe_source_name(src_url, f"finra-key-topic-{idx}", ".html")
-
-        record = core._create_uploaded_document_record(
-            text=text,
-            organization="FINRA",
-            title=str(data.get("topic_name", "") or entry.get("topic_name", "") or entry.get("title", "")).strip(),
-            speaker="FINRA",
-            doc_date="",
-            doc_type="Key Topic",
-            source_url=src_url,
-            source_filename=source_name,
-            source_ext=".html",
-            source_local_path="",
-            source_gcs_path="",
-            tags_csv="finra,key-topic,rule-guidance,taxonomy",
-            source_kind="finra_key_topic",
-        )
-        metadata = record.setdefault("metadata", {})
-        metadata["source_family"] = "finra_key_topic"
-        metadata["source_index_url"] = base_url
-        metadata["topic_name"] = str(data.get("topic_name", "") or entry.get("topic_name", "")).strip()
-        metadata["topic_slug"] = str(data.get("topic_slug", "") or entry.get("topic_slug", "")).strip().lower()
-        metadata["section_names"] = data.get("section_names", []) if isinstance(data.get("section_names", []), list) else []
-        metadata["overview_text"] = str(data.get("overview_text", "") or "").strip()
-        metadata["ogc_contacts"] = data.get("ogc_contacts", []) if isinstance(data.get("ogc_contacts", []), list) else []
-        metadata["linked_notices"] = data.get("linked_notices", []) if isinstance(data.get("linked_notices", []), list) else []
-        metadata["linked_guidance"] = data.get("linked_guidance", []) if isinstance(data.get("linked_guidance", []), list) else []
-        metadata["linked_rules"] = data.get("linked_rules", []) if isinstance(data.get("linked_rules", []), list) else []
-        metadata["linked_news"] = data.get("linked_news", []) if isinstance(data.get("linked_news", []), list) else []
-        metadata["linked_investor_education"] = data.get("linked_investor_education", []) if isinstance(data.get("linked_investor_education", []), list) else []
-        metadata["linked_resources"] = data.get("linked_resources", []) if isinstance(data.get("linked_resources", []), list) else []
-        metadata["section_links"] = data.get("section_links", {}) if isinstance(data.get("section_links", {}), dict) else {}
         return record
 
     if connector == "doj_usao_press_release":

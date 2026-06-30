@@ -36,9 +36,6 @@ jobs:
           - connector: sec_tm_faq
             extraction_limit: "25"
             max_pages: "1"
-          - connector: finra_key_topic
-            extraction_limit: "50"
-            max_pages: "1"
           - connector: jdsupra_article
             extraction_limit: "25"
             max_pages: "3"
@@ -46,6 +43,30 @@ jobs:
             extraction_limit: "25"
             max_pages: "3"
           - connector: citywire_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: therecord_media_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: wired_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: tripwire_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: akamai_blog_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: ritholtz_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: ft_portfolios_market_commentary
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: liberty_street_economics_article
+            extraction_limit: "25"
+            max_pages: "3"
+          - connector: wealth_of_common_sense_article
             extraction_limit: "25"
             max_pages: "3"
           - connector: ici_news_item

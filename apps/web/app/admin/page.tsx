@@ -96,7 +96,6 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "sec_tm_faq", label: "SEC TM FAQ" },
       { value: "sec_enforcement_litigation", label: "SEC Enforcement Litigation" },
       { value: "finra_regulatory_notice", label: "FINRA Regulatory Notice" },
-      { value: "finra_key_topic", label: "FINRA Key Topic" },
       { value: "finra_comment_letter", label: "FINRA Rule Comment Letter" },
       { value: "finra_awc", label: "FINRA AWC Disciplinary Actions" },
       { value: "doj_usao_press_release", label: "DOJ USAO Press Release" },
@@ -129,6 +128,14 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "jdsupra_article", label: "Trade Media: JD Supra" },
       { value: "investmentnews_article", label: "Trade Media: InvestmentNews" },
       { value: "citywire_article", label: "Trade Media: Citywire" },
+      { value: "therecord_media_article", label: "Trade Media: The Record" },
+      { value: "wired_article", label: "Trade Media: WIRED" },
+      { value: "tripwire_article", label: "Trade Media: Tripwire" },
+      { value: "akamai_blog_article", label: "Trade Media: Akamai Blog" },
+      { value: "ritholtz_article", label: "Trade Media: The Big Picture" },
+      { value: "ft_portfolios_market_commentary", label: "Trade Media: First Trust Market Commentary" },
+      { value: "liberty_street_economics_article", label: "Trade Media: Liberty Street Economics" },
+      { value: "wealth_of_common_sense_article", label: "Trade Media: A Wealth of Common Sense" },
       { value: "wsj_dow_jones", label: "WSJ / Dow Jones RSS" },
       { value: "reddit_post", label: "Reddit Post" },
     ],
@@ -1926,7 +1933,7 @@ function DocumentLibrarySection() {
 /* ─── Manual Document Upload ───────────────────────────────────────── */
 const SOURCE_KIND_OPTIONS = [
   "custom_document", "sec_speech", "sec_tm_faq", "sec_enforcement_litigation",
-  "finra_regulatory_notice", "finra_key_topic", "finra_comment_letter", "finra_awc",
+  "finra_regulatory_notice", "finra_comment_letter", "finra_awc",
   "doj_usao_press_release", "federal_reserve_speech_testimony", "cftc_press_release",
   "cftc_public_statement_remark", "sec_press_release_rss", "sec_administrative_proceeding",
   "sec_trading_suspension", "sec_federal_register", "sec_pcaob_rulemaking", "pcaob_update",
@@ -1934,7 +1941,10 @@ const SOURCE_KIND_OPTIONS = [
   "sifma_news_item", "ici_news_item", "isda_news_item", "mfa_news_item", "fia_news_item",
   "aba_news_item", "bpi_news_item", "icba_news_item", "lsta_news_item", "congress_crs_product",
   "bloomberg_public_article", "substack_public_article", "jdsupra_article", "investmentnews_article",
-  "citywire_article", "wsj_dow_jones", "reddit_post", "newsapi_article",
+  "citywire_article", "therecord_media_article", "wired_article", "tripwire_article",
+  "akamai_blog_article", "ritholtz_article", "ft_portfolios_market_commentary",
+  "liberty_street_economics_article", "wealth_of_common_sense_article", "wsj_dow_jones",
+  "reddit_post", "newsapi_article",
 ];
 
 function ManualDocumentUploadSection() {

@@ -187,11 +187,18 @@ const FEED_META: Record<string, FeedMeta> = {
   document_congress_crs_product: { label: "Congress CRS", code: "CRS", color: "#b88fff" },
   document_sec_tm_faq: { label: "SEC TM FAQ", code: "SEC", color: "#7cc4ff" },
   document_finra_regulatory_notice: { label: "FINRA Regulatory Notices", code: "FINRA", color: "#77d7a8" },
-  document_finra_key_topic: { label: "FINRA Key Topics", code: "FINRA", color: "#77d7a8" },
   document_finra_awc: { label: "FINRA AWC", code: "FINRA", color: "#77d7a8" },
   document_jdsupra_article: { label: "JD Supra", code: "JDS", color: "#ffa94d" },
   document_investmentnews_article: { label: "InvestmentNews", code: "INV", color: "#66d9e8" },
   document_citywire_article: { label: "Citywire", code: "CITY", color: "#d0bfff" },
+  document_therecord_media_article: { label: "The Record", code: "REC", color: "#ff922b" },
+  document_wired_article: { label: "WIRED", code: "WRD", color: "#f783ac" },
+  document_tripwire_article: { label: "Tripwire", code: "TRP", color: "#69db7c" },
+  document_akamai_blog_article: { label: "Akamai Blog", code: "AKM", color: "#74c0fc" },
+  document_ritholtz_article: { label: "The Big Picture", code: "RIT", color: "#ffd43b" },
+  document_ft_portfolios_market_commentary: { label: "First Trust", code: "FT", color: "#b197fc" },
+  document_liberty_street_economics_article: { label: "Liberty Street Economics", code: "LSE", color: "#91a7ff" },
+  document_wealth_of_common_sense_article: { label: "A Wealth of Common Sense", code: "AWC", color: "#ffc078" },
   document_wsj_dow_jones: { label: "WSJ / Dow Jones", code: "WSJ", color: "#63a8ff" },
   document_reddit_post: { label: "Reddit", code: "RDDT", color: "#ff922b" },
 };
@@ -446,7 +453,19 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     );
   }
   if (sourceFilter === "TRADE_MEDIA") {
-    return sourceKind === "jdsupra_article" || sourceKind === "investmentnews_article" || sourceKind === "citywire_article";
+    return [
+      "jdsupra_article",
+      "investmentnews_article",
+      "citywire_article",
+      "therecord_media_article",
+      "wired_article",
+      "tripwire_article",
+      "akamai_blog_article",
+      "ritholtz_article",
+      "ft_portfolios_market_commentary",
+      "liberty_street_economics_article",
+      "wealth_of_common_sense_article",
+    ].includes(sourceKind);
   }
   if (sourceFilter === "REDDIT") {
     return sourceKind === "reddit_post" || text.includes("reddit.com");

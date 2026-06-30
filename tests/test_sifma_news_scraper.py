@@ -38,6 +38,19 @@ class SIFMANewsScraperTests(unittest.TestCase):
         self.assertEqual(scraper.proxy_url, "")
         self.assertIn("numeric port", scraper.proxy_config_error)
 
+    @patch.dict(os.environ, {"SIFMA_PROXY_URL": "proxy.example:notaport:user:pass"}, clear=True)
+    def test_fetch_html_ignores_invalid_proxy_port(self):
+        scraper = SIFMANewsScraper(min_delay_seconds=0)
+        scraper.session.get = Mock(return_value=_FakeResponse("<html></html>", SIFMA_NEWS_URL, 200))
+
+        scraper._fetch_html(SIFMA_NEWS_URL)
+
+        kwargs = scraper.session.get.call_args.kwargs
+        self.assertEqual(scraper.proxy_url, "")
+        self.assertIn("numeric port", scraper.proxy_config_error)
+        self.assertNotIn("proxy", kwargs)
+        self.assertNotIn("proxies", kwargs)
+
     @patch.dict(os.environ, {"SIFMA_PROXY_URL": "http://sifma-proxy.example:8000"}, clear=True)
     def test_fetch_html_passes_configured_proxy(self):
         scraper = SIFMANewsScraper(min_delay_seconds=0)

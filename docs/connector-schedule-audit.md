@@ -59,7 +59,7 @@ All GitHub Actions cron expressions are UTC. The Vercel cron in `apps/web/vercel
 | `.github/workflows/sec-speech-sync.yml` | Dedicated SEC speech sync | `0 3,11,19 * * *` | `sec_speech` |
 | `.github/workflows/policy-extraction-scheduled.yml` | Core policy document extraction | `0 10 * * *`, `0 22 * * *` | `doj_usao_press_release`, `finra_awc`, `sec_enforcement_litigation`, `sec_speech` |
 | `.github/workflows/securities-market-sources-daily.yml` | Securities market official sources | `30 12 * * *` | `finra_regulatory_notice`, `cftc_press_release`, `cftc_public_statement_remark`, `sec_press_release_rss`, `sec_administrative_proceeding`, `sec_trading_suspension`, `sec_federal_register`, `sec_pcaob_rulemaking`, `pcaob_update`, `msrb_press_release`, `sifma_news_item` |
-| `.github/workflows/connector-gap-6hour.yml` | Remaining runnable connectors and durable trade/RSS/social documents | `0 */6 * * *` | `federal_reserve_speech_testimony`, `treasury_statement_remark`, `treasury_press_release`, `treasury_featured_story`, `sec_tm_faq`, `finra_key_topic`, `jdsupra_article`, `investmentnews_article`, `citywire_article`, `wsj_dow_jones`, `reddit_post` |
+| `.github/workflows/connector-gap-6hour.yml` | Remaining runnable connectors and durable trade/RSS/social documents | `0 */6 * * *` | `federal_reserve_speech_testimony`, `treasury_statement_remark`, `treasury_press_release`, `treasury_featured_story`, `sec_tm_faq`, `jdsupra_article`, `investmentnews_article`, `citywire_article`, `therecord_media_article`, `wired_article`, `tripwire_article`, `akamai_blog_article`, `ritholtz_article`, `ft_portfolios_market_commentary`, `liberty_street_economics_article`, `wealth_of_common_sense_article`, `wsj_dow_jones`, `reddit_post` |
 | `.github/workflows/connector-enrichment-6hour.yml` | Backstop enrichment for scheduled custom-document connectors | `30 */6 * * *` | `only_missing_or_failed` enrichment for scheduled official, trade, RSS, social, CRS, SEC speech, DOJ, FINRA, CFTC, Treasury, Fed, SIFMA, and securities-market source kinds |
 | `.github/workflows/crs-daily.yml` | CRS report extraction | `30 13 * * *` | `congress_crs_product` |
 | `.github/workflows/trends-daily.yml` | Daily trend aggregation from enriched docs | `45 13 * * *` | Derived output, not a source connector |
@@ -92,6 +92,14 @@ All GitHub Actions cron expressions are UTC. The Vercel cron in `apps/web/vercel
 | `jdsupra_article` | JD Supra legal/regulatory analysis | `https://www.jdsupra.com/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `investmentnews_article` | InvestmentNews wealth-management news | `https://www.investmentnews.com/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `citywire_article` | Citywire asset-management news | `https://citywire.com/us/news` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `therecord_media_article` | The Record cybersecurity news | `https://therecord.media/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `wired_article` | WIRED security and technology coverage | `https://www.wired.com/category/security/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `tripwire_article` | Tripwire State of Security | `https://www.tripwire.com/state-of-security` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `akamai_blog_article` | Akamai Blog | `https://www.akamai.com/blog` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `ritholtz_article` | The Big Picture / Ritholtz market commentary | `https://ritholtz.com/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `ft_portfolios_market_commentary` | First Trust Portfolios market commentary | `https://www.ftportfolios.com/retail/blogs/marketcommentary/index.aspx` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `liberty_street_economics_article` | Liberty Street Economics | `https://libertystreeteconomics.newyorkfed.org/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
+| `wealth_of_common_sense_article` | A Wealth of Common Sense | `https://awealthofcommonsense.com/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `wsj_dow_jones` | WSJ / Dow Jones durable RSS documents | `https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `reddit_post` | Reddit keyword/social discovery | Configured by `data/news_connector_settings.json`; defaults in `reddit_scraper.py` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered; Reddit credentials recommended |
 | `sec_speech` | SEC speeches and statements | `https://www.sec.gov/newsroom/speeches-statements` | Yes | Yes | `sec-speech-sync.yml`: `0 3,11,19 * * *`; also `policy-extraction-scheduled.yml`: `0 10 * * *`, `0 22 * * *` | Covered, possibly duplicated |
@@ -105,7 +113,6 @@ All GitHub Actions cron expressions are UTC. The Vercel cron in `apps/web/vercel
 | `doj_usao_press_release` | DOJ USAO press releases | `https://www.justice.gov/usao/pressreleases` | Yes | Yes | `policy-extraction-scheduled.yml`: `0 10 * * *`, `0 22 * * *` | Covered |
 | `finra_awc` | FINRA disciplinary actions / AWC | `https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions` | Yes | Yes | `policy-extraction-scheduled.yml`: `0 10 * * *`, `0 22 * * *` | Covered |
 | `finra_regulatory_notice` | FINRA regulatory notices | `https://www.finra.org/rules-guidance/notices` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
-| `finra_key_topic` | FINRA key topics | `https://www.finra.org/rules-guidance/key-topics` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `finra_comment_letter` | FINRA comment letters for a notice URL | Requires a FINRA notice/rule URL override | Yes, with `base_url` override | No | None | Gap until a stable source URL list exists |
 | `federal_reserve_speech_testimony` | Federal Reserve speeches/testimony | `https://www.federalreserve.gov/newsevents/speeches-testimony.htm` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `cftc_press_release` | CFTC press releases | `https://www.cftc.gov/PressRoom/PressReleases` | Yes | Yes | `securities-market-sources-daily.yml`: `30 12 * * *` | Covered |
@@ -132,7 +139,7 @@ These files exist as scraper/source concepts but are not all scheduled as durabl
 
 | Scraper/module | Source family | Runner support | Schedule status | Gap |
 |---|---|---:|---:|---|
-| `trade_media_scraper.py` | `jdsupra_article`, `investmentnews_article`, `citywire_article` | Yes | Yes | Runs through `connector-gap-6hour.yml` every 6 hours. |
+| `trade_media_scraper.py` | `jdsupra_article`, `investmentnews_article`, `citywire_article`, `therecord_media_article`, `wired_article`, `tripwire_article`, `akamai_blog_article`, `ritholtz_article`, `ft_portfolios_market_commentary`, `liberty_street_economics_article`, `wealth_of_common_sense_article` | Yes | Yes | Runs through `connector-gap-6hour.yml` every 6 hours. |
 | `wsj_rss_scraper.py` | `wsj_dow_jones` RSS article extraction | Yes | Yes | App RSS also refreshes every 10 minutes; durable document ingestion now runs through `connector-gap-6hour.yml` every 6 hours. |
 | `reddit_scraper.py` | `reddit_post` social/news discovery | Yes | Yes | Runs through `connector-gap-6hour.yml` every 6 hours using configured Reddit settings; Reddit API credentials are recommended for cloud reliability. |
 | `sec_rule_comments_scraper.py` | SEC rule comments | No, not in `SUPPORTED_CONNECTORS` | No | Rule-comment source kinds exist elsewhere, but this scraper is not scheduled through the connector runner. |

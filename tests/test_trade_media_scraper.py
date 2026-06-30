@@ -1,7 +1,13 @@
 import unittest
 from unittest.mock import patch
 
-from trade_media_scraper import TradeMediaScraper, _looks_like_access_challenge
+from trade_media_scraper import (
+    TRADE_MEDIA_SOURCES,
+    TradeMediaScraper,
+    _looks_like_access_challenge,
+    _passes_source_url_filters,
+    _url_key,
+)
 
 
 class _FakeResponse:
@@ -15,6 +21,50 @@ class _FakeResponse:
 
 
 class TradeMediaScraperTests(unittest.TestCase):
+    def test_requested_sources_are_registered_with_defaults(self):
+        for source_key in [
+            "therecord_media_article",
+            "wired_article",
+            "tripwire_article",
+            "akamai_blog_article",
+            "ritholtz_article",
+            "ft_portfolios_market_commentary",
+            "liberty_street_economics_article",
+            "wealth_of_common_sense_article",
+        ]:
+            cfg = TRADE_MEDIA_SOURCES[source_key]
+            self.assertTrue(cfg["label"])
+            self.assertTrue(cfg["default_url"])
+            self.assertTrue(cfg["search_domain"])
+
+    def test_url_key_preserves_meaningful_query_parameters(self):
+        key = _url_key("https://www.ftportfolios.com/retail/blogs/marketcommentary/index.aspx?id=123&utm_source=x")
+
+        self.assertEqual(
+            key,
+            "https://www.ftportfolios.com/retail/blogs/marketcommentary/index.aspx?id=123",
+        )
+
+    def test_requested_source_url_filters_reject_navigation_pages(self):
+        self.assertFalse(
+            _passes_source_url_filters(
+                "https://therecord.media/news/cybercrime",
+                TRADE_MEDIA_SOURCES["therecord_media_article"],
+            )
+        )
+        self.assertFalse(
+            _passes_source_url_filters(
+                "https://www.ftportfolios.com/retail/blogs/marketcommentary/index.aspx",
+                TRADE_MEDIA_SOURCES["ft_portfolios_market_commentary"],
+            )
+        )
+        self.assertTrue(
+            _passes_source_url_filters(
+                "https://www.ftportfolios.com/Commentary/MarketCommentary/2026/6/30/just-a-smidge",
+                TRADE_MEDIA_SOURCES["ft_portfolios_market_commentary"],
+            )
+        )
+
     def test_build_google_news_query_uses_domain_and_optional_terms(self):
         scraper = TradeMediaScraper(min_delay_seconds=0)
 
@@ -25,6 +75,17 @@ class TradeMediaScraperTests(unittest.TestCase):
         )
 
         self.assertEqual(query, "site:investmentnews.com SEC enforcement")
+
+    def test_build_google_news_query_uses_path_scoped_site_query_when_configured(self):
+        scraper = TradeMediaScraper(min_delay_seconds=0)
+
+        query = scraper._build_google_news_query(
+            "akamai_blog_article",
+            "https://www.akamai.com/blog",
+            "API security",
+        )
+
+        self.assertEqual(query, "site:akamai.com/blog API security")
 
     def test_google_news_search_fallback_decodes_real_urls(self):
         scraper = TradeMediaScraper(min_delay_seconds=0)

@@ -181,9 +181,6 @@ function inferSourceKind(metadataRaw: Record<string, unknown>): string {
   if (docType === "public comment") {
     return "regulations_gov_comment";
   }
-  if (docType === "key topic") {
-    return "finra_key_topic";
-  }
   if (url.includes("/trading-markets-frequently-asked-questions/")) {
     return "sec_tm_faq";
   }
@@ -988,11 +985,18 @@ export function selectNewsFeedDocuments(
       "pcaob_update",
       "msrb_press_release",
       "finra_regulatory_notice",
-      "finra_key_topic",
       "finra_awc",
       "jdsupra_article",
       "investmentnews_article",
       "citywire_article",
+      "therecord_media_article",
+      "wired_article",
+      "tripwire_article",
+      "akamai_blog_article",
+      "ritholtz_article",
+      "ft_portfolios_market_commentary",
+      "liberty_street_economics_article",
+      "wealth_of_common_sense_article",
       "congress_crs_product",
       "wsj_dow_jones",
       "reddit_post",

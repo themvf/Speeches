@@ -1316,8 +1316,6 @@ def _infer_source_kind(metadata):
     doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
     if doc_type == "regulatory notice":
         return "finra_regulatory_notice"
-    if doc_type == "key topic":
-        return "finra_key_topic"
     if "/trading-markets-frequently-asked-questions/" in url or source_kind == "sec_tm_faq":
         return "sec_tm_faq"
     if "/enforcement-litigation/litigation-releases/" in url or source_kind == "sec_enforcement_litigation":
@@ -10221,229 +10219,6 @@ elif page == "Extraction":
     )
 
     st.markdown("---")
-    st.subheader("FINRA Connector: Key Topics")
-    st.caption("Discover and ingest FINRA Key Topic hub pages, then use them to tag related FINRA notices and guidance.")
-
-    finra_topic_index_default = "https://www.finra.org/rules-guidance/key-topics"
-    finra_topic_index_url = st.text_input(
-        "FINRA Key Topics Index URL",
-        value=finra_topic_index_default,
-        key="finra_topic_index_url",
-    ).strip() or finra_topic_index_default
-
-    finra_topic_col1, finra_topic_col2 = st.columns(2)
-    with finra_topic_col1:
-        discover_finra_topics = st.button("Discover FINRA Key Topics", key="discover_finra_topics")
-    with finra_topic_col2:
-        clear_finra_topics = st.button("Clear FINRA Key Topic Results", key="clear_finra_topics")
-
-    finra_topic_state_key = "finra_topic_discovered"
-    if finra_topic_state_key not in st.session_state:
-        st.session_state[finra_topic_state_key] = []
-    if clear_finra_topics:
-        st.session_state[finra_topic_state_key] = []
-
-    if discover_finra_topics:
-        try:
-            from finra_key_topics_scraper import FINRAKeyTopicsScraper
-
-            with st.spinner("Discovering FINRA Key Topics..."):
-                finra_topic_scraper = FINRAKeyTopicsScraper()
-                finra_topic_discovered = finra_topic_scraper.discover_documents(
-                    index_url=finra_topic_index_url,
-                )
-
-            existing_custom = {}
-            for item in custom_docs:
-                m = item.get("metadata", {})
-                existing_custom[_url_match_key(m.get("url", ""))] = m
-
-            existing_speech_urls = {
-                _url_match_key(s.get("metadata", {}).get("url", ""))
-                for s in raw_data.get("speeches", [])
-            }
-
-            for entry in finra_topic_discovered:
-                key = _url_match_key(entry.get("url", ""))
-                status = "new"
-                if key in existing_custom:
-                    status = "existing"
-                elif key in existing_speech_urls:
-                    status = "existing_in_speeches"
-                entry["ingest_status"] = status
-
-            st.session_state[finra_topic_state_key] = finra_topic_discovered
-            new_count = sum(1 for d in finra_topic_discovered if d.get("ingest_status") == "new")
-            st.success(
-                f"Discovered {len(finra_topic_discovered)} FINRA Key Topics "
-                f"({new_count} new topic hubs)."
-            )
-        except Exception as e:
-            st.error(f"FINRA Key Topic discovery failed: {e}")
-
-    finra_topic_discovered = st.session_state.get(finra_topic_state_key, [])
-    if finra_topic_discovered:
-        finra_topic_df = pd.DataFrame(finra_topic_discovered)
-        if "topic_name" in finra_topic_df.columns:
-            finra_topic_df = finra_topic_df.sort_values(
-                by=["topic_name", "topic_slug"],
-                na_position="last",
-            )
-        show_cols = [
-            c for c in ["topic_name", "topic_slug", "ingest_status", "url"] if c in finra_topic_df.columns
-        ]
-        st.dataframe(
-            finra_topic_df[show_cols],
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        finra_topic_filter = st.selectbox(
-            "FINRA Key Topic Ingest Selection",
-            ["New Only", "All Discovered"],
-            key="finra_topic_ingest_filter",
-        )
-        if finra_topic_filter == "New Only":
-            finra_topic_candidates = [d for d in finra_topic_discovered if d.get("ingest_status") == "new"]
-        else:
-            finra_topic_candidates = list(finra_topic_discovered)
-
-        finra_topic_count = len(finra_topic_candidates)
-        if finra_topic_count <= 0:
-            finra_topic_limit = 0
-            st.caption("No FINRA Key Topics match the selected ingest filter.")
-        elif finra_topic_count == 1:
-            finra_topic_limit = 1
-            st.caption("1 FINRA Key Topic selected for ingest.")
-        else:
-            finra_topic_limit = st.slider(
-                "FINRA Key Topics To Ingest",
-                min_value=1,
-                max_value=finra_topic_count,
-                value=min(20, finra_topic_count),
-                key="finra_topic_ingest_limit",
-            )
-        st.caption(f"{finra_topic_count} FINRA Key Topics currently match this ingest selection.")
-
-        if st.button("Run FINRA Key Topic Extraction", disabled=(finra_topic_limit <= 0), key="ingest_finra_topics"):
-            try:
-                from finra_key_topics_scraper import FINRAKeyTopicsScraper
-
-                finra_topic_scraper = FINRAKeyTopicsScraper()
-                finra_topic_map = _load_finra_topic_map()
-                progress = st.progress(0, text="Starting FINRA Key Topic ingest...")
-                saved_new = 0
-                saved_updates = 0
-                topic_map_changes = 0
-                failed = []
-
-                selected = finra_topic_candidates[:finra_topic_limit]
-                for idx, entry in enumerate(selected, 1):
-                    progress.progress(
-                        idx / finra_topic_limit,
-                        text=f"Ingesting {idx}/{finra_topic_limit}: {entry.get('topic_name', '')[:80]}",
-                    )
-                    try:
-                        extracted = finra_topic_scraper.extract_document(
-                            entry.get("url", ""),
-                            fallback_title=entry.get("topic_name", "") or entry.get("title", ""),
-                        )
-                        if not extracted.get("success"):
-                            raise RuntimeError("Extraction returned unsuccessful result.")
-                        data = extracted.get("data", {})
-                        text = str(data.get("full_text", "") or "").strip()
-                        if not text:
-                            raise RuntimeError("Extracted text is empty; skipping.")
-
-                        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
-                        source_name = str(data.get("topic_slug", "") or entry.get("topic_slug", "")).strip()
-                        if not source_name:
-                            source_name = urlparse(src_url).path.rsplit("/", 1)[-1].strip() or f"finra-key-topic-{idx}"
-                        source_name = f"{source_name}.html" if "." not in source_name else source_name
-
-                        record = _create_uploaded_document_record(
-                            text=text,
-                            organization="FINRA",
-                            title=str(data.get("topic_name", "") or entry.get("topic_name", "") or entry.get("title", "")).strip(),
-                            speaker="FINRA",
-                            doc_date="",
-                            doc_type="Key Topic",
-                            source_url=src_url,
-                            source_filename=source_name,
-                            source_ext=".html",
-                            source_local_path="",
-                            source_gcs_path="",
-                            tags_csv="finra,key-topic,rule-guidance,taxonomy",
-                            source_kind="finra_key_topic",
-                        )
-                        rm = record.setdefault("metadata", {})
-                        rm["source_family"] = "finra_key_topic"
-                        rm["source_index_url"] = finra_topic_index_url
-                        rm["topic_name"] = str(data.get("topic_name", "") or entry.get("topic_name", "")).strip()
-                        rm["topic_slug"] = str(data.get("topic_slug", "") or entry.get("topic_slug", "")).strip().lower()
-                        rm["section_names"] = _coerce_string_list(data.get("section_names", []), limit=20)
-                        rm["overview_text"] = str(data.get("overview_text", "") or "").strip()
-                        rm["ogc_contacts"] = _coerce_string_list(data.get("ogc_contacts", []), limit=20)
-                        rm["linked_notices"] = _coerce_string_list(data.get("linked_notices", []), limit=200)
-                        rm["linked_guidance"] = _coerce_string_list(data.get("linked_guidance", []), limit=200)
-                        rm["linked_rules"] = _coerce_string_list(data.get("linked_rules", []), limit=200)
-                        rm["linked_news"] = _coerce_string_list(data.get("linked_news", []), limit=200)
-                        rm["linked_investor_education"] = _coerce_string_list(
-                            data.get("linked_investor_education", []),
-                            limit=200,
-                        )
-                        rm["linked_resources"] = _coerce_string_list(data.get("linked_resources", []), limit=200)
-                        rm["section_links"] = data.get("section_links", {}) if isinstance(data.get("section_links", {}), dict) else {}
-                        _apply_finra_topic_map_to_metadata(
-                            rm,
-                            finra_topic_map,
-                            topic_slug=rm.get("topic_slug", ""),
-                            topic_name=rm.get("topic_name", ""),
-                        )
-
-                        replaced = _upsert_custom_document_record(custom_payload, record)
-                        if replaced:
-                            saved_updates += 1
-                        else:
-                            saved_new += 1
-
-                        _upsert_finra_topic_entry(
-                            finra_topic_map,
-                            {
-                                "topic_name": rm.get("topic_name", ""),
-                                "topic_slug": rm.get("topic_slug", ""),
-                                "url": rm.get("url", ""),
-                                "section_names": rm.get("section_names", []),
-                                "linked_urls": _coerce_string_list(data.get("linked_urls", []), limit=500),
-                            },
-                        )
-                        topic_map_changes += 1
-                    except Exception as e:
-                        failed.append(f"{entry.get('topic_name', 'Untitled')}: {e}")
-
-                progress.progress(1.0, text="FINRA Key Topic ingest complete.")
-                backfilled = _backfill_finra_topics_on_custom_payload(custom_payload, finra_topic_map)
-                if topic_map_changes > 0:
-                    _save_finra_topic_map(finra_topic_map)
-                if saved_new or saved_updates or backfilled:
-                    _save_custom_documents(custom_payload)
-                    st.success(
-                        f"Saved {saved_new} new FINRA Key Topic docs, updated {saved_updates} existing topic docs, "
-                        f"and refreshed topic tags on {backfilled} FINRA docs."
-                    )
-                    custom_payload = _load_custom_documents()
-                    custom_docs = _custom_docs_as_speeches(custom_payload)
-                    knowledge_data = _build_knowledge_data(raw_data, custom_payload)
-                elif topic_map_changes > 0:
-                    st.success("FINRA Key Topic map refreshed.")
-                if failed:
-                    st.warning(f"{len(failed)} FINRA Key Topics failed ingest.")
-                    for msg in failed[:20]:
-                        st.write(f"- {msg}")
-            except Exception as e:
-                st.error(f"FINRA Key Topic ingest failed: {e}")
-
-    st.markdown("---")
     st.subheader("DOJ Connector: USAO Press Releases")
     st.caption(
         "Discover and ingest Department of Justice U.S. Attorneys' Office press releases into the knowledge base."
@@ -12043,7 +11818,7 @@ elif page == "Extraction":
                 st.error(f"SIFMA ingest failed: {e}")
 
     st.markdown("---")
-    st.subheader("Trade Media Connectors: JD Supra / InvestmentNews / Citywire")
+    st.subheader("Trade Media Connectors")
     st.caption(
         "Discover and ingest trade-media articles directly from site feeds/listings."
     )
@@ -12069,6 +11844,62 @@ elif page == "Extraction":
             "default_url": "https://citywire.com/us/news",
             "tags_csv": "citywire,asset-management,industry-news",
             "default_search_query": "SEC OR FINRA OR CFTC OR Treasury OR DOJ OR Congress",
+        },
+        "therecord_media_article": {
+            "label": "The Record",
+            "organization": "The Record",
+            "default_url": "https://therecord.media/",
+            "tags_csv": "therecord,cybersecurity,technology-news",
+            "default_search_query": "cybersecurity OR ransomware OR regulation OR financial sector OR CISA OR Treasury",
+        },
+        "wired_article": {
+            "label": "WIRED",
+            "organization": "WIRED",
+            "default_url": "https://www.wired.com/category/security/",
+            "tags_csv": "wired,technology-news,cybersecurity",
+            "default_search_query": "cybersecurity OR AI OR privacy OR regulation OR financial sector",
+        },
+        "tripwire_article": {
+            "label": "Tripwire",
+            "organization": "Tripwire",
+            "default_url": "https://www.tripwire.com/state-of-security",
+            "tags_csv": "tripwire,cybersecurity,technology-news",
+            "default_search_query": "cybersecurity OR compliance OR regulation OR financial sector",
+        },
+        "akamai_blog_article": {
+            "label": "Akamai Blog",
+            "organization": "Akamai",
+            "default_url": "https://www.akamai.com/blog",
+            "tags_csv": "akamai,cybersecurity,technology-news",
+            "default_search_query": "cybersecurity OR fraud OR bot OR API OR financial services",
+        },
+        "ritholtz_article": {
+            "label": "The Big Picture",
+            "organization": "Ritholtz",
+            "default_url": "https://ritholtz.com/",
+            "tags_csv": "ritholtz,markets,financial-commentary",
+            "default_search_query": "markets OR economy OR Fed OR investing OR regulation",
+        },
+        "ft_portfolios_market_commentary": {
+            "label": "First Trust Market Commentary",
+            "organization": "First Trust Portfolios",
+            "default_url": "https://www.ftportfolios.com/retail/blogs/marketcommentary/index.aspx",
+            "tags_csv": "first-trust,markets,market-commentary",
+            "default_search_query": "markets OR economy OR Fed OR inflation OR interest rates",
+        },
+        "liberty_street_economics_article": {
+            "label": "Liberty Street Economics",
+            "organization": "Federal Reserve Bank of New York",
+            "default_url": "https://libertystreeteconomics.newyorkfed.org/",
+            "tags_csv": "new-york-fed,liberty-street-economics,economic-research",
+            "default_search_query": "banking OR markets OR monetary policy OR financial stability",
+        },
+        "wealth_of_common_sense_article": {
+            "label": "A Wealth of Common Sense",
+            "organization": "A Wealth of Common Sense",
+            "default_url": "https://awealthofcommonsense.com/",
+            "tags_csv": "wealth-of-common-sense,markets,financial-commentary",
+            "default_search_query": "markets OR investing OR economy OR Fed OR stocks",
         },
     }
 

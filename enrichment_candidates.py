@@ -46,8 +46,6 @@ def infer_source_kind(metadata: Dict[str, Any]) -> str:
     doc_type = str(metadata.get("doc_type", "") or "").strip().lower()
     if doc_type == "regulatory notice":
         return "finra_regulatory_notice"
-    if doc_type == "key topic":
-        return "finra_key_topic"
     if "/trading-markets-frequently-asked-questions/" in url or source_kind == "sec_tm_faq":
         return "sec_tm_faq"
     if "/enforcement-litigation/litigation-releases/" in url or source_kind == "sec_enforcement_litigation":

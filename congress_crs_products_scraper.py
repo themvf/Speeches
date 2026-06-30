@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -360,6 +361,7 @@ class CongressCRSProductsScraper:
         self.proxy_url, self.proxy_config_error = _normalize_proxy_url(
             os.getenv("CRS_PROXY_URL", "") or os.getenv("RESIDENTIAL_PROXY_URL", "")
         )
+        self._proxy_config_warning_emitted = False
         self._last_request_ts = 0.0
         self.last_discovery_debug: Dict[str, Any] = {}
 
@@ -370,8 +372,12 @@ class CongressCRSProductsScraper:
         self._last_request_ts = time.time()
 
     def _validate_proxy_config(self):
-        if self.proxy_config_error:
-            raise RuntimeError(self.proxy_config_error)
+        if self.proxy_config_error and not self._proxy_config_warning_emitted:
+            print(
+                f"WARNING: Ignoring invalid CRS proxy configuration: {self.proxy_config_error}",
+                file=sys.stderr,
+            )
+            self._proxy_config_warning_emitted = True
 
     def _fetch_html(self, url: str, timeout: int = 60) -> Any:
         self._validate_proxy_config()

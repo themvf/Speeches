@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -66,6 +66,135 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
         "article_path_keywords": ["news", "article"],
         "search_domain": "citywire.com",
         "default_search_query": TRADE_MEDIA_DEFAULT_SEARCH_QUERY,
+    },
+    "therecord_media_article": {
+        "label": "The Record",
+        "organization": "The Record",
+        "default_url": "https://therecord.media/",
+        "tags_csv": "therecord,cybersecurity,technology-news",
+        "rss_candidates": [
+            "https://therecord.media/feed/",
+        ],
+        "article_path_keywords": [
+            "news",
+            "cybercrime",
+            "ransomware",
+            "malware",
+            "nation-state",
+            "policy",
+        ],
+        "excluded_url_substrings": ["/about", "/contact"],
+        "excluded_url_paths": [
+            "/news/leadership",
+            "/news/cybercrime",
+            "/news/nation-state",
+            "/news/influence-operations",
+            "/news/technology",
+        ],
+        "search_domain": "therecord.media",
+        "google_site_query": "site:therecord.media/news",
+        "default_search_query": "cybersecurity OR ransomware OR regulation OR financial sector OR CISA OR Treasury",
+    },
+    "wired_article": {
+        "label": "WIRED",
+        "organization": "WIRED",
+        "default_url": "https://www.wired.com/category/security/",
+        "tags_csv": "wired,technology-news,cybersecurity",
+        "rss_candidates": [
+            "https://www.wired.com/feed/category/security/latest/rss",
+            "https://www.wired.com/feed/rss",
+        ],
+        "article_path_keywords": ["story", "security"],
+        "required_url_substrings": ["/story/"],
+        "search_domain": "wired.com",
+        "default_search_query": "cybersecurity OR AI OR privacy OR regulation OR financial sector",
+    },
+    "tripwire_article": {
+        "label": "Tripwire",
+        "organization": "Tripwire",
+        "default_url": "https://www.tripwire.com/state-of-security",
+        "tags_csv": "tripwire,cybersecurity,technology-news",
+        "rss_candidates": [
+            "https://www.tripwire.com/state-of-security/feed",
+            "https://www.tripwire.com/state-of-security/rss.xml",
+        ],
+        "article_path_keywords": ["state-of-security", "blog"],
+        "required_url_substrings": ["/state-of-security/"],
+        "search_domain": "tripwire.com",
+        "google_site_query": "site:tripwire.com/state-of-security",
+        "default_search_query": "cybersecurity OR compliance OR regulation OR financial sector",
+    },
+    "akamai_blog_article": {
+        "label": "Akamai Blog",
+        "organization": "Akamai",
+        "default_url": "https://www.akamai.com/blog",
+        "tags_csv": "akamai,cybersecurity,technology-news",
+        "rss_candidates": [
+            "https://www.akamai.com/blog/rss.xml",
+            "https://www.akamai.com/blog/security/rss.xml",
+            "https://www.akamai.com/blog/feed",
+        ],
+        "article_path_keywords": ["blog"],
+        "required_url_substrings": ["/blog/"],
+        "search_domain": "akamai.com",
+        "google_site_query": "site:akamai.com/blog",
+        "default_search_query": "cybersecurity OR fraud OR bot OR API OR financial services",
+    },
+    "ritholtz_article": {
+        "label": "The Big Picture",
+        "organization": "Ritholtz",
+        "default_url": "https://ritholtz.com/",
+        "tags_csv": "ritholtz,markets,financial-commentary",
+        "rss_candidates": [
+            "https://ritholtz.com/feed/",
+        ],
+        "article_path_keywords": ["blog", "reads"],
+        "required_url_substrings": ["ritholtz.com/20"],
+        "search_domain": "ritholtz.com",
+        "default_search_query": "markets OR economy OR Fed OR investing OR regulation",
+    },
+    "ft_portfolios_market_commentary": {
+        "label": "First Trust Market Commentary",
+        "organization": "First Trust Portfolios",
+        "default_url": "https://www.ftportfolios.com/retail/blogs/marketcommentary/index.aspx",
+        "tags_csv": "first-trust,markets,market-commentary",
+        "rss_candidates": [
+            "https://www.ftportfolios.com/Common/Rss/MarketCommentaryBlogFeed.aspx",
+        ],
+        "article_path_keywords": ["marketcommentary", "blogs"],
+        "required_url_substrings": [
+            "/commentary/marketcommentary/20",
+            "/retail/blogs/marketcommentary/index.aspx?id=",
+        ],
+        "search_domain": "ftportfolios.com",
+        "google_site_query": "site:ftportfolios.com/Commentary/MarketCommentary",
+        "default_search_query": "markets OR economy OR Fed OR inflation OR interest rates",
+    },
+    "liberty_street_economics_article": {
+        "label": "Liberty Street Economics",
+        "organization": "Federal Reserve Bank of New York",
+        "default_url": "https://libertystreeteconomics.newyorkfed.org/",
+        "tags_csv": "new-york-fed,liberty-street-economics,economic-research",
+        "rss_candidates": [
+            "https://libertystreeteconomics.newyorkfed.org/feed/",
+        ],
+        "article_path_keywords": ["202", "liberty-street-economics"],
+        "required_url_substrings": ["libertystreeteconomics.newyorkfed.org/20"],
+        "search_domain": "libertystreeteconomics.newyorkfed.org",
+        "default_search_query": "banking OR markets OR monetary policy OR financial stability",
+    },
+    "wealth_of_common_sense_article": {
+        "label": "A Wealth of Common Sense",
+        "organization": "A Wealth of Common Sense",
+        "default_url": "https://awealthofcommonsense.com/",
+        "tags_csv": "wealth-of-common-sense,markets,financial-commentary",
+        "rss_candidates": [
+            "https://awealthofcommonsense.com/feed/",
+        ],
+        "article_path_keywords": ["202", "blog"],
+        "required_url_substrings": ["awealthofcommonsense.com/20"],
+        "search_domain": "awealthofcommonsense.com",
+        "default_search_query": "markets OR investing OR economy OR Fed OR stocks",
     },
 }
 
@@ -159,7 +288,13 @@ def _url_key(url: str) -> str:
     scheme = (parsed.scheme or "https").lower()
     netloc = parsed.netloc.lower()
     path = parsed.path.rstrip("/") or "/"
-    return f"{scheme}://{netloc}{path}"
+    query_items = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=False)
+        if key.lower() not in {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"}
+    ]
+    query = urlencode(query_items, doseq=True)
+    return f"{scheme}://{netloc}{path}" + (f"?{query}" if query else "")
 
 
 def _xml_local_name(tag: str) -> str:
@@ -237,6 +372,39 @@ def _looks_like_article_url(url: str, source_url: str, path_keywords: List[str])
     if any(keyword in path for keyword in path_keywords):
         return True
     return len(segments[-1]) >= 12
+
+
+def _passes_source_url_filters(url: str, cfg: Dict[str, Any]) -> bool:
+    raw = str(url or "").strip().lower()
+    if not raw:
+        return False
+
+    required = [
+        str(item or "").strip().lower()
+        for item in cfg.get("required_url_substrings", [])
+        if str(item or "").strip()
+    ]
+    if required and not any(item in raw for item in required):
+        return False
+
+    excluded = [
+        str(item or "").strip().lower()
+        for item in cfg.get("excluded_url_substrings", [])
+        if str(item or "").strip()
+    ]
+    if excluded and any(item in raw for item in excluded):
+        return False
+
+    path = urlparse(raw).path.rstrip("/") or "/"
+    excluded_paths = [
+        str(item or "").strip().lower().rstrip("/") or "/"
+        for item in cfg.get("excluded_url_paths", [])
+        if str(item or "").strip()
+    ]
+    if excluded_paths and path in excluded_paths:
+        return False
+
+    return True
 
 
 def _looks_like_access_challenge(html_text: str, final_url: str = "") -> bool:
@@ -349,7 +517,9 @@ class TradeMediaScraper:
     def _build_google_news_query(self, source_key: str, source_url: str, search_query: str = "") -> str:
         cfg = self._source_config(source_key)
         domain = str(cfg.get("search_domain", "") or "").strip() or _canonical_host(source_url)
-        base_query = f"site:{domain}" if domain else str(source_url or "").strip()
+        base_query = _normalize_space(cfg.get("google_site_query", ""))
+        if not base_query:
+            base_query = f"site:{domain}" if domain else str(source_url or "").strip()
         extra_query = _normalize_space(search_query) or _normalize_space(cfg.get("default_search_query", ""))
         if extra_query:
             return f"{base_query} {extra_query}".strip()
@@ -389,6 +559,8 @@ class TradeMediaScraper:
 
             candidate_url = decoded_url or google_link
             if not candidate_url:
+                continue
+            if decoded_url and not _passes_source_url_filters(candidate_url, cfg):
                 continue
 
             key = _url_key(candidate_url)
@@ -482,6 +654,8 @@ class TradeMediaScraper:
                 path_keywords=list(self._source_config(source_key).get("article_path_keywords", [])),
             ):
                 continue
+            if not _passes_source_url_filters(item_url, self._source_config(source_key)):
+                continue
             key = _url_key(item_url)
             if not key or key in seen:
                 continue
@@ -530,6 +704,8 @@ class TradeMediaScraper:
                 article_url = urljoin(page_url, str(link.get("href", "") or "").strip())
                 if not _looks_like_article_url(article_url, listing_url, path_keywords):
                     continue
+                if not _passes_source_url_filters(article_url, cfg):
+                    continue
                 item_key = _url_key(article_url)
                 if not item_key or item_key in seen_urls:
                     continue
@@ -562,7 +738,7 @@ class TradeMediaScraper:
                 target_url = urljoin(page_url, href)
                 text = _normalize_space(link.get_text(" ", strip=True)).lower()
 
-                if _looks_like_article_url(target_url, listing_url, path_keywords):
+                if _looks_like_article_url(target_url, listing_url, path_keywords) and _passes_source_url_filters(target_url, cfg):
                     item_key = _url_key(target_url)
                     if not item_key or item_key in seen_urls:
                         continue
