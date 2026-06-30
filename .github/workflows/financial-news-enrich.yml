@@ -20,14 +20,22 @@ on:
         required: false
         default: "newsapi_article"
       heuristic_only:
-        description: "Ignored; OpenAI enrichment is paused and heuristic-only is forced"
+        description: "Use heuristic enrichment instead of hosted model enrichment"
         required: false
         type: boolean
-        default: true
-      model:
-        description: "Ignored while OpenAI enrichment is paused"
+        default: false
+      provider:
+        description: "Hosted model provider"
         required: false
-        default: ""
+        type: choice
+        options:
+          - deepseek
+          - openai
+        default: deepseek
+      model:
+        description: "Model to use for hosted enrichment"
+        required: false
+        default: "deepseek-v4-flash"
 
 permissions:
   contents: read
@@ -43,9 +51,14 @@ jobs:
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
       ENRICH_MODE: ${{ github.event.inputs.mode || 'only_missing_or_failed' }}
       SOURCE_KIND: ${{ github.event.inputs.source_kind || 'newsapi_article' }}
+      ENRICH_PROVIDER: ${{ github.event.inputs.provider || 'deepseek' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
+      HEURISTIC_ONLY: ${{ github.event.inputs.heuristic_only || 'false' }}
 
     steps:
       - name: Checkout
@@ -68,7 +81,10 @@ jobs:
           if [ -n "${ENRICH_LIMIT}" ]; then
             args+=(--limit "${ENRICH_LIMIT}")
           fi
-          args+=(--heuristic-only)
+          args+=(--provider "${ENRICH_PROVIDER}" --model "${ENRICH_MODEL}")
+          if [ "${HEURISTIC_ONLY}" = "true" ]; then
+            args+=(--heuristic-only)
+          fi
           python run_financial_news_pipeline.py "${args[@]}"
 
       - name: Upload Enrichment Summary
