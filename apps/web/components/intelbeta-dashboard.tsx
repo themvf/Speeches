@@ -257,31 +257,28 @@ function shouldRegenerateFeedAnalysis(analysis: FeedItemAnalysis | undefined): b
 }
 
 function feedAnalysisModelLabel(analysis: FeedItemAnalysis | undefined): string {
-  if (!analysis?.model) return "";
-  if (isDeepSeekFeedAnalysis(analysis)) {
-    return analysis.fallback ? "DeepSeek fallback" : "DeepSeek";
-  }
-  return analysis.fallback ? "OpenAI fallback (stale)" : "OpenAI (stale)";
+  const model = String(analysis?.model || "").trim();
+  if (!model) return "not recorded";
+  return analysis?.fallback ? `${model} fallback` : model;
 }
 
 function feedAnalysisModelTitle(analysis: FeedItemAnalysis | undefined): string {
-  if (!analysis?.model) return "";
-  const fallback = analysis.fallback ? " fallback" : "";
-  return `Raw model: ${analysis.model}${fallback}`;
+  const model = String(analysis?.model || "").trim();
+  if (!model) return "Model was not recorded for this analysis.";
+  const fallback = analysis?.fallback ? " fallback" : "";
+  return `Model used: ${model}${fallback}`;
 }
 
 function hostedModelLabel(model: string, fallback = false): string {
-  const normalized = String(model || "").trim().toLowerCase();
-  if (!normalized) return "";
-  if (normalized.startsWith("deepseek")) return fallback ? "DeepSeek fallback" : "DeepSeek";
-  if (normalized.startsWith("gpt") || normalized.includes("openai")) return fallback ? "OpenAI fallback (stale)" : "OpenAI (stale)";
-  return fallback ? `${model} fallback` : model;
+  const normalized = String(model || "").trim();
+  if (!normalized) return "not recorded";
+  return fallback ? `${normalized} fallback` : normalized;
 }
 
 function hostedModelTitle(model: string, fallback = false): string {
   const normalized = String(model || "").trim();
-  if (!normalized) return "";
-  return `Raw model: ${normalized}${fallback ? " fallback" : ""}`;
+  if (!normalized) return "Model was not recorded for this enrichment.";
+  return `Model used: ${normalized}${fallback ? " fallback" : ""}`;
 }
 
 function feedSourceLabel(article: FeedItem, source: FeedMeta): string {
@@ -1543,7 +1540,7 @@ function FeedAnalysisPanel({
           <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
           <span className="tone-chip">Source: {sourceLabel}</span>
           <SourceProvenanceChip article={article} />
-          {analysisModel ? <span className="tone-chip" title={analysisModelTitle}>Model: {analysisModel}</span> : null}
+          <span className="tone-chip" title={analysisModelTitle}>Model: {analysisModel}</span>
         </div>
         <p style={{ marginTop: 10, color: "#dbe7f5", fontSize: 14, fontWeight: 700, lineHeight: 1.55 }}>
           {analysis.thesis}
@@ -1629,7 +1626,7 @@ function FeedAnalysisPanel({
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <span className={statusClass(detail.enrichment.status)}>{detail.enrichment.status || "not_enriched"}</span>
             <span className="tone-chip">Review: {detail.review.decision || "pending"}</span>
-            {documentModelLabel ? <span className="tone-chip" title={documentModelTitle}>Model: {documentModelLabel}</span> : null}
+            <span className="tone-chip" title={documentModelTitle}>Model: {documentModelLabel}</span>
             {primaryAnalysis.kind === "position" ? (
               <span className={analysisChipClass(primaryAnalysis.tone)}>
                 Position: {formatAnalysisLabel(primaryAnalysis.label)}

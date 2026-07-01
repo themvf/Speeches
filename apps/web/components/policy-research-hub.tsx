@@ -281,17 +281,15 @@ function statusClass(value: string): string {
 }
 
 function hostedModelLabel(model: string, fallback = false): string {
-  const normalized = String(model || "").trim().toLowerCase();
-  if (!normalized) return "";
-  if (normalized.startsWith("deepseek")) return fallback ? "DeepSeek fallback" : "DeepSeek";
-  if (normalized.startsWith("gpt") || normalized.includes("openai")) return fallback ? "OpenAI fallback (stale)" : "OpenAI (stale)";
-  return fallback ? `${model} fallback` : model;
+  const normalized = String(model || "").trim();
+  if (!normalized) return "not recorded";
+  return fallback ? `${normalized} fallback` : normalized;
 }
 
 function hostedModelTitle(model: string, fallback = false): string {
   const normalized = String(model || "").trim();
-  if (!normalized) return "";
-  return `Raw model: ${normalized}${fallback ? " fallback" : ""}`;
+  if (!normalized) return "Model was not recorded for this enrichment.";
+  return `Model used: ${normalized}${fallback ? " fallback" : ""}`;
 }
 
 function displayOrganization(value: string): string {
@@ -1342,7 +1340,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                                         {detail.enrichment.status || "not_enriched"}
                                       </span>
                                       <span className="tone-chip">Review: {detail.review.decision || "pending"}</span>
-                                      {modelLabel ? <span className="tone-chip" title={modelTitle}>Model: {modelLabel}</span> : null}
+                                      <span className="tone-chip" title={modelTitle}>Model: {modelLabel}</span>
                                       {primaryAnalysis.kind === "position" ? (
                                         <span className={analysisChipClass(primaryAnalysis.tone)}>
                                           Position: {formatAnalysisLabel(primaryAnalysis.label)}
