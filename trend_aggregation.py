@@ -38,8 +38,8 @@ SEC_SPEECHES_BLOB = "all_speeches.json"
 TRENDS_BLOB = "trends_daily.json"
 TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 
-CHAT_MODEL = "gpt-4o"
-CHAT_MODEL_FALLBACKS = ["gpt-4o-mini"]
+CHAT_MODEL = os.getenv("TREND_MODEL", "deepseek-v4-flash").strip() or "deepseek-v4-flash"
+CHAT_MODEL_FALLBACKS = ["deepseek-chat"]
 DEFAULT_MIN_MENTIONS = 5
 
 # Fixed taxonomy of top-level regulatory/financial trend categories.
@@ -460,6 +460,15 @@ def _generate_description(
     return f"Active regulatory focus on {trend_label} across multiple document sources."
 
 
+def _get_deepseek_api_key() -> str:
+    key = str(os.environ.get("DEEPSEEK_API", "") or os.environ.get("DEEPSEEK_API_KEY", "") or "").strip()
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in {"'", '"'}:
+        key = key[1:-1].strip()
+    if key.lower().startswith("bearer "):
+        key = key[7:].strip()
+    return key
+
+
 def _date_to_str(d: date) -> str:
     return d.isoformat()
 
@@ -706,7 +715,7 @@ def build_trends(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Trend aggregation pipeline")
-    parser.add_argument("--dry-run", action="store_true", help="Skip OpenAI calls, write locally only")
+    parser.add_argument("--dry-run", action="store_true", help="Skip LLM calls, write locally only")
     parser.add_argument("--min-mentions", type=int, default=DEFAULT_MIN_MENTIONS,
                         help=f"Minimum mentions to include a trend (default: {DEFAULT_MIN_MENTIONS})")
     parser.add_argument("--limit", type=int, default=0,
@@ -715,14 +724,17 @@ def main() -> None:
                         help="Write output locally even if GCS is available")
     args = parser.parse_args()
 
-    # Initialize OpenAI
+    # Initialize DeepSeek through its OpenAI-compatible API.
     client = None
     if not args.dry_run:
-        api_key = os.environ.get("OPENAI_API_KEY", "")
+        api_key = _get_deepseek_api_key()
         if api_key and OpenAI is not None:
-            client = OpenAI(api_key=api_key)
+            client = OpenAI(
+                api_key=api_key,
+                base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+            )
         else:
-            _stderr("[warn] OPENAI_API_KEY not set or openai not installed; skipping LLM calls")
+            _stderr("[warn] DEEPSEEK_API not set or openai not installed; skipping LLM calls")
 
     # Load GCS storage
     storage = _build_gcs_storage()
