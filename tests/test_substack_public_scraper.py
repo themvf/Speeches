@@ -303,9 +303,58 @@ def test_openai_relevance_filter_excludes_high_confidence_personal_finance():
     ]
 
     included, excluded = scraper.filter_institutional_finance(
-        entries, client=_FakeClient()
+        entries,
+        client=_FakeClient(),
+        provider="openai",
+        model="gpt-5-mini",
     )
 
     assert [item["substack_post_id"] for item in included] == [1]
     assert [item["substack_post_id"] for item in excluded] == [2]
     assert excluded[0]["relevance_reason"] == "Consumer budgeting advice."
+
+
+class _FakeChatCompletions:
+    def create(self, *, model, messages, temperature, response_format):
+        payload = json.loads(messages[-1]["content"])
+        decisions = [
+            {
+                "post_id": candidate["post_id"],
+                "classification": "institutional_finance",
+                "confidence": 0.9,
+                "reason": "Institutional markets coverage.",
+            }
+            for candidate in payload["candidates"]
+        ]
+        return {"choices": [{"message": {"content": json.dumps({"decisions": decisions})}}]}
+
+
+class _FakeChat:
+    completions = _FakeChatCompletions()
+
+
+class _FakeDeepSeekClient:
+    chat = _FakeChat()
+
+
+def test_deepseek_relevance_filter_uses_chat_completions():
+    scraper = SubstackPublicScraper(min_delay_seconds=0)
+    entries = [
+        {
+            "substack_post_id": 1,
+            "url": "https://example.substack.com/p/market-structure",
+            "title": "SEC market structure proposal",
+            "matched_keywords": ["securities"],
+        }
+    ]
+
+    included, excluded = scraper.filter_institutional_finance(
+        entries,
+        client=_FakeDeepSeekClient(),
+        provider="deepseek",
+        model="deepseek-v4-flash",
+    )
+
+    assert [item["substack_post_id"] for item in included] == [1]
+    assert excluded == []
+    assert included[0]["relevance_reason"] == "Institutional markets coverage."

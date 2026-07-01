@@ -127,6 +127,7 @@ interface EnrichFormState {
   mode: "only_missing_or_failed" | "all";
   source_kind: string;
   heuristic_only: boolean;
+  provider: "deepseek" | "openai";
   model: string;
 }
 
@@ -716,6 +717,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     mode: "only_missing_or_failed",
     source_kind: "newsapi_article",
     heuristic_only: false,
+    provider: "deepseek",
     model: ""
   });
   const [extract, setExtract] = useState<ExtractFormState>({
@@ -1729,9 +1731,17 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="only_missing_or_failed">only_missing_or_failed</option>
                   <option value="all">all</option>
                 </select>
+                <select
+                  className="form-control px-2 py-1.5"
+                  value={enrich.provider}
+                  onChange={(e) => setEnrich({ ...enrich, provider: e.target.value === "openai" ? "openai" : "deepseek" })}
+                >
+                  <option value="deepseek">deepseek</option>
+                  <option value="openai">openai</option>
+                </select>
                 <input
                   className="form-control px-2 py-1.5"
-                  placeholder="model (optional)"
+                  placeholder="deepseek-v4-flash"
                   value={enrich.model}
                   onChange={(e) => setEnrich({ ...enrich, model: e.target.value })}
                 />

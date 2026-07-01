@@ -245,6 +245,29 @@ def _response_text(response: Any) -> str:
     return ""
 
 
+def _chat_completion_text(response: Any) -> str:
+    if hasattr(response, "model_dump"):
+        payload = response.model_dump()
+    elif hasattr(response, "dict"):
+        payload = response.dict()
+    else:
+        payload = response
+    if isinstance(payload, dict):
+        choices = payload.get("choices", [])
+        if choices and isinstance(choices[0], dict):
+            message = choices[0].get("message", {})
+            content = message.get("content", "") if isinstance(message, dict) else ""
+            if isinstance(content, str):
+                return content
+    choices = getattr(response, "choices", None)
+    if choices:
+        message = getattr(choices[0], "message", None)
+        content = getattr(message, "content", "") if message is not None else ""
+        if isinstance(content, str):
+            return content
+    return ""
+
+
 def _json_object(value: str) -> Dict[str, Any]:
     text = str(value or "").strip()
     if text.startswith("```"):
@@ -756,12 +779,14 @@ class SubstackPublicScraper:
         entries: List[Dict[str, Any]],
         *,
         client: Any,
-        model: str = "gpt-5-mini",
+        model: str = "deepseek-v4-flash",
+        provider: str = "deepseek",
         exclusion_threshold: float = 0.8,
         batch_size: int = 20,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         if client is None:
-            raise RuntimeError("OpenAI is required for Substack relevance filtering")
+            raise RuntimeError("A hosted model client is required for Substack relevance filtering")
+        provider = _normalize_space(provider).lower() or "deepseek"
         decisions: Dict[str, Dict[str, Any]] = {}
         size = max(1, int(batch_size or 20))
 
@@ -791,12 +816,24 @@ class SubstackPublicScraper:
                 "promotion. Use personal_finance only when the content is primarily advice or promotion for an "
                 "individual consumer. Use ambiguous when evidence is insufficient. Include every post_id exactly once."
             )
-            response = client.responses.create(
-                model=model,
-                instructions=instruction,
-                input=json.dumps({"candidates": candidates}, ensure_ascii=True),
-            )
-            parsed = _json_object(_response_text(response))
+            if provider == "deepseek":
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": instruction},
+                        {"role": "user", "content": json.dumps({"candidates": candidates}, ensure_ascii=True)},
+                    ],
+                    temperature=0.1,
+                    response_format={"type": "json_object"},
+                )
+                parsed = _json_object(_chat_completion_text(response))
+            else:
+                response = client.responses.create(
+                    model=model,
+                    instructions=instruction,
+                    input=json.dumps({"candidates": candidates}, ensure_ascii=True),
+                )
+                parsed = _json_object(_response_text(response))
             raw_decisions = (
                 parsed.get("decisions")
                 if isinstance(parsed.get("decisions"), list)

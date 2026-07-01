@@ -68,28 +68,27 @@ function getFeedAnalysisConfig(modelOverride = ""): FeedAnalysisProviderConfig {
     readEnv("DEEPSEEK_CHAT_MODEL") ||
     "deepseek-v4-flash";
 
-  if ((explicitProvider === "deepseek" || !explicitProvider) && deepseekApiKey) {
+  if (explicitProvider === "openai") {
+    const openai = getOpenAiConfig();
     return {
-      provider: "deepseek",
-      apiKey: deepseekApiKey,
-      model: deepseekModel,
-      baseUrl: readEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+      provider: "openai",
+      apiKey: openai.apiKey,
+      model: normalizeText(modelOverride) || readEnv("FEED_ANALYSIS_MODEL") || readEnv("OPENAI_CHAT_MODEL") || "gpt-5.1",
+      baseUrl: openai.baseUrl,
     };
   }
 
-  const openai = getOpenAiConfig();
   return {
-    provider: "openai",
-    apiKey: openai.apiKey,
-    model: normalizeText(modelOverride) || readEnv("FEED_ANALYSIS_MODEL") || readEnv("OPENAI_CHAT_MODEL") || "gpt-5.1",
-    baseUrl: openai.baseUrl,
+    provider: "deepseek",
+    apiKey: deepseekApiKey,
+    model: deepseekModel,
+    baseUrl: readEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
   };
 }
 
 export function isDeepSeekFeedAnalysisConfigured(): boolean {
   const explicitProvider = readEnv("FEED_ANALYSIS_PROVIDER").toLowerCase();
-  const deepseekApiKey = readEnv("DEEPSEEK_API") || readEnv("DEEPSEEK_API_KEY");
-  return Boolean(deepseekApiKey) && explicitProvider !== "openai";
+  return explicitProvider !== "openai";
 }
 
 export function shouldRefreshFeedAnalysisForDeepSeek(analysis: { model?: string; fallback?: boolean } | null | undefined): boolean {

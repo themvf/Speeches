@@ -27,6 +27,47 @@ interface OpenAiPayload {
   error?: { message?: string };
 }
 
+interface ChatCompletionPayload {
+  choices?: Array<{ message?: { content?: string } }>;
+  error?: { message?: string };
+}
+
+interface EnforcementAnalysisProviderConfig {
+  provider: "deepseek" | "openai";
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+}
+
+function readEnv(name: string, fallback = ""): string {
+  return String(process.env[name] ?? fallback).trim();
+}
+
+function getEnforcementAnalysisConfig(modelOverride = ""): EnforcementAnalysisProviderConfig {
+  const explicitProvider = readEnv("ENFORCEMENT_ANALYSIS_PROVIDER").toLowerCase();
+  if (explicitProvider === "openai") {
+    const openai = getOpenAiConfig();
+    return {
+      provider: "openai",
+      apiKey: openai.apiKey,
+      model: normalizeText(modelOverride) || readEnv("ENFORCEMENT_ANALYSIS_MODEL") || normalizeText(openai.model) || "gpt-4.1-mini",
+      baseUrl: openai.baseUrl,
+    };
+  }
+
+  return {
+    provider: "deepseek",
+    apiKey: readEnv("DEEPSEEK_API") || readEnv("DEEPSEEK_API_KEY"),
+    model:
+      normalizeText(modelOverride) ||
+      readEnv("ENFORCEMENT_ANALYSIS_MODEL") ||
+      readEnv("DEEPSEEK_MODEL") ||
+      readEnv("DEEPSEEK_CHAT_MODEL") ||
+      "deepseek-v4-flash",
+    baseUrl: readEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+  };
+}
+
 export function isEnforcementAiAnalysis(value: unknown): value is EnforcementAiAnalysis {
   if (!value || typeof value !== "object") {
     return false;
@@ -81,6 +122,10 @@ function extractResponseText(payload: OpenAiPayload): string {
     }
   }
   return pieces.join("\n").trim();
+}
+
+function extractChatCompletionText(payload: ChatCompletionPayload): string {
+  return normalizeText(payload.choices?.[0]?.message?.content);
 }
 
 function cleanJsonText(value: string): string {
@@ -139,8 +184,56 @@ function buildInput(doc: CustomDocumentRecord): string {
   ].join("\n");
 }
 
-async function callOpenAi(input: string, model: string): Promise<string> {
-  const cfg = getOpenAiConfig();
+function enforcementInstructions(): string {
+  return [
+    "You are an enforcement analyst writing for securities compliance, legal, and risk teams.",
+    "Analyze only the supplied enforcement release text and metadata. Do not invent facts.",
+    "Return strict JSON with keys: thesis, entities, why_it_matters, legal_theory, risk_signals, follow_up_questions.",
+    "entities must list named defendants/respondents, issuers, companies, funds, offering vehicles, broker-dealers, securities, or other market participants involved in the alleged conduct. Do not include SEC staff, courts, or assisting agencies unless they are defendants/respondents.",
+    "why_it_matters must explain concrete market, investor-protection, compliance, or supervision significance from the release. Do not use generic enforcement boilerplate.",
+    "risk_signals must identify specific red flags from the release, such as account usage, timing, compensation, disclosure gaps, controls failures, harmed investor class, or transaction structure.",
+    "Each list should contain concise, specific bullets tied to facts in the release.",
+  ].join("\n");
+}
+
+async function callHostedModel(input: string, cfg: EnforcementAnalysisProviderConfig): Promise<string> {
+  if (cfg.provider === "deepseek") {
+    const response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [
+          {
+            role: "system",
+            content: `${enforcementInstructions()}\nReturn only valid JSON.`,
+          },
+          { role: "user", content: input },
+        ],
+        response_format: { type: "json_object" },
+      }),
+      cache: "no-store",
+    });
+
+    const text = await response.text();
+    let json: ChatCompletionPayload | null = null;
+    try {
+      json = JSON.parse(text) as ChatCompletionPayload;
+    } catch {
+      json = null;
+    }
+    if (!response.ok) {
+      throw new Error(normalizeText(json?.error?.message) || normalizeText(text) || `DeepSeek request failed: ${response.status}`);
+    }
+    if (!json) {
+      throw new Error("DeepSeek returned a non-JSON response.");
+    }
+    return extractChatCompletionText(json);
+  }
+
   const response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/responses`, {
     method: "POST",
     headers: {
@@ -148,16 +241,8 @@ async function callOpenAi(input: string, model: string): Promise<string> {
       Authorization: `Bearer ${cfg.apiKey}`,
     },
     body: JSON.stringify({
-      model,
-      instructions: [
-        "You are an enforcement analyst writing for securities compliance, legal, and risk teams.",
-        "Analyze only the supplied enforcement release text and metadata. Do not invent facts.",
-        "Return strict JSON with keys: thesis, entities, why_it_matters, legal_theory, risk_signals, follow_up_questions.",
-        "entities must list named defendants/respondents, issuers, companies, funds, offering vehicles, broker-dealers, securities, or other market participants involved in the alleged conduct. Do not include SEC staff, courts, or assisting agencies unless they are defendants/respondents.",
-        "why_it_matters must explain concrete market, investor-protection, compliance, or supervision significance from the release. Do not use generic enforcement boilerplate.",
-        "risk_signals must identify specific red flags from the release, such as account usage, timing, compensation, disclosure gaps, controls failures, harmed investor class, or transaction structure.",
-        "Each list should contain concise, specific bullets tied to facts in the release.",
-      ].join("\n"),
+      model: cfg.model,
+      instructions: enforcementInstructions(),
       input,
       text: {
         format: {
@@ -203,16 +288,15 @@ export async function generateEnforcementAnalysis(doc: CustomDocumentRecord, mod
   model: string;
   analysis: EnforcementAiAnalysis;
 }> {
-  const cfg = getOpenAiConfig();
+  const cfg = getEnforcementAnalysisConfig(modelOverride);
   if (!cfg.apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured.");
+    throw new Error(cfg.provider === "deepseek" ? "DEEPSEEK_API is not configured." : "OPENAI_API_KEY is not configured.");
   }
-  const model = normalizeText(modelOverride) || normalizeText(cfg.model) || "gpt-4.1-mini";
-  const responseText = await callOpenAi(buildInput(doc), model);
+  const responseText = await callHostedModel(buildInput(doc), cfg);
   const parsed = JSON.parse(cleanJsonText(responseText)) as unknown;
   const analysis = coerceAnalysis(parsed);
   if (!analysis.thesis) {
-    throw new Error("OpenAI returned analysis without a thesis.");
+    throw new Error(`${cfg.provider === "deepseek" ? "DeepSeek" : "OpenAI"} returned analysis without a thesis.`);
   }
-  return { model, analysis };
+  return { model: cfg.model, analysis };
 }

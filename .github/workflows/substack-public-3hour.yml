@@ -16,9 +16,9 @@ on:
         required: false
         default: "60"
       model:
-        description: "OpenAI model for relevance filtering"
+        description: "DeepSeek model for relevance filtering"
         required: false
-        default: "gpt-5-mini"
+        default: "deepseek-v4-flash"
 
 permissions:
   contents: read
@@ -42,7 +42,7 @@ jobs:
       KEYWORDS: ${{ github.event.inputs.keywords || '' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '60' }}
-      MODEL: ${{ github.event.inputs.model || 'gpt-5-mini' }}
+      MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
 
     steps:
       - name: Checkout
@@ -65,6 +65,7 @@ jobs:
           python run_connector_extraction_pipeline.py \
             --connector substack_public_article \
             --keywords "${KEYWORDS}" \
+            --relevance-provider deepseek \
             --relevance-model "${MODEL}" \
             --selection new_or_updated \
             --limit "${EXTRACTION_LIMIT}" \

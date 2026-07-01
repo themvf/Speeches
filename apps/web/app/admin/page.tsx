@@ -1301,7 +1301,7 @@ function EnrichmentPipelineSection() {
   const [loading, setLoading] = useState(true);
   const [showFailed, setShowFailed] = useState(false);
 
-  const [enrich, setEnrich] = useState({ source_kind: "newsapi_article", enrich_limit: "25", mode: "only_missing_or_failed", heuristic_only: "false", model: "" });
+  const [enrich, setEnrich] = useState({ source_kind: "newsapi_article", enrich_limit: "25", mode: "only_missing_or_failed", heuristic_only: "false", provider: "deepseek", model: "" });
   const [dispatching, setDispatching] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<"idle" | "ok" | "error">("idle");
   const [dispatchError, setDispatchError] = useState<string | null>(null);
@@ -1500,7 +1500,7 @@ function EnrichmentPipelineSection() {
 
         <div className={`${data ? "border-t border-[color:var(--line)] pt-4" : ""}`}>
           <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">RSS Feed Analysis</p>
-          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate and persist OpenAI analysis for RSS Feed articles missing saved keywords, individuals, and entities. Saved results render automatically on Feed cards and populate the shared mention index.</p>
+          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate and persist DeepSeek analysis for RSS Feed articles missing saved keywords, individuals, and entities. Saved results render automatically on Feed cards and populate the shared mention index.</p>
           <div className="mb-4 flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-[color:var(--ink-faint)]">Batch size</span>
@@ -1525,7 +1525,7 @@ function EnrichmentPipelineSection() {
           </div>
 
           <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">SEC Enforcement Analysis</p>
-          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate OpenAI analysis for recent SEC litigation releases missing saved analysis. Saved results render automatically on Enforcement cards.</p>
+          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate DeepSeek analysis for recent SEC litigation releases missing saved analysis. Saved results render automatically on Enforcement cards.</p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-[color:var(--ink-faint)]">Batch size</span>
@@ -1585,12 +1585,23 @@ function EnrichmentPipelineSection() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
+              <label className="text-xs text-[color:var(--ink-faint)]">Provider</label>
+              <select
+                value={enrich.provider}
+                onChange={(e) => setEnrich((p) => ({ ...p, provider: e.target.value === "openai" ? "openai" : "deepseek" }))}
+                className="form-control px-2 py-1.5 text-sm"
+              >
+                <option value="deepseek">DeepSeek</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
               <label className="text-xs text-[color:var(--ink-faint)]">Model override</label>
               <input
                 type="text"
                 value={enrich.model}
                 onChange={(e) => setEnrich((p) => ({ ...p, model: e.target.value }))}
-                placeholder="e.g. gpt-4o (leave blank for default)"
+                placeholder="e.g. deepseek-v4-flash (leave blank for default)"
                 className="form-control px-2 py-1.5 text-sm"
               />
             </div>
@@ -1603,7 +1614,7 @@ function EnrichmentPipelineSection() {
                 onChange={(e) => setEnrich((p) => ({ ...p, heuristic_only: e.target.checked ? "true" : "false" }))}
                 className="h-4 w-4 rounded accent-[color:var(--accent)]"
               />
-              <span className="text-xs text-[color:var(--ink-faint)]">Skip OpenAI (heuristic only)</span>
+              <span className="text-xs text-[color:var(--ink-faint)]">Skip hosted model (heuristic only)</span>
             </label>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">

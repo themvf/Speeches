@@ -2094,13 +2094,21 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     excluded: List[Dict[str, Any]] = []
     filtered_discovered: List[Dict[str, Any]] = []
     if args.connector == "substack_public_article":
-        model = str(getattr(args, "relevance_model", "") or "gpt-5-mini").strip()
-        client = core._get_openai_client(secrets_payload)
+        provider = str(getattr(args, "relevance_provider", "") or "deepseek").strip().lower()
+        if provider not in {"deepseek", "openai"}:
+            provider = "deepseek"
+        model = str(
+            getattr(args, "relevance_model", "")
+            or ("deepseek-v4-flash" if provider == "deepseek" else "gpt-5-mini")
+        ).strip()
+        client = core._get_model_client(secrets_payload, provider)
         filtered_discovered, excluded = scraper.filter_institutional_finance(
             discovered,
             client=client,
             model=model,
+            provider=provider,
         )
+        discovery_debug["relevance_provider"] = provider
         discovery_debug["relevance_model"] = model
         discovery_debug["relevance_included_count"] = len(filtered_discovered)
         discovery_debug["relevance_excluded_count"] = len(excluded)
@@ -2280,7 +2288,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-rss", default="")
     parser.add_argument("--exclude-terms", default="")
     parser.add_argument("--keywords", default="")
-    parser.add_argument("--relevance-model", default="gpt-5-mini")
+    parser.add_argument("--relevance-provider", choices=["openai", "deepseek"], default=os.getenv("RELEVANCE_PROVIDER", "deepseek"))
+    parser.add_argument("--relevance-model", default="")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--require-remote-persistence", action="store_true")
     parser.add_argument("--summary-path", default="")

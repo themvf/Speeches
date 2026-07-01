@@ -616,7 +616,6 @@ export async function getRssArticlesNeedingAnalysis(limit = 10): Promise<StoredR
   const sql = getSql();
   const cappedLimit = Math.max(1, Math.min(100, limit));
   const refreshForDeepSeek =
-    Boolean(String(process.env.DEEPSEEK_API || process.env.DEEPSEEK_API_KEY || "").trim()) &&
     String(process.env.FEED_ANALYSIS_PROVIDER || "").trim().toLowerCase() !== "openai";
   const rows = (await sql`
     SELECT a.*, to_jsonb(ra.*) AS analysis

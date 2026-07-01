@@ -1247,7 +1247,7 @@ def _run_enrichment_agent(
     client: Any,
     doc: Dict[str, Any],
     model_name: str,
-    provider: str = "openai",
+    provider: str = "deepseek",
 ) -> Dict[str, Any]:
     text = str(doc.get("full_text", "") or "").strip()
     if len(text) > 90000:
@@ -1850,7 +1850,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
     targets = candidates[:limit] if limit > 0 else []
 
-    provider = str(args.provider or "openai").strip().lower()
+    provider = str(args.provider or "deepseek").strip().lower()
     client = None if args.heuristic_only else _get_model_client(secrets_payload, provider)
     if provider == "deepseek":
         accessible_models = _candidate_deepseek_models()
@@ -1992,7 +1992,7 @@ def _build_parser() -> argparse.ArgumentParser:
     enrich.add_argument("--limit", type=int, default=None)
     enrich.add_argument("--order", choices=["stored", "recent"], default="stored")
     enrich.add_argument("--model", default="")
-    enrich.add_argument("--provider", choices=["openai", "deepseek"], default=os.getenv("ENRICH_PROVIDER", "openai"))
+    enrich.add_argument("--provider", choices=["openai", "deepseek"], default=os.getenv("ENRICH_PROVIDER", "deepseek"))
     enrich.add_argument("--heuristic-only", action="store_true")
     enrich.add_argument("--dry-run", action="store_true")
     enrich.add_argument("--require-remote-persistence", action="store_true")
