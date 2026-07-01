@@ -1,6 +1,10 @@
 import { type NextRequest } from "next/server";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
-import { generateFeedAnalysis, type FeedAnalysisInput } from "@/lib/server/feed-analysis";
+import {
+  generateFeedAnalysis,
+  shouldRefreshFeedAnalysisForDeepSeek,
+  type FeedAnalysisInput,
+} from "@/lib/server/feed-analysis";
 import {
   getRssArticleById,
   rssArticleSourceHash,
@@ -41,7 +45,11 @@ export async function POST(req: NextRequest) {
         return fail("RSS article not found.", "RSS_ARTICLE_NOT_FOUND", 404, requestId);
       }
       const currentHash = rssArticleSourceHash(article);
-      if (article.analysis?.status === "enriched" && article.analysis.source_hash === currentHash) {
+      if (
+        article.analysis?.status === "enriched" &&
+        article.analysis.source_hash === currentHash &&
+        !shouldRefreshFeedAnalysisForDeepSeek(article.analysis)
+      ) {
         return ok({ analysis: article.analysis, saved: true }, requestId);
       }
 

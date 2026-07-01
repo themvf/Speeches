@@ -1874,9 +1874,9 @@ export function IntelBetaDashboard({
     }
   }, [docDetailLoading, docDetails]);
 
-  const loadFeedAnalysis = useCallback(async (article: FeedItem) => {
+  const loadFeedAnalysis = useCallback(async (article: FeedItem, force = false) => {
     const itemKey = savedArticleId(article);
-    if (feedAnalyses[itemKey] || feedAnalysisLoading[itemKey]) return;
+    if ((!force && feedAnalyses[itemKey]) || feedAnalysisLoading[itemKey]) return;
     const source = getFeedMeta(article.feed_key);
     const topics = topicIndex.topicMatchesByArticleId.get(article.id)?.map((topic) => topic.label) ?? [];
 
@@ -2317,7 +2317,7 @@ export function IntelBetaDashboard({
                           analysis={feedAnalyses[itemKey]}
                           analysisLoading={itemAnalysisLoading}
                           analysisError={itemAnalysisError}
-                          retryAnalysis={() => void loadFeedAnalysis(article)}
+                          retryAnalysis={() => void loadFeedAnalysis(article, true)}
                           detail={docId ? docDetails[docId] : undefined}
                           loading={detailLoading}
                           error={detailError}

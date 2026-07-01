@@ -86,6 +86,20 @@ function getFeedAnalysisConfig(modelOverride = ""): FeedAnalysisProviderConfig {
   };
 }
 
+export function isDeepSeekFeedAnalysisConfigured(): boolean {
+  const explicitProvider = readEnv("FEED_ANALYSIS_PROVIDER").toLowerCase();
+  const deepseekApiKey = readEnv("DEEPSEEK_API") || readEnv("DEEPSEEK_API_KEY");
+  return Boolean(deepseekApiKey) && explicitProvider !== "openai";
+}
+
+export function shouldRefreshFeedAnalysisForDeepSeek(analysis: { model?: string; fallback?: boolean } | null | undefined): boolean {
+  if (!isDeepSeekFeedAnalysisConfigured() || !analysis) {
+    return false;
+  }
+  const model = normalizeText(analysis.model).toLowerCase();
+  return Boolean(analysis.fallback) || !model.startsWith("deepseek");
+}
+
 function stringList(value: unknown, maxItems: number, maxChars = 180): string[] {
   if (!Array.isArray(value)) return [];
   return value
