@@ -246,6 +246,28 @@ function getFeedMeta(feedKey: string): FeedMeta {
   };
 }
 
+function isDeepSeekFeedAnalysis(analysis: FeedItemAnalysis | undefined): boolean {
+  return String(analysis?.model || "").trim().toLowerCase().startsWith("deepseek");
+}
+
+function shouldRegenerateFeedAnalysis(analysis: FeedItemAnalysis | undefined): boolean {
+  return Boolean(analysis) && (Boolean(analysis?.fallback) || !isDeepSeekFeedAnalysis(analysis));
+}
+
+function feedAnalysisModelLabel(analysis: FeedItemAnalysis | undefined): string {
+  if (!analysis?.model) return "";
+  if (isDeepSeekFeedAnalysis(analysis)) {
+    return analysis.fallback ? "DeepSeek fallback" : "DeepSeek";
+  }
+  return analysis.fallback ? "OpenAI fallback (stale)" : "OpenAI (stale)";
+}
+
+function feedAnalysisModelTitle(analysis: FeedItemAnalysis | undefined): string {
+  if (!analysis?.model) return "";
+  const fallback = analysis.fallback ? " fallback" : "";
+  return `Raw model: ${analysis.model}${fallback}`;
+}
+
 function feedSourceLabel(article: FeedItem, source: FeedMeta): string {
   const organization = decodeEntities(article.organization || "").trim();
   const author = decodeEntities(article.author || "").trim();
@@ -845,7 +867,7 @@ function analysisMapFromFeedItems(items: FeedItem[]): Record<string, FeedItemAna
   const out: Record<string, FeedItemAnalysis> = {};
   for (const item of items) {
     const analysis = toFeedItemAnalysis(item.analysis);
-    if (analysis) {
+    if (analysis && !shouldRegenerateFeedAnalysis(analysis)) {
       out[savedArticleId(item)] = analysis;
     }
   }
@@ -1480,7 +1502,8 @@ function FeedAnalysisPanel({
   const decodedDescription = decodeEntities(article.description || "");
   const topicLabels = matchedTopics.map((topic) => topic.label);
   const articleSummary = decodedDescription || "No feed summary is available for this article yet.";
-  const analysisModel = analysis?.fallback ? `${analysis.model} fallback` : analysis?.model;
+  const analysisModel = feedAnalysisModelLabel(analysis);
+  const analysisModelTitle = feedAnalysisModelTitle(analysis);
   const mainGridColumns = compact ? "1fr" : "minmax(0,1.45fr) minmax(220px,0.55fr)";
   const twoColumnGrid = compact ? "1fr" : "repeat(2, minmax(0, 1fr))";
   const threeColumnGrid = compact ? "1fr" : "repeat(3, minmax(0, 1fr))";
@@ -1500,7 +1523,7 @@ function FeedAnalysisPanel({
           <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
           <span className="tone-chip">Source: {sourceLabel}</span>
           <SourceProvenanceChip article={article} />
-          {analysisModel ? <span className="tone-chip">Model: {analysisModel}</span> : null}
+          {analysisModel ? <span className="tone-chip" title={analysisModelTitle}>Model: {analysisModel}</span> : null}
         </div>
         <p style={{ marginTop: 10, color: "#dbe7f5", fontSize: 14, fontWeight: 700, lineHeight: 1.55 }}>
           {analysis.thesis}
@@ -1746,8 +1769,13 @@ export function IntelBetaDashboard({
 
   useEffect(() => {
     const savedAnalyses = analysisMapFromFeedItems(feedItems);
-    if (Object.keys(savedAnalyses).length === 0) return;
-    setFeedAnalyses((prev) => ({ ...savedAnalyses, ...prev }));
+    setFeedAnalyses((prev) => {
+      const current = Object.fromEntries(Object.entries(prev).filter(([, analysis]) => !shouldRegenerateFeedAnalysis(analysis)));
+      if (Object.keys(savedAnalyses).length === 0 && Object.keys(current).length === Object.keys(prev).length) {
+        return prev;
+      }
+      return { ...savedAnalyses, ...current };
+    });
   }, [feedItems]);
 
   useEffect(() => {
@@ -1918,8 +1946,8 @@ export function IntelBetaDashboard({
       return { ...prev, [key]: shouldOpen };
     });
 
-    if (!feedAnalyses[key] && !feedAnalysisLoading[key]) {
-      void loadFeedAnalysis(article);
+    if ((!feedAnalyses[key] || shouldRegenerateFeedAnalysis(feedAnalyses[key])) && !feedAnalysisLoading[key]) {
+      void loadFeedAnalysis(article, Boolean(feedAnalyses[key]));
     }
     if (article.item_type === "document" && article.document_id && !docDetails[article.document_id] && !docDetailLoading[article.document_id]) {
       void loadDocDetail(article.document_id);
