@@ -43,6 +43,7 @@ interface DocumentItem {
   keywords: string[];
   topics: string[];
   enrichment_status: string;
+  enrichment_model?: string;
   review_decision: string;
   sentiment_label: "positive" | "negative" | "neutral" | "";
   sentiment_score: number;
@@ -77,6 +78,7 @@ interface DocumentDetailData {
   };
   enrichment: {
     status: string;
+    model: string;
     summary: string;
     tags: string[];
     keywords: string[];
@@ -276,6 +278,20 @@ function statusClass(value: string): string {
   if (["fallback_enriched", "queued", "running"].includes(s)) return "status-chip status-warn";
   if (["failed", "rejected"].includes(s)) return "status-chip status-failure";
   return "status-chip status-neutral";
+}
+
+function hostedModelLabel(model: string, fallback = false): string {
+  const normalized = String(model || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.startsWith("deepseek")) return fallback ? "DeepSeek fallback" : "DeepSeek";
+  if (normalized.startsWith("gpt") || normalized.includes("openai")) return fallback ? "OpenAI fallback (stale)" : "OpenAI (stale)";
+  return fallback ? `${model} fallback` : model;
+}
+
+function hostedModelTitle(model: string, fallback = false): string {
+  const normalized = String(model || "").trim();
+  if (!normalized) return "";
+  return `Raw model: ${normalized}${fallback ? " fallback" : ""}`;
 }
 
 function displayOrganization(value: string): string {
@@ -1235,6 +1251,9 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                     const detailError = docDetailError[d.document_id] || "";
                     const isExpanded = !!expandedDocs[d.document_id];
                     const primaryAnalysis = pickPrimaryAnalysis(detail);
+                    const enrichmentModel = detail?.enrichment.model || d.enrichment_model || "";
+                    const modelLabel = hostedModelLabel(enrichmentModel, (detail?.enrichment.status || d.enrichment_status) === "fallback_enriched");
+                    const modelTitle = hostedModelTitle(enrichmentModel, (detail?.enrichment.status || d.enrichment_status) === "fallback_enriched");
                     const analysisActionLabel = detailLoading ? "Loading Analysis..." : isExpanded ? "Hide Analysis" : "Open Analysis";
                     const semanticSnippet = semanticSnippets[d.document_id];
                     const itemSaved = savedItems.isSaved(savedDocumentId(d));
@@ -1323,6 +1342,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                                         {detail.enrichment.status || "not_enriched"}
                                       </span>
                                       <span className="tone-chip">Review: {detail.review.decision || "pending"}</span>
+                                      {modelLabel ? <span className="tone-chip" title={modelTitle}>Model: {modelLabel}</span> : null}
                                       {primaryAnalysis.kind === "position" ? (
                                         <span className={analysisChipClass(primaryAnalysis.tone)}>
                                           Position: {formatAnalysisLabel(primaryAnalysis.label)}

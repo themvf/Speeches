@@ -50,6 +50,7 @@ type FeedItem = StoredRssArticle & {
   organization?: string;
   source_kind?: string;
   doc_type?: string;
+  enrichment_model?: string;
   topics?: string[];
   keywords?: string[];
   analysis?: unknown;
@@ -73,6 +74,7 @@ interface DocumentDetailData {
   };
   enrichment: {
     status: string;
+    model: string;
     summary: string;
     tags: string[];
     keywords: string[];
@@ -266,6 +268,20 @@ function feedAnalysisModelTitle(analysis: FeedItemAnalysis | undefined): string 
   if (!analysis?.model) return "";
   const fallback = analysis.fallback ? " fallback" : "";
   return `Raw model: ${analysis.model}${fallback}`;
+}
+
+function hostedModelLabel(model: string, fallback = false): string {
+  const normalized = String(model || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.startsWith("deepseek")) return fallback ? "DeepSeek fallback" : "DeepSeek";
+  if (normalized.startsWith("gpt") || normalized.includes("openai")) return fallback ? "OpenAI fallback (stale)" : "OpenAI (stale)";
+  return fallback ? `${model} fallback` : model;
+}
+
+function hostedModelTitle(model: string, fallback = false): string {
+  const normalized = String(model || "").trim();
+  if (!normalized) return "";
+  return `Raw model: ${normalized}${fallback ? " fallback" : ""}`;
 }
 
 function feedSourceLabel(article: FeedItem, source: FeedMeta): string {
@@ -913,6 +929,7 @@ function documentToFeedItem(document: DocumentListItem): FeedItem {
     organization: document.organization,
     source_kind: document.source_kind,
     doc_type: document.doc_type,
+    enrichment_model: document.enrichment_model || "",
     topics: document.topics || [],
     keywords: document.keywords || [],
   };
@@ -1504,6 +1521,9 @@ function FeedAnalysisPanel({
   const articleSummary = decodedDescription || "No feed summary is available for this article yet.";
   const analysisModel = feedAnalysisModelLabel(analysis);
   const analysisModelTitle = feedAnalysisModelTitle(analysis);
+  const documentModel = detail?.enrichment.model || article.enrichment_model || "";
+  const documentModelLabel = hostedModelLabel(documentModel, detail?.enrichment.status === "fallback_enriched");
+  const documentModelTitle = hostedModelTitle(documentModel, detail?.enrichment.status === "fallback_enriched");
   const mainGridColumns = compact ? "1fr" : "minmax(0,1.45fr) minmax(220px,0.55fr)";
   const twoColumnGrid = compact ? "1fr" : "repeat(2, minmax(0, 1fr))";
   const threeColumnGrid = compact ? "1fr" : "repeat(3, minmax(0, 1fr))";
@@ -1609,6 +1629,7 @@ function FeedAnalysisPanel({
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <span className={statusClass(detail.enrichment.status)}>{detail.enrichment.status || "not_enriched"}</span>
             <span className="tone-chip">Review: {detail.review.decision || "pending"}</span>
+            {documentModelLabel ? <span className="tone-chip" title={documentModelTitle}>Model: {documentModelLabel}</span> : null}
             {primaryAnalysis.kind === "position" ? (
               <span className={analysisChipClass(primaryAnalysis.tone)}>
                 Position: {formatAnalysisLabel(primaryAnalysis.label)}
