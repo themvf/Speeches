@@ -72,6 +72,7 @@ jobs:
           - source_kind: lsta_news_item
           - source_kind: wsj_dow_jones
           - source_kind: reddit_post
+          - source_kind: hedge_fund_letter
 
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}

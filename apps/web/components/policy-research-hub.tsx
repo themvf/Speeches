@@ -176,7 +176,8 @@ interface ExtractFormState {
     | "wealth_of_common_sense_article"
     | "congress_crs_product"
     | "wsj_dow_jones"
-    | "reddit_post";
+    | "reddit_post"
+    | "hedge_fund_letter";
   selection: "new_or_updated" | "all";
   limit: number;
   max_pages: number;
@@ -344,6 +345,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   congress_crs_product: "Congress CRS Products",
   wsj_dow_jones: "WSJ / Dow Jones",
   reddit_post: "Reddit",
+  hedge_fund_letter: "Hedge Fund Letters",
   newsapi_article: "News",
   uploaded: "Uploaded"
 };
@@ -411,6 +413,7 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   congress_crs_product: "CRS Product",
   wsj_dow_jones: "Article",
   reddit_post: "Post",
+  hedge_fund_letter: "Investor Letter",
   newsapi_article: "News Article",
   uploaded: "Uploaded Document"
 };
@@ -1590,6 +1593,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="congress_crs_product">Congress CRS Products</option>
                   <option value="wsj_dow_jones">WSJ / Dow Jones RSS</option>
                   <option value="reddit_post">Reddit Posts</option>
+                  <option value="hedge_fund_letter">Hedge Fund Letters</option>
                 </select>
                 <select
                   className="form-control px-2 py-1.5"

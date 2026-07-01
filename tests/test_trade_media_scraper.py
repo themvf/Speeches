@@ -58,12 +58,96 @@ class TradeMediaScraperTests(unittest.TestCase):
                 TRADE_MEDIA_SOURCES["ft_portfolios_market_commentary"],
             )
         )
+        self.assertFalse(
+            _passes_source_url_filters(
+                "https://www.wired.com/story/ulta-promo-codes-july-2026/",
+                TRADE_MEDIA_SOURCES["wired_article"],
+            )
+        )
+        self.assertFalse(
+            _passes_source_url_filters(
+                "https://www.wired.com/story/nike-promo-codes-and-discounts-july-2026/",
+                TRADE_MEDIA_SOURCES["wired_article"],
+            )
+        )
         self.assertTrue(
             _passes_source_url_filters(
                 "https://www.ftportfolios.com/Commentary/MarketCommentary/2026/6/30/just-a-smidge",
                 TRADE_MEDIA_SOURCES["ft_portfolios_market_commentary"],
             )
         )
+        self.assertTrue(
+            _passes_source_url_filters(
+                "https://www.wired.com/story/cybersecurity-regulators-ransomware-banks/",
+                TRADE_MEDIA_SOURCES["wired_article"],
+            )
+        )
+
+    def test_wired_feed_discovery_excludes_coupon_articles(self):
+        scraper = TradeMediaScraper(min_delay_seconds=0)
+        rss_text = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Ulta Promo Codes: Up to 50% Off in July 2026</title>
+      <link>https://www.wired.com/story/ulta-promo-codes-july-2026/</link>
+      <pubDate>Wed, 01 Jul 2026 11:00:00 GMT</pubDate>
+      <description>Coupon page.</description>
+    </item>
+    <item>
+      <title>Ransomware Operators Target Financial Firms</title>
+      <link>https://www.wired.com/story/ransomware-financial-firms-2026/</link>
+      <pubDate>Wed, 01 Jul 2026 12:00:00 GMT</pubDate>
+      <description>Security article.</description>
+    </item>
+  </channel>
+</rss>
+"""
+
+        with patch.object(scraper, "_fetch", return_value=_FakeResponse(text=rss_text)):
+            docs = scraper._discover_from_feed(
+                feed_url="https://www.wired.com/feed/category/security/latest/rss",
+                source_key="wired_article",
+                source_label="WIRED",
+                source_url="https://www.wired.com/category/security/",
+            )
+
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["title"], "Ransomware Operators Target Financial Firms")
+        self.assertEqual(docs[0]["url"], "https://www.wired.com/story/ransomware-financial-firms-2026/")
+
+    def test_wired_discovery_uses_security_feed_not_sitewide_feed(self):
+        scraper = TradeMediaScraper(min_delay_seconds=0)
+        listing_html = """
+<html><head>
+  <link rel="alternate" type="application/rss+xml" href="https://www.wired.com/feed/rss" />
+</head><body></body></html>
+"""
+        rss_text = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Security Story</title>
+      <link>https://www.wired.com/story/security-story/</link>
+      <pubDate>Wed, 01 Jul 2026 12:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
+"""
+        fetched = []
+
+        def fake_fetch(url, timeout=45):
+            fetched.append(url)
+            if url.endswith("/category/security/"):
+                return _FakeResponse(text=listing_html, url=url)
+            return _FakeResponse(text=rss_text, url=url)
+
+        with patch.object(scraper, "_fetch", side_effect=fake_fetch):
+            docs = scraper.discover_documents("wired_article", max_pages=1, include_rss=True)
+
+        self.assertEqual(len(docs), 1)
+        self.assertIn("https://www.wired.com/feed/category/security/latest/rss", fetched)
+        self.assertNotIn("https://www.wired.com/feed/rss", fetched)
 
     def test_build_google_news_query_uses_domain_and_optional_terms(self):
         scraper = TradeMediaScraper(min_delay_seconds=0)

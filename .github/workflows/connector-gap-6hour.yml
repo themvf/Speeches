@@ -99,6 +99,9 @@ jobs:
           - connector: reddit_post
             extraction_limit: "50"
             max_pages: "1"
+          - connector: hedge_fund_letter
+            extraction_limit: "25"
+            max_pages: "2"
 
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}

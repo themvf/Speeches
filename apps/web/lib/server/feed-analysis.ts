@@ -42,6 +42,50 @@ interface OpenAiPayload {
   error?: { message?: string };
 }
 
+interface ChatCompletionPayload {
+  choices?: Array<{ message?: { content?: string } }>;
+  error?: { message?: string };
+}
+
+interface FeedAnalysisProviderConfig {
+  provider: "deepseek" | "openai";
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+}
+
+function readEnv(name: string, fallback = ""): string {
+  return String(process.env[name] ?? fallback).trim();
+}
+
+function getFeedAnalysisConfig(modelOverride = ""): FeedAnalysisProviderConfig {
+  const explicitProvider = readEnv("FEED_ANALYSIS_PROVIDER").toLowerCase();
+  const deepseekApiKey = readEnv("DEEPSEEK_API") || readEnv("DEEPSEEK_API_KEY");
+  const deepseekModel =
+    normalizeText(modelOverride) ||
+    readEnv("FEED_ANALYSIS_MODEL") ||
+    readEnv("DEEPSEEK_MODEL") ||
+    readEnv("DEEPSEEK_CHAT_MODEL") ||
+    "deepseek-v4-flash";
+
+  if ((explicitProvider === "deepseek" || !explicitProvider) && deepseekApiKey) {
+    return {
+      provider: "deepseek",
+      apiKey: deepseekApiKey,
+      model: deepseekModel,
+      baseUrl: readEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+    };
+  }
+
+  const openai = getOpenAiConfig();
+  return {
+    provider: "openai",
+    apiKey: openai.apiKey,
+    model: normalizeText(modelOverride) || readEnv("FEED_ANALYSIS_MODEL") || readEnv("OPENAI_CHAT_MODEL") || "gpt-5.1",
+    baseUrl: openai.baseUrl,
+  };
+}
+
 function stringList(value: unknown, maxItems: number, maxChars = 180): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -69,6 +113,10 @@ function extractResponseText(payload: OpenAiPayload): string {
     }
   }
   return pieces.join("\n").trim();
+}
+
+function extractChatCompletionText(payload: ChatCompletionPayload): string {
+  return normalizeText(payload.choices?.[0]?.message?.content);
 }
 
 function coerceAnalysis(raw: unknown, model: string, fallback: boolean): FeedAnalysis {
@@ -171,11 +219,10 @@ export function fallbackFeedAnalysis(input: FeedAnalysisInput, model = "heuristi
 }
 
 export async function generateFeedAnalysis(input: FeedAnalysisInput, modelOverride = ""): Promise<FeedAnalysis> {
-  const cfg = getOpenAiConfig();
-  const configuredModel = normalizeText(process.env.OPENAI_CHAT_MODEL);
-  const model = normalizeText(modelOverride) || configuredModel || "gpt-5.1";
+  const cfg = getFeedAnalysisConfig(modelOverride);
+  const model = cfg.model;
   if (!cfg.apiKey) {
-    return fallbackFeedAnalysis(input);
+    return fallbackFeedAnalysis(input, model);
   }
 
   const prompt = [
@@ -192,6 +239,51 @@ export async function generateFeedAnalysis(input: FeedAnalysisInput, modelOverri
     normalizeText(input.description).slice(0, 6000),
   ].join("\n");
 
+  const instructions = [
+    "You are a regulatory intelligence analyst for financial services, securities, banking, fintech, and enforcement coverage.",
+    "Analyze only the supplied RSS/feed metadata and excerpt. Do not invent facts beyond the supplied text.",
+    "Return dense, specific JSON. Extract concrete keywords, named individuals, companies, agencies, courts, rules, statutes, products, and other entities.",
+    "Use empty arrays when the text does not identify individuals or entities.",
+  ].join("\n");
+
+  if (cfg.provider === "deepseek") {
+    const response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: `${instructions}\nReturn only valid JSON with keys: thesis, why_it_matters, risk_signals, follow_up_questions, keywords, individuals, entities.` },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+      }),
+      cache: "no-store",
+    });
+
+    const text = await response.text();
+    let json: ChatCompletionPayload | null = null;
+    try {
+      json = JSON.parse(text) as ChatCompletionPayload;
+    } catch {
+      json = null;
+    }
+    if (!response.ok || !json) {
+      return fallbackFeedAnalysis(input, model);
+    }
+
+    try {
+      const parsed = JSON.parse(cleanJsonText(extractChatCompletionText(json))) as unknown;
+      const analysis = coerceAnalysis(parsed, model, false);
+      return analysis.thesis ? analysis : fallbackFeedAnalysis(input, model);
+    } catch {
+      return fallbackFeedAnalysis(input, model);
+    }
+  }
+
   const response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/responses`, {
     method: "POST",
     headers: {
@@ -200,12 +292,7 @@ export async function generateFeedAnalysis(input: FeedAnalysisInput, modelOverri
     },
     body: JSON.stringify({
       model,
-      instructions: [
-        "You are a regulatory intelligence analyst for financial services, securities, banking, fintech, and enforcement coverage.",
-        "Analyze only the supplied RSS/feed metadata and excerpt. Do not invent facts beyond the supplied text.",
-        "Return dense, specific JSON. Extract concrete keywords, named individuals, companies, agencies, courts, rules, statutes, products, and other entities.",
-        "Use empty arrays when the text does not identify individuals or entities.",
-      ].join("\n"),
+      instructions,
       input: prompt,
       text: {
         format: {

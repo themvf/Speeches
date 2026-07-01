@@ -179,6 +179,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   newsapi_article: "News",
   rss_news_feed: "News Feed",
   reddit_post: "Reddit",
+  hedge_fund_letter: "Hedge Fund Letters",
   uploaded: "Uploaded",
 };
 

@@ -102,10 +102,21 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
         "tags_csv": "wired,technology-news,cybersecurity",
         "rss_candidates": [
             "https://www.wired.com/feed/category/security/latest/rss",
-            "https://www.wired.com/feed/rss",
         ],
+        "excluded_feed_url_substrings": ["/feed/rss"],
         "article_path_keywords": ["story", "security"],
         "required_url_substrings": ["/story/"],
+        "excluded_url_substrings": [
+            "/story/wired-coupons/",
+            "/story/wired-coupon-codes/",
+            "/story/wired-promo-codes/",
+            "coupon",
+            "coupons",
+            "promo-code",
+            "promo-codes",
+            "discount-code",
+            "discounts",
+        ],
         "search_domain": "wired.com",
         "default_search_query": "cybersecurity OR AI OR privacy OR regulation OR financial sector",
     },
@@ -818,6 +829,17 @@ class TradeMediaScraper:
                 feed_urls.append(resolved)
 
         feed_urls = [u for idx, u in enumerate(feed_urls) if u and u not in feed_urls[:idx]]
+        excluded_feed_url_substrings = [
+            str(item or "").strip().lower()
+            for item in cfg.get("excluded_feed_url_substrings", [])
+            if str(item or "").strip()
+        ]
+        if excluded_feed_url_substrings:
+            feed_urls = [
+                url
+                for url in feed_urls
+                if not any(item in str(url or "").lower() for item in excluded_feed_url_substrings)
+            ]
         debug["feed_urls_attempted"] = list(feed_urls)
 
         if include_rss:

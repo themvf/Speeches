@@ -138,6 +138,7 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "wealth_of_common_sense_article", label: "Trade Media: A Wealth of Common Sense" },
       { value: "wsj_dow_jones", label: "WSJ / Dow Jones RSS" },
       { value: "reddit_post", label: "Reddit Post" },
+      { value: "hedge_fund_letter", label: "Hedge Fund Letters" },
     ],
   },
   {
@@ -1944,7 +1945,7 @@ const SOURCE_KIND_OPTIONS = [
   "citywire_article", "therecord_media_article", "wired_article", "tripwire_article",
   "akamai_blog_article", "ritholtz_article", "ft_portfolios_market_commentary",
   "liberty_street_economics_article", "wealth_of_common_sense_article", "wsj_dow_jones",
-  "reddit_post", "newsapi_article",
+  "reddit_post", "hedge_fund_letter", "newsapi_article",
 ];
 
 function ManualDocumentUploadSection() {
