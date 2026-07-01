@@ -8,9 +8,9 @@ on:
         required: false
         default: "50"
       model:
-        description: "Ignored while OpenAI enrichment is paused"
+        description: "Model for hosted enrichment"
         required: false
-        default: ""
+        default: "deepseek-v4-flash"
 
 permissions:
   contents: read
@@ -76,7 +76,9 @@ jobs:
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '50' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
 
     steps:
       - name: Checkout
@@ -96,7 +98,7 @@ jobs:
       - name: Enrich ${{ matrix.source_kind }}
         run: |
           set -euo pipefail
-          args=(enrich --require-remote-persistence --mode only_missing_or_failed --source-kind "${{ matrix.source_kind }}" --limit "${ENRICH_LIMIT}" --heuristic-only --summary-path "connector_enrichment_${{ matrix.source_kind }}.json")
+          args=(enrich --require-remote-persistence --mode only_missing_or_failed --source-kind "${{ matrix.source_kind }}" --limit "${ENRICH_LIMIT}" --provider deepseek --model "${ENRICH_MODEL}" --summary-path "connector_enrichment_${{ matrix.source_kind }}.json")
           python run_financial_news_pipeline.py "${args[@]}"
 
       - name: Upload Enrichment Summary
