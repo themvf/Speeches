@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/data-store";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
 import {
+  deleteInvalidWiredCouponArticles,
   ensureSchema,
   getFeeds,
   getRecentArticles,
@@ -20,6 +21,29 @@ import { getClientIp, getFeedLimiter, isRateLimited } from "@/lib/server/rate-li
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
+
+const WIRED_COUPON_PATTERN = /\b(coupons?|promo[\s-]+codes?|discount(?:s|[\s-]+codes?)?)\b/i;
+
+function isInvalidWiredCouponArticle(article: StoredRssArticle): boolean {
+  if (String(article.feed_key || "") !== "wired_security") {
+    return false;
+  }
+  return WIRED_COUPON_PATTERN.test(`${article.title || ""} ${article.url || ""} ${article.description || ""}`);
+}
+
+function isInvalidWiredCouponDocument(doc: { source_kind?: string; title?: string; url?: string; tags?: string[]; keywords?: string[] }): boolean {
+  if (String(doc.source_kind || "") !== "wired_article") {
+    return false;
+  }
+  return WIRED_COUPON_PATTERN.test(
+    [
+      doc.title || "",
+      doc.url || "",
+      ...(Array.isArray(doc.tags) ? doc.tags : []),
+      ...(Array.isArray(doc.keywords) ? doc.keywords : []),
+    ].join(" ")
+  );
+}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(req.headers);
@@ -40,6 +64,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (process.env.DATABASE_URL) {
       await ensureSchema();
+      await deleteInvalidWiredCouponArticles().catch((error) => {
+        console.error("[intel/feed] WIRED coupon cleanup failed:", error);
+        return 0;
+      });
 
       [articles, topicRules] = await Promise.all([
         getRecentArticles({ limit, feedKey, since }),
@@ -81,7 +109,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       loadCorpusDocuments(),
       loadEnrichmentState(),
     ]);
-    const documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
+    articles = articles.filter((article) => !isInvalidWiredCouponArticle(article));
+    const documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment))
+      .filter((doc) => !isInvalidWiredCouponDocument(doc));
 
     return NextResponse.json(
       {

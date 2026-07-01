@@ -713,6 +713,30 @@ export async function saveRssArticleAnalysisFailure(article: StoredRssArticle, e
   `;
 }
 
+export async function deleteInvalidWiredCouponArticles(): Promise<number> {
+  await ensureSchema();
+  const sql = getSql();
+  const rows = (await sql`
+    DELETE FROM rss_articles
+    WHERE feed_key = 'wired_security'
+      AND (
+        title ILIKE '%coupon%'
+        OR title ILIKE '%promo code%'
+        OR title ILIKE '%promo-code%'
+        OR title ILIKE '%discount%'
+        OR url ILIKE '%coupon%'
+        OR url ILIKE '%promo-code%'
+        OR url ILIKE '%promo-codes%'
+        OR url ILIKE '%discount%'
+        OR description ILIKE '%coupon%'
+        OR description ILIKE '%promo code%'
+        OR description ILIKE '%discount%'
+      )
+    RETURNING id
+  `) as unknown as Array<{ id: number }>;
+  return rows.length;
+}
+
 export async function saveIntelligenceMentions(
   sourceType: string,
   sourceId: string,
