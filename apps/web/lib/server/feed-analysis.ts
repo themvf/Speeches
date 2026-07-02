@@ -410,6 +410,10 @@ function contextualEntities(input: FeedAnalysisInput): { individuals: string[]; 
   };
 }
 
+function ensureMinimumList(values: string[], fallback: string[], minItems: number, maxItems: number): string[] {
+  return values.length >= minItems ? values.slice(0, maxItems) : pushUnique([...values], fallback, maxItems);
+}
+
 function strengthenFeedAnalysis(input: FeedAnalysisInput, analysis: FeedAnalysis): FeedAnalysis {
   const fallback = fallbackFeedAnalysis(input, analysis.model);
   const sparse = isSparseFeedInput(input);
@@ -420,13 +424,14 @@ function strengthenFeedAnalysis(input: FeedAnalysisInput, analysis: FeedAnalysis
   const keywords = sparse ? fallback.keywords : pushUnique([...analysis.keywords], fallback.keywords, 12);
   const individuals = pushUnique(sparse ? [] : [...analysis.individuals], names.individuals, 10);
   const entities = pushUnique(sparse ? [] : [...analysis.entities], names.entities, 14);
+  const thesis = sparse ? contextualThesis(input) : analysis.thesis || fallback.thesis;
 
   return {
     ...analysis,
-    thesis: sparse ? contextualThesis(input) : analysis.thesis || fallback.thesis,
-    why_it_matters: why.length ? why : fallback.why_it_matters,
-    risk_signals: risks.length ? risks : fallback.risk_signals,
-    follow_up_questions: follow.length ? follow : fallback.follow_up_questions,
+    thesis: normalizeText(thesis).length >= 40 ? thesis : fallback.thesis,
+    why_it_matters: ensureMinimumList(why, fallback.why_it_matters, 2, 5),
+    risk_signals: ensureMinimumList(risks, fallback.risk_signals, 2, 5),
+    follow_up_questions: ensureMinimumList(follow, fallback.follow_up_questions, 2, 5),
     keywords,
     individuals,
     entities,
