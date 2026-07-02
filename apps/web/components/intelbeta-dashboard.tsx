@@ -168,6 +168,7 @@ const FEED_META: Record<string, FeedMeta> = {
   prnewswire_consumer_technology: { label: "PR Newswire Consumer Technology", code: "PRN", color: "#66d9e8" },
   prnewswire_financial_services: { label: "PR Newswire Financial Services", code: "PRN", color: "#66d9e8" },
   prnewswire_policy_public_interest: { label: "PR Newswire Policy & Public Interest", code: "PRN", color: "#66d9e8" },
+  google_news_ponzi_investor_fraud: { label: "Google News: Ponzi & Investor Fraud", code: "GNEWS", color: "#8ce99a" },
   cftc_general_press_releases: { label: "CFTC General Press Releases", code: "CFTC", color: "#ffd43b" },
   cftc_enforcement_press_releases: { label: "CFTC Enforcement Press Releases", code: "CFTC", color: "#ff8aa0" },
   cftc_speeches_testimony: { label: "CFTC Speeches and Testimony", code: "CFTC", color: "#ffd43b" },

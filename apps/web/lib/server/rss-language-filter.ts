@@ -4,7 +4,7 @@ type LanguageFilterArticle = {
   author?: string | null;
 };
 
-const ENGLISH_ONLY_FEED_PREFIXES = ["prnewswire_"];
+const ENGLISH_ONLY_FEED_PREFIXES = ["prnewswire_", "google_news_"];
 
 const ENGLISH_MARKERS = [
   "the", "and", "of", "to", "for", "with", "from", "by", "on", "in", "as", "at",

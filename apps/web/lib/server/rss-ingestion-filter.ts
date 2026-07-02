@@ -2,7 +2,10 @@ import { getMatchingTopics, normalizeTopicRules, type TopicRuleInput } from "@/l
 import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 
-const KEYWORD_FILTERED_FEED_PREFIXES = ["prnewswire_"];
+const KEYWORD_FILTERED_FEED_PREFIXES = ["prnewswire_", "google_news_"];
+const REQUIRED_TOPIC_KEYS_BY_FEED_KEY: Record<string, string[]> = {
+  google_news_ponzi_investor_fraud: ["PONZI_INVESTOR_FRAUD"],
+};
 
 export type RssIngestionFilterResult = {
   articles: RssArticle[];
@@ -48,7 +51,12 @@ export function filterRssArticlesForIngestion(
     };
   }
 
-  const filteredArticles = languageFilteredArticles.filter((article) => getMatchingTopics(article, rules).length > 0);
+  const requiredTopicKeys = REQUIRED_TOPIC_KEYS_BY_FEED_KEY[String(feedKey || "").trim().toLowerCase()] || [];
+  const filteredArticles = languageFilteredArticles.filter((article) => {
+    const matches = getMatchingTopics(article, rules);
+    if (matches.length === 0) return false;
+    return requiredTopicKeys.length === 0 || matches.some((topic) => requiredTopicKeys.includes(topic.topic_key));
+  });
   return {
     articles: filteredArticles,
     fetched: articles.length,

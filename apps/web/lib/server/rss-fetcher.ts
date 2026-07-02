@@ -190,6 +190,11 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     feedUrl: "https://www.prnewswire.com/rss/policy-public-interest-latest-news/policy-public-interest-latest-news-list.rss",
     refreshIntervalMinutes: 30,
   },
+  google_news_ponzi_investor_fraud: {
+    label: "Google News: Ponzi & Investor Fraud",
+    feedUrl: "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
   gibson_dunn_sec_sentinel: {
     label: "Gibson Dunn SEC Sentinel",
     feedUrl: "https://secsentinel.gibsondunn.com/feed/",
