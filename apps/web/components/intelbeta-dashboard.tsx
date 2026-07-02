@@ -35,7 +35,7 @@ type SourceFilter =
   | "REDDIT";
 
 const FEED_RENDER_BATCH_SIZE = 20;
-const LIVE_FEED_REFRESH_LIMIT = 250;
+const LIVE_FEED_REFRESH_LIMIT = 500;
 const LIVE_FEED_POLL_INTERVAL_MS = 60 * 60_000;
 
 type FeedMeta = {

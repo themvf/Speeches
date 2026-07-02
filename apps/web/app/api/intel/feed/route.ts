@@ -23,6 +23,8 @@ import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_FEED_LIMIT = 500;
+const MAX_FEED_LIMIT = 1000;
 const COUPON_SPAM_PATTERN = /\b(?:promo[\s-]*codes?|coupon(?:s|[\s-]*codes?)|discount[\s-]*(?:codes?|coupons?))\b/i;
 
 function isInvalidCouponArticle(article: StoredRssArticle): boolean {
@@ -43,6 +45,14 @@ function isInvalidCouponDocument(doc: { source_kind?: string; title?: string; ur
   );
 }
 
+function parseFeedLimit(value: string | null): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_FEED_LIMIT;
+  }
+  return Math.max(0, Math.min(parsed, MAX_FEED_LIMIT));
+}
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(req.headers);
   if (await isRateLimited(getFeedLimiter(), ip)) {
@@ -50,7 +60,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const { searchParams } = req.nextUrl;
-  const limit = Math.min(Number(searchParams.get("limit") ?? "100"), 400);
+  const limit = parseFeedLimit(searchParams.get("limit"));
   const feedKey = searchParams.get("feedKey") ?? undefined;
   const sinceParam = searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : undefined;

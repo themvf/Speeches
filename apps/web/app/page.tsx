@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "Live regulatory news stream filtered by topic.",
 };
 
-const INITIAL_FEED_ARTICLE_LIMIT = 100;
+const INITIAL_FEED_ARTICLE_LIMIT = 500;
 
 export default async function HomePage() {
   let initialArticles: StoredRssArticle[] = [];
