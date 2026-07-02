@@ -22,7 +22,7 @@ const MAX_MATCHES = 5;
 const MIN_ALIAS_CHARS = 8;
 const TRAILING_SUFFIX_RE = /\b(?:incorporated|inc|llc|l l c|corp|corporation|co|company|limited|ltd|lp|l p|llp|plc|pbc)\b$/;
 const TRAILING_BUSINESS_RE = /\b(?:and co|securities|capital markets|wealth management|financial services|brokerage services|broker dealer|broker dealers|investments|investment services|distributors|advisors|advisor services|advisory services)\b$/;
-const GENERIC_ALIAS_RE = /^(?:and partners|capital|global|partners|securities|investments|financial|markets|wealth|advisors|brokerage|group|strategic|institutional|management)$/;
+const GENERIC_ALIAS_RE = /^(?:and partners|asset management|capital|capital markets|corporate finance|financial services|global|investment banking|investment management|partners|private wealth|public finance|securities|investments|financial|markets|wealth|wealth management|advisors|brokerage|group|strategic|institutional|management)$/;
 
 function normalizeText(value: string): string {
   return String(value || "")
