@@ -19,6 +19,7 @@ import {
   type StoredRssTopicRule,
 } from "@/lib/server/neon";
 import { getClientIp, getFeedLimiter, isRateLimited } from "@/lib/server/rate-limit";
+import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
@@ -92,12 +93,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
       if (needsRefresh) {
         const activeFeeds = await getFeeds(true, { dueOnly: true });
+        const refreshTopicRules = activeFeeds.some((feed) => shouldKeywordFilterFeed(feed.feed_key))
+          ? topicRules
+          : [];
         let insertedCount = 0;
         const refreshResults = await Promise.allSettled(
           activeFeeds.map(async (feed) => {
             try {
-              const feedArticles = await fetchRssFeed(feed.feed_url, 50);
-              return upsertRssArticles(feedArticles, feed.feed_key);
+              const feedArticles = await fetchRssFeed(feed.feed_url, rssFetchLimitForFeed(feed.feed_key));
+              const filteredArticles = filterRssArticlesForIngestion(feed.feed_key, feedArticles, refreshTopicRules);
+              return upsertRssArticles(filteredArticles.articles, feed.feed_key);
             } finally {
               await markFeedRefreshed(feed.feed_key).catch((error) => {
                 console.error(`[intel/feed] failed to mark feed refreshed for ${feed.feed_key}:`, error);

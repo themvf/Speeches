@@ -170,6 +170,26 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     label: "Sophos Security Operations",
     feedUrl: "https://news.sophos.com/en-us/category/security-operations/feed/",
   },
+  prnewswire_all: {
+    label: "PR Newswire",
+    feedUrl: "https://www.prnewswire.com/rss/news-releases-list.rss",
+    refreshIntervalMinutes: 30,
+  },
+  prnewswire_consumer_technology: {
+    label: "PR Newswire Consumer Technology",
+    feedUrl: "https://www.prnewswire.com/rss/consumer-technology-latest-news/consumer-technology-latest-news-list.rss",
+    refreshIntervalMinutes: 30,
+  },
+  prnewswire_financial_services: {
+    label: "PR Newswire Financial Services",
+    feedUrl: "https://www.prnewswire.com/rss/financial-services-latest-news/financial-services-latest-news-list.rss",
+    refreshIntervalMinutes: 30,
+  },
+  prnewswire_policy_public_interest: {
+    label: "PR Newswire Policy & Public Interest",
+    feedUrl: "https://www.prnewswire.com/rss/policy-public-interest-latest-news/policy-public-interest-latest-news-list.rss",
+    refreshIntervalMinutes: 30,
+  },
   gibson_dunn_sec_sentinel: {
     label: "Gibson Dunn SEC Sentinel",
     feedUrl: "https://secsentinel.gibsondunn.com/feed/",

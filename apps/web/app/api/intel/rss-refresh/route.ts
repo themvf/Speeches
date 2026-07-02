@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRssFeed } from "@/lib/server/rss-fetcher";
-import { deleteInvalidCouponArticles, upsertRssArticles, ensureSchema, getFeeds, markFeedRefreshed } from "@/lib/server/neon";
+import { deleteInvalidCouponArticles, upsertRssArticles, ensureSchema, getFeeds, getTopicRules, markFeedRefreshed } from "@/lib/server/neon";
+import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
@@ -51,17 +52,23 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   const shouldFetchFeeds = searchParams.get("fetch") !== "0";
   const forceRefresh = searchParams.get("force") === "1";
   const activeFeeds = shouldFetchFeeds ? await getFeeds(true, { dueOnly: !forceRefresh }) : [];
+  const topicRules = activeFeeds.some((feed) => shouldKeywordFilterFeed(feed.feed_key))
+    ? await getTopicRules(true)
+    : [];
 
   const feedResults = await Promise.all(
     activeFeeds.map(async (feed) => {
       try {
-        const articles = await fetchRssFeed(feed.feed_url, 50);
-        const inserted = await upsertRssArticles(articles, feed.feed_key);
+        const rawArticles = await fetchRssFeed(feed.feed_url, rssFetchLimitForFeed(feed.feed_key));
+        const filtered = filterRssArticlesForIngestion(feed.feed_key, rawArticles, topicRules);
+        const inserted = await upsertRssArticles(filtered.articles, feed.feed_key);
         return {
           feedKey: feed.feed_key,
           label: feed.label,
           refreshIntervalMinutes: feed.refresh_interval_minutes,
-          fetched: articles.length,
+          fetched: filtered.fetched,
+          matched: filtered.matched,
+          filtered: filtered.filtered,
           inserted,
         };
       } catch (err) {
@@ -70,6 +77,8 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
           label: feed.label,
           refreshIntervalMinutes: feed.refresh_interval_minutes,
           fetched: 0,
+          matched: 0,
+          filtered: 0,
           inserted: 0,
           error: String(err),
         };
@@ -81,7 +90,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     })
   );
 
-  const feeds: Array<{ feedKey: string; label: string; refreshIntervalMinutes: number; fetched: number; inserted: number; error?: string }> = [];
+  const feeds: Array<{ feedKey: string; label: string; refreshIntervalMinutes: number; fetched: number; matched: number; filtered: number; inserted: number; error?: string }> = [];
   let totalInserted = 0;
   let failedCount = 0;
 
