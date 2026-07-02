@@ -3,6 +3,7 @@ import { NewsFeedWorkspace } from "@/components/news-feed-workspace";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
 import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
+import { isAllowedRssArticleForIngestion } from "@/lib/server/rss-ingestion-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,14 @@ export default async function HomePage() {
       getRecentArticles({ limit: INITIAL_FEED_ARTICLE_LIMIT }),
       getTopicRules(true),
     ]);
-    initialArticles = compactFeedArticles(articles);
+    initialArticles = compactFeedArticles(articles.filter((article) => isAllowedRssArticleForIngestion(article.feed_key, {
+      guid: article.guid,
+      title: article.title,
+      url: article.url,
+      description: article.description,
+      author: article.author,
+      publishedAt: article.published_at ? new Date(article.published_at) : null,
+    }, topicRules)));
     initialTopicRules = topicRules;
   } catch {
     // DB not yet configured or schema not created; start with empty feed.

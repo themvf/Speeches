@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/data-store";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
 import {
+  deleteBlockedRssArticles,
   deleteInvalidCouponArticles,
   deleteNonEnglishPrNewswireArticles,
   ensureSchema,
@@ -20,8 +21,12 @@ import {
   type StoredRssTopicRule,
 } from "@/lib/server/neon";
 import { getClientIp, getFeedLimiter, isRateLimited } from "@/lib/server/rate-limit";
-import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
-import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
+import {
+  filterRssArticlesForIngestion,
+  isAllowedRssArticleForIngestion,
+  rssFetchLimitForFeed,
+  shouldKeywordFilterFeed,
+} from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +51,17 @@ function isInvalidCouponDocument(doc: { source_kind?: string; title?: string; ur
       ...(Array.isArray(doc.keywords) ? doc.keywords : []),
     ].join(" ")
   );
+}
+
+function passesRssPolicy(article: StoredRssArticle, topicRules: StoredRssTopicRule[]): boolean {
+  return isAllowedRssArticleForIngestion(article.feed_key, {
+    guid: article.guid,
+    title: article.title,
+    url: article.url,
+    description: article.description,
+    author: article.author,
+    publishedAt: article.published_at ? new Date(article.published_at) : null,
+  }, topicRules);
 }
 
 function parseFeedLimit(value: string | null): number {
@@ -80,15 +96,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         console.error("[intel/feed] coupon cleanup failed:", error);
         return 0;
       });
-      await deleteNonEnglishPrNewswireArticles().catch((error) => {
-        console.error("[intel/feed] PR Newswire language cleanup failed:", error);
-        return 0;
-      });
-
-      [articles, topicRules] = await Promise.all([
-        getRecentArticles({ limit, feedKey, since }),
-        getTopicRules(true),
+      topicRules = await getTopicRules(true);
+      await Promise.all([
+        deleteNonEnglishPrNewswireArticles().catch((error) => {
+          console.error("[intel/feed] PR Newswire language cleanup failed:", error);
+          return 0;
+        }),
+        deleteBlockedRssArticles(topicRules).catch((error) => {
+          console.error("[intel/feed] RSS policy cleanup failed:", error);
+          return 0;
+        }),
       ]);
+
+      articles = await getRecentArticles({ limit, feedKey, since });
 
       const latestFetchedAt = articles.reduce((max, a) => {
         const t = a.fetched_at ? new Date(a.fetched_at).getTime() : 0;
@@ -127,13 +147,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         if (insertedCount > 0 && analysisLimit > 0) {
           await analyzeMissingRssArticles(analysisLimit);
         }
+        await deleteBlockedRssArticles(topicRules).catch((error) => {
+          console.error("[intel/feed] post-refresh RSS policy cleanup failed:", error);
+          return 0;
+        });
         articles = await getRecentArticles({ limit, feedKey, since });
       }
     }
 
     articles = articles.filter((article) => (
       !isInvalidCouponArticle(article) &&
-      (!shouldEnglishOnlyFilterFeed(article.feed_key) || isEnglishRssArticle(article))
+      passesRssPolicy(article, topicRules)
     ));
     let documents: ReturnType<typeof selectNewsFeedDocuments> = [];
     if (includeDocuments) {

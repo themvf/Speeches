@@ -3,6 +3,7 @@ import { normalizeText } from "@/lib/server/api-utils";
 import { generateFeedAnalysis, type FeedAnalysisInput } from "@/lib/server/feed-analysis";
 import { rssFeedLabel } from "@/lib/server/rss-fetcher";
 import {
+  deleteBlockedRssArticles,
   getRssArticlesNeedingAnalysis,
   getTopicRules,
   saveRssArticleAnalysis,
@@ -34,6 +35,12 @@ export async function analyzeMissingRssArticles(limit = 5, opts: { feedKeys?: st
   failed_count: number;
   failed: Array<{ article_id: number; title: string; error: string }>;
 }> {
+  const topicRules = await getTopicRules(true);
+  await deleteBlockedRssArticles(topicRules).catch((error) => {
+    console.error("[rss-analysis-runner] RSS policy cleanup failed:", error);
+    return 0;
+  });
+
   const selected = await getRssArticlesNeedingAnalysis(Math.max(1, Math.min(50, limit)), {
     feedKeys: opts.feedKeys,
   });
@@ -41,7 +48,7 @@ export async function analyzeMissingRssArticles(limit = 5, opts: { feedKeys?: st
     return { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };
   }
 
-  const rules = normalizeTopicRules(await getTopicRules(true));
+  const rules = normalizeTopicRules(topicRules);
   const results = await Promise.all(selected.map(async (article) => {
     const topics = getMatchingTopics(article, rules).map((topic) => topic.label);
     try {

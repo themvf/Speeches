@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRssFeed } from "@/lib/server/rss-fetcher";
-import { deleteInvalidCouponArticles, deleteNonEnglishPrNewswireArticles, upsertRssArticles, ensureSchema, getFeeds, getTopicRules, markFeedRefreshed } from "@/lib/server/neon";
+import { deleteBlockedRssArticles, deleteInvalidCouponArticles, deleteNonEnglishPrNewswireArticles, upsertRssArticles, ensureSchema, getFeeds, getTopicRules, markFeedRefreshed } from "@/lib/server/neon";
 import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
@@ -52,15 +52,16 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   const shouldFetchFeeds = searchParams.get("fetch") !== "0";
   const forceRefresh = searchParams.get("force") === "1";
   const activeFeeds = shouldFetchFeeds ? await getFeeds(true, { dueOnly: !forceRefresh }) : [];
-  const topicRules = activeFeeds.some((feed) => shouldKeywordFilterFeed(feed.feed_key))
-    ? await getTopicRules(true)
+  const topicRules = await getTopicRules(true);
+  const ingestionTopicRules = activeFeeds.some((feed) => shouldKeywordFilterFeed(feed.feed_key))
+    ? topicRules
     : [];
 
   const feedResults = await Promise.all(
     activeFeeds.map(async (feed) => {
       try {
         const rawArticles = await fetchRssFeed(feed.feed_url, rssFetchLimitForFeed(feed.feed_key));
-        const filtered = filterRssArticlesForIngestion(feed.feed_key, rawArticles, topicRules);
+        const filtered = filterRssArticlesForIngestion(feed.feed_key, rawArticles, ingestionTopicRules);
         const inserted = await upsertRssArticles(filtered.articles, feed.feed_key);
         return {
           feedKey: feed.feed_key,
@@ -110,6 +111,10 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     console.error("[intel/rss-refresh] PR Newswire language cleanup failed:", error);
     return 0;
   });
+  const deletedBlockedRssArticleCount = await deleteBlockedRssArticles(topicRules).catch((error) => {
+    console.error("[intel/rss-refresh] RSS policy cleanup failed:", error);
+    return 0;
+  });
 
   const allFailed = failedCount > 0 && failedCount === feedResults.length;
   const analysisLimitParam = searchParams.get("analysisLimit") || process.env.RSS_AUTO_ANALYSIS_LIMIT || "0";
@@ -126,6 +131,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
         inserted: totalInserted,
         deleted_coupon_articles: deletedCouponArticles,
         deleted_non_english_prnewswire_articles: deletedNonEnglishPrNewswireArticles,
+        deleted_blocked_rss_articles: deletedBlockedRssArticleCount,
         failed_count: failedCount,
         feeds,
         analysis_feed_keys: analysisFeedKeys,

@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { createHash } from "crypto";
 import type { FeedAnalysis } from "@/lib/server/feed-analysis";
+import { isAllowedRssArticleForIngestion } from "@/lib/server/rss-ingestion-filter";
 import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
@@ -839,6 +840,42 @@ export async function deleteNonEnglishPrNewswireArticles(): Promise<number> {
   const ids = candidates
     .filter((article) => shouldEnglishOnlyFilterFeed(article.feed_key) && !isEnglishRssArticle(article))
     .map((article) => article.id);
+  if (ids.length === 0) return 0;
+
+  const rows = (await sql`
+    DELETE FROM rss_articles
+    WHERE id = ANY(${ids})
+    RETURNING id
+  `) as unknown as Array<{ id: number }>;
+  return rows.length;
+}
+
+export async function deleteBlockedRssArticles(topicRules: StoredRssTopicRule[]): Promise<number> {
+  const hasActiveTopicRules = topicRules.some((rule) => rule.active && String(rule.keywords || "").trim());
+  if (!hasActiveTopicRules) return 0;
+
+  await ensureSchema();
+  const sql = getSql();
+  const candidates = (await sql`
+    SELECT id, guid, title, url, description, author, published_at, feed_key
+    FROM rss_articles
+    WHERE feed_key LIKE 'prnewswire_%'
+       OR feed_key LIKE 'google_news_%'
+       OR title ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
+       OR description ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
+  `) as unknown as Array<Pick<StoredRssArticle, "id" | "guid" | "feed_key" | "title" | "url" | "description" | "author" | "published_at">>;
+
+  const ids = candidates
+    .filter((article) => !isAllowedRssArticleForIngestion(article.feed_key, {
+      guid: article.guid,
+      title: article.title,
+      url: article.url,
+      description: article.description,
+      author: article.author,
+      publishedAt: article.published_at ? new Date(article.published_at) : null,
+    }, topicRules))
+    .map((article) => article.id);
+
   if (ids.length === 0) return 0;
 
   const rows = (await sql`
