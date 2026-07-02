@@ -9,6 +9,7 @@ export type StoredRssArticle = {
   id: number;
   guid: string;
   feed_key: string;
+  feed_label?: string | null;
   title: string;
   url: string;
   description: string;
@@ -115,6 +116,16 @@ const ACTIVE_RSS_FEED_KEYS = [
   "welivesecurity",
   "sophos_security_operations",
 ] as const;
+
+const FEED_LABEL_CORRECTIONS: Record<string, string> = {
+  cls_blue_sky_blog: "CLS Blue Sky Blog",
+  harvard_corp_gov_forum: "Harvard Corporate Governance Forum",
+  rss_nytimes_com_services_xml_rss_nyt_dealbook_xml: "NYT DealBook",
+  rss_nytimes_com_services_xml_rss_nyt_economy_xml: "NYT Economy",
+  search_cnbc_com_rs_search_combinedcms_view_xml: "CNBC",
+  the_corporate_counsel_net: "The Corporate Counsel",
+  www_centralbanking_com_feeds_rss_category_central_banks_fina: "Central Banking",
+};
 
 function getSql() {
   if (!_sql) {
@@ -444,6 +455,14 @@ async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
 }
 
 async function applyFeedSourceMigrations(sql: ReturnType<typeof neon>): Promise<void> {
+  for (const [feedKey, label] of Object.entries(FEED_LABEL_CORRECTIONS)) {
+    await sql`
+      UPDATE rss_feeds
+      SET label = ${label}
+      WHERE feed_key = ${feedKey}
+    `;
+  }
+
   await sql`
     UPDATE rss_feeds
     SET active = false
@@ -643,8 +662,9 @@ export async function getRssArticleById(articleId: number): Promise<StoredRssArt
   await ensureSchema();
   const sql = getSql();
   const rows = (await sql`
-    SELECT a.*, to_jsonb(ra.*) AS analysis
+    SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis
     FROM rss_articles a
+    LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
     WHERE a.id = ${articleId}
     LIMIT 1
@@ -662,8 +682,9 @@ export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys
   const refreshForDeepSeek =
     String(process.env.FEED_ANALYSIS_PROVIDER || "").trim().toLowerCase() !== "openai";
   const rows = (await sql`
-    SELECT a.*, to_jsonb(ra.*) AS analysis
+    SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis
     FROM rss_articles a
+    LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
     WHERE (${includeAnyFeed} OR a.feed_key = ANY(${feedKeys}))
       AND (
@@ -689,8 +710,9 @@ export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys
   if (direct.length >= cappedLimit) return direct;
 
   const recentRows = (await sql`
-    SELECT a.*, to_jsonb(ra.*) AS analysis
+    SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis
     FROM rss_articles a
+    LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
     WHERE (${includeAnyFeed} OR a.feed_key = ANY(${feedKeys}))
       AND ra.article_id IS NOT NULL
@@ -832,17 +854,17 @@ export async function getRecentArticles(opts: {
 
   let query;
   if (feedKey && since && until) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey && since) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (since && until) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (since) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   }
   const rows = (await query) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
   return rows.map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }));

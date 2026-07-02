@@ -139,6 +139,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   sec_trading_suspension: "SEC Suspensions",
   sec_federal_register: "SEC Federal Register",
   sec_pcaob_rulemaking: "SEC PCAOB",
+  sec_tm_faq: "SEC TM FAQ",
   finra_regulatory_notice: "FINRA",
   finra_awc: "FINRA AWC",
   finra_comment_letter: "FINRA",

@@ -168,6 +168,40 @@ const FEED_META: Record<string, FeedMeta> = {
   prnewswire_consumer_technology: { label: "PR Newswire Consumer Technology", code: "PRN", color: "#66d9e8" },
   prnewswire_financial_services: { label: "PR Newswire Financial Services", code: "PRN", color: "#66d9e8" },
   prnewswire_policy_public_interest: { label: "PR Newswire Policy & Public Interest", code: "PRN", color: "#66d9e8" },
+  cftc_general_press_releases: { label: "CFTC General Press Releases", code: "CFTC", color: "#ffd43b" },
+  cftc_enforcement_press_releases: { label: "CFTC Enforcement Press Releases", code: "CFTC", color: "#ff8aa0" },
+  cftc_speeches_testimony: { label: "CFTC Speeches and Testimony", code: "CFTC", color: "#ffd43b" },
+  fed_all_press_releases: { label: "Federal Reserve", code: "FED", color: "#91a7ff" },
+  occ_news_releases: { label: "OCC News Releases", code: "OCC", color: "#a5d8ff" },
+  ftc_consumer_protection_press_releases: { label: "FTC Consumer Protection", code: "FTC", color: "#ffd43b" },
+  search_cnbc_com_rs_search_combinedcms_view_xml: { label: "CNBC", code: "CNBC", color: "#4dabf7" },
+  rss_nytimes_com_services_xml_rss_nyt_dealbook_xml: { label: "NYT DealBook", code: "NYT", color: "#ffe066" },
+  rss_nytimes_com_services_xml_rss_nyt_economy_xml: { label: "NYT Economy", code: "NYT", color: "#ffe066" },
+  ft_news_feed: { label: "Financial Times", code: "FT", color: "#ffc857" },
+  ft_markets: { label: "Financial Times Markets", code: "FT", color: "#ffc857" },
+  ft_financials: { label: "Financial Times Financials", code: "FT", color: "#ffc857" },
+  economist_finance_economics: { label: "The Economist Finance & Economics", code: "ECO", color: "#74c0fc" },
+  economist_business: { label: "The Economist Business", code: "ECO", color: "#74c0fc" },
+  economist_united_states: { label: "The Economist United States", code: "ECO", color: "#74c0fc" },
+  investmentnews: { label: "InvestmentNews", code: "INV", color: "#66d9e8" },
+  harvard_corp_gov_forum: { label: "Harvard Corporate Governance Forum", code: "HLS", color: "#d0bfff" },
+  cls_blue_sky_blog: { label: "CLS Blue Sky Blog", code: "CLS", color: "#d0bfff" },
+  the_corporate_counsel_net: { label: "The Corporate Counsel", code: "TCC", color: "#d0bfff" },
+  www_centralbanking_com_feeds_rss_category_central_banks_fina: { label: "Central Banking", code: "CB", color: "#91a7ff" },
+  ballard_spahr_consumer_finance_monitor: { label: "Ballard Spahr Consumer Finance Monitor", code: "BS", color: "#a5d8ff" },
+  cooley_governance_beat: { label: "Cooley Governance Beat", code: "COO", color: "#a5d8ff" },
+  covington_global_policy_watch: { label: "Covington Global Policy Watch", code: "COV", color: "#a5d8ff" },
+  covington_inside_privacy: { label: "Covington Inside Privacy", code: "COV", color: "#a5d8ff" },
+  kelley_drye_ad_law_access: { label: "Kelley Drye Ad Law Access", code: "KD", color: "#a5d8ff" },
+  latham_global_financial_regulatory_blog: { label: "Latham Global Financial Regulatory Blog", code: "LW", color: "#a5d8ff" },
+  bradley_financial_services_perspectives: { label: "Bradley Financial Services Perspectives", code: "BRD", color: "#a5d8ff" },
+  bradley_eye_on_enforcement: { label: "Bradley Eye on Enforcement", code: "BRD", color: "#a5d8ff" },
+  gibson_dunn_securities_regulation_monitor: { label: "Gibson Dunn Securities Regulation Monitor", code: "GD", color: "#a5d8ff" },
+  the_record: { label: "The Record", code: "REC", color: "#ff922b" },
+  wired_security: { label: "WIRED Security", code: "WRD", color: "#f783ac" },
+  ritholtz_big_picture: { label: "The Big Picture", code: "RIT", color: "#ffd43b" },
+  ft_portfolios_market_commentary: { label: "First Trust Market Commentary", code: "FT", color: "#b197fc" },
+  wealth_of_common_sense: { label: "A Wealth of Common Sense", code: "AWC", color: "#ffc078" },
   dark_reading: { label: "Dark Reading", code: "DARK", color: "#b197fc" },
   securityweek: { label: "SecurityWeek", code: "SECW", color: "#91a7ff" },
   microsoft_security_blog: { label: "Microsoft Security Blog", code: "MSFT", color: "#69db7c" },
@@ -242,7 +276,60 @@ const TRADE_MEDIA_FEED_KEYS = new Set([
   "sophos_security_operations",
 ]);
 
-function getFeedMeta(feedKey: string): FeedMeta {
+const SOURCE_LABEL_ACRONYMS = new Set([
+  "ai",
+  "api",
+  "cfpb",
+  "cftc",
+  "cisa",
+  "cls",
+  "cnbc",
+  "finra",
+  "ft",
+  "ftc",
+  "ipo",
+  "nyc",
+  "nyt",
+  "occ",
+  "rss",
+  "sec",
+  "wsj",
+]);
+
+function cleanSourceLabel(value: string | null | undefined): string {
+  return decodeEntities(value || "").replace(/\s+/g, " ").trim();
+}
+
+function labelFromFeedKey(feedKey: string): string {
+  const key = String(feedKey || "").trim();
+  if (!key) return "";
+  return key
+    .replace(/^rss_/, "")
+    .replace(/^www_/, "")
+    .split(/[_-]+/g)
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part && !["com", "org", "net", "xml", "rss", "feed", "feeds", "services"].includes(part))
+    .map((part) => SOURCE_LABEL_ACRONYMS.has(part) ? part.toUpperCase() : `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function sourceCodeFromLabel(label: string, fallback: string): string {
+  const words = label.match(/[a-z0-9]+/gi) || [];
+  const acronym = words
+    .filter((word) => !["the", "and", "of", "for"].includes(word.toLowerCase()))
+    .map((word) => word.charAt(0))
+    .join("")
+    .toUpperCase()
+    .slice(0, 5);
+  return acronym || fallback.slice(0, 4).toUpperCase() || "SRC";
+}
+
+function getFeedMeta(feedKey: string, feedLabel?: string | null): FeedMeta {
+  const cleanFeedLabel = cleanSourceLabel(feedLabel);
+  const known = FEED_META[feedKey];
+  if (known) {
+    return cleanFeedLabel && cleanFeedLabel !== feedKey ? { ...known, label: cleanFeedLabel } : known;
+  }
   if (feedKey.startsWith("document_")) {
     const sourceKind = feedKey.replace(/^document_/, "");
     const normalized = sourceKind.replace(/[_-]+/g, " ").trim();
@@ -258,9 +345,10 @@ function getFeedMeta(feedKey: string): FeedMeta {
       color: "#4fd5ff",
     };
   }
-  return FEED_META[feedKey] ?? {
-    label: feedKey,
-    code: feedKey.slice(0, 4).toUpperCase(),
+  const label = cleanFeedLabel || labelFromFeedKey(feedKey) || feedKey || "Unknown";
+  return {
+    label,
+    code: sourceCodeFromLabel(label, feedKey),
     color: "#8fa7c8",
   };
 }
@@ -299,12 +387,13 @@ function hostedModelTitle(model: string, fallback = false): string {
 }
 
 function feedSourceLabel(article: FeedItem, source: FeedMeta): string {
-  const organization = decodeEntities(article.organization || "").trim();
-  const author = decodeEntities(article.author || "").trim();
+  const organization = cleanSourceLabel(article.organization);
+  const author = cleanSourceLabel(article.author);
+  const feedLabel = cleanSourceLabel(article.feed_label);
   if (organization.toLowerCase() === "news" && author) {
     return author;
   }
-  return decodeEntities(organization || source.label || article.feed_key || "Unknown");
+  return organization || feedLabel || source.label || labelFromFeedKey(article.feed_key) || "Unknown";
 }
 
 function isNewsApiArticle(article: FeedItem): boolean {
@@ -340,9 +429,10 @@ function SourceProvenanceChip({ article }: { article: FeedItem }) {
 }
 
 function articleSourceText(article: FeedItem): string {
-  const source = getFeedMeta(article.feed_key);
+  const source = getFeedMeta(article.feed_key, article.feed_label);
   return [
     article.feed_key,
+    article.feed_label ?? "",
     source.label,
     article.organization ?? "",
     article.author ?? "",
@@ -768,7 +858,7 @@ function FullArticleModal({
     : detail?.content.full_text
       ? detail.content.full_text.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)
       : [];
-  const sourceLabel = feedSourceLabel(article, getFeedMeta(article.feed_key));
+  const sourceLabel = feedSourceLabel(article, getFeedMeta(article.feed_key, article.feed_label));
 
   return (
     <div
@@ -1075,7 +1165,7 @@ function FeedRow({
   onOpenFullArticle?: () => void;
   compact?: boolean;
 }) {
-  const source = getFeedMeta(article.feed_key);
+  const source = getFeedMeta(article.feed_key, article.feed_label);
   const sourceLabel = feedSourceLabel(article, source);
   const visibleTopics = matchedTopics.slice(0, 3);
   const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
@@ -1279,7 +1369,7 @@ function FeaturedCard({
   onOpenFullArticle?: () => void;
   compact?: boolean;
 }) {
-  const source = getFeedMeta(article.feed_key);
+  const source = getFeedMeta(article.feed_key, article.feed_label);
   const sourceLabel = feedSourceLabel(article, source);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
   const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
@@ -1529,7 +1619,7 @@ function FeedAnalysisPanel({
   retry: () => void;
   compact?: boolean;
 }) {
-  const source = getFeedMeta(article.feed_key);
+  const source = getFeedMeta(article.feed_key, article.feed_label);
   const sourceLabel = feedSourceLabel(article, source);
   const primaryAnalysis = pickPrimaryAnalysis(detail);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
@@ -1943,7 +2033,8 @@ export function IntelBetaDashboard({
   const loadFeedAnalysis = useCallback(async (article: FeedItem, force = false) => {
     const itemKey = savedArticleId(article);
     if ((!force && feedAnalyses[itemKey]) || feedAnalysisLoading[itemKey]) return;
-    const source = getFeedMeta(article.feed_key);
+    const source = getFeedMeta(article.feed_key, article.feed_label);
+    const sourceLabel = feedSourceLabel(article, source);
     const topics = topicIndex.topicMatchesByArticleId.get(article.id)?.map((topic) => topic.label) ?? [];
 
     setFeedAnalysisLoading((prev) => ({ ...prev, [itemKey]: true }));
@@ -1957,7 +2048,7 @@ export function IntelBetaDashboard({
           title: decodeEntities(article.title || ""),
           description: decodeEntities(article.description || ""),
           url: article.url || "",
-          source: article.organization || source.label,
+          source: sourceLabel,
           author: article.author || "",
           published_at: feedItemDate(article),
           tone_label: article.tone_label || "",
@@ -2017,14 +2108,15 @@ export function IntelBetaDashboard({
   }, [fullArticleDocId]);
 
   const toggleArticleSave = (article: FeedItem) => {
-    const source = getFeedMeta(article.feed_key);
+    const source = getFeedMeta(article.feed_key, article.feed_label);
+    const sourceLabel = feedSourceLabel(article, source);
     const primaryTopic = topicIndex.topicMatchesByArticleId.get(article.id)?.[0]?.label;
     savedItems.toggle({
       id: savedArticleId(article),
       type: article.item_type === "document" ? "doc" : "article",
       title: decodeEntities(article.title || "Untitled article"),
       url: article.url,
-      source: article.organization || source.label,
+      source: sourceLabel,
       topic: primaryTopic,
       metadata: {
         feedKey: article.feed_key,

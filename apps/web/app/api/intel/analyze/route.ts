@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
         title: normalizeText(article.title).slice(0, 400),
         description: normalizeText(article.description).slice(0, 8000),
         url: normalizeText(article.url).slice(0, 1000),
-        source: normalizeText(body.source || rssFeedLabel(article.feed_key) || article.feed_key).slice(0, 200),
+        source: normalizeText(body.source || article.feed_label || rssFeedLabel(article.feed_key) || article.feed_key).slice(0, 200),
         author: normalizeText(article.author).slice(0, 200),
         published_at: normalizeText(article.published_at || article.fetched_at).slice(0, 80),
         tone_label: normalizeText(article.tone_label).slice(0, 40),
