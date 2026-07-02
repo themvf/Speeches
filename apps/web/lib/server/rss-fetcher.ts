@@ -254,6 +254,34 @@ export const DEFAULT_RSS_FEEDS: Record<string, { label: string; feedUrl: string 
   },
 };
 
+const SOURCE_LABEL_ACRONYMS = new Set([
+  "ai",
+  "api",
+  "cfpb",
+  "cftc",
+  "cisa",
+  "finra",
+  "ft",
+  "ftc",
+  "occ",
+  "rss",
+  "sec",
+  "wsj",
+]);
+
+export function rssFeedLabel(feedKey: string): string {
+  const key = String(feedKey || "").trim();
+  const known = DEFAULT_RSS_FEEDS[key]?.label;
+  if (known) return known;
+
+  return key
+    .split(/[_-]+/g)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean)
+    .map((part) => SOURCE_LABEL_ACRONYMS.has(part) ? part.toUpperCase() : `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function decodeEntities(text: string): string {
   return text
     .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))

@@ -1,6 +1,7 @@
 import { getMatchingTopics, normalizeTopicRules } from "@/lib/intel-topic-matching";
 import { normalizeText } from "@/lib/server/api-utils";
 import { generateFeedAnalysis, type FeedAnalysisInput } from "@/lib/server/feed-analysis";
+import { rssFeedLabel } from "@/lib/server/rss-fetcher";
 import {
   getRssArticlesNeedingAnalysis,
   getTopicRules,
@@ -18,7 +19,7 @@ function inputForArticle(article: StoredRssArticle, topics: string[]): FeedAnaly
     title: normalizeText(article.title).slice(0, 400),
     description: normalizeText(article.description).slice(0, 8000),
     url: normalizeText(article.url).slice(0, 1000),
-    source: normalizeText(article.feed_key).slice(0, 200),
+    source: normalizeText(rssFeedLabel(article.feed_key) || article.feed_key).slice(0, 200),
     author: normalizeText(article.author).slice(0, 200),
     published_at: articleDate(article).slice(0, 80),
     tone_label: normalizeText(article.tone_label).slice(0, 40),
