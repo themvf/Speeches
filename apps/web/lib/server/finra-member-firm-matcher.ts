@@ -1,4 +1,5 @@
 import registry from "@/lib/generated/finra-member-firms.json";
+import { FINRA_MEMBER_FIRM_AFFILIATE_ALIASES } from "@/lib/server/finra-member-firm-affiliate-aliases";
 
 export type FinraMemberFirmMatch = {
   name: string;
@@ -17,26 +18,11 @@ type FirmAlias = {
   explicit: boolean;
 };
 
-type AffiliateAliasDefinition = {
-  firmName: string;
-  aliases: string[];
-};
-
 const MAX_MATCHES = 5;
 const MIN_ALIAS_CHARS = 8;
 const TRAILING_SUFFIX_RE = /\b(?:incorporated|inc|llc|l l c|corp|corporation|co|company|limited|ltd|lp|l p|llp|plc|pbc)\b$/;
 const TRAILING_BUSINESS_RE = /\b(?:and co|securities|capital markets|wealth management|financial services|brokerage services|broker dealer|broker dealers|investments|investment services|distributors|advisors|advisor services|advisory services)\b$/;
 const GENERIC_ALIAS_RE = /^(?:and partners|capital|global|partners|securities|investments|financial|markets|wealth|advisors|brokerage|group|strategic|institutional|management)$/;
-const AFFILIATE_ALIAS_DEFINITIONS: AffiliateAliasDefinition[] = [
-  {
-    firmName: "ETORO USA SECURITIES INC.",
-    aliases: ["eToro", "eToro USA", "eToro Securities"],
-  },
-  {
-    firmName: "KRAKEN SECURITIES",
-    aliases: ["Kraken", "Kraken Securities LLC", "Payward", "Payward Inc.", "Payward, Inc."],
-  },
-];
 
 function normalizeText(value: string): string {
   return String(value || "")
@@ -115,7 +101,7 @@ const REGISTRY_ALIASES: FirmAlias[] = (registry.firms as RegistryFirm[])
     explicit: false,
   })));
 
-const AFFILIATE_ALIASES: FirmAlias[] = AFFILIATE_ALIAS_DEFINITIONS
+const AFFILIATE_ALIASES: FirmAlias[] = FINRA_MEMBER_FIRM_AFFILIATE_ALIASES
   .filter((definition) => REGISTRY_FIRM_NAMES.has(definition.firmName))
   .flatMap((definition) => definition.aliases.map((alias) => normalizeText(alias))
     .filter(Boolean)
@@ -142,7 +128,7 @@ function rawTextContainsEntityAlias(rawText: string, alias: string): boolean {
 }
 
 export function finraMemberFirmNewsSearchTerms(firmName: string): string[] {
-  const aliases = AFFILIATE_ALIAS_DEFINITIONS
+  const aliases = FINRA_MEMBER_FIRM_AFFILIATE_ALIASES
     .filter((definition) => definition.firmName === firmName)
     .flatMap((definition) => definition.aliases);
   return Array.from(new Set([firmName, ...aliases].map((term) => term.trim()).filter(Boolean)));
