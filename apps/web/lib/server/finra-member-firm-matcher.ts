@@ -14,6 +14,12 @@ type FirmAlias = {
   firmName: string;
   score: number;
   tokens: number;
+  explicit: boolean;
+};
+
+type AffiliateAliasDefinition = {
+  firmName: string;
+  aliases: string[];
 };
 
 const MAX_MATCHES = 5;
@@ -21,6 +27,16 @@ const MIN_ALIAS_CHARS = 8;
 const TRAILING_SUFFIX_RE = /\b(?:incorporated|inc|llc|l l c|corp|corporation|co|company|limited|ltd|lp|l p|llp|plc|pbc)\b$/;
 const TRAILING_BUSINESS_RE = /\b(?:and co|securities|capital markets|wealth management|financial services|brokerage services|broker dealer|broker dealers|investments|investment services|distributors|advisors|advisor services|advisory services)\b$/;
 const GENERIC_ALIAS_RE = /^(?:and partners|capital|global|partners|securities|investments|financial|markets|wealth|advisors|brokerage|group|strategic|institutional|management)$/;
+const AFFILIATE_ALIAS_DEFINITIONS: AffiliateAliasDefinition[] = [
+  {
+    firmName: "ETORO USA SECURITIES INC.",
+    aliases: ["eToro", "eToro USA", "eToro Securities"],
+  },
+  {
+    firmName: "KRAKEN SECURITIES",
+    aliases: ["Kraken", "Kraken Securities LLC", "Payward", "Payward Inc.", "Payward, Inc."],
+  },
+];
 
 function normalizeText(value: string): string {
   return String(value || "")
@@ -76,13 +92,42 @@ function aliasesForFirm(firm: RegistryFirm): string[] {
   return Array.from(new Set([normalized, stripped, compact].filter(isUsableAlias)));
 }
 
-const FIRM_ALIASES: FirmAlias[] = (registry.firms as RegistryFirm[])
+function dedupeAliases(aliases: FirmAlias[]): FirmAlias[] {
+  const byKey = new Map<string, FirmAlias>();
+  for (const alias of aliases) {
+    const key = `${alias.firmName}:${alias.alias}`;
+    const existing = byKey.get(key);
+    if (!existing || alias.score > existing.score || (alias.explicit && !existing.explicit)) {
+      byKey.set(key, alias);
+    }
+  }
+  return [...byKey.values()];
+}
+
+const REGISTRY_FIRM_NAMES = new Set((registry.firms as RegistryFirm[]).map((firm) => firm.name));
+
+const REGISTRY_ALIASES: FirmAlias[] = (registry.firms as RegistryFirm[])
   .flatMap((firm) => aliasesForFirm(firm).map((alias) => ({
     alias,
     firmName: firm.name,
     score: tokenCount(alias) * 100 + alias.length,
     tokens: tokenCount(alias),
-  })))
+    explicit: false,
+  })));
+
+const AFFILIATE_ALIASES: FirmAlias[] = AFFILIATE_ALIAS_DEFINITIONS
+  .filter((definition) => REGISTRY_FIRM_NAMES.has(definition.firmName))
+  .flatMap((definition) => definition.aliases.map((alias) => normalizeText(alias))
+    .filter(Boolean)
+    .map((alias) => ({
+      alias,
+      firmName: definition.firmName,
+      score: 10_000 + tokenCount(alias) * 100 + alias.length,
+      tokens: tokenCount(alias),
+      explicit: true,
+    })));
+
+const FIRM_ALIASES: FirmAlias[] = dedupeAliases([...REGISTRY_ALIASES, ...AFFILIATE_ALIASES])
   .sort((a, b) => b.score - a.score || a.firmName.localeCompare(b.firmName));
 
 function rawTextContainsEntityAlias(rawText: string, alias: string): boolean {
@@ -91,8 +136,16 @@ function rawTextContainsEntityAlias(rawText: string, alias: string): boolean {
     const candidate = match[1] || "";
     if (candidate === candidate.toUpperCase()) return true;
     if (/^[A-Z][A-Za-z0-9]*$/.test(candidate)) return true;
+    if (/^[a-z]+[A-Z][A-Za-z0-9]*$/.test(candidate)) return true;
   }
   return false;
+}
+
+export function finraMemberFirmNewsSearchTerms(firmName: string): string[] {
+  const aliases = AFFILIATE_ALIAS_DEFINITIONS
+    .filter((definition) => definition.firmName === firmName)
+    .flatMap((definition) => definition.aliases);
+  return Array.from(new Set([firmName, ...aliases].map((term) => term.trim()).filter(Boolean)));
 }
 
 export function finraMemberFirmCount(): number {

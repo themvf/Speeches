@@ -1,5 +1,5 @@
 import registry from "@/lib/generated/finra-member-firms.json";
-import { findFinraMemberFirmMatches } from "@/lib/server/finra-member-firm-matcher";
+import { findFinraMemberFirmMatches, finraMemberFirmNewsSearchTerms } from "@/lib/server/finra-member-firm-matcher";
 import { fetchRssFeed, type RssArticle } from "@/lib/server/rss-fetcher";
 
 export const FINRA_MEMBER_FIRM_NEWS_FEED_KEY = "google_news_finra_member_firms";
@@ -56,6 +56,13 @@ function articleMatchesFirm(article: RssArticle, firmName: string): boolean {
   return findFinraMemberFirmMatches(article, 8).some((match) => match.name === firmName);
 }
 
+function googleNewsRssUrlForFirm(firm: RegistryFirm): string {
+  const searchTerms = finraMemberFirmNewsSearchTerms(firm.name);
+  if (searchTerms.length <= 1) return firm.rssUrl;
+  const query = `${searchTerms.map((term) => `"${term.replace(/"/g, "")}"`).join(" OR ")} when:7d`;
+  return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+}
+
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = [];
   let nextIndex = 0;
@@ -84,7 +91,7 @@ function dedupeArticles(articles: RssArticle[]): RssArticle[] {
 
 async function fetchFirm(firm: RegistryFirm): Promise<FirmFetchResult> {
   try {
-    const articles = await fetchRssFeed(firm.rssUrl, RSS_ITEMS_PER_FIRM, RSS_FETCH_TIMEOUT_MS);
+    const articles = await fetchRssFeed(googleNewsRssUrlForFirm(firm), RSS_ITEMS_PER_FIRM, RSS_FETCH_TIMEOUT_MS);
     const firmMatchedArticles = articles.filter((article) => articleMatchesFirm(article, firm.name));
     return {
       firmName: firm.name,
