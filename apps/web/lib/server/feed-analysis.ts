@@ -270,6 +270,20 @@ function pushUnique(target: string[], values: string[], maxItems: number): strin
   return target.slice(0, maxItems);
 }
 
+function uniqueText(values: string[], maxItems: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const cleaned = normalizeText(value);
+    const key = cleaned.toLowerCase();
+    if (!cleaned || seen.has(key)) continue;
+    seen.add(key);
+    out.push(cleaned);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
 function isSparseFeedInput(input: FeedAnalysisInput): boolean {
   return normalizeText(input.description).length < 180;
 }
@@ -301,7 +315,7 @@ function contextualWhyItMatters(input: FeedAnalysisInput): string[] {
     out.push(`The available feed text is sparse${source ? ` from ${source}` : ""}; open the source article before treating the analysis as complete.`);
   }
 
-  return unique(out, 5);
+  return uniqueText(out, 5);
 }
 
 function contextualRiskSignals(input: FeedAnalysisInput): string[] {
@@ -316,7 +330,7 @@ function contextualRiskSignals(input: FeedAnalysisInput): string[] {
   if (/\b(loss|losses|cost|harm|damage|victim)\b/i.test(text)) out.push("Reported financial loss or market harm");
   if (isSparseFeedInput(input)) out.push("RSS excerpt omits key facts such as securities, traders, dates, and procedural posture");
 
-  return unique(out, 5);
+  return uniqueText(out, 5);
 }
 
 function contextualFollowUps(input: FeedAnalysisInput): string[] {
@@ -341,7 +355,7 @@ function contextualFollowUps(input: FeedAnalysisInput): string[] {
     out.push("Does the source article add facts not present in the RSS excerpt that change the risk assessment?");
   }
 
-  return unique(out, 5);
+  return uniqueText(out, 5);
 }
 
 function contextualThesis(input: FeedAnalysisInput): string {
@@ -400,7 +414,7 @@ function strengthenFeedAnalysis(input: FeedAnalysisInput, analysis: FeedAnalysis
   const why = pushUnique(sparse ? [] : [...analysis.why_it_matters], contextualWhyItMatters(input), 5);
   const risks = pushUnique(sparse ? [] : [...analysis.risk_signals], contextualRiskSignals(input), 5);
   const follow = pushUnique(sparse ? [] : [...analysis.follow_up_questions], contextualFollowUps(input), 5);
-  const keywords = pushUnique(sparse ? [...fallback.keywords] : [...analysis.keywords], sparse ? analysis.keywords : fallback.keywords, 12);
+  const keywords = sparse ? fallback.keywords : pushUnique([...analysis.keywords], fallback.keywords, 12);
   const individuals = pushUnique(sparse ? [] : [...analysis.individuals], names.individuals, 10);
   const entities = pushUnique(sparse ? [] : [...analysis.entities], names.entities, 14);
 
