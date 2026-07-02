@@ -16,9 +16,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
 async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   const secret = process.env.CRON_SECRET ?? "";
-  if (secret) {
+  const maintenanceSecret = process.env.RSS_REENRICH_SECRET ?? "";
+  const acceptedTokens = [secret, maintenanceSecret].filter(Boolean).map((token) => `Bearer ${token}`);
+  if (acceptedTokens.length > 0) {
     const authHeader = req.headers.get("authorization") ?? "";
-    if (authHeader !== `Bearer ${secret}`) {
+    if (!acceptedTokens.includes(authHeader)) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
   }
@@ -32,7 +34,9 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const activeFeeds = await getFeeds(true);
+  const { searchParams } = req.nextUrl;
+  const shouldFetchFeeds = searchParams.get("fetch") !== "0";
+  const activeFeeds = shouldFetchFeeds ? await getFeeds(true) : [];
 
   const feedResults = await Promise.all(
     activeFeeds.map(async (feed) => {
@@ -65,8 +69,9 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   }
 
   const allFailed = failedCount > 0 && failedCount === feedResults.length;
-  const analysisLimit = Math.max(0, Math.min(25, Number.parseInt(process.env.RSS_AUTO_ANALYSIS_LIMIT || "0", 10) || 0));
-  const analysis = analysisLimit > 0 && totalInserted > 0
+  const analysisLimitParam = searchParams.get("analysisLimit") || process.env.RSS_AUTO_ANALYSIS_LIMIT || "0";
+  const analysisLimit = Math.max(0, Math.min(50, Number.parseInt(analysisLimitParam, 10) || 0));
+  const analysis = analysisLimit > 0
     ? await analyzeMissingRssArticles(analysisLimit)
     : { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };
 
