@@ -39,21 +39,23 @@ export async function analyzeMissingRssArticles(limit = 5): Promise<{
   }
 
   const rules = normalizeTopicRules(await getTopicRules(true));
-  let savedCount = 0;
-  const failed: Array<{ article_id: number; title: string; error: string }> = [];
-
-  for (const article of selected) {
+  const results = await Promise.all(selected.map(async (article) => {
     const topics = getMatchingTopics(article, rules).map((topic) => topic.label);
     try {
       const generated = await generateFeedAnalysis(inputForArticle(article, topics));
       await saveRssArticleAnalysis(article, generated, topics);
-      savedCount += 1;
+      return { saved: true as const };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       await saveRssArticleAnalysisFailure(article, message);
-      failed.push({ article_id: article.id, title: article.title, error: message });
+      return { saved: false as const, failed: { article_id: article.id, title: article.title, error: message } };
     }
-  }
+  }));
+
+  const savedCount = results.filter((result) => result.saved).length;
+  const failed = results
+    .filter((result): result is { saved: false; failed: { article_id: number; title: string; error: string } } => !result.saved)
+    .map((result) => result.failed);
 
   return {
     selected_count: selected.length,
