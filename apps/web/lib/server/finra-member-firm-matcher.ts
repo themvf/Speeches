@@ -13,6 +13,7 @@ type FirmAlias = {
   alias: string;
   firmName: string;
   score: number;
+  tokens: number;
 };
 
 const MAX_MATCHES = 5;
@@ -33,6 +34,10 @@ function normalizeText(value: string): string {
 
 function tokenCount(value: string): number {
   return value ? value.split(" ").length : 0;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function stripTrailingPatterns(value: string): string {
@@ -76,8 +81,19 @@ const FIRM_ALIASES: FirmAlias[] = (registry.firms as RegistryFirm[])
     alias,
     firmName: firm.name,
     score: tokenCount(alias) * 100 + alias.length,
+    tokens: tokenCount(alias),
   })))
   .sort((a, b) => b.score - a.score || a.firmName.localeCompare(b.firmName));
+
+function rawTextContainsEntityAlias(rawText: string, alias: string): boolean {
+  const re = new RegExp(`(?:^|[^A-Za-z0-9])(${escapeRegex(alias)})(?=$|[^A-Za-z0-9])`, "gi");
+  for (const match of rawText.matchAll(re)) {
+    const candidate = match[1] || "";
+    if (candidate === candidate.toUpperCase()) return true;
+    if (/^[A-Z][A-Za-z0-9]*$/.test(candidate)) return true;
+  }
+  return false;
+}
 
 export function finraMemberFirmCount(): number {
   return Number(registry.count || (registry.firms as RegistryFirm[]).length || 0);
@@ -93,6 +109,11 @@ export function findFinraMemberFirmMatches(input: {
   author?: string | null;
   url?: string | null;
 }, maxMatches = MAX_MATCHES): FinraMemberFirmMatch[] {
+  const rawVisibleText = [
+    input.title,
+    input.description,
+    input.author,
+  ].filter(Boolean).join(" ");
   const haystack = ` ${normalizeText([
     input.title,
     input.description,
@@ -106,6 +127,7 @@ export function findFinraMemberFirmMatches(input: {
   for (const item of FIRM_ALIASES) {
     if (seen.has(item.firmName)) continue;
     if (!haystack.includes(` ${item.alias} `)) continue;
+    if (item.tokens === 1 && !rawTextContainsEntityAlias(rawVisibleText, item.alias)) continue;
     seen.add(item.firmName);
     matches.push({ name: item.firmName });
     if (matches.length >= maxMatches) break;
