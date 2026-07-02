@@ -51,6 +51,7 @@ type FeedItem = StoredRssArticle & {
   source_kind?: string;
   doc_type?: string;
   enrichment_model?: string;
+  matched_finra_firms?: string[];
   topics?: string[];
   keywords?: string[];
   analysis?: unknown;
@@ -169,6 +170,7 @@ const FEED_META: Record<string, FeedMeta> = {
   prnewswire_financial_services: { label: "PR Newswire Financial Services", code: "PRN", color: "#66d9e8" },
   prnewswire_policy_public_interest: { label: "PR Newswire Policy & Public Interest", code: "PRN", color: "#66d9e8" },
   google_news_ponzi_investor_fraud: { label: "Google News: Ponzi & Investor Fraud", code: "GNEWS", color: "#8ce99a" },
+  google_news_finra_member_firms: { label: "Google News: FINRA Member Firms", code: "GNEWS", color: "#d0bfff" },
   cftc_general_press_releases: { label: "CFTC General Press Releases", code: "CFTC", color: "#ffd43b" },
   cftc_enforcement_press_releases: { label: "CFTC Enforcement Press Releases", code: "CFTC", color: "#ff8aa0" },
   cftc_speeches_testimony: { label: "CFTC Speeches and Testimony", code: "CFTC", color: "#ffd43b" },
@@ -1069,6 +1071,67 @@ function TopicPill({ label }: { label: string }) {
   );
 }
 
+function finraFirmMatches(article: FeedItem): string[] {
+  return Array.isArray(article.matched_finra_firms)
+    ? article.matched_finra_firms.map(String).filter(Boolean)
+    : [];
+}
+
+function FinraFirmMatchPills({ firms }: { firms: string[] }) {
+  if (firms.length === 0) return null;
+
+  return (
+    <>
+      {firms.slice(0, 2).map((firm) => (
+        <span
+          key={firm}
+          title={`FINRA member firm match: ${firm}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            border: "1px solid rgba(184, 143, 255, 0.58)",
+            borderRadius: 4,
+            padding: "2px 6px",
+            maxWidth: 220,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            fontSize: 10,
+            lineHeight: 1.2,
+            letterSpacing: "0.08em",
+            color: "#d4c4ff",
+            background: "rgba(137, 87, 229, 0.16)",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          FINRA Firm: {firm}
+        </span>
+      ))}
+      {firms.length > 2 ? (
+        <span
+          title={firms.slice(2).join(", ")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            border: "1px solid rgba(184, 143, 255, 0.42)",
+            borderRadius: 4,
+            padding: "2px 6px",
+            fontSize: 10,
+            lineHeight: 1.2,
+            letterSpacing: "0.08em",
+            color: "#bea8f5",
+            background: "rgba(137, 87, 229, 0.12)",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          +{firms.length - 2}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function ToneChip({ label }: { label: string | null }) {
   const tone = label && TONE_STYLE[label] ? label : "neutral";
   const style = TONE_STYLE[tone];
@@ -1169,6 +1232,14 @@ function FeedRow({
   const source = getFeedMeta(article.feed_key, article.feed_label);
   const sourceLabel = feedSourceLabel(article, source);
   const visibleTopics = matchedTopics.slice(0, 3);
+  const matchedFirms = finraFirmMatches(article);
+  const hasFirmMatch = matchedFirms.length > 0;
+  const rowBackground = active
+    ? "rgba(67, 112, 186, 0.08)"
+    : hasFirmMatch
+      ? "rgba(137, 87, 229, 0.07)"
+      : "transparent";
+  const rowAccent = hasFirmMatch ? "inset 3px 0 0 rgba(184, 143, 255, 0.72)" : undefined;
   const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
   const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
   const analysisButtonStyle = {
@@ -1192,7 +1263,8 @@ function FeedRow({
           gap: 10,
           padding: "12px 0",
           borderTop: "1px solid rgba(112, 142, 187, 0.12)",
-          background: active ? "rgba(67, 112, 186, 0.08)" : "transparent",
+          background: rowBackground,
+          boxShadow: rowAccent,
           cursor: "pointer",
           minWidth: 0,
         }}
@@ -1239,6 +1311,7 @@ function FeedRow({
           {visibleTopics.map((topic) => (
             <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
           ))}
+          <FinraFirmMatchPills firms={matchedFirms} />
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1278,7 +1351,8 @@ function FeedRow({
         alignItems: "start",
         padding: "10px 0",
         borderTop: "1px solid rgba(112, 142, 187, 0.12)",
-        background: active ? "rgba(67, 112, 186, 0.08)" : "transparent",
+        background: rowBackground,
+        boxShadow: rowAccent,
         cursor: "pointer",
       }}
       onClick={onSelect}
@@ -1343,6 +1417,7 @@ function FeedRow({
         {visibleTopics.map((topic) => (
           <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
         ))}
+        <FinraFirmMatchPills firms={matchedFirms} />
       </div>
       <BookmarkButton saved={saved} onToggle={onToggleSave} />
     </div>
@@ -1373,6 +1448,10 @@ function FeaturedCard({
   const source = getFeedMeta(article.feed_key, article.feed_label);
   const sourceLabel = feedSourceLabel(article, source);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
+  const matchedFirms = finraFirmMatches(article);
+  const hasFirmMatch = matchedFirms.length > 0;
+  const firmMatchBackground = hasFirmMatch ? "rgba(137, 87, 229, 0.06)" : "transparent";
+  const firmMatchAccent = hasFirmMatch ? "inset 3px 0 0 rgba(184, 143, 255, 0.72)" : undefined;
   const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
@@ -1398,6 +1477,8 @@ function FeaturedCard({
           display: "grid",
           gap: 11,
           minWidth: 0,
+          background: firmMatchBackground,
+          boxShadow: firmMatchAccent,
         }}
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
@@ -1436,6 +1517,7 @@ function FeaturedCard({
           {matchedTopics.slice(0, 4).map((topic) => (
             <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
           ))}
+          <FinraFirmMatchPills firms={matchedFirms} />
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", color: "#8da0bc", fontSize: 11 }}>
@@ -1481,6 +1563,8 @@ function FeaturedCard({
         borderBottom: "1px solid rgba(112, 142, 187, 0.16)",
         padding: "14px 0 18px",
         marginBottom: 4,
+        background: firmMatchBackground,
+        boxShadow: firmMatchAccent,
       }}
     >
       <div
@@ -1564,6 +1648,14 @@ function FeaturedCard({
           <div style={{ color: "#d7e1ef" }}>
             {matchedTopics.length > 0 ? matchedTopics.map((topic) => topic.label).join(", ") : "Unmapped"}
           </div>
+          {matchedFirms.length > 0 ? (
+            <>
+              <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>FINRA Firms</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <FinraFirmMatchPills firms={matchedFirms} />
+              </div>
+            </>
+          ) : null}
         </div>
         <BookmarkButton saved={saved} onToggle={onToggleSave} size={16} />
       </div>
@@ -1626,6 +1718,7 @@ function FeedAnalysisPanel({
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
   const decodedDescription = decodeEntities(article.description || "");
   const topicLabels = matchedTopics.map((topic) => topic.label);
+  const matchedFirms = finraFirmMatches(article);
   const articleSummary = decodedDescription || "No feed summary is available for this article yet.";
   const analysisModel = feedAnalysisModelLabel(analysis);
   const analysisModelTitle = feedAnalysisModelTitle(analysis);
@@ -1651,6 +1744,7 @@ function FeedAnalysisPanel({
           <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
           <span className="tone-chip">Source: {sourceLabel}</span>
           <SourceProvenanceChip article={article} />
+          <FinraFirmMatchPills firms={matchedFirms} />
           <span className="tone-chip" title={analysisModelTitle}>Model: {analysisModel}</span>
         </div>
         <p style={{ marginTop: 10, color: "#dbe7f5", fontSize: 14, fontWeight: 700, lineHeight: 1.55 }}>
@@ -1790,6 +1884,16 @@ function FeedAnalysisPanel({
           </p>
           {renderAnalysisChips(topicLabels, "No mapped topics")}
         </div>
+        {matchedFirms.length > 0 ? (
+          <div>
+            <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              FINRA Firm Matches
+            </p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <FinraFirmMatchPills firms={matchedFirms} />
+            </div>
+          </div>
+        ) : null}
         <div>
           <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
             Follow-Up

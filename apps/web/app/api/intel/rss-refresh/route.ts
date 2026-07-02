@@ -3,6 +3,7 @@ import { fetchRssFeed } from "@/lib/server/rss-fetcher";
 import { deleteBlockedRssArticles, deleteInvalidCouponArticles, deleteNonEnglishPrNewswireArticles, upsertRssArticles, ensureSchema, getFeeds, getTopicRules, markFeedRefreshed } from "@/lib/server/neon";
 import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
+import { FINRA_MEMBER_FIRM_NEWS_FEED_KEY, FINRA_MEMBER_FIRM_NEWS_LABEL, fetchFinraMemberFirmRssBatch } from "@/lib/server/finra-member-firm-rss";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 55;
@@ -91,7 +92,20 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     })
   );
 
-  const feeds: Array<{ feedKey: string; label: string; refreshIntervalMinutes: number; fetched: number; matched: number; filtered: number; inserted: number; error?: string }> = [];
+  const feeds: Array<{
+    feedKey: string;
+    label: string;
+    refreshIntervalMinutes: number;
+    fetched: number;
+    matched: number;
+    filtered: number;
+    inserted: number;
+    error?: string;
+    firmCount?: number;
+    batchSize?: number;
+    offset?: number;
+    firmFeedFailures?: number;
+  }> = [];
   let totalInserted = 0;
   let failedCount = 0;
 
@@ -100,6 +114,40 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     totalInserted += result.inserted;
     if (result.error) {
       failedCount++;
+    }
+  }
+
+  if (shouldFetchFeeds && searchParams.get("finraFirmFeeds") !== "0") {
+    try {
+      const firmBatch = await fetchFinraMemberFirmRssBatch();
+      const firmFiltered = filterRssArticlesForIngestion(FINRA_MEMBER_FIRM_NEWS_FEED_KEY, firmBatch.articles, topicRules);
+      const inserted = await upsertRssArticles(firmFiltered.articles, FINRA_MEMBER_FIRM_NEWS_FEED_KEY);
+      totalInserted += inserted;
+      feeds.push({
+        feedKey: FINRA_MEMBER_FIRM_NEWS_FEED_KEY,
+        label: FINRA_MEMBER_FIRM_NEWS_LABEL,
+        refreshIntervalMinutes: 0,
+        fetched: firmBatch.fetched,
+        matched: firmFiltered.matched,
+        filtered: firmBatch.filtered + firmFiltered.filtered,
+        inserted,
+        firmCount: firmBatch.firmCount,
+        batchSize: firmBatch.batchSize,
+        offset: firmBatch.offset,
+        firmFeedFailures: firmBatch.failed,
+      });
+    } catch (error) {
+      failedCount++;
+      feeds.push({
+        feedKey: FINRA_MEMBER_FIRM_NEWS_FEED_KEY,
+        label: FINRA_MEMBER_FIRM_NEWS_LABEL,
+        refreshIntervalMinutes: 0,
+        fetched: 0,
+        matched: 0,
+        filtered: 0,
+        inserted: 0,
+        error: String(error),
+      });
     }
   }
 
@@ -116,7 +164,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     return 0;
   });
 
-  const allFailed = failedCount > 0 && failedCount === feedResults.length;
+  const allFailed = feeds.length > 0 && failedCount > 0 && failedCount === feeds.length;
   const analysisLimitParam = searchParams.get("analysisLimit") || process.env.RSS_AUTO_ANALYSIS_LIMIT || "0";
   const analysisLimit = Math.max(0, Math.min(50, Number.parseInt(analysisLimitParam, 10) || 0));
   const analysisFeedKeys = parseAnalysisFeedKeys(searchParams);

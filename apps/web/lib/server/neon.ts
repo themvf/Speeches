@@ -20,6 +20,7 @@ export type StoredRssArticle = {
   tone_label: "positive" | "neutral" | "negative" | null;
   fetched_at: string;
   analysis?: StoredRssArticleAnalysis | null;
+  matched_finra_firms?: string[];
 };
 
 export type MentionType = "keyword" | "individual" | "entity" | "topic";
