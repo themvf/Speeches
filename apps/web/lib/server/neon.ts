@@ -623,7 +623,18 @@ export async function getRssArticlesNeedingAnalysis(limit = 10): Promise<StoredR
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
     WHERE ra.article_id IS NULL
        OR ra.status IN ('pending', 'failed', 'stale')
-       OR (${refreshForDeepSeek} AND ra.status = 'enriched' AND (ra.fallback = true OR ra.model NOT ILIKE 'deepseek%'))
+       OR (
+         ${refreshForDeepSeek}
+         AND ra.status = 'enriched'
+         AND (
+           ra.fallback = true
+           OR ra.model NOT ILIKE 'deepseek%'
+           OR length(COALESCE(ra.thesis, '')) < 40
+           OR jsonb_array_length(COALESCE(ra.why_it_matters, '[]'::jsonb)) < 2
+           OR jsonb_array_length(COALESCE(ra.risk_signals, '[]'::jsonb)) < 2
+           OR jsonb_array_length(COALESCE(ra.follow_up_questions, '[]'::jsonb)) < 2
+         )
+       )
     ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
     LIMIT ${cappedLimit}
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
