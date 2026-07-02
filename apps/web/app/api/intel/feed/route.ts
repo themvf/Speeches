@@ -12,6 +12,7 @@ import {
   ensureSchema,
   getFeeds,
   getRecentArticles,
+  markFeedRefreshed,
   getTopicRules,
   upsertRssArticles,
   type StoredRssArticle,
@@ -79,12 +80,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const needsRefresh = refresh && !feedKey && !since && ageMs > 8 * 60_000;
 
       if (needsRefresh) {
-        const activeFeeds = await getFeeds(true);
+        const activeFeeds = await getFeeds(true, { dueOnly: true });
         let insertedCount = 0;
         const refreshResults = await Promise.allSettled(
           activeFeeds.map(async (feed) => {
-            const feedArticles = await fetchRssFeed(feed.feed_url, 50);
-            return upsertRssArticles(feedArticles, feed.feed_key);
+            try {
+              const feedArticles = await fetchRssFeed(feed.feed_url, 50);
+              return upsertRssArticles(feedArticles, feed.feed_key);
+            } finally {
+              await markFeedRefreshed(feed.feed_key).catch((error) => {
+                console.error(`[intel/feed] failed to mark feed refreshed for ${feed.feed_key}:`, error);
+              });
+            }
           })
         );
         for (const result of refreshResults) {

@@ -7,7 +7,13 @@ export type RssArticle = {
   publishedAt: Date | null;
 };
 
-export const WSJ_FEEDS: Record<string, { label: string; feedUrl: string }> = {
+export type RssFeedDefinition = {
+  label: string;
+  feedUrl: string;
+  refreshIntervalMinutes?: number;
+};
+
+export const WSJ_FEEDS: Record<string, RssFeedDefinition> = {
   wsj_us_business: {
     label: "WSJ US Business",
     feedUrl: "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews",
@@ -26,7 +32,7 @@ export const WSJ_FEEDS: Record<string, { label: string; feedUrl: string }> = {
   },
 };
 
-export const DEFAULT_RSS_FEEDS: Record<string, { label: string; feedUrl: string }> = {
+export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
   ...WSJ_FEEDS,
   sec_press_releases: {
     label: "SEC Press Releases",
@@ -240,6 +246,41 @@ export const DEFAULT_RSS_FEEDS: Record<string, { label: string; feedUrl: string 
     label: "The Big Picture",
     feedUrl: "https://ritholtz.com/feed/",
   },
+  economist_finance_economics: {
+    label: "The Economist Finance & Economics",
+    feedUrl: "https://www.economist.com/finance-and-economics/rss.xml",
+    refreshIntervalMinutes: 180,
+  },
+  economist_business: {
+    label: "The Economist Business",
+    feedUrl: "https://www.economist.com/business/rss.xml",
+    refreshIntervalMinutes: 180,
+  },
+  economist_united_states: {
+    label: "The Economist United States",
+    feedUrl: "https://www.economist.com/united-states/rss.xml",
+    refreshIntervalMinutes: 180,
+  },
+  investmentnews: {
+    label: "InvestmentNews",
+    feedUrl: "https://www.investmentnews.com/rss",
+    refreshIntervalMinutes: 180,
+  },
+  ft_news_feed: {
+    label: "Financial Times News Feed",
+    feedUrl: "https://www.ft.com/news-feed?format=rss",
+    refreshIntervalMinutes: 180,
+  },
+  ft_markets: {
+    label: "Financial Times Markets",
+    feedUrl: "https://www.ft.com/markets?format=rss",
+    refreshIntervalMinutes: 180,
+  },
+  ft_financials: {
+    label: "Financial Times Financials",
+    feedUrl: "https://www.ft.com/financials?format=rss",
+    refreshIntervalMinutes: 180,
+  },
   ft_portfolios_market_commentary: {
     label: "First Trust Market Commentary",
     feedUrl: "https://www.ftportfolios.com/Common/Rss/MarketCommentaryBlogFeed.aspx",
@@ -295,7 +336,7 @@ function decodeEntities(text: string): string {
 }
 
 function extractTag(xml: string, tag: string): string {
-  const cdataRe = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, "i");
+  const cdataRe = new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, "i");
   const plainRe = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
   const m = xml.match(cdataRe) ?? xml.match(plainRe);
   return m ? m[1].trim() : "";
@@ -305,6 +346,12 @@ function extractAttr(xml: string, tag: string, attr: string): string {
   const re = new RegExp(`<${tag}[^>]*\\s${attr}="([^"]*)"`, "i");
   const m = xml.match(re);
   return m ? m[1].trim() : "";
+}
+
+function extractAtomLink(xml: string): string {
+  const links = xml.match(/<link\b[^>]*>/gi) || [];
+  const alternate = links.find((tag) => !/\srel=["'](self|hub|replies)["']/i.test(tag)) || links[0] || "";
+  return decodeEntities(extractAttr(alternate, "link", "href"));
 }
 
 function stripHtml(text: string): string {
@@ -352,10 +399,33 @@ export async function fetchRssFeed(feedUrl: string, maxItems = 50, timeoutMs = 1
     const block = match[1];
     const title = decodeEntities(stripHtml(extractTag(block, "title")));
     const url = extractTag(block, "link") || extractAttr(block, "link", "href");
-    const description = decodeEntities(stripHtml(extractTag(block, "description") || extractTag(block, "summary")));
+    const description = decodeEntities(stripHtml(extractTag(block, "description") || extractTag(block, "summary") || extractTag(block, "content:encoded")));
     const author = decodeEntities(extractTag(block, "dc:creator") || extractTag(block, "author"));
     const pubDate = extractTag(block, "pubDate") || extractTag(block, "published") || extractTag(block, "updated");
     const guid = normalizeGuid(extractTag(block, "guid"), url, title);
+
+    if (!title || !url) continue;
+
+    results.push({
+      guid,
+      title,
+      url,
+      description,
+      author,
+      publishedAt: parseRssDate(pubDate),
+    });
+  }
+
+  const entryRe = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
+  while ((match = entryRe.exec(xml)) !== null && results.length < maxItems) {
+    const block = match[1];
+    const authorBlock = extractTag(block, "author");
+    const title = decodeEntities(stripHtml(extractTag(block, "title")));
+    const url = extractAtomLink(block) || extractTag(block, "link");
+    const description = decodeEntities(stripHtml(extractTag(block, "summary") || extractTag(block, "content")));
+    const author = decodeEntities(stripHtml(extractTag(authorBlock, "name") || authorBlock));
+    const pubDate = extractTag(block, "published") || extractTag(block, "updated");
+    const guid = normalizeGuid(extractTag(block, "id"), url, title);
 
     if (!title || !url) continue;
 

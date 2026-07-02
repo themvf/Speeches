@@ -73,6 +73,8 @@ export type RssFeed = {
   feed_url: string;
   feed_key: string;
   active: boolean;
+  refresh_interval_minutes: number;
+  last_refresh_at: string | null;
   added_at: string;
 };
 
@@ -369,14 +371,18 @@ export async function ensureSchema(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS intelligence_mentions_source ON intelligence_mentions (source_type, source_id)`;
   await sql`
     CREATE TABLE IF NOT EXISTS rss_feeds (
-      id       SERIAL PRIMARY KEY,
-      label    TEXT NOT NULL,
-      feed_url TEXT UNIQUE NOT NULL,
-      feed_key TEXT UNIQUE NOT NULL,
-      active   BOOLEAN NOT NULL DEFAULT true,
-      added_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      id                       SERIAL PRIMARY KEY,
+      label                    TEXT NOT NULL,
+      feed_url                 TEXT UNIQUE NOT NULL,
+      feed_key                 TEXT UNIQUE NOT NULL,
+      active                   BOOLEAN NOT NULL DEFAULT true,
+      refresh_interval_minutes INTEGER NOT NULL DEFAULT 10,
+      last_refresh_at          TIMESTAMPTZ,
+      added_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS refresh_interval_minutes INTEGER NOT NULL DEFAULT 10`;
+  await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS last_refresh_at TIMESTAMPTZ`;
   await sql`
     CREATE TABLE IF NOT EXISTS rss_topic_rules (
       id         SERIAL PRIMARY KEY,
@@ -419,11 +425,15 @@ export async function ensureSchema(): Promise<void> {
 }
 
 async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
-  for (const [key, { label, feedUrl }] of Object.entries(DEFAULT_RSS_FEEDS)) {
+  for (const [key, { label, feedUrl, refreshIntervalMinutes }] of Object.entries(DEFAULT_RSS_FEEDS)) {
+    const intervalMinutes = Math.max(1, Math.round(Number(refreshIntervalMinutes || 10)));
     await sql`
-      INSERT INTO rss_feeds (label, feed_url, feed_key)
-      VALUES (${label}, ${feedUrl}, ${key})
-      ON CONFLICT (feed_url) DO NOTHING
+      INSERT INTO rss_feeds (label, feed_url, feed_key, refresh_interval_minutes)
+      VALUES (${label}, ${feedUrl}, ${key}, ${intervalMinutes})
+      ON CONFLICT (feed_url) DO UPDATE SET
+        label = EXCLUDED.label,
+        feed_key = EXCLUDED.feed_key,
+        refresh_interval_minutes = EXCLUDED.refresh_interval_minutes
     `;
   }
 }
@@ -476,25 +486,48 @@ async function applyTopicTaxonomyMigrations(sql: ReturnType<typeof neon>): Promi
   `;
 }
 
-export async function getFeeds(onlyActive = false): Promise<RssFeed[]> {
+export async function getFeeds(onlyActive = false, opts: { dueOnly?: boolean } = {}): Promise<RssFeed[]> {
   await ensureSchema();
   const sql = getSql();
-  const rows = onlyActive
-    ? await sql`SELECT * FROM rss_feeds WHERE active = true ORDER BY added_at ASC`
-    : await sql`SELECT * FROM rss_feeds ORDER BY added_at ASC`;
+  let rows;
+  if (onlyActive && opts.dueOnly) {
+    rows = await sql`
+      SELECT *
+      FROM rss_feeds
+      WHERE active = true
+        AND (
+          last_refresh_at IS NULL
+          OR last_refresh_at <= now() - (GREATEST(refresh_interval_minutes, 1) * INTERVAL '1 minute')
+        )
+      ORDER BY last_refresh_at ASC NULLS FIRST, added_at ASC
+    `;
+  } else {
+    rows = onlyActive
+      ? await sql`SELECT * FROM rss_feeds WHERE active = true ORDER BY added_at ASC`
+      : await sql`SELECT * FROM rss_feeds ORDER BY added_at ASC`;
+  }
   return rows as unknown as RssFeed[];
 }
 
-export async function addFeed(label: string, feedUrl: string): Promise<RssFeed> {
+export async function addFeed(label: string, feedUrl: string, refreshIntervalMinutes = 10): Promise<RssFeed> {
   const sql = getSql();
   const feedKey = deriveFeedKey(feedUrl);
+  const intervalMinutes = Math.max(1, Math.round(Number(refreshIntervalMinutes || 10)));
   const rows = (await sql`
-    INSERT INTO rss_feeds (label, feed_url, feed_key)
-    VALUES (${label.trim()}, ${feedUrl.trim()}, ${feedKey})
-    ON CONFLICT (feed_url) DO UPDATE SET label = EXCLUDED.label, active = true
+    INSERT INTO rss_feeds (label, feed_url, feed_key, refresh_interval_minutes)
+    VALUES (${label.trim()}, ${feedUrl.trim()}, ${feedKey}, ${intervalMinutes})
+    ON CONFLICT (feed_url) DO UPDATE SET
+      label = EXCLUDED.label,
+      refresh_interval_minutes = EXCLUDED.refresh_interval_minutes,
+      active = true
     RETURNING *
   `) as unknown as RssFeed[];
   return rows[0];
+}
+
+export async function markFeedRefreshed(feedKey: string): Promise<void> {
+  const sql = getSql();
+  await sql`UPDATE rss_feeds SET last_refresh_at = now() WHERE feed_key = ${feedKey}`;
 }
 
 export async function toggleFeed(id: number, active: boolean): Promise<void> {

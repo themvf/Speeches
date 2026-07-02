@@ -21,7 +21,7 @@ type OrgIndexStatus = {
 };
 
 /* ─── RSS Feed types ───────────────────────────────────────────────── */
-type RssFeed = { id: number; label: string; feed_url: string; active: boolean };
+type RssFeed = { id: number; label: string; feed_url: string; active: boolean; refresh_interval_minutes?: number; last_refresh_at?: string | null };
 type TopicRule = { id: number; topic_key: string; label: string; keywords: string; active: boolean; sort_order: number };
 
 /* ─── Ticker types ─────────────────────────────────────────────────── */
@@ -537,7 +537,7 @@ function FeedManagerSection() {
   return (
     <section className="mb-8">
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">RSS Feeds</h2>
-      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Manage Intel Feed RSS sources. Changes apply on the next 10-minute cron refresh.</p>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Manage Intel Feed RSS sources. Changes apply when each source is due on the scheduled refresh.</p>
       <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
         {loading && <p className="text-xs text-[color:var(--ink-faint)]">Loading…</p>}
         {error && <p className="text-xs text-[color:var(--danger)]">{error}</p>}
@@ -556,6 +556,9 @@ function FeedManagerSection() {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-[color:var(--ink)]">{f.label}</span>
                 <span className="block truncate text-xs text-[color:var(--ink-faint)]">{f.feed_url}</span>
+                <span className="block text-xs text-[color:var(--ink-faint)]">
+                  Every {f.refresh_interval_minutes ?? 10} min{f.last_refresh_at ? ` | Last refresh ${new Date(f.last_refresh_at).toLocaleString()}` : ""}
+                </span>
               </span>
               <button
                 type="button"

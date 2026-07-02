@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRssFeed } from "@/lib/server/rss-fetcher";
-import { deleteInvalidCouponArticles, upsertRssArticles, ensureSchema, getFeeds } from "@/lib/server/neon";
+import { deleteInvalidCouponArticles, upsertRssArticles, ensureSchema, getFeeds, markFeedRefreshed } from "@/lib/server/neon";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
@@ -36,27 +36,39 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
 
   const { searchParams } = req.nextUrl;
   const shouldFetchFeeds = searchParams.get("fetch") !== "0";
-  const activeFeeds = shouldFetchFeeds ? await getFeeds(true) : [];
+  const forceRefresh = searchParams.get("force") === "1";
+  const activeFeeds = shouldFetchFeeds ? await getFeeds(true, { dueOnly: !forceRefresh }) : [];
 
   const feedResults = await Promise.all(
     activeFeeds.map(async (feed) => {
       try {
         const articles = await fetchRssFeed(feed.feed_url, 50);
         const inserted = await upsertRssArticles(articles, feed.feed_key);
-        return { feedKey: feed.feed_key, label: feed.label, fetched: articles.length, inserted };
+        return {
+          feedKey: feed.feed_key,
+          label: feed.label,
+          refreshIntervalMinutes: feed.refresh_interval_minutes,
+          fetched: articles.length,
+          inserted,
+        };
       } catch (err) {
         return {
           feedKey: feed.feed_key,
           label: feed.label,
+          refreshIntervalMinutes: feed.refresh_interval_minutes,
           fetched: 0,
           inserted: 0,
           error: String(err),
         };
+      } finally {
+        await markFeedRefreshed(feed.feed_key).catch((error) => {
+          console.error(`[intel/rss-refresh] failed to mark feed refreshed for ${feed.feed_key}:`, error);
+        });
       }
     })
   );
 
-  const feeds: Array<{ feedKey: string; label: string; fetched: number; inserted: number; error?: string }> = [];
+  const feeds: Array<{ feedKey: string; label: string; refreshIntervalMinutes: number; fetched: number; inserted: number; error?: string }> = [];
   let totalInserted = 0;
   let failedCount = 0;
 
