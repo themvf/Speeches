@@ -55,7 +55,7 @@ concurrency:
 jobs:
   enrich-news:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
@@ -86,15 +86,23 @@ jobs:
       - name: Run Financial News Enrichment
         run: |
           set -euo pipefail
-          args=(enrich --require-remote-persistence --source-kind "${SOURCE_KIND}" --mode "${ENRICH_MODE}" --order "${ENRICH_ORDER}" --summary-path financial_news_enrich_summary.json)
-          if [ -n "${ENRICH_LIMIT}" ]; then
-            args+=(--limit "${ENRICH_LIMIT}")
+          if [ "${SOURCE_KIND}" = "__gpt_fallback_all__" ]; then
+            args=(--require-remote-persistence --skip-rss --model "${ENRICH_MODEL}" --summary-path financial_news_enrich_summary.json)
+            if [ -n "${ENRICH_LIMIT}" ]; then
+              args+=(--max-docs "${ENRICH_LIMIT}")
+            fi
+            python scripts/re_enrich_gpt_fallback.py "${args[@]}"
+          else
+            args=(enrich --require-remote-persistence --source-kind "${SOURCE_KIND}" --mode "${ENRICH_MODE}" --order "${ENRICH_ORDER}" --summary-path financial_news_enrich_summary.json)
+            if [ -n "${ENRICH_LIMIT}" ]; then
+              args+=(--limit "${ENRICH_LIMIT}")
+            fi
+            args+=(--provider "${ENRICH_PROVIDER}" --model "${ENRICH_MODEL}")
+            if [ "${HEURISTIC_ONLY}" = "true" ]; then
+              args+=(--heuristic-only)
+            fi
+            python run_financial_news_pipeline.py "${args[@]}"
           fi
-          args+=(--provider "${ENRICH_PROVIDER}" --model "${ENRICH_MODEL}")
-          if [ "${HEURISTIC_ONLY}" = "true" ]; then
-            args+=(--heuristic-only)
-          fi
-          python run_financial_news_pipeline.py "${args[@]}"
 
       - name: Upload Enrichment Summary
         if: always()
