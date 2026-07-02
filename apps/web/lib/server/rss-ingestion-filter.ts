@@ -9,6 +9,7 @@ const REQUIRED_TOPIC_KEYS_BY_FEED_KEY: Record<string, string[]> = {
 };
 const GAMBLING_RE = /\b(?:gambling|casino|casinos|slot|slots|sportsbook|sportsbooks|wager|wagering|betting|bookmaker|bookmakers|lottery|lotteries|poker|blackjack|roulette|sweepstakes)\b/i;
 const GAMBLING_ALLOWED_RE = /\b(?:prediction market|prediction markets|event contract|event contracts|prediction exchange|kalshi|polymarket|predictit|cftc|commodity futures trading commission|binary option|binary options|securities|security-based|sec|securities and exchange commission|broker-dealer|exchange act|securities act|market structure)\b/i;
+const PRNEWSWIRE_LEGAL_SOLICITATION_RE = /\b(?:shareholder alert|investor alert|class action attorney|class action law firm|m&a class action firm|lead plaintiff deadline|securities litigation firm|law offices? of|investigating claims|continues to investigate|announces investigation of|reminds investors|encourages investors|contact the firm)\b/i;
 const NOISY_SOURCE_RELEVANCE_RE = /\b(?:sec|securities and exchange commission|cftc|commodity futures trading commission|finra|federal reserve|treasury|ofac|fincen|cfpb|occ|fdic|ftc|doj|pcaob|msrb|securities|security-based|investment adviser|investment advisor|broker-dealer|investor fraud|investment fraud|ponzi|offering fraud|public offering|registered offering|private placement|initial public offering|ipo|etf|mutual fund|hedge fund|private fund|asset manager|wealth management|shareholder vote|shareholder lawsuit|shareholder rights|stock exchange|equity market|derivative|swap|futures|options|anti-money laundering|aml|kyc|sanctions compliance|illicit finance|cybersecurity|ransomware|data breach|operational resilience|reg sci|crypto asset|digital asset|stablecoin|bitcoin|ethereum|tokenized securities|blockchain|prediction market|event contract|kalshi|polymarket|predictit|binary options|enforcement action|investigation|settlement|lawsuit|complaint|civil penalty|market manipulation|insider trading|regulatory compliance|compliance platform|risk management)\b/i;
 const AI_CONTEXT_RE = /\b(?:financial services|bank|banking|securities|investment|investor|broker|adviser|advisor|regulatory|compliance|risk management|governance|cybersecurity|privacy|fraud|aml|kyc|trading|market surveillance)\b/i;
 const GEOPOLITICAL_CONTEXT_RE = /\b(?:tariff|tariffs|trade policy|export controls|import restrictions|sanctions|supply chain|national security|foreign policy|shipping lanes|maritime security|semiconductor controls|cross-border restrictions|trade war)\b/i;
@@ -56,6 +57,11 @@ export function isDisallowedGamblingArticle(article: RssFilterArticle): boolean 
   return GAMBLING_RE.test(text) && !GAMBLING_ALLOWED_RE.test(text);
 }
 
+export function isDisallowedNoisySourceArticle(feedKey: string, article: RssFilterArticle): boolean {
+  if (!shouldNoisyRelevanceFilterFeed(feedKey)) return false;
+  return PRNEWSWIRE_LEGAL_SOLICITATION_RE.test(articleText(article));
+}
+
 function passesNoisyRelevanceGate(feedKey: string, article: RssFilterArticle, topicKeys: string[]): boolean {
   if (!shouldNoisyRelevanceFilterFeed(feedKey)) return true;
 
@@ -78,6 +84,7 @@ export function isAllowedRssArticleForIngestion(
 ): boolean {
   if (shouldEnglishOnlyFilterFeed(feedKey) && !isEnglishRssArticle(article)) return false;
   if (isDisallowedGamblingArticle(article)) return false;
+  if (isDisallowedNoisySourceArticle(feedKey, article)) return false;
 
   if (!shouldKeywordFilterFeed(feedKey)) {
     return true;
