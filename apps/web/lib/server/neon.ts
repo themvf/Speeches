@@ -723,25 +723,26 @@ export async function saveRssArticleAnalysisFailure(article: StoredRssArticle, e
   `;
 }
 
-export async function deleteInvalidWiredCouponArticles(): Promise<number> {
+export async function deleteInvalidCouponArticles(): Promise<number> {
   await ensureSchema();
   const sql = getSql();
   const rows = (await sql`
     DELETE FROM rss_articles
-    WHERE feed_key = 'wired_security'
-      AND (
-        title ILIKE '%coupon%'
-        OR title ILIKE '%promo code%'
-        OR title ILIKE '%promo-code%'
-        OR title ILIKE '%discount%'
-        OR url ILIKE '%coupon%'
-        OR url ILIKE '%promo-code%'
-        OR url ILIKE '%promo-codes%'
-        OR url ILIKE '%discount%'
-        OR description ILIKE '%coupon%'
-        OR description ILIKE '%promo code%'
-        OR description ILIKE '%discount%'
-      )
+    WHERE title ILIKE '%coupon%'
+       OR title ILIKE '%promo code%'
+       OR title ILIKE '%promo-code%'
+       OR title ILIKE '%discount code%'
+       OR title ILIKE '%discount coupon%'
+       OR url ILIKE '%coupon%'
+       OR url ILIKE '%promo-code%'
+       OR url ILIKE '%promo-codes%'
+       OR url ILIKE '%discount-code%'
+       OR url ILIKE '%discount-coupon%'
+       OR description ILIKE '%coupon%'
+       OR description ILIKE '%promo code%'
+       OR description ILIKE '%promo-code%'
+       OR description ILIKE '%discount code%'
+       OR description ILIKE '%discount coupon%'
     RETURNING id
   `) as unknown as Array<{ id: number }>;
   return rows.length;

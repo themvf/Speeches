@@ -8,7 +8,7 @@ import {
 } from "@/lib/server/data-store";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
 import {
-  deleteInvalidWiredCouponArticles,
+  deleteInvalidCouponArticles,
   ensureSchema,
   getFeeds,
   getRecentArticles,
@@ -22,20 +22,17 @@ import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
 
-const WIRED_COUPON_PATTERN = /\b(coupons?|promo[\s-]+codes?|discount(?:s|[\s-]+codes?)?)\b/i;
+const COUPON_SPAM_PATTERN = /\b(?:promo[\s-]*codes?|coupon(?:s|[\s-]*codes?)|discount[\s-]*(?:codes?|coupons?))\b/i;
 
-function isInvalidWiredCouponArticle(article: StoredRssArticle): boolean {
-  if (String(article.feed_key || "") !== "wired_security") {
-    return false;
-  }
-  return WIRED_COUPON_PATTERN.test(`${article.title || ""} ${article.url || ""} ${article.description || ""}`);
+function isInvalidCouponArticle(article: StoredRssArticle): boolean {
+  return COUPON_SPAM_PATTERN.test(`${article.title || ""} ${article.url || ""} ${article.description || ""}`);
 }
 
-function isInvalidWiredCouponDocument(doc: { source_kind?: string; title?: string; url?: string; tags?: string[]; keywords?: string[] }): boolean {
+function isInvalidCouponDocument(doc: { source_kind?: string; title?: string; url?: string; tags?: string[]; keywords?: string[] }): boolean {
   if (String(doc.source_kind || "") !== "wired_article") {
     return false;
   }
-  return WIRED_COUPON_PATTERN.test(
+  return COUPON_SPAM_PATTERN.test(
     [
       doc.title || "",
       doc.url || "",
@@ -64,8 +61,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (process.env.DATABASE_URL) {
       await ensureSchema();
-      await deleteInvalidWiredCouponArticles().catch((error) => {
-        console.error("[intel/feed] WIRED coupon cleanup failed:", error);
+      await deleteInvalidCouponArticles().catch((error) => {
+        console.error("[intel/feed] coupon cleanup failed:", error);
         return 0;
       });
 
@@ -109,9 +106,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       loadCorpusDocuments(),
       loadEnrichmentState(),
     ]);
-    articles = articles.filter((article) => !isInvalidWiredCouponArticle(article));
+    articles = articles.filter((article) => !isInvalidCouponArticle(article));
     const documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment))
-      .filter((doc) => !isInvalidWiredCouponDocument(doc));
+      .filter((doc) => !isInvalidCouponDocument(doc));
 
     return NextResponse.json(
       {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRssFeed } from "@/lib/server/rss-fetcher";
-import { upsertRssArticles, ensureSchema, getFeeds } from "@/lib/server/neon";
+import { deleteInvalidCouponArticles, upsertRssArticles, ensureSchema, getFeeds } from "@/lib/server/neon";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +68,11 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     }
   }
 
+  const deletedCouponArticles = await deleteInvalidCouponArticles().catch((error) => {
+    console.error("[intel/rss-refresh] coupon cleanup failed:", error);
+    return 0;
+  });
+
   const allFailed = failedCount > 0 && failedCount === feedResults.length;
   const analysisLimitParam = searchParams.get("analysisLimit") || process.env.RSS_AUTO_ANALYSIS_LIMIT || "0";
   const analysisLimit = Math.max(0, Math.min(50, Number.parseInt(analysisLimitParam, 10) || 0));
@@ -76,7 +81,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     : { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };
 
   return NextResponse.json(
-    { ok: !allFailed, data: { inserted: totalInserted, failed_count: failedCount, feeds, analysis } },
+    { ok: !allFailed, data: { inserted: totalInserted, deleted_coupon_articles: deletedCouponArticles, failed_count: failedCount, feeds, analysis } },
     { status: allFailed ? 500 : 200 }
   );
 }
