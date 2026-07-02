@@ -4,6 +4,7 @@ import type { RssArticle } from "@/lib/server/rss-fetcher";
 
 const KEYWORD_FILTERED_FEED_PREFIXES = ["prnewswire_", "google_news_"];
 const NOISY_RELEVANCE_FILTERED_FEED_PREFIXES = ["prnewswire_"];
+const US_ONLY_FRAUD_FEED_KEYS = new Set(["google_news_ponzi_investor_fraud"]);
 const REQUIRED_TOPIC_KEYS_BY_FEED_KEY: Record<string, string[]> = {
   google_news_ponzi_investor_fraud: ["PONZI_INVESTOR_FRAUD"],
 };
@@ -14,6 +15,8 @@ const NOISY_SOURCE_RELEVANCE_RE = /\b(?:sec|securities and exchange commission|c
 const AI_CONTEXT_RE = /\b(?:financial services|bank|banking|securities|investment|investor|broker|adviser|advisor|regulatory|compliance|risk management|governance|cybersecurity|privacy|fraud|aml|kyc|trading|market surveillance)\b/i;
 const GEOPOLITICAL_CONTEXT_RE = /\b(?:tariff|tariffs|trade policy|export controls|import restrictions|sanctions|supply chain|national security|foreign policy|shipping lanes|maritime security|semiconductor controls|cross-border restrictions|trade war)\b/i;
 const ECONOMIC_CONTEXT_RE = /\b(?:gdp|inflation|cpi|pce|interest rate|rate cut|rate hike|federal reserve|fomc|monetary policy|recession|labor market|jobs report|unemployment|tariff|fiscal policy)\b/i;
+const US_ABBREVIATION_JURISDICTION_RE = /\b(?:U\.S\.|U\.S|US|USA)\b/;
+const US_FRAUD_JURISDICTION_RE = /\b(?:united states|american|securities and exchange commission|department of justice|federal bureau of investigation|internal revenue service|commodity futures trading commission|federal trade commission|consumer financial protection bureau|financial industry regulatory authority|u\.s\. attorney|us attorney|sec charges|sec sues|sec settles|doj charges|fbi|finra|cftc|cfpb|ftc|irs|fdic|alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|district of columbia|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming|manhattan|brooklyn|bronx|queens|los angeles|san francisco|san diego|miami|tampa|orlando|atlanta|chicago|boston|philadelphia|dallas|houston|austin|phoenix|seattle|denver|las vegas|charlotte)\b/i;
 
 export type RssIngestionFilterResult = {
   articles: RssArticle[];
@@ -39,6 +42,11 @@ function shouldNoisyRelevanceFilterFeed(feedKey: string): boolean {
   return NOISY_RELEVANCE_FILTERED_FEED_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
+function shouldRequireUsFraudJurisdiction(feedKey: string): boolean {
+  const key = String(feedKey || "").trim().toLowerCase();
+  return US_ONLY_FRAUD_FEED_KEYS.has(key);
+}
+
 export function rssFetchLimitForFeed(feedKey: string): number {
   return shouldKeywordFilterFeed(feedKey) ? 100 : 50;
 }
@@ -60,6 +68,12 @@ export function isDisallowedGamblingArticle(article: RssFilterArticle): boolean 
 export function isDisallowedNoisySourceArticle(feedKey: string, article: RssFilterArticle): boolean {
   if (!shouldNoisyRelevanceFilterFeed(feedKey)) return false;
   return PRNEWSWIRE_LEGAL_SOLICITATION_RE.test(articleText(article));
+}
+
+export function hasRequiredFraudJurisdiction(feedKey: string, article: RssFilterArticle): boolean {
+  if (!shouldRequireUsFraudJurisdiction(feedKey)) return true;
+  const text = articleText(article);
+  return US_ABBREVIATION_JURISDICTION_RE.test(text) || US_FRAUD_JURISDICTION_RE.test(text);
 }
 
 function passesNoisyRelevanceGate(feedKey: string, article: RssFilterArticle, topicKeys: string[]): boolean {
@@ -85,6 +99,7 @@ export function isAllowedRssArticleForIngestion(
   if (shouldEnglishOnlyFilterFeed(feedKey) && !isEnglishRssArticle(article)) return false;
   if (isDisallowedGamblingArticle(article)) return false;
   if (isDisallowedNoisySourceArticle(feedKey, article)) return false;
+  if (!hasRequiredFraudJurisdiction(feedKey, article)) return false;
 
   if (!shouldKeywordFilterFeed(feedKey)) {
     return true;
