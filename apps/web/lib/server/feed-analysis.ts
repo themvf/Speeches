@@ -328,7 +328,10 @@ function contextualRiskSignals(input: FeedAnalysisInput): string[] {
   if (/\b(sec|securities and exchange commission)\b/i.test(text)) out.push("SEC inquiry, investigation, or enforcement posture");
   if (/\b(probe|probes|investigat|inquir|exam)\b/i.test(text)) out.push("Investigation-stage facts are incomplete");
   if (/\b(loss|losses|cost|harm|damage|victim)\b/i.test(text)) out.push("Reported financial loss or market harm");
-  if (isSparseFeedInput(input)) out.push("RSS excerpt omits key facts such as securities, traders, dates, and procedural posture");
+  if (isSparseFeedInput(input)) {
+    out.push("RSS excerpt omits key facts such as affected instruments, parties, dates, and source qualifications");
+    out.push("Limited feed metadata should be checked against the full source before relying on the signal");
+  }
 
   return uniqueText(out, 5);
 }
