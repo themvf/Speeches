@@ -158,6 +158,18 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     label: "Krebs on Security",
     feedUrl: "https://krebsonsecurity.com/feed/",
   },
+  the_hacker_news: {
+    label: "The Hacker News",
+    feedUrl: "https://feeds.feedburner.com/TheHackersNews",
+  },
+  welivesecurity: {
+    label: "WeLiveSecurity",
+    feedUrl: "https://www.welivesecurity.com/feed/",
+  },
+  sophos_security_operations: {
+    label: "Sophos Security Operations",
+    feedUrl: "https://news.sophos.com/en-us/category/security-operations/feed/",
+  },
   gibson_dunn_sec_sentinel: {
     label: "Gibson Dunn SEC Sentinel",
     feedUrl: "https://secsentinel.gibsondunn.com/feed/",

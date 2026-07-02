@@ -105,10 +105,15 @@ const DEPRECATED_TOPIC_RULE_KEYS = ["PREMARKETS", "AI"] as const;
 
 const DEPRECATED_RSS_FEED_KEYS = [
   "bleepingcomputer",
-  "the_hacker_news",
   "dark_reading",
   "securityweek",
   "microsoft_security_blog",
+] as const;
+
+const ACTIVE_RSS_FEED_KEYS = [
+  "the_hacker_news",
+  "welivesecurity",
+  "sophos_security_operations",
 ] as const;
 
 function getSql() {
@@ -445,11 +450,15 @@ async function applyFeedSourceMigrations(sql: ReturnType<typeof neon>): Promise<
     WHERE feed_key = ANY(${DEPRECATED_RSS_FEED_KEYS})
        OR feed_url = ANY(${[
          "https://www.bleepingcomputer.com/feed/",
-         "https://feeds.feedburner.com/TheHackersNews",
          "https://www.darkreading.com/rss.xml",
          "https://www.securityweek.com/feed/",
          "https://www.microsoft.com/en-us/security/blog/feed/",
        ]})
+  `;
+  await sql`
+    UPDATE rss_feeds
+    SET active = true
+    WHERE feed_key = ANY(${ACTIVE_RSS_FEED_KEYS})
   `;
 }
 

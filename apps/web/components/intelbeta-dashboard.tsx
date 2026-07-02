@@ -162,6 +162,8 @@ const FEED_META: Record<string, FeedMeta> = {
   bleepingcomputer: { label: "BleepingComputer", code: "BLC", color: "#74c0fc" },
   krebs_on_security: { label: "Krebs on Security", code: "KRBS", color: "#ffa8a8" },
   the_hacker_news: { label: "The Hacker News", code: "THN", color: "#ff8787" },
+  welivesecurity: { label: "WeLiveSecurity", code: "ESET", color: "#20c997" },
+  sophos_security_operations: { label: "Sophos Security Operations", code: "SOPH", color: "#38d9a9" },
   dark_reading: { label: "Dark Reading", code: "DARK", color: "#b197fc" },
   securityweek: { label: "SecurityWeek", code: "SECW", color: "#91a7ff" },
   microsoft_security_blog: { label: "Microsoft Security Blog", code: "MSFT", color: "#69db7c" },
@@ -224,6 +226,17 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "TRADE_MEDIA", label: "Trade Media" },
   { key: "REDDIT", label: "Reddit" },
 ];
+
+const TRADE_MEDIA_FEED_KEYS = new Set([
+  "the_record",
+  "wired_security",
+  "tripwire_state_of_security",
+  "akamai_blog",
+  "krebs_on_security",
+  "the_hacker_news",
+  "welivesecurity",
+  "sophos_security_operations",
+]);
 
 function getFeedMeta(feedKey: string): FeedMeta {
   if (feedKey.startsWith("document_")) {
@@ -488,6 +501,9 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     );
   }
   if (sourceFilter === "TRADE_MEDIA") {
+    if (TRADE_MEDIA_FEED_KEYS.has(feedKey)) {
+      return true;
+    }
     return [
       "jdsupra_article",
       "investmentnews_article",
