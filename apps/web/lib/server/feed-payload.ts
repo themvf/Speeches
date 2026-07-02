@@ -1,8 +1,8 @@
 import type { StoredRssArticle } from "@/lib/server/neon";
+import { shouldRefreshFeedAnalysisForDeepSeek } from "@/lib/server/feed-analysis";
 
 function isCurrentDeepSeekAnalysis(article: StoredRssArticle): boolean {
-  const model = String(article.analysis?.model || "").trim().toLowerCase();
-  return Boolean(article.analysis) && !article.analysis?.fallback && model.startsWith("deepseek");
+  return Boolean(article.analysis) && !shouldRefreshFeedAnalysisForDeepSeek(article.analysis);
 }
 
 export function compactFeedArticles(articles: StoredRssArticle[]): StoredRssArticle[] {

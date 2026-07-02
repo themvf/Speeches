@@ -160,6 +160,15 @@ def deepseek_feed_analysis(row: Dict[str, Any], topics: List[str], model: str, a
     instructions = (
         "You are a regulatory intelligence analyst for financial services, securities, banking, fintech, "
         "and enforcement coverage. Analyze only the supplied RSS/feed metadata and excerpt. Do not invent facts. "
+        "Return dense, specific JSON for a working analyst, not a generic news summary. thesis must state the "
+        "concrete development in one sentence and include named agencies, companies, people, markets, products, "
+        "or proceedings when supplied. why_it_matters must contain 3-5 substantive bullets connecting the supplied "
+        "facts to enforcement posture, supervision, compliance controls, market structure, investor harm, litigation, "
+        "or policy impact. risk_signals must contain concrete red flags from the text; if the feed excerpt is sparse, "
+        "identify exactly which facts are missing instead of writing boilerplate. follow_up_questions must be specific "
+        "to the item and ask for missing securities, parties, procedural posture, timing, losses, rules, or affected "
+        "markets where relevant. Avoid vague phrases such as 'potential regulatory risk', 'may warrant review', or "
+        "'market impact' unless tied to a named fact from the input. "
         "Return only valid JSON with keys: thesis, why_it_matters, risk_signals, follow_up_questions, "
         "keywords, individuals, entities."
     )
