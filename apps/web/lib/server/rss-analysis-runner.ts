@@ -28,13 +28,15 @@ function inputForArticle(article: StoredRssArticle, topics: string[]): FeedAnaly
   };
 }
 
-export async function analyzeMissingRssArticles(limit = 5): Promise<{
+export async function analyzeMissingRssArticles(limit = 5, opts: { feedKeys?: string[] } = {}): Promise<{
   selected_count: number;
   saved_count: number;
   failed_count: number;
   failed: Array<{ article_id: number; title: string; error: string }>;
 }> {
-  const selected = await getRssArticlesNeedingAnalysis(Math.max(1, Math.min(50, limit)));
+  const selected = await getRssArticlesNeedingAnalysis(Math.max(1, Math.min(50, limit)), {
+    feedKeys: opts.feedKeys,
+  });
   if (selected.length === 0) {
     return { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };
   }

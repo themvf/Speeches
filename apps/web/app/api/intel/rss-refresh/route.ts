@@ -14,6 +14,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   return handleRefresh(req);
 }
 
+function parseAnalysisFeedKeys(searchParams: URLSearchParams): string[] {
+  const raw = [
+    ...searchParams.getAll("analysisFeedKey"),
+    ...searchParams.getAll("analysisFeedKeys"),
+  ].join(",");
+  return Array.from(new Set(
+    raw
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+  ));
+}
+
 async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   const secret = process.env.CRON_SECRET ?? "";
   const maintenanceSecret = process.env.RSS_REENRICH_SECRET ?? "";
@@ -88,12 +101,23 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   const allFailed = failedCount > 0 && failedCount === feedResults.length;
   const analysisLimitParam = searchParams.get("analysisLimit") || process.env.RSS_AUTO_ANALYSIS_LIMIT || "0";
   const analysisLimit = Math.max(0, Math.min(50, Number.parseInt(analysisLimitParam, 10) || 0));
+  const analysisFeedKeys = parseAnalysisFeedKeys(searchParams);
   const analysis = analysisLimit > 0
-    ? await analyzeMissingRssArticles(analysisLimit)
+    ? await analyzeMissingRssArticles(analysisLimit, { feedKeys: analysisFeedKeys })
     : { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };
 
   return NextResponse.json(
-    { ok: !allFailed, data: { inserted: totalInserted, deleted_coupon_articles: deletedCouponArticles, failed_count: failedCount, feeds, analysis } },
+    {
+      ok: !allFailed,
+      data: {
+        inserted: totalInserted,
+        deleted_coupon_articles: deletedCouponArticles,
+        failed_count: failedCount,
+        feeds,
+        analysis_feed_keys: analysisFeedKeys,
+        analysis,
+      },
+    },
     { status: allFailed ? 500 : 200 }
   );
 }

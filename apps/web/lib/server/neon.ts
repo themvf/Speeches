@@ -644,30 +644,35 @@ export async function getRssArticleById(articleId: number): Promise<StoredRssArt
   return row ? { ...row, analysis: normalizeAnalysisRow(row.analysis) } : null;
 }
 
-export async function getRssArticlesNeedingAnalysis(limit = 10): Promise<StoredRssArticle[]> {
+export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys?: string[] } = {}): Promise<StoredRssArticle[]> {
   await ensureSchema();
   const sql = getSql();
   const cappedLimit = Math.max(1, Math.min(100, limit));
+  const feedKeys = Array.from(new Set((opts.feedKeys || []).map((item) => String(item || "").trim()).filter(Boolean)));
+  const includeAnyFeed = feedKeys.length === 0;
   const refreshForDeepSeek =
     String(process.env.FEED_ANALYSIS_PROVIDER || "").trim().toLowerCase() !== "openai";
   const rows = (await sql`
     SELECT a.*, to_jsonb(ra.*) AS analysis
     FROM rss_articles a
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
-    WHERE ra.article_id IS NULL
-       OR ra.status IN ('pending', 'failed', 'stale')
-       OR (
-         ${refreshForDeepSeek}
-         AND ra.status = 'enriched'
-         AND (
-           ra.fallback = true
-           OR ra.model NOT ILIKE 'deepseek%'
-           OR length(COALESCE(ra.thesis, '')) < 40
-           OR jsonb_array_length(COALESCE(ra.why_it_matters, '[]'::jsonb)) < 2
-           OR jsonb_array_length(COALESCE(ra.risk_signals, '[]'::jsonb)) < 2
-           OR jsonb_array_length(COALESCE(ra.follow_up_questions, '[]'::jsonb)) < 2
-         )
-       )
+    WHERE (${includeAnyFeed} OR a.feed_key = ANY(${feedKeys}))
+      AND (
+        ra.article_id IS NULL
+        OR ra.status IN ('pending', 'failed', 'stale')
+        OR (
+          ${refreshForDeepSeek}
+          AND ra.status = 'enriched'
+          AND (
+            ra.fallback = true
+            OR ra.model NOT ILIKE 'deepseek%'
+            OR length(COALESCE(ra.thesis, '')) < 40
+            OR jsonb_array_length(COALESCE(ra.why_it_matters, '[]'::jsonb)) < 2
+            OR jsonb_array_length(COALESCE(ra.risk_signals, '[]'::jsonb)) < 2
+            OR jsonb_array_length(COALESCE(ra.follow_up_questions, '[]'::jsonb)) < 2
+          )
+        )
+      )
     ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
     LIMIT ${cappedLimit}
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
@@ -678,7 +683,8 @@ export async function getRssArticlesNeedingAnalysis(limit = 10): Promise<StoredR
     SELECT a.*, to_jsonb(ra.*) AS analysis
     FROM rss_articles a
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
-    WHERE ra.article_id IS NOT NULL
+    WHERE (${includeAnyFeed} OR a.feed_key = ANY(${feedKeys}))
+      AND ra.article_id IS NOT NULL
     ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
     LIMIT ${Math.max(cappedLimit * 4, 25)}
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
