@@ -55,6 +55,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const sinceParam = searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : undefined;
   const refresh = searchParams.get("refresh") === "1";
+  const includeDocuments = searchParams.get("includeDocuments") === "1";
 
   try {
     let articles: StoredRssArticle[] = [];
@@ -109,13 +110,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const [corpusDocs, enrichment] = await Promise.all([
-      loadCorpusDocuments(),
-      loadEnrichmentState(),
-    ]);
     articles = articles.filter((article) => !isInvalidCouponArticle(article));
-    const documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment))
-      .filter((doc) => !isInvalidCouponDocument(doc));
+    let documents: ReturnType<typeof selectNewsFeedDocuments> = [];
+    if (includeDocuments) {
+      const [corpusDocs, enrichment] = await Promise.all([
+        loadCorpusDocuments(),
+        loadEnrichmentState(),
+      ]);
+      documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment))
+        .filter((doc) => !isInvalidCouponDocument(doc));
+    }
 
     return NextResponse.json(
       {

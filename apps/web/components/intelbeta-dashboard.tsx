@@ -1803,7 +1803,7 @@ export function IntelBetaDashboard({
 
     const poll = async () => {
       try {
-        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}`);
+        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}&includeDocuments=0`);
         if (!res.ok) { errStreak++; }
         else {
           const json = (await res.json()) as {
