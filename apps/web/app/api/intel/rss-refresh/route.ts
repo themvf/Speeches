@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRssFeed } from "@/lib/server/rss-fetcher";
-import { deleteInvalidCouponArticles, upsertRssArticles, ensureSchema, getFeeds, getTopicRules, markFeedRefreshed } from "@/lib/server/neon";
+import { deleteInvalidCouponArticles, deleteNonEnglishPrNewswireArticles, upsertRssArticles, ensureSchema, getFeeds, getTopicRules, markFeedRefreshed } from "@/lib/server/neon";
 import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
@@ -106,6 +106,10 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     console.error("[intel/rss-refresh] coupon cleanup failed:", error);
     return 0;
   });
+  const deletedNonEnglishPrNewswireArticles = await deleteNonEnglishPrNewswireArticles().catch((error) => {
+    console.error("[intel/rss-refresh] PR Newswire language cleanup failed:", error);
+    return 0;
+  });
 
   const allFailed = failedCount > 0 && failedCount === feedResults.length;
   const analysisLimitParam = searchParams.get("analysisLimit") || process.env.RSS_AUTO_ANALYSIS_LIMIT || "0";
@@ -121,6 +125,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
       data: {
         inserted: totalInserted,
         deleted_coupon_articles: deletedCouponArticles,
+        deleted_non_english_prnewswire_articles: deletedNonEnglishPrNewswireArticles,
         failed_count: failedCount,
         feeds,
         analysis_feed_keys: analysisFeedKeys,

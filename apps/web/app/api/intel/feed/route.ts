@@ -9,6 +9,7 @@ import {
 import { compactFeedArticles } from "@/lib/server/feed-payload";
 import {
   deleteInvalidCouponArticles,
+  deleteNonEnglishPrNewswireArticles,
   ensureSchema,
   getFeeds,
   getRecentArticles,
@@ -19,6 +20,7 @@ import {
   type StoredRssTopicRule,
 } from "@/lib/server/neon";
 import { getClientIp, getFeedLimiter, isRateLimited } from "@/lib/server/rate-limit";
+import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
@@ -78,6 +80,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         console.error("[intel/feed] coupon cleanup failed:", error);
         return 0;
       });
+      await deleteNonEnglishPrNewswireArticles().catch((error) => {
+        console.error("[intel/feed] PR Newswire language cleanup failed:", error);
+        return 0;
+      });
 
       [articles, topicRules] = await Promise.all([
         getRecentArticles({ limit, feedKey, since }),
@@ -125,7 +131,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    articles = articles.filter((article) => !isInvalidCouponArticle(article));
+    articles = articles.filter((article) => (
+      !isInvalidCouponArticle(article) &&
+      (!shouldEnglishOnlyFilterFeed(article.feed_key) || isEnglishRssArticle(article))
+    ));
     let documents: ReturnType<typeof selectNewsFeedDocuments> = [];
     if (includeDocuments) {
       const [corpusDocs, enrichment] = await Promise.all([

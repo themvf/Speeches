@@ -1,4 +1,5 @@
 import { getMatchingTopics, normalizeTopicRules, type TopicRuleInput } from "@/lib/intel-topic-matching";
+import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 
 const KEYWORD_FILTERED_FEED_PREFIXES = ["prnewswire_"];
@@ -24,12 +25,16 @@ export function filterRssArticlesForIngestion(
   articles: RssArticle[],
   topicRules: TopicRuleInput[]
 ): RssIngestionFilterResult {
+  const languageFilteredArticles = shouldEnglishOnlyFilterFeed(feedKey)
+    ? articles.filter(isEnglishRssArticle)
+    : articles;
+
   if (!shouldKeywordFilterFeed(feedKey)) {
     return {
-      articles,
+      articles: languageFilteredArticles,
       fetched: articles.length,
-      matched: articles.length,
-      filtered: 0,
+      matched: languageFilteredArticles.length,
+      filtered: articles.length - languageFilteredArticles.length,
     };
   }
 
@@ -43,7 +48,7 @@ export function filterRssArticlesForIngestion(
     };
   }
 
-  const filteredArticles = articles.filter((article) => getMatchingTopics(article, rules).length > 0);
+  const filteredArticles = languageFilteredArticles.filter((article) => getMatchingTopics(article, rules).length > 0);
   return {
     articles: filteredArticles,
     fetched: articles.length,

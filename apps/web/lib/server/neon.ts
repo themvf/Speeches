@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { createHash } from "crypto";
 import type { FeedAnalysis } from "@/lib/server/feed-analysis";
+import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
 import { TOPIC_RULE_RECOMMENDATIONS, formatTopicRuleKeywords } from "@/lib/topic-rule-recommendations";
@@ -236,6 +237,10 @@ function inferToneLabel(
   if (score >= 2) return "positive";
   if (score <= -2) return "negative";
   return "neutral";
+}
+
+function keepAllowedLanguageArticle<T extends { feed_key: string; title?: string | null; description?: string | null; author?: string | null }>(article: T): boolean {
+  return !shouldEnglishOnlyFilterFeed(article.feed_key) || isEnglishRssArticle(article);
 }
 
 function textArray(value: unknown, maxItems = 30): string[] {
@@ -670,7 +675,8 @@ export async function getRssArticleById(articleId: number): Promise<StoredRssArt
     LIMIT 1
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
   const row = rows[0];
-  return row ? { ...row, analysis: normalizeAnalysisRow(row.analysis) } : null;
+  const article = row ? { ...row, analysis: normalizeAnalysisRow(row.analysis) } : null;
+  return article && keepAllowedLanguageArticle(article) ? article : null;
 }
 
 export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys?: string[] } = {}): Promise<StoredRssArticle[]> {
@@ -706,7 +712,9 @@ export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys
     ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
     LIMIT ${cappedLimit}
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
-  const direct = rows.map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }));
+  const direct = rows
+    .map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }))
+    .filter(keepAllowedLanguageArticle);
   if (direct.length >= cappedLimit) return direct;
 
   const recentRows = (await sql`
@@ -721,6 +729,7 @@ export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
   const stale = recentRows
     .map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }))
+    .filter(keepAllowedLanguageArticle)
     .filter((row) => row.analysis?.source_hash && row.analysis.source_hash !== rssArticleSourceHash(row));
   return [...direct, ...stale].slice(0, cappedLimit);
 }
@@ -818,6 +827,27 @@ export async function deleteInvalidCouponArticles(): Promise<number> {
   return rows.length;
 }
 
+export async function deleteNonEnglishPrNewswireArticles(): Promise<number> {
+  await ensureSchema();
+  const sql = getSql();
+  const candidates = (await sql`
+    SELECT id, title, description, author, feed_key
+    FROM rss_articles
+    WHERE feed_key LIKE 'prnewswire_%'
+  `) as unknown as Array<{ id: number; title: string; description: string; author: string; feed_key: string }>;
+  const ids = candidates
+    .filter((article) => shouldEnglishOnlyFilterFeed(article.feed_key) && !isEnglishRssArticle(article))
+    .map((article) => article.id);
+  if (ids.length === 0) return 0;
+
+  const rows = (await sql`
+    DELETE FROM rss_articles
+    WHERE id = ANY(${ids})
+    RETURNING id
+  `) as unknown as Array<{ id: number }>;
+  return rows.length;
+}
+
 export async function saveIntelligenceMentions(
   sourceType: string,
   sourceId: string,
@@ -867,7 +897,9 @@ export async function getRecentArticles(opts: {
     query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   }
   const rows = (await query) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
-  return rows.map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }));
+  return rows
+    .map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }))
+    .filter(keepAllowedLanguageArticle);
 }
 
 export async function getRecapSettings(): Promise<string[]> {
