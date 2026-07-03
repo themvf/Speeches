@@ -26,6 +26,15 @@ export const FINRA_MEMBER_FIRM_AFFILIATE_ALIASES = [
     notes: "Kraken Securities is the FINRA/SIPC broker-dealer affiliate; Payward Interactive crypto services are not FINRA/SIPC.",
   },
   {
+    firmName: "SECURITIZE MARKETS, LLC",
+    aliases: ["Securitize", "Securitize Markets", "Securitize Markets LLC"],
+    sourceUrls: [
+      "https://brokercheck.finra.org/firm/summary/283256",
+      "https://www.securitize.io/",
+    ],
+    notes: "Securitize Markets is the FINRA broker-dealer affiliate for Securitize's U.S. securities marketplace activity.",
+  },
+  {
     firmName: "ROBINHOOD FINANCIAL, LLC",
     aliases: ["Robinhood", "Robinhood Financial"],
     sourceUrls: [
