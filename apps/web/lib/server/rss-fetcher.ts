@@ -170,6 +170,18 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     label: "Sophos Security Operations",
     feedUrl: "https://news.sophos.com/en-us/category/security-operations/feed/",
   },
+  flashpoint_blog: {
+    label: "Flashpoint",
+    feedUrl: "https://flashpoint.io/feed/",
+  },
+  recorded_future: {
+    label: "Recorded Future",
+    feedUrl: "https://www.recordedfuture.com/feed",
+  },
+  intel471_blog: {
+    label: "Intel 471",
+    feedUrl: "https://www.intel471.com/blog/feed",
+  },
   prnewswire_all: {
     label: "PR Newswire",
     feedUrl: "https://www.prnewswire.com/rss/news-releases-list.rss",

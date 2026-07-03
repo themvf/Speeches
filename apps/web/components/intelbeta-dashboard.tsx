@@ -165,6 +165,9 @@ const FEED_META: Record<string, FeedMeta> = {
   the_hacker_news: { label: "The Hacker News", code: "THN", color: "#ff8787" },
   welivesecurity: { label: "WeLiveSecurity", code: "ESET", color: "#20c997" },
   sophos_security_operations: { label: "Sophos Security Operations", code: "SOPH", color: "#38d9a9" },
+  flashpoint_blog: { label: "Flashpoint", code: "FLPT", color: "#b197fc" },
+  recorded_future: { label: "Recorded Future", code: "RF", color: "#91a7ff" },
+  intel471_blog: { label: "Intel 471", code: "I471", color: "#f783ac" },
   prnewswire_all: { label: "PR Newswire", code: "PRN", color: "#66d9e8" },
   prnewswire_consumer_technology: { label: "PR Newswire Consumer Technology", code: "PRN", color: "#66d9e8" },
   prnewswire_financial_services: { label: "PR Newswire Financial Services", code: "PRN", color: "#66d9e8" },
@@ -277,6 +280,9 @@ const TRADE_MEDIA_FEED_KEYS = new Set([
   "the_hacker_news",
   "welivesecurity",
   "sophos_security_operations",
+  "flashpoint_blog",
+  "recorded_future",
+  "intel471_blog",
 ]);
 
 const SOURCE_LABEL_ACRONYMS = new Set([
