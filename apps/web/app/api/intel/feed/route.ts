@@ -28,6 +28,7 @@ import {
   shouldKeywordFilterFeed,
 } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
+import { isBlockedNewsFeedDocument } from "@/lib/server/news-feed-quality";
 
 export const dynamic = "force-dynamic";
 
@@ -37,20 +38,6 @@ const COUPON_SPAM_PATTERN = /\b(?:promo[\s-]*codes?|coupon(?:s|[\s-]*codes?)|dis
 
 function isInvalidCouponArticle(article: StoredRssArticle): boolean {
   return COUPON_SPAM_PATTERN.test(`${article.title || ""} ${article.url || ""} ${article.description || ""}`);
-}
-
-function isInvalidCouponDocument(doc: { source_kind?: string; title?: string; url?: string; tags?: string[]; keywords?: string[] }): boolean {
-  if (String(doc.source_kind || "") !== "wired_article") {
-    return false;
-  }
-  return COUPON_SPAM_PATTERN.test(
-    [
-      doc.title || "",
-      doc.url || "",
-      ...(Array.isArray(doc.tags) ? doc.tags : []),
-      ...(Array.isArray(doc.keywords) ? doc.keywords : []),
-    ].join(" ")
-  );
 }
 
 function passesRssPolicy(article: StoredRssArticle, topicRules: StoredRssTopicRule[]): boolean {
@@ -166,7 +153,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         loadEnrichmentState(),
       ]);
       documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment))
-        .filter((doc) => !isInvalidCouponDocument(doc));
+        .filter((doc) => !isBlockedNewsFeedDocument(doc));
     }
 
     return NextResponse.json(

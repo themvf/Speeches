@@ -10,6 +10,7 @@ import {
 import { getRecentArticles, getTopicRules } from "@/lib/server/neon";
 import type { StoredRssArticle, StoredRssTopicRule } from "@/lib/server/neon";
 import { isAllowedRssArticleForIngestion } from "@/lib/server/rss-ingestion-filter";
+import { isBlockedNewsFeedDocument } from "@/lib/server/news-feed-quality";
 import type { DocumentListItem } from "@/lib/server/types";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,8 @@ export default async function HomePage() {
       publishedAt: article.published_at ? new Date(article.published_at) : null,
     }, topicRules)));
     initialTopicRules = topicRules;
-    initialDocuments = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
+    initialDocuments = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment))
+      .filter((doc) => !isBlockedNewsFeedDocument(doc));
   } catch {
     // DB not yet configured or schema not created; start with empty feed.
   }

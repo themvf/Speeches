@@ -52,7 +52,7 @@ _SOURCE_KIND_TO_ORG: dict[str, str] = {
     "treasury_press_release": "treasury",
     "treasury_statement_remark": "treasury",
     "sifma_news_item": "sifma",
-    "jdsupra_article": "trade_media",
+    "jdsupra_article": "legal_sources",
     "investmentnews_article": "trade_media",
     "citywire_article": "trade_media",
     "therecord_media_article": "trade_media",
@@ -75,6 +75,7 @@ _ORG_LABELS: dict[str, str] = {
     "treasury": "Treasury",
     "sifma": "SIFMA",
     "trade_media": "Trade Media",
+    "legal_sources": "Legal Sources",
     "congress": "Congress",
 }
 

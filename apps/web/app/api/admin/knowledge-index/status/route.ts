@@ -27,7 +27,7 @@ const SOURCE_KIND_TO_ORG: Record<string, string> = {
   bpi_news_item: "bpi",
   icba_news_item: "icba",
   lsta_news_item: "lsta",
-  jdsupra_article: "trade_media",
+  jdsupra_article: "legal_sources",
   investmentnews_article: "trade_media",
   citywire_article: "trade_media",
   therecord_media_article: "trade_media",
@@ -59,6 +59,7 @@ const ORG_LABELS: Record<string, string> = {
   icba: "ICBA",
   lsta: "LSTA",
   trade_media: "Trade Media",
+  legal_sources: "Legal Sources",
   congress: "Congress",
   substack: "Substack",
 };
