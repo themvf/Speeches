@@ -1,6 +1,8 @@
 import { neon } from "@neondatabase/serverless";
 import { createHash } from "crypto";
 import type { FeedAnalysis } from "@/lib/server/feed-analysis";
+import { isAllowedRssArticleForIngestion } from "@/lib/server/rss-ingestion-filter";
+import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
 import { TOPIC_RULE_RECOMMENDATIONS, formatTopicRuleKeywords } from "@/lib/topic-rule-recommendations";
@@ -9,6 +11,7 @@ export type StoredRssArticle = {
   id: number;
   guid: string;
   feed_key: string;
+  feed_label?: string | null;
   title: string;
   url: string;
   description: string;
@@ -17,6 +20,7 @@ export type StoredRssArticle = {
   tone_label: "positive" | "neutral" | "negative" | null;
   fetched_at: string;
   analysis?: StoredRssArticleAnalysis | null;
+  matched_finra_firms?: string[];
 };
 
 export type MentionType = "keyword" | "individual" | "entity" | "topic";
@@ -73,6 +77,8 @@ export type RssFeed = {
   feed_url: string;
   feed_key: string;
   active: boolean;
+  refresh_interval_minutes: number;
+  last_refresh_at: string | null;
   added_at: string;
 };
 
@@ -88,6 +94,7 @@ const DEFAULT_TOPIC_RULES = TOPIC_RULE_RECOMMENDATIONS.map((rule) => ({
 const TOPIC_TAXONOMY_UPSERT_KEYS = new Set([
   "AI_TECH",
   "PRE_IPO",
+  "PONZI_INVESTOR_FRAUD",
   "PREDICTION_MARKETS",
   "TECH",
   "COMMODITIES_ENERGY_MARKETS",
@@ -103,11 +110,26 @@ const DEPRECATED_TOPIC_RULE_KEYS = ["PREMARKETS", "AI"] as const;
 
 const DEPRECATED_RSS_FEED_KEYS = [
   "bleepingcomputer",
-  "the_hacker_news",
   "dark_reading",
   "securityweek",
   "microsoft_security_blog",
 ] as const;
+
+const ACTIVE_RSS_FEED_KEYS = [
+  "the_hacker_news",
+  "welivesecurity",
+  "sophos_security_operations",
+] as const;
+
+const FEED_LABEL_CORRECTIONS: Record<string, string> = {
+  cls_blue_sky_blog: "CLS Blue Sky Blog",
+  harvard_corp_gov_forum: "Harvard Corporate Governance Forum",
+  rss_nytimes_com_services_xml_rss_nyt_dealbook_xml: "NYT DealBook",
+  rss_nytimes_com_services_xml_rss_nyt_economy_xml: "NYT Economy",
+  search_cnbc_com_rs_search_combinedcms_view_xml: "CNBC",
+  the_corporate_counsel_net: "The Corporate Counsel",
+  www_centralbanking_com_feeds_rss_category_central_banks_fina: "Central Banking",
+};
 
 function getSql() {
   if (!_sql) {
@@ -218,6 +240,10 @@ function inferToneLabel(
   if (score >= 2) return "positive";
   if (score <= -2) return "negative";
   return "neutral";
+}
+
+function keepAllowedLanguageArticle<T extends { feed_key: string; title?: string | null; description?: string | null; author?: string | null }>(article: T): boolean {
+  return !shouldEnglishOnlyFilterFeed(article.feed_key) || isEnglishRssArticle(article);
 }
 
 function textArray(value: unknown, maxItems = 30): string[] {
@@ -369,14 +395,18 @@ export async function ensureSchema(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS intelligence_mentions_source ON intelligence_mentions (source_type, source_id)`;
   await sql`
     CREATE TABLE IF NOT EXISTS rss_feeds (
-      id       SERIAL PRIMARY KEY,
-      label    TEXT NOT NULL,
-      feed_url TEXT UNIQUE NOT NULL,
-      feed_key TEXT UNIQUE NOT NULL,
-      active   BOOLEAN NOT NULL DEFAULT true,
-      added_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      id                       SERIAL PRIMARY KEY,
+      label                    TEXT NOT NULL,
+      feed_url                 TEXT UNIQUE NOT NULL,
+      feed_key                 TEXT UNIQUE NOT NULL,
+      active                   BOOLEAN NOT NULL DEFAULT true,
+      refresh_interval_minutes INTEGER NOT NULL DEFAULT 10,
+      last_refresh_at          TIMESTAMPTZ,
+      added_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS refresh_interval_minutes INTEGER NOT NULL DEFAULT 10`;
+  await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS last_refresh_at TIMESTAMPTZ`;
   await sql`
     CREATE TABLE IF NOT EXISTS rss_topic_rules (
       id         SERIAL PRIMARY KEY,
@@ -419,27 +449,43 @@ export async function ensureSchema(): Promise<void> {
 }
 
 async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
-  for (const [key, { label, feedUrl }] of Object.entries(DEFAULT_RSS_FEEDS)) {
+  for (const [key, { label, feedUrl, refreshIntervalMinutes }] of Object.entries(DEFAULT_RSS_FEEDS)) {
+    const intervalMinutes = Math.max(1, Math.round(Number(refreshIntervalMinutes || 10)));
     await sql`
-      INSERT INTO rss_feeds (label, feed_url, feed_key)
-      VALUES (${label}, ${feedUrl}, ${key})
-      ON CONFLICT (feed_url) DO NOTHING
+      INSERT INTO rss_feeds (label, feed_url, feed_key, refresh_interval_minutes)
+      VALUES (${label}, ${feedUrl}, ${key}, ${intervalMinutes})
+      ON CONFLICT (feed_url) DO UPDATE SET
+        label = EXCLUDED.label,
+        feed_key = EXCLUDED.feed_key,
+        refresh_interval_minutes = EXCLUDED.refresh_interval_minutes
     `;
   }
 }
 
 async function applyFeedSourceMigrations(sql: ReturnType<typeof neon>): Promise<void> {
+  for (const [feedKey, label] of Object.entries(FEED_LABEL_CORRECTIONS)) {
+    await sql`
+      UPDATE rss_feeds
+      SET label = ${label}
+      WHERE feed_key = ${feedKey}
+    `;
+  }
+
   await sql`
     UPDATE rss_feeds
     SET active = false
     WHERE feed_key = ANY(${DEPRECATED_RSS_FEED_KEYS})
        OR feed_url = ANY(${[
          "https://www.bleepingcomputer.com/feed/",
-         "https://feeds.feedburner.com/TheHackersNews",
          "https://www.darkreading.com/rss.xml",
          "https://www.securityweek.com/feed/",
          "https://www.microsoft.com/en-us/security/blog/feed/",
        ]})
+  `;
+  await sql`
+    UPDATE rss_feeds
+    SET active = true
+    WHERE feed_key = ANY(${ACTIVE_RSS_FEED_KEYS})
   `;
 }
 
@@ -476,25 +522,48 @@ async function applyTopicTaxonomyMigrations(sql: ReturnType<typeof neon>): Promi
   `;
 }
 
-export async function getFeeds(onlyActive = false): Promise<RssFeed[]> {
+export async function getFeeds(onlyActive = false, opts: { dueOnly?: boolean } = {}): Promise<RssFeed[]> {
   await ensureSchema();
   const sql = getSql();
-  const rows = onlyActive
-    ? await sql`SELECT * FROM rss_feeds WHERE active = true ORDER BY added_at ASC`
-    : await sql`SELECT * FROM rss_feeds ORDER BY added_at ASC`;
+  let rows;
+  if (onlyActive && opts.dueOnly) {
+    rows = await sql`
+      SELECT *
+      FROM rss_feeds
+      WHERE active = true
+        AND (
+          last_refresh_at IS NULL
+          OR last_refresh_at <= now() - (GREATEST(refresh_interval_minutes, 1) * INTERVAL '1 minute')
+        )
+      ORDER BY last_refresh_at ASC NULLS FIRST, added_at ASC
+    `;
+  } else {
+    rows = onlyActive
+      ? await sql`SELECT * FROM rss_feeds WHERE active = true ORDER BY added_at ASC`
+      : await sql`SELECT * FROM rss_feeds ORDER BY added_at ASC`;
+  }
   return rows as unknown as RssFeed[];
 }
 
-export async function addFeed(label: string, feedUrl: string): Promise<RssFeed> {
+export async function addFeed(label: string, feedUrl: string, refreshIntervalMinutes = 10): Promise<RssFeed> {
   const sql = getSql();
   const feedKey = deriveFeedKey(feedUrl);
+  const intervalMinutes = Math.max(1, Math.round(Number(refreshIntervalMinutes || 10)));
   const rows = (await sql`
-    INSERT INTO rss_feeds (label, feed_url, feed_key)
-    VALUES (${label.trim()}, ${feedUrl.trim()}, ${feedKey})
-    ON CONFLICT (feed_url) DO UPDATE SET label = EXCLUDED.label, active = true
+    INSERT INTO rss_feeds (label, feed_url, feed_key, refresh_interval_minutes)
+    VALUES (${label.trim()}, ${feedUrl.trim()}, ${feedKey}, ${intervalMinutes})
+    ON CONFLICT (feed_url) DO UPDATE SET
+      label = EXCLUDED.label,
+      refresh_interval_minutes = EXCLUDED.refresh_interval_minutes,
+      active = true
     RETURNING *
   `) as unknown as RssFeed[];
   return rows[0];
+}
+
+export async function markFeedRefreshed(feedKey: string): Promise<void> {
+  const sql = getSql();
+  await sql`UPDATE rss_feeds SET last_refresh_at = now() WHERE feed_key = ${feedKey}`;
 }
 
 export async function toggleFeed(id: number, active: boolean): Promise<void> {
@@ -601,42 +670,69 @@ export async function getRssArticleById(articleId: number): Promise<StoredRssArt
   await ensureSchema();
   const sql = getSql();
   const rows = (await sql`
-    SELECT a.*, to_jsonb(ra.*) AS analysis
+    SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis
     FROM rss_articles a
+    LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
     WHERE a.id = ${articleId}
     LIMIT 1
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
   const row = rows[0];
-  return row ? { ...row, analysis: normalizeAnalysisRow(row.analysis) } : null;
+  const article = row ? { ...row, analysis: normalizeAnalysisRow(row.analysis) } : null;
+  return article && keepAllowedLanguageArticle(article) ? article : null;
 }
 
-export async function getRssArticlesNeedingAnalysis(limit = 10): Promise<StoredRssArticle[]> {
+export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys?: string[] } = {}): Promise<StoredRssArticle[]> {
   await ensureSchema();
   const sql = getSql();
   const cappedLimit = Math.max(1, Math.min(100, limit));
+  const feedKeys = Array.from(new Set((opts.feedKeys || []).map((item) => String(item || "").trim()).filter(Boolean)));
+  const includeAnyFeed = feedKeys.length === 0;
+  const refreshForDeepSeek =
+    String(process.env.FEED_ANALYSIS_PROVIDER || "").trim().toLowerCase() !== "openai";
   const rows = (await sql`
-    SELECT a.*, to_jsonb(ra.*) AS analysis
+    SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis
     FROM rss_articles a
+    LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
-    WHERE ra.article_id IS NULL
-       OR ra.status IN ('pending', 'failed', 'stale')
+    WHERE (${includeAnyFeed} OR a.feed_key = ANY(${feedKeys}))
+      AND (
+        ra.article_id IS NULL
+        OR ra.status IN ('pending', 'failed', 'stale')
+        OR (
+          ${refreshForDeepSeek}
+          AND ra.status = 'enriched'
+          AND (
+            ra.fallback = true
+            OR ra.model NOT ILIKE 'deepseek%'
+            OR length(COALESCE(ra.thesis, '')) < 40
+            OR jsonb_array_length(COALESCE(ra.why_it_matters, '[]'::jsonb)) < 2
+            OR jsonb_array_length(COALESCE(ra.risk_signals, '[]'::jsonb)) < 2
+            OR jsonb_array_length(COALESCE(ra.follow_up_questions, '[]'::jsonb)) < 2
+          )
+        )
+      )
     ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
     LIMIT ${cappedLimit}
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
-  const direct = rows.map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }));
+  const direct = rows
+    .map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }))
+    .filter(keepAllowedLanguageArticle);
   if (direct.length >= cappedLimit) return direct;
 
   const recentRows = (await sql`
-    SELECT a.*, to_jsonb(ra.*) AS analysis
+    SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis
     FROM rss_articles a
+    LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key
     LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id
-    WHERE ra.article_id IS NOT NULL
+    WHERE (${includeAnyFeed} OR a.feed_key = ANY(${feedKeys}))
+      AND ra.article_id IS NOT NULL
     ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
     LIMIT ${Math.max(cappedLimit * 4, 25)}
   `) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
   const stale = recentRows
     .map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }))
+    .filter(keepAllowedLanguageArticle)
     .filter((row) => row.analysis?.source_hash && row.analysis.source_hash !== rssArticleSourceHash(row));
   return [...direct, ...stale].slice(0, cappedLimit);
 }
@@ -709,6 +805,88 @@ export async function saveRssArticleAnalysisFailure(article: StoredRssArticle, e
   `;
 }
 
+export async function deleteInvalidCouponArticles(): Promise<number> {
+  await ensureSchema();
+  const sql = getSql();
+  const rows = (await sql`
+    DELETE FROM rss_articles
+    WHERE title ILIKE '%coupon%'
+       OR title ILIKE '%promo code%'
+       OR title ILIKE '%promo-code%'
+       OR title ILIKE '%discount code%'
+       OR title ILIKE '%discount coupon%'
+       OR url ILIKE '%coupon%'
+       OR url ILIKE '%promo-code%'
+       OR url ILIKE '%promo-codes%'
+       OR url ILIKE '%discount-code%'
+       OR url ILIKE '%discount-coupon%'
+       OR description ILIKE '%coupon%'
+       OR description ILIKE '%promo code%'
+       OR description ILIKE '%promo-code%'
+       OR description ILIKE '%discount code%'
+       OR description ILIKE '%discount coupon%'
+    RETURNING id
+  `) as unknown as Array<{ id: number }>;
+  return rows.length;
+}
+
+export async function deleteNonEnglishPrNewswireArticles(): Promise<number> {
+  await ensureSchema();
+  const sql = getSql();
+  const candidates = (await sql`
+    SELECT id, title, description, author, feed_key
+    FROM rss_articles
+    WHERE feed_key LIKE 'prnewswire_%'
+  `) as unknown as Array<{ id: number; title: string; description: string; author: string; feed_key: string }>;
+  const ids = candidates
+    .filter((article) => shouldEnglishOnlyFilterFeed(article.feed_key) && !isEnglishRssArticle(article))
+    .map((article) => article.id);
+  if (ids.length === 0) return 0;
+
+  const rows = (await sql`
+    DELETE FROM rss_articles
+    WHERE id = ANY(${ids})
+    RETURNING id
+  `) as unknown as Array<{ id: number }>;
+  return rows.length;
+}
+
+export async function deleteBlockedRssArticles(topicRules: StoredRssTopicRule[]): Promise<number> {
+  const hasActiveTopicRules = topicRules.some((rule) => rule.active && String(rule.keywords || "").trim());
+  if (!hasActiveTopicRules) return 0;
+
+  await ensureSchema();
+  const sql = getSql();
+  const candidates = (await sql`
+    SELECT id, guid, title, url, description, author, published_at, feed_key
+    FROM rss_articles
+    WHERE feed_key LIKE 'prnewswire_%'
+       OR feed_key LIKE 'google_news_%'
+       OR title ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
+       OR description ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
+  `) as unknown as Array<Pick<StoredRssArticle, "id" | "guid" | "feed_key" | "title" | "url" | "description" | "author" | "published_at">>;
+
+  const ids = candidates
+    .filter((article) => !isAllowedRssArticleForIngestion(article.feed_key, {
+      guid: article.guid,
+      title: article.title,
+      url: article.url,
+      description: article.description,
+      author: article.author,
+      publishedAt: article.published_at ? new Date(article.published_at) : null,
+    }, topicRules))
+    .map((article) => article.id);
+
+  if (ids.length === 0) return 0;
+
+  const rows = (await sql`
+    DELETE FROM rss_articles
+    WHERE id = ANY(${ids})
+    RETURNING id
+  `) as unknown as Array<{ id: number }>;
+  return rows.length;
+}
+
 export async function saveIntelligenceMentions(
   sourceType: string,
   sourceId: string,
@@ -745,20 +923,22 @@ export async function getRecentArticles(opts: {
 
   let query;
   if (feedKey && since && until) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey && since) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (since && until) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (since) {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else {
-    query = sql`SELECT a.*, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   }
   const rows = (await query) as unknown as Array<StoredRssArticle & { analysis?: Record<string, unknown> | null }>;
-  return rows.map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }));
+  return rows
+    .map((row) => ({ ...row, analysis: normalizeAnalysisRow(row.analysis) }))
+    .filter(keepAllowedLanguageArticle);
 }
 
 export async function getRecapSettings(): Promise<string[]> {

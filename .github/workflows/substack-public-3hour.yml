@@ -1,6 +1,8 @@
-name: Substack Public Sources Every 3 Hours
+name: Substack Public Sources Every 2 Hours
 
 on:
+  schedule:
+    - cron: "17 */2 * * *"
   workflow_dispatch:
     inputs:
       keywords:
@@ -16,9 +18,9 @@ on:
         required: false
         default: "60"
       model:
-        description: "OpenAI model for relevance filtering"
+        description: "DeepSeek model for relevance filtering"
         required: false
-        default: "gpt-5-mini"
+        default: "deepseek-v4-flash"
 
 permissions:
   contents: read
@@ -35,12 +37,14 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      ENRICH_MODEL: deepseek-v4-flash
       RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
       SUBSTACK_PROXY_URL: ${{ secrets.SUBSTACK_PROXY_URL || secrets.RESIDENTIAL_PROXY_URL || secrets.APIFY_PROXY_URL }}
       KEYWORDS: ${{ github.event.inputs.keywords || '' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '60' }}
-      MODEL: ${{ github.event.inputs.model || 'gpt-5-mini' }}
+      MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
 
     steps:
       - name: Checkout
@@ -63,10 +67,12 @@ jobs:
           python run_connector_extraction_pipeline.py \
             --connector substack_public_article \
             --keywords "${KEYWORDS}" \
+            --relevance-provider deepseek \
             --relevance-model "${MODEL}" \
             --selection new_or_updated \
             --limit "${EXTRACTION_LIMIT}" \
             --max-pages "${MAX_PAGES}" \
+            --include-rss true \
             --require-remote-persistence \
             --summary-path substack_public_extraction_summary.json
 
@@ -86,26 +92,17 @@ jobs:
           print(f"Substack new or updated documents: {changed_count}")
           PY
 
-      - name: Write Skipped Substack Enrichment Summary
+      - name: Run Substack Enrichment
         run: |
-          python - <<'PY'
-          import json
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          payload = {
-              "mode": "enrich",
-              "source_kind": "substack_public_article",
-              "skipped": True,
-              "reason": "automatic_enrichment_paused",
-              "ran_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-              "processed_count": 0,
-              "enriched_count": 0,
-              "fallback_enriched_count": 0,
-          }
-          Path("substack_public_enrich_summary.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-          print(json.dumps(payload, indent=2))
-          PY
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --source-kind substack_public_article \
+            --mode all \
+            --doc-ids-from-summary substack_public_extraction_summary.json \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --summary-path substack_public_enrich_summary.json
 
       - name: Upload Substack Summaries
         if: always()

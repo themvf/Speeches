@@ -28,6 +28,8 @@ jobs:
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      ENRICH_MODEL: deepseek-v4-flash
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '20' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '20' }}
 
@@ -75,26 +77,17 @@ jobs:
           print(f"Bloomberg new or updated documents: {changed_count}")
           PY
 
-      - name: Write Skipped Bloomberg Enrichment Summary
+      - name: Run Bloomberg Enrichment
         run: |
-          python - <<'PY'
-          import json
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          payload = {
-              "mode": "enrich",
-              "source_kind": "bloomberg_public_article",
-              "skipped": True,
-              "reason": "automatic_enrichment_paused",
-              "ran_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-              "processed_count": 0,
-              "enriched_count": 0,
-              "fallback_enriched_count": 0,
-          }
-          Path("bloomberg_public_enrich_summary.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-          print(json.dumps(payload, indent=2))
-          PY
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --source-kind bloomberg_public_article \
+            --mode all \
+            --doc-ids-from-summary bloomberg_public_extraction_summary.json \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --summary-path bloomberg_public_enrich_summary.json
 
       - name: Upload Bloomberg Summaries
         if: always()

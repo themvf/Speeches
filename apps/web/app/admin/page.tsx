@@ -21,7 +21,7 @@ type OrgIndexStatus = {
 };
 
 /* ─── RSS Feed types ───────────────────────────────────────────────── */
-type RssFeed = { id: number; label: string; feed_url: string; active: boolean };
+type RssFeed = { id: number; label: string; feed_url: string; active: boolean; refresh_interval_minutes?: number; last_refresh_at?: string | null };
 type TopicRule = { id: number; topic_key: string; label: string; keywords: string; active: boolean; sort_order: number };
 
 /* ─── Ticker types ─────────────────────────────────────────────────── */
@@ -138,6 +138,7 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "wealth_of_common_sense_article", label: "Trade Media: A Wealth of Common Sense" },
       { value: "wsj_dow_jones", label: "WSJ / Dow Jones RSS" },
       { value: "reddit_post", label: "Reddit Post" },
+      { value: "hedge_fund_letter", label: "Hedge Fund Letters" },
     ],
   },
   {
@@ -536,7 +537,7 @@ function FeedManagerSection() {
   return (
     <section className="mb-8">
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">RSS Feeds</h2>
-      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Manage Intel Feed RSS sources. Changes apply on the next 10-minute cron refresh.</p>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Manage Intel Feed RSS sources. Changes apply when each source is due on the scheduled refresh.</p>
       <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
         {loading && <p className="text-xs text-[color:var(--ink-faint)]">Loading…</p>}
         {error && <p className="text-xs text-[color:var(--danger)]">{error}</p>}
@@ -555,6 +556,9 @@ function FeedManagerSection() {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-[color:var(--ink)]">{f.label}</span>
                 <span className="block truncate text-xs text-[color:var(--ink-faint)]">{f.feed_url}</span>
+                <span className="block text-xs text-[color:var(--ink-faint)]">
+                  Every {f.refresh_interval_minutes ?? 10} min{f.last_refresh_at ? ` | Last refresh ${new Date(f.last_refresh_at).toLocaleString()}` : ""}
+                </span>
               </span>
               <button
                 type="button"
@@ -1300,7 +1304,7 @@ function EnrichmentPipelineSection() {
   const [loading, setLoading] = useState(true);
   const [showFailed, setShowFailed] = useState(false);
 
-  const [enrich, setEnrich] = useState({ source_kind: "newsapi_article", enrich_limit: "25", mode: "only_missing_or_failed", heuristic_only: "false", model: "" });
+  const [enrich, setEnrich] = useState({ source_kind: "newsapi_article", enrich_limit: "25", mode: "only_missing_or_failed", heuristic_only: "false", provider: "deepseek", model: "" });
   const [dispatching, setDispatching] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<"idle" | "ok" | "error">("idle");
   const [dispatchError, setDispatchError] = useState<string | null>(null);
@@ -1499,7 +1503,7 @@ function EnrichmentPipelineSection() {
 
         <div className={`${data ? "border-t border-[color:var(--line)] pt-4" : ""}`}>
           <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">RSS Feed Analysis</p>
-          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate and persist OpenAI analysis for RSS Feed articles missing saved keywords, individuals, and entities. Saved results render automatically on Feed cards and populate the shared mention index.</p>
+          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate and persist DeepSeek analysis for RSS Feed articles missing saved keywords, individuals, and entities. Saved results render automatically on Feed cards and populate the shared mention index.</p>
           <div className="mb-4 flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-[color:var(--ink-faint)]">Batch size</span>
@@ -1524,7 +1528,7 @@ function EnrichmentPipelineSection() {
           </div>
 
           <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">SEC Enforcement Analysis</p>
-          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate OpenAI analysis for recent SEC litigation releases missing saved analysis. Saved results render automatically on Enforcement cards.</p>
+          <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Generate DeepSeek analysis for recent SEC litigation releases missing saved analysis. Saved results render automatically on Enforcement cards.</p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-[color:var(--ink-faint)]">Batch size</span>
@@ -1584,12 +1588,23 @@ function EnrichmentPipelineSection() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
+              <label className="text-xs text-[color:var(--ink-faint)]">Provider</label>
+              <select
+                value={enrich.provider}
+                onChange={(e) => setEnrich((p) => ({ ...p, provider: e.target.value === "openai" ? "openai" : "deepseek" }))}
+                className="form-control px-2 py-1.5 text-sm"
+              >
+                <option value="deepseek">DeepSeek</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
               <label className="text-xs text-[color:var(--ink-faint)]">Model override</label>
               <input
                 type="text"
                 value={enrich.model}
                 onChange={(e) => setEnrich((p) => ({ ...p, model: e.target.value }))}
-                placeholder="e.g. gpt-4o (leave blank for default)"
+                placeholder="e.g. deepseek-v4-flash (leave blank for default)"
                 className="form-control px-2 py-1.5 text-sm"
               />
             </div>
@@ -1602,7 +1617,7 @@ function EnrichmentPipelineSection() {
                 onChange={(e) => setEnrich((p) => ({ ...p, heuristic_only: e.target.checked ? "true" : "false" }))}
                 className="h-4 w-4 rounded accent-[color:var(--accent)]"
               />
-              <span className="text-xs text-[color:var(--ink-faint)]">Skip OpenAI (heuristic only)</span>
+              <span className="text-xs text-[color:var(--ink-faint)]">Skip hosted model (heuristic only)</span>
             </label>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1944,7 +1959,7 @@ const SOURCE_KIND_OPTIONS = [
   "citywire_article", "therecord_media_article", "wired_article", "tripwire_article",
   "akamai_blog_article", "ritholtz_article", "ft_portfolios_market_commentary",
   "liberty_street_economics_article", "wealth_of_common_sense_article", "wsj_dow_jones",
-  "reddit_post", "newsapi_article",
+  "reddit_post", "hedge_fund_letter", "newsapi_article",
 ];
 
 function ManualDocumentUploadSection() {

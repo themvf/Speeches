@@ -14,14 +14,15 @@ export async function GET(): Promise<NextResponse> {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const body = (await req.json()) as { label?: string; feedUrl?: string };
+    const body = (await req.json()) as { label?: string; feedUrl?: string; refreshIntervalMinutes?: number };
     const label = String(body.label ?? "").trim();
     const feedUrl = String(body.feedUrl ?? "").trim();
+    const refreshIntervalMinutes = Math.max(1, Math.round(Number(body.refreshIntervalMinutes || 10)));
     if (!label || !feedUrl) {
       return NextResponse.json({ ok: false, error: "label and feedUrl are required" }, { status: 400 });
     }
     new URL(feedUrl); // validates URL format
-    const feed = await addFeed(label, feedUrl);
+    const feed = await addFeed(label, feedUrl, refreshIntervalMinutes);
     return NextResponse.json({ ok: true, data: { feed } });
   } catch (err) {
     const msg = String(err);

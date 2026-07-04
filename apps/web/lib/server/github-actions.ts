@@ -231,6 +231,7 @@ export async function triggerEnrichJob(payload: {
   mode: string;
   sourceKind: string;
   heuristicOnly: boolean;
+  provider: string;
   model: string;
 }): Promise<{ job_id: string; provider: "github_actions"; status: "queued"; status_url: string; github_run_id: number }> {
   const cfg = getGithubActionsConfig();
@@ -239,6 +240,7 @@ export async function triggerEnrichJob(payload: {
     mode: payload.mode,
     source_kind: payload.sourceKind,
     heuristic_only: payload.heuristicOnly ? "true" : "false",
+    provider: payload.provider || "deepseek",
     model: payload.model
   });
 

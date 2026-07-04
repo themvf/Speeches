@@ -19,6 +19,8 @@ export async function POST(request: Request) {
     const mode = ["all", "only_missing_or_failed"].includes(modeRaw) ? modeRaw : "only_missing_or_failed";
     const sourceKind = String(body.source_kind ?? "newsapi_article").trim() || "newsapi_article";
     const heuristicOnly = String(body.heuristic_only ?? "false").toLowerCase() === "true";
+    const providerRaw = String(body.provider ?? "deepseek").trim().toLowerCase();
+    const provider = providerRaw === "openai" ? "openai" : "deepseek";
     const model = String(body.model ?? "").trim();
 
     const payload = await triggerEnrichJob({
@@ -26,6 +28,7 @@ export async function POST(request: Request) {
       mode,
       sourceKind,
       heuristicOnly,
+      provider,
       model
     });
 

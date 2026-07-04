@@ -3,6 +3,7 @@ import { createRequestId, fail, ok } from "@/lib/server/api-utils";
 import type { TrendItem, TrendsPayload } from "@/lib/server/types";
 import { getRecentArticles, getTopicRules, type StoredRssArticle, type StoredRssTopicRule } from "@/lib/server/neon";
 import { getMatchingTopics, normalizeTopicRules, type TopicRuleView } from "@/lib/intel-topic-matching";
+import { isAllowedRssArticleForIngestion } from "@/lib/server/rss-ingestion-filter";
 
 export const runtime = "nodejs";
 
@@ -180,7 +181,15 @@ async function loadLiveNewsTopicTrends(days: number): Promise<TrendItem[]> {
       getRecentArticles({ limit: LIVE_NEWS_ARTICLE_LIMIT }),
       getTopicRules(true),
     ]);
-    return buildLiveNewsTopicTrends(articles, topicRules, days);
+    const filteredArticles = articles.filter((article) => isAllowedRssArticleForIngestion(article.feed_key, {
+      guid: article.guid,
+      title: article.title,
+      url: article.url,
+      description: article.description,
+      author: article.author,
+      publishedAt: article.published_at ? new Date(article.published_at) : null,
+    }, topicRules));
+    return buildLiveNewsTopicTrends(filteredArticles, topicRules, days);
   } catch {
     return [];
   }

@@ -19,15 +19,31 @@ on:
         description: "Source kind to enrich"
         required: false
         default: "newsapi_article"
+      order:
+        description: "Candidate order before applying enrich_limit"
+        required: false
+        type: choice
+        options:
+          - recent
+          - stored
+        default: recent
       heuristic_only:
-        description: "Ignored; OpenAI enrichment is paused and heuristic-only is forced"
+        description: "Use heuristic enrichment instead of hosted model enrichment"
         required: false
         type: boolean
-        default: true
-      model:
-        description: "Ignored while OpenAI enrichment is paused"
+        default: false
+      provider:
+        description: "Hosted model provider"
         required: false
-        default: ""
+        type: choice
+        options:
+          - deepseek
+          - openai
+        default: deepseek
+      model:
+        description: "Model to use for hosted enrichment"
+        required: false
+        default: "deepseek-v4-flash"
 
 permissions:
   contents: read
@@ -39,13 +55,19 @@ concurrency:
 jobs:
   enrich-news:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
       ENRICH_MODE: ${{ github.event.inputs.mode || 'only_missing_or_failed' }}
       SOURCE_KIND: ${{ github.event.inputs.source_kind || 'newsapi_article' }}
+      ENRICH_ORDER: ${{ github.event.inputs.order || 'recent' }}
+      ENRICH_PROVIDER: ${{ github.event.inputs.provider || 'deepseek' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
+      HEURISTIC_ONLY: ${{ github.event.inputs.heuristic_only || 'false' }}
 
     steps:
       - name: Checkout
@@ -64,12 +86,23 @@ jobs:
       - name: Run Financial News Enrichment
         run: |
           set -euo pipefail
-          args=(enrich --require-remote-persistence --source-kind "${SOURCE_KIND}" --mode "${ENRICH_MODE}" --summary-path financial_news_enrich_summary.json)
-          if [ -n "${ENRICH_LIMIT}" ]; then
-            args+=(--limit "${ENRICH_LIMIT}")
+          if [ "${SOURCE_KIND}" = "__gpt_fallback_all__" ]; then
+            args=(--require-remote-persistence --skip-rss --model "${ENRICH_MODEL}" --summary-path financial_news_enrich_summary.json)
+            if [ -n "${ENRICH_LIMIT}" ]; then
+              args+=(--max-docs "${ENRICH_LIMIT}")
+            fi
+            python scripts/re_enrich_gpt_fallback.py "${args[@]}"
+          else
+            args=(enrich --require-remote-persistence --source-kind "${SOURCE_KIND}" --mode "${ENRICH_MODE}" --order "${ENRICH_ORDER}" --summary-path financial_news_enrich_summary.json)
+            if [ -n "${ENRICH_LIMIT}" ]; then
+              args+=(--limit "${ENRICH_LIMIT}")
+            fi
+            args+=(--provider "${ENRICH_PROVIDER}" --model "${ENRICH_MODEL}")
+            if [ "${HEURISTIC_ONLY}" = "true" ]; then
+              args+=(--heuristic-only)
+            fi
+            python run_financial_news_pipeline.py "${args[@]}"
           fi
-          args+=(--heuristic-only)
-          python run_financial_news_pipeline.py "${args[@]}"
 
       - name: Upload Enrichment Summary
         if: always()

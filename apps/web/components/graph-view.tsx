@@ -69,6 +69,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   congress_crs_product: "Congress CRS Products",
   wsj_dow_jones: "WSJ / Dow Jones",
   reddit_post: "Reddit",
+  hedge_fund_letter: "Hedge Fund Letters",
   newsapi_article: "News",
   uploaded: "Uploaded"
 };

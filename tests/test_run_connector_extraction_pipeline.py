@@ -94,6 +94,25 @@ class WSJScraperStub:
         }
 
 
+class HedgeFundLetterScraperStub:
+    def extract_document(self, entry):
+        return {
+            "success": True,
+            "data": {
+                "url": entry.get("url", ""),
+                "title": entry.get("title", "Example Fund Letter"),
+                "date": entry.get("date", "March 28, 2026"),
+                "summary": entry.get("summary", "Investor letter summary."),
+                "full_text": " ".join(["fund letter market commentary portfolio risk"] * 45),
+                "source_format": "pdf",
+                "extraction_mode": "pdf",
+                "fund_name": entry.get("fund_name", "Example Fund"),
+                "source_label": entry.get("source_label", "Fiscal.ai Fund Letters"),
+                "source_key": entry.get("source_key", "fiscal_ai_fund_letters"),
+            },
+        }
+
+
 def test_doj_short_text_is_retained_as_metadata_fallback():
     entry = {
         "url": "https://www.justice.gov/usao-test/pr/example-short-release",
@@ -241,6 +260,7 @@ def test_gap_connectors_are_registered_with_defaults():
         "wealth_of_common_sense_article",
         "wsj_dow_jones",
         "reddit_post",
+        "hedge_fund_letter",
     ]:
         assert connector in pipeline.SUPPORTED_CONNECTORS
         assert pipeline._default_base_url(connector)
@@ -288,6 +308,70 @@ def test_wsj_dow_jones_extract_record_builds_document():
     assert record["metadata"]["source_kind"] == "wsj_dow_jones"
     assert record["metadata"]["organization"] == "WSJ / Dow Jones"
     assert record["metadata"]["extraction_mode"] == "rss_description"
+
+
+def test_invalid_wired_coupon_records_are_pruned():
+    payload = {
+        "documents": [
+            {
+                "metadata": {
+                    "source_kind": "wired_article",
+                    "title": "Ulta Promo Codes: Up to 50% Off in July 2026",
+                    "url": "https://www.wired.com/story/ulta-promo-codes-july-2026/",
+                }
+            },
+            {
+                "metadata": {
+                    "source_kind": "wired_article",
+                    "title": "Ransomware Operators Target Financial Firms",
+                    "url": "https://www.wired.com/story/ransomware-financial-firms-2026/",
+                }
+            },
+            {
+                "metadata": {
+                    "source_kind": "jdsupra_article",
+                    "title": "Coupon regulations update",
+                    "url": "https://www.jdsupra.com/legalnews/example-123/",
+                }
+            },
+        ]
+    }
+
+    removed = pipeline._remove_invalid_wired_coupon_records(payload)
+
+    assert removed == 1
+    titles = [item["metadata"]["title"] for item in payload["documents"]]
+    assert "Ulta Promo Codes: Up to 50% Off in July 2026" not in titles
+    assert "Ransomware Operators Target Financial Firms" in titles
+    assert "Coupon regulations update" in titles
+
+
+def test_hedge_fund_letter_extract_record_builds_document():
+    entry = {
+        "url": "https://example.com/fund-letter.pdf",
+        "title": "Example Fund Q1 Letter",
+        "date": "March 28, 2026",
+        "summary": "Quarterly investor letter.",
+        "source_label": "Fiscal.ai Fund Letters",
+        "source_key": "fiscal_ai_fund_letters",
+        "organization": "Fiscal.ai",
+        "fund_name": "Example Fund",
+    }
+
+    record = pipeline._extract_record(
+        connector="hedge_fund_letter",
+        scraper=HedgeFundLetterScraperStub(),
+        entry=entry,
+        idx=1,
+        base_url="https://fiscal.ai/fund-letters/",
+    )
+
+    metadata = record["metadata"]
+    assert metadata["source_kind"] == "hedge_fund_letter"
+    assert metadata["source_family"] == "hedge_fund_letter"
+    assert metadata["source_name"] == "Fiscal.ai Fund Letters"
+    assert metadata["fund_name"] == "Example Fund"
+    assert metadata["pdf_url"] == "https://example.com/fund-letter.pdf"
 
 
 def test_sec_federal_register_status_updates_generic_existing_title():

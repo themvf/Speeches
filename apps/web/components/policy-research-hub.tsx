@@ -43,6 +43,7 @@ interface DocumentItem {
   keywords: string[];
   topics: string[];
   enrichment_status: string;
+  enrichment_model?: string;
   review_decision: string;
   sentiment_label: "positive" | "negative" | "neutral" | "";
   sentiment_score: number;
@@ -77,6 +78,7 @@ interface DocumentDetailData {
   };
   enrichment: {
     status: string;
+    model: string;
     summary: string;
     tags: string[];
     keywords: string[];
@@ -127,6 +129,7 @@ interface EnrichFormState {
   mode: "only_missing_or_failed" | "all";
   source_kind: string;
   heuristic_only: boolean;
+  provider: "deepseek" | "openai";
   model: string;
 }
 
@@ -176,7 +179,8 @@ interface ExtractFormState {
     | "wealth_of_common_sense_article"
     | "congress_crs_product"
     | "wsj_dow_jones"
-    | "reddit_post";
+    | "reddit_post"
+    | "hedge_fund_letter";
   selection: "new_or_updated" | "all";
   limit: number;
   max_pages: number;
@@ -276,6 +280,18 @@ function statusClass(value: string): string {
   return "status-chip status-neutral";
 }
 
+function hostedModelLabel(model: string, fallback = false): string {
+  const normalized = String(model || "").trim();
+  if (!normalized) return "not recorded";
+  return fallback ? `${normalized} fallback` : normalized;
+}
+
+function hostedModelTitle(model: string, fallback = false): string {
+  const normalized = String(model || "").trim();
+  if (!normalized) return "Model was not recorded for this enrichment.";
+  return `Model used: ${normalized}${fallback ? " fallback" : ""}`;
+}
+
 function displayOrganization(value: string): string {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -344,6 +360,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   congress_crs_product: "Congress CRS Products",
   wsj_dow_jones: "WSJ / Dow Jones",
   reddit_post: "Reddit",
+  hedge_fund_letter: "Hedge Fund Letters",
   newsapi_article: "News",
   uploaded: "Uploaded"
 };
@@ -411,6 +428,7 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   congress_crs_product: "CRS Product",
   wsj_dow_jones: "Article",
   reddit_post: "Post",
+  hedge_fund_letter: "Investor Letter",
   newsapi_article: "News Article",
   uploaded: "Uploaded Document"
 };
@@ -713,6 +731,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
     mode: "only_missing_or_failed",
     source_kind: "newsapi_article",
     heuristic_only: false,
+    provider: "deepseek",
     model: ""
   });
   const [extract, setExtract] = useState<ExtractFormState>({
@@ -1230,6 +1249,9 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                     const detailError = docDetailError[d.document_id] || "";
                     const isExpanded = !!expandedDocs[d.document_id];
                     const primaryAnalysis = pickPrimaryAnalysis(detail);
+                    const enrichmentModel = detail?.enrichment.model || d.enrichment_model || "";
+                    const modelLabel = hostedModelLabel(enrichmentModel, (detail?.enrichment.status || d.enrichment_status) === "fallback_enriched");
+                    const modelTitle = hostedModelTitle(enrichmentModel, (detail?.enrichment.status || d.enrichment_status) === "fallback_enriched");
                     const analysisActionLabel = detailLoading ? "Loading Analysis..." : isExpanded ? "Hide Analysis" : "Open Analysis";
                     const semanticSnippet = semanticSnippets[d.document_id];
                     const itemSaved = savedItems.isSaved(savedDocumentId(d));
@@ -1318,6 +1340,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                                         {detail.enrichment.status || "not_enriched"}
                                       </span>
                                       <span className="tone-chip">Review: {detail.review.decision || "pending"}</span>
+                                      <span className="tone-chip" title={modelTitle}>Model: {modelLabel}</span>
                                       {primaryAnalysis.kind === "position" ? (
                                         <span className={analysisChipClass(primaryAnalysis.tone)}>
                                           Position: {formatAnalysisLabel(primaryAnalysis.label)}
@@ -1590,6 +1613,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="congress_crs_product">Congress CRS Products</option>
                   <option value="wsj_dow_jones">WSJ / Dow Jones RSS</option>
                   <option value="reddit_post">Reddit Posts</option>
+                  <option value="hedge_fund_letter">Hedge Fund Letters</option>
                 </select>
                 <select
                   className="form-control px-2 py-1.5"
@@ -1725,9 +1749,17 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="only_missing_or_failed">only_missing_or_failed</option>
                   <option value="all">all</option>
                 </select>
+                <select
+                  className="form-control px-2 py-1.5"
+                  value={enrich.provider}
+                  onChange={(e) => setEnrich({ ...enrich, provider: e.target.value === "openai" ? "openai" : "deepseek" })}
+                >
+                  <option value="deepseek">deepseek</option>
+                  <option value="openai">openai</option>
+                </select>
                 <input
                   className="form-control px-2 py-1.5"
-                  placeholder="model (optional)"
+                  placeholder="deepseek-v4-flash"
                   value={enrich.model}
                   onChange={(e) => setEnrich({ ...enrich, model: e.target.value })}
                 />

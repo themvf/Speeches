@@ -31,6 +31,7 @@ CONGRESS_CRS_PRODUCTS_DEFAULT_URL = "https://www.congress.gov/crs-products"
 BLOOMBERG_PUBLIC_DEFAULT_URL = ""
 SUBSTACK_PUBLIC_DEFAULT_URL = "https://substack.com/api/v1/post/search"
 WSJ_DOW_JONES_DEFAULT_URL = "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews"
+HEDGE_FUND_LETTER_DEFAULT_URL = "https://fiscal.ai/fund-letters/"
 
 BLOOMBERG_CONNECTORS = {
     "bloomberg_public_article",
@@ -99,6 +100,7 @@ SUPPORTED_CONNECTORS = {
     "substack_public_article",
     "wsj_dow_jones",
     "reddit_post",
+    "hedge_fund_letter",
     *TRADE_MEDIA_CONNECTORS,
     *TRADE_ASSOCIATION_CONNECTORS,
     *SECURITIES_MARKET_CONNECTORS,
@@ -144,6 +146,8 @@ def _default_base_url(connector: str) -> str:
         return WSJ_DOW_JONES_DEFAULT_URL
     if connector == "reddit_post":
         return "https://www.reddit.com/search.json"
+    if connector == "hedge_fund_letter":
+        return HEDGE_FUND_LETTER_DEFAULT_URL
     if connector in TRADE_MEDIA_CONNECTORS:
         from trade_media_scraper import TRADE_MEDIA_SOURCES
 
@@ -456,6 +460,38 @@ def _remove_legacy_bloomberg_apify_records(custom_payload: Dict[str, Any]) -> in
             removed += 1
             continue
         kept.append(item)
+    if removed:
+        custom_payload["documents"] = kept
+    return removed
+
+
+def _remove_invalid_wired_coupon_records(custom_payload: Dict[str, Any]) -> int:
+    docs_list = custom_payload.get("documents", [])
+    if not isinstance(docs_list, list):
+        return 0
+
+    from trade_media_scraper import TRADE_MEDIA_SOURCES, _passes_source_url_filters
+
+    cfg = TRADE_MEDIA_SOURCES.get("wired_article", {})
+    title_pattern = re.compile(r"\b(?:promo\s+codes?|coupon(?:s)?|discount\s+codes?)\b", re.IGNORECASE)
+    kept: List[Dict[str, Any]] = []
+    removed = 0
+    for item in docs_list:
+        if not isinstance(item, dict):
+            kept.append(item)
+            continue
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        if _normalize_space(metadata.get("source_kind", "")).lower() != "wired_article":
+            kept.append(item)
+            continue
+
+        title = _normalize_space(metadata.get("title", ""))
+        url = _normalize_space(metadata.get("url", ""))
+        if (url and not _passes_source_url_filters(url, cfg)) or title_pattern.search(title):
+            removed += 1
+            continue
+        kept.append(item)
+
     if removed:
         custom_payload["documents"] = kept
     return removed
@@ -956,6 +992,14 @@ def _discover_connector(
 
         scraper = SecuritiesMarketSourcesScraper()
         docs = scraper.discover_documents(source_key=connector, base_url=base_url, max_pages=max_pages)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "hedge_fund_letter":
+        from hedge_fund_letter_scraper import HedgeFundLetterScraper
+
+        scraper = HedgeFundLetterScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
 
@@ -1694,6 +1738,60 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["pdf_url"] = src_url if source_format == "pdf" else ""
         return record
 
+    if connector == "hedge_fund_letter":
+        extracted = scraper.extract_document(entry)
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "") or "Hedge fund letter extraction failed."))
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or "Investor Letter"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        text = str(data.get("full_text", "") or "").strip()
+        organization = str(entry.get("organization", "") or "Investor Letters").strip()
+        source_label = str(data.get("source_label", "") or entry.get("source_label", "") or organization).strip()
+        fund_name = str(data.get("fund_name", "") or entry.get("fund_name", "") or "").strip()
+        if len(text.split()) < 40:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=date_text,
+                organization=organization,
+                source_label=source_label,
+                extracted_text=text or str(data.get("summary", "") or entry.get("summary", "")).strip(),
+            )
+        source_format = str(data.get("source_format", "") or entry.get("source_format", "html")).strip().lower()
+        source_ext = ".pdf" if source_format == "pdf" else ".html"
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization=organization,
+            title=title,
+            speaker=fund_name or source_label,
+            doc_date=_parse_doc_date(date_text),
+            doc_type=str(entry.get("doc_type", "") or "Investor Letter").strip() or "Investor Letter",
+            source_url=src_url,
+            source_filename=_safe_source_name(src_url, f"hedge-fund-letter-{idx}", source_ext),
+            source_ext=source_ext,
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=str(entry.get("tags_csv", "") or "hedge-fund,investor-letter,market-commentary"),
+            source_kind="hedge_fund_letter",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "hedge_fund_letter"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["summary"] = str(data.get("summary", "") or entry.get("summary", "")).strip()
+        metadata["source_name"] = source_label
+        metadata["source_label"] = source_label
+        metadata["source_key"] = str(data.get("source_key", "") or entry.get("source_key", "")).strip()
+        metadata["source_format"] = source_format
+        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        metadata["fund_name"] = fund_name
+        metadata["extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+        metadata["pdf_url"] = src_url if source_format == "pdf" else ""
+        metadata["connector_mode"] = "public"
+        return record
+
     if connector == "substack_public_article":
         extracted = scraper.extract_document(entry)
         if not extracted.get("success"):
@@ -1996,13 +2094,21 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     excluded: List[Dict[str, Any]] = []
     filtered_discovered: List[Dict[str, Any]] = []
     if args.connector == "substack_public_article":
-        model = str(getattr(args, "relevance_model", "") or "gpt-5-mini").strip()
-        client = core._get_openai_client(secrets_payload)
+        provider = str(getattr(args, "relevance_provider", "") or "deepseek").strip().lower()
+        if provider not in {"deepseek", "openai"}:
+            provider = "deepseek"
+        model = str(
+            getattr(args, "relevance_model", "")
+            or ("deepseek-v4-flash" if provider == "deepseek" else "gpt-5-mini")
+        ).strip()
+        client = core._get_model_client(secrets_payload, provider)
         filtered_discovered, excluded = scraper.filter_institutional_finance(
             discovered,
             client=client,
             model=model,
+            provider=provider,
         )
+        discovery_debug["relevance_provider"] = provider
         discovery_debug["relevance_model"] = model
         discovery_debug["relevance_included_count"] = len(filtered_discovered)
         discovery_debug["relevance_excluded_count"] = len(excluded)
@@ -2051,6 +2157,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     processed_doc_ids: List[str] = []
     duplicate_records_removed = 0
     legacy_bloomberg_records_removed = 0
+    invalid_wired_records_removed = 0
 
     for idx, entry in enumerate(selected, 1):
         try:
@@ -2095,8 +2202,11 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         duplicate_records_removed = _remove_duplicate_bloomberg_records(custom_payload)
         legacy_bloomberg_records_removed = _remove_legacy_bloomberg_apify_records(custom_payload)
 
+    if args.connector == "wired_article":
+        invalid_wired_records_removed = _remove_invalid_wired_coupon_records(custom_payload)
+
     rule_summaries_rebuilt = False
-    if not args.dry_run and (saved_new or saved_updates):
+    if not args.dry_run and (saved_new or saved_updates or invalid_wired_records_removed):
         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
         enrichment_state = core._load_enrichment_state(storage)
         core._rebuild_rule_summaries(
@@ -2129,6 +2239,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "processed_count": len(processed_doc_ids),
         "saved_new": saved_new,
         "saved_updates": saved_updates,
+        "invalid_wired_records_removed": invalid_wired_records_removed,
         "failed_count": len(failed),
         "failed": failed[:25],
         "duplicate_records_removed": duplicate_records_removed,
@@ -2177,7 +2288,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-rss", default="")
     parser.add_argument("--exclude-terms", default="")
     parser.add_argument("--keywords", default="")
-    parser.add_argument("--relevance-model", default="gpt-5-mini")
+    parser.add_argument("--relevance-provider", choices=["openai", "deepseek"], default=os.getenv("RELEVANCE_PROVIDER", "deepseek"))
+    parser.add_argument("--relevance-model", default="")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--require-remote-persistence", action="store_true")
     parser.add_argument("--summary-path", default="")

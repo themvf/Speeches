@@ -1,7 +1,9 @@
 import { getMatchingTopics, normalizeTopicRules } from "@/lib/intel-topic-matching";
 import { normalizeText } from "@/lib/server/api-utils";
 import { generateFeedAnalysis, type FeedAnalysisInput } from "@/lib/server/feed-analysis";
+import { rssFeedLabel } from "@/lib/server/rss-fetcher";
 import {
+  deleteBlockedRssArticles,
   getRssArticlesNeedingAnalysis,
   getTopicRules,
   saveRssArticleAnalysis,
@@ -18,7 +20,7 @@ function inputForArticle(article: StoredRssArticle, topics: string[]): FeedAnaly
     title: normalizeText(article.title).slice(0, 400),
     description: normalizeText(article.description).slice(0, 8000),
     url: normalizeText(article.url).slice(0, 1000),
-    source: normalizeText(article.feed_key).slice(0, 200),
+    source: normalizeText(article.feed_label || rssFeedLabel(article.feed_key) || article.feed_key).slice(0, 200),
     author: normalizeText(article.author).slice(0, 200),
     published_at: articleDate(article).slice(0, 80),
     tone_label: normalizeText(article.tone_label).slice(0, 40),
@@ -27,33 +29,43 @@ function inputForArticle(article: StoredRssArticle, topics: string[]): FeedAnaly
   };
 }
 
-export async function analyzeMissingRssArticles(limit = 5): Promise<{
+export async function analyzeMissingRssArticles(limit = 5, opts: { feedKeys?: string[] } = {}): Promise<{
   selected_count: number;
   saved_count: number;
   failed_count: number;
   failed: Array<{ article_id: number; title: string; error: string }>;
 }> {
-  const selected = await getRssArticlesNeedingAnalysis(Math.max(1, Math.min(50, limit)));
+  const topicRules = await getTopicRules(true);
+  await deleteBlockedRssArticles(topicRules).catch((error) => {
+    console.error("[rss-analysis-runner] RSS policy cleanup failed:", error);
+    return 0;
+  });
+
+  const selected = await getRssArticlesNeedingAnalysis(Math.max(1, Math.min(50, limit)), {
+    feedKeys: opts.feedKeys,
+  });
   if (selected.length === 0) {
     return { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };
   }
 
-  const rules = normalizeTopicRules(await getTopicRules(true));
-  let savedCount = 0;
-  const failed: Array<{ article_id: number; title: string; error: string }> = [];
-
-  for (const article of selected) {
+  const rules = normalizeTopicRules(topicRules);
+  const results = await Promise.all(selected.map(async (article) => {
     const topics = getMatchingTopics(article, rules).map((topic) => topic.label);
     try {
       const generated = await generateFeedAnalysis(inputForArticle(article, topics));
       await saveRssArticleAnalysis(article, generated, topics);
-      savedCount += 1;
+      return { saved: true as const };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       await saveRssArticleAnalysisFailure(article, message);
-      failed.push({ article_id: article.id, title: article.title, error: message });
+      return { saved: false as const, failed: { article_id: article.id, title: article.title, error: message } };
     }
-  }
+  }));
+
+  const savedCount = results.filter((result) => result.saved).length;
+  const failed = results
+    .filter((result): result is { saved: false; failed: { article_id: number; title: string; error: string } } => !result.saved)
+    .map((result) => result.failed);
 
   return {
     selected_count: selected.length,

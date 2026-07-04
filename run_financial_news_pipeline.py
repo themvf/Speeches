@@ -234,6 +234,15 @@ def _get_openai_api_key(secrets_payload: Dict[str, Any]) -> str:
     )
 
 
+def _get_deepseek_api_key(secrets_payload: Dict[str, Any]) -> str:
+    return _sanitize_api_key(
+        os.getenv("DEEPSEEK_API", "")
+        or os.getenv("DEEPSEEK_API_KEY", "")
+        or _nested_get(secrets_payload, "deepseek", "api_key")
+        or ""
+    )
+
+
 def _get_gcs_storage(secrets_payload: Dict[str, Any]) -> Tuple[Optional[GCSStorage], str]:
     bucket_name = str(
         os.getenv("GCS_BUCKET_NAME", "")
@@ -1196,13 +1205,59 @@ def _extract_response_text(response: Any) -> str:
     return "No response text returned."
 
 
-def _run_enrichment_agent(client: Any, doc: Dict[str, Any], model_name: str) -> Dict[str, Any]:
+def _extract_chat_completion_text(response: Any) -> str:
+    if hasattr(response, "model_dump"):
+        response = response.model_dump()
+    elif hasattr(response, "dict"):
+        response = response.dict()
+    if isinstance(response, dict):
+        choices = response.get("choices", [])
+        if choices and isinstance(choices[0], dict):
+            message = choices[0].get("message", {})
+            content = message.get("content", "") if isinstance(message, dict) else ""
+            if isinstance(content, str) and content.strip():
+                return content
+    return "No chat completion text returned."
+
+
+def _create_enrichment_completion(
+    client: Any,
+    provider: str,
+    model_name: str,
+    instruction: str,
+    prompt: str,
+) -> str:
+    if str(provider or "").strip().lower() == "deepseek":
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": instruction},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
+        return _extract_chat_completion_text(response)
+
+    response = client.responses.create(model=model_name, instructions=instruction, input=prompt)
+    return _extract_response_text(response)
+
+
+def _run_enrichment_agent(
+    client: Any,
+    doc: Dict[str, Any],
+    model_name: str,
+    provider: str = "deepseek",
+) -> Dict[str, Any]:
     text = str(doc.get("full_text", "") or "").strip()
     if len(text) > 90000:
         text = text[:45000] + "\n\n[...TRUNCATED FOR ENRICHMENT...]\n\n" + text[-30000:]
     instruction = (
         "You are an enrichment agent for policy documents. Return ONLY valid JSON with keys: "
         "summary, tags, keywords, entities, stance, comment_position, evidence_spans, enforcement, confidence. "
+        "summary must be a 3-4 sentence summary of the text. Focus on the substantive policy, market, legal, "
+        "or enforcement points; do not spend space on basic metadata such as the document title, speaker, date, "
+        "source, or publication format unless that detail is essential to understanding the substance. "
         "Use concise tags and keywords. entities must be list of {name,type,mentions}. "
         "stance must be {label,target} where label in [supportive,cautious,critical,neutral,unclear]. "
         "comment_position must be {label,confidence,rationale} where label in "
@@ -1230,8 +1285,13 @@ def _run_enrichment_agent(client: Any, doc: Dict[str, Any], model_name: str) -> 
         current_instruction = instruction
         if attempt > 1:
             current_instruction += " Respond with raw JSON only. No markdown, no commentary, no code fences."
-        response = client.responses.create(model=model_name, instructions=current_instruction, input=prompt)
-        raw_text = _extract_response_text(response)
+        raw_text = _create_enrichment_completion(
+            client=client,
+            provider=provider,
+            model_name=model_name,
+            instruction=current_instruction,
+            prompt=prompt,
+        )
         last_raw = raw_text
         parsed = _extract_first_json_object(raw_text)
         if parsed:
@@ -1271,6 +1331,10 @@ def _candidate_chat_models() -> List[str]:
     return ["gpt-5.1", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"]
 
 
+def _candidate_deepseek_models() -> List[str]:
+    return ["deepseek-v4-flash", "deepseek-chat"]
+
+
 def _list_project_models(client: Any) -> List[str]:
     listed = client.models.list()
     return sorted({getattr(m, "id", "") for m in getattr(listed, "data", []) if getattr(m, "id", "")})
@@ -1302,6 +1366,24 @@ def _get_openai_client(secrets_payload: Dict[str, Any]) -> Optional[Any]:
     except Exception as e:
         _stderr(f"Failed to initialize OpenAI client: {e}")
         return None
+
+
+def _get_deepseek_client(secrets_payload: Dict[str, Any]) -> Optional[Any]:
+    api_key = _get_deepseek_api_key(secrets_payload)
+    if not api_key or OpenAI is None:
+        return None
+    try:
+        return OpenAI(api_key=api_key, base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+    except Exception as e:
+        _stderr(f"Failed to initialize DeepSeek client: {e}")
+        return None
+
+
+def _get_model_client(secrets_payload: Dict[str, Any], provider: str) -> Optional[Any]:
+    normalized = str(provider or "").strip().lower()
+    if normalized == "deepseek":
+        return _get_deepseek_client(secrets_payload)
+    return _get_openai_client(secrets_payload)
 
 
 def _load_doc_ids_from_summary(path_text: str) -> List[str]:
@@ -1743,12 +1825,39 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             filtered.append(candidate)
         candidates = filtered
 
+    order = str(args.order or "stored").strip().lower()
+    future_dated_candidate_count = 0
+    if order == "recent":
+        now_cutoff = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=1)
+        future_dated_candidate_count = sum(
+            1
+            for item in candidates
+            if (_parse_date_text(item.get("date")) is not None and _parse_date_text(item.get("date")) > now_cutoff)
+        )
+
+        def recent_rank(item: Dict[str, Any]) -> datetime:
+            parsed = _parse_date_text(item.get("date"))
+            if parsed is None or parsed > now_cutoff:
+                return datetime.min
+            return parsed
+
+        candidates = sorted(
+            candidates,
+            key=recent_rank,
+            reverse=True,
+        )
+
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
     targets = candidates[:limit] if limit > 0 else []
 
-    client = None if args.heuristic_only else _get_openai_client(secrets_payload)
-    accessible_models = _get_accessible_chat_models(client) if client is not None else []
-    preferred_model = args.model or (accessible_models[0] if accessible_models else "gpt-5-mini")
+    provider = str(args.provider or "deepseek").strip().lower()
+    client = None if args.heuristic_only else _get_model_client(secrets_payload, provider)
+    if provider == "deepseek":
+        accessible_models = _candidate_deepseek_models()
+        preferred_model = args.model or accessible_models[0]
+    else:
+        accessible_models = _get_accessible_chat_models(client) if client is not None else []
+        preferred_model = args.model or (accessible_models[0] if accessible_models else "gpt-5-mini")
 
     enriched_count = 0
     fallback_count = 0
@@ -1765,13 +1874,13 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         model_used = ""
         try:
             if client is None:
-                raise RuntimeError("OpenAI client unavailable; using heuristic enrichment.")
+                raise RuntimeError(f"{provider.title()} client unavailable; using heuristic enrichment.")
             ordered_models = [preferred_model] + [model for model in accessible_models if model != preferred_model]
             last_error = None
             enrichment = None
             for model_name in ordered_models:
                 try:
-                    enrichment = _run_enrichment_agent(client, candidate, model_name)
+                    enrichment = _run_enrichment_agent(client, candidate, model_name, provider=provider)
                     model_used = model_name
                     break
                 except Exception as e:
@@ -1827,8 +1936,11 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         "ran_at": _utc_now_iso(),
         "require_remote_persistence": bool(args.require_remote_persistence),
         "remote_persistence": bool(storage is not None),
+        "provider": provider,
         "source_kind": args.source_kind,
         "mode_selection": args.mode,
+        "order": order,
+        "future_dated_candidate_count": future_dated_candidate_count,
         "requested_doc_ids": dedup_doc_ids,
         "candidate_count": len(candidates),
         "selected_count": len(targets),
@@ -1836,6 +1948,14 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         "enriched_count": enriched_count,
         "fallback_enriched_count": fallback_count,
         "used_models": used_models,
+        "selected_preview": [
+            {
+                "doc_id": str(item.get("doc_id", "") or ""),
+                "date": str(item.get("date", "") or ""),
+                "title": str(item.get("title", "") or "")[:220],
+            }
+            for item in targets[:25]
+        ],
         "dry_run": bool(args.dry_run),
         "rule_summaries_rebuilt": rule_summaries_rebuilt,
     }
@@ -1870,7 +1990,9 @@ def _build_parser() -> argparse.ArgumentParser:
     enrich.add_argument("--doc-id", action="append", default=[])
     enrich.add_argument("--doc-ids-from-summary", default="")
     enrich.add_argument("--limit", type=int, default=None)
+    enrich.add_argument("--order", choices=["stored", "recent"], default="stored")
     enrich.add_argument("--model", default="")
+    enrich.add_argument("--provider", choices=["openai", "deepseek"], default=os.getenv("ENRICH_PROVIDER", "deepseek"))
     enrich.add_argument("--heuristic-only", action="store_true")
     enrich.add_argument("--dry-run", action="store_true")
     enrich.add_argument("--require-remote-persistence", action="store_true")

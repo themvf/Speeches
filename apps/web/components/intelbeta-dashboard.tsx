@@ -35,7 +35,7 @@ type SourceFilter =
   | "REDDIT";
 
 const FEED_RENDER_BATCH_SIZE = 20;
-const LIVE_FEED_REFRESH_LIMIT = 250;
+const LIVE_FEED_REFRESH_LIMIT = 500;
 const LIVE_FEED_POLL_INTERVAL_MS = 60 * 60_000;
 
 type FeedMeta = {
@@ -50,6 +50,8 @@ type FeedItem = StoredRssArticle & {
   organization?: string;
   source_kind?: string;
   doc_type?: string;
+  enrichment_model?: string;
+  matched_finra_firms?: string[];
   topics?: string[];
   keywords?: string[];
   analysis?: unknown;
@@ -73,6 +75,7 @@ interface DocumentDetailData {
   };
   enrichment: {
     status: string;
+    model: string;
     summary: string;
     tags: string[];
     keywords: string[];
@@ -160,6 +163,51 @@ const FEED_META: Record<string, FeedMeta> = {
   bleepingcomputer: { label: "BleepingComputer", code: "BLC", color: "#74c0fc" },
   krebs_on_security: { label: "Krebs on Security", code: "KRBS", color: "#ffa8a8" },
   the_hacker_news: { label: "The Hacker News", code: "THN", color: "#ff8787" },
+  welivesecurity: { label: "WeLiveSecurity", code: "ESET", color: "#20c997" },
+  sophos_security_operations: { label: "Sophos Security Operations", code: "SOPH", color: "#38d9a9" },
+  flashpoint_blog: { label: "Flashpoint", code: "FLPT", color: "#b197fc" },
+  recorded_future: { label: "Recorded Future", code: "RF", color: "#91a7ff" },
+  intel471_blog: { label: "Intel 471", code: "I471", color: "#f783ac" },
+  prnewswire_all: { label: "PR Newswire", code: "PRN", color: "#66d9e8" },
+  prnewswire_consumer_technology: { label: "PR Newswire Consumer Technology", code: "PRN", color: "#66d9e8" },
+  prnewswire_financial_services: { label: "PR Newswire Financial Services", code: "PRN", color: "#66d9e8" },
+  prnewswire_policy_public_interest: { label: "PR Newswire Policy & Public Interest", code: "PRN", color: "#66d9e8" },
+  google_news_ponzi_investor_fraud: { label: "Google News: Ponzi & Investor Fraud", code: "GNEWS", color: "#8ce99a" },
+  google_news_finra_member_firms: { label: "Google News: FINRA Member Firms", code: "GNEWS", color: "#d0bfff" },
+  cftc_general_press_releases: { label: "CFTC General Press Releases", code: "CFTC", color: "#ffd43b" },
+  cftc_enforcement_press_releases: { label: "CFTC Enforcement Press Releases", code: "CFTC", color: "#ff8aa0" },
+  cftc_speeches_testimony: { label: "CFTC Speeches and Testimony", code: "CFTC", color: "#ffd43b" },
+  fed_all_press_releases: { label: "Federal Reserve", code: "FED", color: "#91a7ff" },
+  occ_news_releases: { label: "OCC News Releases", code: "OCC", color: "#a5d8ff" },
+  ftc_consumer_protection_press_releases: { label: "FTC Consumer Protection", code: "FTC", color: "#ffd43b" },
+  search_cnbc_com_rs_search_combinedcms_view_xml: { label: "CNBC", code: "CNBC", color: "#4dabf7" },
+  rss_nytimes_com_services_xml_rss_nyt_dealbook_xml: { label: "NYT DealBook", code: "NYT", color: "#ffe066" },
+  rss_nytimes_com_services_xml_rss_nyt_economy_xml: { label: "NYT Economy", code: "NYT", color: "#ffe066" },
+  ft_news_feed: { label: "Financial Times", code: "FT", color: "#ffc857" },
+  ft_markets: { label: "Financial Times Markets", code: "FT", color: "#ffc857" },
+  ft_financials: { label: "Financial Times Financials", code: "FT", color: "#ffc857" },
+  economist_finance_economics: { label: "The Economist Finance & Economics", code: "ECO", color: "#74c0fc" },
+  economist_business: { label: "The Economist Business", code: "ECO", color: "#74c0fc" },
+  economist_united_states: { label: "The Economist United States", code: "ECO", color: "#74c0fc" },
+  investmentnews: { label: "InvestmentNews", code: "INV", color: "#66d9e8" },
+  harvard_corp_gov_forum: { label: "Harvard Corporate Governance Forum", code: "HLS", color: "#d0bfff" },
+  cls_blue_sky_blog: { label: "CLS Blue Sky Blog", code: "CLS", color: "#d0bfff" },
+  the_corporate_counsel_net: { label: "The Corporate Counsel", code: "TCC", color: "#d0bfff" },
+  www_centralbanking_com_feeds_rss_category_central_banks_fina: { label: "Central Banking", code: "CB", color: "#91a7ff" },
+  ballard_spahr_consumer_finance_monitor: { label: "Ballard Spahr Consumer Finance Monitor", code: "BS", color: "#a5d8ff" },
+  cooley_governance_beat: { label: "Cooley Governance Beat", code: "COO", color: "#a5d8ff" },
+  covington_global_policy_watch: { label: "Covington Global Policy Watch", code: "COV", color: "#a5d8ff" },
+  covington_inside_privacy: { label: "Covington Inside Privacy", code: "COV", color: "#a5d8ff" },
+  kelley_drye_ad_law_access: { label: "Kelley Drye Ad Law Access", code: "KD", color: "#a5d8ff" },
+  latham_global_financial_regulatory_blog: { label: "Latham Global Financial Regulatory Blog", code: "LW", color: "#a5d8ff" },
+  bradley_financial_services_perspectives: { label: "Bradley Financial Services Perspectives", code: "BRD", color: "#a5d8ff" },
+  bradley_eye_on_enforcement: { label: "Bradley Eye on Enforcement", code: "BRD", color: "#a5d8ff" },
+  gibson_dunn_securities_regulation_monitor: { label: "Gibson Dunn Securities Regulation Monitor", code: "GD", color: "#a5d8ff" },
+  the_record: { label: "The Record", code: "REC", color: "#ff922b" },
+  wired_security: { label: "WIRED Security", code: "WRD", color: "#f783ac" },
+  ritholtz_big_picture: { label: "The Big Picture", code: "RIT", color: "#ffd43b" },
+  ft_portfolios_market_commentary: { label: "First Trust Market Commentary", code: "FT", color: "#b197fc" },
+  wealth_of_common_sense: { label: "A Wealth of Common Sense", code: "AWC", color: "#ffc078" },
   dark_reading: { label: "Dark Reading", code: "DARK", color: "#b197fc" },
   securityweek: { label: "SecurityWeek", code: "SECW", color: "#91a7ff" },
   microsoft_security_blog: { label: "Microsoft Security Blog", code: "MSFT", color: "#69db7c" },
@@ -223,7 +271,74 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "REDDIT", label: "Reddit" },
 ];
 
-function getFeedMeta(feedKey: string): FeedMeta {
+const TRADE_MEDIA_FEED_KEYS = new Set([
+  "the_record",
+  "wired_security",
+  "tripwire_state_of_security",
+  "akamai_blog",
+  "krebs_on_security",
+  "the_hacker_news",
+  "welivesecurity",
+  "sophos_security_operations",
+  "flashpoint_blog",
+  "recorded_future",
+  "intel471_blog",
+]);
+
+const SOURCE_LABEL_ACRONYMS = new Set([
+  "ai",
+  "api",
+  "cfpb",
+  "cftc",
+  "cisa",
+  "cls",
+  "cnbc",
+  "finra",
+  "ft",
+  "ftc",
+  "ipo",
+  "nyc",
+  "nyt",
+  "occ",
+  "rss",
+  "sec",
+  "wsj",
+]);
+
+function cleanSourceLabel(value: string | null | undefined): string {
+  return decodeEntities(value || "").replace(/\s+/g, " ").trim();
+}
+
+function labelFromFeedKey(feedKey: string): string {
+  const key = String(feedKey || "").trim();
+  if (!key) return "";
+  return key
+    .replace(/^rss_/, "")
+    .replace(/^www_/, "")
+    .split(/[_-]+/g)
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part && !["com", "org", "net", "xml", "rss", "feed", "feeds", "services"].includes(part))
+    .map((part) => SOURCE_LABEL_ACRONYMS.has(part) ? part.toUpperCase() : `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function sourceCodeFromLabel(label: string, fallback: string): string {
+  const words = label.match(/[a-z0-9]+/gi) || [];
+  const acronym = words
+    .filter((word) => !["the", "and", "of", "for"].includes(word.toLowerCase()))
+    .map((word) => word.charAt(0))
+    .join("")
+    .toUpperCase()
+    .slice(0, 5);
+  return acronym || fallback.slice(0, 4).toUpperCase() || "SRC";
+}
+
+function getFeedMeta(feedKey: string, feedLabel?: string | null): FeedMeta {
+  const cleanFeedLabel = cleanSourceLabel(feedLabel);
+  const known = FEED_META[feedKey];
+  if (known) {
+    return cleanFeedLabel && cleanFeedLabel !== feedKey ? { ...known, label: cleanFeedLabel } : known;
+  }
   if (feedKey.startsWith("document_")) {
     const sourceKind = feedKey.replace(/^document_/, "");
     const normalized = sourceKind.replace(/[_-]+/g, " ").trim();
@@ -239,20 +354,55 @@ function getFeedMeta(feedKey: string): FeedMeta {
       color: "#4fd5ff",
     };
   }
-  return FEED_META[feedKey] ?? {
-    label: feedKey,
-    code: feedKey.slice(0, 4).toUpperCase(),
+  const label = cleanFeedLabel || labelFromFeedKey(feedKey) || feedKey || "Unknown";
+  return {
+    label,
+    code: sourceCodeFromLabel(label, feedKey),
     color: "#8fa7c8",
   };
 }
 
+function isDeepSeekFeedAnalysis(analysis: FeedItemAnalysis | undefined): boolean {
+  return String(analysis?.model || "").trim().toLowerCase().startsWith("deepseek");
+}
+
+function shouldRegenerateFeedAnalysis(analysis: FeedItemAnalysis | undefined): boolean {
+  return Boolean(analysis) && (Boolean(analysis?.fallback) || !isDeepSeekFeedAnalysis(analysis));
+}
+
+function feedAnalysisModelLabel(analysis: FeedItemAnalysis | undefined): string {
+  const model = String(analysis?.model || "").trim();
+  if (!model) return "not recorded";
+  return analysis?.fallback ? `${model} fallback` : model;
+}
+
+function feedAnalysisModelTitle(analysis: FeedItemAnalysis | undefined): string {
+  const model = String(analysis?.model || "").trim();
+  if (!model) return "Model was not recorded for this analysis.";
+  const fallback = analysis?.fallback ? " fallback" : "";
+  return `Model used: ${model}${fallback}`;
+}
+
+function hostedModelLabel(model: string, fallback = false): string {
+  const normalized = String(model || "").trim();
+  if (!normalized) return "not recorded";
+  return fallback ? `${normalized} fallback` : normalized;
+}
+
+function hostedModelTitle(model: string, fallback = false): string {
+  const normalized = String(model || "").trim();
+  if (!normalized) return "Model was not recorded for this enrichment.";
+  return `Model used: ${normalized}${fallback ? " fallback" : ""}`;
+}
+
 function feedSourceLabel(article: FeedItem, source: FeedMeta): string {
-  const organization = decodeEntities(article.organization || "").trim();
-  const author = decodeEntities(article.author || "").trim();
+  const organization = cleanSourceLabel(article.organization);
+  const author = cleanSourceLabel(article.author);
+  const feedLabel = cleanSourceLabel(article.feed_label);
   if (organization.toLowerCase() === "news" && author) {
     return author;
   }
-  return decodeEntities(organization || source.label || article.feed_key || "Unknown");
+  return organization || feedLabel || source.label || labelFromFeedKey(article.feed_key) || "Unknown";
 }
 
 function isNewsApiArticle(article: FeedItem): boolean {
@@ -288,9 +438,10 @@ function SourceProvenanceChip({ article }: { article: FeedItem }) {
 }
 
 function articleSourceText(article: FeedItem): string {
-  const source = getFeedMeta(article.feed_key);
+  const source = getFeedMeta(article.feed_key, article.feed_label);
   return [
     article.feed_key,
+    article.feed_label ?? "",
     source.label,
     article.organization ?? "",
     article.author ?? "",
@@ -453,6 +604,9 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     );
   }
   if (sourceFilter === "TRADE_MEDIA") {
+    if (TRADE_MEDIA_FEED_KEYS.has(feedKey)) {
+      return true;
+    }
     return [
       "jdsupra_article",
       "investmentnews_article",
@@ -713,7 +867,7 @@ function FullArticleModal({
     : detail?.content.full_text
       ? detail.content.full_text.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)
       : [];
-  const sourceLabel = feedSourceLabel(article, getFeedMeta(article.feed_key));
+  const sourceLabel = feedSourceLabel(article, getFeedMeta(article.feed_key, article.feed_label));
 
   return (
     <div
@@ -845,7 +999,7 @@ function analysisMapFromFeedItems(items: FeedItem[]): Record<string, FeedItemAna
   const out: Record<string, FeedItemAnalysis> = {};
   for (const item of items) {
     const analysis = toFeedItemAnalysis(item.analysis);
-    if (analysis) {
+    if (analysis && !shouldRegenerateFeedAnalysis(analysis)) {
       out[savedArticleId(item)] = analysis;
     }
   }
@@ -891,6 +1045,7 @@ function documentToFeedItem(document: DocumentListItem): FeedItem {
     organization: document.organization,
     source_kind: document.source_kind,
     doc_type: document.doc_type,
+    enrichment_model: document.enrichment_model || "",
     topics: document.topics || [],
     keywords: document.keywords || [],
   };
@@ -919,6 +1074,67 @@ function TopicPill({ label }: { label: string }) {
     >
       {label}
     </span>
+  );
+}
+
+function finraFirmMatches(article: FeedItem): string[] {
+  return Array.isArray(article.matched_finra_firms)
+    ? article.matched_finra_firms.map(String).filter(Boolean)
+    : [];
+}
+
+function FinraFirmMatchPills({ firms }: { firms: string[] }) {
+  if (firms.length === 0) return null;
+
+  return (
+    <>
+      {firms.slice(0, 2).map((firm) => (
+        <span
+          key={firm}
+          title={`FINRA member firm match: ${firm}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            border: "1px solid rgba(184, 143, 255, 0.58)",
+            borderRadius: 4,
+            padding: "2px 6px",
+            maxWidth: 220,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            fontSize: 10,
+            lineHeight: 1.2,
+            letterSpacing: "0.08em",
+            color: "#d4c4ff",
+            background: "rgba(137, 87, 229, 0.16)",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          FINRA Firm: {firm}
+        </span>
+      ))}
+      {firms.length > 2 ? (
+        <span
+          title={firms.slice(2).join(", ")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            border: "1px solid rgba(184, 143, 255, 0.42)",
+            borderRadius: 4,
+            padding: "2px 6px",
+            fontSize: 10,
+            lineHeight: 1.2,
+            letterSpacing: "0.08em",
+            color: "#bea8f5",
+            background: "rgba(137, 87, 229, 0.12)",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          +{firms.length - 2}
+        </span>
+      ) : null}
+    </>
   );
 }
 
@@ -1019,9 +1235,17 @@ function FeedRow({
   onOpenFullArticle?: () => void;
   compact?: boolean;
 }) {
-  const source = getFeedMeta(article.feed_key);
+  const source = getFeedMeta(article.feed_key, article.feed_label);
   const sourceLabel = feedSourceLabel(article, source);
   const visibleTopics = matchedTopics.slice(0, 3);
+  const matchedFirms = finraFirmMatches(article);
+  const hasFirmMatch = matchedFirms.length > 0;
+  const rowBackground = active
+    ? "rgba(67, 112, 186, 0.08)"
+    : hasFirmMatch
+      ? "rgba(137, 87, 229, 0.07)"
+      : "transparent";
+  const rowAccent = hasFirmMatch ? "inset 3px 0 0 rgba(184, 143, 255, 0.72)" : undefined;
   const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
   const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
   const analysisButtonStyle = {
@@ -1045,7 +1269,8 @@ function FeedRow({
           gap: 10,
           padding: "12px 0",
           borderTop: "1px solid rgba(112, 142, 187, 0.12)",
-          background: active ? "rgba(67, 112, 186, 0.08)" : "transparent",
+          background: rowBackground,
+          boxShadow: rowAccent,
           cursor: "pointer",
           minWidth: 0,
         }}
@@ -1092,6 +1317,7 @@ function FeedRow({
           {visibleTopics.map((topic) => (
             <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
           ))}
+          <FinraFirmMatchPills firms={matchedFirms} />
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1131,7 +1357,8 @@ function FeedRow({
         alignItems: "start",
         padding: "10px 0",
         borderTop: "1px solid rgba(112, 142, 187, 0.12)",
-        background: active ? "rgba(67, 112, 186, 0.08)" : "transparent",
+        background: rowBackground,
+        boxShadow: rowAccent,
         cursor: "pointer",
       }}
       onClick={onSelect}
@@ -1196,6 +1423,7 @@ function FeedRow({
         {visibleTopics.map((topic) => (
           <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
         ))}
+        <FinraFirmMatchPills firms={matchedFirms} />
       </div>
       <BookmarkButton saved={saved} onToggle={onToggleSave} />
     </div>
@@ -1223,9 +1451,13 @@ function FeaturedCard({
   onOpenFullArticle?: () => void;
   compact?: boolean;
 }) {
-  const source = getFeedMeta(article.feed_key);
+  const source = getFeedMeta(article.feed_key, article.feed_label);
   const sourceLabel = feedSourceLabel(article, source);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
+  const matchedFirms = finraFirmMatches(article);
+  const hasFirmMatch = matchedFirms.length > 0;
+  const firmMatchBackground = hasFirmMatch ? "rgba(137, 87, 229, 0.06)" : "transparent";
+  const firmMatchAccent = hasFirmMatch ? "inset 3px 0 0 rgba(184, 143, 255, 0.72)" : undefined;
   const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
@@ -1251,6 +1483,8 @@ function FeaturedCard({
           display: "grid",
           gap: 11,
           minWidth: 0,
+          background: firmMatchBackground,
+          boxShadow: firmMatchAccent,
         }}
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
@@ -1289,6 +1523,7 @@ function FeaturedCard({
           {matchedTopics.slice(0, 4).map((topic) => (
             <TopicPill key={`${article.id}_${topic.topic_key}`} label={topic.label} />
           ))}
+          <FinraFirmMatchPills firms={matchedFirms} />
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", color: "#8da0bc", fontSize: 11 }}>
@@ -1334,6 +1569,8 @@ function FeaturedCard({
         borderBottom: "1px solid rgba(112, 142, 187, 0.16)",
         padding: "14px 0 18px",
         marginBottom: 4,
+        background: firmMatchBackground,
+        boxShadow: firmMatchAccent,
       }}
     >
       <div
@@ -1417,6 +1654,14 @@ function FeaturedCard({
           <div style={{ color: "#d7e1ef" }}>
             {matchedTopics.length > 0 ? matchedTopics.map((topic) => topic.label).join(", ") : "Unmapped"}
           </div>
+          {matchedFirms.length > 0 ? (
+            <>
+              <div style={{ letterSpacing: "0.12em", textTransform: "uppercase", color: "#5e708a" }}>FINRA Firms</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <FinraFirmMatchPills firms={matchedFirms} />
+              </div>
+            </>
+          ) : null}
         </div>
         <BookmarkButton saved={saved} onToggle={onToggleSave} size={16} />
       </div>
@@ -1473,14 +1718,19 @@ function FeedAnalysisPanel({
   retry: () => void;
   compact?: boolean;
 }) {
-  const source = getFeedMeta(article.feed_key);
+  const source = getFeedMeta(article.feed_key, article.feed_label);
   const sourceLabel = feedSourceLabel(article, source);
   const primaryAnalysis = pickPrimaryAnalysis(detail);
   const tone = article.tone_label && TONE_STYLE[article.tone_label] ? article.tone_label : "neutral";
   const decodedDescription = decodeEntities(article.description || "");
   const topicLabels = matchedTopics.map((topic) => topic.label);
+  const matchedFirms = finraFirmMatches(article);
   const articleSummary = decodedDescription || "No feed summary is available for this article yet.";
-  const analysisModel = analysis?.fallback ? `${analysis.model} fallback` : analysis?.model;
+  const analysisModel = feedAnalysisModelLabel(analysis);
+  const analysisModelTitle = feedAnalysisModelTitle(analysis);
+  const documentModel = detail?.enrichment.model || article.enrichment_model || "";
+  const documentModelLabel = hostedModelLabel(documentModel, detail?.enrichment.status === "fallback_enriched");
+  const documentModelTitle = hostedModelTitle(documentModel, detail?.enrichment.status === "fallback_enriched");
   const mainGridColumns = compact ? "1fr" : "minmax(0,1.45fr) minmax(220px,0.55fr)";
   const twoColumnGrid = compact ? "1fr" : "repeat(2, minmax(0, 1fr))";
   const threeColumnGrid = compact ? "1fr" : "repeat(3, minmax(0, 1fr))";
@@ -1500,7 +1750,8 @@ function FeedAnalysisPanel({
           <span className={analysisChipClass(tone)}>Tone: {TONE_STYLE[tone].label}</span>
           <span className="tone-chip">Source: {sourceLabel}</span>
           <SourceProvenanceChip article={article} />
-          {analysisModel ? <span className="tone-chip">Model: {analysisModel}</span> : null}
+          <FinraFirmMatchPills firms={matchedFirms} />
+          <span className="tone-chip" title={analysisModelTitle}>Model: {analysisModel}</span>
         </div>
         <p style={{ marginTop: 10, color: "#dbe7f5", fontSize: 14, fontWeight: 700, lineHeight: 1.55 }}>
           {analysis.thesis}
@@ -1586,6 +1837,7 @@ function FeedAnalysisPanel({
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <span className={statusClass(detail.enrichment.status)}>{detail.enrichment.status || "not_enriched"}</span>
             <span className="tone-chip">Review: {detail.review.decision || "pending"}</span>
+            <span className="tone-chip" title={documentModelTitle}>Model: {documentModelLabel}</span>
             {primaryAnalysis.kind === "position" ? (
               <span className={analysisChipClass(primaryAnalysis.tone)}>
                 Position: {formatAnalysisLabel(primaryAnalysis.label)}
@@ -1638,6 +1890,16 @@ function FeedAnalysisPanel({
           </p>
           {renderAnalysisChips(topicLabels, "No mapped topics")}
         </div>
+        {matchedFirms.length > 0 ? (
+          <div>
+            <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              FINRA Firm Matches
+            </p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <FinraFirmMatchPills firms={matchedFirms} />
+            </div>
+          </div>
+        ) : null}
         <div>
           <p style={{ marginBottom: 6, color: "#60738f", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
             Follow-Up
@@ -1746,8 +2008,13 @@ export function IntelBetaDashboard({
 
   useEffect(() => {
     const savedAnalyses = analysisMapFromFeedItems(feedItems);
-    if (Object.keys(savedAnalyses).length === 0) return;
-    setFeedAnalyses((prev) => ({ ...savedAnalyses, ...prev }));
+    setFeedAnalyses((prev) => {
+      const current = Object.fromEntries(Object.entries(prev).filter(([, analysis]) => !shouldRegenerateFeedAnalysis(analysis)));
+      if (Object.keys(savedAnalyses).length === 0 && Object.keys(current).length === Object.keys(prev).length) {
+        return prev;
+      }
+      return { ...savedAnalyses, ...current };
+    });
   }, [feedItems]);
 
   useEffect(() => {
@@ -1757,7 +2024,7 @@ export function IntelBetaDashboard({
 
     const poll = async () => {
       try {
-        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}`);
+        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}&includeDocuments=0`);
         if (!res.ok) { errStreak++; }
         else {
           const json = (await res.json()) as {
@@ -1874,10 +2141,11 @@ export function IntelBetaDashboard({
     }
   }, [docDetailLoading, docDetails]);
 
-  const loadFeedAnalysis = useCallback(async (article: FeedItem) => {
+  const loadFeedAnalysis = useCallback(async (article: FeedItem, force = false) => {
     const itemKey = savedArticleId(article);
-    if (feedAnalyses[itemKey] || feedAnalysisLoading[itemKey]) return;
-    const source = getFeedMeta(article.feed_key);
+    if ((!force && feedAnalyses[itemKey]) || feedAnalysisLoading[itemKey]) return;
+    const source = getFeedMeta(article.feed_key, article.feed_label);
+    const sourceLabel = feedSourceLabel(article, source);
     const topics = topicIndex.topicMatchesByArticleId.get(article.id)?.map((topic) => topic.label) ?? [];
 
     setFeedAnalysisLoading((prev) => ({ ...prev, [itemKey]: true }));
@@ -1891,7 +2159,7 @@ export function IntelBetaDashboard({
           title: decodeEntities(article.title || ""),
           description: decodeEntities(article.description || ""),
           url: article.url || "",
-          source: article.organization || source.label,
+          source: sourceLabel,
           author: article.author || "",
           published_at: feedItemDate(article),
           tone_label: article.tone_label || "",
@@ -1918,8 +2186,8 @@ export function IntelBetaDashboard({
       return { ...prev, [key]: shouldOpen };
     });
 
-    if (!feedAnalyses[key] && !feedAnalysisLoading[key]) {
-      void loadFeedAnalysis(article);
+    if ((!feedAnalyses[key] || shouldRegenerateFeedAnalysis(feedAnalyses[key])) && !feedAnalysisLoading[key]) {
+      void loadFeedAnalysis(article, Boolean(feedAnalyses[key]));
     }
     if (article.item_type === "document" && article.document_id && !docDetails[article.document_id] && !docDetailLoading[article.document_id]) {
       void loadDocDetail(article.document_id);
@@ -1951,14 +2219,15 @@ export function IntelBetaDashboard({
   }, [fullArticleDocId]);
 
   const toggleArticleSave = (article: FeedItem) => {
-    const source = getFeedMeta(article.feed_key);
+    const source = getFeedMeta(article.feed_key, article.feed_label);
+    const sourceLabel = feedSourceLabel(article, source);
     const primaryTopic = topicIndex.topicMatchesByArticleId.get(article.id)?.[0]?.label;
     savedItems.toggle({
       id: savedArticleId(article),
       type: article.item_type === "document" ? "doc" : "article",
       title: decodeEntities(article.title || "Untitled article"),
       url: article.url,
-      source: article.organization || source.label,
+      source: sourceLabel,
       topic: primaryTopic,
       metadata: {
         feedKey: article.feed_key,
@@ -2317,7 +2586,7 @@ export function IntelBetaDashboard({
                           analysis={feedAnalyses[itemKey]}
                           analysisLoading={itemAnalysisLoading}
                           analysisError={itemAnalysisError}
-                          retryAnalysis={() => void loadFeedAnalysis(article)}
+                          retryAnalysis={() => void loadFeedAnalysis(article, true)}
                           detail={docId ? docDetails[docId] : undefined}
                           loading={detailLoading}
                           error={detailError}

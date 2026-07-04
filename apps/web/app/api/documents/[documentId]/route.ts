@@ -38,6 +38,7 @@ export async function GET(
       },
       enrichment: {
         status: String(enrichEntry?.status || "not_enriched"),
+        model: String(enrichEntry?.model || ""),
         summary: String(enrichEntry?.enrichment?.summary || ""),
         tags: Array.isArray(enrichEntry?.enrichment?.tags) ? enrichEntry?.enrichment?.tags : [],
         keywords: Array.isArray(enrichEntry?.enrichment?.keywords) ? enrichEntry?.enrichment?.keywords : [],

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
+  deleteBlockedRssArticles,
   getRecapSettings,
   getTopicRules,
   getRecentArticles,
@@ -10,6 +11,7 @@ import { loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-stor
 import { getOpenAiConfig } from "@/lib/server/env";
 import { getTopicMatches, normalizeTopicRules, type TopicRuleView } from "@/lib/intel-topic-matching";
 import { getClientIp, getGenerateGlobalLimiter, getGenerateIpLimiter, isRateLimited } from "@/lib/server/rate-limit";
+import { isAllowedRssArticleForIngestion } from "@/lib/server/rss-ingestion-filter";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -151,9 +153,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const rules = normalizeTopicRules(rawRules);
     const selectedRules = rules.filter((r) => selectedTopicKeys.includes(r.topic_key));
+    await deleteBlockedRssArticles(rawRules).catch((error) => {
+      console.error("[recap/generate] RSS policy cleanup failed:", error);
+      return 0;
+    });
+    const articlesForRecap = articles.filter((article) => isAllowedRssArticleForIngestion(article.feed_key, {
+      guid: article.guid,
+      title: article.title,
+      url: article.url,
+      description: article.description,
+      author: article.author,
+      publishedAt: article.published_at ? new Date(article.published_at) : null,
+    }, rawRules));
 
     // RSS articles — matched by title keyword (strict threshold)
-    const articleItems: RecapItem[] = articles.map((a) => ({
+    const articleItems: RecapItem[] = articlesForRecap.map((a) => ({
       title: a.title,
       description: a.description ?? "",
       url: a.url,

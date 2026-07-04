@@ -39,6 +39,7 @@ const SOURCE_KIND_TO_ORG: Record<string, string> = {
   liberty_street_economics_article: "trade_media",
   wealth_of_common_sense_article: "trade_media",
   congress_crs_product: "congress",
+  substack_public_article: "substack",
 };
 
 const ORG_LABELS: Record<string, string> = {
@@ -59,6 +60,7 @@ const ORG_LABELS: Record<string, string> = {
   lsta: "LSTA",
   trade_media: "Trade Media",
   congress: "Congress",
+  substack: "Substack",
 };
 
 export async function GET(): Promise<NextResponse> {

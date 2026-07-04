@@ -8,18 +8,69 @@ import {
 } from "@/lib/server/data-store";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
 import {
+  deleteBlockedRssArticles,
+  deleteInvalidCouponArticles,
+  deleteNonEnglishPrNewswireArticles,
   ensureSchema,
   getFeeds,
   getRecentArticles,
+  markFeedRefreshed,
   getTopicRules,
   upsertRssArticles,
   type StoredRssArticle,
   type StoredRssTopicRule,
 } from "@/lib/server/neon";
 import { getClientIp, getFeedLimiter, isRateLimited } from "@/lib/server/rate-limit";
+import {
+  filterRssArticlesForIngestion,
+  isAllowedRssArticleForIngestion,
+  rssFetchLimitForFeed,
+  shouldKeywordFilterFeed,
+} from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 
 export const dynamic = "force-dynamic";
+
+const DEFAULT_FEED_LIMIT = 500;
+const MAX_FEED_LIMIT = 1000;
+const COUPON_SPAM_PATTERN = /\b(?:promo[\s-]*codes?|coupon(?:s|[\s-]*codes?)|discount[\s-]*(?:codes?|coupons?))\b/i;
+
+function isInvalidCouponArticle(article: StoredRssArticle): boolean {
+  return COUPON_SPAM_PATTERN.test(`${article.title || ""} ${article.url || ""} ${article.description || ""}`);
+}
+
+function isInvalidCouponDocument(doc: { source_kind?: string; title?: string; url?: string; tags?: string[]; keywords?: string[] }): boolean {
+  if (String(doc.source_kind || "") !== "wired_article") {
+    return false;
+  }
+  return COUPON_SPAM_PATTERN.test(
+    [
+      doc.title || "",
+      doc.url || "",
+      ...(Array.isArray(doc.tags) ? doc.tags : []),
+      ...(Array.isArray(doc.keywords) ? doc.keywords : []),
+    ].join(" ")
+  );
+}
+
+function passesRssPolicy(article: StoredRssArticle, topicRules: StoredRssTopicRule[]): boolean {
+  return isAllowedRssArticleForIngestion(article.feed_key, {
+    guid: article.guid,
+    title: article.title,
+    url: article.url,
+    description: article.description,
+    author: article.author,
+    publishedAt: article.published_at ? new Date(article.published_at) : null,
+  }, topicRules);
+}
+
+function parseFeedLimit(value: string | null): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_FEED_LIMIT;
+  }
+  return Math.max(0, Math.min(parsed, MAX_FEED_LIMIT));
+}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(req.headers);
@@ -28,11 +79,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const { searchParams } = req.nextUrl;
-  const limit = Math.min(Number(searchParams.get("limit") ?? "100"), 400);
+  const limit = parseFeedLimit(searchParams.get("limit"));
   const feedKey = searchParams.get("feedKey") ?? undefined;
   const sinceParam = searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : undefined;
   const refresh = searchParams.get("refresh") === "1";
+  const includeDocuments = searchParams.get("includeDocuments") === "1";
 
   try {
     let articles: StoredRssArticle[] = [];
@@ -40,11 +92,23 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (process.env.DATABASE_URL) {
       await ensureSchema();
-
-      [articles, topicRules] = await Promise.all([
-        getRecentArticles({ limit, feedKey, since }),
-        getTopicRules(true),
+      await deleteInvalidCouponArticles().catch((error) => {
+        console.error("[intel/feed] coupon cleanup failed:", error);
+        return 0;
+      });
+      topicRules = await getTopicRules(true);
+      await Promise.all([
+        deleteNonEnglishPrNewswireArticles().catch((error) => {
+          console.error("[intel/feed] PR Newswire language cleanup failed:", error);
+          return 0;
+        }),
+        deleteBlockedRssArticles(topicRules).catch((error) => {
+          console.error("[intel/feed] RSS policy cleanup failed:", error);
+          return 0;
+        }),
       ]);
+
+      articles = await getRecentArticles({ limit, feedKey, since });
 
       const latestFetchedAt = articles.reduce((max, a) => {
         const t = a.fetched_at ? new Date(a.fetched_at).getTime() : 0;
@@ -54,12 +118,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const needsRefresh = refresh && !feedKey && !since && ageMs > 8 * 60_000;
 
       if (needsRefresh) {
-        const activeFeeds = await getFeeds(true);
+        const activeFeeds = await getFeeds(true, { dueOnly: true });
+        const refreshTopicRules = activeFeeds.some((feed) => shouldKeywordFilterFeed(feed.feed_key))
+          ? topicRules
+          : [];
         let insertedCount = 0;
         const refreshResults = await Promise.allSettled(
           activeFeeds.map(async (feed) => {
-            const feedArticles = await fetchRssFeed(feed.feed_url, 50);
-            return upsertRssArticles(feedArticles, feed.feed_key);
+            try {
+              const feedArticles = await fetchRssFeed(feed.feed_url, rssFetchLimitForFeed(feed.feed_key));
+              const filteredArticles = filterRssArticlesForIngestion(feed.feed_key, feedArticles, refreshTopicRules);
+              return upsertRssArticles(filteredArticles.articles, feed.feed_key);
+            } finally {
+              await markFeedRefreshed(feed.feed_key).catch((error) => {
+                console.error(`[intel/feed] failed to mark feed refreshed for ${feed.feed_key}:`, error);
+              });
+            }
           })
         );
         for (const result of refreshResults) {
@@ -73,15 +147,27 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         if (insertedCount > 0 && analysisLimit > 0) {
           await analyzeMissingRssArticles(analysisLimit);
         }
+        await deleteBlockedRssArticles(topicRules).catch((error) => {
+          console.error("[intel/feed] post-refresh RSS policy cleanup failed:", error);
+          return 0;
+        });
         articles = await getRecentArticles({ limit, feedKey, since });
       }
     }
 
-    const [corpusDocs, enrichment] = await Promise.all([
-      loadCorpusDocuments(),
-      loadEnrichmentState(),
-    ]);
-    const documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment));
+    articles = articles.filter((article) => (
+      !isInvalidCouponArticle(article) &&
+      passesRssPolicy(article, topicRules)
+    ));
+    let documents: ReturnType<typeof selectNewsFeedDocuments> = [];
+    if (includeDocuments) {
+      const [corpusDocs, enrichment] = await Promise.all([
+        loadCorpusDocuments(),
+        loadEnrichmentState(),
+      ]);
+      documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment))
+        .filter((doc) => !isInvalidCouponDocument(doc));
+    }
 
     return NextResponse.json(
       {

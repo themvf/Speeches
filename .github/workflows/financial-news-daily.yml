@@ -31,6 +31,8 @@ jobs:
       NEWSAPI_API_KEY: ${{ secrets.NEWSAPI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      ENRICH_MODEL: deepseek-v4-flash
       INGEST_LIMIT: ${{ github.event.inputs.ingest_limit || '' }}
       LOOKBACK_DAYS_OVERRIDE: ${{ github.event.inputs.lookback_days || '' }}
 
@@ -102,26 +104,18 @@ jobs:
           print(json.dumps(payload, indent=2))
           PY
 
-      - name: Write Skipped Enrichment Summary
+      - name: Run Financial News Enrichment
         if: steps.timegate.outputs.run_now == 'true'
         run: |
-          python - <<'PY'
-          import json
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          payload = {
-              "mode": "enrich",
-              "skipped": True,
-              "reason": "automatic_enrichment_paused",
-              "ran_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-              "processed_count": 0,
-              "enriched_count": 0,
-              "fallback_enriched_count": 0,
-          }
-          Path("financial_news_enrich_summary.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-          print(json.dumps(payload, indent=2))
-          PY
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --source-kind newsapi_article \
+            --mode all \
+            --doc-ids-from-summary financial_news_ingest_summary.json \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --summary-path financial_news_enrich_summary.json
 
       - name: Upload Summaries
         if: always() && steps.timegate.outputs.run_now == 'true'

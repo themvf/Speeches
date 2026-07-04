@@ -1,6 +1,10 @@
 import { type NextRequest } from "next/server";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
-import { generateFeedAnalysis, type FeedAnalysisInput } from "@/lib/server/feed-analysis";
+import {
+  generateFeedAnalysis,
+  shouldRefreshFeedAnalysisForDeepSeek,
+  type FeedAnalysisInput,
+} from "@/lib/server/feed-analysis";
 import {
   getRssArticleById,
   rssArticleSourceHash,
@@ -8,6 +12,7 @@ import {
   saveRssArticleAnalysisFailure,
 } from "@/lib/server/neon";
 import { getClientIp, getGenerateGlobalLimiter, getGenerateIpLimiter, isRateLimited } from "@/lib/server/rate-limit";
+import { rssFeedLabel } from "@/lib/server/rss-fetcher";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -41,7 +46,11 @@ export async function POST(req: NextRequest) {
         return fail("RSS article not found.", "RSS_ARTICLE_NOT_FOUND", 404, requestId);
       }
       const currentHash = rssArticleSourceHash(article);
-      if (article.analysis?.status === "enriched" && article.analysis.source_hash === currentHash) {
+      if (
+        article.analysis?.status === "enriched" &&
+        article.analysis.source_hash === currentHash &&
+        !shouldRefreshFeedAnalysisForDeepSeek(article.analysis)
+      ) {
         return ok({ analysis: article.analysis, saved: true }, requestId);
       }
 
@@ -49,7 +58,7 @@ export async function POST(req: NextRequest) {
         title: normalizeText(article.title).slice(0, 400),
         description: normalizeText(article.description).slice(0, 8000),
         url: normalizeText(article.url).slice(0, 1000),
-        source: normalizeText(body.source || article.feed_key).slice(0, 200),
+        source: normalizeText(body.source || article.feed_label || rssFeedLabel(article.feed_key) || article.feed_key).slice(0, 200),
         author: normalizeText(article.author).slice(0, 200),
         published_at: normalizeText(article.published_at || article.fetched_at).slice(0, 80),
         tone_label: normalizeText(article.tone_label).slice(0, 40),
