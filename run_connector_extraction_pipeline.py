@@ -77,6 +77,23 @@ TRADE_ASSOCIATION_CONNECTORS = {
     "lsta_news_item",
 }
 
+CJK_LANGUAGE_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")
+GENERAL_LITIGATION_RE = re.compile(
+    r"\b(?:lawsuit|litigation|legal\s+battle|court\s+battle|sues|sued|suing|class\s+action|"
+    r"complaint\s+filed|files?\s+(?:a\s+)?suit|filed\s+(?:a\s+)?lawsuit|settlement\s+agreement|"
+    r"settles?\s+(?:lawsuit|claims?|case)|trial\s+opens?|judge\s+(?:rules|rejects|dismisses)|"
+    r"appeals?\s+court)\b",
+    re.IGNORECASE,
+)
+LITIGATION_ALLOWED_RE = re.compile(
+    r"\b(?:securities|security-based|securities\s+act|exchange\s+act|sec|securities\s+and\s+exchange\s+commission|"
+    r"investor|shareholder|broker-dealer|investment\s+adviser|investment\s+advisor|crypto|cryptocurrency|"
+    r"digital\s+asset|tokenized|token|stablecoin|bitcoin|ethereum|blockchain|defi|fintech|technology|tech|"
+    r"software|platform|artificial\s+intelligence|ai|cybersecurity|data\s+breach|privacy|ransomware|"
+    r"malware|hack(?:ed|er|ers|ing)?|antitrust)\b",
+    re.IGNORECASE,
+)
+
 SUPPORTED_CONNECTORS = {
     "sec_speech",
     "sec_tm_faq",
@@ -388,6 +405,90 @@ def _build_existing_custom_record_map(custom_payload: Dict[str, Any]) -> Dict[st
     return out
 
 
+def _cjk_language_match(value: str) -> bool:
+    text = str(value or "")
+    matches = CJK_LANGUAGE_RE.findall(text)
+    if not matches:
+        return False
+    ascii_letters = len(re.findall(r"[A-Za-z]", text))
+    visible_chars = len([char for char in text if not char.isspace()])
+    ratio = len(matches) / visible_chars if visible_chars else 0.0
+    return len(matches) >= 4 and (ascii_letters < 6 or len(matches) >= ascii_letters or ratio >= 0.18)
+
+
+def _entry_quality_text(entry: Dict[str, Any]) -> str:
+    return " ".join(
+        _normalize_space(entry.get(key, ""))
+        for key in [
+            "title",
+            "summary",
+            "description",
+            "teaser",
+            "content_snippet",
+            "full_text",
+            "url",
+            "source_name",
+            "author",
+        ]
+        if _normalize_space(entry.get(key, ""))
+    )
+
+
+def _is_cjk_language_entry(entry: Dict[str, Any]) -> bool:
+    return _cjk_language_match(_entry_quality_text(entry))
+
+
+def _is_disallowed_general_litigation_entry(entry: Dict[str, Any]) -> bool:
+    text = _entry_quality_text(entry)
+    return bool(GENERAL_LITIGATION_RE.search(text) and not LITIGATION_ALLOWED_RE.search(text))
+
+
+def _is_blocked_extraction_entry(entry: Dict[str, Any]) -> Tuple[bool, str]:
+    if _is_cjk_language_entry(entry):
+        return True, "cjk_language"
+    if _is_disallowed_general_litigation_entry(entry):
+        return True, "general_litigation"
+    return False, ""
+
+
+def _is_cjk_custom_record(item: Dict[str, Any]) -> bool:
+    metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+    content = item.get("content", {}) if isinstance(item.get("content", {}), dict) else {}
+    text = " ".join(
+        _normalize_space(value)
+        for value in [
+            metadata.get("title", ""),
+            metadata.get("summary", ""),
+            metadata.get("source_name", ""),
+            metadata.get("speaker", ""),
+            str(content.get("full_text", "") or "")[:2000],
+        ]
+        if _normalize_space(value)
+    )
+    return _cjk_language_match(text)
+
+
+def _remove_cjk_language_records(custom_payload: Dict[str, Any]) -> int:
+    docs_list = custom_payload.get("documents", [])
+    if not isinstance(docs_list, list):
+        return 0
+
+    kept: List[Dict[str, Any]] = []
+    removed = 0
+    for item in docs_list:
+        if not isinstance(item, dict):
+            kept.append(item)
+            continue
+        if _is_cjk_custom_record(item):
+            removed += 1
+            continue
+        kept.append(item)
+
+    if removed:
+        custom_payload["documents"] = kept
+    return removed
+
+
 def _remove_duplicate_bloomberg_records(custom_payload: Dict[str, Any]) -> int:
     docs_list = custom_payload.get("documents", [])
     if not isinstance(docs_list, list):
@@ -565,6 +666,9 @@ def _build_bloomberg_article_record(
     base_url: str,
     source_kind: str = "bloomberg_public_article",
 ) -> Dict[str, Any]:
+    if _is_cjk_language_entry(entry):
+        raise RuntimeError("Blocked CJK-language Bloomberg article.")
+
     src_url = str(entry.get("url", "") or "").strip()
     extraction_error = str(entry.get("extraction_error", "") or "").strip()
     if extraction_error:
@@ -2132,6 +2236,19 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     else:
         filtered_discovered = list(discovered)
 
+    blocked_extraction_count = 0
+    quality_filtered_discovered: List[Dict[str, Any]] = []
+    for entry in filtered_discovered:
+        blocked, reason = _is_blocked_extraction_entry(entry)
+        if blocked:
+            skipped_entry = dict(entry)
+            skipped_entry["exclude_reason"] = reason
+            excluded.append(skipped_entry)
+            blocked_extraction_count += 1
+            continue
+        quality_filtered_discovered.append(entry)
+    filtered_discovered = quality_filtered_discovered
+
     status_counts = {"new": 0, "update_available": 0, "existing": 0, "existing_in_speeches": 0}
     for entry in filtered_discovered:
         key = core._url_match_key(entry.get("url", ""))
@@ -2158,10 +2275,13 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     duplicate_records_removed = 0
     legacy_bloomberg_records_removed = 0
     invalid_wired_records_removed = 0
+    cjk_language_records_removed = 0
 
     for idx, entry in enumerate(selected, 1):
         try:
             record = _extract_record(args.connector, scraper, entry, idx, base_url)
+            if _is_cjk_custom_record(record):
+                raise RuntimeError("Blocked CJK-language document.")
             metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
             doc_id = str(metadata.get("document_id", "") or "").strip()
             replaced = core._upsert_custom_document_record(custom_payload, record)
@@ -2205,8 +2325,10 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     if args.connector == "wired_article":
         invalid_wired_records_removed = _remove_invalid_wired_coupon_records(custom_payload)
 
+    cjk_language_records_removed = _remove_cjk_language_records(custom_payload)
+
     rule_summaries_rebuilt = False
-    if not args.dry_run and (saved_new or saved_updates or invalid_wired_records_removed):
+    if not args.dry_run and (saved_new or saved_updates or invalid_wired_records_removed or cjk_language_records_removed):
         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
         enrichment_state = core._load_enrichment_state(storage)
         core._rebuild_rule_summaries(
@@ -2234,12 +2356,14 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "discovered_count": len(discovered),
         "filtered_count": len(filtered_discovered),
         "excluded_count": len(excluded),
+        "blocked_extraction_count": blocked_extraction_count,
         "candidate_count": len(candidates),
         "selected_count": len(selected),
         "processed_count": len(processed_doc_ids),
         "saved_new": saved_new,
         "saved_updates": saved_updates,
         "invalid_wired_records_removed": invalid_wired_records_removed,
+        "cjk_language_records_removed": cjk_language_records_removed,
         "failed_count": len(failed),
         "failed": failed[:25],
         "duplicate_records_removed": duplicate_records_removed,

@@ -25,6 +25,7 @@ type SourceFilter =
   | "TREASURY"
   | "MARKET_SOURCES"
   | "CONGRESS"
+  | "PONZI_INVESTOR_FRAUD"
   | "WSJ"
   | "BLOOMBERG"
   | "SUBSTACK"
@@ -175,6 +176,7 @@ const FEED_META: Record<string, FeedMeta> = {
   prnewswire_policy_public_interest: { label: "PR Newswire Policy & Public Interest", code: "PRN", color: "#66d9e8" },
   google_news_ponzi_investor_fraud: { label: "Google News: Ponzi & Investor Fraud", code: "GNEWS", color: "#8ce99a" },
   google_news_finra_member_firms: { label: "Google News: FINRA Member Firms", code: "GNEWS", color: "#d0bfff" },
+  google_news_senate_banking_committee: { label: "Google News: Senate Banking Committee", code: "GNEWS", color: "#b88fff" },
   cftc_general_press_releases: { label: "CFTC General Press Releases", code: "CFTC", color: "#ffd43b" },
   cftc_enforcement_press_releases: { label: "CFTC Enforcement Press Releases", code: "CFTC", color: "#ff8aa0" },
   cftc_speeches_testimony: { label: "CFTC Speeches and Testimony", code: "CFTC", color: "#ffd43b" },
@@ -263,6 +265,7 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "TREASURY", label: "Treasury" },
   { key: "MARKET_SOURCES", label: "Market Sources" },
   { key: "CONGRESS", label: "Congress" },
+  { key: "PONZI_INVESTOR_FRAUD", label: "Ponzi & Investor Fraud" },
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
   { key: "SUBSTACK", label: "Substack" },
@@ -623,7 +626,17 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     );
   }
   if (sourceFilter === "CONGRESS") {
-    return sourceKind === "congress_crs_product" || text.includes("congress.gov") || text.includes("crs product");
+    return (
+      feedKey === "google_news_senate_banking_committee" ||
+      sourceKind === "congress_crs_product" ||
+      text.includes("congress.gov") ||
+      text.includes("senate banking committee") ||
+      text.includes("banking.senate.gov") ||
+      text.includes("crs product")
+    );
+  }
+  if (sourceFilter === "PONZI_INVESTOR_FRAUD") {
+    return feedKey === "google_news_ponzi_investor_fraud";
   }
   if (sourceFilter === "WSJ") {
     return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || sourceKind === "wsj_dow_jones" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
