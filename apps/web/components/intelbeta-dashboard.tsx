@@ -31,6 +31,7 @@ type SourceFilter =
   | "NEWSAPI"
   | "SIFMA"
   | "TRADE_ASSOCIATIONS"
+  | "LEGAL_SOURCES"
   | "TRADE_MEDIA"
   | "REDDIT";
 
@@ -190,6 +191,7 @@ const FEED_META: Record<string, FeedMeta> = {
   economist_business: { label: "The Economist Business", code: "ECO", color: "#74c0fc" },
   economist_united_states: { label: "The Economist United States", code: "ECO", color: "#74c0fc" },
   investmentnews: { label: "InvestmentNews", code: "INV", color: "#66d9e8" },
+  american_banker: { label: "American Banker", code: "AB", color: "#66d9e8" },
   harvard_corp_gov_forum: { label: "Harvard Corporate Governance Forum", code: "HLS", color: "#d0bfff" },
   cls_blue_sky_blog: { label: "CLS Blue Sky Blog", code: "CLS", color: "#d0bfff" },
   the_corporate_counsel_net: { label: "The Corporate Counsel", code: "TCC", color: "#d0bfff" },
@@ -267,9 +269,33 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "NEWSAPI", label: "NewsAPI" },
   { key: "SIFMA", label: "SIFMA" },
   { key: "TRADE_ASSOCIATIONS", label: "Trade Associations" },
+  { key: "LEGAL_SOURCES", label: "Legal Sources" },
   { key: "TRADE_MEDIA", label: "Trade Media" },
   { key: "REDDIT", label: "Reddit" },
 ];
+
+const LEGAL_SOURCE_FEED_KEYS = new Set([
+  "ballard_spahr_consumer_finance_monitor",
+  "bradley_eye_on_enforcement",
+  "bradley_financial_services_perspectives",
+  "cleary_enforcement_watch",
+  "cls_blue_sky_blog",
+  "cooley_cyber_data_privacy",
+  "cooley_governance_beat",
+  "cooley_pubco",
+  "covington_global_policy_watch",
+  "covington_inside_government_contracts",
+  "covington_inside_privacy",
+  "gibson_dunn_sec_sentinel",
+  "gibson_dunn_securities_regulation_monitor",
+  "harvard_corp_gov_forum",
+  "kelley_drye_ad_law_access",
+  "latham_global_financial_regulatory_blog",
+  "latham_london",
+  "norton_rose_fulbright_data_protection_report",
+  "squire_patton_boggs_privacy_world",
+  "the_corporate_counsel_net",
+]);
 
 const TRADE_MEDIA_FEED_KEYS = new Set([
   "the_record",
@@ -451,6 +477,37 @@ function articleSourceText(article: FeedItem): string {
   ].join(" ").toLowerCase();
 }
 
+function matchesLegalSource(article: FeedItem): boolean {
+  const feedKey = String(article.feed_key || "").toLowerCase();
+  const sourceKind = String(article.source_kind || "").toLowerCase();
+  const text = articleSourceText(article);
+  return (
+    LEGAL_SOURCE_FEED_KEYS.has(feedKey) ||
+    sourceKind === "jdsupra_article" ||
+    text.includes("jdsupra.com") ||
+    text.includes("jdsupra") ||
+    text.includes("law360") ||
+    text.includes("thecorporatecounsel.net") ||
+    text.includes("clsbluesky.law.columbia.edu") ||
+    text.includes("harvard corporate governance") ||
+    text.includes("gibsondunn") ||
+    text.includes("clearyenforcementwatch") ||
+    text.includes("cooley") ||
+    text.includes("latham") ||
+    text.includes("globalfinregblog") ||
+    text.includes("covington") ||
+    text.includes("insideprivacy.com") ||
+    text.includes("globalpolicywatch.com") ||
+    text.includes("ballardspahr") ||
+    text.includes("consumerfinancemonitor.com") ||
+    text.includes("kelleydrye") ||
+    text.includes("dataprotectionreport.com") ||
+    text.includes("privacyworld.blog") ||
+    text.includes("financialservicesperspectives.com") ||
+    text.includes("eyeonenforcement.com")
+  );
+}
+
 function fallbackDocumentTopicMatches(article: FeedItem, rules: TopicRuleView[]): TopicRuleView[] {
   if (article.item_type !== "document") return [];
   const text = normalizeMatchText([
@@ -603,12 +660,17 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
       text.includes("lsta.org")
     );
   }
+  if (sourceFilter === "LEGAL_SOURCES") {
+    return matchesLegalSource(article);
+  }
   if (sourceFilter === "TRADE_MEDIA") {
+    if (matchesLegalSource(article)) {
+      return false;
+    }
     if (TRADE_MEDIA_FEED_KEYS.has(feedKey)) {
       return true;
     }
     return [
-      "jdsupra_article",
       "investmentnews_article",
       "citywire_article",
       "therecord_media_article",

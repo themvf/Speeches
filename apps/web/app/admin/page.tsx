@@ -125,7 +125,7 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "bpi_news_item", label: "Bank Policy Institute News" },
       { value: "icba_news_item", label: "ICBA News" },
       { value: "lsta_news_item", label: "LSTA News" },
-      { value: "jdsupra_article", label: "Trade Media: JD Supra" },
+      { value: "jdsupra_article", label: "Legal Sources: JD Supra" },
       { value: "investmentnews_article", label: "Trade Media: InvestmentNews" },
       { value: "citywire_article", label: "Trade Media: Citywire" },
       { value: "therecord_media_article", label: "Trade Media: The Record" },

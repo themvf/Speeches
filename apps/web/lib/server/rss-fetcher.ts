@@ -315,6 +315,11 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     feedUrl: "https://www.investmentnews.com/rss",
     refreshIntervalMinutes: 180,
   },
+  american_banker: {
+    label: "American Banker",
+    feedUrl: "https://www.americanbanker.com/feed.rss",
+    refreshIntervalMinutes: 180,
+  },
   ft_news_feed: {
     label: "Financial Times News Feed",
     feedUrl: "https://www.ft.com/news-feed?format=rss",

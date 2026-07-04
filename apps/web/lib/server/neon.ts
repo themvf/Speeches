@@ -862,6 +862,7 @@ export async function deleteBlockedRssArticles(topicRules: StoredRssTopicRule[])
     FROM rss_articles
     WHERE feed_key LIKE 'prnewswire_%'
        OR feed_key LIKE 'google_news_%'
+       OR feed_key = 'wired_security'
        OR title ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
        OR description ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
   `) as unknown as Array<Pick<StoredRssArticle, "id" | "guid" | "feed_key" | "title" | "url" | "description" | "author" | "published_at">>;

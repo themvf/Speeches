@@ -1,4 +1,5 @@
 import { decodeEntities, getTopicMatches, normalizeMatchText, normalizeTopicRules, type TopicArticleInput, type TopicRuleInput } from "@/lib/intel-topic-matching";
+import { isLowValueWiredArticle } from "@/lib/server/news-feed-quality";
 import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 
@@ -70,6 +71,16 @@ export function isDisallowedNoisySourceArticle(feedKey: string, article: RssFilt
   return PRNEWSWIRE_LEGAL_SOLICITATION_RE.test(articleText(article));
 }
 
+export function isDisallowedLowValueSourceArticle(feedKey: string, article: RssFilterArticle): boolean {
+  return isLowValueWiredArticle({
+    feed_key: feedKey,
+    title: article.title,
+    description: article.description,
+    author: article.author,
+    url: article.url,
+  });
+}
+
 export function hasRequiredFraudJurisdiction(feedKey: string, article: RssFilterArticle): boolean {
   if (!shouldRequireUsFraudJurisdiction(feedKey)) return true;
   const text = articleText(article);
@@ -99,6 +110,7 @@ export function isAllowedRssArticleForIngestion(
   if (shouldEnglishOnlyFilterFeed(feedKey) && !isEnglishRssArticle(article)) return false;
   if (isDisallowedGamblingArticle(article)) return false;
   if (isDisallowedNoisySourceArticle(feedKey, article)) return false;
+  if (isDisallowedLowValueSourceArticle(feedKey, article)) return false;
   if (!hasRequiredFraudJurisdiction(feedKey, article)) return false;
 
   if (!shouldKeywordFilterFeed(feedKey)) {
@@ -128,7 +140,10 @@ export function filterRssArticlesForIngestion(
   topicRules: TopicRuleInput[]
 ): RssIngestionFilterResult {
   if (!shouldKeywordFilterFeed(feedKey) && !shouldEnglishOnlyFilterFeed(feedKey)) {
-    const allowedArticles = articles.filter((article) => !isDisallowedGamblingArticle(article));
+    const allowedArticles = articles.filter((article) => (
+      !isDisallowedGamblingArticle(article) &&
+      !isDisallowedLowValueSourceArticle(feedKey, article)
+    ));
     return {
       articles: allowedArticles,
       fetched: articles.length,
