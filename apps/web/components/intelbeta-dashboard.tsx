@@ -236,6 +236,7 @@ const FEED_META: Record<string, FeedMeta> = {
   document_icba_news_item: { label: "ICBA", code: "ICBA", color: "#a5d8ff" },
   document_lsta_news_item: { label: "LSTA", code: "LSTA", color: "#a5d8ff" },
   document_federal_reserve_speech_testimony: { label: "Federal Reserve", code: "FED", color: "#91a7ff" },
+  document_cisa_cybersecurity_advisory: { label: "CISA", code: "CISA", color: "#4dabf7" },
   document_treasury_featured_story: { label: "Treasury", code: "TRE", color: "#ffd43b" },
   document_treasury_press_release: { label: "Treasury", code: "TRE", color: "#ffd43b" },
   document_treasury_statement_remark: { label: "Treasury", code: "TRE", color: "#ffd43b" },
@@ -345,6 +346,7 @@ const CYBER_SOURCE_FEED_KEYS = new Set([
 ]);
 
 const CYBER_SOURCE_KINDS = new Set([
+  "cisa_cybersecurity_advisory",
   "therecord_media_article",
   "wired_article",
   "tripwire_article",

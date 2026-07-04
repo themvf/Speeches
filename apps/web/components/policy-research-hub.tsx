@@ -148,6 +148,7 @@ interface ExtractFormState {
     | "finra_awc"
     | "doj_usao_press_release"
     | "federal_reserve_speech_testimony"
+    | "cisa_cybersecurity_advisory"
     | "cftc_press_release"
     | "cftc_public_statement_remark"
     | "pcaob_update"
@@ -328,6 +329,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   finra_awc: "FINRA AWC Disciplinary Actions",
   doj_usao_press_release: "DOJ USAO Press Releases",
   federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
+  cisa_cybersecurity_advisory: "CISA Cybersecurity Advisories",
   cftc_press_release: "CFTC Press Releases",
   cftc_public_statement_remark: "CFTC Public Statements & Remarks",
   pcaob_update: "PCAOB Updates",
@@ -397,6 +399,7 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   finra_awc: "Disciplinary Action",
   doj_usao_press_release: "Press Release",
   federal_reserve_speech_testimony: "Testimony",
+  cisa_cybersecurity_advisory: "Cybersecurity Advisory",
   cftc_press_release: "Press Release",
   cftc_public_statement_remark: "Statement",
   pcaob_update: "Update",
@@ -1584,6 +1587,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="finra_awc">FINRA AWC Disciplinary Actions</option>
                   <option value="doj_usao_press_release">DOJ USAO Press Releases</option>
                   <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
+                  <option value="cisa_cybersecurity_advisory">CISA Cybersecurity Advisories</option>
                   <option value="cftc_press_release">CFTC Press Releases</option>
                   <option value="cftc_public_statement_remark">CFTC Public Statements &amp; Remarks</option>
                   <option value="pcaob_update">PCAOB Updates</option>

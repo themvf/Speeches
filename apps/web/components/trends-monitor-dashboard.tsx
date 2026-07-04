@@ -54,6 +54,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   finra_awc: "FINRA AWC",
   doj_usao_press_release: "DOJ",
   federal_reserve_speech_testimony: "Federal Reserve",
+  cisa_cybersecurity_advisory: "CISA",
   cftc_press_release: "CFTC",
   cftc_public_statement_remark: "CFTC",
   pcaob_update: "PCAOB",
