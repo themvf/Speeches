@@ -8,6 +8,7 @@ const ORG_LABELS: Record<string, string> = {
   finra: "FINRA",
   doj: "DOJ",
   federal_reserve: "Federal Reserve",
+  cisa: "CISA",
   cftc: "CFTC",
   treasury: "Treasury",
   sifma: "SIFMA",

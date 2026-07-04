@@ -16,6 +16,7 @@ on:
           - finra_comment_letter
           - doj_usao_press_release
           - federal_reserve_speech_testimony
+          - cisa_cybersecurity_advisory
           - cftc_press_release
           - cftc_public_statement_remark
           - treasury_featured_story

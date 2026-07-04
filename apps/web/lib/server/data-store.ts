@@ -975,6 +975,7 @@ export function selectNewsFeedDocuments(
       "lsta_news_item",
       "federal_reserve_speech_testimony",
       "doj_usao_press_release",
+      "cisa_cybersecurity_advisory",
       "treasury_featured_story",
       "treasury_press_release",
       "treasury_statement_remark",

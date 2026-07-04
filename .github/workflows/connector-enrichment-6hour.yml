@@ -33,6 +33,7 @@ jobs:
           - source_kind: sec_speech
           - source_kind: sec_enforcement_litigation
           - source_kind: doj_usao_press_release
+          - source_kind: cisa_cybersecurity_advisory
           - source_kind: finra_awc
           - source_kind: finra_regulatory_notice
           - source_kind: cftc_press_release

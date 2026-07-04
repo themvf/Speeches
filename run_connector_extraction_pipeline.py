@@ -103,6 +103,7 @@ SUPPORTED_CONNECTORS = {
     "finra_awc",
     "doj_usao_press_release",
     "federal_reserve_speech_testimony",
+    "cisa_cybersecurity_advisory",
     "cftc_press_release",
     "cftc_public_statement_remark",
     "treasury_featured_story",
@@ -142,6 +143,10 @@ def _default_base_url(connector: str) -> str:
         return DOJ_DEFAULT_URL
     if connector == "federal_reserve_speech_testimony":
         return FED_DEFAULT_URL
+    if connector == "cisa_cybersecurity_advisory":
+        from cisa_cybersecurity_advisory_scraper import CISA_CYBERSECURITY_ADVISORIES_URL
+
+        return CISA_CYBERSECURITY_ADVISORIES_URL
     if connector == "cftc_press_release":
         return CFTC_PRESS_RELEASE_DEFAULT_URL
     if connector == "cftc_public_statement_remark":
@@ -870,6 +875,24 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector == "cisa_cybersecurity_advisory":
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_title = _normalize_space(existing_meta.get("title", ""))
+        incoming_title = _normalize_space(entry.get("title", ""))
+        existing_doc_type = _normalize_space(existing_meta.get("doc_type", ""))
+        incoming_doc_type = _normalize_space(entry.get("doc_type", ""))
+        existing_alert_code = _normalize_space(existing_meta.get("alert_code", ""))
+        incoming_alert_code = _normalize_space(entry.get("alert_code", ""))
+        if (
+            (incoming_date and existing_date and incoming_date != existing_date)
+            or (incoming_title and existing_title and incoming_title != existing_title)
+            or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
+            or (incoming_alert_code and existing_alert_code and incoming_alert_code != existing_alert_code)
+        ):
+            return "update_available"
+        return "existing"
+
     if connector in SECURITIES_MARKET_CONNECTORS:
         existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
         incoming_date = _normalize_space(entry.get("date", ""))
@@ -958,6 +981,14 @@ def _discover_connector(
 
         scraper = FederalReserveSpeechTestimonyScraper()
         docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages, fallback_to_feed=True)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "cisa_cybersecurity_advisory":
+        from cisa_cybersecurity_advisory_scraper import CISACybersecurityAdvisoryScraper
+
+        scraper = CISACybersecurityAdvisoryScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages, include_rss=include_rss)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
 
@@ -1647,6 +1678,65 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
         metadata["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
         metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        return record
+
+    if connector == "cisa_cybersecurity_advisory":
+        extracted = scraper.extract_document(
+            entry,
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_doc_type=entry.get("doc_type", ""),
+        )
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "CISA advisory extraction failed.")))
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 40:
+            text = _build_short_text_fallback(
+                title=str(data.get("title", "") or entry.get("title", "") or "CISA Advisory"),
+                date_text=str(data.get("date", "") or entry.get("date", "")),
+                doc_type=str(data.get("doc_type", "") or entry.get("doc_type", "Cybersecurity Advisory")),
+                source_url=str(data.get("url", "") or entry.get("url", "")),
+                description=str(data.get("summary", "") or entry.get("summary", "")),
+                source_label="CISA",
+            )
+
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_name = _safe_source_name(src_url, f"cisa-advisory-{idx}", ".html")
+        doc_type = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "Cybersecurity Advisory"
+        alert_code = str(data.get("alert_code", "") or entry.get("alert_code", "")).strip()
+        tags = ["cisa", "cybersecurity", "advisory", "alert", "critical-infrastructure"]
+        if alert_code:
+            tags.append(alert_code.lower())
+        if "ics" in doc_type.lower():
+            tags.append("industrial-control-systems")
+        if "kev" in doc_type.lower():
+            tags.append("known-exploited-vulnerability")
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="CISA",
+            title=str(data.get("title", "") or entry.get("title", "")).strip() or "CISA Advisory",
+            speaker="Cybersecurity and Infrastructure Security Agency",
+            doc_date=_parse_doc_date(data.get("date", "") or entry.get("date", "")),
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=",".join(tags),
+            source_kind="cisa_cybersecurity_advisory",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "cisa_cybersecurity_advisory"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = str(data.get("date", "") or entry.get("date", "")).strip()
+        metadata["summary"] = str(data.get("summary", "") or entry.get("summary", "")).strip()
+        metadata["alert_code"] = alert_code
+        metadata["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        metadata["extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
         return record
 
     if connector == "sifma_news_item":

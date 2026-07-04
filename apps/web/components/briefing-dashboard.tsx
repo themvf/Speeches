@@ -123,6 +123,7 @@ function sourceKindLabel(value: string): string {
     finra_awc: "FINRA AWC Disciplinary Actions",
     doj_usao_press_release: "DOJ USAO Press Releases",
     federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
+    cisa_cybersecurity_advisory: "CISA Cybersecurity Advisories",
     cftc_press_release: "CFTC Press Releases",
     cftc_public_statement_remark: "CFTC Public Statements & Remarks",
     pcaob_update: "PCAOB Updates",

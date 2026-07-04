@@ -243,6 +243,7 @@ def test_crs_status_detects_actual_date_change():
 def test_gap_connectors_are_registered_with_defaults():
     for connector in [
         "federal_reserve_speech_testimony",
+        "cisa_cybersecurity_advisory",
         "treasury_statement_remark",
         "treasury_press_release",
         "treasury_featured_story",

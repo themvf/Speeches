@@ -100,6 +100,7 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
       { value: "finra_awc", label: "FINRA AWC Disciplinary Actions" },
       { value: "doj_usao_press_release", label: "DOJ USAO Press Release" },
       { value: "federal_reserve_speech_testimony", label: "Federal Reserve Speech / Testimony" },
+      { value: "cisa_cybersecurity_advisory", label: "CISA Cybersecurity Advisory" },
       { value: "cftc_press_release", label: "CFTC Press Release" },
       { value: "cftc_public_statement_remark", label: "CFTC Public Statement / Remark" },
       { value: "sec_press_release_rss", label: "SEC Press Release RSS" },
@@ -1950,7 +1951,7 @@ function DocumentLibrarySection() {
 const SOURCE_KIND_OPTIONS = [
   "custom_document", "sec_speech", "sec_tm_faq", "sec_enforcement_litigation",
   "finra_regulatory_notice", "finra_comment_letter", "finra_awc",
-  "doj_usao_press_release", "federal_reserve_speech_testimony", "cftc_press_release",
+  "doj_usao_press_release", "federal_reserve_speech_testimony", "cisa_cybersecurity_advisory", "cftc_press_release",
   "cftc_public_statement_remark", "sec_press_release_rss", "sec_administrative_proceeding",
   "sec_trading_suspension", "sec_federal_register", "sec_pcaob_rulemaking", "pcaob_update",
   "msrb_press_release", "treasury_featured_story", "treasury_press_release", "treasury_statement_remark",
