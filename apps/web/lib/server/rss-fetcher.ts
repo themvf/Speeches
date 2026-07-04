@@ -168,7 +168,7 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
   },
   sophos_security_operations: {
     label: "Sophos Security Operations",
-    feedUrl: "https://news.sophos.com/en-us/category/security-operations/feed/",
+    feedUrl: "https://www.sophos.com/en-us/category/security-operations/feed",
   },
   flashpoint_blog: {
     label: "Flashpoint",

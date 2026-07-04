@@ -171,6 +171,15 @@ interface ExtractFormState {
     | "investmentnews_article"
     | "citywire_article"
     | "therecord_media_article"
+    | "krebs_on_security_article"
+    | "the_hacker_news_article"
+    | "welivesecurity_article"
+    | "sophos_security_operations_article"
+    | "flashpoint_blog_article"
+    | "recorded_future_article"
+    | "intel471_blog_article"
+    | "securityweek_article"
+    | "dark_reading_article"
     | "wired_article"
     | "tripwire_article"
     | "akamai_blog_article"
@@ -353,6 +362,15 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   investmentnews_article: "InvestmentNews",
   citywire_article: "Citywire",
   therecord_media_article: "The Record",
+  krebs_on_security_article: "Krebs on Security",
+  the_hacker_news_article: "The Hacker News",
+  welivesecurity_article: "WeLiveSecurity",
+  sophos_security_operations_article: "Sophos Security Operations",
+  flashpoint_blog_article: "Flashpoint",
+  recorded_future_article: "Recorded Future",
+  intel471_blog_article: "Intel 471",
+  securityweek_article: "SecurityWeek",
+  dark_reading_article: "Dark Reading",
   wired_article: "WIRED",
   tripwire_article: "Tripwire",
   akamai_blog_article: "Akamai Blog",
@@ -423,6 +441,15 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   investmentnews_article: "Article",
   citywire_article: "Article",
   therecord_media_article: "Article",
+  krebs_on_security_article: "Article",
+  the_hacker_news_article: "Article",
+  welivesecurity_article: "Article",
+  sophos_security_operations_article: "Article",
+  flashpoint_blog_article: "Article",
+  recorded_future_article: "Article",
+  intel471_blog_article: "Article",
+  securityweek_article: "Article",
+  dark_reading_article: "Article",
   wired_article: "Article",
   tripwire_article: "Article",
   akamai_blog_article: "Article",
@@ -1610,6 +1637,15 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="investmentnews_article">InvestmentNews Articles</option>
                   <option value="citywire_article">Citywire Articles</option>
                   <option value="therecord_media_article">The Record Articles</option>
+                  <option value="krebs_on_security_article">Krebs on Security Articles</option>
+                  <option value="the_hacker_news_article">The Hacker News Articles</option>
+                  <option value="welivesecurity_article">WeLiveSecurity Articles</option>
+                  <option value="sophos_security_operations_article">Sophos Security Operations Articles</option>
+                  <option value="flashpoint_blog_article">Flashpoint Articles</option>
+                  <option value="recorded_future_article">Recorded Future Articles</option>
+                  <option value="intel471_blog_article">Intel 471 Articles</option>
+                  <option value="securityweek_article">SecurityWeek Articles</option>
+                  <option value="dark_reading_article">Dark Reading Articles</option>
                   <option value="wired_article">WIRED Articles</option>
                   <option value="tripwire_article">Tripwire Articles</option>
                   <option value="akamai_blog_article">Akamai Blog Articles</option>
