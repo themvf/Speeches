@@ -25,6 +25,7 @@ type SourceFilter =
   | "TREASURY"
   | "MARKET_SOURCES"
   | "CONGRESS"
+  | "SENATE"
   | "PONZI_INVESTOR_FRAUD"
   | "WSJ"
   | "BLOOMBERG"
@@ -176,7 +177,12 @@ const FEED_META: Record<string, FeedMeta> = {
   prnewswire_policy_public_interest: { label: "PR Newswire Policy & Public Interest", code: "PRN", color: "#66d9e8" },
   google_news_ponzi_investor_fraud: { label: "Google News: Ponzi & Investor Fraud", code: "GNEWS", color: "#8ce99a" },
   google_news_finra_member_firms: { label: "Google News: FINRA Member Firms", code: "GNEWS", color: "#d0bfff" },
-  google_news_senate_banking_committee: { label: "Google News: Senate Banking Committee", code: "GNEWS", color: "#b88fff" },
+  google_news_senate_banking_committee: { label: "Google News: Senate Banking Committee", code: "SEN", color: "#b88fff" },
+  google_news_senate_finance_committee: { label: "Google News: Senate Finance Committee", code: "SEN", color: "#b88fff" },
+  google_news_senate_agriculture_committee: { label: "Google News: Senate Agriculture Committee", code: "SEN", color: "#b88fff" },
+  google_news_senate_judiciary_committee: { label: "Google News: Senate Judiciary Committee", code: "SEN", color: "#b88fff" },
+  google_news_senate_hsgac: { label: "Google News: Senate Homeland Security Committee", code: "SEN", color: "#b88fff" },
+  google_news_senate_commerce_committee: { label: "Google News: Senate Commerce Committee", code: "SEN", color: "#b88fff" },
   cftc_general_press_releases: { label: "CFTC General Press Releases", code: "CFTC", color: "#ffd43b" },
   cftc_enforcement_press_releases: { label: "CFTC Enforcement Press Releases", code: "CFTC", color: "#ff8aa0" },
   cftc_speeches_testimony: { label: "CFTC Speeches and Testimony", code: "CFTC", color: "#ffd43b" },
@@ -265,6 +271,7 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "TREASURY", label: "Treasury" },
   { key: "MARKET_SOURCES", label: "Market Sources" },
   { key: "CONGRESS", label: "Congress" },
+  { key: "SENATE", label: "Senate Source" },
   { key: "PONZI_INVESTOR_FRAUD", label: "Ponzi & Investor Fraud" },
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
@@ -312,6 +319,15 @@ const TRADE_MEDIA_FEED_KEYS = new Set([
   "flashpoint_blog",
   "recorded_future",
   "intel471_blog",
+]);
+
+const SENATE_SOURCE_FEED_KEYS = new Set([
+  "google_news_senate_banking_committee",
+  "google_news_senate_finance_committee",
+  "google_news_senate_agriculture_committee",
+  "google_news_senate_judiciary_committee",
+  "google_news_senate_hsgac",
+  "google_news_senate_commerce_committee",
 ]);
 
 const SOURCE_LABEL_ACRONYMS = new Set([
@@ -627,12 +643,26 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "CONGRESS") {
     return (
-      feedKey === "google_news_senate_banking_committee" ||
       sourceKind === "congress_crs_product" ||
       text.includes("congress.gov") ||
-      text.includes("senate banking committee") ||
-      text.includes("banking.senate.gov") ||
       text.includes("crs product")
+    );
+  }
+  if (sourceFilter === "SENATE") {
+    return (
+      SENATE_SOURCE_FEED_KEYS.has(feedKey) ||
+      text.includes("banking.senate.gov") ||
+      text.includes("finance.senate.gov") ||
+      text.includes("agriculture.senate.gov") ||
+      text.includes("judiciary.senate.gov") ||
+      text.includes("hsgac.senate.gov") ||
+      text.includes("commerce.senate.gov") ||
+      text.includes("senate banking committee") ||
+      text.includes("senate finance committee") ||
+      text.includes("senate agriculture committee") ||
+      text.includes("senate judiciary committee") ||
+      text.includes("senate homeland security") ||
+      text.includes("senate commerce committee")
     );
   }
   if (sourceFilter === "PONZI_INVESTOR_FRAUD") {
