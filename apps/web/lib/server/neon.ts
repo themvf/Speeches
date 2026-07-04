@@ -473,6 +473,12 @@ async function applyFeedSourceMigrations(sql: ReturnType<typeof neon>): Promise<
 
   await sql`
     UPDATE rss_feeds
+    SET feed_url = 'https://www.sophos.com/en-us/category/security-operations/feed'
+    WHERE feed_key = 'sophos_security_operations'
+  `;
+
+  await sql`
+    UPDATE rss_feeds
     SET active = false
     WHERE feed_key = ANY(${DEPRECATED_RSS_FEED_KEYS})
        OR feed_url = ANY(${[

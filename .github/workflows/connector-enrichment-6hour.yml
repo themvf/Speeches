@@ -57,6 +57,15 @@ jobs:
           - source_kind: investmentnews_article
           - source_kind: citywire_article
           - source_kind: therecord_media_article
+          - source_kind: krebs_on_security_article
+          - source_kind: the_hacker_news_article
+          - source_kind: welivesecurity_article
+          - source_kind: sophos_security_operations_article
+          - source_kind: flashpoint_blog_article
+          - source_kind: recorded_future_article
+          - source_kind: intel471_blog_article
+          - source_kind: securityweek_article
+          - source_kind: dark_reading_article
           - source_kind: wired_article
           - source_kind: tripwire_article
           - source_kind: akamai_blog_article

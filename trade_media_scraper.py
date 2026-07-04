@@ -75,6 +75,7 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
         "rss_candidates": [
             "https://therecord.media/feed/",
         ],
+        "minimum_path_segments": 1,
         "article_path_keywords": [
             "news",
             "cybercrime",
@@ -94,6 +95,131 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
         "search_domain": "therecord.media",
         "google_site_query": "site:therecord.media/news",
         "default_search_query": "cybersecurity OR ransomware OR regulation OR financial sector OR CISA OR Treasury",
+    },
+    "krebs_on_security_article": {
+        "label": "Krebs on Security",
+        "organization": "Krebs on Security",
+        "default_url": "https://krebsonsecurity.com/",
+        "tags_csv": "krebs,cybersecurity,threat-intelligence,technology-news",
+        "rss_candidates": [
+            "https://krebsonsecurity.com/feed/",
+        ],
+        "excluded_feed_url_substrings": ["/comments/feed"],
+        "article_path_keywords": ["202"],
+        "required_url_substrings": ["krebsonsecurity.com/20"],
+        "excluded_url_substrings": ["/comment-page-", "#comment", "/comments/"],
+        "search_domain": "krebsonsecurity.com",
+        "default_search_query": "cybercrime OR ransomware OR fraud OR breach OR financial sector",
+    },
+    "the_hacker_news_article": {
+        "label": "The Hacker News",
+        "organization": "The Hacker News",
+        "default_url": "https://thehackernews.com/",
+        "tags_csv": "the-hacker-news,cybersecurity,threat-intelligence,technology-news",
+        "rss_candidates": [
+            "https://feeds.feedburner.com/TheHackersNews",
+        ],
+        "article_path_keywords": ["202"],
+        "required_url_substrings": ["thehackernews.com/20"],
+        "search_domain": "thehackernews.com",
+        "default_search_query": "cybersecurity OR vulnerability OR ransomware OR breach OR CISA",
+    },
+    "welivesecurity_article": {
+        "label": "WeLiveSecurity",
+        "organization": "ESET",
+        "default_url": "https://www.welivesecurity.com/en/",
+        "tags_csv": "welivesecurity,eset,cybersecurity,threat-intelligence",
+        "rss_candidates": [
+            "https://www.welivesecurity.com/feed/",
+            "https://www.welivesecurity.com/en/rss/feed/",
+        ],
+        "article_path_keywords": ["security", "research", "business-security", "threat"],
+        "search_domain": "welivesecurity.com",
+        "google_site_query": "site:welivesecurity.com/en",
+        "default_search_query": "cybersecurity OR threat OR vulnerability OR ransomware OR fraud",
+    },
+    "sophos_security_operations_article": {
+        "label": "Sophos Security Operations",
+        "organization": "Sophos",
+        "default_url": "https://www.sophos.com/en-us/blog?taxonomy_blog_category=security+operations",
+        "tags_csv": "sophos,security-operations,cybersecurity,threat-intelligence",
+        "rss_candidates": [
+            "https://www.sophos.com/en-us/category/security-operations/feed",
+            "http://news.sophos.com/en-us/category/security-operations/feed/",
+        ],
+        "article_path_keywords": ["blog", "security-operations", "threat-research"],
+        "required_url_substrings": ["sophos.com/en-us/blog/"],
+        "excluded_url_substrings": ["/blog/category/", "taxonomy_blog_category"],
+        "search_domain": "sophos.com",
+        "google_site_query": "site:sophos.com/en-us",
+        "default_search_query": "security operations OR ransomware OR threat research OR vulnerability",
+    },
+    "flashpoint_blog_article": {
+        "label": "Flashpoint",
+        "organization": "Flashpoint",
+        "default_url": "https://flashpoint.io/blog/",
+        "tags_csv": "flashpoint,cybersecurity,threat-intelligence,technology-news",
+        "rss_candidates": [
+            "https://flashpoint.io/feed/",
+        ],
+        "article_path_keywords": ["blog"],
+        "required_url_substrings": ["flashpoint.io/blog/"],
+        "search_domain": "flashpoint.io",
+        "google_site_query": "site:flashpoint.io/blog",
+        "default_search_query": "cybersecurity OR fraud OR ransomware OR threat intelligence OR financial crime",
+    },
+    "recorded_future_article": {
+        "label": "Recorded Future",
+        "organization": "Recorded Future",
+        "default_url": "https://www.recordedfuture.com/research",
+        "tags_csv": "recorded-future,cybersecurity,threat-intelligence,research",
+        "rss_candidates": [
+            "https://www.recordedfuture.com/feed",
+        ],
+        "article_path_keywords": ["research", "blog"],
+        "required_url_substrings": ["recordedfuture.com/"],
+        "search_domain": "recordedfuture.com",
+        "default_search_query": "cybersecurity OR threat intelligence OR ransomware OR vulnerability OR nation-state",
+    },
+    "intel471_blog_article": {
+        "label": "Intel 471",
+        "organization": "Intel 471",
+        "default_url": "https://www.intel471.com/blog",
+        "tags_csv": "intel-471,cybersecurity,threat-intelligence,cybercrime",
+        "rss_candidates": [
+            "https://www.intel471.com/blog/feed",
+        ],
+        "article_path_keywords": ["blog"],
+        "required_url_substrings": ["intel471.com/blog/"],
+        "search_domain": "intel471.com",
+        "google_site_query": "site:intel471.com/blog",
+        "default_search_query": "cybercrime OR ransomware OR fraud OR threat intelligence OR credential theft",
+    },
+    "securityweek_article": {
+        "label": "SecurityWeek",
+        "organization": "SecurityWeek",
+        "default_url": "https://www.securityweek.com/",
+        "tags_csv": "securityweek,cybersecurity,technology-news,threat-intelligence",
+        "rss_candidates": [
+            "https://www.securityweek.com/feed/",
+        ],
+        "minimum_path_segments": 1,
+        "article_path_keywords": ["news", "cybersecurity", "ransomware", "vulnerabilities"],
+        "excluded_url_substrings": ["/contributors/", "/category/", "/tag/", "/author/"],
+        "search_domain": "securityweek.com",
+        "default_search_query": "cybersecurity OR ransomware OR vulnerability OR breach OR CISA",
+    },
+    "dark_reading_article": {
+        "label": "Dark Reading",
+        "organization": "Dark Reading",
+        "default_url": "https://www.darkreading.com/",
+        "tags_csv": "dark-reading,cybersecurity,technology-news,threat-intelligence",
+        "rss_candidates": [
+            "https://www.darkreading.com/rss.xml",
+        ],
+        "article_path_keywords": ["cyber", "cloud", "endpoint", "application-security", "vulnerabilities-threats"],
+        "search_domain": "darkreading.com",
+        "default_search_query": "cybersecurity OR vulnerability OR ransomware OR breach OR threat intelligence",
     },
     "wired_article": {
         "label": "WIRED",
@@ -337,7 +463,12 @@ def _strip_source_suffix(title: str, source_name: str) -> str:
     return raw_title
 
 
-def _looks_like_article_url(url: str, source_url: str, path_keywords: List[str]) -> bool:
+def _looks_like_article_url(
+    url: str,
+    source_url: str,
+    path_keywords: List[str],
+    min_path_segments: int = 2,
+) -> bool:
     parsed = urlparse(str(url or "").strip())
     if not parsed.scheme.startswith("http"):
         return False
@@ -375,7 +506,7 @@ def _looks_like_article_url(url: str, source_url: str, path_keywords: List[str])
         return False
 
     segments = [seg for seg in path.split("/") if seg]
-    if len(segments) < 2:
+    if len(segments) < max(1, int(min_path_segments or 2)):
         return False
 
     if re.search(r"/\d{4}/\d{2}/", path):
@@ -425,14 +556,15 @@ def _looks_like_access_challenge(html_text: str, final_url: str = "") -> bool:
     markers = (
         "attention required! | cloudflare",
         "cf-chl-",
-        "challenge-platform",
         "__cf_bm",
         "_incapsula_resource",
         "incapsula incident id",
         "request unsuccessful",
         "access denied",
         "please enable cookies",
-        "captcha",
+        "captcha challenge",
+        "g-recaptcha",
+        "hcaptcha",
     )
     return any(marker in blob for marker in markers)
 
@@ -465,7 +597,15 @@ class TradeMediaScraper:
         if not target:
             raise ValueError("URL is required")
         self._rate_limit()
-        response = self.session.get(target, timeout=timeout, allow_redirects=True)
+        request_kwargs: Dict[str, Any] = {"timeout": timeout, "allow_redirects": True}
+        target_host = _canonical_host(target)
+        if target_host in {"sophos.com", "news.sophos.com"} or target_host.endswith(".sophos.com"):
+            request_kwargs["headers"] = {
+                "User-Agent": "curl/8.0",
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+        response = self.session.get(target, **request_kwargs)
         response.raise_for_status()
         return response
 
@@ -656,13 +796,17 @@ class TradeMediaScraper:
                 elif name in {"pubdate", "published", "updated", "date"} and not date_text:
                     date_text = _date_to_display(value)
                 elif name in {"description", "summary", "content"} and not description:
-                    description = _clean_multiline(BeautifulSoup(value, "html.parser").get_text("\n"))
+                    if "<" in value and ">" in value:
+                        description = _clean_multiline(BeautifulSoup(value, "html.parser").get_text("\n"))
+                    else:
+                        description = _clean_multiline(value)
 
             item_url = urljoin(feed_url, link)
             if not _looks_like_article_url(
                 item_url,
                 source_url=source_url,
                 path_keywords=list(self._source_config(source_key).get("article_path_keywords", [])),
+                min_path_segments=int(self._source_config(source_key).get("minimum_path_segments", 2) or 2),
             ):
                 continue
             if not _passes_source_url_filters(item_url, self._source_config(source_key)):
@@ -694,6 +838,7 @@ class TradeMediaScraper:
         out: List[Dict[str, str]] = []
         cfg = self._source_config(source_key)
         path_keywords = list(cfg.get("article_path_keywords", []))
+        min_path_segments = int(cfg.get("minimum_path_segments", 2) or 2)
 
         while queue and len(visited_pages) < max_pages:
             page_url = queue.pop(0)
@@ -713,7 +858,7 @@ class TradeMediaScraper:
                 if link is None:
                     continue
                 article_url = urljoin(page_url, str(link.get("href", "") or "").strip())
-                if not _looks_like_article_url(article_url, listing_url, path_keywords):
+                if not _looks_like_article_url(article_url, listing_url, path_keywords, min_path_segments):
                     continue
                 if not _passes_source_url_filters(article_url, cfg):
                     continue
@@ -749,7 +894,7 @@ class TradeMediaScraper:
                 target_url = urljoin(page_url, href)
                 text = _normalize_space(link.get_text(" ", strip=True)).lower()
 
-                if _looks_like_article_url(target_url, listing_url, path_keywords) and _passes_source_url_filters(target_url, cfg):
+                if _looks_like_article_url(target_url, listing_url, path_keywords, min_path_segments) and _passes_source_url_filters(target_url, cfg):
                     item_key = _url_key(target_url)
                     if not item_key or item_key in seen_urls:
                         continue
@@ -957,13 +1102,21 @@ class TradeMediaScraper:
         )
 
         selectors = [
-            "article",
-            "main",
             '[itemprop="articleBody"]',
+            "div.ArticleBase-Body",
+            "div.articlebody",
+            "div.article-body",
+            "section.article-body",
+            "div.post-body",
+            "div.body-content",
+            "div.content-body",
+            "div[data-testid='article-body']",
+            "div.zox-article-wrap",
             "div.article-content",
             "div.post-content",
             "div.entry-content",
             "div.story-body",
+            "article",
         ]
 
         best_text = ""
@@ -978,15 +1131,24 @@ class TradeMediaScraper:
                     paragraphs.append(block_text)
                 txt = "\n\n".join(paragraphs).strip()
                 words = len(txt.split())
+                all_text = _clean_multiline(node.get_text("\n", strip=True))
+                all_words = len(all_text.split())
+                if all_words >= 40 and (not words or words > all_words * 2):
+                    txt = all_text
+                    words = all_words
                 if words > best_words:
                     best_words = words
                     best_text = txt
 
         if best_words < 40:
-            body = soup.body or soup
-            body_text = _clean_multiline(body.get_text("\n"))
-            if len(body_text.split()) > best_words:
-                best_text = body_text
+            for selector in ("main", "body"):
+                node = soup.select_one(selector)
+                if node is None:
+                    continue
+                body_text = _clean_multiline(node.get_text("\n"))
+                if len(body_text.split()) > best_words:
+                    best_text = body_text
+                    best_words = len(body_text.split())
 
         return {
             "title": title,

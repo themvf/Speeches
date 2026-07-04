@@ -24,6 +24,15 @@ class TradeMediaScraperTests(unittest.TestCase):
     def test_requested_sources_are_registered_with_defaults(self):
         for source_key in [
             "therecord_media_article",
+            "krebs_on_security_article",
+            "the_hacker_news_article",
+            "welivesecurity_article",
+            "sophos_security_operations_article",
+            "flashpoint_blog_article",
+            "recorded_future_article",
+            "intel471_blog_article",
+            "securityweek_article",
+            "dark_reading_article",
             "wired_article",
             "tripwire_article",
             "akamai_blog_article",
@@ -80,6 +89,24 @@ class TradeMediaScraperTests(unittest.TestCase):
             _passes_source_url_filters(
                 "https://www.wired.com/story/cybersecurity-regulators-ransomware-banks/",
                 TRADE_MEDIA_SOURCES["wired_article"],
+            )
+        )
+        self.assertFalse(
+            _passes_source_url_filters(
+                "https://krebsonsecurity.com/2026/06/example/comment-page-1/#comment-123",
+                TRADE_MEDIA_SOURCES["krebs_on_security_article"],
+            )
+        )
+        self.assertFalse(
+            _passes_source_url_filters(
+                "https://www.securityweek.com/contributors/example-author/",
+                TRADE_MEDIA_SOURCES["securityweek_article"],
+            )
+        )
+        self.assertTrue(
+            _passes_source_url_filters(
+                "https://www.securityweek.com/in-other-news-canadian-hacker-jailed-open-source-zero-days-two-sentenced-for-atm-jackpotting/",
+                TRADE_MEDIA_SOURCES["securityweek_article"],
             )
         )
 

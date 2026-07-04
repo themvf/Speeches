@@ -1,0 +1,108 @@
+name: Cyber Source Full Extraction (3 Hour)
+
+on:
+  schedule:
+    - cron: "11 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      extraction_limit:
+        description: "Max articles to extract per cyber source"
+        required: false
+        default: "25"
+      max_pages:
+        description: "Listing pages to scan per cyber source"
+        required: false
+        default: "2"
+      enrich_limit:
+        description: "Max documents to enrich per cyber source"
+        required: false
+        default: "20"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cyber-sources-3hour
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - connector: krebs_on_security_article
+          - connector: the_hacker_news_article
+          - connector: welivesecurity_article
+          - connector: sophos_security_operations_article
+          - connector: flashpoint_blog_article
+          - connector: recorded_future_article
+          - connector: intel471_blog_article
+          - connector: therecord_media_article
+          - connector: securityweek_article
+          - connector: dark_reading_article
+
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '25' }}
+      MAX_PAGES: ${{ github.event.inputs.max_pages || '2' }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '20' }}
+      ENRICH_MODEL: deepseek-v4-flash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Extract ${{ matrix.connector }}
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector "${{ matrix.connector }}" \
+            --selection new_or_updated \
+            --limit "${EXTRACTION_LIMIT}" \
+            --max-pages "${MAX_PAGES}" \
+            --include-pdfs false \
+            --include-rss true \
+            --require-remote-persistence \
+            --summary-path "cyber_source_${{ matrix.connector }}.json"
+
+      - name: Enrich ${{ matrix.connector }} with DeepSeek
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py \
+            enrich \
+            --require-remote-persistence \
+            --mode only_missing_or_failed \
+            --order recent \
+            --source-kind "${{ matrix.connector }}" \
+            --limit "${ENRICH_LIMIT}" \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --checkpoint-every 5 \
+            --summary-path "cyber_source_enrichment_${{ matrix.connector }}.json"
+
+      - name: Upload Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyber-source-${{ matrix.connector }}-${{ github.run_id }}
+          path: |
+            cyber_source_${{ matrix.connector }}.json
+            cyber_source_enrichment_${{ matrix.connector }}.json
+          if-no-files-found: ignore

@@ -48,6 +48,33 @@ jobs:
           - connector: therecord_media_article
             extraction_limit: "25"
             max_pages: "3"
+          - connector: krebs_on_security_article
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: the_hacker_news_article
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: welivesecurity_article
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: sophos_security_operations_article
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: flashpoint_blog_article
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: recorded_future_article
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: intel471_blog_article
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: securityweek_article
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: dark_reading_article
+            extraction_limit: "25"
+            max_pages: "2"
           - connector: wired_article
             extraction_limit: "25"
             max_pages: "3"

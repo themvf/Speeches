@@ -15,6 +15,7 @@ const ALLOWED_WORKFLOWS = new Set([
   "connector-enrichment-6hour.yml",
   "senate-committee-sites-3hour.yml",
   "agency-official-sites-3hour.yml",
+  "cyber-sources-3hour.yml",
   "securities-market-sources-daily.yml",
   "intelligence-evidence.yml",
   "aml-news-ingest.yml",
