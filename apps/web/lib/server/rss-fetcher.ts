@@ -212,6 +212,31 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     feedUrl: "https://news.google.com/rss/search?q=%22Senate%20Banking%20Committee%22%20OR%20%22Senate%20Committee%20on%20Banking%2C%20Housing%2C%20and%20Urban%20Affairs%22%20OR%20site%3Abanking.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
     refreshIntervalMinutes: 180,
   },
+  google_news_senate_finance_committee: {
+    label: "Google News: Senate Finance Committee",
+    feedUrl: "https://news.google.com/rss/search?q=%22Senate%20Finance%20Committee%22%20OR%20%22Senate%20Committee%20on%20Finance%22%20OR%20site%3Afinance.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
+  google_news_senate_agriculture_committee: {
+    label: "Google News: Senate Agriculture Committee",
+    feedUrl: "https://news.google.com/rss/search?q=%22Senate%20Agriculture%20Committee%22%20OR%20%22Senate%20Committee%20on%20Agriculture%2C%20Nutrition%2C%20and%20Forestry%22%20OR%20site%3Aagriculture.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
+  google_news_senate_judiciary_committee: {
+    label: "Google News: Senate Judiciary Committee",
+    feedUrl: "https://news.google.com/rss/search?q=%22Senate%20Judiciary%20Committee%22%20OR%20%22Senate%20Committee%20on%20the%20Judiciary%22%20OR%20site%3Ajudiciary.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
+  google_news_senate_hsgac: {
+    label: "Google News: Senate Homeland Security Committee",
+    feedUrl: "https://news.google.com/rss/search?q=%22Senate%20Homeland%20Security%20and%20Governmental%20Affairs%20Committee%22%20OR%20%22Senate%20HSGAC%22%20OR%20site%3Ahsgac.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
+  google_news_senate_commerce_committee: {
+    label: "Google News: Senate Commerce Committee",
+    feedUrl: "https://news.google.com/rss/search?q=%22Senate%20Commerce%20Committee%22%20OR%20%22Senate%20Committee%20on%20Commerce%2C%20Science%2C%20and%20Transportation%22%20OR%20site%3Acommerce.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
   gibson_dunn_sec_sentinel: {
     label: "Gibson Dunn SEC Sentinel",
     feedUrl: "https://secsentinel.gibsondunn.com/feed/",
