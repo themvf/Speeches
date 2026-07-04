@@ -176,6 +176,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   liberty_street_economics_article: "Liberty Street Economics",
   wealth_of_common_sense_article: "A Wealth of Common Sense",
   congress_crs_product: "CRS",
+  senate_committee_site: "Senate",
   wsj_dow_jones: "WSJ",
   newsapi_article: "News",
   rss_news_feed: "News Feed",

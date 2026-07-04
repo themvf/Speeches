@@ -39,6 +39,7 @@ const SOURCE_KIND_TO_ORG: Record<string, string> = {
   liberty_street_economics_article: "trade_media",
   wealth_of_common_sense_article: "trade_media",
   congress_crs_product: "congress",
+  senate_committee_site: "congress",
   substack_public_article: "substack",
 };
 

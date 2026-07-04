@@ -29,6 +29,7 @@ on:
           - pcaob_update
           - msrb_press_release
           - congress_crs_product
+          - senate_committee_site
           - sifma_news_item
           - jdsupra_article
           - investmentnews_article

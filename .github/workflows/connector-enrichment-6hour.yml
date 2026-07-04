@@ -46,6 +46,7 @@ jobs:
           - source_kind: msrb_press_release
           - source_kind: sifma_news_item
           - source_kind: congress_crs_product
+          - source_kind: senate_committee_site
           - source_kind: federal_reserve_speech_testimony
           - source_kind: treasury_statement_remark
           - source_kind: treasury_press_release

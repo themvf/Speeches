@@ -178,6 +178,7 @@ interface ExtractFormState {
     | "liberty_street_economics_article"
     | "wealth_of_common_sense_article"
     | "congress_crs_product"
+    | "senate_committee_site"
     | "wsj_dow_jones"
     | "reddit_post"
     | "hedge_fund_letter";
@@ -358,6 +359,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   liberty_street_economics_article: "Liberty Street Economics",
   wealth_of_common_sense_article: "A Wealth of Common Sense",
   congress_crs_product: "Congress CRS Products",
+  senate_committee_site: "Senate Committee Sites",
   wsj_dow_jones: "WSJ / Dow Jones",
   reddit_post: "Reddit",
   hedge_fund_letter: "Hedge Fund Letters",
@@ -426,6 +428,7 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   liberty_street_economics_article: "Economic Research",
   wealth_of_common_sense_article: "Commentary",
   congress_crs_product: "CRS Product",
+  senate_committee_site: "Press Release",
   wsj_dow_jones: "Article",
   reddit_post: "Post",
   hedge_fund_letter: "Investor Letter",
@@ -1611,6 +1614,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="liberty_street_economics_article">Liberty Street Economics</option>
                   <option value="wealth_of_common_sense_article">A Wealth of Common Sense</option>
                   <option value="congress_crs_product">Congress CRS Products</option>
+                  <option value="senate_committee_site">Senate Committee Sites</option>
                   <option value="wsj_dow_jones">WSJ / Dow Jones RSS</option>
                   <option value="reddit_post">Reddit Posts</option>
                   <option value="hedge_fund_letter">Hedge Fund Letters</option>

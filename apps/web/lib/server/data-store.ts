@@ -1000,6 +1000,7 @@ export function selectNewsFeedDocuments(
       "liberty_street_economics_article",
       "wealth_of_common_sense_article",
       "congress_crs_product",
+      "senate_committee_site",
       "wsj_dow_jones",
       "reddit_post",
       "sec_enforcement_litigation",
