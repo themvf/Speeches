@@ -1007,9 +1007,10 @@ export function selectNewsFeedDocuments(
       "sec_trading_suspension"
     ]
   );
+  const nowMs = Date.now();
   const dated = items
-    .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
-    .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
+    .filter((item) => parseComparableFeedDate(item.published_at || item.date, nowMs) > 0)
+    .sort((a, b) => parseComparableFeedDate(b.published_at || b.date, nowMs) - parseComparableFeedDate(a.published_at || a.date, nowMs));
 
   const selected = new Map<string, DocumentListItem>();
   const add = (item: DocumentListItem) => {
@@ -1032,7 +1033,7 @@ export function selectNewsFeedDocuments(
   }
 
   return [...selected.values()]
-    .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
+    .sort((a, b) => parseComparableFeedDate(b.published_at || b.date, nowMs) - parseComparableFeedDate(a.published_at || a.date, nowMs));
 }
 
 export function buildDocumentsFacets(items: DocumentListItem[]): DocumentsFacets {
@@ -1083,6 +1084,14 @@ export function parseComparableDate(value: string): number {
   const parsed = new Date(value);
   const ms = parsed.getTime();
   return Number.isNaN(ms) ? 0 : ms;
+}
+
+const FEED_FUTURE_DATE_TOLERANCE_MS = 6 * 60 * 60 * 1000;
+
+function parseComparableFeedDate(value: string, nowMs = Date.now()): number {
+  const ms = parseComparableDate(value);
+  if (ms <= 0) return 0;
+  return ms > nowMs + FEED_FUTURE_DATE_TOLERANCE_MS ? 0 : ms;
 }
 
 function normalizeTrendsPayload(payload: unknown): TrendsPayload {
