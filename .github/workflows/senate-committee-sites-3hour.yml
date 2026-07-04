@@ -1,0 +1,88 @@
+name: Senate Committee Site Extraction (3 Hour)
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      extraction_limit:
+        description: "Max Senate committee documents to extract"
+        required: false
+        default: "40"
+      max_pages:
+        description: "Listing pages to scan per committee"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: senate-committee-sites-3hour
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '40' }}
+      MAX_PAGES: ${{ github.event.inputs.max_pages || '3' }}
+      ENRICH_LIMIT: "25"
+      ENRICH_MODEL: "deepseek-v4-flash"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Senate committee site extraction
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector senate_committee_site \
+            --selection new_or_updated \
+            --limit "${EXTRACTION_LIMIT}" \
+            --max-pages "${MAX_PAGES}" \
+            --include-pdfs false \
+            --include-rss false \
+            --require-remote-persistence \
+            --summary-path senate_committee_sites_summary.json
+
+      - name: Enrich Senate committee documents
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py \
+            enrich \
+            --require-remote-persistence \
+            --mode only_missing_or_failed \
+            --order recent \
+            --source-kind senate_committee_site \
+            --limit "${ENRICH_LIMIT}" \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --checkpoint-every 5 \
+            --summary-path senate_committee_sites_enrichment.json
+
+      - name: Upload Extraction Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: senate-committee-sites-${{ github.run_id }}
+          path: |
+            senate_committee_sites_summary.json
+            senate_committee_sites_enrichment.json
+          if-no-files-found: ignore

@@ -154,6 +154,7 @@ function sourceKindLabel(value: string): string {
     liberty_street_economics_article: "Liberty Street Economics",
     wealth_of_common_sense_article: "A Wealth of Common Sense",
     congress_crs_product: "Congress CRS Products",
+    senate_committee_site: "Senate Committee Sites",
     wsj_dow_jones: "WSJ / Dow Jones",
     reddit_post: "Reddit",
     hedge_fund_letter: "Hedge Fund Letters",

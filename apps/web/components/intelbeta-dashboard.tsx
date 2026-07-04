@@ -244,6 +244,7 @@ const FEED_META: Record<string, FeedMeta> = {
   document_pcaob_update: { label: "PCAOB", code: "PCAOB", color: "#a5d8ff" },
   document_msrb_press_release: { label: "MSRB", code: "MSRB", color: "#a5d8ff" },
   document_congress_crs_product: { label: "Congress CRS", code: "CRS", color: "#b88fff" },
+  document_senate_committee_site: { label: "Senate Committee Sites", code: "SEN", color: "#b88fff" },
   document_sec_tm_faq: { label: "SEC TM FAQ", code: "SEC", color: "#7cc4ff" },
   document_finra_regulatory_notice: { label: "FINRA Regulatory Notices", code: "FINRA", color: "#77d7a8" },
   document_finra_awc: { label: "FINRA AWC", code: "FINRA", color: "#77d7a8" },
@@ -706,6 +707,7 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     return (
       CONGRESS_SOURCE_FEED_KEYS.has(feedKey) ||
       sourceKind === "congress_crs_product" ||
+      sourceKind === "senate_committee_site" ||
       text.includes("congress.gov") ||
       text.includes("banking.senate.gov") ||
       text.includes("finance.senate.gov") ||
