@@ -1862,8 +1862,9 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
     enriched_count = 0
     fallback_count = 0
     used_models: List[str] = []
+    checkpoint_every = max(0, int(getattr(args, "checkpoint_every", 0) or 0))
 
-    for candidate in targets:
+    for index, candidate in enumerate(targets, start=1):
         doc_id = candidate["doc_id"]
         existing = entries.get(doc_id, {}) if isinstance(entries.get(doc_id, {}), dict) else {}
         review = existing.get("review", {}) if isinstance(existing.get("review", {}), dict) else {}
@@ -1918,6 +1919,9 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             "reward": reward,
             "enrichment": enrichment,
         }
+        if not args.dry_run and checkpoint_every and index % checkpoint_every == 0:
+            enrichment_state["entries"] = entries
+            _save_enrichment_state(storage, enrichment_state, require_remote=args.require_remote_persistence)
 
     enrichment_state["entries"] = entries
     rule_summaries_rebuilt = False
@@ -1996,6 +2000,7 @@ def _build_parser() -> argparse.ArgumentParser:
     enrich.add_argument("--heuristic-only", action="store_true")
     enrich.add_argument("--dry-run", action="store_true")
     enrich.add_argument("--require-remote-persistence", action="store_true")
+    enrich.add_argument("--checkpoint-every", type=int, default=0)
     enrich.add_argument("--summary-path", default="")
     return parser
 
