@@ -865,6 +865,8 @@ export async function deleteBlockedRssArticles(topicRules: StoredRssTopicRule[])
        OR feed_key = 'wired_security'
        OR title ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
        OR description ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
+       OR title ~* '(lawsuit|litigation|legal battle|court battle|class action|complaint filed|settlement agreement|appeals court)'
+       OR description ~* '(lawsuit|litigation|legal battle|court battle|class action|complaint filed|settlement agreement|appeals court)'
   `) as unknown as Array<Pick<StoredRssArticle, "id" | "guid" | "feed_key" | "title" | "url" | "description" | "author" | "published_at">>;
 
   const ids = candidates

@@ -207,6 +207,11 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     feedUrl: "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
     refreshIntervalMinutes: 180,
   },
+  google_news_senate_banking_committee: {
+    label: "Google News: Senate Banking Committee",
+    feedUrl: "https://news.google.com/rss/search?q=%22Senate%20Banking%20Committee%22%20OR%20%22Senate%20Committee%20on%20Banking%2C%20Housing%2C%20and%20Urban%20Affairs%22%20OR%20site%3Abanking.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
   gibson_dunn_sec_sentinel: {
     label: "Gibson Dunn SEC Sentinel",
     feedUrl: "https://secsentinel.gibsondunn.com/feed/",
