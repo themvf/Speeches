@@ -766,7 +766,9 @@ function feedItemDate(article: Pick<FeedItem, "published_at" | "fetched_at">): s
 
 function feedItemDateMs(article: Pick<FeedItem, "published_at" | "fetched_at">): number {
   const ms = new Date(feedItemDate(article)).getTime();
-  return Number.isFinite(ms) ? ms : 0;
+  if (!Number.isFinite(ms)) return 0;
+  const maxFutureSkewMs = 6 * 60 * 60 * 1000;
+  return ms > Date.now() + maxFutureSkewMs ? 0 : ms;
 }
 
 function formatClock(date: Date): string {
