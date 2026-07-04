@@ -1,6 +1,8 @@
 name: Connector Enrichment (6 Hour)
 
 on:
+  schedule:
+    - cron: "37 */6 * * *"
   workflow_dispatch:
     inputs:
       enrich_limit:
@@ -78,7 +80,7 @@ jobs:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
-      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '50' }}
+      ENRICH_LIMIT: ${{ github.event_name == 'schedule' && '10' || github.event.inputs.enrich_limit || '50' }}
       ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
 
     steps:
@@ -99,7 +101,7 @@ jobs:
       - name: Enrich ${{ matrix.source_kind }}
         run: |
           set -euo pipefail
-          args=(enrich --require-remote-persistence --mode only_missing_or_failed --source-kind "${{ matrix.source_kind }}" --limit "${ENRICH_LIMIT}" --provider deepseek --model "${ENRICH_MODEL}" --summary-path "connector_enrichment_${{ matrix.source_kind }}.json")
+          args=(enrich --require-remote-persistence --mode only_missing_or_failed --order recent --source-kind "${{ matrix.source_kind }}" --limit "${ENRICH_LIMIT}" --provider deepseek --model "${ENRICH_MODEL}" --checkpoint-every 5 --summary-path "connector_enrichment_${{ matrix.source_kind }}.json")
           python run_financial_news_pipeline.py "${args[@]}"
 
       - name: Upload Enrichment Summary
