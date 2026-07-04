@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - requests remains a supported local fal
 
 SUBSTACK_SEARCH_URL = "https://substack.com/api/v1/post/search"
 DEFAULT_KEYWORDS = ["securities", "financial industry", "decentralized finance"]
-DEFAULT_FEEDS: List[Dict[str, str]] = [
+CORE_FEEDS: List[Dict[str, str]] = [
     {
         "label": "Capitol Account",
         "feed_url": "https://www.capitolaccountdc.com/feed",
@@ -65,6 +65,134 @@ DEFAULT_FEEDS: List[Dict[str, str]] = [
         "tags_csv": "the-dig,accounting,audit,governance",
     },
 ]
+ADDITIONAL_SUBSTACK_FEEDS: List[Dict[str, str]] = [
+    {
+        "label": "Doomberg",
+        "feed_url": "https://newsletter.doomberg.com/feed",
+        "tags_csv": "doomberg,financial-markets,energy,macro",
+    },
+    {
+        "label": "Net Interest",
+        "feed_url": "https://www.netinterest.co/feed",
+        "tags_csv": "net-interest,financial-markets,banking,asset-management",
+    },
+    {
+        "label": "The Overshoot",
+        "feed_url": "https://theovershoot.co/feed",
+        "tags_csv": "the-overshoot,macro,economic-policy,financial-markets",
+    },
+    {
+        "label": "Apricitas Economics",
+        "feed_url": "https://www.apricitas.io/feed",
+        "tags_csv": "apricitas,economics,macro,financial-markets",
+    },
+    {
+        "label": "The Macro Compass",
+        "feed_url": "https://themacrocompass.substack.com/feed",
+        "tags_csv": "macro-compass,macro,financial-markets,rates",
+    },
+    {
+        "label": "Payments Wrap Up",
+        "feed_url": "https://www.paymentswrapup.com/feed",
+        "tags_csv": "payments-wrap-up,payments,fintech,banking",
+    },
+    {
+        "label": "Canadian Fintech",
+        "feed_url": "https://canadianfintech.substack.com/feed",
+        "tags_csv": "canadian-fintech,fintech,open-banking,financial-policy",
+    },
+    {
+        "label": "Fintech Is Easy",
+        "feed_url": "https://fintechiseasy.com/feed",
+        "tags_csv": "fintech-is-easy,fintech,payments,banking",
+    },
+    {
+        "label": "Web3 vs. the Law",
+        "feed_url": "https://davidlopezkurtz.substack.com/feed",
+        "tags_csv": "web3-law,crypto-policy,securities-regulation,digital-assets",
+    },
+    {
+        "label": "Venture in Security",
+        "feed_url": "https://ventureinsecurity.net/feed",
+        "tags_csv": "venture-in-security,cybersecurity,security-market,security-leadership",
+    },
+    {
+        "label": "Resilient Cyber",
+        "feed_url": "https://www.resilientcyber.io/feed",
+        "tags_csv": "resilient-cyber,cybersecurity,cyber-policy,security-risk",
+    },
+    {
+        "label": "The Cybersecurity Pulse",
+        "feed_url": "https://www.cybersecuritypulse.net/feed",
+        "tags_csv": "cybersecurity-pulse,cybersecurity,threats,security-operations",
+    },
+    {
+        "label": "Cybersecurity Chronicles",
+        "feed_url": "https://cybersecuritychronicles.substack.com/feed",
+        "tags_csv": "cybersecurity-chronicles,cyber-risk,governance,security-policy",
+    },
+    {
+        "label": "CyberMaterial",
+        "feed_url": "https://www.cybermaterial.com/feed",
+        "tags_csv": "cybermaterial,cybersecurity,threat-intelligence,security-news",
+    },
+    {
+        "label": "ToxSec",
+        "feed_url": "https://www.toxsec.com/feed",
+        "tags_csv": "toxsec,cybersecurity,ai-security,security-research",
+    },
+    {
+        "label": "TechLetters",
+        "feed_url": "https://techletters.substack.com/feed",
+        "tags_csv": "techletters,cyber-policy,privacy,technology-policy",
+    },
+    {
+        "label": "Imperva Weekly Threat Intelligence",
+        "feed_url": "https://imperva.substack.com/feed",
+        "tags_csv": "imperva,threat-intelligence,cybersecurity,security-operations",
+    },
+    {
+        "label": "The Attack Surface",
+        "feed_url": "https://attacksurfaceai.substack.com/feed",
+        "tags_csv": "attack-surface,ai-security,cybersecurity,threat-intelligence",
+    },
+    {
+        "label": "Import AI",
+        "feed_url": "https://importai.substack.com/feed",
+        "tags_csv": "import-ai,artificial-intelligence,ai-policy,frontier-ai",
+    },
+    {
+        "label": "One Useful Thing",
+        "feed_url": "https://www.oneusefulthing.org/feed",
+        "tags_csv": "one-useful-thing,artificial-intelligence,generative-ai,ai-adoption",
+    },
+    {
+        "label": "Interconnects",
+        "feed_url": "https://www.interconnects.ai/feed",
+        "tags_csv": "interconnects,artificial-intelligence,open-models,ai-research",
+    },
+    {
+        "label": "AI as Normal Technology",
+        "feed_url": "https://www.normaltech.ai/feed",
+        "tags_csv": "normal-technology,artificial-intelligence,ai-policy,technology-policy",
+    },
+    {
+        "label": "a16z AI Policy Brief",
+        "feed_url": "https://a16zpolicy.substack.com/feed",
+        "tags_csv": "a16z-ai-policy,ai-policy,technology-policy,venture-capital",
+    },
+    {
+        "label": "DC/ai Decoded",
+        "feed_url": "https://www.dcaidecoded.com/feed",
+        "tags_csv": "dc-ai-decoded,ai-policy,federal-policy,artificial-intelligence",
+    },
+    {
+        "label": "Asia AI Policy Monitor",
+        "feed_url": "https://asiaaipolicymonitor.substack.com/feed",
+        "tags_csv": "asia-ai-policy,ai-policy,technology-policy,artificial-intelligence",
+    },
+]
+DEFAULT_FEEDS: List[Dict[str, str]] = [*CORE_FEEDS, *ADDITIONAL_SUBSTACK_FEEDS]
 
 
 def _env_float(name: str, default: float) -> float:
@@ -90,6 +218,15 @@ def _looks_like_proxy_tunnel_error(exc: Exception) -> bool:
     )
 
 
+def _looks_like_curl_tls_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "tls connect error" in text
+        or "openssl_internal" in text
+        or "invalid library" in text
+    )
+
+
 def _normalize_space(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
@@ -98,6 +235,10 @@ def _string_list(value: Any) -> List[str]:
     if not isinstance(value, list):
         return []
     return [_normalize_space(item) for item in value if _normalize_space(item)]
+
+
+def _contains_html_markup(value: Any) -> bool:
+    return bool(re.search(r"<[A-Za-z][^>]*>", str(value or "")))
 
 
 def _post_authors(post: Dict[str, Any]) -> List[str]:
@@ -123,7 +264,10 @@ def _post_tags(post: Dict[str, Any]) -> List[str]:
 
 
 def _html_to_text(value: Any) -> str:
-    soup = BeautifulSoup(str(value or ""), "html.parser")
+    text = str(value or "")
+    if not _contains_html_markup(text):
+        return _normalize_space(text)
+    soup = BeautifulSoup(text, "html.parser")
     for node in soup.select("script, style, noscript"):
         node.decompose()
     blocks = [
@@ -142,7 +286,10 @@ def _xml_local_name(tag: str) -> str:
 
 
 def _strip_html(value: Any) -> str:
-    soup = BeautifulSoup(str(value or ""), "html.parser")
+    text = str(value or "")
+    if not _contains_html_markup(text):
+        return _normalize_space(text)
+    soup = BeautifulSoup(text, "html.parser")
     return _normalize_space(soup.get_text(" ", strip=True))
 
 
@@ -335,6 +482,8 @@ class SubstackPublicScraper:
         try:
             return self.session.get(url, **request_options)
         except Exception as exc:
+            if self._uses_curl_cffi and _looks_like_curl_tls_error(exc):
+                return self._get_with_requests_fallback(url, **request_options)
             if not (
                 self.proxy_url
                 and self.direct_proxy_fallback
@@ -345,6 +494,26 @@ class SubstackPublicScraper:
             direct_options.pop("proxy", None)
             direct_options.pop("proxies", None)
             return self.session.get(url, **direct_options)
+
+    def _get_with_requests_fallback(self, url: str, **request_options: Any) -> Any:
+        plain_options = dict(request_options)
+        proxy = plain_options.pop("proxy", None)
+        if proxy and "proxies" not in plain_options:
+            plain_options["proxies"] = {"http": proxy, "https": proxy}
+        fallback_session = requests.Session()
+        fallback_session.headers.update(dict(getattr(self.session, "headers", {}) or {}))
+        try:
+            return fallback_session.get(url, **plain_options)
+        except Exception as exc:
+            if not (
+                self.direct_proxy_fallback
+                and plain_options.get("proxies")
+                and _looks_like_proxy_tunnel_error(exc)
+            ):
+                raise
+            direct_options = dict(plain_options)
+            direct_options.pop("proxies", None)
+            return fallback_session.get(url, **direct_options)
 
     def _get_json(
         self, url: str, *, params: Optional[Dict[str, Any]] = None
