@@ -18,6 +18,7 @@ type SourceFilter =
   | "ALL"
   | "SEC_SPEECHES"
   | "SEC_ENFORCEMENT"
+  | "SEC_ALL"
   | "FINRA"
   | "DOJ"
   | "FED"
@@ -25,8 +26,8 @@ type SourceFilter =
   | "TREASURY"
   | "MARKET_SOURCES"
   | "CONGRESS"
-  | "SENATE"
   | "PONZI_INVESTOR_FRAUD"
+  | "CYBER"
   | "WSJ"
   | "BLOOMBERG"
   | "SUBSTACK"
@@ -264,6 +265,7 @@ const FEED_META: Record<string, FeedMeta> = {
 const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }> = [
   { key: "SEC_SPEECHES", label: "SEC Speeches" },
   { key: "SEC_ENFORCEMENT", label: "SEC Enforcement" },
+  { key: "SEC_ALL", label: "SEC All" },
   { key: "FINRA", label: "FINRA" },
   { key: "DOJ", label: "DOJ" },
   { key: "FED", label: "Federal Reserve" },
@@ -271,8 +273,8 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "TREASURY", label: "Treasury" },
   { key: "MARKET_SOURCES", label: "Market Sources" },
   { key: "CONGRESS", label: "Congress" },
-  { key: "SENATE", label: "Senate Source" },
   { key: "PONZI_INVESTOR_FRAUD", label: "Ponzi & Investor Fraud" },
+  { key: "CYBER", label: "Cyber" },
   { key: "WSJ", label: "WSJ" },
   { key: "BLOOMBERG", label: "Bloomberg" },
   { key: "SUBSTACK", label: "Substack" },
@@ -308,10 +310,23 @@ const LEGAL_SOURCE_FEED_KEYS = new Set([
 ]);
 
 const TRADE_MEDIA_FEED_KEYS = new Set([
-  "the_record",
-  "wired_security",
-  "tripwire_state_of_security",
-  "akamai_blog",
+  "ritholtz_big_picture",
+  "ft_portfolios_market_commentary",
+  "wealth_of_common_sense",
+]);
+
+const CONGRESS_SOURCE_FEED_KEYS = new Set([
+  "google_news_senate_banking_committee",
+  "google_news_senate_finance_committee",
+  "google_news_senate_agriculture_committee",
+  "google_news_senate_judiciary_committee",
+  "google_news_senate_hsgac",
+  "google_news_senate_commerce_committee",
+]);
+
+const CYBER_SOURCE_FEED_KEYS = new Set([
+  "cisa_cybersecurity_advisories",
+  "bleepingcomputer",
   "krebs_on_security",
   "the_hacker_news",
   "welivesecurity",
@@ -319,15 +334,20 @@ const TRADE_MEDIA_FEED_KEYS = new Set([
   "flashpoint_blog",
   "recorded_future",
   "intel471_blog",
+  "the_record",
+  "wired_security",
+  "tripwire_state_of_security",
+  "akamai_blog",
+  "dark_reading",
+  "securityweek",
+  "microsoft_security_blog",
 ]);
 
-const SENATE_SOURCE_FEED_KEYS = new Set([
-  "google_news_senate_banking_committee",
-  "google_news_senate_finance_committee",
-  "google_news_senate_agriculture_committee",
-  "google_news_senate_judiciary_committee",
-  "google_news_senate_hsgac",
-  "google_news_senate_commerce_committee",
+const CYBER_SOURCE_KINDS = new Set([
+  "therecord_media_article",
+  "wired_article",
+  "tripwire_article",
+  "akamai_blog_article",
 ]);
 
 const SOURCE_LABEL_ACRONYMS = new Set([
@@ -527,6 +547,44 @@ function matchesLegalSource(article: FeedItem): boolean {
   );
 }
 
+function matchesSecAll(article: FeedItem): boolean {
+  const feedKey = String(article.feed_key || "").toLowerCase();
+  const sourceKind = String(article.source_kind || "").toLowerCase();
+  const text = articleSourceText(article);
+  return (
+    feedKey.startsWith("sec_") ||
+    feedKey.startsWith("document_sec_") ||
+    sourceKind.startsWith("sec_") ||
+    text.includes("sec.gov") ||
+    text.includes("securities and exchange commission")
+  );
+}
+
+function matchesCyberSource(article: FeedItem): boolean {
+  const feedKey = String(article.feed_key || "").toLowerCase();
+  const sourceKind = String(article.source_kind || "").toLowerCase();
+  const text = articleSourceText(article);
+  return (
+    CYBER_SOURCE_FEED_KEYS.has(feedKey) ||
+    CYBER_SOURCE_KINDS.has(sourceKind) ||
+    text.includes("cisa.gov") ||
+    text.includes("krebsonsecurity.com") ||
+    text.includes("thehackernews.com") ||
+    text.includes("welivesecurity.com") ||
+    text.includes("sophos.com") ||
+    text.includes("flashpoint.io") ||
+    text.includes("recordedfuture.com") ||
+    text.includes("intel471.com") ||
+    text.includes("therecord.media") ||
+    text.includes("wired.com") ||
+    text.includes("tripwire.com") ||
+    text.includes("akamai.com") ||
+    text.includes("darkreading.com") ||
+    text.includes("securityweek.com") ||
+    text.includes("microsoft.com/security")
+  );
+}
+
 function fallbackDocumentTopicMatches(article: FeedItem, rules: TopicRuleView[]): TopicRuleView[] {
   if (article.item_type !== "document") return [];
   const text = normalizeMatchText([
@@ -608,6 +666,9 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
       url.includes("/enforcement-litigation/")
     );
   }
+  if (sourceFilter === "SEC_ALL") {
+    return matchesSecAll(article);
+  }
   if (sourceFilter === "FINRA") {
     return feedKey.startsWith("finra_") || sourceKind.startsWith("finra_") || text.includes("finra") || text.includes("financial industry regulatory authority");
   }
@@ -630,10 +691,10 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     return sourceKind.startsWith("treasury_") || text.includes("treasury.gov") || text.includes("treasury");
   }
   if (sourceFilter === "MARKET_SOURCES") {
+    if (matchesSecAll(article) || matchesCyberSource(article)) {
+      return false;
+    }
     return (
-      sourceKind === "sec_press_release_rss" ||
-      sourceKind === "sec_federal_register" ||
-      sourceKind === "sec_pcaob_rulemaking" ||
       sourceKind === "pcaob_update" ||
       sourceKind === "msrb_press_release" ||
       text.includes("pcaobus.org") ||
@@ -643,14 +704,9 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "CONGRESS") {
     return (
+      CONGRESS_SOURCE_FEED_KEYS.has(feedKey) ||
       sourceKind === "congress_crs_product" ||
       text.includes("congress.gov") ||
-      text.includes("crs product")
-    );
-  }
-  if (sourceFilter === "SENATE") {
-    return (
-      SENATE_SOURCE_FEED_KEYS.has(feedKey) ||
       text.includes("banking.senate.gov") ||
       text.includes("finance.senate.gov") ||
       text.includes("agriculture.senate.gov") ||
@@ -662,11 +718,15 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
       text.includes("senate agriculture committee") ||
       text.includes("senate judiciary committee") ||
       text.includes("senate homeland security") ||
-      text.includes("senate commerce committee")
+      text.includes("senate commerce committee") ||
+      text.includes("crs product")
     );
   }
   if (sourceFilter === "PONZI_INVESTOR_FRAUD") {
     return feedKey === "google_news_ponzi_investor_fraud";
+  }
+  if (sourceFilter === "CYBER") {
+    return matchesCyberSource(article);
   }
   if (sourceFilter === "WSJ") {
     return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || sourceKind === "wsj_dow_jones" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
@@ -707,7 +767,7 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     return matchesLegalSource(article);
   }
   if (sourceFilter === "TRADE_MEDIA") {
-    if (matchesLegalSource(article)) {
+    if (matchesLegalSource(article) || matchesCyberSource(article)) {
       return false;
     }
     if (TRADE_MEDIA_FEED_KEYS.has(feedKey)) {
@@ -716,10 +776,6 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     return [
       "investmentnews_article",
       "citywire_article",
-      "therecord_media_article",
-      "wired_article",
-      "tripwire_article",
-      "akamai_blog_article",
       "ritholtz_article",
       "ft_portfolios_market_commentary",
       "liberty_street_economics_article",
@@ -812,6 +868,66 @@ function feedItemDateMs(article: Pick<FeedItem, "published_at" | "fetched_at">):
   if (!Number.isFinite(ms)) return 0;
   const maxFutureSkewMs = 6 * 60 * 60 * 1000;
   return ms > Date.now() + maxFutureSkewMs ? 0 : ms;
+}
+
+function normalizeDedupeText(value: string | null | undefined): string {
+  return decodeEntities(String(value || ""))
+    .toLowerCase()
+    .replace(/['"\u2018\u2019\u201c\u201d]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalFeedItemUrl(value: string | null | undefined): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      const lower = key.toLowerCase();
+      if (
+        lower.startsWith("utm_") ||
+        ["fbclid", "gclid", "mc_cid", "mc_eid", "cmpid", "smid", "ref", "source"].includes(lower)
+      ) {
+        url.searchParams.delete(key);
+      }
+    }
+    url.hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    return `${url.hostname}${url.pathname}${url.searchParams.toString() ? `?${url.searchParams.toString()}` : ""}`.toLowerCase();
+  } catch {
+    return normalizeDedupeText(raw);
+  }
+}
+
+function feedItemDedupeKeys(article: FeedItem): string[] {
+  const urlKey = canonicalFeedItemUrl(article.url);
+  const titleKey = normalizeDedupeText(article.title);
+  const descriptionKey = normalizeDedupeText(article.description).slice(0, 120);
+  const sourceKey = normalizeDedupeText(article.organization || article.feed_label || article.author || article.feed_key);
+  return [
+    urlKey ? `url:${urlKey}` : "",
+    titleKey && sourceKey ? `title-source:${titleKey}:${sourceKey}` : "",
+    titleKey && descriptionKey ? `title-desc:${titleKey}:${descriptionKey}` : "",
+  ].filter(Boolean);
+}
+
+function dedupeFeedItems(items: FeedItem[]): FeedItem[] {
+  const seen = new Set<string>();
+  const out: FeedItem[] = [];
+  for (const item of items) {
+    const keys = feedItemDedupeKeys(item);
+    if (keys.some((key) => seen.has(key))) {
+      continue;
+    }
+    for (const key of keys) {
+      seen.add(key);
+    }
+    out.push(item);
+  }
+  return out;
 }
 
 function formatClock(date: Date): string {
@@ -2033,8 +2149,10 @@ export function IntelBetaDashboard({
   const [documents, setDocuments] = useState<DocumentListItem[]>(initialDocuments);
   const documentFeedItems = useMemo(() => documents.map(documentToFeedItem), [documents]);
   const feedItems = useMemo<FeedItem[]>(
-    () => [...articles, ...documentFeedItems]
-      .sort((a, b) => feedItemDateMs(b) - feedItemDateMs(a)),
+    () => dedupeFeedItems(
+      [...articles, ...documentFeedItems]
+        .sort((a, b) => feedItemDateMs(b) - feedItemDateMs(a))
+    ),
     [articles, documentFeedItems]
   );
   const [topicRules, setTopicRules] = useState<StoredRssTopicRule[]>(initialTopicRules);
