@@ -953,9 +953,10 @@ export function buildDocumentListItems(
 
 export function selectNewsFeedDocuments(
   items: DocumentListItem[],
-  options: { limit?: number; pinnedSourceKinds?: string[] } = {}
+  options: { limit?: number; pinnedSourceKinds?: string[]; pinnedPerSourceLimit?: number } = {}
 ): DocumentListItem[] {
   const feedDocumentLimit = Math.max(0, options.limit ?? 250);
+  const pinnedPerSourceLimit = Math.max(0, options.pinnedPerSourceLimit ?? 12);
   const pinnedSourceKinds = new Set(
     options.pinnedSourceKinds ?? [
       "sec_speech",
@@ -973,6 +974,7 @@ export function selectNewsFeedDocuments(
       "icba_news_item",
       "lsta_news_item",
       "federal_reserve_speech_testimony",
+      "doj_usao_press_release",
       "treasury_featured_story",
       "treasury_press_release",
       "treasury_statement_remark",
@@ -1016,10 +1018,17 @@ export function selectNewsFeedDocuments(
 
   dated.slice(0, feedDocumentLimit).forEach(add);
 
+  const pinnedCounts = new Map<string, number>();
   for (const item of dated) {
-    if (pinnedSourceKinds.has(item.source_kind)) {
-      add(item);
+    if (!pinnedSourceKinds.has(item.source_kind)) {
+      continue;
     }
+    const count = pinnedCounts.get(item.source_kind) ?? 0;
+    if (count >= pinnedPerSourceLimit) {
+      continue;
+    }
+    add(item);
+    pinnedCounts.set(item.source_kind, count + 1);
   }
 
   return [...selected.values()]
