@@ -1,3 +1,4 @@
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
 
 const COOKIE = "admin_auth";
@@ -33,7 +34,7 @@ async function chatSecretHash(): Promise<string> {
   return DEFAULT_CHAT_SECRET_HASH;
 }
 
-export async function middleware(req: NextRequest) {
+async function legacyMiddleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (pathname === CHAT_LOGIN_PATH) {
@@ -80,6 +81,15 @@ export async function middleware(req: NextRequest) {
   return NextResponse.redirect(loginUrl);
 }
 
+const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
+
+export default clerkConfigured
+  ? clerkMiddleware((_auth, req) => legacyMiddleware(req))
+  : legacyMiddleware;
+
 export const config = {
-  matcher: ["/admin", "/admin/:path*", "/api/admin/:path*", "/chats", "/chats/login", "/api/chats/:path*"],
+  matcher: [
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+  ],
 };

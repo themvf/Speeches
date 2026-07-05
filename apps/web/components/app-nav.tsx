@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AuthControls } from "@/components/auth-controls";
 
 type NavItem = {
   href:
@@ -49,7 +50,7 @@ function navLinkClass(active: boolean): string {
     : "rounded-xl border border-transparent px-3 py-2 text-sm font-medium text-[color:var(--ink-faint)] hover:border-[color:var(--line)] hover:bg-[color:rgba(79,213,255,0.1)] hover:text-[color:var(--ink)]";
 }
 
-export function AppNav() {
+export function AppNav({ authEnabled }: { authEnabled: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -92,16 +93,21 @@ export function AppNav() {
           })}
         </nav>
 
-        <button
-          type="button"
-          onClick={() => setOpen((prev) => !prev)}
-          aria-expanded={open}
-          aria-controls="mobile-nav-drawer"
-          aria-label="Toggle navigation"
-          className="min-h-11 min-w-11 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-3 text-sm font-semibold text-[color:var(--ink)] lg:hidden"
-        >
-          {open ? "Close" : "Menu"}
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="hidden lg:block">
+            <AuthControls enabled={authEnabled} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen((prev) => !prev)}
+            aria-expanded={open}
+            aria-controls="mobile-nav-drawer"
+            aria-label="Toggle navigation"
+            className="min-h-11 min-w-11 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-3 text-sm font-semibold text-[color:var(--ink)] lg:hidden"
+          >
+            {open ? "Close" : "Menu"}
+          </button>
+        </div>
       </div>
 
       {open ? (
@@ -128,6 +134,9 @@ export function AppNav() {
                   </Link>
                 );
               })}
+            </div>
+            <div className="mt-5 border-t border-[color:var(--line)] pt-4">
+              <AuthControls enabled={authEnabled} />
             </div>
           </nav>
         </>

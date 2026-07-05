@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 import { AppNav } from "@/components/app-nav";
+import { isClerkConfigured, OptionalClerkProvider } from "@/components/optional-clerk-provider";
 import { TickerBar } from "@/components/ticker-bar";
 import "./globals.css";
 
@@ -22,17 +23,21 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const authEnabled = isClerkConfigured();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${bodyFont.variable} ${displayFont.variable}`}>
-        <a href="#main-content" className="skip-link">
-          Skip to content
-        </a>
-        <div className="min-h-screen">
-          <AppNav />
-          <main id="main-content" className="pb-8">{children}</main>
-          <TickerBar />
-        </div>
+        <OptionalClerkProvider>
+          <a href="#main-content" className="skip-link">
+            Skip to content
+          </a>
+          <div className="min-h-screen">
+            <AppNav authEnabled={authEnabled} />
+            <main id="main-content" className="pb-8">{children}</main>
+            <TickerBar />
+          </div>
+        </OptionalClerkProvider>
       </body>
     </html>
   );

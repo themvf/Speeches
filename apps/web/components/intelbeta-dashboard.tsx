@@ -885,6 +885,14 @@ function feedItemDate(article: Pick<FeedItem, "published_at" | "fetched_at">): s
   return article.published_at || article.fetched_at || "";
 }
 
+function formatFeedItemTime(article: Pick<FeedItem, "published_at" | "fetched_at">): string {
+  if (article.published_at) {
+    return formatRelativeTime(article.published_at);
+  }
+  const seenAt = formatRelativeTime(article.fetched_at || null);
+  return seenAt ? `Seen ${seenAt}` : "";
+}
+
 function feedItemDateMs(article: Pick<FeedItem, "published_at" | "fetched_at">): number {
   const ms = new Date(feedItemDate(article)).getTime();
   if (!Number.isFinite(ms)) return 0;
@@ -1160,7 +1168,7 @@ function FullArticleModal({
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
               <span className="tone-chip">{sourceLabel}</span>
               <SourceProvenanceChip article={article} />
-              <span className="tone-chip">{formatRelativeTime(feedItemDate(article))}</span>
+              <span className="tone-chip">{formatFeedItemTime(article)}</span>
               {article.author ? <span className="tone-chip">By {decodeEntities(article.author)}</span> : null}
             </div>
             <h2 style={{ margin: 0, color: "#f4f7fc", fontSize: compact ? 17 : 20, lineHeight: 1.35 }}>
@@ -1523,7 +1531,7 @@ function FeedRow({
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
-            <span style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</span>
+            <span style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatFeedItemTime(article)}</span>
             <span style={{ color: source.color, fontSize: 12, fontWeight: 700 }}>{sourceLabel}</span>
             <SourceProvenanceChip article={article} />
             <ToneChip label={article.tone_label} />
@@ -1608,7 +1616,7 @@ function FeedRow({
       }}
       onClick={onSelect}
     >
-      <div style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</div>
+      <div style={{ color: "#7f8faa", fontSize: 12, whiteSpace: "nowrap" }}>{formatFeedItemTime(article)}</div>
       <div style={{ display: "grid", gap: 4, minWidth: 0 }} title={sourceLabel}>
         <span style={{ color: source.color, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {sourceLabel}
@@ -1734,7 +1742,7 @@ function FeaturedCard({
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
-            <span style={{ color: "#8fa7c8", fontSize: 12, whiteSpace: "nowrap" }}>{formatRelativeTime(feedItemDate(article))}</span>
+            <span style={{ color: "#8fa7c8", fontSize: 12, whiteSpace: "nowrap" }}>{formatFeedItemTime(article)}</span>
             <span style={{ color: source.color, fontSize: 12, fontWeight: 700 }}>{sourceLabel}</span>
             <SourceProvenanceChip article={article} />
             <ToneChip label={tone} />
@@ -1826,7 +1834,7 @@ function FeaturedCard({
           alignItems: "start",
         }}
       >
-        <div style={{ color: "#8fa7c8", fontSize: 12 }}>{formatRelativeTime(feedItemDate(article))}</div>
+        <div style={{ color: "#8fa7c8", fontSize: 12 }}>{formatFeedItemTime(article)}</div>
         <div style={{ display: "grid", gap: 4, minWidth: 0 }} title={sourceLabel}>
           <span style={{ color: source.color, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {sourceLabel}
