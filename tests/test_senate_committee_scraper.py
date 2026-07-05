@@ -53,6 +53,43 @@ def test_discovers_hsgac_data_url_and_extracts_detail_page(monkeypatch):
     assert "federal agency accountability" in data["full_text"]
 
 
+def test_detail_extraction_removes_senate_navigation_chrome(monkeypatch):
+    detail_url = "https://www.banking.senate.gov/newsroom/majority/example-release"
+    detail_html = """
+    <html>
+      <head>
+        <meta property="og:title" content="Chairman Scott Requests Agency Oversight Update" />
+        <meta property="article:published_time" content="2026-07-02T13:00:00Z" />
+      </head>
+      <body>
+        <main>
+          <p>Newsroom Majority Press Releases Minority Press Releases Photo Gallery Press Release Archive</p>
+          <h1>Chairman Scott Requests Agency Oversight Update</h1>
+          <p>WASHINGTON, D.C. - The committee requested an update on agency supervision, accountability, and market oversight.</p>
+          <p>The letter asks officials to explain implementation timelines, compliance obligations, and risks to consumers.</p>
+          <p>Members said the request is part of Congress's continuing review of financial regulatory policy.</p>
+        </main>
+      </body>
+    </html>
+    """
+    scraper = SenateCommitteeScraper(sleep_seconds=0)
+
+    monkeypatch.setattr(scraper, "_fetch_text", lambda url: (detail_html, 200, detail_url))
+
+    extracted = scraper.extract_document(
+        {
+            "url": detail_url,
+            "title": "Chairman Scott Requests Agency Oversight Update",
+            "date": "July 02, 2026",
+        }
+    )
+
+    assert extracted["success"] is True
+    text = extracted["data"]["full_text"]
+    assert "agency supervision, accountability" in text
+    assert "Newsroom Majority Press Releases" not in text
+
+
 def test_runner_supports_senate_committee_site_connector():
     assert "senate_committee_site" in pipeline.SUPPORTED_CONNECTORS
     assert pipeline._default_base_url("senate_committee_site") == SENATE_COMMITTEE_DEFAULT_URL
@@ -107,4 +144,3 @@ def test_senate_committee_extract_record_builds_document():
     assert metadata["source_key"] == "senate_banking"
     assert metadata["published_date"] == "July 02, 2026"
     assert "Senate Banking Committee requested" in record["content"]["full_text"]
-

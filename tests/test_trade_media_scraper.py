@@ -312,6 +312,43 @@ class TradeMediaScraperTests(unittest.TestCase):
         self.assertEqual(result["data"]["url"], "https://news.google.com/rss/articles/example-3")
         self.assertGreaterEqual(result["data"]["word_count"], 30)
 
+    def test_extract_document_removes_crypto_site_chrome(self):
+        scraper = TradeMediaScraper(min_delay_seconds=0)
+        html = """
+<html>
+  <head>
+    <meta property="og:title" content="Stablecoin collateral rules reshape crypto markets" />
+    <meta property="article:published_time" content="2026-07-05T13:00:00Z" />
+  </head>
+  <body>
+    <main>
+      <div>Coin Prices BTC $62,693.00 -0.30% ETH $1,772.63 -0.97%</div>
+      <div>Search / News Video Prices Research Events Data & Indices Sponsored Search / en Sign In Sign Up</div>
+      <h1>Stablecoin collateral rules reshape crypto markets</h1>
+      <p>Stablecoin issuers are adjusting reserve policies after regulators clarified collateral expectations for digital assets.</p>
+      <p>The policy shift affects exchanges, payment firms, custodians, and market makers that rely on dollar tokens for settlement.</p>
+      <p>Compliance teams said the guidance increases demand for transparent reserves, stronger attestations, and tighter liquidity controls.</p>
+    </main>
+  </body>
+</html>
+"""
+
+        with patch.object(
+            scraper,
+            "_fetch",
+            return_value=_FakeResponse(text=html, url="https://www.coindesk.com/policy/example"),
+        ):
+            result = scraper.extract_document(
+                "https://www.coindesk.com/policy/example",
+                fallback_title="Stablecoin collateral rules reshape crypto markets",
+            )
+
+        self.assertTrue(result["success"])
+        text = result["data"]["full_text"]
+        self.assertIn("Stablecoin issuers are adjusting reserve policies", text)
+        self.assertNotIn("Coin Prices BTC", text)
+        self.assertNotIn("Sign In Sign Up", text)
+
     def test_access_challenge_detector_handles_cloudflare_and_incapsula_markers(self):
         self.assertTrue(_looks_like_access_challenge("Attention Required! | Cloudflare"))
         self.assertTrue(_looks_like_access_challenge("Request unsuccessful. Incapsula incident ID: 123"))
