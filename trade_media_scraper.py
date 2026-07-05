@@ -458,6 +458,7 @@ BOILERPLATE_EXACT_LINES = {
     "about",
     "advertise",
     "all rights reserved",
+    "blog",
     "by",
     "careers",
     "contact",
@@ -466,10 +467,12 @@ BOILERPLATE_EXACT_LINES = {
     "data & indices",
     "edited by",
     "en",
+    "english",
     "events",
     "follow us",
     "get started",
     "learn",
+    "latest news",
     "login",
     "menu",
     "news",
@@ -478,8 +481,10 @@ BOILERPLATE_EXACT_LINES = {
     "opinion",
     "privacy policy",
     "prices",
+    "published",
     "resources",
     "search",
+    "share this",
     "sign in",
     "sign up",
     "skip to content",
@@ -500,8 +505,25 @@ BOILERPLATE_LINE_RE = re.compile(
     r"^skip to content\b|"
     r"^experiencing a cyberattack\b|"
     r"^sign in\s+sign up\b|"
+    r"^\$[\d,]+(?:\.\d+)?$|"
+    r"^[-+]?\d+(?:\.\d+)?%$|"
     r"^[A-Z]{2,8}\s+\$[\d,]+(?:\.\d+)?\s+[-+]?\d+(?:\.\d+)?%|"
+    r"^(?:BTC|ETH|SOL|XRP|BNB|DOGE|ADA|TRX|LINK|XLM|XMR|ZEC|HYPE)$|"
     r"\b(?:privacy policy|terms of use|cookie policy|all rights reserved)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+ARTICLE_END_MARKER_RE = re.compile(
+    r"(?:"
+    r"^request a demo$|"
+    r"^see flashpoint in action$|"
+    r"^contact sales$|"
+    r"^sign up for our executive intel update$|"
+    r"^sign up today$|"
+    r"^meet with an expert$|"
+    r"^products$|"
+    r"^legal$"
     r")",
     re.IGNORECASE,
 )
@@ -511,13 +533,47 @@ def _title_token(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
 
 
-def _trim_leading_boilerplate(lines: List[str], title: str) -> List[str]:
+def _content_words(value: Any) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[a-z0-9]+", str(value or "").lower())
+        if len(word) >= 4
+        and word
+        not in {
+            "with",
+            "from",
+            "that",
+            "this",
+            "into",
+            "under",
+            "over",
+            "after",
+            "before",
+            "news",
+            "article",
+        }
+    }
+
+
+def _line_matches_title(line: str, title: str) -> bool:
     title_key = _title_token(title)
-    if len(title_key) < 18:
+    line_key = _title_token(line)
+    if len(title_key) >= 18 and len(line_key) >= 18 and (title_key in line_key or line_key in title_key):
+        return True
+    title_words = _content_words(title)
+    if len(title_words) < 3:
+        return False
+    line_words = _content_words(line)
+    overlap = title_words & line_words
+    required = min(4, max(3, round(len(title_words) * 0.45)))
+    return len(overlap) >= required
+
+
+def _trim_leading_boilerplate(lines: List[str], title: str) -> List[str]:
+    if len(_title_token(title)) < 18:
         return lines
-    for idx, line in enumerate(lines[:80]):
-        line_key = _title_token(line)
-        if len(line_key) >= 18 and (title_key in line_key or line_key in title_key):
+    for idx, line in enumerate(lines[:220]):
+        if _line_matches_title(line, title):
             return lines[idx:]
     return lines
 
@@ -533,6 +589,8 @@ def clean_article_text(text: Any, title: str = "") -> str:
     for line in lines:
         lowered = line.lower().strip()
         words = line.split()
+        if ARTICLE_END_MARKER_RE.search(line) and len(cleaned) >= 4:
+            break
         if lowered in BOILERPLATE_EXACT_LINES:
             continue
         if BOILERPLATE_LINE_RE.search(line):
