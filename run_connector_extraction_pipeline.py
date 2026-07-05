@@ -2648,6 +2648,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     failed: List[Dict[str, Any]] = []
     skipped_blocked: List[Dict[str, Any]] = []
     processed_doc_ids: List[str] = []
+    processed_records: List[Dict[str, Any]] = []
     duplicate_records_removed = 0
     legacy_bloomberg_records_removed = 0
     invalid_wired_records_removed = 0
@@ -2670,6 +2671,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
                 saved_new += 1
             if doc_id:
                 processed_doc_ids.append(doc_id)
+            processed_records.append(record)
         except Exception as exc:
             key = core._url_match_key(entry.get("url", ""))
             repaired_doc_id = (
@@ -2704,6 +2706,15 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
                         "error": str(exc),
                     }
                 )
+
+    if processed_records and not args.dry_run and storage is not None:
+        # Several scheduled extraction workflows update the shared custom-docs
+        # blob. Reload immediately before saving so a concurrent workflow cannot
+        # overwrite records this job did not touch with an older payload snapshot.
+        latest_custom_payload = core._load_custom_documents(storage)
+        for record in processed_records:
+            core._upsert_custom_document_record(latest_custom_payload, record)
+        custom_payload = latest_custom_payload
 
     if args.connector in BLOOMBERG_CONNECTORS and (saved_new or saved_updates):
         duplicate_records_removed = _remove_duplicate_bloomberg_records(custom_payload)
