@@ -530,6 +530,8 @@ ARTICLE_END_MARKER_RE = re.compile(
 )
 
 SYMBOL_LINE_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,15}$")
+SYMBOLISH_TOKEN_RE = re.compile(r"^[A-Z0-9_]{1,16}$")
+TEXT_HAS_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 
 
 def _title_token(value: Any) -> str:
@@ -610,6 +612,25 @@ def clean_article_text(text: Any, title: str = "") -> str:
         cleaned.append(line)
 
     return "\n\n".join(cleaned).strip()
+
+
+def _looks_like_crypto_symbol_table_text(text: Any, title: str = "") -> bool:
+    normalized = _normalize_space(text)
+    if not normalized:
+        return False
+    title_words = _content_words(title)
+    text_words = _content_words(normalized[:2000])
+    if title_words and len(title_words & text_words) >= min(3, len(title_words)):
+        return False
+
+    tokens = re.findall(r"[A-Za-z0-9_]+|[\u3400-\u4dbf\u4e00-\u9fff]+", normalized[:2500])
+    if len(tokens) < 30:
+        return False
+    symbolish = 0
+    for token in tokens:
+        if TEXT_HAS_CJK_RE.search(token) or SYMBOLISH_TOKEN_RE.fullmatch(token):
+            symbolish += 1
+    return (symbolish / max(1, len(tokens))) >= 0.72
 
 
 def _parse_date_text(value: Any) -> Optional[datetime]:
@@ -1585,6 +1606,12 @@ class TradeMediaScraper:
 
         if source_format != "snippet":
             full_text = clean_article_text(full_text, title=doc_title)
+            if _looks_like_crypto_symbol_table_text(full_text, title=doc_title):
+                if fallback_text:
+                    full_text = fallback_text
+                    source_format = "snippet"
+                else:
+                    raise RuntimeError("Extracted page text appears to be a crypto ticker table, not article text.")
 
         if not full_text:
             raise RuntimeError("No text extracted from article URL.")

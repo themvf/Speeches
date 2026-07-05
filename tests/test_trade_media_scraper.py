@@ -417,6 +417,38 @@ The campaign highlights continued abuse of trusted developer tooling and cryptoc
         self.assertTrue(text.startswith("Fake Mac Clipboard App"))
         self.assertNotIn("FIGR_HELOC", text)
 
+    def test_extract_document_uses_summary_when_page_is_symbol_table(self):
+        scraper = TradeMediaScraper(min_delay_seconds=0)
+        html = """
+<html>
+  <head><title>Fake Mac Clipboard App Delivers New Password-Stealing Malware - Decrypt</title></head>
+  <body>
+    <main>
+      <p>USDC</p><p>FIGR_HELOC</p><p>RAIN</p><p>USDS</p><p>LEO</p><p>WBT</p><p>CC</p><p>LAB</p>
+      <p>BCH</p><p>GRAM</p><p>USD1</p><p>USDE</p><p>LTC</p><p>HBAR</p><p>币安人生</p>
+      <p>SUI</p><p>USDG</p><p>AVAX</p><p>PYUSD</p><p>CRO</p><p>NEAR</p><p>SHIB</p><p>XAUT</p>
+      <p>BUIDL</p><p>USDY</p><p>TAO</p><p>UNI</p><p>WLFI</p><p>PAXG</p>
+    </main>
+  </body>
+</html>
+"""
+
+        with patch.object(
+            scraper,
+            "_fetch",
+            return_value=_FakeResponse(text=html, url="https://decrypt.co/example"),
+        ):
+            result = scraper.extract_document(
+                "https://decrypt.co/example",
+                fallback_title="Fake Mac Clipboard App Delivers New Password-Stealing Malware - Decrypt",
+                fallback_description="A fake Mac clipboard app is delivering password-stealing malware to crypto users.",
+                fallback_source_name="Decrypt",
+        )
+
+        self.assertTrue(result["success"])
+        self.assertIn("password-stealing malware", result["data"]["full_text"])
+        self.assertNotIn("FIGR_HELOC", result["data"]["full_text"])
+
     def test_clean_article_text_scans_past_long_enterprise_nav(self):
         raw_text = "\n".join(
             [
