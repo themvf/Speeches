@@ -333,6 +333,111 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
         "search_domain": "awealthofcommonsense.com",
         "default_search_query": "markets OR investing OR economy OR Fed OR stocks",
     },
+    "prnewswire_article": {
+        "label": "PR Newswire",
+        "organization": "PR Newswire",
+        "default_url": "https://www.prnewswire.com/news-releases/",
+        "tags_csv": "pr-newswire,press-release,company-news",
+        "rss_candidates": [
+            "https://www.prnewswire.com/rss/news-releases-list.rss",
+            "https://www.prnewswire.com/rss/consumer-technology-latest-news/consumer-technology-latest-news-list.rss",
+            "https://www.prnewswire.com/rss/financial-services-latest-news/financial-services-latest-news-list.rss",
+            "https://www.prnewswire.com/rss/policy-public-interest-latest-news/policy-public-interest-latest-news-list.rss",
+        ],
+        "minimum_path_segments": 1,
+        "article_path_keywords": ["news-releases"],
+        "required_url_substrings": ["prnewswire.com/news-releases/"],
+        "excluded_url_substrings": [
+            "/shareholder-alert",
+            "/investor-alert",
+            "shareholder-alert",
+            "investor-deadline",
+            "lead-plaintiff",
+            "class-action",
+            "securities-lawsuit",
+        ],
+        "search_domain": "prnewswire.com",
+        "default_search_query": "securities OR crypto OR fintech OR cybersecurity OR regulator OR fraud OR enforcement",
+    },
+    "google_news_ponzi_investor_fraud_article": {
+        "label": "Google News: Ponzi & Investor Fraud",
+        "organization": "Google News",
+        "default_url": "https://news.google.com/",
+        "tags_csv": "google-news,ponzi,investor-fraud,securities-fraud",
+        "rss_candidates": [
+            "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+        ],
+        "minimum_path_segments": 2,
+        "article_path_keywords": ["articles", "read"],
+        "required_url_substrings": ["news.google.com/rss/articles", "news.google.com/articles", "news.google.com/read"],
+        "search_domain": "news.google.com",
+        "default_search_query": "Ponzi scheme OR investment fraud OR investor fraud OR fraudulent securities offering",
+    },
+    "google_news_senate_committee_article": {
+        "label": "Google News: Senate Committees",
+        "organization": "Google News",
+        "default_url": "https://news.google.com/",
+        "tags_csv": "google-news,congress,senate,committee",
+        "rss_candidates": [
+            "https://news.google.com/rss/search?q=%22Senate%20Banking%20Committee%22%20OR%20%22Senate%20Committee%20on%20Banking%2C%20Housing%2C%20and%20Urban%20Affairs%22%20OR%20site%3Abanking.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=%22Senate%20Finance%20Committee%22%20OR%20%22Senate%20Committee%20on%20Finance%22%20OR%20site%3Afinance.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=%22Senate%20Agriculture%20Committee%22%20OR%20%22Senate%20Committee%20on%20Agriculture%2C%20Nutrition%2C%20and%20Forestry%22%20OR%20site%3Aagriculture.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=%22Senate%20Judiciary%20Committee%22%20OR%20%22Senate%20Committee%20on%20the%20Judiciary%22%20OR%20site%3Ajudiciary.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=%22Senate%20Homeland%20Security%20and%20Governmental%20Affairs%20Committee%22%20OR%20%22Senate%20HSGAC%22%20OR%20site%3Ahsgac.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=%22Senate%20Commerce%20Committee%22%20OR%20%22Senate%20Committee%20on%20Commerce%2C%20Science%2C%20and%20Transportation%22%20OR%20site%3Acommerce.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+        ],
+        "minimum_path_segments": 2,
+        "article_path_keywords": ["articles", "read"],
+        "required_url_substrings": ["news.google.com/rss/articles", "news.google.com/articles", "news.google.com/read"],
+        "search_domain": "news.google.com",
+        "default_search_query": "Senate Banking Committee OR Senate Finance Committee OR Senate Commerce Committee",
+    },
+    "coindesk_article": {
+        "label": "CoinDesk",
+        "organization": "CoinDesk",
+        "default_url": "https://www.coindesk.com/",
+        "tags_csv": "coindesk,crypto,digital-assets",
+        "rss_candidates": ["https://www.coindesk.com/arc/outboundfeeds/rss/"],
+        "minimum_path_segments": 1,
+        "article_path_keywords": ["markets", "policy", "business", "tech", "consensus-magazine", "crypto"],
+        "search_domain": "coindesk.com",
+        "default_search_query": "crypto OR digital assets OR SEC OR CFTC OR stablecoin OR tokenization",
+    },
+    "cointelegraph_article": {
+        "label": "Cointelegraph",
+        "organization": "Cointelegraph",
+        "default_url": "https://cointelegraph.com/",
+        "tags_csv": "cointelegraph,crypto,digital-assets",
+        "rss_candidates": ["https://cointelegraph.com/rss"],
+        "minimum_path_segments": 1,
+        "article_path_keywords": ["news", "tags", "markets", "explained"],
+        "required_url_substrings": ["cointelegraph.com/news/", "cointelegraph.com/tags/"],
+        "search_domain": "cointelegraph.com",
+        "default_search_query": "crypto OR digital assets OR SEC OR CFTC OR stablecoin OR tokenization",
+    },
+    "decrypt_article": {
+        "label": "Decrypt",
+        "organization": "Decrypt",
+        "default_url": "https://decrypt.co/",
+        "tags_csv": "decrypt,crypto,digital-assets",
+        "rss_candidates": ["https://decrypt.co/feed"],
+        "minimum_path_segments": 1,
+        "article_path_keywords": ["news", "business", "markets"],
+        "search_domain": "decrypt.co",
+        "default_search_query": "crypto OR digital assets OR SEC OR CFTC OR stablecoin OR tokenization",
+    },
+    "the_block_article": {
+        "label": "The Block",
+        "organization": "The Block",
+        "default_url": "https://www.theblock.co/",
+        "tags_csv": "the-block,crypto,digital-assets",
+        "rss_candidates": ["https://www.theblock.co/rss.xml"],
+        "minimum_path_segments": 1,
+        "article_path_keywords": ["post", "category", "policy"],
+        "required_url_substrings": ["theblock.co/post/"],
+        "search_domain": "theblock.co",
+        "default_search_query": "crypto OR digital assets OR SEC OR CFTC OR stablecoin OR tokenization",
+    },
 }
 
 
@@ -802,7 +907,11 @@ class TradeMediaScraper:
                         description = _clean_multiline(value)
 
             item_url = urljoin(feed_url, link)
-            if not _looks_like_article_url(
+            is_google_news_article = (
+                _canonical_host(item_url) == "news.google.com"
+                and urlparse(item_url).path.lower().startswith("/rss/articles/")
+            )
+            if not is_google_news_article and not _looks_like_article_url(
                 item_url,
                 source_url=source_url,
                 path_keywords=list(self._source_config(source_key).get("article_path_keywords", [])),

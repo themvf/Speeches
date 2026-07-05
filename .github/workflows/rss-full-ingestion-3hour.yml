@@ -1,0 +1,106 @@
+name: RSS Source Full Extraction (3 Hour)
+
+on:
+  schedule:
+    - cron: "41 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      extraction_limit:
+        description: "Max articles to extract per RSS-backed source"
+        required: false
+        default: "30"
+      max_pages:
+        description: "Listing/search pages or feed batches to scan per source"
+        required: false
+        default: "2"
+      enrich_limit:
+        description: "Max documents to enrich per RSS-backed source"
+        required: false
+        default: "25"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rss-full-ingestion-3hour
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - connector: prnewswire_article
+          - connector: google_news_ponzi_investor_fraud_article
+          - connector: google_news_senate_committee_article
+          - connector: coindesk_article
+          - connector: cointelegraph_article
+          - connector: decrypt_article
+          - connector: the_block_article
+
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '30' }}
+      MAX_PAGES: ${{ github.event.inputs.max_pages || '2' }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
+      ENRICH_MODEL: deepseek-v4-flash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Extract ${{ matrix.connector }}
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector "${{ matrix.connector }}" \
+            --selection new_or_updated \
+            --limit "${EXTRACTION_LIMIT}" \
+            --max-pages "${MAX_PAGES}" \
+            --include-pdfs false \
+            --include-rss true \
+            --require-remote-persistence \
+            --summary-path "rss_full_source_${{ matrix.connector }}.json"
+
+      - name: Enrich ${{ matrix.connector }} with DeepSeek
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py \
+            enrich \
+            --require-remote-persistence \
+            --mode only_missing_or_failed \
+            --order recent \
+            --source-kind "${{ matrix.connector }}" \
+            --limit "${ENRICH_LIMIT}" \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --checkpoint-every 5 \
+            --summary-path "rss_full_source_enrichment_${{ matrix.connector }}.json"
+
+      - name: Upload Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-full-source-${{ matrix.connector }}-${{ github.run_id }}
+          path: |
+            rss_full_source_${{ matrix.connector }}.json
+            rss_full_source_enrichment_${{ matrix.connector }}.json
+          if-no-files-found: ignore

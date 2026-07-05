@@ -1972,7 +1972,9 @@ const SOURCE_KIND_OPTIONS = [
   "welivesecurity_article", "sophos_security_operations_article", "flashpoint_blog_article",
   "recorded_future_article", "intel471_blog_article", "securityweek_article", "dark_reading_article",
   "wired_article", "tripwire_article", "akamai_blog_article", "ritholtz_article", "ft_portfolios_market_commentary",
-  "liberty_street_economics_article", "wealth_of_common_sense_article", "wsj_dow_jones",
+  "liberty_street_economics_article", "wealth_of_common_sense_article", "prnewswire_article",
+  "google_news_ponzi_investor_fraud_article", "google_news_senate_committee_article",
+  "coindesk_article", "cointelegraph_article", "decrypt_article", "the_block_article", "wsj_dow_jones",
   "reddit_post", "hedge_fund_letter", "newsapi_article",
 ];
 
