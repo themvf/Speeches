@@ -13,6 +13,14 @@ on:
         description: "Listing/search pages or feed batches to scan per source"
         required: false
         default: "2"
+      selection:
+        description: "Extraction selection scope"
+        required: false
+        default: "new_or_updated"
+        type: choice
+        options:
+          - new_or_updated
+          - all
       enrich_limit:
         description: "Max documents to enrich per RSS-backed source"
         required: false
@@ -49,6 +57,7 @@ jobs:
       RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '30' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '2' }}
+      SELECTION: ${{ github.event.inputs.selection || 'new_or_updated' }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
       ENRICH_MODEL: deepseek-v4-flash
 
@@ -72,7 +81,7 @@ jobs:
           set -euo pipefail
           python run_connector_extraction_pipeline.py \
             --connector "${{ matrix.connector }}" \
-            --selection new_or_updated \
+            --selection "${SELECTION}" \
             --limit "${EXTRACTION_LIMIT}" \
             --max-pages "${MAX_PAGES}" \
             --include-pdfs false \
