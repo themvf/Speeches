@@ -391,6 +391,32 @@ The campaign highlights continued abuse of trusted developer tooling and cryptoc
         self.assertTrue(text.startswith("Fake Mac Clipboard App"))
         self.assertNotIn("FIGR_HELOC", text)
 
+    def test_clean_article_text_drops_multiline_crypto_symbol_cluster(self):
+        raw_text = """
+USDC
+FIGR_HELOC
+RAIN
+USDS
+LEO
+WBT
+CC
+LAB
+BCH
+GRAM
+USD1
+USDE
+LTC
+HBAR
+Fake Mac Clipboard App Delivers New Password-Stealing Malware
+Security researchers said the malware is distributed through a cloned productivity app and targets browser passwords.
+The campaign highlights continued abuse of trusted developer tooling and cryptocurrency wallet users.
+"""
+
+        text = clean_article_text(raw_text, title="Fake Mac Clipboard App Delivers New Password-Stealing Malware")
+
+        self.assertTrue(text.startswith("Fake Mac Clipboard App"))
+        self.assertNotIn("FIGR_HELOC", text)
+
     def test_clean_article_text_scans_past_long_enterprise_nav(self):
         raw_text = "\n".join(
             [
