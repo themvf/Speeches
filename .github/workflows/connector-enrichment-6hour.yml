@@ -73,6 +73,13 @@ jobs:
           - source_kind: ft_portfolios_market_commentary
           - source_kind: liberty_street_economics_article
           - source_kind: wealth_of_common_sense_article
+          - source_kind: prnewswire_article
+          - source_kind: google_news_ponzi_investor_fraud_article
+          - source_kind: google_news_senate_committee_article
+          - source_kind: coindesk_article
+          - source_kind: cointelegraph_article
+          - source_kind: decrypt_article
+          - source_kind: the_block_article
           - source_kind: bloomberg_public_article
           - source_kind: substack_public_article
           - source_kind: ici_news_item

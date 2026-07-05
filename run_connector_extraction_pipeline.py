@@ -73,6 +73,13 @@ TRADE_MEDIA_CONNECTORS = {
     "ft_portfolios_market_commentary",
     "liberty_street_economics_article",
     "wealth_of_common_sense_article",
+    "prnewswire_article",
+    "google_news_ponzi_investor_fraud_article",
+    "google_news_senate_committee_article",
+    "coindesk_article",
+    "cointelegraph_article",
+    "decrypt_article",
+    "the_block_article",
 }
 
 TRADE_ASSOCIATION_CONNECTORS = {
@@ -100,6 +107,33 @@ LITIGATION_ALLOWED_RE = re.compile(
     r"digital\s+asset|tokenized|token|stablecoin|bitcoin|ethereum|blockchain|defi|fintech|technology|tech|"
     r"software|platform|artificial\s+intelligence|ai|cybersecurity|data\s+breach|privacy|ransomware|"
     r"malware|hack(?:ed|er|ers|ing)?|antitrust)\b",
+    re.IGNORECASE,
+)
+PRNEWSWIRE_LEGAL_SOLICITATION_RE = re.compile(
+    r"\b(?:shareholder alert|investor alert|investor deadline|deadline alert|investor notice|shareholder notice|"
+    r"class action attorney|class action law firm|m&a class action firm|investor rights law firm|"
+    r"securities litigation firm|law offices? of|lead plaintiff|lead plaintiff deadline|lead class action|"
+    r"opportunity to lead|appointment as lead plaintiff|securities class action|securities lawsuit|"
+    r"class action lawsuit|class action investigation|announces the filing of a class action|"
+    r"announces that a class action|class action (?:has been )?filed|"
+    r"encourages .* investors to (?:inquire|contact|secure counsel)|"
+    r"investors? (?:with )?(?:substantial )?losses? (?:have|has) opportunity|investigating claims|"
+    r"continues to investigate|announces investigation of|reminds investors|encourages investors|contact the firm|"
+    r"if you (?:purchased|acquired|bought) .* securities|seek appointment as lead plaintiff|upcoming deadline)\b",
+    re.IGNORECASE,
+)
+US_ABBREVIATION_JURISDICTION_RE = re.compile(r"\b(?:U\.S\.|U\.S|US|USA)\b")
+US_FRAUD_JURISDICTION_RE = re.compile(
+    r"\b(?:united states|american|securities and exchange commission|department of justice|federal bureau of investigation|"
+    r"internal revenue service|commodity futures trading commission|federal trade commission|consumer financial protection bureau|"
+    r"financial industry regulatory authority|u\.s\. attorney|us attorney|sec charges|sec sues|sec settles|doj charges|"
+    r"fbi|finra|cftc|cfpb|ftc|irs|fdic|alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|"
+    r"district of columbia|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|"
+    r"maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|"
+    r"new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|"
+    r"south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|"
+    r"wyoming|manhattan|brooklyn|bronx|queens|los angeles|san francisco|san diego|miami|tampa|orlando|"
+    r"atlanta|chicago|boston|philadelphia|dallas|houston|austin|phoenix|seattle|denver|las vegas|charlotte)\b",
     re.IGNORECASE,
 )
 
@@ -462,11 +496,30 @@ def _is_disallowed_general_litigation_entry(entry: Dict[str, Any]) -> bool:
     return bool(GENERAL_LITIGATION_RE.search(text) and not LITIGATION_ALLOWED_RE.search(text))
 
 
-def _is_blocked_extraction_entry(entry: Dict[str, Any]) -> Tuple[bool, str]:
+def _requires_us_fraud_jurisdiction(connector: str) -> bool:
+    return _normalize_space(connector).lower() == "google_news_ponzi_investor_fraud_article"
+
+
+def _is_prnewswire_legal_solicitation_entry(entry: Dict[str, Any], connector: str) -> bool:
+    if _normalize_space(connector).lower() != "prnewswire_article":
+        return False
+    return bool(PRNEWSWIRE_LEGAL_SOLICITATION_RE.search(_entry_quality_text(entry)))
+
+
+def _has_us_fraud_jurisdiction(entry: Dict[str, Any]) -> bool:
+    text = _entry_quality_text(entry)
+    return bool(US_ABBREVIATION_JURISDICTION_RE.search(text) or US_FRAUD_JURISDICTION_RE.search(text))
+
+
+def _is_blocked_extraction_entry(entry: Dict[str, Any], connector: str = "") -> Tuple[bool, str]:
     if _is_cjk_language_entry(entry):
         return True, "cjk_language"
+    if _is_prnewswire_legal_solicitation_entry(entry, connector):
+        return True, "prnewswire_legal_solicitation"
     if _is_disallowed_general_litigation_entry(entry):
         return True, "general_litigation"
+    if _requires_us_fraud_jurisdiction(connector) and not _has_us_fraud_jurisdiction(entry):
+        return True, "non_us_fraud_jurisdiction"
     return False, ""
 
 
@@ -2403,7 +2456,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     blocked_extraction_count = 0
     quality_filtered_discovered: List[Dict[str, Any]] = []
     for entry in filtered_discovered:
-        blocked, reason = _is_blocked_extraction_entry(entry)
+        blocked, reason = _is_blocked_extraction_entry(entry, args.connector)
         if blocked:
             skipped_entry = dict(entry)
             skipped_entry["exclude_reason"] = reason
