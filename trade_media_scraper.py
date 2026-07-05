@@ -454,6 +454,101 @@ def _clean_multiline(text: Any) -> str:
     return "\n".join(lines).strip()
 
 
+BOILERPLATE_EXACT_LINES = {
+    "about",
+    "advertise",
+    "all rights reserved",
+    "by",
+    "careers",
+    "contact",
+    "contact us",
+    "cookie policy",
+    "data & indices",
+    "edited by",
+    "en",
+    "events",
+    "follow us",
+    "get started",
+    "learn",
+    "login",
+    "menu",
+    "news",
+    "newsletter",
+    "open search",
+    "opinion",
+    "privacy policy",
+    "prices",
+    "resources",
+    "search",
+    "sign in",
+    "sign up",
+    "skip to content",
+    "sponsored",
+    "subscribe",
+    "terms of service",
+    "video",
+    "|",
+    "/",
+}
+
+BOILERPLATE_LINE_RE = re.compile(
+    r"(?:"
+    r"^coin prices\b|"
+    r"^search\s*/|"
+    r"^ecosystem\s+english\s+news\s+markets\b|"
+    r"^platform\s+product tours\b|"
+    r"^skip to content\b|"
+    r"^experiencing a cyberattack\b|"
+    r"^sign in\s+sign up\b|"
+    r"^[A-Z]{2,8}\s+\$[\d,]+(?:\.\d+)?\s+[-+]?\d+(?:\.\d+)?%|"
+    r"\b(?:privacy policy|terms of use|cookie policy|all rights reserved)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _title_token(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _trim_leading_boilerplate(lines: List[str], title: str) -> List[str]:
+    title_key = _title_token(title)
+    if len(title_key) < 18:
+        return lines
+    for idx, line in enumerate(lines[:80]):
+        line_key = _title_token(line)
+        if len(line_key) >= 18 and (title_key in line_key or line_key in title_key):
+            return lines[idx:]
+    return lines
+
+
+def clean_article_text(text: Any, title: str = "") -> str:
+    """Remove repeated site chrome while preserving article paragraphs."""
+    raw_lines = [_normalize_space(line) for line in str(text or "").splitlines()]
+    lines = [line for line in raw_lines if line]
+    lines = _trim_leading_boilerplate(lines, title)
+
+    cleaned: List[str] = []
+    short_counts: Dict[str, int] = {}
+    for line in lines:
+        lowered = line.lower().strip()
+        words = line.split()
+        if lowered in BOILERPLATE_EXACT_LINES:
+            continue
+        if BOILERPLATE_LINE_RE.search(line):
+            continue
+        if len(words) <= 3 and lowered in {"news", "markets", "features", "company", "research", "events", "data", "indices"}:
+            continue
+        if len(words) <= 5:
+            count = short_counts.get(lowered, 0)
+            short_counts[lowered] = count + 1
+            if count >= 1:
+                continue
+        cleaned.append(line)
+
+    return "\n\n".join(cleaned).strip()
+
+
 def _parse_date_text(value: Any) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
@@ -1259,6 +1354,8 @@ class TradeMediaScraper:
                     best_text = body_text
                     best_words = len(body_text.split())
 
+        best_text = clean_article_text(best_text, title=title)
+
         return {
             "title": title,
             "date": published,
@@ -1422,6 +1519,9 @@ class TradeMediaScraper:
             else:
                 full_text = fallback_text
                 source_format = "snippet"
+
+        if source_format != "snippet":
+            full_text = clean_article_text(full_text, title=doc_title)
 
         if not full_text:
             raise RuntimeError("No text extracted from article URL.")

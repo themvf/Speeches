@@ -167,6 +167,110 @@ def _clean_multiline(value: Any) -> str:
     return "\n".join(lines).strip()
 
 
+SENATE_BOILERPLATE_LINES = {
+    "about",
+    "chairman biography",
+    "chairman scott biography",
+    "contact",
+    "committee documents",
+    "faq",
+    "hearings",
+    "home",
+    "history of the chairman",
+    "jurisdiction",
+    "key issues",
+    "legislation",
+    "legislative calendar",
+    "majority news",
+    "majority press releases",
+    "markups",
+    "membership",
+    "milestones",
+    "minority news",
+    "minority press releases",
+    "nominations",
+    "newsroom",
+    "photo gallery",
+    "press release archive",
+    "press releases",
+    "privacy policy",
+    "ranking member",
+    "resources",
+    "submissions",
+    "skip to content",
+    "social media",
+    "subcommittees",
+    "ranking member biography",
+    "ranking member warren biography",
+    "witness list",
+}
+
+SENATE_BOILERPLATE_RE = re.compile(
+    r"(?:"
+    r"^about\s+about\s+jurisdiction\s+membership\b|"
+    r"^hearings\s+hearings\s+witness list\b|"
+    r"^legislative calendar\s+legislation\s+nominations\b|"
+    r"^newsroom\s+majority press releases\b|"
+    r"^majority press releases\s+minority press releases\b|"
+    r"^photo gallery\s+press release archive\b|"
+    r"^resources\s+resources\s+committee documents\b|"
+    r"\b(?:privacy policy|accessibility|rss feed)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+SENATE_NAV_TOKENS = {
+    "about",
+    "biography",
+    "faq",
+    "hearings",
+    "history",
+    "jurisdiction",
+    "legislation",
+    "membership",
+    "milestones",
+    "nominations",
+    "ranking member",
+    "subcommittees",
+    "witness list",
+}
+
+
+def _title_token(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _clean_body_text(value: Any, title: str = "") -> str:
+    lines = [_normalize_space(line) for line in str(value or "").splitlines()]
+    lines = [line for line in lines if line]
+    title_key = _title_token(title)
+    if len(title_key) >= 18:
+        for idx, line in enumerate(lines[:80]):
+            line_key = _title_token(line)
+            if len(line_key) >= 18 and (title_key in line_key or line_key in title_key):
+                lines = lines[idx:]
+                break
+
+    cleaned: List[str] = []
+    short_counts: Dict[str, int] = {}
+    for line in lines:
+        lowered = line.lower()
+        if lowered in SENATE_BOILERPLATE_LINES:
+            continue
+        if SENATE_BOILERPLATE_RE.search(line):
+            continue
+        nav_hits = sum(1 for token in SENATE_NAV_TOKENS if token in lowered)
+        if nav_hits >= 3:
+            continue
+        if len(line.split()) <= 4:
+            count = short_counts.get(lowered, 0)
+            short_counts[lowered] = count + 1
+            if count >= 1:
+                continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
+
+
 def _url_without_fragment(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -608,7 +712,7 @@ class SenateCommitteeScraper:
         soup = BeautifulSoup(html, "html.parser")
         title = self._extract_title(soup, fallback_title=fallback_title)
         date_text = self._extract_date(soup, fallback_date=fallback_date)
-        full_text = self._extract_body_text(soup)
+        full_text = _clean_body_text(self._extract_body_text(soup), title=title)
         summary = fallback_summary or " ".join(full_text.split()[:60])
         if len(full_text.split()) < 20:
             return {"success": False, "error": "Senate committee detail page body extraction was too short."}
