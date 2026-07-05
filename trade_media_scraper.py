@@ -529,6 +529,8 @@ ARTICLE_END_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 
+SYMBOL_LINE_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,15}$")
+
 
 def _title_token(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
@@ -592,6 +594,8 @@ def clean_article_text(text: Any, title: str = "") -> str:
         words = line.split()
         if ARTICLE_END_MARKER_RE.search(line) and len(cleaned) >= 4:
             break
+        if len(cleaned) < 5 and SYMBOL_LINE_RE.fullmatch(line):
+            continue
         if lowered in BOILERPLATE_EXACT_LINES:
             continue
         if BOILERPLATE_LINE_RE.search(line):
