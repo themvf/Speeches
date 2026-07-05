@@ -454,9 +454,9 @@ async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
     await sql`
       INSERT INTO rss_feeds (label, feed_url, feed_key, refresh_interval_minutes)
       VALUES (${label}, ${feedUrl}, ${key}, ${intervalMinutes})
-      ON CONFLICT (feed_url) DO UPDATE SET
+      ON CONFLICT (feed_key) DO UPDATE SET
         label = EXCLUDED.label,
-        feed_key = EXCLUDED.feed_key,
+        feed_url = EXCLUDED.feed_url,
         refresh_interval_minutes = EXCLUDED.refresh_interval_minutes
     `;
   }
