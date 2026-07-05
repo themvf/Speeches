@@ -7,6 +7,7 @@ from trade_media_scraper import (
     _looks_like_access_challenge,
     _passes_source_url_filters,
     _url_key,
+    clean_article_text,
 )
 
 
@@ -348,6 +349,78 @@ class TradeMediaScraperTests(unittest.TestCase):
         self.assertIn("Stablecoin issuers are adjusting reserve policies", text)
         self.assertNotIn("Coin Prices BTC", text)
         self.assertNotIn("Sign In Sign Up", text)
+
+    def test_clean_article_text_trims_multiline_crypto_ticker_before_fuzzy_title(self):
+        raw_text = """
+Ecosystem
+English
+DOGE
+$0.07723
+1.45%
+TRX
+$0.3282
+0.64%
+Written by
+Helen Partz
+Reviewed by
+Yohan Yun
+South Africa proposes crypto tax guidance under existing framework
+Latest News
+Published
+Jul 5, 2026
+South Africa's tax authority proposed draft guidance clarifying how crypto assets are taxed under existing income and capital gains rules.
+The draft provides that most crypto activities, including trading and swapping, are generally treated as disposals.
+"""
+
+        text = clean_article_text(raw_text, title="South Africa’s Tax Authority Proposes Crypto Tax Guidance")
+
+        self.assertTrue(text.startswith("South Africa proposes crypto tax guidance"))
+        self.assertNotIn("DOGE", text)
+        self.assertNotIn("$0.07723", text)
+
+    def test_clean_article_text_scans_past_long_enterprise_nav(self):
+        raw_text = "\n".join(
+            [
+                "Sophos Central",
+                "Partner Portal",
+                "Endpoint security",
+                "Managed detection and response",
+            ]
+            * 35
+            + [
+                "Strengthening authentication with passkeys: A CISO playbook",
+                "Our passkey rollout took three tries. Here's a playbook to make your implementation smoother.",
+                "Written by",
+                "Ross McKerchar",
+                "For decades, passwords have been the standard method for protecting access to systems and accounts.",
+            ]
+        )
+
+        text = clean_article_text(raw_text, title="Strengthening authentication with passkeys: A CISO playbook")
+
+        self.assertTrue(text.startswith("Strengthening authentication with passkeys"))
+        self.assertNotIn("Sophos Central", text)
+
+    def test_clean_article_text_stops_at_marketing_footer(self):
+        raw_text = """
+Platform
+Product Tours
+Remus Stealer: A New, Not-So-New Infostealer
+Blog
+Remus Stealer: A New, Not-So-New Infostealer
+The underground marketplace rarely stays quiet for long.
+Remus stealer represents a continuation of the infostealer model.
+Request a demo
+See Flashpoint in Action
+Contact Sales
+6218 Georgia Avenue NW Suite #1
+"""
+
+        text = clean_article_text(raw_text, title="Remus Stealer: A New, Not-So-New Infostealer")
+
+        self.assertTrue(text.startswith("Remus Stealer"))
+        self.assertIn("underground marketplace", text)
+        self.assertNotIn("Contact Sales", text)
 
     def test_access_challenge_detector_handles_cloudflare_and_incapsula_markers(self):
         self.assertTrue(_looks_like_access_challenge("Attention Required! | Cloudflare"))
