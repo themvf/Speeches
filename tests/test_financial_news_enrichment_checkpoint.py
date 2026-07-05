@@ -18,6 +18,52 @@ def _doc(doc_id: str) -> dict:
     }
 
 
+def test_uploaded_document_id_is_stable_for_source_url():
+    first = pipeline._create_uploaded_document_record(
+        text=" ".join(["first extraction text"] * 40),
+        organization="Decrypt",
+        title="Fake Mac Clipboard App Delivers New Password-Stealing Malware",
+        speaker="Decrypt",
+        doc_date="July 4, 2026",
+        doc_type="Article",
+        source_url="https://decrypt.co/330205/fake-mac-clipboard-app-password-stealing-malware",
+        source_filename="fake-mac-clipboard.html",
+        source_ext=".html",
+        source_local_path="",
+        source_gcs_path="",
+        tags_csv="decrypt,crypto",
+        source_kind="decrypt_article",
+    )
+    second = pipeline._create_uploaded_document_record(
+        text=" ".join(["cleaned extraction with different length"] * 80),
+        organization="Decrypt",
+        title="Fake Mac Clipboard App Delivers New Password-Stealing Malware - Updated",
+        speaker="Different Author",
+        doc_date="July 5, 2026",
+        doc_type="Article",
+        source_url="https://decrypt.co/330205/fake-mac-clipboard-app-password-stealing-malware?utm_source=rss",
+        source_filename="different.html",
+        source_ext=".html",
+        source_local_path="",
+        source_gcs_path="",
+        tags_csv="decrypt,crypto",
+        source_kind="decrypt_article",
+    )
+
+    assert first["metadata"]["document_id"] == second["metadata"]["document_id"]
+
+
+def test_enrichment_entries_migrate_to_stable_document_id():
+    state = {"entries": {"old-doc": {"doc_id": "old-doc", "model": "deepseek-v4-flash"}}}
+
+    migrated = pipeline._migrate_enrichment_entry_ids(state, {"old-doc": "new-doc"})
+
+    assert migrated == 1
+    assert "old-doc" not in state["entries"]
+    assert state["entries"]["new-doc"]["doc_id"] == "new-doc"
+    assert state["entries"]["new-doc"]["model"] == "deepseek-v4-flash"
+
+
 def test_news_enrichment_checkpoints_progress(monkeypatch):
     payload = {"documents": [_doc("doc-1"), _doc("doc-2"), _doc("doc-3")]}
     saved_doc_ids = []

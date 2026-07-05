@@ -1,5 +1,6 @@
 import { loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
+import type { EnrichmentStatePayload } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,32 @@ export async function GET(
       return fail("Document ID is required.", "DOCUMENT_ID_REQUIRED", 400, requestId);
     }
 
-    const [corpus, enrichmentState] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
+    let corpus;
+    try {
+      corpus = await loadCorpusDocuments();
+    } catch (error) {
+      console.error("Failed to load document corpus", { requestId, error });
+      return fail(
+        `Document corpus is unavailable: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "DOCUMENT_CORPUS_UNAVAILABLE",
+        503,
+        requestId
+      );
+    }
+
+    let enrichmentState: EnrichmentStatePayload = {
+      version: 1,
+      pipeline_version: "",
+      updated_at: "",
+      entries: {}
+    };
+    let enrichmentUnavailable = false;
+    try {
+      enrichmentState = await loadEnrichmentState();
+    } catch (error) {
+      enrichmentUnavailable = true;
+      console.error("Failed to load document enrichment state", { requestId, documentId: docId, error });
+    }
 
     const doc = corpus.find((item) => String(item.metadata?.document_id || "").trim() === docId);
     if (!doc) {
@@ -37,7 +63,7 @@ export async function GET(
         sentences: Array.isArray(doc.content?.sentences) ? doc.content?.sentences : []
       },
       enrichment: {
-        status: String(enrichEntry?.status || "not_enriched"),
+        status: enrichmentUnavailable ? "unavailable" : String(enrichEntry?.status || "not_enriched"),
         model: String(enrichEntry?.model || ""),
         summary: String(enrichEntry?.enrichment?.summary || ""),
         tags: Array.isArray(enrichEntry?.enrichment?.tags) ? enrichEntry?.enrichment?.tags : [],
@@ -69,6 +95,7 @@ export async function GET(
             status: String(enrichEntry.sentiment.status || ""),
           }
         : null,
+      warnings: enrichmentUnavailable ? ["enrichment_state_unavailable"] : [],
     };
 
     return ok(payload, requestId);

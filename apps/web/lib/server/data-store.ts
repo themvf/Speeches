@@ -43,6 +43,20 @@ function normalizeWordCount(value: unknown): number {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+function normalizeBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = normalizeString(value).toLowerCase();
+  if (["true", "1", "yes", "y"].includes(text)) {
+    return true;
+  }
+  if (["false", "0", "no", "n"].includes(text)) {
+    return false;
+  }
+  return fallback;
+}
+
 function splitCsv(value: string): string[] {
   return String(value || "")
     .split(",")
@@ -243,6 +257,13 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
 
   const sourceKind = normalizeString(metadataRaw.source_kind) || inferSourceKind(metadataRaw);
   const publishedDate = normalizeDocumentPublishedDate({ ...metadataRaw, source_kind: sourceKind }, fullText);
+  const sourceFormat = normalizeString(metadataRaw.source_format);
+  const extractionQuality =
+    normalizeString(metadataRaw.extraction_quality) || (sourceFormat.toLowerCase() === "snippet" ? "snippet_fallback" : "full_text");
+  const fullTextAvailable = normalizeBoolean(
+    metadataRaw.full_text_available,
+    Boolean(fullText) && sourceFormat.toLowerCase() !== "snippet" && extractionQuality !== "snippet_fallback"
+  );
 
   const metadata = {
     document_id: normalizeString(metadataRaw.document_id) || corpusDocId(metadataRaw, fullText),
@@ -254,7 +275,9 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
     organization: normalizeOrgLabel(metadataRaw.organization),
     doc_type: normalizeString(metadataRaw.doc_type),
     source_filename: normalizeString(metadataRaw.source_filename),
-    source_format: normalizeString(metadataRaw.source_format),
+    source_format: sourceFormat,
+    extraction_quality: extractionQuality,
+    full_text_available: fullTextAvailable,
     source_local_path: normalizeString(metadataRaw.source_local_path),
     source_gcs_path: normalizeString(metadataRaw.source_gcs_path),
     tags: normalizeString(metadataRaw.tags),
@@ -370,6 +393,13 @@ function normalizeSecSpeechRecord(speech: unknown): CustomDocumentRecord | null 
   const docType = normalizeString(metadataRaw.doc_type) || "Speech";
   const publishedDate = normalizeDocumentPublishedDate({ ...metadataRaw, source_kind: sourceKind }, fullText);
   const updatedDate = normalizeString(metadataRaw.updated_date) || normalizeString(metadataRaw.extraction_date);
+  const sourceFormat = normalizeString(metadataRaw.source_format) || "html";
+  const extractionQuality =
+    normalizeString(metadataRaw.extraction_quality) || (sourceFormat.toLowerCase() === "snippet" ? "snippet_fallback" : "full_text");
+  const fullTextAvailable = normalizeBoolean(
+    metadataRaw.full_text_available,
+    Boolean(fullText) && sourceFormat.toLowerCase() !== "snippet" && extractionQuality !== "snippet_fallback"
+  );
 
   const metadata = {
     document_id: corpusDocId(metadataRaw, fullText),
@@ -381,7 +411,9 @@ function normalizeSecSpeechRecord(speech: unknown): CustomDocumentRecord | null 
     organization,
     doc_type: docType,
     source_filename: normalizeString(metadataRaw.source_filename),
-    source_format: normalizeString(metadataRaw.source_format) || "html",
+    source_format: sourceFormat,
+    extraction_quality: extractionQuality,
+    full_text_available: fullTextAvailable,
     source_local_path: normalizeString(metadataRaw.source_local_path),
     source_gcs_path: normalizeString(metadataRaw.source_gcs_path),
     tags: normalizeString(metadataRaw.tags),
@@ -927,6 +959,9 @@ export function buildDocumentListItems(
       title: normalizeString(m.title),
       organization: normalizeOrgLabel(m.organization),
       source_kind: normalizeString(m.source_kind) || inferSourceKind((m as unknown as Record<string, unknown>) || {}),
+      source_format: normalizeString(m.source_format),
+      extraction_quality: normalizeString(m.extraction_quality),
+      full_text_available: Boolean(m.full_text_available),
       doc_type: normalizeString(m.doc_type) || "Document",
       speaker: normalizeString(m.speaker),
       url: normalizeString(m.url),

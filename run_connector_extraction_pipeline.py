@@ -502,6 +502,22 @@ def _build_existing_custom_record_map(custom_payload: Dict[str, Any]) -> Dict[st
     return out
 
 
+def _apply_extraction_quality_metadata(record: Dict[str, Any], data: Dict[str, Any], source_format: str) -> None:
+    metadata = record.setdefault("metadata", {})
+    normalized_source_format = str(source_format or metadata.get("source_format", "") or "").strip().lower()
+    extraction_quality = str(data.get("extraction_quality", "") or "").strip()
+    if not extraction_quality:
+        extraction_quality = "snippet_fallback" if normalized_source_format == "snippet" else "full_text"
+    warnings = data.get("extraction_warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+    metadata["extraction_quality"] = extraction_quality
+    metadata["full_text_available"] = bool(
+        data.get("full_text_available", normalized_source_format != "snippet" and extraction_quality == "full_text")
+    )
+    metadata["extraction_warnings"] = [str(item).strip() for item in warnings if str(item).strip()]
+
+
 def _cjk_language_match(value: str) -> bool:
     text = str(value or "")
     matches = CJK_LANGUAGE_RE.findall(text)
@@ -2398,6 +2414,7 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["source_format"] = source_format
         metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
         metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        _apply_extraction_quality_metadata(record, data, source_format)
         return record
 
     if connector in TRADE_ASSOCIATION_CONNECTORS:
@@ -2649,6 +2666,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     skipped_blocked: List[Dict[str, Any]] = []
     processed_doc_ids: List[str] = []
     processed_records: List[Dict[str, Any]] = []
+    migrated_enrichment_ids: Dict[str, str] = {}
     duplicate_records_removed = 0
     legacy_bloomberg_records_removed = 0
     invalid_wired_records_removed = 0
@@ -2664,7 +2682,10 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
                 raise RuntimeError("Blocked invalid PR Newswire document.")
             metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
             doc_id = str(metadata.get("document_id", "") or "").strip()
+            previous_doc_id = core._find_existing_custom_document_id(custom_payload, record)
             replaced = core._upsert_custom_document_record(custom_payload, record)
+            if previous_doc_id and doc_id and previous_doc_id != doc_id:
+                migrated_enrichment_ids[previous_doc_id] = doc_id
             if replaced:
                 saved_updates += 1
             else:
@@ -2713,7 +2734,12 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         # overwrite records this job did not touch with an older payload snapshot.
         latest_custom_payload = core._load_custom_documents(storage)
         for record in processed_records:
+            metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+            doc_id = str(metadata.get("document_id", "") or "").strip()
+            previous_doc_id = core._find_existing_custom_document_id(latest_custom_payload, record)
             core._upsert_custom_document_record(latest_custom_payload, record)
+            if previous_doc_id and doc_id and previous_doc_id != doc_id:
+                migrated_enrichment_ids[previous_doc_id] = doc_id
         custom_payload = latest_custom_payload
 
     if args.connector in BLOOMBERG_CONNECTORS and (saved_new or saved_updates):
@@ -2735,9 +2761,13 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         or invalid_wired_records_removed
         or invalid_prnewswire_records_removed
         or cjk_language_records_removed
+        or migrated_enrichment_ids
     ):
         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
         enrichment_state = core._load_enrichment_state(storage)
+        migrated_enrichment_entries = core._migrate_enrichment_entry_ids(enrichment_state, migrated_enrichment_ids)
+        if migrated_enrichment_entries:
+            core._save_enrichment_state(storage, enrichment_state, require_remote=args.require_remote_persistence)
         core._rebuild_rule_summaries(
             storage,
             custom_payload=custom_payload,
@@ -2772,6 +2802,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "invalid_wired_records_removed": invalid_wired_records_removed,
         "invalid_prnewswire_records_removed": invalid_prnewswire_records_removed,
         "cjk_language_records_removed": cjk_language_records_removed,
+        "migrated_enrichment_ids": len(migrated_enrichment_ids),
         "failed_count": len(failed),
         "failed": failed[:25],
         "duplicate_records_removed": duplicate_records_removed,

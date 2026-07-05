@@ -707,13 +707,26 @@ def _create_uploaded_document_record(
     title = str(title or "").strip()
     speaker = str(speaker or "").strip() or "Unknown"
     source_url = str(source_url or "").strip()
-    tags = [t.strip() for t in str(tags_csv or "").split(",") if t.strip()]
-    stable_seed = "|".join([org_label, title, speaker, date_str, source_filename, str(len(text))])
-    doc_id = hashlib.sha256(stable_seed.encode("utf-8")).hexdigest()[:24]
+    source_kind_key = str(source_kind or "uploaded").strip().lower() or "uploaded"
+    safe_source_filename = _safe_filename(source_filename)
+    url_key = _url_match_key(source_url)
     canonical_url = (
         source_url
-        or f"uploaded://{_org_key_from_label(org_label)}/{doc_id}/{_safe_filename(source_filename)}"
+        or f"uploaded://{_org_key_from_label(org_label)}/{source_kind_key}/{safe_source_filename}"
     )
+    tags = [t.strip() for t in str(tags_csv or "").split(",") if t.strip()]
+    stable_seed = "|".join(
+        [
+            source_kind_key,
+            url_key or canonical_url.lower(),
+            "" if url_key else org_label.lower(),
+            "" if url_key else title.lower(),
+            "" if url_key else speaker.lower(),
+            "" if url_key else date_str,
+            "" if url_key else safe_source_filename.lower(),
+        ]
+    )
+    doc_id = hashlib.sha256(stable_seed.encode("utf-8")).hexdigest()[:24]
     paragraphs = [p.strip() for p in str(text).splitlines() if p.strip()]
     word_count = len(str(text).split())
     return {
@@ -726,7 +739,7 @@ def _create_uploaded_document_record(
             "word_count": word_count,
             "organization": org_label,
             "doc_type": str(doc_type or "Document"),
-            "source_filename": _safe_filename(source_filename),
+            "source_filename": safe_source_filename,
             "source_format": str(source_ext or "").lstrip(".").lower(),
             "source_local_path": source_local_path,
             "source_gcs_path": source_gcs_path,
@@ -742,6 +755,29 @@ def _create_uploaded_document_record(
             "completeness_score": 100 if word_count > 0 else 0,
         },
     }
+
+
+def _find_existing_custom_document_id(custom_payload: Dict[str, Any], record: Dict[str, Any]) -> str:
+    docs_list = custom_payload.get("documents", [])
+    if not isinstance(docs_list, list):
+        return ""
+    record_meta = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+    record_doc_id = str(record_meta.get("document_id", "") or "").strip()
+    record_url_key = _url_match_key(record_meta.get("url", ""))
+
+    for existing in docs_list:
+        if not isinstance(existing, dict):
+            continue
+        existing_meta = (
+            existing.get("metadata", {}) if isinstance(existing.get("metadata", {}), dict) else {}
+        )
+        existing_doc_id = str(existing_meta.get("document_id", "") or "").strip()
+        existing_url_key = _url_match_key(existing_meta.get("url", ""))
+        if (record_doc_id and existing_doc_id == record_doc_id) or (
+            record_url_key and existing_url_key and existing_url_key == record_url_key
+        ):
+            return existing_doc_id
+    return ""
 
 
 def _upsert_custom_document_record(custom_payload: Dict[str, Any], record: Dict[str, Any]) -> bool:
@@ -771,6 +807,28 @@ def _upsert_custom_document_record(custom_payload: Dict[str, Any], record: Dict[
         docs_list.append(record)
     custom_payload["documents"] = docs_list
     return replaced
+
+
+def _migrate_enrichment_entry_ids(enrichment_state: Dict[str, Any], id_map: Dict[str, str]) -> int:
+    entries = enrichment_state.get("entries", {})
+    if not isinstance(entries, dict):
+        return 0
+    migrated = 0
+    for old_doc_id, new_doc_id in id_map.items():
+        old_key = str(old_doc_id or "").strip()
+        new_key = str(new_doc_id or "").strip()
+        if not old_key or not new_key or old_key == new_key or old_key not in entries:
+            continue
+        old_entry = entries.pop(old_key)
+        if isinstance(old_entry, dict):
+            old_entry["doc_id"] = new_key
+        if new_key not in entries:
+            entries[new_key] = old_entry
+        migrated += 1
+    if migrated:
+        enrichment_state["entries"] = entries
+        enrichment_state["updated_at"] = _utc_now_iso()
+    return migrated
 
 
 def _is_cjk_custom_record(item: Dict[str, Any]) -> bool:
@@ -1707,6 +1765,7 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
     processed_doc_ids: List[str] = []
     new_doc_ids: List[str] = []
     updated_doc_ids: List[str] = []
+    migrated_enrichment_ids: Dict[str, str] = {}
 
     for idx, entry in enumerate(selected, 1):
         try:
@@ -1775,8 +1834,11 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
             if _is_cjk_custom_record(record):
                 raise RuntimeError("Blocked CJK-language news article.")
 
+            previous_doc_id = _find_existing_custom_document_id(custom_payload, record)
             replaced = _upsert_custom_document_record(custom_payload, record)
             doc_id = str(metadata.get("document_id", "") or "").strip()
+            if previous_doc_id and doc_id and previous_doc_id != doc_id:
+                migrated_enrichment_ids[previous_doc_id] = doc_id
             if doc_id:
                 processed_doc_ids.append(doc_id)
             if replaced:
@@ -1793,9 +1855,12 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
     cjk_language_records_removed = _remove_cjk_language_records(custom_payload)
 
     rule_summaries_rebuilt = False
-    if not args.dry_run and (saved_new or saved_updates or cjk_language_records_removed):
+    if not args.dry_run and (saved_new or saved_updates or cjk_language_records_removed or migrated_enrichment_ids):
         _save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
         enrichment_state = _load_enrichment_state(storage)
+        migrated_enrichment_entries = _migrate_enrichment_entry_ids(enrichment_state, migrated_enrichment_ids)
+        if migrated_enrichment_entries:
+            _save_enrichment_state(storage, enrichment_state, require_remote=args.require_remote_persistence)
         _rebuild_rule_summaries(
             storage,
             custom_payload=custom_payload,
@@ -1835,6 +1900,7 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         "saved_new": saved_new,
         "saved_updates": saved_updates,
         "cjk_language_records_removed": cjk_language_records_removed,
+        "migrated_enrichment_ids": len(migrated_enrichment_ids),
         "processed_doc_ids": processed_doc_ids,
         "new_doc_ids": new_doc_ids,
         "updated_doc_ids": updated_doc_ids,

@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/data-store";
 import { buildFullTextById, filterDocumentListItems, normalizeFacetToken } from "@/lib/server/document-query";
 import { createRequestId, fail, normalizeText, ok, parseDate, toInt } from "@/lib/server/api-utils";
+import type { EnrichmentStatePayload } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,32 @@ export async function GET(request: Request) {
       ? new Set(docIdsParam.split(",").slice(0, 100).map((s) => s.trim()).filter(Boolean))
       : null;
 
-    const [corpusDocs, enrichment] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
+    let corpusDocs;
+    try {
+      corpusDocs = await loadCorpusDocuments();
+    } catch (error) {
+      console.error("Failed to load document corpus", { requestId, error });
+      return fail(
+        `Document corpus is unavailable: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "DOCUMENT_CORPUS_UNAVAILABLE",
+        503,
+        requestId
+      );
+    }
+
+    let enrichment: EnrichmentStatePayload = {
+      version: 1,
+      pipeline_version: "",
+      updated_at: "",
+      entries: {}
+    };
+    let enrichmentUnavailable = false;
+    try {
+      enrichment = await loadEnrichmentState();
+    } catch (error) {
+      enrichmentUnavailable = true;
+      console.error("Failed to load document enrichment state", { requestId, error });
+    }
     const items = buildDocumentListItems(corpusDocs, enrichment);
     const facets = buildDocumentsFacets(items);
     const fullTextById = buildFullTextById(corpusDocs);
@@ -71,7 +97,8 @@ export async function GET(request: Request) {
       page,
       page_size: pageSize,
       total,
-      facets
+      facets,
+      warnings: enrichmentUnavailable ? ["enrichment_state_unavailable"] : []
     };
 
     return ok(payload, requestId);

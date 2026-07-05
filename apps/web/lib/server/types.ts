@@ -24,6 +24,8 @@ export interface CustomDocumentMetadata {
   doc_type: string;
   source_filename: string;
   source_format: string;
+  extraction_quality?: string;
+  full_text_available?: boolean;
   source_local_path: string;
   source_gcs_path: string;
   tags: string;
@@ -236,6 +238,9 @@ export interface DocumentListItem {
   title: string;
   organization: string;
   source_kind: string;
+  source_format?: string;
+  extraction_quality?: string;
+  full_text_available?: boolean;
   doc_type: string;
   speaker: string;
   url: string;

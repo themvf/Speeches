@@ -1514,6 +1514,9 @@ class TradeMediaScraper:
                         "full_text": fallback_text,
                         "word_count": len(fallback_text.split()),
                         "source_format": "snippet",
+                        "extraction_quality": "snippet_fallback",
+                        "full_text_available": False,
+                        "extraction_warnings": ["google_news_url_decode_failed"],
                     },
                 }
 
@@ -1542,6 +1545,9 @@ class TradeMediaScraper:
                     "full_text": fallback_text,
                     "word_count": len(fallback_text.split()),
                     "source_format": "snippet",
+                    "extraction_quality": "snippet_fallback",
+                    "full_text_available": False,
+                    "extraction_warnings": ["source_fetch_failed"],
                 },
             }
 
@@ -1563,6 +1569,9 @@ class TradeMediaScraper:
                     "full_text": fallback_text,
                     "word_count": len(fallback_text.split()),
                     "source_format": "snippet",
+                    "extraction_quality": "snippet_fallback",
+                    "full_text_available": False,
+                    "extraction_warnings": ["source_access_challenge"],
                 },
             }
 
@@ -1571,6 +1580,8 @@ class TradeMediaScraper:
         doc_date_raw = ""
         description = str(fallback_description or "").strip()
         full_text = ""
+        extraction_quality = "full_text"
+        extraction_warnings: List[str] = []
 
         if is_pdf:
             source_format = "pdf"
@@ -1597,12 +1608,29 @@ class TradeMediaScraper:
         doc_title = _normalize_space(doc_title) or _normalize_space(fallback_title) or "Trade Media Article"
         doc_date = _date_to_display(doc_date_raw or fallback_date)
 
+        if source_format != "snippet":
+            cleaned_extracted_text = clean_article_text(full_text, title=doc_title)
+            if _looks_like_crypto_symbol_table_text(cleaned_extracted_text, title=doc_title):
+                if fallback_text:
+                    full_text = fallback_text
+                    source_format = "snippet"
+                    extraction_quality = "snippet_fallback"
+                    extraction_warnings.append("crypto_symbol_table_extraction")
+                else:
+                    raise RuntimeError("Extracted page text appears to be a crypto ticker table, not article text.")
+            else:
+                full_text = cleaned_extracted_text
+
         if fallback_text and len(full_text.split()) < 80:
-            if full_text:
+            if full_text and len(full_text.split()) >= 20:
                 full_text = f"{full_text}\n\nSource Summary\n{fallback_text}".strip()
+                extraction_quality = "partial_fallback"
+                extraction_warnings.append("short_extracted_text_augmented")
             else:
                 full_text = fallback_text
                 source_format = "snippet"
+                extraction_quality = "snippet_fallback"
+                extraction_warnings.append("short_or_empty_extracted_text")
 
         if source_format != "snippet":
             full_text = clean_article_text(full_text, title=doc_title)
@@ -1610,6 +1638,8 @@ class TradeMediaScraper:
                 if fallback_text:
                     full_text = fallback_text
                     source_format = "snippet"
+                    extraction_quality = "snippet_fallback"
+                    extraction_warnings.append("crypto_symbol_table_extraction")
                 else:
                     raise RuntimeError("Extracted page text appears to be a crypto ticker table, not article text.")
 
@@ -1627,5 +1657,8 @@ class TradeMediaScraper:
                 "full_text": full_text,
                 "word_count": len(full_text.split()),
                 "source_format": source_format,
+                "extraction_quality": extraction_quality,
+                "full_text_available": source_format != "snippet" and extraction_quality == "full_text",
+                "extraction_warnings": extraction_warnings,
             },
         }
