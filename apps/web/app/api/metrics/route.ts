@@ -8,8 +8,16 @@ import {
 } from "@/lib/server/data-store";
 import { getApiRuntimeInfo } from "@/lib/server/env";
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
+import type {
+  CustomDocumentRecord,
+  CustomDocumentsPayload,
+  EnrichmentStatePayload,
+  NewsConnectorSettingsPayload
+} from "@/lib/server/types";
 
 export const runtime = "nodejs";
+
+const METRICS_LOAD_TIMEOUT_MS = 6_000;
 
 function toMs(value: string): number {
   const ms = Date.parse(String(value || ""));
@@ -20,17 +28,73 @@ function metadataText(metadata: Record<string, unknown>, key: string): string {
   return String(metadata[key] || "").trim();
 }
 
+type LoadResult<T> = {
+  data: T;
+  warning?: string;
+};
+
+function emptyCustomDocuments(): CustomDocumentsPayload {
+  return { updated_at: "", documents: [] };
+}
+
+function emptyEnrichmentState(): EnrichmentStatePayload {
+  return { version: 1, pipeline_version: "v1", updated_at: "", entries: {} };
+}
+
+function emptyNewsConnectorSettings(): NewsConnectorSettingsPayload {
+  return {
+    updated_at: "",
+    query: "",
+    lookback_days: 7,
+    max_pages: 4,
+    page_size: 50,
+    target_count: 100,
+    sort_by: "publishedAt",
+    organization_label: "News",
+    domains: "",
+    exclude_domains: "",
+    tags_csv: "",
+    doj_usao_exclude_terms: ""
+  };
+}
+
+function loadWithBudget<T>(
+  label: string,
+  promise: Promise<T>,
+  fallback: () => T,
+  timeoutMs = METRICS_LOAD_TIMEOUT_MS
+): Promise<LoadResult<T>> {
+  const guarded = promise
+    .then((data) => ({ data }))
+    .catch((error) => ({
+      data: fallback(),
+      warning: `${label} failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    }));
+
+  return Promise.race([
+    guarded,
+    new Promise<LoadResult<T>>((resolve) => {
+      setTimeout(() => resolve({ data: fallback(), warning: `${label} exceeded ${timeoutMs}ms budget` }), timeoutMs);
+    })
+  ]);
+}
+
 export async function GET() {
   const requestId = createRequestId();
 
   try {
-    const [corpus, custom, enrichment, settings] = await Promise.all([
-      loadCorpusDocuments(),
-      loadCustomDocuments(),
-      loadEnrichmentState(),
-      loadNewsConnectorSettings()
+    const [corpusResult, customResult, enrichmentResult, settingsResult] = await Promise.all([
+      loadWithBudget<CustomDocumentRecord[]>("corpus documents", loadCorpusDocuments(), () => []),
+      loadWithBudget<CustomDocumentsPayload>("custom documents", loadCustomDocuments(), emptyCustomDocuments),
+      loadWithBudget<EnrichmentStatePayload>("enrichment state", loadEnrichmentState(), emptyEnrichmentState),
+      loadWithBudget<NewsConnectorSettingsPayload>("news connector settings", loadNewsConnectorSettings(), emptyNewsConnectorSettings)
     ]);
 
+    const warnings = [corpusResult.warning, customResult.warning, enrichmentResult.warning, settingsResult.warning].filter(Boolean);
+    const corpus = corpusResult.data;
+    const custom = customResult.data;
+    const enrichment = enrichmentResult.data;
+    const settings = settingsResult.data;
     const documents = corpus || [];
     const orgSet = new Set<string>();
     const sourceCounts = new Map<string, number>();
@@ -160,7 +224,8 @@ export async function GET() {
         }
       },
       by_source_kind: sortByCount,
-      runtime: getApiRuntimeInfo()
+      runtime: getApiRuntimeInfo(),
+      warnings
     };
 
     return ok(payload, requestId);
