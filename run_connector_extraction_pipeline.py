@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -109,6 +110,20 @@ LITIGATION_ALLOWED_RE = re.compile(
     r"malware|hack(?:ed|er|ers|ing)?|antitrust)\b",
     re.IGNORECASE,
 )
+PRNEWSWIRE_RELEVANCE_RE = re.compile(
+    r"\b(?:sec|securities and exchange commission|cftc|commodity futures trading commission|finra|"
+    r"federal reserve|treasury|ofac|fincen|cfpb|occ|fdic|ftc|doj|pcaob|msrb|securities|security-based|"
+    r"investment adviser|investment advisor|broker-dealer|investor fraud|investment fraud|ponzi|offering fraud|"
+    r"public offering|registered offering|private placement|initial public offering|ipo|etf|mutual fund|hedge fund|"
+    r"private fund|asset manager|wealth management|stock exchange|equity market|derivative|swap|futures|options|"
+    r"cfd|contracts? for difference|multi-asset broker|trading platform|"
+    r"anti-money laundering|aml|kyc|sanctions compliance|illicit finance|cybersecurity|ransomware|data breach|"
+    r"operational resilience|reg sci|crypto asset|digital asset|stablecoin|bitcoin|ethereum|tokenized securities|"
+    r"blockchain|prediction market|event contract|kalshi|polymarket|predictit|binary options|enforcement action|"
+    r"investigation|settlement|civil penalty|market manipulation|insider trading|regulatory compliance|"
+    r"compliance platform|risk management|fintech)\b",
+    re.IGNORECASE,
+)
 PRNEWSWIRE_LEGAL_SOLICITATION_RE = re.compile(
     r"\b(?:shareholder alert|investor alert|investor deadline|deadline alert|investor notice|shareholder notice|"
     r"class action attorney|class action law firm|m&a class action firm|investor rights law firm|"
@@ -122,6 +137,35 @@ PRNEWSWIRE_LEGAL_SOLICITATION_RE = re.compile(
     r"if you (?:purchased|acquired|bought) .* securities|seek appointment as lead plaintiff|upcoming deadline)\b",
     re.IGNORECASE,
 )
+NON_LATIN_LANGUAGE_RE = re.compile(r"[\u0370-\u03ff\u0400-\u04ff\u0590-\u05ff\u0600-\u06ff\u3040-\u30ff\u3400-\u9fff]")
+MOJIBAKE_RE = re.compile(r"[\u00c2-\u00c5]|\u00e2[\u0080-\u009f]")
+ENGLISH_MARKERS = [
+    "the", "and", "of", "to", "for", "with", "from", "by", "on", "in", "as", "at",
+    "announces", "launches", "reports", "joins", "appoints", "releases", "expands",
+    "foundation", "company", "holdings", "million", "billion", "dollar", "new", "us", "u s", "ai",
+]
+NON_ENGLISH_MARKERS = {
+    "spanish": [
+        "el", "la", "los", "las", "un", "una", "unos", "unas", "del", "al", "que", "con", "por", "para",
+        "se", "su", "sus", "y", "en", "como", "anuncia", "lanza", "millones", "dolares", "resumen", "une",
+    ],
+    "german": [
+        "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "und", "oder", "mit", "von",
+        "fur", "uber", "unter", "darunter", "mehr", "als", "im", "am", "zu", "meldet", "millionen", "zusammenfassung",
+    ],
+    "french": [
+        "le", "la", "les", "un", "une", "des", "du", "de", "dans", "avec", "pour", "sur", "et", "que", "qui",
+        "annonce", "lance", "millions", "resume", "rejoint",
+    ],
+    "portuguese": [
+        "o", "a", "os", "as", "um", "uma", "dos", "das", "do", "da", "de", "em", "com", "para", "por", "e",
+        "que", "anuncia", "lanca", "milhoes", "resumo", "junta",
+    ],
+    "italian": [
+        "il", "lo", "la", "gli", "le", "un", "una", "del", "della", "dei", "delle", "con", "per", "e", "che",
+        "annuncia", "lancia", "milioni", "riepilogo", "unisce",
+    ],
+}
 US_ABBREVIATION_JURISDICTION_RE = re.compile(r"\b(?:U\.S\.|U\.S|US|USA)\b")
 US_FRAUD_JURISDICTION_RE = re.compile(
     r"\b(?:united states|american|securities and exchange commission|department of justice|federal bureau of investigation|"
@@ -487,6 +531,59 @@ def _entry_quality_text(entry: Dict[str, Any]) -> str:
     )
 
 
+def _normalize_for_language(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _marker_count(normalized_text: str, markers: List[str]) -> int:
+    haystack = f" {normalized_text} "
+    return sum(1 for marker in markers if f" {marker} " in haystack)
+
+
+def _non_ascii_ratio(value: str) -> float:
+    chars = [char for char in str(value or "") if not char.isspace()]
+    if not chars:
+        return 0.0
+    return len([char for char in chars if ord(char) > 127]) / len(chars)
+
+
+def _looks_english_text(value: str) -> bool:
+    raw_text = str(value or "").strip()
+    if not raw_text:
+        return False
+    if NON_LATIN_LANGUAGE_RE.search(raw_text):
+        return False
+
+    normalized = _normalize_for_language(raw_text)
+    if not normalized:
+        return False
+
+    english_score = _marker_count(normalized, ENGLISH_MARKERS)
+    strongest_foreign_score = max(
+        [_marker_count(normalized, markers) for markers in NON_ENGLISH_MARKERS.values()] or [0]
+    )
+    accent_ratio = _non_ascii_ratio(raw_text)
+    has_foreign_punctuation = bool(re.search(r"[\u00a1\u00bf]", raw_text))
+    has_mojibake = bool(MOJIBAKE_RE.search(raw_text))
+
+    if has_mojibake and (strongest_foreign_score >= 1 or accent_ratio > 0.03):
+        return False
+    if has_foreign_punctuation and strongest_foreign_score >= 1:
+        return False
+    if strongest_foreign_score >= 4 and strongest_foreign_score > english_score:
+        return False
+    if strongest_foreign_score >= 3 and english_score <= 1:
+        return False
+    if accent_ratio > 0.06 and strongest_foreign_score >= 2 and strongest_foreign_score >= english_score:
+        return False
+
+    return True
+
+
 def _is_cjk_language_entry(entry: Dict[str, Any]) -> bool:
     return _cjk_language_match(_entry_quality_text(entry))
 
@@ -506,6 +603,18 @@ def _is_prnewswire_legal_solicitation_entry(entry: Dict[str, Any], connector: st
     return bool(PRNEWSWIRE_LEGAL_SOLICITATION_RE.search(_entry_quality_text(entry)))
 
 
+def _is_prnewswire_non_english_entry(entry: Dict[str, Any], connector: str) -> bool:
+    if _normalize_space(connector).lower() != "prnewswire_article":
+        return False
+    return not _looks_english_text(_entry_quality_text(entry))
+
+
+def _is_prnewswire_low_relevance_entry(entry: Dict[str, Any], connector: str) -> bool:
+    if _normalize_space(connector).lower() != "prnewswire_article":
+        return False
+    return not bool(PRNEWSWIRE_RELEVANCE_RE.search(_entry_quality_text(entry)))
+
+
 def _has_us_fraud_jurisdiction(entry: Dict[str, Any]) -> bool:
     text = _entry_quality_text(entry)
     return bool(US_ABBREVIATION_JURISDICTION_RE.search(text) or US_FRAUD_JURISDICTION_RE.search(text))
@@ -514,8 +623,12 @@ def _has_us_fraud_jurisdiction(entry: Dict[str, Any]) -> bool:
 def _is_blocked_extraction_entry(entry: Dict[str, Any], connector: str = "") -> Tuple[bool, str]:
     if _is_cjk_language_entry(entry):
         return True, "cjk_language"
+    if _is_prnewswire_non_english_entry(entry, connector):
+        return True, "prnewswire_non_english"
     if _is_prnewswire_legal_solicitation_entry(entry, connector):
         return True, "prnewswire_legal_solicitation"
+    if _is_prnewswire_low_relevance_entry(entry, connector):
+        return True, "prnewswire_low_relevance"
     if _is_disallowed_general_litigation_entry(entry):
         return True, "general_litigation"
     if _requires_us_fraud_jurisdiction(connector) and not _has_us_fraud_jurisdiction(entry):
@@ -540,6 +653,31 @@ def _is_cjk_custom_record(item: Dict[str, Any]) -> bool:
     return _cjk_language_match(text)
 
 
+def _prnewswire_custom_record_as_entry(item: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+    content = item.get("content", {}) if isinstance(item.get("content", {}), dict) else {}
+    return {
+        "title": metadata.get("title", ""),
+        "summary": metadata.get("summary", ""),
+        "description": metadata.get("description", ""),
+        "source_name": metadata.get("source_name", ""),
+        "url": metadata.get("url", ""),
+        "full_text": str(content.get("full_text", "") or "")[:2500],
+    }
+
+
+def _is_invalid_prnewswire_custom_record(item: Dict[str, Any]) -> bool:
+    metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+    if _normalize_space(metadata.get("source_kind", "")).lower() != "prnewswire_article":
+        return False
+    entry = _prnewswire_custom_record_as_entry(item)
+    return (
+        _is_prnewswire_non_english_entry(entry, "prnewswire_article")
+        or _is_prnewswire_legal_solicitation_entry(entry, "prnewswire_article")
+        or _is_prnewswire_low_relevance_entry(entry, "prnewswire_article")
+    )
+
+
 def _remove_cjk_language_records(custom_payload: Dict[str, Any]) -> int:
     docs_list = custom_payload.get("documents", [])
     if not isinstance(docs_list, list):
@@ -552,6 +690,27 @@ def _remove_cjk_language_records(custom_payload: Dict[str, Any]) -> int:
             kept.append(item)
             continue
         if _is_cjk_custom_record(item):
+            removed += 1
+            continue
+        kept.append(item)
+
+    if removed:
+        custom_payload["documents"] = kept
+    return removed
+
+
+def _remove_invalid_prnewswire_records(custom_payload: Dict[str, Any]) -> int:
+    docs_list = custom_payload.get("documents", [])
+    if not isinstance(docs_list, list):
+        return 0
+
+    kept: List[Dict[str, Any]] = []
+    removed = 0
+    for item in docs_list:
+        if not isinstance(item, dict):
+            kept.append(item)
+            continue
+        if _is_invalid_prnewswire_custom_record(item):
             removed += 1
             continue
         kept.append(item)
@@ -2492,6 +2651,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     duplicate_records_removed = 0
     legacy_bloomberg_records_removed = 0
     invalid_wired_records_removed = 0
+    invalid_prnewswire_records_removed = 0
     cjk_language_records_removed = 0
 
     for idx, entry in enumerate(selected, 1):
@@ -2499,6 +2659,8 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
             record = _extract_record(args.connector, scraper, entry, idx, base_url)
             if _is_cjk_custom_record(record):
                 raise RuntimeError("Blocked CJK-language document.")
+            if args.connector == "prnewswire_article" and _is_invalid_prnewswire_custom_record(record):
+                raise RuntimeError("Blocked invalid PR Newswire document.")
             metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
             doc_id = str(metadata.get("document_id", "") or "").strip()
             replaced = core._upsert_custom_document_record(custom_payload, record)
@@ -2518,6 +2680,14 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
             if repaired_doc_id:
                 saved_updates += 1
                 processed_doc_ids.append(repaired_doc_id)
+            elif args.connector == "prnewswire_article" and "Blocked invalid PR Newswire document" in str(exc):
+                skipped_blocked.append(
+                    {
+                        "url": str(entry.get("url", "") or ""),
+                        "title": str(entry.get("title", "") or ""),
+                        "reason": str(exc),
+                    }
+                )
             elif args.connector == "finra_regulatory_notice" and "403" in str(exc):
                 skipped_blocked.append(
                     {
@@ -2542,10 +2712,19 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     if args.connector == "wired_article":
         invalid_wired_records_removed = _remove_invalid_wired_coupon_records(custom_payload)
 
+    if args.connector == "prnewswire_article":
+        invalid_prnewswire_records_removed = _remove_invalid_prnewswire_records(custom_payload)
+
     cjk_language_records_removed = _remove_cjk_language_records(custom_payload)
 
     rule_summaries_rebuilt = False
-    if not args.dry_run and (saved_new or saved_updates or invalid_wired_records_removed or cjk_language_records_removed):
+    if not args.dry_run and (
+        saved_new
+        or saved_updates
+        or invalid_wired_records_removed
+        or invalid_prnewswire_records_removed
+        or cjk_language_records_removed
+    ):
         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
         enrichment_state = core._load_enrichment_state(storage)
         core._rebuild_rule_summaries(
@@ -2580,6 +2759,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "saved_new": saved_new,
         "saved_updates": saved_updates,
         "invalid_wired_records_removed": invalid_wired_records_removed,
+        "invalid_prnewswire_records_removed": invalid_prnewswire_records_removed,
         "cjk_language_records_removed": cjk_language_records_removed,
         "failed_count": len(failed),
         "failed": failed[:25],
