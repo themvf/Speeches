@@ -507,6 +507,7 @@ BOILERPLATE_LINE_RE = re.compile(
     r"^sign in\s+sign up\b|"
     r"^\$[\d,]+(?:\.\d+)?$|"
     r"^[-+]?\d+(?:\.\d+)?%$|"
+    r"(?-i:^(?:[A-Z][A-Z0-9_]{1,15}\s+){8,}[A-Z][A-Z0-9_]{1,15}\b)|"
     r"^[A-Z]{2,8}\s+\$[\d,]+(?:\.\d+)?\s+[-+]?\d+(?:\.\d+)?%|"
     r"^(?:BTC|ETH|SOL|XRP|BNB|DOGE|ADA|TRX|LINK|XLM|XMR|ZEC|HYPE)$|"
     r"\b(?:privacy policy|terms of use|cookie policy|all rights reserved)\b"
