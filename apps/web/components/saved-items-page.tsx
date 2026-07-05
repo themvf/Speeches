@@ -530,7 +530,7 @@ function AnalysisPanel({
 }
 
 export function SavedItemsPage() {
-  const { items, lists, listById, loaded, remove, clear, updateItem, setItemLists, createList } = useSavedItems();
+  const { items, lists, listById, loaded, remove, clear, updateItem, setItemLists, createList, syncEnabled } = useSavedItems();
   const [filter, setFilter] = useState<SavedFilter>("all");
   const [selectedListId, setSelectedListId] = useState<ListFilter>("all");
   const [query, setQuery] = useState("");
@@ -650,6 +650,9 @@ export function SavedItemsPage() {
         <h1 className="mt-3 text-3xl font-bold leading-tight md:text-5xl">Saved Research</h1>
         <p className="mt-3 max-w-3xl text-base text-[color:var(--ink-soft)] md:text-lg">
           {loaded ? `${counts.all} saved item${counts.all === 1 ? "" : "s"}` : "Loading saved items"}
+        </p>
+        <p className="mt-2 text-sm text-[color:var(--ink-faint)]">
+          {syncEnabled ? "Account sync is on." : "Saved locally in this browser."}
         </p>
       </header>
 

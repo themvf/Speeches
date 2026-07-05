@@ -1,44 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DEFAULT_LIST_ID, type SavedItem, type SavedItemsPayload, type SavedList } from "@/lib/saved-items-types";
 
-export const DEFAULT_LIST_ID = "general";
-
-export interface SavedItemMetadata {
-  documentId?: string;
-  organization?: string;
-  sourceKind?: string;
-  docType?: string;
-  speaker?: string;
-  date?: string;
-  publishedAt?: string;
-  wordCount?: number;
-  keywords?: string[];
-  topics?: string[];
-  sentimentLabel?: "positive" | "negative" | "neutral" | "";
-  sentimentScore?: number;
-  feedKey?: string;
-  author?: string;
-  toneLabel?: "positive" | "negative" | "neutral" | null;
-}
-
-export interface SavedItem {
-  id: string;
-  type: "article" | "doc";
-  title: string;
-  url?: string;
-  source: string;
-  topic?: string;
-  savedAt: string;
-  listIds: string[];
-  metadata?: SavedItemMetadata;
-}
-
-export interface SavedList {
-  id: string;
-  name: string;
-  createdAt: string;
-}
+export { DEFAULT_LIST_ID, type SavedItem, type SavedItemMetadata, type SavedList } from "@/lib/saved-items-types";
 
 const ITEMS_STORAGE_KEY = "saved_items_v1";
 const LISTS_STORAGE_KEY = "saved_lists_v1";
@@ -136,15 +101,100 @@ function writeLists(lists: SavedList[]): void {
   localStorage.setItem(LISTS_STORAGE_KEY, JSON.stringify(lists));
 }
 
+function mergeSavedPayloads(local: SavedItemsPayload, remote: SavedItemsPayload): SavedItemsPayload {
+  const lists = new Map<string, SavedList>();
+  [DEFAULT_LIST, ...remote.lists, ...local.lists].forEach((list) => {
+    const normalized = normalizeList(list);
+    if (normalized) {
+      lists.set(normalized.id, normalized);
+    }
+  });
+
+  const items = new Map<string, SavedItem>();
+  [...remote.items, ...local.items].forEach((item) => {
+    const normalized = normalizeItem(item);
+    if (!normalized) {
+      return;
+    }
+    const existing = items.get(normalized.id);
+    if (!existing) {
+      items.set(normalized.id, normalized);
+      return;
+    }
+    items.set(normalized.id, {
+      ...existing,
+      ...normalized,
+      savedAt: existing.savedAt < normalized.savedAt ? existing.savedAt : normalized.savedAt,
+      listIds: uniqueListIds([...existing.listIds, ...normalized.listIds]),
+      metadata: { ...existing.metadata, ...normalized.metadata },
+    });
+  });
+
+  return {
+    lists: [...lists.values()],
+    items: [...items.values()].sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt))),
+  };
+}
+
+async function fetchRemoteSavedItems(): Promise<SavedItemsPayload | null> {
+  const res = await fetch("/api/saved-items", { cache: "no-store" });
+  if (res.status === 401 || res.status === 503) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error("Saved item sync failed.");
+  }
+  const json = (await res.json()) as { ok?: boolean; data?: Partial<SavedItemsPayload> };
+  if (!json.ok || !json.data) {
+    return null;
+  }
+  return {
+    items: Array.isArray(json.data.items) ? json.data.items.map(normalizeItem).filter((item): item is SavedItem => Boolean(item)) : [],
+    lists: Array.isArray(json.data.lists) ? json.data.lists.map(normalizeList).filter((item): item is SavedList => Boolean(item)) : [DEFAULT_LIST],
+  };
+}
+
+async function writeRemoteSavedItems(payload: SavedItemsPayload): Promise<boolean> {
+  const res = await fetch("/api/saved-items", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return res.ok;
+}
+
 export function useSavedItems() {
   const [items, setItems] = useState<SavedItem[]>([]);
   const [lists, setLists] = useState<SavedList[]>([DEFAULT_LIST]);
   const [loaded, setLoaded] = useState(false);
+  const [syncEnabled, setSyncEnabled] = useState(false);
+  const [remoteLoaded, setRemoteLoaded] = useState(false);
 
   useEffect(() => {
-    setItems(readItems());
-    setLists(readLists());
+    const localPayload = { items: readItems(), lists: readLists() };
+    setItems(localPayload.items);
+    setLists(localPayload.lists);
     setLoaded(true);
+
+    fetchRemoteSavedItems()
+      .then((remotePayload) => {
+        if (!remotePayload) {
+          setSyncEnabled(false);
+          return;
+        }
+        const merged = mergeSavedPayloads(localPayload, remotePayload);
+        setItems(merged.items);
+        setLists(merged.lists);
+        writeItems(merged.items);
+        writeLists(merged.lists);
+        setSyncEnabled(true);
+      })
+      .catch(() => {
+        setSyncEnabled(false);
+      })
+      .finally(() => {
+        setRemoteLoaded(true);
+      });
 
     const onStorage = (event: StorageEvent) => {
       if (event.key === ITEMS_STORAGE_KEY) {
@@ -158,6 +208,16 @@ export function useSavedItems() {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
+
+  useEffect(() => {
+    if (!loaded || !remoteLoaded || !syncEnabled) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      void writeRemoteSavedItems({ items, lists }).catch(() => setSyncEnabled(false));
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [items, lists, loaded, remoteLoaded, syncEnabled]);
 
   const listById = useMemo(() => new Map(lists.map((list) => [list.id, list])), [lists]);
 
@@ -304,5 +364,6 @@ export function useSavedItems() {
     createList,
     renameList,
     deleteList,
+    syncEnabled,
   };
 }
