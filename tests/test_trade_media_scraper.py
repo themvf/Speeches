@@ -448,6 +448,10 @@ The campaign highlights continued abuse of trusted developer tooling and cryptoc
         self.assertTrue(result["success"])
         self.assertIn("password-stealing malware", result["data"]["full_text"])
         self.assertNotIn("FIGR_HELOC", result["data"]["full_text"])
+        self.assertEqual(result["data"]["source_format"], "snippet")
+        self.assertEqual(result["data"]["extraction_quality"], "snippet_fallback")
+        self.assertFalse(result["data"]["full_text_available"])
+        self.assertTrue(result["data"]["extraction_warnings"])
 
     def test_clean_article_text_scans_past_long_enterprise_nav(self):
         raw_text = "\n".join(
