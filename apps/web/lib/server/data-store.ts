@@ -953,9 +953,14 @@ export function buildDocumentListItems(
 
 export function selectNewsFeedDocuments(
   items: DocumentListItem[],
-  options: { limit?: number; pinnedSourceKinds?: string[] } = {}
+  options: { limit?: number; pinnedSourceKinds?: string[]; pinnedSourceKindLimit?: number; maxDateMs?: number } = {}
 ): DocumentListItem[] {
   const feedDocumentLimit = Math.max(0, options.limit ?? 250);
+  const pinnedSourceKindLimit =
+    options.pinnedSourceKindLimit === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, options.pinnedSourceKindLimit);
+  const latestVisibleDateMs = options.maxDateMs ?? endOfTodayMs();
   const pinnedSourceKinds = new Set(
     options.pinnedSourceKinds ?? [
       "sec_speech",
@@ -1006,24 +1011,41 @@ export function selectNewsFeedDocuments(
     ]
   );
   const dated = items
-    .filter((item) => parseComparableDate(item.published_at || item.date) > 0)
-    .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
+    .map((item) => ({ item, dateMs: parseComparableDate(item.published_at || item.date) }))
+    .filter(({ dateMs }) => dateMs > 0 && dateMs <= latestVisibleDateMs)
+    .sort((a, b) => b.dateMs - a.dateMs)
+    .map(({ item }) => item);
 
   const selected = new Map<string, DocumentListItem>();
+  const selectedCountsBySourceKind = new Map<string, number>();
   const add = (item: DocumentListItem) => {
-    if (item.document_id) selected.set(item.document_id, item);
+    if (!item.document_id || selected.has(item.document_id)) return;
+    selected.set(item.document_id, item);
+    selectedCountsBySourceKind.set(
+      item.source_kind,
+      (selectedCountsBySourceKind.get(item.source_kind) ?? 0) + 1
+    );
   };
 
   dated.slice(0, feedDocumentLimit).forEach(add);
 
   for (const item of dated) {
     if (pinnedSourceKinds.has(item.source_kind)) {
+      if ((selectedCountsBySourceKind.get(item.source_kind) ?? 0) >= pinnedSourceKindLimit) {
+        continue;
+      }
       add(item);
     }
   }
 
   return [...selected.values()]
     .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
+}
+
+function endOfTodayMs(): number {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return today.getTime();
 }
 
 export function buildDocumentsFacets(items: DocumentListItem[]): DocumentsFacets {
