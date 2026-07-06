@@ -2659,6 +2659,17 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
 
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
     selected = candidates[:limit] if limit > 0 else []
+    selected_preview = [
+        {
+            "title": str(entry.get("title", "") or "").strip(),
+            "date": str(entry.get("date", "") or entry.get("published_date", "") or "").strip(),
+            "url": str(entry.get("url", "") or "").strip(),
+            "ingest_status": str(entry.get("ingest_status", "") or "").strip(),
+            "discovery_mode": str(entry.get("discovery_mode", "") or "").strip(),
+            "publication_name": str(entry.get("publication_name", "") or "").strip(),
+        }
+        for entry in selected[:25]
+    ]
 
     saved_new = 0
     saved_updates = 0
@@ -2796,6 +2807,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "blocked_extraction_count": blocked_extraction_count,
         "candidate_count": len(candidates),
         "selected_count": len(selected),
+        "selected_preview": selected_preview,
         "processed_count": len(processed_doc_ids),
         "saved_new": saved_new,
         "saved_updates": saved_updates,

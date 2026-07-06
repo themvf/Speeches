@@ -9,6 +9,7 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import quote, unquote, urlparse, urlunparse
 
@@ -436,6 +437,37 @@ def _json_object(value: str) -> Dict[str, Any]:
     return {}
 
 
+def _parse_date_for_sort(value: Any) -> datetime:
+    text = _normalize_space(value)
+    if not text:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    candidates = [text]
+    if text.endswith("Z"):
+        candidates.append(f"{text[:-1]}+00:00")
+    for candidate in candidates:
+        try:
+            parsed = datetime.fromisoformat(candidate)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except ValueError:
+            pass
+    try:
+        parsed = parsedate_to_datetime(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _date_sort_key(item: Dict[str, Any]) -> Tuple[datetime, str]:
+    return (
+        _parse_date_for_sort(item.get("date") or item.get("published_at")),
+        _normalize_space(item.get("url", "")),
+    )
+
+
 class SubstackPublicScraper:
     def __init__(self, min_delay_seconds: float = 0.25) -> None:
         self._uses_curl_cffi = curl_requests is not None
@@ -701,7 +733,7 @@ class SubstackPublicScraper:
                 }
 
         results = list(discovered.values())
-        results.sort(key=lambda item: str(item.get("date", "")), reverse=True)
+        results.sort(key=_date_sort_key, reverse=True)
         debug["items_found"] = len(results)
         self.last_discovery_debug = debug
         return results
@@ -879,7 +911,7 @@ class SubstackPublicScraper:
             debug["include_feeds"] = True
 
         results = list(discovered.values())
-        results.sort(key=lambda item: str(item.get("date", "")), reverse=True)
+        results.sort(key=_date_sort_key, reverse=True)
         debug["items_found"] = len(results)
         self.last_discovery_debug = debug
         return results
