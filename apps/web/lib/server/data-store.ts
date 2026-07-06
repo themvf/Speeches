@@ -988,10 +988,11 @@ export function buildDocumentListItems(
 
 export function selectNewsFeedDocuments(
   items: DocumentListItem[],
-  options: { limit?: number; pinnedSourceKinds?: string[]; pinnedPerSourceLimit?: number } = {}
+  options: { limit?: number; pinnedSourceKinds?: string[]; pinnedPerSourceLimit?: number; maxDateMs?: number } = {}
 ): DocumentListItem[] {
   const feedDocumentLimit = Math.max(0, options.limit ?? 250);
   const pinnedPerSourceLimit = Math.max(0, options.pinnedPerSourceLimit ?? 12);
+  const latestVisibleDateMs = options.maxDateMs ?? endOfTodayMs();
   const pinnedSourceKinds = new Set(
     options.pinnedSourceKinds ?? [
       "sec_speech",
@@ -1062,8 +1063,10 @@ export function selectNewsFeedDocuments(
   );
   const nowMs = Date.now();
   const dated = items
-    .filter((item) => parseComparableFeedDate(item.published_at || item.date, nowMs) > 0)
-    .sort((a, b) => parseComparableFeedDate(b.published_at || b.date, nowMs) - parseComparableFeedDate(a.published_at || a.date, nowMs));
+    .map((item) => ({ item, dateMs: parseComparableFeedDate(item.published_at || item.date, nowMs) }))
+    .filter(({ dateMs }) => dateMs > 0 && dateMs <= latestVisibleDateMs)
+    .sort((a, b) => b.dateMs - a.dateMs)
+    .map(({ item }) => item);
 
   const selected = new Map<string, DocumentListItem>();
   const add = (item: DocumentListItem) => {
@@ -1087,6 +1090,12 @@ export function selectNewsFeedDocuments(
 
   return [...selected.values()]
     .sort((a, b) => parseComparableFeedDate(b.published_at || b.date, nowMs) - parseComparableFeedDate(a.published_at || a.date, nowMs));
+}
+
+function endOfTodayMs(): number {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return today.getTime();
 }
 
 export function buildDocumentsFacets(items: DocumentListItem[]): DocumentsFacets {

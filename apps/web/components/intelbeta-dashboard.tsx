@@ -900,6 +900,12 @@ function feedItemDateMs(article: Pick<FeedItem, "published_at" | "fetched_at">):
   return ms > Date.now() + maxFutureSkewMs ? 0 : ms;
 }
 
+function endOfTodayMs(): number {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return today.getTime();
+}
+
 function normalizeDedupeText(value: string | null | undefined): string {
   return decodeEntities(String(value || ""))
     .toLowerCase()
@@ -2177,12 +2183,21 @@ export function IntelBetaDashboard({
 }) {
   const [articles, setArticles] = useState<StoredRssArticle[]>(initialArticles);
   const [documents, setDocuments] = useState<DocumentListItem[]>(initialDocuments);
+  const [feedLoaded, setFeedLoaded] = useState(initialArticles.length > 0 || initialTopicRules.length > 0);
+  const [documentsLoaded, setDocumentsLoaded] = useState(initialDocuments.length > 0);
   const documentFeedItems = useMemo(() => documents.map(documentToFeedItem), [documents]);
   const feedItems = useMemo<FeedItem[]>(
-    () => dedupeFeedItems(
-      [...articles, ...documentFeedItems]
-        .sort((a, b) => feedItemDateMs(b) - feedItemDateMs(a))
-    ),
+    () => {
+      const latestVisibleDateMs = endOfTodayMs();
+      return dedupeFeedItems(
+        [...articles, ...documentFeedItems]
+          .filter((item) => {
+            const dateMs = feedItemDateMs(item);
+            return dateMs <= 0 || dateMs <= latestVisibleDateMs;
+          })
+          .sort((a, b) => feedItemDateMs(b) - feedItemDateMs(a))
+      );
+    },
     [articles, documentFeedItems]
   );
   const [topicRules, setTopicRules] = useState<StoredRssTopicRule[]>(initialTopicRules);
@@ -2279,7 +2294,7 @@ export function IntelBetaDashboard({
 
     const poll = async () => {
       try {
-        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}&includeDocuments=1`);
+        const res = await fetch(`/api/intel/feed?limit=${LIVE_FEED_REFRESH_LIMIT}&includeDocuments=0`);
         if (!res.ok) { errStreak++; }
         else {
           const json = (await res.json()) as {
@@ -2287,7 +2302,6 @@ export function IntelBetaDashboard({
             data: {
               articles: StoredRssArticle[];
               topicRules: StoredRssTopicRule[];
-              documents?: DocumentListItem[];
               generatedAt: string;
             };
           };
@@ -2296,7 +2310,6 @@ export function IntelBetaDashboard({
             errStreak = 0;
             const fresh = json.data.articles;
             const freshRules = json.data.topicRules;
-            const freshDocuments = json.data.documents ?? [];
             const newest = fresh[0] ? feedItemDate(fresh[0]) : "";
             let changed = false;
             if (newest && newest > newestFetchedAtRef.current) {
@@ -2313,12 +2326,6 @@ export function IntelBetaDashboard({
               changed = true;
               setArticles(fresh);
             }
-            const nextDocumentSignature = documentListSignature(freshDocuments);
-            if (json.data.documents && nextDocumentSignature !== documentSignatureRef.current) {
-              documentSignatureRef.current = nextDocumentSignature;
-              changed = true;
-              setDocuments(freshDocuments);
-            }
             const nextTopicRulesSignature = topicRulesSignature(freshRules);
             if (nextTopicRulesSignature !== topicRulesSignatureRef.current) {
               topicRulesSignatureRef.current = nextTopicRulesSignature;
@@ -2332,6 +2339,7 @@ export function IntelBetaDashboard({
         errStreak++;
       }
       if (mounted) {
+        setFeedLoaded(true);
         // Retry transient failures promptly, but successful feed refreshes run hourly.
         const delay = errStreak > 0
           ? Math.min(15_000 * (2 ** (errStreak - 1)), 120_000)
@@ -2343,6 +2351,47 @@ export function IntelBetaDashboard({
     void poll();
     return () => { mounted = false; if (timeoutId) clearTimeout(timeoutId); };
   }, [selectedArticleId]);
+
+  useEffect(() => {
+    let mounted = true;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const loadDocuments = async () => {
+      try {
+        const res = await fetch("/api/intel/feed?documentsOnly=1&includeDocuments=1");
+        if (!res.ok) {
+          return;
+        }
+        const json = (await res.json()) as {
+          ok: boolean;
+          data: {
+            documents?: DocumentListItem[];
+          };
+        };
+        if (!json.ok || !mounted) {
+          return;
+        }
+        const freshDocuments = json.data.documents ?? [];
+        const nextDocumentSignature = documentListSignature(freshDocuments);
+        if (nextDocumentSignature !== documentSignatureRef.current) {
+          documentSignatureRef.current = nextDocumentSignature;
+          setDocuments(freshDocuments);
+          setLastUpdated(new Date());
+        }
+      } finally {
+        if (mounted) {
+          setDocumentsLoaded(true);
+          timeoutId = setTimeout(() => { void loadDocuments(); }, LIVE_FEED_POLL_INTERVAL_MS);
+        }
+      }
+    };
+
+    void loadDocuments();
+    return () => {
+      mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
 
   const filtered = useMemo(
     () =>
@@ -2778,7 +2827,13 @@ export function IntelBetaDashboard({
 
             {filtered.length === 0 ? (
               <div style={{ color: "#72839d", fontSize: 13, padding: "28px 0" }}>
-                {feedItems.length === 0 ? "No feed items yet." : "No feed items match the current filters."}
+                {!feedLoaded
+                  ? "Loading feed..."
+                  : !documentsLoaded && feedItems.length === 0
+                    ? "Loading documents..."
+                    : feedItems.length === 0
+                      ? "No feed items yet."
+                      : "No feed items match the current filters."}
               </div>
             ) : (
               <>

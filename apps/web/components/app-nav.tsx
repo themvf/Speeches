@@ -70,13 +70,13 @@ export function AppNav({ authEnabled }: { authEnabled: boolean }) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-[color:rgba(5,12,19,0.72)] backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-8">
-        <Link href="/" prefetch className="inline-flex items-center gap-2 rounded-xl px-2 py-1 text-sm font-semibold text-[color:var(--ink)]">
+      <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-3 px-4 py-3 md:px-8">
+        <Link href="/" prefetch className="inline-flex shrink-0 items-center gap-2 rounded-xl px-2 py-1 text-sm font-semibold text-[color:var(--ink)]">
           <span className="h-2.5 w-2.5 rounded-full bg-[color:var(--accent)]" aria-hidden="true" />
           Policy Research Hub
         </Link>
 
-        <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex">
+        <nav aria-label="Primary" className="hidden min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto whitespace-nowrap lg:flex">
           {NAV_ITEMS.map((item) => {
             const active = isActive(pathname, item.href);
             return (
@@ -93,7 +93,7 @@ export function AppNav({ authEnabled }: { authEnabled: boolean }) {
           })}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <div className="hidden lg:block">
             <AuthControls enabled={authEnabled} />
           </div>

@@ -71,13 +71,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const sinceParam = searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : undefined;
   const refresh = searchParams.get("refresh") === "1";
-  const includeDocuments = searchParams.get("includeDocuments") === "1";
+  const documentsOnly = searchParams.get("documentsOnly") === "1";
+  const includeDocuments = documentsOnly || searchParams.get("includeDocuments") === "1";
 
   try {
     let articles: StoredRssArticle[] = [];
     let topicRules: StoredRssTopicRule[] = [];
 
-    if (process.env.DATABASE_URL) {
+    if (!documentsOnly && process.env.DATABASE_URL) {
       await ensureSchema();
       await deleteInvalidCouponArticles().catch((error) => {
         console.error("[intel/feed] coupon cleanup failed:", error);
@@ -159,7 +160,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       {
         ok: true,
-        data: { articles: compactFeedArticles(articles), topicRules, documents, generatedAt: new Date().toISOString() },
+        data: {
+          articles: compactFeedArticles(articles),
+          topicRules,
+          ...(includeDocuments ? { documents } : {}),
+          generatedAt: new Date().toISOString(),
+        },
       },
       {
         headers: {
