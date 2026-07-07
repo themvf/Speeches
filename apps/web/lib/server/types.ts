@@ -174,6 +174,24 @@ export interface NewsConnectorSettingsPayload {
   doj_usao_exclude_terms: string;
 }
 
+export interface YouTubeChannelSource {
+  id: string;
+  label: string;
+  channel_ref: string;
+  active: boolean;
+  extraction_limit: number;
+  max_pages: number;
+  enrich_limit: number;
+  added_at: string;
+  updated_at: string;
+}
+
+export interface YouTubeChannelSourcesPayload {
+  version: number;
+  updated_at: string;
+  sources: YouTubeChannelSource[];
+}
+
 export interface RuleSummaryOverviewTopic {
   label: string;
   count: number;

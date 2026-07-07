@@ -23,6 +23,17 @@ type OrgIndexStatus = {
 /* ─── RSS Feed types ───────────────────────────────────────────────── */
 type RssFeed = { id: number; label: string; feed_url: string; active: boolean; refresh_interval_minutes?: number; last_refresh_at?: string | null };
 type TopicRule = { id: number; topic_key: string; label: string; keywords: string; active: boolean; sort_order: number };
+type YouTubeChannelSource = {
+  id: string;
+  label: string;
+  channel_ref: string;
+  active: boolean;
+  extraction_limit: number;
+  max_pages: number;
+  enrich_limit: number;
+  added_at: string;
+  updated_at: string;
+};
 
 /* ─── Ticker types ─────────────────────────────────────────────────── */
 type TickerEntry = { symbol: string; name: string };
@@ -184,6 +195,18 @@ const NEWS_INGEST_FIELDS: FieldDef[] = [
 const TRENDS_FIELDS: FieldDef[] = [
   { name: "min_mentions", label: "Min tag mentions", type: "number", default: "5" },
   { name: "dry_run", label: "Dry run (skip OpenAI calls)", type: "boolean", default: "false" },
+];
+
+const YOUTUBE_AD_HOC_FIELDS: FieldDef[] = [
+  {
+    name: "channel_ref",
+    label: "Video URL or channel",
+    type: "text",
+    placeholder: "https://www.youtube.com/watch?v=... or @SECGov",
+  },
+  { name: "extraction_limit", label: "Videos to extract", type: "number", default: "1" },
+  { name: "max_pages", label: "RSS pages to scan", type: "number", default: "1" },
+  { name: "enrich_limit", label: "Transcripts to enrich", type: "number", default: "1" },
 ];
 
 function fmtNumber(value: number | undefined): string {
@@ -611,6 +634,235 @@ type TopicReviewRow = {
   broadTerms: string[];
   missingSuggestions: string[];
 };
+
+function YouTubeSourceManagerSection() {
+  const [sources, setSources] = useState<YouTubeChannelSource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [label, setLabel] = useState("");
+  const [channelRef, setChannelRef] = useState("");
+  const [extractionLimit, setExtractionLimit] = useState("10");
+  const [maxPages, setMaxPages] = useState("1");
+  const [enrichLimit, setEnrichLimit] = useState("10");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<Record<string, "ok" | "error">>({});
+
+  useEffect(() => {
+    fetch("/api/admin/youtube-sources")
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setSources(d.data.sources || []); else setError(d.error); })
+      .catch(() => setError("Network error"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleAdd() {
+    if (!channelRef.trim()) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      const res = await fetch("/api/admin/youtube-sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: label.trim() || channelRef.trim(),
+          channel_ref: channelRef.trim(),
+          extraction_limit: extractionLimit,
+          max_pages: maxPages,
+          enrich_limit: enrichLimit,
+          active: true,
+        }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setSources((prev) => [...prev, d.data.source]);
+        setLabel("");
+        setChannelRef("");
+        setExtractionLimit("10");
+        setMaxPages("1");
+        setEnrichLimit("10");
+      } else {
+        setAddError(d.error ?? `HTTP ${res.status}`);
+      }
+    } catch {
+      setAddError("Network error");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleToggle(source: YouTubeChannelSource) {
+    try {
+      const res = await fetch(`/api/admin/youtube-sources/${source.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !source.active }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? "Toggle failed");
+        return;
+      }
+      setSources((prev) => prev.map((item) => item.id === source.id ? { ...item, active: !item.active } : item));
+    } catch {
+      setError("Network error");
+    }
+  }
+
+  async function handleDelete(sourceId: string) {
+    try {
+      const res = await fetch(`/api/admin/youtube-sources/${sourceId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? "Delete failed");
+        return;
+      }
+      setSources((prev) => prev.filter((item) => item.id !== sourceId));
+    } catch {
+      setError("Network error");
+    }
+  }
+
+  async function handleRunNow(source: YouTubeChannelSource) {
+    setRunningId(source.id);
+    setRunStatus((prev) => {
+      const next = { ...prev };
+      delete next[source.id];
+      return next;
+    });
+    try {
+      const res = await fetch("/api/admin/workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workflow: "sec-youtube-videos-daily.yml",
+          inputs: {
+            channel_ref: source.channel_ref,
+            extraction_limit: String(source.extraction_limit),
+            max_pages: String(source.max_pages),
+            enrich_limit: String(source.enrich_limit),
+          },
+        }),
+      });
+      const d = await res.json().catch(() => ({ ok: false }));
+      setRunStatus((prev) => ({ ...prev, [source.id]: res.ok && d.ok ? "ok" : "error" }));
+    } catch {
+      setRunStatus((prev) => ({ ...prev, [source.id]: "error" }));
+    } finally {
+      setRunningId(null);
+    }
+  }
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">YouTube Channels</h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Saved active channels are used by the scheduled SEC YouTube workflow. Use Run Now to retrieve a saved channel immediately.</p>
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        {loading && <p className="text-xs text-[color:var(--ink-faint)]">Loading...</p>}
+        {error && <p className="text-xs text-[color:var(--danger)]">{error}</p>}
+        {!loading && sources.length === 0 && <p className="text-xs text-[color:var(--ink-faint)]">No YouTube channels configured.</p>}
+
+        <ul className="space-y-2">
+          {sources.map((source) => (
+            <li key={source.id} className="flex flex-col gap-3 rounded-lg border border-[color:rgba(255,255,255,0.06)] px-3 py-3 sm:flex-row sm:items-center">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={source.active}
+                  onChange={() => handleToggle(source)}
+                  className="h-4 w-4 rounded accent-[color:var(--accent)]"
+                />
+              </label>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-[color:var(--ink)]">{source.label}</span>
+                <span className="block truncate text-xs text-[color:var(--ink-faint)]">{source.channel_ref}</span>
+                <span className="block text-xs text-[color:var(--ink-faint)]">
+                  Extract {source.extraction_limit} | Scan {source.max_pages} page{source.max_pages === 1 ? "" : "s"} | Enrich {source.enrich_limit}
+                </span>
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleRunNow(source)}
+                  disabled={runningId === source.id}
+                  className="btn-solid rounded-xl px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                >
+                  {runningId === source.id ? "Dispatching..." : "Run Now"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(source.id)}
+                  className="rounded-lg border border-[color:rgba(255,107,127,0.4)] bg-[color:rgba(255,107,127,0.1)] px-3 py-1.5 text-xs font-semibold text-[color:var(--danger)] hover:bg-[color:rgba(255,107,127,0.2)]"
+                >
+                  Remove
+                </button>
+                {runStatus[source.id] === "ok" && <span className="text-xs text-[color:var(--ok)]">Dispatched</span>}
+                {runStatus[source.id] === "error" && <span className="text-xs text-[color:var(--danger)]">Dispatch failed</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-4 border-t border-[color:var(--line)] pt-4">
+          <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">Add Channel</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Label, e.g. SEC Roundtables"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <input
+              type="text"
+              value={channelRef}
+              onChange={(e) => setChannelRef(e.target.value)}
+              placeholder="Channel URL, handle, id, or name"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <input
+              type="number"
+              min="1"
+              max="50"
+              value={extractionLimit}
+              onChange={(e) => setExtractionLimit(e.target.value)}
+              placeholder="Videos to extract"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <input
+              type="number"
+              min="1"
+              max="5"
+              value={maxPages}
+              onChange={(e) => setMaxPages(e.target.value)}
+              placeholder="RSS pages to scan"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <input
+              type="number"
+              min="1"
+              max="50"
+              value={enrichLimit}
+              onChange={(e) => setEnrichLimit(e.target.value)}
+              placeholder="Transcripts to enrich"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={adding || !channelRef.trim()}
+              className="btn-solid rounded-xl px-4 py-1.5 text-sm disabled:opacity-40"
+            >
+              {adding ? "Adding..." : "Add Channel"}
+            </button>
+          </div>
+          {addError && <p className="mt-1 text-xs text-[color:var(--danger)]">{addError}</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function normalizeKeywordToken(value: string): string {
   return value.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, "\"").replace(/[^a-z0-9]+/g, " ").trim();
@@ -2350,6 +2602,15 @@ export default function AdminPage() {
 
       {/* ── Workflows ──────────────────────────────────────────────── */}
       <SectionDivider label="GitHub Actions" />
+
+      <WorkflowPanel
+        title="Ad Hoc YouTube Video"
+        description="Paste a YouTube video URL for one transcript analysis, or a channel ref for a one-time channel pull."
+        workflowFile="sec-youtube-videos-daily.yml"
+        fields={YOUTUBE_AD_HOC_FIELDS}
+      />
+
+      <YouTubeSourceManagerSection />
 
       <BloombergOnDemandSection />
 

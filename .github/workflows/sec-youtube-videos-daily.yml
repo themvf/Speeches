@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       channel_ref:
-        description: "SEC YouTube channel URL, channel id, handle, or uploads RSS URL"
+        description: "YouTube video URL/id for ad hoc analysis, or channel URL/id/handle for one-time retrieval. Leave blank to use saved channels."
         required: false
-        default: "https://www.youtube.com/user/SECViews"
+        default: ""
       extraction_limit:
         description: "Maximum videos to extract"
         required: false
@@ -40,7 +40,7 @@ jobs:
       WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
       WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
       YOUTUBE_PROXY_URL: ${{ secrets.YOUTUBE_PROXY_URL }}
-      CHANNEL_REF: ${{ github.event.inputs.channel_ref || 'https://www.youtube.com/user/SECViews' }}
+      CHANNEL_REF: ${{ github.event.inputs.channel_ref || '' }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '10' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '10' }}
@@ -61,30 +61,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Extract SEC YouTube Video Transcripts
+      - name: Extract and Enrich SEC YouTube Video Transcripts
         run: |
           set -euo pipefail
-          python run_connector_extraction_pipeline.py \
-            --connector sec_youtube_video \
-            --base-url "${CHANNEL_REF}" \
-            --selection new_or_updated \
-            --limit "${EXTRACTION_LIMIT}" \
+          python run_youtube_video_pipeline.py \
+            --channel-ref "${CHANNEL_REF}" \
+            --extraction-limit "${EXTRACTION_LIMIT}" \
             --max-pages "${MAX_PAGES}" \
-            --require-remote-persistence \
-            --summary-path sec_youtube_video_extraction_summary.json
-
-      - name: Enrich SEC YouTube Video Transcripts
-        run: |
-          set -euo pipefail
-          python run_financial_news_pipeline.py enrich \
-            --require-remote-persistence \
-            --source-kind sec_youtube_video \
-            --mode only_missing_or_failed \
-            --doc-ids-from-summary sec_youtube_video_extraction_summary.json \
-            --limit "${ENRICH_LIMIT}" \
+            --enrich-limit "${ENRICH_LIMIT}" \
             --provider deepseek \
             --model "${ENRICH_MODEL}" \
-            --summary-path sec_youtube_video_enrich_summary.json
+            --require-remote-persistence \
+            --summary-path sec_youtube_video_pipeline_summary.json
 
       - name: Upload SEC YouTube Summaries
         if: always()
@@ -92,6 +80,5 @@ jobs:
         with:
           name: sec-youtube-videos-${{ github.run_id }}
           path: |
-            sec_youtube_video_extraction_summary.json
-            sec_youtube_video_enrich_summary.json
+            sec_youtube_video_*summary*.json
           if-no-files-found: ignore

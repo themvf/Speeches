@@ -14,7 +14,9 @@ import {
   type NewsConnectorSettingsPayload,
   type RuleSummariesPayload,
   type TrendItem,
-  type TrendsPayload
+  type TrendsPayload,
+  type YouTubeChannelSource,
+  type YouTubeChannelSourcesPayload
 } from "@/lib/server/types";
 
 const SEC_SPEECHES_GCS_BLOB = "all_speeches.json";
@@ -24,6 +26,7 @@ const ENRICHMENT_BLOB = "document_enrichment_state.json";
 const RULE_SUMMARIES_BLOB = "rule_summaries.json";
 const SETTINGS_BLOB = "news_connector_settings.json";
 const TRENDS_BLOB = "trends_daily.json";
+const YOUTUBE_SOURCES_BLOB = "youtube_channel_sources.json";
 
 const CACHE_TTL_MS = 15_000;
 
@@ -544,6 +547,54 @@ function normalizeNewsSettingsPayload(payload: unknown): NewsConnectorSettingsPa
   };
 }
 
+function clampInt(value: unknown, fallback: number, minValue: number, maxValue: number): number {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  const n = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.max(minValue, Math.min(maxValue, n));
+}
+
+function normalizeYouTubeSource(record: unknown, idx: number): YouTubeChannelSource | null {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const src = record as Record<string, unknown>;
+  const channelRef = normalizeString(src.channel_ref || src.channelRef || src.url || src.handle);
+  if (!channelRef) {
+    return null;
+  }
+
+  const fallbackId = createHash("sha256").update(channelRef.toLowerCase()).digest("hex").slice(0, 16);
+  const now = new Date().toISOString();
+  const label = normalizeString(src.label || src.name) || `YouTube Source ${idx + 1}`;
+
+  return {
+    id: normalizeString(src.id) || fallbackId,
+    label,
+    channel_ref: channelRef,
+    active: typeof src.active === "boolean" ? src.active : true,
+    extraction_limit: clampInt(src.extraction_limit || src.extractionLimit, 10, 1, 50),
+    max_pages: clampInt(src.max_pages || src.maxPages, 1, 1, 5),
+    enrich_limit: clampInt(src.enrich_limit || src.enrichLimit, 10, 1, 50),
+    added_at: normalizeString(src.added_at || src.addedAt) || now,
+    updated_at: normalizeString(src.updated_at || src.updatedAt) || now
+  };
+}
+
+function normalizeYouTubeSourcesPayload(payload: unknown): YouTubeChannelSourcesPayload {
+  const src = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const rawSources = Array.isArray(src.sources) ? src.sources : [];
+  const sources = rawSources
+    .map((item, idx) => normalizeYouTubeSource(item, idx))
+    .filter(Boolean) as YouTubeChannelSource[];
+
+  return {
+    version: 1,
+    updated_at: normalizeString(src.updated_at),
+    sources
+  };
+}
+
 function normalizeRuleSummariesPayload(payload: unknown): RuleSummariesPayload {
   if (!payload || typeof payload !== "object") {
     return {
@@ -872,6 +923,66 @@ export async function saveNewsConnectorSettings(payload: Partial<NewsConnectorSe
     local_saved: localSaved,
     remote_saved: remoteSaved,
     settings: normalized
+  };
+}
+
+export async function loadYouTubeChannelSources(): Promise<YouTubeChannelSourcesPayload> {
+  return loadFromSource({
+    cacheKey: "youtube_channel_sources",
+    gcsBlobName: YOUTUBE_SOURCES_BLOB,
+    localFileName: YOUTUBE_SOURCES_BLOB,
+    normalize: normalizeYouTubeSourcesPayload,
+    emptyFactory: () => ({
+      version: 1,
+      updated_at: "",
+      sources: [
+        {
+          id: "secviews",
+          label: "SEC YouTube",
+          channel_ref: "https://www.youtube.com/user/SECViews",
+          active: true,
+          extraction_limit: 10,
+          max_pages: 1,
+          enrich_limit: 10,
+          added_at: "",
+          updated_at: ""
+        }
+      ]
+    })
+  });
+}
+
+export async function saveYouTubeChannelSources(
+  payload: YouTubeChannelSourcesPayload
+): Promise<{
+  saved: boolean;
+  local_saved: boolean;
+  remote_saved: boolean;
+  sources: YouTubeChannelSourcesPayload;
+}> {
+  const normalized = normalizeYouTubeSourcesPayload({
+    ...payload,
+    updated_at: new Date().toISOString()
+  });
+
+  const cfg = getDataSourceConfig();
+  let remoteSaved = false;
+  let localSaved = false;
+
+  if (cfg.mode === "gcs" || cfg.mode === "auto") {
+    remoteSaved = await uploadGcsJson(YOUTUBE_SOURCES_BLOB, normalized);
+  }
+  if (cfg.mode === "local" || cfg.mode === "auto" || !remoteSaved) {
+    localSaved = writeLocalJson(YOUTUBE_SOURCES_BLOB, normalized);
+  }
+
+  clearCacheKey("youtube_channel_sources");
+
+  return {
+    saved: remoteSaved || localSaved,
+    local_saved: localSaved,
+    remote_saved: remoteSaved,
+    sources: normalized
   };
 }
 
