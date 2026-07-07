@@ -110,6 +110,7 @@ jobs:
       SIFMA_PROXY_URL: ${{ secrets.SIFMA_PROXY_URL || secrets.RESIDENTIAL_PROXY_URL }}
       WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
       WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
+      YOUTUBE_PROXY_URL: ${{ secrets.YOUTUBE_PROXY_URL }}
       REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
       REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
       REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
@@ -135,6 +136,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Validate YouTube Proxy Configuration
+        if: ${{ github.event.inputs.connector == 'sec_youtube_video' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${YOUTUBE_PROXY_URL}" ] && { [ -z "${WEBSHARE_PROXY_USERNAME}" ] || [ -z "${WEBSHARE_PROXY_PASSWORD}" ]; }; then
+            echo "::error::sec_youtube_video requires either YOUTUBE_PROXY_URL or both WEBSHARE_PROXY_USERNAME and WEBSHARE_PROXY_PASSWORD."
+            exit 1
+          fi
 
       - name: Run Connector Extraction
         run: |

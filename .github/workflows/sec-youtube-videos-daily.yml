@@ -61,6 +61,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Validate YouTube Proxy Configuration
+        run: |
+          set -euo pipefail
+          if [ -z "${YOUTUBE_PROXY_URL}" ] && { [ -z "${WEBSHARE_PROXY_USERNAME}" ] || [ -z "${WEBSHARE_PROXY_PASSWORD}" ]; }; then
+            echo "::error::SEC YouTube extraction requires either YOUTUBE_PROXY_URL or both WEBSHARE_PROXY_USERNAME and WEBSHARE_PROXY_PASSWORD."
+            exit 1
+          fi
+
       - name: Extract and Enrich SEC YouTube Video Transcripts
         run: |
           set -euo pipefail

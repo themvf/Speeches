@@ -232,6 +232,10 @@ class YouTubeVideoScraper:
     def _transcript_proxy_config(self) -> Any:
         username = str(os.getenv("WEBSHARE_PROXY_USERNAME") or "").strip()
         password = str(os.getenv("WEBSHARE_PROXY_PASSWORD") or "").strip()
+        if username and not password:
+            raise RuntimeError("YouTube transcript proxy is partially configured: missing WEBSHARE_PROXY_PASSWORD.")
+        if password and not username:
+            raise RuntimeError("YouTube transcript proxy is partially configured: missing WEBSHARE_PROXY_USERNAME.")
         if username and password:
             return WebshareProxyConfig(proxy_username=username.removesuffix("-rotate"), proxy_password=password)
         proxy_url = str(os.getenv("YOUTUBE_PROXY_URL") or "").strip()

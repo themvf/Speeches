@@ -2206,7 +2206,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         ]
 
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
-    selected = candidates[:limit] if limit > 0 else []
+    selected = candidates if args.connector == "sec_youtube_video" and limit > 0 else (candidates[:limit] if limit > 0 else [])
 
     saved_new = 0
     saved_updates = 0
@@ -2218,6 +2218,8 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     invalid_wired_records_removed = 0
 
     for idx, entry in enumerate(selected, 1):
+        if args.connector == "sec_youtube_video" and limit > 0 and len(processed_doc_ids) >= limit:
+            break
         try:
             record = _extract_record(args.connector, scraper, entry, idx, base_url)
             metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
