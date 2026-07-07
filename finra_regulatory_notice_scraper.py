@@ -17,6 +17,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from webshare_proxy import should_retry_with_webshare, webshare_rotating_proxies
+
 
 FINRA_NOTICES_URL = "https://www.finra.org/rules-guidance/notices"
 FINRA_NOTICES_RSS_URL = "http://feeds.finra.org/FINRANotices"
@@ -181,6 +183,10 @@ class FINRARegulatoryNoticeScraper:
             raise ValueError("URL is required")
         self._rate_limit()
         response = self.session.get(target, timeout=timeout, allow_redirects=True)
+        if should_retry_with_webshare(response.status_code):
+            proxies = webshare_rotating_proxies()
+            if proxies:
+                response = self.session.get(target, timeout=timeout, allow_redirects=True, proxies=proxies)
         response.raise_for_status()
         return response
 

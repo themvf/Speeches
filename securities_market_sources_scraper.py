@@ -21,6 +21,8 @@ import requests
 from bs4 import BeautifulSoup, Tag
 from curl_cffi import requests as cffi_requests
 
+from webshare_proxy import should_retry_with_webshare, webshare_rotating_proxies
+
 
 SEC_BASE = "https://www.sec.gov"
 
@@ -226,6 +228,13 @@ class SecuritiesMarketSourcesScraper:
             response = self.sec_session.get(target, timeout=timeout, allow_redirects=True)
         else:
             response = self.session.get(target, timeout=timeout, allow_redirects=True)
+        if should_retry_with_webshare(getattr(response, "status_code", None)):
+            proxies = webshare_rotating_proxies()
+            if proxies:
+                if parsed.netloc.lower().endswith("sec.gov"):
+                    response = self.sec_session.get(target, timeout=timeout, allow_redirects=True, proxies=proxies)
+                else:
+                    response = self.session.get(target, timeout=timeout, allow_redirects=True, proxies=proxies)
         response.raise_for_status()
         return response
 

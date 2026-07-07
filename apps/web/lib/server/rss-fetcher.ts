@@ -1,3 +1,5 @@
+import { ProxyAgent, request } from "undici";
+
 export type RssArticle = {
   guid: string;
   title: string;
@@ -423,21 +425,59 @@ function normalizeGuid(raw: string, fallbackUrl: string, title: string): string 
   return `rss:fallback:${(h >>> 0).toString(16)}`;
 }
 
-export async function fetchRssFeed(feedUrl: string, maxItems = 50, timeoutMs = 10_000): Promise<RssArticle[]> {
+const RSS_FETCH_HEADERS = { "User-Agent": "Mozilla/5.0 (compatible; PolicyHubBot/1.0)" };
+
+function webshareRotatingProxyUrl(): string {
+  const username = String(process.env.WEBSHARE_PROXY_USERNAME || "").trim();
+  const password = String(process.env.WEBSHARE_PROXY_PASSWORD || "").trim();
+  if (!username || !password) return "";
+  const proxyUsername = username.endsWith("-rotate") ? username : `${username}-rotate`;
+  return `http://${encodeURIComponent(proxyUsername)}:${encodeURIComponent(password)}@p.webshare.io:80`;
+}
+
+function shouldRetryWithWebshare(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /\b(?:403|429)\b/.test(message);
+}
+
+async function fetchRssText(feedUrl: string, timeoutMs: number, proxyUrl = ""): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let resp: Response;
   try {
-    resp = await fetch(feedUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; PolicyHubBot/1.0)" },
+    if (proxyUrl) {
+      const resp = await request(feedUrl, {
+        dispatcher: new ProxyAgent(proxyUrl),
+        headers: RSS_FETCH_HEADERS,
+        method: "GET",
+        signal: controller.signal,
+      });
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        throw new Error(`RSS fetch failed: ${resp.statusCode} ${feedUrl}`);
+      }
+      return await resp.body.text();
+    }
+
+    const resp = await fetch(feedUrl, {
+      headers: RSS_FETCH_HEADERS,
       next: { revalidate: 0 },
       signal: controller.signal,
     });
+    if (!resp.ok) throw new Error(`RSS fetch failed: ${resp.status} ${feedUrl}`);
+    return await resp.text();
   } finally {
     clearTimeout(timer);
   }
-  if (!resp.ok) throw new Error(`RSS fetch failed: ${resp.status} ${feedUrl}`);
-  const xml = await resp.text();
+}
+
+export async function fetchRssFeed(feedUrl: string, maxItems = 50, timeoutMs = 10_000): Promise<RssArticle[]> {
+  let xml: string;
+  try {
+    xml = await fetchRssText(feedUrl, timeoutMs);
+  } catch (error) {
+    const proxyUrl = webshareRotatingProxyUrl();
+    if (!proxyUrl || !shouldRetryWithWebshare(error)) throw error;
+    xml = await fetchRssText(feedUrl, timeoutMs, proxyUrl);
+  }
   if (xml.length > 2_000_000) throw new Error(`RSS feed response too large (${xml.length} bytes): ${feedUrl}`);
 
   const itemRe = /<item[\s>]([\s\S]*?)<\/item>/gi;
