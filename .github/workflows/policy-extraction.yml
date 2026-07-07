@@ -16,6 +16,7 @@ on:
           - finra_comment_letter
           - doj_usao_press_release
           - federal_reserve_speech_testimony
+          - cisa_cybersecurity_advisory
           - cftc_press_release
           - cftc_public_statement_remark
           - treasury_featured_story
@@ -29,11 +30,21 @@ on:
           - pcaob_update
           - msrb_press_release
           - congress_crs_product
+          - senate_committee_site
           - sifma_news_item
           - jdsupra_article
           - investmentnews_article
           - citywire_article
           - therecord_media_article
+          - krebs_on_security_article
+          - the_hacker_news_article
+          - welivesecurity_article
+          - sophos_security_operations_article
+          - flashpoint_blog_article
+          - recorded_future_article
+          - intel471_blog_article
+          - securityweek_article
+          - dark_reading_article
           - wired_article
           - tripwire_article
           - akamai_blog_article

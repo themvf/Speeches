@@ -148,6 +148,7 @@ interface ExtractFormState {
     | "finra_awc"
     | "doj_usao_press_release"
     | "federal_reserve_speech_testimony"
+    | "cisa_cybersecurity_advisory"
     | "cftc_press_release"
     | "cftc_public_statement_remark"
     | "pcaob_update"
@@ -170,6 +171,15 @@ interface ExtractFormState {
     | "investmentnews_article"
     | "citywire_article"
     | "therecord_media_article"
+    | "krebs_on_security_article"
+    | "the_hacker_news_article"
+    | "welivesecurity_article"
+    | "sophos_security_operations_article"
+    | "flashpoint_blog_article"
+    | "recorded_future_article"
+    | "intel471_blog_article"
+    | "securityweek_article"
+    | "dark_reading_article"
     | "wired_article"
     | "tripwire_article"
     | "akamai_blog_article"
@@ -178,6 +188,7 @@ interface ExtractFormState {
     | "liberty_street_economics_article"
     | "wealth_of_common_sense_article"
     | "congress_crs_product"
+    | "senate_committee_site"
     | "wsj_dow_jones"
     | "reddit_post"
     | "hedge_fund_letter";
@@ -327,6 +338,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   finra_awc: "FINRA AWC Disciplinary Actions",
   doj_usao_press_release: "DOJ USAO Press Releases",
   federal_reserve_speech_testimony: "Federal Reserve Speeches/Testimony",
+  cisa_cybersecurity_advisory: "CISA Cybersecurity Advisories",
   cftc_press_release: "CFTC Press Releases",
   cftc_public_statement_remark: "CFTC Public Statements & Remarks",
   pcaob_update: "PCAOB Updates",
@@ -350,6 +362,15 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   investmentnews_article: "InvestmentNews",
   citywire_article: "Citywire",
   therecord_media_article: "The Record",
+  krebs_on_security_article: "Krebs on Security",
+  the_hacker_news_article: "The Hacker News",
+  welivesecurity_article: "WeLiveSecurity",
+  sophos_security_operations_article: "Sophos Security Operations",
+  flashpoint_blog_article: "Flashpoint",
+  recorded_future_article: "Recorded Future",
+  intel471_blog_article: "Intel 471",
+  securityweek_article: "SecurityWeek",
+  dark_reading_article: "Dark Reading",
   wired_article: "WIRED",
   tripwire_article: "Tripwire",
   akamai_blog_article: "Akamai Blog",
@@ -357,7 +378,15 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   ft_portfolios_market_commentary: "First Trust Market Commentary",
   liberty_street_economics_article: "Liberty Street Economics",
   wealth_of_common_sense_article: "A Wealth of Common Sense",
+  prnewswire_article: "PR Newswire",
+  google_news_ponzi_investor_fraud_article: "Google News: Ponzi & Investor Fraud",
+  google_news_senate_committee_article: "Google News: Senate Committees",
+  coindesk_article: "CoinDesk",
+  cointelegraph_article: "Cointelegraph",
+  decrypt_article: "Decrypt",
+  the_block_article: "The Block",
   congress_crs_product: "Congress CRS Products",
+  senate_committee_site: "Senate Committee Sites",
   wsj_dow_jones: "WSJ / Dow Jones",
   reddit_post: "Reddit",
   hedge_fund_letter: "Hedge Fund Letters",
@@ -395,6 +424,7 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   finra_awc: "Disciplinary Action",
   doj_usao_press_release: "Press Release",
   federal_reserve_speech_testimony: "Testimony",
+  cisa_cybersecurity_advisory: "Cybersecurity Advisory",
   cftc_press_release: "Press Release",
   cftc_public_statement_remark: "Statement",
   pcaob_update: "Update",
@@ -418,6 +448,15 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   investmentnews_article: "Article",
   citywire_article: "Article",
   therecord_media_article: "Article",
+  krebs_on_security_article: "Article",
+  the_hacker_news_article: "Article",
+  welivesecurity_article: "Article",
+  sophos_security_operations_article: "Article",
+  flashpoint_blog_article: "Article",
+  recorded_future_article: "Article",
+  intel471_blog_article: "Article",
+  securityweek_article: "Article",
+  dark_reading_article: "Article",
   wired_article: "Article",
   tripwire_article: "Article",
   akamai_blog_article: "Article",
@@ -425,7 +464,15 @@ const SOURCE_KIND_TYPE_LABELS: Record<string, string> = {
   ft_portfolios_market_commentary: "Market Commentary",
   liberty_street_economics_article: "Economic Research",
   wealth_of_common_sense_article: "Commentary",
+  prnewswire_article: "Press Release",
+  google_news_ponzi_investor_fraud_article: "News Article",
+  google_news_senate_committee_article: "News Article",
+  coindesk_article: "Article",
+  cointelegraph_article: "Article",
+  decrypt_article: "Article",
+  the_block_article: "Article",
   congress_crs_product: "CRS Product",
+  senate_committee_site: "Press Release",
   wsj_dow_jones: "Article",
   reddit_post: "Post",
   hedge_fund_letter: "Investor Letter",
@@ -1581,6 +1628,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="finra_awc">FINRA AWC Disciplinary Actions</option>
                   <option value="doj_usao_press_release">DOJ USAO Press Releases</option>
                   <option value="federal_reserve_speech_testimony">Federal Reserve Speeches/Testimony</option>
+                  <option value="cisa_cybersecurity_advisory">CISA Cybersecurity Advisories</option>
                   <option value="cftc_press_release">CFTC Press Releases</option>
                   <option value="cftc_public_statement_remark">CFTC Public Statements &amp; Remarks</option>
                   <option value="pcaob_update">PCAOB Updates</option>
@@ -1603,6 +1651,15 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="investmentnews_article">InvestmentNews Articles</option>
                   <option value="citywire_article">Citywire Articles</option>
                   <option value="therecord_media_article">The Record Articles</option>
+                  <option value="krebs_on_security_article">Krebs on Security Articles</option>
+                  <option value="the_hacker_news_article">The Hacker News Articles</option>
+                  <option value="welivesecurity_article">WeLiveSecurity Articles</option>
+                  <option value="sophos_security_operations_article">Sophos Security Operations Articles</option>
+                  <option value="flashpoint_blog_article">Flashpoint Articles</option>
+                  <option value="recorded_future_article">Recorded Future Articles</option>
+                  <option value="intel471_blog_article">Intel 471 Articles</option>
+                  <option value="securityweek_article">SecurityWeek Articles</option>
+                  <option value="dark_reading_article">Dark Reading Articles</option>
                   <option value="wired_article">WIRED Articles</option>
                   <option value="tripwire_article">Tripwire Articles</option>
                   <option value="akamai_blog_article">Akamai Blog Articles</option>
@@ -1611,6 +1668,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                   <option value="liberty_street_economics_article">Liberty Street Economics</option>
                   <option value="wealth_of_common_sense_article">A Wealth of Common Sense</option>
                   <option value="congress_crs_product">Congress CRS Products</option>
+                  <option value="senate_committee_site">Senate Committee Sites</option>
                   <option value="wsj_dow_jones">WSJ / Dow Jones RSS</option>
                   <option value="reddit_post">Reddit Posts</option>
                   <option value="hedge_fund_letter">Hedge Fund Letters</option>

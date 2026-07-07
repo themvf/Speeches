@@ -94,6 +94,7 @@ SUPPORTED_CONNECTORS = {
     "finra_awc",
     "doj_usao_press_release",
     "federal_reserve_speech_testimony",
+    "cisa_cybersecurity_advisory",
     "cftc_press_release",
     "cftc_public_statement_remark",
     "treasury_featured_story",
@@ -101,6 +102,7 @@ SUPPORTED_CONNECTORS = {
     "treasury_statement_remark",
     "sifma_news_item",
     "congress_crs_product",
+    "senate_committee_site",
     "bloomberg_public_article",
     "bloomberg_public_latest",
     "bloomberg_apify_article",
@@ -133,6 +135,10 @@ def _default_base_url(connector: str) -> str:
         return DOJ_DEFAULT_URL
     if connector == "federal_reserve_speech_testimony":
         return FED_DEFAULT_URL
+    if connector == "cisa_cybersecurity_advisory":
+        from cisa_cybersecurity_advisory_scraper import CISA_CYBERSECURITY_ADVISORIES_URL
+
+        return CISA_CYBERSECURITY_ADVISORIES_URL
     if connector == "cftc_press_release":
         return CFTC_PRESS_RELEASE_DEFAULT_URL
     if connector == "cftc_public_statement_remark":
@@ -147,6 +153,10 @@ def _default_base_url(connector: str) -> str:
         return SIFMA_NEWS_DEFAULT_URL
     if connector == "congress_crs_product":
         return CONGRESS_CRS_PRODUCTS_DEFAULT_URL
+    if connector == "senate_committee_site":
+        from senate_committee_scraper import SENATE_COMMITTEE_DEFAULT_URL
+
+        return SENATE_COMMITTEE_DEFAULT_URL
     if connector in BLOOMBERG_CONNECTORS:
         return BLOOMBERG_PUBLIC_DEFAULT_URL
     if connector == "substack_public_article":
@@ -774,6 +784,24 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector == "cisa_cybersecurity_advisory":
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_title = _normalize_space(existing_meta.get("title", ""))
+        incoming_title = _normalize_space(entry.get("title", ""))
+        existing_doc_type = _normalize_space(existing_meta.get("doc_type", ""))
+        incoming_doc_type = _normalize_space(entry.get("doc_type", ""))
+        existing_alert_code = _normalize_space(existing_meta.get("alert_code", ""))
+        incoming_alert_code = _normalize_space(entry.get("alert_code", ""))
+        if (
+            (incoming_date and existing_date and incoming_date != existing_date)
+            or (incoming_title and existing_title and incoming_title != existing_title)
+            or (incoming_doc_type and existing_doc_type and incoming_doc_type != existing_doc_type)
+            or (incoming_alert_code and existing_alert_code and incoming_alert_code != existing_alert_code)
+        ):
+            return "update_available"
+        return "existing"
+
     if connector in SECURITIES_MARKET_CONNECTORS:
         existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
         incoming_date = _normalize_space(entry.get("date", ""))
@@ -865,6 +893,14 @@ def _discover_connector(
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
 
+    if connector == "cisa_cybersecurity_advisory":
+        from cisa_cybersecurity_advisory_scraper import CISACybersecurityAdvisoryScraper
+
+        scraper = CISACybersecurityAdvisoryScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages, include_rss=include_rss)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
     if connector in {"cftc_press_release", "cftc_public_statement_remark"}:
         from cftc_press_room_scraper import CFTCPressRoomScraper
 
@@ -893,6 +929,14 @@ def _discover_connector(
         from congress_crs_products_scraper import CongressCRSProductsScraper
 
         scraper = CongressCRSProductsScraper()
+        docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector == "senate_committee_site":
+        from senate_committee_scraper import SenateCommitteeScraper
+
+        scraper = SenateCommitteeScraper()
         docs = scraper.discover_documents(base_url=base_url, max_pages=max_pages)
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
@@ -1557,6 +1601,67 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
         return record
 
+    if connector == "cisa_cybersecurity_advisory":
+        extracted = scraper.extract_document(
+            entry,
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_doc_type=entry.get("doc_type", ""),
+        )
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "CISA advisory extraction failed.")))
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or "CISA Advisory"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        doc_type = str(data.get("doc_type", "") or entry.get("doc_type", "")).strip() or "Cybersecurity Advisory"
+        if len(text.split()) < 40:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=date_text,
+                organization="CISA",
+                source_label="CISA",
+                extracted_text=str(data.get("summary", "") or entry.get("summary", "") or text).strip(),
+            )
+
+        source_name = _safe_source_name(src_url, f"cisa-advisory-{idx}", ".html")
+        alert_code = str(data.get("alert_code", "") or entry.get("alert_code", "")).strip()
+        tags = ["cisa", "cybersecurity", "advisory", "alert", "critical-infrastructure"]
+        if alert_code:
+            tags.append(alert_code.lower())
+        if "ics" in doc_type.lower():
+            tags.append("industrial-control-systems")
+        if "kev" in doc_type.lower():
+            tags.append("known-exploited-vulnerability")
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="CISA",
+            title=title,
+            speaker="Cybersecurity and Infrastructure Security Agency",
+            doc_date=_parse_doc_date(date_text),
+            doc_type=doc_type,
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=",".join(tags),
+            source_kind="cisa_cybersecurity_advisory",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "cisa_cybersecurity_advisory"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["summary"] = str(data.get("summary", "") or entry.get("summary", "")).strip()
+        metadata["alert_code"] = alert_code
+        metadata["source_format"] = str(data.get("source_format", "") or entry.get("source_format", "html")).strip()
+        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        metadata["extraction_mode"] = str(data.get("extraction_mode", "") or "").strip()
+        return record
+
     if connector == "sifma_news_item":
         extracted = scraper.extract_document(
             entry.get("url", ""),
@@ -1671,6 +1776,58 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["source_name"] = "Congress.gov"
         metadata["product_number"] = product_number
         metadata["crs_topics"] = "; ".join(str(topic or "").strip() for topic in topics if str(topic or "").strip())
+        return record
+
+    if connector == "senate_committee_site":
+        extracted = scraper.extract_document(entry)
+        if not extracted.get("success"):
+            raise RuntimeError(str(extracted.get("error", "") or "Senate committee site extraction failed."))
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or "Senate Committee Item"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        text = str(data.get("full_text", "") or "").strip()
+        source_label = str(entry.get("source_label", "") or "Senate Committee Site").strip()
+        organization = str(entry.get("organization", "") or "Senate Committee").strip()
+        if len(text.split()) < 40:
+            text = _build_short_text_fallback(
+                title=title,
+                url=src_url,
+                date_text=date_text,
+                organization=organization,
+                source_label=source_label,
+                extracted_text=text or str(data.get("summary", "") or entry.get("summary", "")).strip(),
+            )
+        source_name = _safe_source_name(src_url, f"senate-committee-site-{idx}", ".html")
+        tags_csv = str(entry.get("tags_csv", "") or "senate,congress,committee,press-release").strip()
+
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization=organization,
+            title=title,
+            speaker=source_label,
+            doc_date=_parse_doc_date(date_text),
+            doc_type=str(entry.get("doc_type", "") or "Press Release").strip() or "Press Release",
+            source_url=src_url,
+            source_filename=source_name,
+            source_ext=".html",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=tags_csv,
+            source_kind="senate_committee_site",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "senate_committee_site"
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["summary"] = str(data.get("summary", "") or entry.get("summary", "")).strip()
+        metadata["source_name"] = source_label
+        metadata["source_label"] = source_label
+        metadata["source_key"] = str(entry.get("source_key", "") or "").strip()
+        metadata["source_format"] = "html"
+        metadata["listing_page"] = str(entry.get("listing_page", "") or "").strip()
+        metadata["extraction_mode"] = str(data.get("extraction_mode", "") or "senate_committee_html").strip()
+        metadata["tags"] = tags_csv
         return record
 
     if connector in BLOOMBERG_CONNECTORS:

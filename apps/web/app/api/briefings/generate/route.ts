@@ -201,7 +201,9 @@ export async function POST(request: Request) {
     const [corpusDocs, enrichment] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
     const items = buildDocumentListItems(corpusDocs, enrichment);
     const fullTextById = buildFullTextById(corpusDocs);
-    const comparable = items.filter((item) => matchesFilters(item, filters, fullTextById));
+    const comparable = items
+      .filter((item) => item.full_text_available !== false)
+      .filter((item) => matchesFilters(item, filters, fullTextById));
     const current = comparable
       .filter((item) => inRange(item, fromDate, toDate))
       .sort((a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date));
