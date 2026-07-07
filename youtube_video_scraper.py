@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
@@ -10,7 +11,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -162,7 +163,60 @@ class YouTubeVideoScraper:
                 break
         return out
 
+    def discover_video(self, video_ref: str) -> Dict[str, Any]:
+        video_id = _video_id_from_url(video_ref)
+        if not video_id:
+            raise ValueError(f"Could not parse YouTube video id from {video_ref}")
+
+        watch_url = YOUTUBE_WATCH_URL.format(video_id=video_id)
+        title = ""
+        published = ""
+        channel_id = ""
+
+        try:
+            oembed_url = f"https://www.youtube.com/oembed?url={quote(watch_url, safe='')}&format=json"
+            payload = json.loads(self._fetch(oembed_url, timeout=20).text)
+            title = _normalize_space(payload.get("title"))
+        except Exception:
+            pass
+
+        try:
+            html = self._fetch(watch_url, timeout=30).text
+            date_match = re.search(r'"datePublished"\s*:\s*"([^"]+)"', html)
+            channel_match = re.search(r'"channelId"\s*:\s*"(UC[\w-]+)"', html)
+            title_match = re.search(r'"title"\s*:\s*"([^"]+)"', html)
+            if date_match:
+                published = _normalize_space(date_match.group(1))
+            if channel_match:
+                channel_id = _normalize_space(channel_match.group(1))
+            if not title and title_match:
+                title = _normalize_space(title_match.group(1))
+        except Exception:
+            pass
+
+        return {
+            "video_id": video_id,
+            "title": title or video_id,
+            "url": watch_url,
+            "date": _date_display(published),
+            "published_at": published,
+            "updated_at": "",
+            "channel_id": channel_id,
+            "discovery_source": "youtube_direct_video",
+        }
+
     def discover_documents(self, channel_ref: str = "", max_pages: int = 1, limit: int = 25) -> List[Dict[str, Any]]:
+        direct_video_id = _video_id_from_url(channel_ref)
+        if direct_video_id:
+            entry = self.discover_video(channel_ref)
+            self.last_discovery_debug = {
+                "channel_ref": channel_ref,
+                "video_id": direct_video_id,
+                "discovery_source": "youtube_direct_video",
+                "discovered_count": 1,
+            }
+            return [entry]
+
         channel_id = self.resolve_channel_id(channel_ref or SEC_YOUTUBE_DEFAULT_URL)
         max_items = max(1, min(50, int(limit or 25), int(max_pages or 1) * 15))
         entries = self.fetch_rss_entries(channel_id, max_items=max_items)
