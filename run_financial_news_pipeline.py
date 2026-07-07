@@ -32,6 +32,7 @@ from comment_position import (
     is_comment_position_document as shared_is_comment_position_document,
 )
 from rule_summaries import build_rule_summaries_payload
+from source_health import record_source_health
 
 try:
     from openai import OpenAI
@@ -2014,10 +2015,12 @@ def main() -> int:
     except Exception as e:
         error_payload = {"ok": False, "error": str(e), "command": args.command, "ran_at": _utc_now_iso()}
         _write_summary(getattr(args, "summary_path", ""), error_payload)
+        record_source_health(error_payload)
         print(json.dumps(error_payload, indent=2, ensure_ascii=False))
         return 1
 
     summary["ok"] = True
+    record_source_health(summary)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0
 

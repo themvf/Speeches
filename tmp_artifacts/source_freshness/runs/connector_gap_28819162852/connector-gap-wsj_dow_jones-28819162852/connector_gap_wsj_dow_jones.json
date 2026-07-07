@@ -1,0 +1,50 @@
+{
+  "mode": "extract",
+  "connector": "wsj_dow_jones",
+  "ran_at": "2026-07-06T20:32:26Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews",
+  "selection": "new_or_updated",
+  "max_pages": 3,
+  "limit": 25,
+  "include_pdfs": true,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 0,
+  "filtered_count": 0,
+  "excluded_count": 0,
+  "blocked_extraction_count": 0,
+  "candidate_count": 0,
+  "selected_count": 0,
+  "processed_count": 0,
+  "saved_new": 0,
+  "saved_updates": 0,
+  "invalid_wired_records_removed": 0,
+  "invalid_prnewswire_records_removed": 0,
+  "cjk_language_records_removed": 0,
+  "migrated_enrichment_ids": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 0,
+    "update_available": 0,
+    "existing": 0,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "feed_url": "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews",
+    "items_found": 0,
+    "errors": [
+      "Feed fetch failed: 404 Client Error: Not Found for url: https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews"
+    ]
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": false
+}

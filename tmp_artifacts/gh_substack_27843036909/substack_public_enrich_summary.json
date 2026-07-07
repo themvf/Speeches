@@ -1,0 +1,17 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-06-19T18:47:43Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "source_kind": "substack_public_article",
+  "mode_selection": "only_missing_or_failed",
+  "requested_doc_ids": [],
+  "candidate_count": 0,
+  "selected_count": 0,
+  "processed_count": 0,
+  "enriched_count": 0,
+  "fallback_enriched_count": 0,
+  "used_models": [],
+  "dry_run": false,
+  "rule_summaries_rebuilt": false
+}

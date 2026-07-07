@@ -1,0 +1,87 @@
+{
+  "mode": "extract",
+  "connector": "finra_awc",
+  "ran_at": "2026-06-16T18:20:14Z",
+  "require_remote_persistence": false,
+  "remote_persistence": true,
+  "base_url": "https://www.finra.org/rules-guidance/oversight-enforcement/finra-disciplinary-actions",
+  "selection": "new_or_updated",
+  "max_pages": 1,
+  "limit": 10,
+  "include_pdfs": false,
+  "include_rss": false,
+  "exclude_terms": [],
+  "discovered_count": 15,
+  "filtered_count": 15,
+  "excluded_count": 0,
+  "candidate_count": 15,
+  "selected_count": 10,
+  "processed_count": 0,
+  "saved_new": 0,
+  "saved_updates": 0,
+  "failed_count": 10,
+  "failed": [
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2024080217601%20Outset%20Global%20Trading%20Limited%20CRD%20281065%20AWC%20vrp.pdf",
+      "title": "Outset Global Trading Limited (2024080217601)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2023079632801%20Shuai%20Wang%20CRD%204725754%20AWC%20ks.pdf",
+      "title": "Shuai Wang (2023079632801)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2024081776401%20Merrill%20Lynch%2C%20Pierce%2C%20Fenner%20%26%20Smith%20Incorporated%20CRD%207691%20AWC%20vrp.pdf",
+      "title": "Merrill Lynch, Pierce, Fenner & Smith Incorporated (2024081776401)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2023076998201%20BMI%20Capital%20International%20LLC%20CRD%20154670%20AWC%20ks.pdf",
+      "title": "BMI Capital International LLC (2023076998201)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2023076995501%20Prime%20Number%20Capital%2C%20LLC%20CRD%20297029%20AWC%20ks.pdf",
+      "title": "Prime Number Capital, LLC (2023076995501)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2024080953801%20Percent%20Securities%2C%20LLC%20CRD%20314782%20AWC%20vrp.pdf",
+      "title": "Percent Securities, LLC (2024080953801)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2025085662401%20Melacknesh%20Belay%20Igwe%20CRD%206853838%20AWC%20ks.pdf",
+      "title": "Melacknesh Belay Igwe (2025085662401)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2023077078301%20TradingBlock%20CRD%20128605%20AWC%20ks.pdf",
+      "title": "TradingBlock (2023077078301)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2025088238401%20Tiffany%20L.%20Felker%20CRD%208016078%20AWC%20ks.pdf",
+      "title": "Tiffany L. Felker (2025088238401)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/fda_documents/2019064705001%20Paulson%20Investment%20Company%20LLC%20CRD%205670%20AWC%20ks.pdf",
+      "title": "Paulson Investment Company LLC (2019064705001)",
+      "error": "PDF extraction requires pypdf: No module named 'pypdf'"
+    }
+  ],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 15,
+    "update_available": 0,
+    "existing": 0,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {},
+  "dry_run": true,
+  "rule_summaries_rebuilt": false,
+  "ok": false,
+  "error": "10 item-level extraction failure(s)."
+}

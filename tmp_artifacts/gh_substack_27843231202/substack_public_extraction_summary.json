@@ -1,0 +1,174 @@
+{
+  "mode": "extract",
+  "connector": "substack_public_article",
+  "ran_at": "2026-06-19T18:54:13Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://substack.com/api/v1/post/search",
+  "selection": "new_or_updated",
+  "max_pages": 1,
+  "limit": 60,
+  "include_pdfs": false,
+  "include_rss": false,
+  "exclude_terms": [],
+  "keywords": [
+    "securities",
+    "financial industry",
+    "decentralized finance"
+  ],
+  "discovered_count": 60,
+  "filtered_count": 57,
+  "excluded_count": 3,
+  "candidate_count": 57,
+  "selected_count": 57,
+  "processed_count": 57,
+  "saved_new": 57,
+  "saved_updates": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [
+    {
+      "url": "https://jayjacksonabx.substack.com/p/a-lifespan-is-not-a-straight-line",
+      "title": "A Lifespan Is Not a Straight Line",
+      "date": "2026-06-15T13:38:02.791Z",
+      "slug": "a-lifespan-is-not-a-straight-line",
+      "substack_post_id": 202125892,
+      "publication_id": 6528472,
+      "publication_name": "The Long Game",
+      "authors": [
+        "Jay Jackson"
+      ],
+      "summary": "Financial planning should be built on data specific to you, not assumptions that apply to everyone.",
+      "preview_text": "Two neighbors. Same street, same age, same retirement savings. One is healthy—exercises, no smoking history, parents lived into their nineties. The other managing a chronic condition. Their financial needs are completely different. Their financial plans? Identical.",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 643,
+      "reaction_count": 1,
+      "comment_count": 0,
+      "matched_keywords": [
+        "financial industry"
+      ],
+      "search_position": 18,
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.82,
+      "relevance_reason": "Discusses individualized financial planning and retirement needs for individuals (personal financial planning advice), targeted at consumers rather than institutional topics."
+    },
+    {
+      "url": "https://meaghanblanchard.substack.com/p/the-million-dollar-musician",
+      "title": "The Million Dollar Musician",
+      "date": "2026-06-11T14:04:18.513Z",
+      "slug": "the-million-dollar-musician",
+      "substack_post_id": 201479349,
+      "publication_id": 7728320,
+      "publication_name": "Meaghan Blanchard",
+      "authors": [
+        "Meaghan Blanchard"
+      ],
+      "summary": "why I believe basic financial education will save the music industry",
+      "preview_text": "When I was in my early 20s, I met a man on a plane who changed the financial trajectory of my life as a career musician forever. I want to tell you that story.",
+      "post_tags": [
+        "personal finance",
+        "financial education",
+        "touring musician",
+        "music industry",
+        "Canadian Musician",
+        "music career"
+      ],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 1719,
+      "reaction_count": 4,
+      "comment_count": 0,
+      "matched_keywords": [
+        "financial industry"
+      ],
+      "search_position": 4,
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.85,
+      "relevance_reason": "Focused on financial education for a musician and personal financial trajectory — individual-level financial advice/education (personal finance)."
+    },
+    {
+      "url": "https://antonychacko.substack.com/p/stop-the-financial-freedom-industry",
+      "title": "Stop! The Financial Freedom Industry Is Lying To You",
+      "date": "2026-06-09T12:12:14.656Z",
+      "slug": "stop-the-financial-freedom-industry",
+      "substack_post_id": 201283191,
+      "publication_id": 7270227,
+      "publication_name": "Underrated - Ideas Worth Meeting Over",
+      "authors": [
+        "Antony Chacko"
+      ],
+      "summary": "Why most financial advice focuses on accumulating wealth, while ignoring the thing money was meant to buy in the first place…",
+      "preview_text": "If you spend enough time on YouTube, Instagram, LinkedIn or Twitter, you will start noticing a pattern.",
+      "post_tags": [
+        "Financial Freedom",
+        "FIRE",
+        "InPersn BookClub"
+      ],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 1597,
+      "reaction_count": 6,
+      "comment_count": 2,
+      "matched_keywords": [
+        "financial industry"
+      ],
+      "search_position": 2,
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.85,
+      "relevance_reason": "Critique of the Financial Freedom industry and FIRE movement — clearly addressing consumer-facing personal finance narratives and advice."
+    }
+  ],
+  "status_counts": {
+    "new": 57,
+    "update_available": 0,
+    "existing": 0,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "mode": "public_substack_api",
+    "search_url": "https://substack.com/api/v1/post/search",
+    "keywords": [
+      "securities",
+      "financial industry",
+      "decentralized finance"
+    ],
+    "pages_per_keyword": 1,
+    "proxy_configured": true,
+    "requests": [
+      {
+        "keyword": "securities",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "financial industry",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "decentralized finance",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      }
+    ],
+    "errors": [],
+    "items_found": 60,
+    "relevance_model": "gpt-5-mini",
+    "relevance_included_count": 57,
+    "relevance_excluded_count": 3
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

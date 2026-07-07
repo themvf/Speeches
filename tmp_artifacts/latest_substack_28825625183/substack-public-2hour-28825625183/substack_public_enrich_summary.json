@@ -1,0 +1,21 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-07-06T22:00:24Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "provider": "deepseek",
+  "source_kind": "substack_public_article",
+  "mode_selection": "only_missing_or_failed",
+  "order": "recent",
+  "future_dated_candidate_count": 0,
+  "requested_doc_ids": [],
+  "candidate_count": 0,
+  "selected_count": 0,
+  "processed_count": 0,
+  "enriched_count": 0,
+  "fallback_enriched_count": 0,
+  "used_models": [],
+  "selected_preview": [],
+  "dry_run": false,
+  "rule_summaries_rebuilt": false
+}

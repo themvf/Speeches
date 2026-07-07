@@ -1,0 +1,191 @@
+{
+  "mode": "extract",
+  "connector": "senate_committee_site",
+  "ran_at": "2026-07-06T22:41:20Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://www.senate.gov/committees/",
+  "selection": "new_or_updated",
+  "max_pages": 3,
+  "limit": 40,
+  "include_pdfs": false,
+  "include_rss": false,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 192,
+  "filtered_count": 191,
+  "excluded_count": 1,
+  "blocked_extraction_count": 1,
+  "candidate_count": 0,
+  "selected_count": 0,
+  "selected_preview": [],
+  "processed_count": 0,
+  "saved_new": 0,
+  "saved_updates": 0,
+  "invalid_wired_records_removed": 0,
+  "invalid_prnewswire_records_removed": 0,
+  "cjk_language_records_removed": 0,
+  "migrated_enrichment_ids": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [
+    {
+      "url": "https://www.banking.senate.gov/newsroom/minority/following-trumps-nomination-of-capital-one-exec-to-lead-cfpb-warren-requests-update-from-eric-trump-on-familys-de-banking-lawsuit",
+      "title": "Following Trump's Nomination of Capital One Exec to Lead CFPB, Warren Requests Update From Eric Trump On Family's De-banking Lawsuit",
+      "date": "",
+      "summary": "Following Trump's Nomination of Capital One Exec to Lead CFPB, Warren Requests Update From Eric Trump On Family's De-banking Lawsuit",
+      "source_key": "senate_banking",
+      "source_label": "Senate Banking Committee",
+      "organization": "Senate Committee on Banking, Housing, and Urban Affairs",
+      "doc_type": "Press Release",
+      "tags_csv": "senate,congress,committee,banking,press-release",
+      "listing_page": "https://www.banking.senate.gov/newsroom/minority-press-releases",
+      "exclude_reason": "general_litigation"
+    }
+  ],
+  "status_counts": {
+    "new": 0,
+    "update_available": 0,
+    "existing": 191,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "source_counts": {
+      "senate_banking": 40,
+      "senate_finance": 30,
+      "senate_agriculture": 40,
+      "senate_judiciary": 39,
+      "senate_hsgac": 13,
+      "senate_commerce": 30
+    },
+    "listing_pages": [
+      {
+        "source_key": "senate_banking",
+        "url": "https://www.banking.senate.gov/newsroom",
+        "status_code": 200,
+        "final_url": "https://www.banking.senate.gov/newsroom",
+        "bytes": 77031
+      },
+      {
+        "source_key": "senate_banking",
+        "url": "https://www.banking.senate.gov/newsroom/majority-press-releases",
+        "status_code": 200,
+        "final_url": "https://www.banking.senate.gov/newsroom/majority-press-releases",
+        "bytes": 95995
+      },
+      {
+        "source_key": "senate_banking",
+        "url": "https://www.banking.senate.gov/newsroom/minority-press-releases",
+        "status_code": 200,
+        "final_url": "https://www.banking.senate.gov/newsroom/minority-press-releases",
+        "bytes": 109626
+      },
+      {
+        "source_key": "senate_finance",
+        "url": "https://www.finance.senate.gov/chairmans-news",
+        "status_code": 200,
+        "final_url": "https://www.finance.senate.gov/chairmans-news",
+        "bytes": 149491
+      },
+      {
+        "source_key": "senate_finance",
+        "url": "https://www.finance.senate.gov/ranking-members-news",
+        "status_code": 200,
+        "final_url": "https://www.finance.senate.gov/ranking-members-news",
+        "bytes": 148598
+      },
+      {
+        "source_key": "senate_agriculture",
+        "url": "https://www.agriculture.senate.gov/newsroom",
+        "status_code": 200,
+        "final_url": "https://www.agriculture.senate.gov/newsroom",
+        "bytes": 141978
+      },
+      {
+        "source_key": "senate_agriculture",
+        "url": "https://www.agriculture.senate.gov/newsroom/majority-news",
+        "status_code": 200,
+        "final_url": "https://www.agriculture.senate.gov/newsroom/majority-news",
+        "bytes": 164449
+      },
+      {
+        "source_key": "senate_agriculture",
+        "url": "https://www.agriculture.senate.gov/newsroom/minority-news",
+        "status_code": 200,
+        "final_url": "https://www.agriculture.senate.gov/newsroom/minority-news",
+        "bytes": 161099
+      },
+      {
+        "source_key": "senate_judiciary",
+        "url": "https://www.judiciary.senate.gov/press",
+        "status_code": 200,
+        "final_url": "https://www.judiciary.senate.gov/press",
+        "bytes": 106871
+      },
+      {
+        "source_key": "senate_judiciary",
+        "url": "https://www.judiciary.senate.gov/press/majority",
+        "status_code": 200,
+        "final_url": "https://www.judiciary.senate.gov/press/majority",
+        "bytes": 126390
+      },
+      {
+        "source_key": "senate_judiciary",
+        "url": "https://www.judiciary.senate.gov/press/minority",
+        "status_code": 200,
+        "final_url": "https://www.judiciary.senate.gov/press/minority",
+        "bytes": 129740
+      },
+      {
+        "source_key": "senate_hsgac",
+        "url": "https://www.hsgac.senate.gov/media/",
+        "status_code": 200,
+        "final_url": "https://www.hsgac.senate.gov/media/",
+        "bytes": 172301
+      },
+      {
+        "source_key": "senate_hsgac",
+        "url": "https://www.hsgac.senate.gov/media/majority-news/",
+        "status_code": 200,
+        "final_url": "https://www.hsgac.senate.gov/media/majority-news/",
+        "bytes": 228014
+      },
+      {
+        "source_key": "senate_hsgac",
+        "url": "https://www.hsgac.senate.gov/media/majority-news/current-congress",
+        "status_code": 200,
+        "final_url": "https://www.hsgac.senate.gov/media/majority-news/?jsf=jet-engine:press-list&meta=congress:119",
+        "bytes": 228074
+      },
+      {
+        "source_key": "senate_commerce",
+        "url": "https://www.commerce.senate.gov/press/republican-news/",
+        "status_code": 200,
+        "final_url": "https://www.commerce.senate.gov/press/republican-news/",
+        "bytes": 183075
+      },
+      {
+        "source_key": "senate_commerce",
+        "url": "https://www.commerce.senate.gov/press/democratic-news/",
+        "status_code": 200,
+        "final_url": "https://www.commerce.senate.gov/press/democratic-news/",
+        "bytes": 183120
+      },
+      {
+        "source_key": "senate_commerce",
+        "url": "https://www.commerce.senate.gov/press/republican-news/2/",
+        "status_code": 200,
+        "final_url": "https://www.commerce.senate.gov/press/republican-news/2/",
+        "bytes": 183222
+      }
+    ],
+    "listing_errors": [],
+    "skipped_error_pages": []
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": false
+}

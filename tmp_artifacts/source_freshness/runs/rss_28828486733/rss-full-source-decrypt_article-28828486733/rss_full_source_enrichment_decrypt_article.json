@@ -1,0 +1,39 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-07-06T22:56:04Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "provider": "deepseek",
+  "source_kind": "decrypt_article",
+  "mode_selection": "only_missing_or_failed",
+  "order": "recent",
+  "future_dated_candidate_count": 0,
+  "requested_doc_ids": [],
+  "candidate_count": 3,
+  "selected_count": 3,
+  "processed_count": 3,
+  "enriched_count": 3,
+  "fallback_enriched_count": 0,
+  "used_models": [
+    "deepseek-v4-flash"
+  ],
+  "selected_preview": [
+    {
+      "doc_id": "4f69834010305482275a0ea2",
+      "date": "July 06, 2026",
+      "title": "ByteDance and Alibaba to Pull Agent Features as China Cracks Down on Humanlike AI - Decrypt"
+    },
+    {
+      "doc_id": "62c4889cceac8c1e49d88101",
+      "date": "July 06, 2026",
+      "title": "UK Foreign Secretary Warns of 'AI Hiroshima' if Policymakers Don’t Act - Decrypt"
+    },
+    {
+      "doc_id": "4e8816ccb816f9230754c51a",
+      "date": "July 06, 2026",
+      "title": "Solana Meme Coin Bonk Treasury Drained of $20 Million in 'Malicious' Governance Attack - Decrypt"
+    }
+  ],
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

@@ -13,6 +13,15 @@ from typing import Any
 
 import requests
 
+from gcs_storage import GCSStorage
+from source_health import (
+    attach_latest_report,
+    build_source_health_report,
+    load_source_health,
+    save_source_health,
+    source_health_report_markdown,
+)
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -170,6 +179,50 @@ def check_rss_feeds(app_url: str, cron_secret: str) -> dict[str, Any]:
         return {"error": str(e), "failed_count": -1}
 
 
+def review_source_health_with_deepseek(report: dict[str, Any]) -> str:
+    api_key = os.getenv("DEEPSEEK_API", "") or os.getenv("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        return ""
+    compact = {
+        "generated_at": report.get("generated_at"),
+        "recent_run_count": report.get("recent_run_count"),
+        "recent_failed_run_count": report.get("recent_failed_run_count"),
+        "error_categories": report.get("error_categories", {}),
+        "failing_sources": report.get("failing_sources", [])[:12],
+        "stale_sources": report.get("stale_sources", [])[:12],
+        "quiet_sources": report.get("quiet_sources", [])[:12],
+    }
+    try:
+        resp = requests.post(
+            os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/") + "/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": os.getenv("SOURCE_HEALTH_REVIEW_MODEL", "deepseek-v4-flash"),
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You audit a news/source ingestion health log. Return a concise prioritized action list. "
+                            "Mention only sources needing action and classify each as proxy/rotate, stale URL, parser fix, "
+                            "credentials/API, healthy-no-new-items, or investigate."
+                        ),
+                    },
+                    {"role": "user", "content": json.dumps(compact, ensure_ascii=False)},
+                ],
+                "temperature": 0,
+            },
+            timeout=45,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return str(data.get("choices", [{}])[0].get("message", {}).get("content", "") or "").strip()
+    except Exception as e:
+        return f"DeepSeek review unavailable: {e}"
+
+
 # ─── Report builder ───────────────────────────────────────────────────────────
 
 def build_report(results: dict[str, Any]) -> tuple[str, str, int]:
@@ -252,6 +305,19 @@ def build_report(results: dict[str, Any]) -> tuple[str, str, int]:
             f"{rss.get('inserted', 0)} articles inserted."
         )
 
+    source_health = results.get("source_health")
+    if isinstance(source_health, dict):
+        report = source_health.get("report", {}) if isinstance(source_health.get("report"), dict) else {}
+        source_failures = len(report.get("failing_sources", []) or [])
+        if source_failures:
+            failure_count += source_failures
+        section = source_health_report_markdown(report, str(source_health.get("ai_review", "") or ""))
+        if source_health.get("storage_error"):
+            section += f"\n\nSource health GCS warning: `{source_health['storage_error']}`"
+        sections.append(section)
+    else:
+        sections.append("### Skipped: Source Health\nNo source health log was available yet.")
+
     repo = os.getenv("GITHUB_REPOSITORY", "")
     run_url = f"https://github.com/{repo}/actions/runs/{os.getenv('GITHUB_RUN_ID', '')}"
     body = (
@@ -279,15 +345,30 @@ def main() -> None:
     credentials_info = _parse_gcs_credentials(gcs_creds_raw) if gcs_creds_raw else None
 
     results: dict[str, Any] = {}
+    storage: GCSStorage | None = None
+    source_health_storage_error = ""
 
     print("Running workflow failure check...", flush=True)
     results["workflows"] = check_workflow_failures(token, repo) if (token and repo) else {"error": "GITHUB_TOKEN/GITHUB_REPOSITORY not set", "count": 0, "failures": []}
 
     if credentials_info and bucket_name:
+        try:
+            storage = GCSStorage(bucket_name, credentials_info)
+        except Exception as e:
+            source_health_storage_error = str(e)
         print("Running enrichment failure check...", flush=True)
         results["enrichment"] = check_enrichment_failures(bucket_name, credentials_info)
         print("Running GCS connectivity check...", flush=True)
         results["gcs"] = check_gcs_connectivity(bucket_name, credentials_info)
+        print("Running source health check...", flush=True)
+        source_payload = load_source_health(storage)
+        source_report = build_source_health_report(source_payload)
+        ai_review = review_source_health_with_deepseek(source_report)
+        results["source_health"] = {
+            "report": source_report,
+            "ai_review": ai_review,
+            "storage_error": source_health_storage_error,
+        }
     else:
         results["enrichment"] = {"error": "GCS not configured", "count": 0, "failed_docs": []}
         results["gcs"] = {"error": "GCS not configured", "blobs": {}}
@@ -300,6 +381,17 @@ def main() -> None:
         results["rss"] = None
 
     title, body, failure_count = build_report(results)
+    if storage is not None and isinstance(results.get("source_health"), dict):
+        try:
+            source_payload = load_source_health(storage)
+            source_report = results["source_health"].get("report", {}) if isinstance(results["source_health"].get("report"), dict) else {}
+            ai_review = str(results["source_health"].get("ai_review", "") or "")
+            save_source_health(
+                attach_latest_report(source_payload, source_report, title, body, ai_review),
+                storage,
+            )
+        except Exception as e:
+            print(f"WARNING: Failed to save source health report: {e}", file=sys.stderr)
 
     print(f"\n{'='*60}")
     print(title)
@@ -319,7 +411,10 @@ def main() -> None:
         with open(github_output, "a", encoding="utf-8") as f:
             f.write(f"has_failures={'true' if failure_count > 0 else 'false'}\n")
 
-    sys.exit(1 if failure_count > 0 else 0)
+    fail_on_failure = os.getenv("HEALTH_CHECK_FAIL_ON_FAILURE", "true").strip().lower() not in {"0", "false", "no"}
+    if failure_count > 0 and not fail_on_failure:
+        print("HEALTH_CHECK_FAIL_ON_FAILURE=false; leaving workflow green after writing report.", flush=True)
+    sys.exit(1 if failure_count > 0 and fail_on_failure else 0)
 
 
 if __name__ == "__main__":

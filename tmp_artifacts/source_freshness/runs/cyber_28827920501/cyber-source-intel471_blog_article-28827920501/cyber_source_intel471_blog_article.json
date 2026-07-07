@@ -1,0 +1,263 @@
+{
+  "mode": "extract",
+  "connector": "intel471_blog_article",
+  "ran_at": "2026-07-06T22:41:48Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://www.intel471.com/blog",
+  "selection": "new_or_updated",
+  "max_pages": 2,
+  "limit": 25,
+  "include_pdfs": false,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 560,
+  "filtered_count": 560,
+  "excluded_count": 0,
+  "blocked_extraction_count": 0,
+  "candidate_count": 528,
+  "selected_count": 25,
+  "selected_preview": [
+    {
+      "title": "Threat Hunting Case Study: FileFix",
+      "date": "June 03, 2026",
+      "url": "https://www.intel471.com/blog/threat-hunting-case-study-filefix",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Gentlemen Ransomware",
+      "date": "May 29, 2026",
+      "url": "https://www.intel471.com/blog/gentlemen-ransomware",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "TeamPCP Supply Chain Attacks",
+      "date": "April 01, 2026",
+      "url": "https://www.intel471.com/blog/teampcp-supply-chain-attacks",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Handala Threat Group",
+      "date": "March 13, 2026",
+      "url": "https://www.intel471.com/blog/handala-threat-group",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "CrazyHunter Ransomware",
+      "date": "January 27, 2026",
+      "url": "https://www.intel471.com/blog/crazyhunter-ransomware",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "DevMan Ransomware",
+      "date": "January 21, 2026",
+      "url": "https://www.intel471.com/blog/devman-ransomware",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Gootloader Malware Update",
+      "date": "December 11, 2025",
+      "url": "https://www.intel471.com/blog/gootloader-malware-update",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Shai-Hulud Worm 2.0",
+      "date": "December 10, 2025",
+      "url": "https://www.intel471.com/blog/shai-hulud-worm-20",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "New FvncBot Android banking trojan targets Poland",
+      "date": "December 04, 2025",
+      "url": "https://www.intel471.com/blog/new-fvncbot-android-banking-trojan-targets-poland",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Threat hunting case study: Detecting IAB activity",
+      "date": "November 20, 2025",
+      "url": "https://www.intel471.com/blog/threat-hunting-case-study-detecting-iab-activity",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Lynx Ransomware",
+      "date": "November 19, 2025",
+      "url": "https://www.intel471.com/blog/lynx-ransomware",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Qilin Ransomware Group",
+      "date": "November 12, 2025",
+      "url": "https://www.intel471.com/blog/qilin-ransomware-group",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "ClickFix: Tricking users into installing infostealers",
+      "date": "November 11, 2025",
+      "url": "https://www.intel471.com/blog/clickfix-tricking-users-into-installing-infostealers",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "How card fraud is powered by underground card checkers",
+      "date": "November 05, 2025",
+      "url": "https://www.intel471.com/blog/how-card-fraud-is-powered-by-underground-card-checkers",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "The FBI’s Group 78: Covertly fighting ransomware?",
+      "date": "October 22, 2025",
+      "url": "https://www.intel471.com/blog/the-fbis-group-78-covertly-fighting-ransomware",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "How threat actors bypass multifactor authentication",
+      "date": "October 22, 2025",
+      "url": "https://www.intel471.com/blog/how-threat-actors-bypass-multifactor-authentication",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Crimson Collective",
+      "date": "October 16, 2025",
+      "url": "https://www.intel471.com/blog/crimson-collective",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "In a digital age, US paper check fraud flourishes",
+      "date": "October 14, 2025",
+      "url": "https://www.intel471.com/blog/in-a-digital-age-us-paper-check-fraud-flourishes",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "NPM - Shai-Hulud Worm",
+      "date": "September 29, 2025",
+      "url": "https://www.intel471.com/blog/npm-shai-hulud-worm",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Threat hunting case study: ToolShell",
+      "date": "September 23, 2025",
+      "url": "https://www.intel471.com/blog/threat-hunting-case-study-toolshell",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "AMOS Stealer",
+      "date": "September 09, 2025",
+      "url": "https://www.intel471.com/blog/amos-stealer",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "The Phrack leak: Examining an APT’s workstation",
+      "date": "September 04, 2025",
+      "url": "https://www.intel471.com/blog/the-phrack-leak-examining-an-apts-workstation",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "How initial access offers power intrusions and ransomware",
+      "date": "September 02, 2025",
+      "url": "https://www.intel471.com/blog/how-initial-access-offers-power-intrusions-and-ransomware",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "After disruption, XSS cybercrime forum faces loss of trust",
+      "date": "August 21, 2025",
+      "url": "https://www.intel471.com/blog/after-disruption-xss-cybercrime-forum-faces-loss-of-trust",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Update: Salt Typhoon",
+      "date": "August 07, 2025",
+      "url": "https://www.intel471.com/blog/update-salt-typhoon",
+      "ingest_status": "update_available",
+      "discovery_mode": "",
+      "publication_name": ""
+    }
+  ],
+  "processed_count": 25,
+  "saved_new": 0,
+  "saved_updates": 25,
+  "invalid_wired_records_removed": 0,
+  "invalid_prnewswire_records_removed": 0,
+  "cjk_language_records_removed": 0,
+  "migrated_enrichment_ids": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 503,
+    "update_available": 25,
+    "existing": 32,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "source_key": "intel471_blog_article",
+    "source_label": "Intel 471",
+    "base_url": "https://www.intel471.com/blog",
+    "max_pages": 2,
+    "include_rss": true,
+    "feed_urls_attempted": [
+      "https://www.intel471.com/blog/feed"
+    ],
+    "feed_urls_succeeded": [
+      "https://www.intel471.com/blog/feed"
+    ],
+    "listing_used": false,
+    "google_news_query": "",
+    "google_news_used": false,
+    "google_news_count": 0,
+    "discovered_count": 560
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

@@ -1,0 +1,34 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-07-06T22:45:55Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "provider": "deepseek",
+  "source_kind": "dark_reading_article",
+  "mode_selection": "only_missing_or_failed",
+  "order": "recent",
+  "future_dated_candidate_count": 0,
+  "requested_doc_ids": [],
+  "candidate_count": 2,
+  "selected_count": 2,
+  "processed_count": 2,
+  "enriched_count": 2,
+  "fallback_enriched_count": 0,
+  "used_models": [
+    "deepseek-v4-flash"
+  ],
+  "selected_preview": [
+    {
+      "doc_id": "74556897fc4e29379a7f69ef",
+      "date": "July 06, 2026",
+      "title": "BusySnake Stealer Slithers into Critical Infrastructure Networks"
+    },
+    {
+      "doc_id": "7f9149a984673548505d336b",
+      "date": "July 06, 2026",
+      "title": "CitrixBleed-ing Again? NetScaler Vulnerability Under Attack"
+    }
+  ],
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

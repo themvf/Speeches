@@ -1,0 +1,163 @@
+{
+  "mode": "extract",
+  "connector": "substack_public_article",
+  "ran_at": "2026-06-28T23:19:08Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://substack.com/api/v1/post/search",
+  "selection": "new_or_updated",
+  "max_pages": 1,
+  "limit": 60,
+  "include_pdfs": false,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 20,
+  "filtered_count": 20,
+  "excluded_count": 0,
+  "candidate_count": 20,
+  "selected_count": 20,
+  "processed_count": 20,
+  "saved_new": 19,
+  "saved_updates": 1,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 19,
+    "update_available": 1,
+    "existing": 0,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "mode": "public_substack_api",
+    "search_url": "https://substack.com/api/v1/post/search",
+    "keywords": [
+      "sec",
+      "ipo",
+      "aml",
+      "enforcement",
+      "ai",
+      "crypto",
+      "credit",
+      "market",
+      "economy"
+    ],
+    "pages_per_keyword": 1,
+    "proxy_configured": true,
+    "proxy_config_error": "",
+    "requests": [],
+    "errors": [
+      "sec session warmup: HTTP Error 403: ",
+      "sec page 0: HTTP Error 403: ",
+      "ipo session warmup: HTTP Error 403: ",
+      "ipo page 0: HTTP Error 403: ",
+      "aml session warmup: HTTP Error 403: ",
+      "aml page 0: HTTP Error 403: ",
+      "enforcement session warmup: HTTP Error 403: ",
+      "enforcement page 0: HTTP Error 403: ",
+      "ai session warmup: HTTP Error 403: ",
+      "ai page 0: HTTP Error 403: ",
+      "crypto session warmup: HTTP Error 403: ",
+      "crypto page 0: HTTP Error 403: ",
+      "credit session warmup: HTTP Error 403: ",
+      "credit page 0: HTTP Error 403: ",
+      "market session warmup: HTTP Error 403: ",
+      "market page 0: HTTP Error 403: ",
+      "economy session warmup: HTTP Error 403: ",
+      "economy page 0: HTTP Error 403: "
+    ],
+    "feed_discovery": {
+      "mode": "curated_substack_feeds",
+      "feeds": [
+        {
+          "label": "Capitol Account",
+          "feed_url": "https://www.capitolaccountdc.com/feed",
+          "tags_csv": "capitol-account,financial-regulation,washington-policy"
+        },
+        {
+          "label": "FinRegRag",
+          "feed_url": "https://www.finregrag.com/feed",
+          "tags_csv": "finregrag,financial-regulation,policy-commentary"
+        },
+        {
+          "label": "Bank Reg Blog",
+          "feed_url": "https://bankregblog.substack.com/feed",
+          "tags_csv": "bank-reg-blog,bank-regulation,financial-policy"
+        },
+        {
+          "label": "The Public Interest by Better Markets",
+          "feed_url": "https://bettermarkets.substack.com/feed",
+          "tags_csv": "better-markets,market-structure,financial-stability"
+        },
+        {
+          "label": "DeFi Education Fund",
+          "feed_url": "https://defieducationfund.substack.com/feed",
+          "tags_csv": "defi-education-fund,defi,crypto-policy"
+        },
+        {
+          "label": "Trustless Policy",
+          "feed_url": "https://trustlesspolicy.substack.com/feed",
+          "tags_csv": "trustless-policy,crypto-policy,market-structure"
+        },
+        {
+          "label": "Fintech Business Weekly",
+          "feed_url": "https://fintechbusinessweekly.substack.com/feed",
+          "tags_csv": "fintech-business-weekly,fintech,banking"
+        },
+        {
+          "label": "The Dig",
+          "feed_url": "https://thedig.substack.com/feed",
+          "tags_csv": "the-dig,accounting,audit,governance"
+        }
+      ],
+      "max_items_per_feed": 10,
+      "proxy_configured": true,
+      "proxy_config_error": "",
+      "requests": [
+        {
+          "feed_url": "https://www.capitolaccountdc.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.finregrag.com/feed",
+          "result_count": 20
+        }
+      ],
+      "errors": [
+        "https://bankregblog.substack.com/feed: HTTP Error 403: ",
+        "https://bettermarkets.substack.com/feed: HTTP Error 403: ",
+        "https://defieducationfund.substack.com/feed: HTTP Error 403: ",
+        "https://trustlesspolicy.substack.com/feed: HTTP Error 403: ",
+        "https://fintechbusinessweekly.substack.com/feed: HTTP Error 403: ",
+        "https://thedig.substack.com/feed: HTTP Error 403: "
+      ],
+      "items_found": 20
+    },
+    "include_feeds": true,
+    "items_found": 20,
+    "topic_rule_count": 9,
+    "topic_keywords_used": [
+      "sec",
+      "ipo",
+      "aml",
+      "enforcement",
+      "ai",
+      "crypto",
+      "credit",
+      "market",
+      "economy"
+    ],
+    "topic_keywords_source": "rss_topic_rules",
+    "topic_keywords_limit": 9,
+    "relevance_model": "gpt-5-mini",
+    "relevance_included_count": 20,
+    "relevance_excluded_count": 0
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

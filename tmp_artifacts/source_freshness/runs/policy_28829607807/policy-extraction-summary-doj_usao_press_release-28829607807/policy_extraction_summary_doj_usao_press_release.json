@@ -1,0 +1,235 @@
+{
+  "mode": "extract",
+  "connector": "doj_usao_press_release",
+  "ran_at": "2026-07-06T23:13:41Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://www.justice.gov/usao/pressreleases",
+  "selection": "new_or_updated",
+  "max_pages": 5,
+  "limit": 25,
+  "include_pdfs": true,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 25,
+  "filtered_count": 25,
+  "excluded_count": 0,
+  "blocked_extraction_count": 0,
+  "candidate_count": 18,
+  "selected_count": 18,
+  "selected_preview": [
+    {
+      "title": "Illegal Alien Sentenced to 10 Years for Conspiracy to Distribute Methamphetamine",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-ne/pr/illegal-alien-sentenced-10-years-conspiracy-distribute-methamphetamine",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Eastern District of Texas prosecutes five defendants as part of Homeland Security Task Force investigations in June 2026",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-edtx/pr/eastern-district-texas-prosecutes-five-defendants-part-homeland-security-task-force",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Omaha Man Sentenced to 14 years for Distributing Methamphetamine and Possessing Firearms as a Felon",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-ne/pr/omaha-man-sentenced-14-years-distributing-methamphetamine-and-possessing-firearms-felon",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Waverly Man Sentenced to 135 Months for Transportation and Possession of Child Pornography",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-ne/pr/waverly-man-sentenced-135-months-transportation-and-possession-child-pornography",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "California Man Who Assaulted Border Patrol Agents Sentenced to 60 Months in Prison",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-az/pr/california-man-who-assaulted-border-patrol-agents-sentenced-60-months-prison",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Dodge County Sheriff Charged and Pleads Guilty to Wire Fraud",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-ne/pr/dodge-county-sheriff-charged-and-pleads-guilty-wire-fraud",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Honduran illegal alien guilty after flight from trooper",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-sdtx/pr/honduran-illegal-alien-guilty-after-flight-trooper",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Illegal Alien Sentenced to 14 Years in Federal Prison for Carjacking and Discharging a Firearm",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-ndtx/pr/illegal-alien-sentenced-14-years-federal-prison-carjacking-and-discharging-firearm",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Northeast Missouri Felon Caught with a Firearm and Methamphetamine Sentenced to 11 Years in Prison",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-edmo/pr/northeast-missouri-felon-caught-firearm-and-methamphetamine-sentenced-11-years-prison",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Convicted Felon Sentenced to more than Ten Years in Prison for Illegal Firearm Possession",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-ndal/pr/convicted-felon-sentenced-more-ten-years-prison-illegal-firearm-possession",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Mississippi Man Sentenced for Firearms Trafficking",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-sdms/pr/mississippi-man-sentenced-firearms-trafficking",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Jackson Man Sentenced to Over 27 Years in Federal Prison for Child Exploitation, Cyberstalking, and Sextortion Offenses",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-sdms/pr/jackson-man-sentenced-over-27-years-federal-prison-child-exploitation-cyberstalking",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "District of Arizona Charged 325 Individuals for Immigration-Related Criminal Conduct Last Week",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-az/pr/district-arizona-charged-325-individuals-immigration-related-criminal-conduct-last-week",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Hairstylist aboard cruise ship charged with abusive sexual contact with two cruise guests",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-wdwa/pr/hairstylist-aboard-cruise-ship-charged-abusive-sexual-contact-two-cruise-guests",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Five Defendants Plead Guilty to Gun Trafficking Charges",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-edny/pr/five-defendants-plead-guilty-gun-trafficking-charges",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Venezuelan Citizen Sentenced for Unlawfully Possessing a Firearm",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-ndny/pr/venezuelan-citizen-sentenced-unlawfully-possessing-firearm",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Jacksonville Man Indicted by Federal Grand Jury for Producing and Attempting to Produce Child Sexual Abuse Materials",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-mdfl/pr/jacksonville-man-indicted-federal-grand-jury-producing-and-attempting-produce-child",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Essex County Businessman Sentenced to Prison for $2 Million Food Stamp Fraud Scheme",
+      "date": "July 06, 2026",
+      "url": "https://www.justice.gov/usao-nj/pr/essex-county-businessman-sentenced-prison-2-million-food-stamp-fraud-scheme",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    }
+  ],
+  "processed_count": 18,
+  "saved_new": 18,
+  "saved_updates": 0,
+  "invalid_wired_records_removed": 0,
+  "invalid_prnewswire_records_removed": 0,
+  "cjk_language_records_removed": 0,
+  "migrated_enrichment_ids": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 18,
+    "update_available": 0,
+    "existing": 7,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "base_url": "https://www.justice.gov/usao/pressreleases",
+    "max_pages_requested": 5,
+    "target_count": 60,
+    "fallback_to_rss": true,
+    "pages": [
+      {
+        "page": 0,
+        "page_url": "https://www.justice.gov/usao/pressreleases",
+        "attempts": 1,
+        "error_type": "",
+        "error_status": 0,
+        "error_message": "",
+        "returned_items": 0,
+        "unique_added": 25
+      },
+      {
+        "page": 1,
+        "page_url": "https://www.justice.gov/usao/pressreleases?page=1",
+        "attempts": 2,
+        "error_type": "HTTPError",
+        "error_status": 403,
+        "error_message": "403 Client Error: Forbidden for url: https://www.justice.gov/usao/pressreleases?page=1",
+        "returned_items": 0,
+        "unique_added": 0
+      }
+    ],
+    "pagination_blocked": true,
+    "rss_page0_used": true,
+    "rss_supplement_used": true,
+    "rss_supplement_error": "",
+    "news_supplement_used": true,
+    "news_supplement_error": "",
+    "sitemap_supplement_used": true,
+    "sitemap_supplement_error": "",
+    "sitemap_pages_attempted": 20,
+    "sitemap_pages_ok": 0,
+    "sitemap_pages_with_hits": 0,
+    "sitemap_candidates_considered": 20,
+    "stop_reason": "blocked_page_1_status_403",
+    "listing_added": 0,
+    "rss_added": 25,
+    "news_added": 0,
+    "sitemap_added": 0,
+    "total_unique": 25
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

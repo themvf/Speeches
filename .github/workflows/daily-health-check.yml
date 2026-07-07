@@ -2,7 +2,8 @@ name: Daily Health Check
 
 on:
   schedule:
-    - cron: "0 9 * * *"  # 9 AM UTC daily
+    - cron: "0 */3 * * *"  # Quiet source-health monitor every 3 hours
+    - cron: "5 9 * * *"  # Daily issue/report run at 9:05 AM UTC
   workflow_dispatch:
 
 permissions:
@@ -22,6 +23,9 @@ jobs:
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       APP_URL: ${{ secrets.APP_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      SOURCE_HEALTH_REVIEW_MODEL: deepseek-v4-flash
+      SOURCE_HEALTH_MONITOR_ONLY: ${{ github.event_name == 'schedule' && github.event.schedule == '0 */3 * * *' && 'true' || 'false' }}
 
     steps:
       - name: Checkout
@@ -45,9 +49,10 @@ jobs:
           python run_daily_health_check.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEALTH_CHECK_FAIL_ON_FAILURE: ${{ env.SOURCE_HEALTH_MONITOR_ONLY == 'true' && 'false' || 'true' }}
 
       - name: Open GitHub Issue on Failures
-        if: always() && steps.health.outputs.has_failures == 'true'
+        if: always() && steps.health.outputs.has_failures == 'true' && env.SOURCE_HEALTH_MONITOR_ONLY != 'true'
         run: |
           title=$(cat health_report_title.txt)
           gh issue create \
@@ -65,4 +70,5 @@ jobs:
             health_report_title.txt
             health_report_body.md
             health_report.json
+            data/source_health_log.json
           if-no-files-found: ignore

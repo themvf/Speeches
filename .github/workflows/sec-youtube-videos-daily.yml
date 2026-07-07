@@ -1,0 +1,97 @@
+name: SEC YouTube Videos Daily
+
+on:
+  schedule:
+    - cron: "20 14 * * *"
+  workflow_dispatch:
+    inputs:
+      channel_ref:
+        description: "SEC YouTube channel URL, channel id, handle, or uploads RSS URL"
+        required: false
+        default: "https://www.youtube.com/user/SECViews"
+      extraction_limit:
+        description: "Maximum videos to extract"
+        required: false
+        default: "10"
+      max_pages:
+        description: "RSS pages equivalent to scan"
+        required: false
+        default: "1"
+      enrich_limit:
+        description: "Maximum video transcript documents to enrich"
+        required: false
+        default: "10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sec-youtube-videos-daily
+  cancel-in-progress: false
+
+jobs:
+  sec-youtube-videos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
+      WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
+      YOUTUBE_PROXY_URL: ${{ secrets.YOUTUBE_PROXY_URL }}
+      CHANNEL_REF: ${{ github.event.inputs.channel_ref || 'https://www.youtube.com/user/SECViews' }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '10' }}
+      MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '10' }}
+      ENRICH_MODEL: deepseek-v4-flash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Extract SEC YouTube Video Transcripts
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector sec_youtube_video \
+            --base-url "${CHANNEL_REF}" \
+            --selection new_or_updated \
+            --limit "${EXTRACTION_LIMIT}" \
+            --max-pages "${MAX_PAGES}" \
+            --require-remote-persistence \
+            --summary-path sec_youtube_video_extraction_summary.json
+
+      - name: Enrich SEC YouTube Video Transcripts
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --source-kind sec_youtube_video \
+            --mode only_missing_or_failed \
+            --doc-ids-from-summary sec_youtube_video_extraction_summary.json \
+            --limit "${ENRICH_LIMIT}" \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --summary-path sec_youtube_video_enrich_summary.json
+
+      - name: Upload SEC YouTube Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sec-youtube-videos-${{ github.run_id }}
+          path: |
+            sec_youtube_video_extraction_summary.json
+            sec_youtube_video_enrich_summary.json
+          if-no-files-found: ignore

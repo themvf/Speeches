@@ -1,0 +1,84 @@
+{
+  "mode": "extract",
+  "connector": "treasury_press_release",
+  "ran_at": "2026-07-03T14:06:00Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://home.treasury.gov/news/press-releases",
+  "selection": "new_or_updated",
+  "max_pages": 3,
+  "limit": 25,
+  "include_pdfs": true,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 22,
+  "filtered_count": 22,
+  "excluded_count": 0,
+  "candidate_count": 22,
+  "selected_count": 22,
+  "processed_count": 22,
+  "saved_new": 0,
+  "saved_updates": 22,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 0,
+    "update_available": 22,
+    "existing": 0,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "source_key": "treasury_press_release",
+    "base_url": "https://home.treasury.gov/news/press-releases",
+    "seed_urls": [
+      "https://home.treasury.gov/news/press-releases"
+    ],
+    "max_pages_requested": 3,
+    "pages": [
+      {
+        "seed_url": "https://home.treasury.gov/news/press-releases",
+        "page": 1,
+        "page_url": "https://home.treasury.gov/news/press-releases",
+        "returned_items": 9,
+        "unique_added": 9,
+        "next_page_url": "https://home.treasury.gov/news/press-releases?page=1",
+        "error_type": "",
+        "error_status": 0,
+        "error_message": ""
+      },
+      {
+        "seed_url": "https://home.treasury.gov/news/press-releases",
+        "page": 2,
+        "page_url": "https://home.treasury.gov/news/press-releases?page=1",
+        "returned_items": 7,
+        "unique_added": 7,
+        "next_page_url": "https://home.treasury.gov/news/press-releases?page=2",
+        "error_type": "",
+        "error_status": 0,
+        "error_message": ""
+      },
+      {
+        "seed_url": "https://home.treasury.gov/news/press-releases",
+        "page": 3,
+        "page_url": "https://home.treasury.gov/news/press-releases?page=2",
+        "returned_items": 6,
+        "unique_added": 6,
+        "next_page_url": "https://home.treasury.gov/news/press-releases?page=3",
+        "error_type": "",
+        "error_status": 0,
+        "error_message": ""
+      }
+    ],
+    "listing_added": 22,
+    "total_unique": 22,
+    "stop_reason": "completed"
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

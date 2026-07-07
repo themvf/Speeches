@@ -1,0 +1,1 @@
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (263kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)

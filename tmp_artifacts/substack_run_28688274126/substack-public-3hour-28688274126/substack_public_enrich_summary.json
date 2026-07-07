@@ -1,0 +1,149 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-07-04T00:24:45Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "provider": "deepseek",
+  "source_kind": "substack_public_article",
+  "mode_selection": "all",
+  "order": "stored",
+  "future_dated_candidate_count": 0,
+  "requested_doc_ids": [],
+  "candidate_count": 219,
+  "selected_count": 219,
+  "processed_count": 219,
+  "enriched_count": 219,
+  "fallback_enriched_count": 0,
+  "used_models": [
+    "deepseek-v4-flash"
+  ],
+  "selected_preview": [
+    {
+      "doc_id": "3c585c24e03385e6d04fa0a3",
+      "date": "June 19, 2026",
+      "title": "An Overview of Decentralized Finance (Defi)"
+    },
+    {
+      "doc_id": "cee2d89ecd582fa45476e02c",
+      "date": "June 18, 2026",
+      "title": "Unlocking Yield: The Impact of Tokenized US Equities in Decentralized Finance"
+    },
+    {
+      "doc_id": "6b19cd1002a7a1334621842e",
+      "date": "June 18, 2026",
+      "title": "Financial Statement Fraud Market Size and Industry Forecast 2022–2029"
+    },
+    {
+      "doc_id": "f8d58b6dda0d684fd2cb299a",
+      "date": "June 18, 2026",
+      "title": "Korea Securities Depository Races to Build Tokenized Securities Platform Ahead of 2027 Launch"
+    },
+    {
+      "doc_id": "c4c673702a01b86e19bcea0c",
+      "date": "June 18, 2026",
+      "title": "LCK Financial Services - Newsletter"
+    },
+    {
+      "doc_id": "3d4ed03480f258a891ee43ef",
+      "date": "June 18, 2026",
+      "title": "Standard Chartered Sees UNI Reaching $100 by 2030 on Tokenization Boom | MEXC News"
+    },
+    {
+      "doc_id": "f50019793ed01b3ee2de1720",
+      "date": "June 17, 2026",
+      "title": "Hong Kong Securities and Futures Ordinance (Cap. 571)"
+    },
+    {
+      "doc_id": "95b5a83df11459769294845a",
+      "date": "June 17, 2026",
+      "title": "Citadel Securities Saw ‘Astronomical’ Retail Trading in SpaceX"
+    },
+    {
+      "doc_id": "2849f80795fb7b5f077242af",
+      "date": "June 17, 2026",
+      "title": "Standard Chartered Predicts UNI Could Surge 40x to $100 by 2030 | MEXC News"
+    },
+    {
+      "doc_id": "9016e4aefae32233aed99803",
+      "date": "June 17, 2026",
+      "title": "Solana edges higher after over 200 tokenized securities enabled on-chain"
+    },
+    {
+      "doc_id": "934d6f2d704123649b389bee",
+      "date": "June 17, 2026",
+      "title": "Why are Strategy’s preferred securities falling despite Bitcoin’s recovery?"
+    },
+    {
+      "doc_id": "a6ae2ef0894b691d85836392",
+      "date": "June 17, 2026",
+      "title": "China Securities Regulatory Commission approves actively managed ETFs rollout"
+    },
+    {
+      "doc_id": "a0a5e648453601cfd59963c7",
+      "date": "June 17, 2026",
+      "title": "Hedera Tops RWA Development Activity Rankings as Blockchain Competition Intensifies"
+    },
+    {
+      "doc_id": "6e1888b8f99052132d1f466d",
+      "date": "June 17, 2026",
+      "title": "Trustworthy Agentic AI Takes Centre Stage at London Tech Week: CBCX Shares Forward-Looking Industry Insights on Global Liquidity Infrastructure Transformation"
+    },
+    {
+      "doc_id": "ecbad064cda53ec74f8049f2",
+      "date": "June 17, 2026",
+      "title": "Standard Chartered Sees Tokenization Driving DeFi Toward $2.7 Trillion by 203 | MEXC News"
+    },
+    {
+      "doc_id": "aae40c45c5fe4f9f7df3d737",
+      "date": "June 17, 2026",
+      "title": "Cryptic on Instagram: \"@stanchart forecasts that tokenization could help expand assets held in decentralized finance to approximately $2.7 trillion by 2030 as institutions, infrastructure, and regulat..."
+    },
+    {
+      "doc_id": "a5f4a83736f76935367a6d47",
+      "date": "June 17, 2026",
+      "title": "The Role of Gold in a Decentralized Financial Future"
+    },
+    {
+      "doc_id": "99cccac41971e8d4d8b60a85",
+      "date": "June 17, 2026",
+      "title": "DTCC Prepares Tokenization Pilot for Custodied Securities, Signaling Institutional Shift | MEXC News"
+    },
+    {
+      "doc_id": "90531710ef04a0358be1808b",
+      "date": "June 17, 2026",
+      "title": "Digital Securities (Bonds & Equities)"
+    },
+    {
+      "doc_id": "0379d199817bd3fb9fda0dff",
+      "date": "June 16, 2026",
+      "title": "BlockDAG’s $0.05 Buyback Creates Opportunity as SUI Recovers and XMR Climbs to $392"
+    },
+    {
+      "doc_id": "c8496156c57d066477326cc3",
+      "date": "June 16, 2026",
+      "title": "Standard Chartered Predicts UNI Could Surge 40x to $100 by 2030"
+    },
+    {
+      "doc_id": "d4279edf16f183d2c3eb0e30",
+      "date": "June 16, 2026",
+      "title": "Uniswap Price Prediction: Standard Chartered Sees UNI Reaching $100 by 2030"
+    },
+    {
+      "doc_id": "e2835dd3609d14aed8385faf",
+      "date": "June 16, 2026",
+      "title": "CLARITY Act Could Transform Crypto Regulation in America, Says Tim Scott | MEXC News"
+    },
+    {
+      "doc_id": "c9e4fbff1e2c4381c072c791",
+      "date": "June 16, 2026",
+      "title": "The Pope’s Financial Conflict-of-Interest in the Resettlement Industry."
+    },
+    {
+      "doc_id": "b16e6090957724994c84f7b4",
+      "date": "June 16, 2026",
+      "title": "2029 Final Prediction: When Cryptocurrencies Completely \"Disappear,\" Who Will Remain in This Financial Upheaval?"
+    }
+  ],
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

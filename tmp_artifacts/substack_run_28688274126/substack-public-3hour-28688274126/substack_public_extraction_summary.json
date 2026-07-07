@@ -1,0 +1,550 @@
+{
+  "mode": "extract",
+  "connector": "substack_public_article",
+  "ran_at": "2026-07-03T23:53:39Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://substack.com/api/v1/post/search",
+  "selection": "new_or_updated",
+  "max_pages": 1,
+  "limit": 60,
+  "include_pdfs": false,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 255,
+  "filtered_count": 249,
+  "excluded_count": 6,
+  "candidate_count": 247,
+  "selected_count": 60,
+  "processed_count": 60,
+  "saved_new": 5,
+  "saved_updates": 55,
+  "invalid_wired_records_removed": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [
+    {
+      "url": "https://fazilcrypto.substack.com/p/claves-para-invertir-en-criptomonedas-c3d",
+      "title": "🔑 Claves para invertir en criptomonedas 03/07/26",
+      "date": "2026-07-03T07:08:24.972Z",
+      "slug": "claves-para-invertir-en-criptomonedas-c3d",
+      "substack_post_id": 204688075,
+      "publication_id": 2087835,
+      "publication_name": "Fazil Crypto Newsletter",
+      "authors": [
+        "Fazil Crypto"
+      ],
+      "summary": "Las últimas novedades del mundo crypto. Cada semana.",
+      "preview_text": "Noticias Crypto de la semana🗞️",
+      "post_tags": [
+        "noticias crypto",
+        "criptomonedas",
+        "fazil crypto",
+        "BTC",
+        "noticias bitcoin",
+        "crypto"
+      ],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 752,
+      "reaction_count": 3,
+      "comment_count": 0,
+      "matched_keywords": [
+        "crypto"
+      ],
+      "search_position": 4,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "CRYPTO"
+      ],
+      "matched_topic_labels": [
+        "Crypto"
+      ],
+      "matched_topic_keywords": [
+        "crypto",
+        "bitcoin"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Crypto investing tips for individuals."
+    },
+    {
+      "url": "https://oleroladele.substack.com/p/ipo-scam-or-opportunity",
+      "title": "“IPO SCAM?” OR OPPORTUNITY?",
+      "date": "2026-06-29T09:02:25.858Z",
+      "slug": "ipo-scam-or-opportunity",
+      "substack_post_id": 204079062,
+      "publication_id": 2361911,
+      "publication_name": "Money Wit Newsletter",
+      "authors": [
+        "The Money Wit"
+      ],
+      "summary": "Let's talk about how the current Global, African and National affect you as a person.",
+      "preview_text": "In this audio, Oler Oladele, CFA breaks down three big stories shaping Africa’s markets right now—and what they actually mean for your money:",
+      "post_tags": [
+        "global news",
+        "opec",
+        "weekly news review",
+        "Investing",
+        "SMEs",
+        "CBN",
+        "business",
+        "NGX",
+        "FX",
+        "Oler Oladele",
+        "finance education",
+        "money news",
+        "Debt",
+        "Africa food economy fintech",
+        "cryptocurriencies",
+        "Wealth Building",
+        "NigeriaStockMarket",
+        "Nigeria remittances 2026",
+        "Seplat",
+        "investment",
+        "financial mistakes",
+        "CBN IMTO naira settlement",
+        "nigerian investment",
+        "AFRICA",
+        "AI",
+        "African diaspora investment",
+        "Dangote refinery exports Africa",
+        "nigerian stock market",
+        "uae"
+      ],
+      "post_type": "podcast",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 399,
+      "reaction_count": 0,
+      "comment_count": 0,
+      "matched_keywords": [
+        "ipo"
+      ],
+      "search_position": 7,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "CAPITAL_FORMATION",
+        "ENFORCEMENT",
+        "AI_TECH",
+        "CRYPTO",
+        "CREDIT_MARKETS",
+        "FINANCIAL_MARKETS",
+        "ECONOMIC_GROWTH"
+      ],
+      "matched_topic_labels": [
+        "Capital Formation",
+        "Enforcement",
+        "AI & Tech",
+        "Crypto",
+        "Credit Markets",
+        "Financial Markets",
+        "Economic Growth"
+      ],
+      "matched_topic_keywords": [
+        "ipo",
+        "fine",
+        "settlement",
+        "ai",
+        "fintech",
+        "crypto",
+        "debt",
+        "market",
+        "stock",
+        "dow",
+        "economy"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Focus on personal investing and financial education for individuals."
+    },
+    {
+      "url": "https://cryptojargon.substack.com/p/crypto-cult-is-back-heres-what-you",
+      "title": "7 months. A lot happened. Let's catch up.",
+      "date": "2026-06-29T02:31:07.999Z",
+      "slug": "crypto-cult-is-back-heres-what-you",
+      "substack_post_id": 204013103,
+      "publication_id": 401332,
+      "publication_name": "Crypto Cult by Fedhabit",
+      "authors": [
+        "Madhav"
+      ],
+      "summary": "Edition 01 | Crypto Cult by FedHabit",
+      "preview_text": "Hey, We went quiet for 7 months, but the market didn’t.Crypto Cult by Fedhabit is a reader-supported publication. To receive new posts and support my work, consider becoming a free or paid subscriber.",
+      "post_tags": [
+        "trading indicator",
+        "trading",
+        "crypto",
+        "fedhabit",
+        "bitcoin"
+      ],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 778,
+      "reaction_count": 2,
+      "comment_count": 0,
+      "matched_keywords": [
+        "crypto"
+      ],
+      "search_position": 5,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "AI_TECH",
+        "CRYPTO",
+        "FINANCIAL_MARKETS",
+        "ECONOMIC_GROWTH"
+      ],
+      "matched_topic_labels": [
+        "AI & Tech",
+        "Crypto",
+        "Financial Markets",
+        "Economic Growth"
+      ],
+      "matched_topic_keywords": [
+        "ai",
+        "crypto",
+        "bitcoin",
+        "market",
+        "trading",
+        "fed"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Crypto trading updates and tips for personal investment."
+    },
+    {
+      "url": "https://themarketraven.substack.com/p/the-difference-between-traders-and",
+      "title": "The Difference Between Traders And Gamblers",
+      "date": "2026-06-26T11:16:27.839Z",
+      "slug": "the-difference-between-traders-and",
+      "substack_post_id": 199396478,
+      "publication_id": 2626605,
+      "publication_name": "The Market Raven",
+      "authors": [
+        "The Market Raven"
+      ],
+      "summary": "The Difference Between Traders And Gamblers",
+      "preview_text": "The Difference Between Traders And Gamblers",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 383,
+      "reaction_count": 29,
+      "comment_count": 0,
+      "matched_keywords": [
+        "market"
+      ],
+      "search_position": 19,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "market"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Likely investing advice comparing traders to gamblers."
+    },
+    {
+      "url": "https://fazilcrypto.substack.com/p/claves-para-invertir-en-criptomonedas-6c4",
+      "title": "🔑 Claves para invertir en criptomonedas 26/06/26",
+      "date": "2026-06-26T07:24:52.575Z",
+      "slug": "claves-para-invertir-en-criptomonedas-6c4",
+      "substack_post_id": 203657935,
+      "publication_id": 2087835,
+      "publication_name": "Fazil Crypto Newsletter",
+      "authors": [
+        "Fazil Crypto"
+      ],
+      "summary": "Las últimas novedades del mundo crypto. Cada semana.",
+      "preview_text": "Noticias Crypto de la semana🗞️",
+      "post_tags": [
+        "noticias crypto",
+        "criptomonedas",
+        "fazil crypto",
+        "BTC",
+        "noticias bitcoin",
+        "crypto"
+      ],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 721,
+      "reaction_count": 3,
+      "comment_count": 0,
+      "matched_keywords": [
+        "crypto"
+      ],
+      "search_position": 13,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "CRYPTO"
+      ],
+      "matched_topic_labels": [
+        "Crypto"
+      ],
+      "matched_topic_keywords": [
+        "crypto",
+        "bitcoin"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.9,
+      "relevance_reason": "Spanish newsletter providing crypto investing tips."
+    },
+    {
+      "url": "https://capitanmarket.substack.com/p/otro-jueves-cobarde-84",
+      "title": "Otro jueves cobarde #84",
+      "date": "2026-06-25T12:57:36.927Z",
+      "slug": "otro-jueves-cobarde-84",
+      "substack_post_id": 203540824,
+      "publication_id": 2213377,
+      "publication_name": "Capitán Market",
+      "authors": [
+        "Capitán Market / Inversiones"
+      ],
+      "summary": "Oportunidad con Netflix.",
+      "preview_text": "Volví a comprar Netflix. A $73.",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 1345,
+      "reaction_count": 3,
+      "comment_count": 0,
+      "matched_keywords": [
+        "market"
+      ],
+      "search_position": 13,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "market"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.9,
+      "relevance_reason": "Personal investment decision mentioned (buying Netflix stock)."
+    }
+  ],
+  "status_counts": {
+    "new": 187,
+    "update_available": 60,
+    "existing": 2,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "mode": "public_substack_api",
+    "search_url": "https://substack.com/api/v1/post/search",
+    "keywords": [
+      "sec",
+      "ipo",
+      "aml",
+      "enforcement",
+      "ai",
+      "crypto",
+      "credit",
+      "market",
+      "economy"
+    ],
+    "pages_per_keyword": 1,
+    "proxy_configured": true,
+    "proxy_config_error": "",
+    "requests": [
+      {
+        "keyword": "sec",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "ipo",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "aml",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "enforcement",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "ai",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "crypto",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "credit",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "market",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "economy",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      }
+    ],
+    "errors": [],
+    "feed_discovery": {
+      "mode": "curated_substack_feeds",
+      "feeds": [
+        {
+          "label": "Capitol Account",
+          "feed_url": "https://www.capitolaccountdc.com/feed",
+          "tags_csv": "capitol-account,financial-regulation,washington-policy"
+        },
+        {
+          "label": "FinRegRag",
+          "feed_url": "https://www.finregrag.com/feed",
+          "tags_csv": "finregrag,financial-regulation,policy-commentary"
+        },
+        {
+          "label": "Bank Reg Blog",
+          "feed_url": "https://bankregblog.substack.com/feed",
+          "tags_csv": "bank-reg-blog,bank-regulation,financial-policy"
+        },
+        {
+          "label": "The Public Interest by Better Markets",
+          "feed_url": "https://bettermarkets.substack.com/feed",
+          "tags_csv": "better-markets,market-structure,financial-stability"
+        },
+        {
+          "label": "DeFi Education Fund",
+          "feed_url": "https://defieducationfund.substack.com/feed",
+          "tags_csv": "defi-education-fund,defi,crypto-policy"
+        },
+        {
+          "label": "Trustless Policy",
+          "feed_url": "https://trustlesspolicy.substack.com/feed",
+          "tags_csv": "trustless-policy,crypto-policy,market-structure"
+        },
+        {
+          "label": "Fintech Business Weekly",
+          "feed_url": "https://fintechbusinessweekly.substack.com/feed",
+          "tags_csv": "fintech-business-weekly,fintech,banking"
+        },
+        {
+          "label": "The Dig",
+          "feed_url": "https://thedig.substack.com/feed",
+          "tags_csv": "the-dig,accounting,audit,governance"
+        }
+      ],
+      "max_items_per_feed": 10,
+      "proxy_configured": true,
+      "proxy_config_error": "",
+      "requests": [
+        {
+          "feed_url": "https://www.capitolaccountdc.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.finregrag.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://bankregblog.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://bettermarkets.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://defieducationfund.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://trustlesspolicy.substack.com/feed",
+          "result_count": 7
+        },
+        {
+          "feed_url": "https://fintechbusinessweekly.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://thedig.substack.com/feed",
+          "result_count": 20
+        }
+      ],
+      "errors": [],
+      "items_found": 77
+    },
+    "include_feeds": true,
+    "items_found": 255,
+    "topic_rule_count": 9,
+    "topic_keywords_used": [
+      "sec",
+      "ipo",
+      "aml",
+      "enforcement",
+      "ai",
+      "crypto",
+      "credit",
+      "market",
+      "economy"
+    ],
+    "topic_keywords_source": "rss_topic_rules",
+    "topic_keywords_limit": 9,
+    "relevance_provider": "deepseek",
+    "relevance_model": "deepseek-v4-flash",
+    "relevance_included_count": 249,
+    "relevance_excluded_count": 6
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

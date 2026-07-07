@@ -561,6 +561,28 @@ export async function addFeed(label: string, feedUrl: string, refreshIntervalMin
   return rows[0];
 }
 
+export async function upsertFeedSource(
+  feedKey: string,
+  label: string,
+  feedUrl: string,
+  refreshIntervalMinutes = 180
+): Promise<RssFeed> {
+  await ensureSchema();
+  const sql = getSql();
+  const intervalMinutes = Math.max(1, Math.round(Number(refreshIntervalMinutes || 180)));
+  const rows = (await sql`
+    INSERT INTO rss_feeds (label, feed_url, feed_key, refresh_interval_minutes, active)
+    VALUES (${label.trim()}, ${feedUrl.trim()}, ${feedKey.trim()}, ${intervalMinutes}, true)
+    ON CONFLICT (feed_key) DO UPDATE SET
+      label = EXCLUDED.label,
+      feed_url = EXCLUDED.feed_url,
+      refresh_interval_minutes = EXCLUDED.refresh_interval_minutes,
+      active = true
+    RETURNING *
+  `) as unknown as RssFeed[];
+  return rows[0];
+}
+
 export async function markFeedRefreshed(feedKey: string): Promise<void> {
   const sql = getSql();
   await sql`UPDATE rss_feeds SET last_refresh_at = now() WHERE feed_key = ${feedKey}`;

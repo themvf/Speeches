@@ -1,0 +1,4538 @@
+{
+  "version": 1,
+  "generated_at": "2026-07-01T02:39:09Z",
+  "trend_count": 19,
+  "trends": [
+    {
+      "id": "retail-investor-protection",
+      "label": "Retail Investor Protection",
+      "canonical_tag": "investor protection",
+      "cluster_tags": [
+        "investor education",
+        "investor protection",
+        "investor protections",
+        "meme stocks",
+        "regulation best interest",
+        "retail investors",
+        "suitability"
+      ],
+      "description": "[dry-run] Emerging trend: Retail Investor Protection",
+      "total_mentions": 268,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2021-03-09",
+      "last_seen": "2026-02-26",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "b71ed92fcc2f12ddcd6cb426",
+        "3fc332e5e0bdfc853fcf51c1",
+        "5f5a19e6f93e0e95bad62a0e",
+        "da51b1c24f9145b688614916",
+        "147fafe3dad50801b7c21819",
+        "6b0ad38c538e842653cd3497",
+        "f3b2d0470f8721c82e2123ee",
+        "49726322c111fa3af7a21f9d",
+        "c5d7977ea619e857748ede3d",
+        "787ffe4b7b9ad71e24bebe7f"
+      ],
+      "top_docs": [
+        {
+          "id": "b71ed92fcc2f12ddcd6cb426",
+          "title": "Remarks at the Small Business Capital Formation Advisory Committee Meeting",
+          "date": "2026-02-26",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-sbcfac-022426-remarks-small-business-capital-formation-advisory-committee-meeting",
+          "summary": "In this speech to the SEC's Small Business Capital Formation Advisory Committee, Commissioner Paul S. Atkins reopens the Committee's work after a shutdown-related cancellation and emphasizes the importance of industry participation in regulation to improve capital formation for small businesses. He "
+        },
+        {
+          "id": "3fc332e5e0bdfc853fcf51c1",
+          "title": "Remarks at the Investor Advisory Committee Meeting",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-remarks-iac-120425",
+          "summary": "Chairman Paul S. Atkins addresses the SEC Investor Advisory Committee, emphasizing that U.S. capital markets prosper when regulation preserves investor confidence, predictability, and innovation. He outlines a priority to make public-company status more attractive and to \"guide the SEC back to the b"
+        },
+        {
+          "id": "5f5a19e6f93e0e95bad62a0e",
+          "title": "Passing the Buck on Reviewing Proposals to List and Trade Digital Asset ETPs",
+          "date": "2026-02-19",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-commodity-based-etps-091725",
+          "summary": "The SEC, spearheaded by Commissioner Caroline A. Crenshaw, has approved new rule changes allowing for the generic listing of digital asset exchange traded products (ETPs) without Commission review. Crenshaw expresses concerns over the pace of these changes due to the novelty and risks associated wit"
+        },
+        {
+          "id": "da51b1c24f9145b688614916",
+          "title": "Declawing the CAT: Statement on Consolidated Audit Trail Exemptive Relief",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-consolidated-audit-trail-021025",
+          "summary": "In her speech, Commissioner Caroline A. Crenshaw emphasizes the importance of the Consolidated Audit Trail (CAT) for market safety and regulatory oversight, expressing concerns over the recent decision to eliminate key data collection, which she argues will impair the ability of regulators to identi"
+        },
+        {
+          "id": "147fafe3dad50801b7c21819",
+          "title": "Chair Gary Gensler\u2019s End of Term Video",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-end-term-011825",
+          "summary": "Gary Gensler reflects on his tenure as Chair of the SEC, highlighting achievements in market regulation, investor protection, and the agency's role in overseeing U.S. capital markets."
+        },
+        {
+          "id": "6b0ad38c538e842653cd3497",
+          "title": "The SEC\u2019s Unusual Capacity to Serve the Public",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-sec-011425",
+          "summary": "In his final speech as SEC Chair, Gary Gensler reflects on the agency's critical role in serving the public, maintaining fair markets, and protecting investors. He acknowledges the dedication of the SEC staff, emphasizes the importance of public service, and highlights the agency's accomplishments o"
+        },
+        {
+          "id": "f3b2d0470f8721c82e2123ee",
+          "title": "It\u2019s Been a Week: Statement on Amendments to Exchange Act Rule 15c3-3",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-15c3-122024",
+          "summary": "Commissioner Hester M. Peirce discusses the amendments to Exchange Act Rule 15c3-3, emphasizing its importance in investor protection and the requirement for broker-dealers to safeguard customer assets. The rule now mandates daily reserve computations for large broker-dealers, aiming to expedite cus"
+        },
+        {
+          "id": "49726322c111fa3af7a21f9d",
+          "title": "Dissenting Statement Regarding Recent SPAC Cases \u2013 Digital World Acquisition Corp., Northern Star Investment Corp. II, and Cantor Fitzgerald, L.P.",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-spac-121224",
+          "summary": "Mark T. Uyeda dissentingly addresses recent SEC cases against three SPACs, arguing that the alleged misstatements are not material and do not demonstrate investor harm, highlighting the unique nature of SPACs compared to traditional operating companies."
+        },
+        {
+          "id": "c5d7977ea619e857748ede3d",
+          "title": "\u201cThe Investor\u2019s Advocate\u201d: Prepared Remarks before the Investor Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/investors-advocate-prepared-remarks-investor-advisory-committee",
+          "summary": "In his remarks to the Investor Advisory Committee, SEC Chair Gary Gensler emphasized the critical role of investor protection in maintaining trust in capital markets. He highlighted the SEC's mission to protect investors, promote market efficiency, and facilitate capital formation. Gensler reflected"
+        },
+        {
+          "id": "787ffe4b7b9ad71e24bebe7f",
+          "title": "Remarks at the Program on Corporate Compliance and Enforcement Annual Fall Conference",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/remarks-program-corporate-compliance-enforcement-annual-fall-conference",
+          "summary": "Sanjay Wadhwa, Acting Director of the SEC's Division of Enforcement, spoke at the Program on Corporate Compliance and Enforcement Annual Fall Conference, highlighting the SEC's enforcement results for fiscal year 2024. He emphasized the importance of robust enforcement and fostering a compliance cul"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "finra_regulatory_notice",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "crypto-digital-assets",
+      "label": "Crypto & Digital Assets",
+      "canonical_tag": "crypto",
+      "cluster_tags": [
+        "bitcoin",
+        "blockchain",
+        "coinbase",
+        "crypto",
+        "crypto assets",
+        "crypto custody",
+        "crypto regulation",
+        "crypto-assets",
+        "crypto-markets",
+        "crypto-regulation",
+        "crypto-treasury",
+        "cryptocurrency",
+        "defi",
+        "digital assets",
+        "ripple"
+      ],
+      "description": "[dry-run] Emerging trend: Crypto & Digital Assets",
+      "total_mentions": 220,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2009-01-03",
+      "last_seen": "2026-02-25",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "c80778cc129876d26360591f",
+        "ca3366978d93967da746708f",
+        "19e0aa038ea5dec2492301af",
+        "0d13d7b230bc25b647601140",
+        "66a9cd0234c438bc53ab883a",
+        "170f47c03330894571aacf96",
+        "3c07c0a9d75169aa4503bcd7",
+        "87d504d535326914ddaf6738",
+        "7435ff38af249f2cc649f8c4",
+        "d7def04473dcac56ab5d4039"
+      ],
+      "top_docs": [
+        {
+          "id": "c80778cc129876d26360591f",
+          "title": "The chief of the SEC is headlining an event sponsored by a crypto firm at war with it",
+          "date": "2026-02-25",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/news-analysis/2026/02/24/the-chief-of-the-sec-is-headlining-an-event-sponsored-by-a-crypto-firm-at-war-with-it",
+          "summary": "The article reports on the unusual situation in which Unicoin, a crypto firm currently being sued by the U.S. Securities and Exchange Commission (SEC), is the platinum (lead) sponsor of the DC Blockchain Summit where SEC Chairman Paul Atkins will be a headlining speaker. Unicoin CEO Alexander Konany"
+        },
+        {
+          "id": "ca3366978d93967da746708f",
+          "title": "GD Culture (GDC) news: Management wins board approval to sell BTC",
+          "date": "2026-02-25",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/business/2026/02/25/bitcoin-treasury-firm-gd-culture-set-to-sell-btc-holdings-to-fund-share-buybacks",
+          "summary": "GD Culture Group (GDC) has received board approval to sell part of its 7,500-bitcoin reserve, currently valued at about $497 million, in order to help fund a previously announced $100 million stock repurchase program. The authorization gives management full discretion over the timing and amount of a"
+        },
+        {
+          "id": "19e0aa038ea5dec2492301af",
+          "title": "Who will ZachXBT expose as 'insider traders' on Thursday? Polymarket thinks these firms",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/markets/2026/02/24/polymarket-bettors-put-usd3-million-on-which-crypto-firm-zachxbt-will-expose-next",
+          "summary": "The article reports on a Polymarket prediction market speculating which crypto firm blockchain investigator ZachXBT will accuse of insider trading in a promised February 26 report. Nearly $3 million in volume has been wagered on outcomes, with Solana-based liquidity platform Meteora currently leadin"
+        },
+        {
+          "id": "0d13d7b230bc25b647601140",
+          "title": "Jane Street faces claims of insider trading that sped up Terraform's 2022 collapse",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/markets/2026/02/24/jane-street-faces-claims-of-insider-trading-that-sped-up-terraform-s-2022-collapse-ft",
+          "summary": "The article reports that Terraform Labs' bankruptcy administrator, Todd Snyder, has filed a lawsuit against high-frequency trading firm Jane Street, accusing it of using insider information from Terraform insiders to front-run trades that allegedly accelerated the May 2022 collapse of TerraUSD (UST)"
+        },
+        {
+          "id": "66a9cd0234c438bc53ab883a",
+          "title": "Meta-AMD chip deal, Wall Street's AI angst, Trump's State of the Union and more in Morning Squawk",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.cnbc.com/2026/02/24/5-things-to-know-before-the-market-opens.html",
+          "summary": "The CNBC Morning Squawk newsletter outlines five main developments affecting markets. 1) U.S. stocks fell sharply as new tariffs and concerns about AI disruption hit sentiment: Anthropic's new Claude Code programming features hurt IBM and its security tool weighed on cybersecurity stocks; financial "
+        },
+        {
+          "id": "170f47c03330894571aacf96",
+          "title": "CNBC Daily Open: Unstable tariff situation and new AI disruption spark market sell-off",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.cnbc.com/2026/02/24/cnbc-daily-open-unstable-tariff-situation-and-new-ai-disruption-spark-market-sell-off.html",
+          "summary": "The article reports a broad market sell-off driven by fears that new AI tools could disrupt cybersecurity business models and by rising uncertainty over global tariffs. Anthropic\u2019s launch of Claude Code Security rattled confidence in cybersecurity firms, especially IBM, whose shares plunged over 13%"
+        },
+        {
+          "id": "3c07c0a9d75169aa4503bcd7",
+          "title": "Bitcoin extends decline, falling below $63,000 before paring some losses",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.cnbc.com/2026/02/24/bitcoin-extends-decline-falling-below-64000-btc-trump-tariffs-ai-crypto.html",
+          "summary": "The article reports that Bitcoin fell more than 5% on Tuesday, briefly dropping below $63,000 to a low of $62,964.64 before recovering some losses to trade around $63,290, down 1.5% by late morning U.S. time. Analysts attribute the move to broader risk-off sentiment rather than crypto-specific facto"
+        },
+        {
+          "id": "87d504d535326914ddaf6738",
+          "title": "Jane Street sued over alleged front-running in $40 billion Terraform collapse",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.bloomberg.com/news/articles/2026-02-24/jane-street-sued-for-insider-trading-by-terraform-administrator",
+          "summary": "The article reports that Jane Street Group LLC has been sued for alleged insider trading and front\u2011running related to the collapse of Terraform Labs in 2022. The lawsuit is brought by the administrator responsible for winding up Terraform Labs and claims that Jane Street traded on non-public informa"
+        },
+        {
+          "id": "7435ff38af249f2cc649f8c4",
+          "title": "Bitcoin treasury news: Adam Back's SPAC merger with Cantor Equity Partners could come as soon as April",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/markets/2026/02/24/adam-back-s-bstr-moving-forward-with-public-listing-plans-hopes-for-april-approval",
+          "summary": "The article reports that Bitcoin Standard Treasury Company (BSTR), led by early Bitcoin pioneer Adam Back, is moving ahead with plans to go public via a SPAC merger with Cantor Equity Partners I (CEPO), targeting shareholder approval as soon as April 2026 despite sharp declines in bitcoin and bitcoi"
+        },
+        {
+          "id": "d7def04473dcac56ab5d4039",
+          "title": "Ethereum Foundation starts 70,000 ETH staking process to fund operations, bolster network",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/business/2026/02/24/putting-the-treasury-to-work-the-ethereum-foundation-just-staked-70-000-eth-to-fund-its-future",
+          "summary": "The Ethereum Foundation has begun staking 70,000 ETH from its treasury to generate rewards that will fund protocol research, ecosystem development, and community grants. The process started with a 2,016 ETH deposit and uses Dirk and Vouch, open-source validator tools from Attestant, to distribute si"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "federal_reserve_speech_testimony",
+        "newsapi_article",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "broker-dealer-regulation",
+      "label": "Broker-Dealer Regulation",
+      "canonical_tag": "finra",
+      "cluster_tags": [
+        "broker-dealer",
+        "broker-dealer compliance",
+        "central clearing",
+        "central-clearing",
+        "civil settlement",
+        "clearing",
+        "clearing agencies",
+        "clearing-agencies",
+        "finra",
+        "securities lending",
+        "settlement",
+        "settlement cycle",
+        "treasury clearing",
+        "treasury-clearing"
+      ],
+      "description": "[dry-run] Emerging trend: Broker-Dealer Regulation",
+      "total_mentions": 126,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2008-09-17",
+      "last_seen": "2026-02-27",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "68df1bce679a8ba9099f2bb6",
+        "2b54e3696f3a3f1d2d22f52e",
+        "279b8e27b10156b610532cef",
+        "960aad6310a88722328bbec6",
+        "71fca3f8c5b6d5aa0c2af83c",
+        "8e249b9a06b65aa8f8b2e8fc",
+        "a92eb71745cb53899efb97a8",
+        "ac9a50abb039d0d770db45df",
+        "05457c9936438f5e05db9241",
+        "f1f2a2574adcaa1625337770"
+      ],
+      "top_docs": [
+        {
+          "id": "68df1bce679a8ba9099f2bb6",
+          "title": "FINRA Adopts Amendments to Rule 3220 (Influencing or Rewarding Employees of Others)",
+          "date": "2026-02-27",
+          "source_kind": "finra_regulatory_notice",
+          "url": "https://www.finra.org/rules-guidance/notices/26-05",
+          "summary": "FINRA, as part of its FINRA Forward modernization initiative, has amended Rule 3220 (the Gifts Rule) effective March 30, 2026. The amendments raise the annual gift limit from $100 to $300 per recipient, codify and clarify prior interpretive guidance, and authorize exemptive relief. New supplementary"
+        },
+        {
+          "id": "2b54e3696f3a3f1d2d22f52e",
+          "title": "FINRA Adopts Amendments to the Capital Acquisition Broker Rules",
+          "date": "2026-02-23",
+          "source_kind": "finra_regulatory_notice",
+          "url": "https://www.finra.org/rules-guidance/notices/26-04",
+          "summary": "FINRA, as part of its FINRA Forward initiative, has adopted amendments to the Capital Acquisition Broker (CAB) rules, effective March 25, 2026, to reduce regulatory burdens on CABs while preserving their limited institutional business model and investor protections. Key changes include: (1) expandin"
+        },
+        {
+          "id": "279b8e27b10156b610532cef",
+          "title": "Remarks at the Asset Management Derivatives Forum 2026: Treasuries and Tokenization",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-asset-management-derivatives-forum-020926",
+          "summary": "The speech outlines SEC Commissioner Mark T. Uyeda\u2019s views on two major modernization initiatives: (1) implementation of the Treasury Clearing Rule mandating central clearing for many U.S. Treasury cash and repo transactions, and (2) facilitating tokenization of securities within existing regulatory"
+        },
+        {
+          "id": "960aad6310a88722328bbec6",
+          "title": "Update on Working Toward Treasury Clearing Implementation",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-093025-update-treasury-clearing-implementation",
+          "summary": "The speech provides an update on the SEC\u2019s implementation of its 2023 Treasury Clearing rule, which mandates central clearing for certain eligible secondary market transactions in U.S. Treasury securities. Commissioner Mark T. Uyeda explains that, due to the rule\u2019s broad market impact and implementa"
+        },
+        {
+          "id": "71fca3f8c5b6d5aa0c2af83c",
+          "title": "6,7 Meet 611: Remarks at the Roundtable on Rule 611 of Regulation NMS",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-roundtable-rule-611-regulation-nms-121625",
+          "summary": "Commissioner Hester M. Peirce delivers opening remarks at an SEC roundtable on Rule 611 of Regulation NMS (the order protection or trade-through rule). She frames her current inclination to revisit Rule 611 as a '6\u20267' on a 1\u201310 scale, emphasizing that any judgment must be contextualized by (1) the e"
+        },
+        {
+          "id": "8e249b9a06b65aa8f8b2e8fc",
+          "title": "Remarks at the Roundtable on Rule 611 of Regulation NMS",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/selway-121625-remarks-roundtable-rule-611-regulation-nms",
+          "summary": "Jamie Selway, Director of the SEC\u2019s Division of Trading and Markets, opens the SEC\u2019s second roundtable on Rule 611 of Regulation NMS (the Trade-Through Rule), framing it as part of a broader reexamination of equity market structure after nearly twenty years of experience with Regulation NMS. He note"
+        },
+        {
+          "id": "a92eb71745cb53899efb97a8",
+          "title": "Pacificorp Agrees to Pay $575 Million to Settle Claims for Damage Caused by Six Wildfires in Oregon and California",
+          "date": "2026-02-20",
+          "source_kind": "doj_usao_press_release",
+          "url": "https://www.justice.gov/usao-or/pr/pacificorp-agrees-pay-575-million-settle-claims-damage-caused-six-wildfires-oregon-and",
+          "summary": "The U.S. Department of Justice announced that PacifiCorp agreed to pay $575 million to settle federal claims that its electrical lines negligently started six major wildfires in Oregon and California in 2020 and 2022. The settlement reimburses substantial federal wildfire suppression costs and funds"
+        },
+        {
+          "id": "ac9a50abb039d0d770db45df",
+          "title": "Management Company For Saginaw-Based Auto Dealer To Pay Over $1.5 Million To Settle Fraud Allegations Regarding Paycheck Protection Program Loan",
+          "date": "2026-02-20",
+          "source_kind": "doj_usao_press_release",
+          "url": "https://www.justice.gov/usao-edmi/pr/management-company-saginaw-based-auto-dealer-pay-over-15-million-settle-fraud",
+          "summary": "The U.S. Attorney's Office for the Eastern District of Michigan announced that Garber Management Group, Inc., affiliated with the Garber Automotive Group, will pay $1,513,281 to settle civil allegations under the False Claims Act that it obtained a Paycheck Protection Program (PPP) loan for which it"
+        },
+        {
+          "id": "05457c9936438f5e05db9241",
+          "title": "Statement on Approval of FINRA Proposed Rules to Establish Post-Trade Transparency in the Treasury Markets",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-finra-020724",
+          "summary": "Gary Gensler, Chair of the SEC, announces the approval of FINRA's rule for public dissemination of U.S. Treasury transactions on a trade-by-trade basis to enhance post-trade transparency, benefiting both investors and issuers."
+        },
+        {
+          "id": "f1f2a2574adcaa1625337770",
+          "title": "Statement Regarding Exemption from National Securities Association Membership",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-exemption-082323",
+          "summary": "SEC Chair Gary Gensler supports final amendments to Rule 15b9-1 to modernize broker-dealer registration requirements with national securities associations, aiming to enhance oversight and address regulatory gaps in off-exchange trading."
+        }
+      ],
+      "sources": [
+        "Speech",
+        "doj_usao_press_release",
+        "finra_regulatory_notice",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "investment-advisers-asset-management",
+      "label": "Investment Advisers & Asset Management",
+      "canonical_tag": "investment advisers",
+      "cluster_tags": [
+        "asset management",
+        "conflicts of interest",
+        "custody rule",
+        "fiduciary duties",
+        "fiduciary duty",
+        "fiduciary-duty",
+        "hedge funds",
+        "investment adviser",
+        "investment adviser misconduct",
+        "investment advisers",
+        "investment advisers act",
+        "mutual funds",
+        "private equity"
+      ],
+      "description": "[dry-run] Emerging trend: Investment Advisers & Asset Management",
+      "total_mentions": 123,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2020-07-01",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "410419e2758494b49b24b0a1",
+        "88573bb1d945365e2ffb1867",
+        "c338c3c0607896956f7f4a0d",
+        "7035c1402dcaf0aaf4d24bf9",
+        "ac9b7e8e43a513eb326bee5d",
+        "b7b560650801300900cd1341",
+        "9eafdb2586c0b723772eaed7",
+        "3055c9c798931d59d39bc588",
+        "bf48d0da2bb4e6f2d6439030",
+        "c62657279ed5da4e9debc904"
+      ],
+      "top_docs": [
+        {
+          "id": "410419e2758494b49b24b0a1",
+          "title": "Remarks at the Investor Advisory Committee Meeting",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-091825-remarks-investor-advisory-committee-meeting",
+          "summary": "Chairman Paul S. Atkins addresses the SEC Investor Advisory Committee, emphasizing two main themes: (1) updating the regulatory framework for foreign private issuers (FPIs) in U.S. capital markets, and (2) expanding retail investors\u2019 access to private market assets while maintaining investor protect"
+        },
+        {
+          "id": "88573bb1d945365e2ffb1867",
+          "title": "Cutter Financial Group, LLC and Jeffrey Cutter",
+          "date": "2026-02-19",
+          "source_kind": "sec_enforcement_litigation",
+          "url": "https://www.sec.gov/enforcement-litigation/litigation-releases/lr-26485",
+          "summary": "The U.S. District Court for the District of Massachusetts entered a final judgment against investment adviser Jeffrey Cutter and his firm, Cutter Financial Group LLC (CFG), for breaching fiduciary duties in connection with annuity sales to advisory clients. Following an April 23, 2025 jury verdict, "
+        },
+        {
+          "id": "c338c3c0607896956f7f4a0d",
+          "title": "Remarks at the ICI Global Asset Management Asia Forum",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/speech-uyeda-iciglobal-asset-management-asia-forum-113022",
+          "summary": "Mark T. Uyeda, during his remarks at the ICI Global Asset Management Asia Forum, emphasized the interconnectedness of U.S. and APAC capital markets, the importance of a robust asset management industry, and the need for effective regulatory frameworks. He discussed historical perspectives on Singapo"
+        },
+        {
+          "id": "7035c1402dcaf0aaf4d24bf9",
+          "title": "Accountability in an Evolving Asset Management Industry",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-service-providers-oversight-102622",
+          "summary": "Jaime Liz\u00e1rraga of the SEC discusses proposed reforms aimed at enhancing accountability and investor protections in the asset management industry, particularly regarding the outsourcing of advisory functions by investment advisers."
+        },
+        {
+          "id": "ac9b7e8e43a513eb326bee5d",
+          "title": "Raising the Bar on Diversity, Equity and Inclusion",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-remarks-raising-bar-diversity-equity-inclusion-101322",
+          "summary": "In a speech during Hispanic Heritage Month, Jaime Liz\u00e1rraga emphasizes the importance of diversity, equity, and inclusion (DEI) within the asset management industry. He highlights the significance of DEI for investment decisions, shares statistical disparities in representation, and outlines the SEC"
+        },
+        {
+          "id": "b7b560650801300900cd1341",
+          "title": "Remarks at the Association of Asian American Investment Managers Elevate 2022 Keynote Lunch Program",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-asian-american-investment-managers-elevate-092922",
+          "summary": "Mark T. Uyeda's keynote address highlights the significance of diversity and opportunity in the asset management industry for Asian Americans. He acknowledges the contributions of the Association of Asian American Investment Managers (AAAIM) and discusses the barriers Asian Americans face, such as t"
+        },
+        {
+          "id": "9eafdb2586c0b723772eaed7",
+          "title": "Remarks Before the Asset Management Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-amac-remarks-110321",
+          "summary": "Gary Gensler addresses the Asset Management Advisory Committee, highlighting the SEC's role in overseeing the asset management sector, the growth in private funds, and the need for enhanced transparency and regulatory measures in areas such as fund disclosures and digital engagement practices."
+        },
+        {
+          "id": "3055c9c798931d59d39bc588",
+          "title": "Remarks Before Asset Management Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-amac-remarks-110321",
+          "summary": "Hester M. Peirce's remarks highlight the achievements and recommendations of the Asset Management Advisory Committee (AMAC) as it concludes its tenure, emphasizing the importance of small advisers and the need for regulatory adjustments to better serve them."
+        },
+        {
+          "id": "bf48d0da2bb4e6f2d6439030",
+          "title": "Remarks at the October 28, 2021 Meeting of the Asset Management Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/ten-siethoff-amac-20211028",
+          "summary": "Sarah ten Siethoff's remarks at the SEC's Asset Management Advisory Committee meeting cover important topics such as digital engagement practices, the challenges faced by small advisers and funds, and the implications of predictive data analytics in asset management."
+        },
+        {
+          "id": "c62657279ed5da4e9debc904",
+          "title": "Prepared Remarks Before The Future of Asset Management North America Conference",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-famnac-2021-09-29",
+          "summary": "In his remarks at the Future of Asset Management North America Conference, SEC Chairman Gary Gensler discusses the evolution of asset management, highlighting significant growth and changes in the industry. He emphasizes the importance of regulatory evolution to address new challenges and opportunit"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "securities-fraud-manipulation",
+      "label": "Securities Fraud & Manipulation",
+      "canonical_tag": "securities fraud",
+      "cluster_tags": [
+        "insider trading",
+        "investment fraud",
+        "market manipulation",
+        "misrepresentation",
+        "ponzi scheme",
+        "ponzi-like scheme",
+        "ponzi-like-scheme",
+        "ponzi-scheme",
+        "securities fraud"
+      ],
+      "description": "[dry-run] Emerging trend: Securities Fraud & Manipulation",
+      "total_mentions": 96,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2019-11-22",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "eb92f60ee425efc90d9041c9",
+        "8a506c5604e456e2fffe7e94",
+        "c7bd0af7f5e7a09aaac78d30",
+        "6e3e422c1728f0513aedbc91",
+        "9c5d299d0081c170f9c753e9",
+        "37d39a5b2a2b39be28ccfcfc",
+        "33794548da38a27f7be530d2",
+        "267f9f36e5ae30a83dc1236c",
+        "2e934002e479206cc6619292",
+        "c961b12f86790735c58ee491"
+      ],
+      "top_docs": [
+        {
+          "id": "eb92f60ee425efc90d9041c9",
+          "title": "C-Hear, Inc.; Adena Harmon",
+          "date": "2026-02-20",
+          "source_kind": "sec_enforcement_litigation",
+          "url": "https://www.sec.gov/enforcement-litigation/litigation-releases/lr-26486",
+          "summary": "The SEC has filed a civil enforcement action in the Northern District of Texas against Texas startup C-Hear, Inc. and its former CEO, Adena Harmon, alleging a multi-year securities fraud scheme involving misleading statements to investors, concealment of Harmon's financial crime convictions, and mis"
+        },
+        {
+          "id": "8a506c5604e456e2fffe7e94",
+          "title": "Bluesky Eagle Capital Management Ltd.",
+          "date": "2026-02-19",
+          "source_kind": "sec_enforcement_litigation",
+          "url": "https://www.sec.gov/enforcement-litigation/litigation-releases/lr-26484",
+          "summary": "The SEC obtained a default final judgment against purported investment adviser Bluesky Eagle Capital Management Ltd. for making material misrepresentations and unsubstantiated statements in its December 2023 Form ADV. The SEC\u2019s complaint alleged Bluesky Eagle falsely claimed to be an Exempt Reportin"
+        },
+        {
+          "id": "c7bd0af7f5e7a09aaac78d30",
+          "title": "Crypto 2.0: Regulatory Whiplash",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-remarks-crypto-2-0-regulatory-whiplash-022725",
+          "summary": "Commissioner Caroline A. Crenshaw expressed concern over the SEC's dismissal of its enforcement action against Coinbase, arguing it creates uncertainty in the regulatory framework for crypto assets. She highlights the longstanding application of securities laws and warns against the risks of non-enf"
+        },
+        {
+          "id": "6e3e422c1728f0513aedbc91",
+          "title": "Statement on Jury\u2019s Verdict in Trial of Michael P. Owens, Dawson L. Davenport, Robert A. Gunton, Andrea J. Lindstrom, and Julie A. Yale",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/grewal-statement-jury-verdict-9-20-24",
+          "summary": "The SEC's Division of Enforcement announces a jury verdict finding five defendants liable for securities fraud after a trial that highlighted their fraudulent activities in raising over $67 million from investors."
+        },
+        {
+          "id": "9c5d299d0081c170f9c753e9",
+          "title": "Statement on Jury's Verdict in Trial of Mykalai Kontilai and Collectors Coffee Inc.",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/20231214",
+          "summary": "The SEC's Division of Enforcement expressed satisfaction with a jury's verdict that found Mykalai Kontilai and Collectors Coffee Inc. liable for securities fraud, emphasizing the importance of investor trust and accountability."
+        },
+        {
+          "id": "37d39a5b2a2b39be28ccfcfc",
+          "title": "Statement on Jury\u2019s Verdict in Trial of Bernard Findley and Halitron Inc",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/grewal-findley-halitron-20230118",
+          "summary": "Gurbir S. Grewal, Director of the SEC's Division of Enforcement, expressed satisfaction with a jury verdict that found Bernard Findley and Halitron Inc. liable for securities fraud due to false and misleading press releases regarding Halitron's stock buyback program and asset valuation, emphasizing "
+        },
+        {
+          "id": "33794548da38a27f7be530d2",
+          "title": "Statement on Jury\u2019s Verdict in Trial of Christopher Nohl, Michael Hull, and Entities They Owned or Controlled",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/grewal-nohl-hull-entities-20220802",
+          "summary": "A jury found Christopher Nohl, Michael Hull, and their associated entities liable for securities fraud related to the management of the Greenpoint Tactical Income Fund. The SEC expressed satisfaction with the verdict, emphasizing the duty of fund managers to act transparently and ethically."
+        },
+        {
+          "id": "267f9f36e5ae30a83dc1236c",
+          "title": "Statement on Jury\u2019s Verdict in Trial of Michael C. Furman",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/grewal-furman-verdict-20211216",
+          "summary": "The SEC's Division of Enforcement, led by Gurbir S. Grewal, expressed satisfaction with the jury's verdict that found Michael C. Furman liable for securities fraud and the illegal sale of unregistered securities, emphasizing the Commission's commitment to pursuing violators of securities laws."
+        },
+        {
+          "id": "2e934002e479206cc6619292",
+          "title": "Statement on Jury\u2019s Verdict in Trial of Gregory Grenda and the Grenda Group",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/grewal-grenda-20211210",
+          "summary": "The SEC expresses satisfaction with a jury's verdict that found Gregory Grenda and the Grenda Group liable for securities fraud, emphasizing their failure to disclose crucial information to clients regarding Walter Grenda's barred status as an investment adviser due to fraudulent conduct."
+        },
+        {
+          "id": "c961b12f86790735c58ee491",
+          "title": "\u201cThey Are Merely the Agents\u201d: Prepared Remarks before the American Bar Association",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-prepared-remarks-american-bar-association-231207",
+          "summary": "Gary Gensler's remarks highlight the importance of corporate governance in protecting investors and enhancing market participation. He discusses historical perspectives on corporate governance, key legislative acts, and recent SEC rulemaking initiatives aimed at improving executive compensation, ins"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "newsapi_article",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "corporate-governance",
+      "label": "Corporate Governance",
+      "canonical_tag": "corporate governance",
+      "cluster_tags": [
+        "audit committee",
+        "board diversity",
+        "corporate governance",
+        "executive compensation",
+        "proxy voting",
+        "shareholder rights"
+      ],
+      "description": "[dry-run] Emerging trend: Corporate Governance",
+      "total_mentions": 91,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2021-03-09",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "7c2d468b9c7c755dbba0e2f5",
+        "3fc332e5e0bdfc853fcf51c1",
+        "f5d08a66148a26d749a7b297",
+        "1b1e314d4c0a696a43c4ed2c",
+        "0e56149d5d780e1f6daa0894",
+        "6967a3f98ae26dafa6b4d7ff",
+        "c961b12f86790735c58ee491",
+        "6f3a8ea6c15a5f904f184f1f",
+        "e830932eacabb44fd4332776",
+        "30f00a864acfd494bf9d9f72"
+      ],
+      "top_docs": [
+        {
+          "id": "7c2d468b9c7c755dbba0e2f5",
+          "title": "Remarks at the 53rd Annual Securities Regulation Institute",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-securities-regulation-institute-012626",
+          "summary": "Commissioner Mark T. Uyeda uses the Alan B. Levenson Keynote Address to argue that the SEC must refocus on its statutory mandate to balance investor protection with capital formation, streamline and scale its disclosure regime, and ground rules in financial materiality rather than broader social or "
+        },
+        {
+          "id": "3fc332e5e0bdfc853fcf51c1",
+          "title": "Remarks at the Investor Advisory Committee Meeting",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-remarks-iac-120425",
+          "summary": "Chairman Paul S. Atkins addresses the SEC Investor Advisory Committee, emphasizing that U.S. capital markets prosper when regulation preserves investor confidence, predictability, and innovation. He outlines a priority to make public-company status more attractive and to \"guide the SEC back to the b"
+        },
+        {
+          "id": "f5d08a66148a26d749a7b297",
+          "title": "Keynote Address at the John L. Weinberg Center for Corporate Governance\u2019s 25th Anniversary Gala",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-10092025-keynote-address-john-l-weinberg-center-corporate-governances-25th-anniversary-gala",
+          "summary": "In this keynote, SEC Chairman Paul S. Atkins argues that the U.S. public markets have become less attractive due to burdensome shareholder proposal rules and costly securities litigation, and outlines reforms he believes are needed to \"make IPOs great again.\" He focuses on (1) limiting or reshaping "
+        },
+        {
+          "id": "1b1e314d4c0a696a43c4ed2c",
+          "title": "Staying in Our Lane: Statement on Two Recommendations from the Division of Corporation Finance",
+          "date": "2026-02-19",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-recommendations-division-corporation-finance-091725",
+          "summary": "SEC Commissioner Hester M. Peirce emphasizes the SEC's recognition of its authority limits, especially concerning mandatory arbitration provisions in investor claims. The SEC will no longer consider the presence of arbitration clauses in its decision to accelerate the effectiveness of registration s"
+        },
+        {
+          "id": "0e56149d5d780e1f6daa0894",
+          "title": "Statement on Staff Legal Bulletin 14M",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-staff-legal-bulletin-14m-021225",
+          "summary": "Commissioner Caroline A. Crenshaw critiques the SEC's issuance of Staff Legal Bulletin 14M, arguing it disrupts the shareholder proposal process and creates uncertainty for investors and corporations. She emphasizes that the timing and nature of the change undermine corporate democracy and investor "
+        },
+        {
+          "id": "6967a3f98ae26dafa6b4d7ff",
+          "title": "Remarks at Ohio State Law Journal Symposium 2024: ESG and Enforcement of the Federal Securities Laws",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/grewal-ohs-022324",
+          "summary": "In his remarks at the Ohio State Law Journal Symposium, Gurbir S. Grewal, Director of the SEC's Division of Enforcement, outlines the SEC's mission regarding ESG and investor protection. He emphasizes the importance of accountability for corporate conduct, proactive compliance, and truthful disclosu"
+        },
+        {
+          "id": "c961b12f86790735c58ee491",
+          "title": "\u201cThey Are Merely the Agents\u201d: Prepared Remarks before the American Bar Association",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-prepared-remarks-american-bar-association-231207",
+          "summary": "Gary Gensler's remarks highlight the importance of corporate governance in protecting investors and enhancing market participation. He discusses historical perspectives on corporate governance, key legislative acts, and recent SEC rulemaking initiatives aimed at improving executive compensation, ins"
+        },
+        {
+          "id": "6f3a8ea6c15a5f904f184f1f",
+          "title": "The SEC\u2019s Swiss Army Statute: Statement on Charter Communications, Inc.",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-uyeda-statement-charter-communications-111423",
+          "summary": "Commissioners Hester M. Peirce and Mark T. Uyeda criticize the SEC's use of Section 13(b)(2)(B) to regulate corporate practices, particularly in the context of Charter Communications' stock buybacks. They argue that the Commission overreaches by applying accounting controls to legal compliance matte"
+        },
+        {
+          "id": "e830932eacabb44fd4332776",
+          "title": "Big \u201cIssues\u201d in the Small Business Safe Harbor: Remarks at the 50th Annual Securities Regulation Institute",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-remarks-securities-regulation-institute-013023",
+          "summary": "Caroline A. Crenshaw's speech at the Securities Regulation Institute discusses the evolution and implications of Regulation D, particularly Rule 506, highlighting investor protection, inflated valuations, corporate governance issues, and the unintended consequences for small businesses. She proposes"
+        },
+        {
+          "id": "30f00a864acfd494bf9d9f72",
+          "title": "Statement on Final Amendments to Rule 10b5-1 and Other Insider Trading Requirements",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-insider-trading-20221214",
+          "summary": "The SEC, led by Gary Gensler, is considering amendments to Rule 10b5-1 aimed at enhancing disclosure and fairness in insider trading. The new measures include cooling-off periods, prohibiting overlapping trading plans, certification of material non-public information, and increased transparency requ"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "sec_enforcement_litigation"
+      ]
+    },
+    {
+      "id": "esg-sustainable-finance",
+      "label": "ESG & Sustainable Finance",
+      "canonical_tag": "esg",
+      "cluster_tags": [
+        "climate change",
+        "climate disclosure",
+        "climate disclosures",
+        "climate risk",
+        "esg",
+        "greenwashing"
+      ],
+      "description": "[dry-run] Emerging trend: ESG & Sustainable Finance",
+      "total_mentions": 84,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2021-03-04",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "7c2d468b9c7c755dbba0e2f5",
+        "9fa0662d4f9b700fdeaf6e62",
+        "6967a3f98ae26dafa6b4d7ff",
+        "85150219b0b1a3b200e5bb14",
+        "a68c1e07eb7389eb5797e3e2",
+        "94ceda71f8097bd5afec3bbb",
+        "3237cbcc3ab37c6760350b61",
+        "f6eaf37c2502816bc5c010d8",
+        "6f1dce083b1eaa57cdf7228a",
+        "e4986f92f6f26731519f8f37"
+      ],
+      "top_docs": [
+        {
+          "id": "7c2d468b9c7c755dbba0e2f5",
+          "title": "Remarks at the 53rd Annual Securities Regulation Institute",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-securities-regulation-institute-012626",
+          "summary": "Commissioner Mark T. Uyeda uses the Alan B. Levenson Keynote Address to argue that the SEC must refocus on its statutory mandate to balance investor protection with capital formation, streamline and scale its disclosure regime, and ground rules in financial materiality rather than broader social or "
+        },
+        {
+          "id": "9fa0662d4f9b700fdeaf6e62",
+          "title": "Virtual Remarks at the Harvard Law School Program on International Financial Systems, 2025 Japan \u2013 U.S. Symposium",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-harvard-law-school-program-intl-financial-systems-2025-japan-us-symposium-112125",
+          "summary": "SEC Commissioner Mark T. Uyeda underscores the importance of regulatory restraint in global capital markets, using the U.S. pork industry's shift to lean, less flavorful meat under dietary policy pressure as an analogy for how well\u2011intentioned government interventions can unintentionally degrade out"
+        },
+        {
+          "id": "6967a3f98ae26dafa6b4d7ff",
+          "title": "Remarks at Ohio State Law Journal Symposium 2024: ESG and Enforcement of the Federal Securities Laws",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/grewal-ohs-022324",
+          "summary": "In his remarks at the Ohio State Law Journal Symposium, Gurbir S. Grewal, Director of the SEC's Division of Enforcement, outlines the SEC's mission regarding ESG and investor protection. He emphasizes the importance of accountability for corporate conduct, proactive compliance, and truthful disclosu"
+        },
+        {
+          "id": "85150219b0b1a3b200e5bb14",
+          "title": "Truth in Naming",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-names-rule-092023",
+          "summary": "Commissioner Jaime Liz\u00e1rraga discusses the updated truth-in-naming rule aimed at enhancing transparency in fund disclosures to better protect investors. The reforms will cover more funds and aim to prevent misleading fund names, thereby boosting investor confidence."
+        },
+        {
+          "id": "a68c1e07eb7389eb5797e3e2",
+          "title": "Remarks at the 2022 Cato Summit on Financial Regulation",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-cato-summit-financial-regulation-111722",
+          "summary": "Mark T. Uyeda's speech at the 2022 Cato Summit explores ESG investing's sustainability, challenges in defining ESG, rising costs for compliance, and the ambiguous benefits associated with ESG activities. He emphasizes the need for clearer disclosure requirements for asset managers' engagements in ES"
+        },
+        {
+          "id": "94ceda71f8097bd5afec3bbb",
+          "title": "Remarks at the Georgetown Law Hotel and Lodging Summit",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-georgetown-summit-20221025",
+          "summary": "Mark T. Uyeda discusses the SEC's proposed regulatory changes regarding climate disclosures and ESG factors during a speech at the Georgetown Law Hotel and Lodging Summit. He emphasizes the complexity of these proposals and the importance of materiality in federal securities laws, expressing caution"
+        },
+        {
+          "id": "3237cbcc3ab37c6760350b61",
+          "title": "Meeting Investor Demand for High Quality ESG Data",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-speech-meeting-investor-demand-high-quality-esg-data",
+          "summary": "Jaime Liz\u00e1rraga discusses the importance of high-quality ESG data and the SEC's proposals to facilitate ESG disclosures. He highlights the growing investor demand for climate-related and ESG information and the need for robust disclosures to support informed investment decisions."
+        },
+        {
+          "id": "f6eaf37c2502816bc5c010d8",
+          "title": "Remarks at Meeting of the SEC Investor Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-remarks-iac-092122",
+          "summary": "Hester M. Peirce emphasizes the need for deeper discussions within the SEC Investor Advisory Committee on various critical topics, including human capital management, market regulation, and ESG investing. She expresses concerns about the committee's agenda potentially stifling diverse perspectives a"
+        },
+        {
+          "id": "6f1dce083b1eaa57cdf7228a",
+          "title": "Remarks at the Meeting of the Investor Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-iac-092122",
+          "summary": "Mark T. Uyeda addresses the Investor Advisory Committee, highlighting the importance of investor input, discussing various topics on the agenda including ESG fund disclosures and proposed securities regulations, and emphasizing the role of the Committee's recommendations."
+        },
+        {
+          "id": "e4986f92f6f26731519f8f37",
+          "title": "Audit Regulators and Cliff Hangers",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-audit-regulators-cliff-hangars-20220215",
+          "summary": "In her speech, Hester M. Peirce discusses the importance of the PCAOB in ensuring financial transparency and stability within the economy. She emphasizes the cooperative nature of economic contributions by various stakeholders, including auditors, and critiques the PCAOB's structure and potential fu"
+        }
+      ],
+      "sources": [
+        "Speech"
+      ]
+    },
+    {
+      "id": "global-cross-border-regulation",
+      "label": "Global & Cross-Border Regulation",
+      "canonical_tag": "pcaob",
+      "cluster_tags": [
+        "cross-border",
+        "cross-border-cooperation",
+        "foreign private issuers",
+        "mifid ii",
+        "pcaob"
+      ],
+      "description": "[dry-run] Emerging trend: Global & Cross-Border Regulation",
+      "total_mentions": 64,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2020-07-01",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "183d1491381beb0b2e68469c",
+        "684e62c7747b3b1beb33f299",
+        "5e50f1be5af77b396ddfd1b8",
+        "53aac319c733366176f0fb5d",
+        "ad1f09692014f11a3eb84117",
+        "ace796685158509cb478271d",
+        "2bdf3b5c41eff5edaf31e761",
+        "d86d26ee79f4e3136683e981",
+        "1afbd2d0cd14d324a3ed2949",
+        "7790bf88423a3ecdccdab677"
+      ],
+      "top_docs": [
+        {
+          "id": "183d1491381beb0b2e68469c",
+          "title": "Testimony Before the U.S. House Financial Services Committee",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-testimony-hfsc-021126",
+          "summary": "Paul S. Atkins, Chairman of the SEC, testifies before the House Financial Services Committee on recommitting the SEC to its core mission of investor protection, fair and efficient markets, and capital formation. He criticizes regulatory overgrowth and disclosure complexity, arguing that excessive an"
+        },
+        {
+          "id": "684e62c7747b3b1beb33f299",
+          "title": "Statement in Connection with the 2025 AICPA Conference on Current SEC and PCAOB Developments",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/hohl-statement-aicpa-conference-121925",
+          "summary": "The SEC Office of the Chief Accountant (OCA), through Chief Accountant Kurt Hohl, outlines five strategic priorities for supporting the Commission\u2019s investor-protection mandate in a fast-changing financial reporting environment. First, OCA is focused on responsiveness to emerging issues such as arti"
+        },
+        {
+          "id": "5e50f1be5af77b396ddfd1b8",
+          "title": "Statement on PCAOB Rule on Withdrawal from Registration",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-pcaob-withdrawal-registration-010225-statement-pcaob-rule-withdrawal-registration",
+          "summary": "Chair Gary Gensler supports a new PCAOB rule for firms wishing to maintain registration, which allows withdrawal if firms fail to file annual reports and pay fees for two consecutive years. The rule includes a 60-day waiting period for firms to indicate their intent to remain registered."
+        },
+        {
+          "id": "53aac319c733366176f0fb5d",
+          "title": "Statement on PCAOB 2025 Budget",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-pcaob-budget-121824",
+          "summary": "Gary Gensler discusses the PCAOB's progress over the past four years, highlighting the successful negotiations with Chinese authorities for audit inspections and updates to interim standards originally established by the Sarbanes-Oxley Act."
+        },
+        {
+          "id": "ad1f09692014f11a3eb84117",
+          "title": "Statement on 2025 PCAOB Budget",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-pcaob-budget-121824",
+          "summary": "Mark T. Uyeda expresses concerns regarding the PCAOB's proposed budget for 2025, questioning its increase relative to the SEC's appropriations. He critiques the lack of appropriate oversight and the allocation of resources within the PCAOB, ultimately stating that he cannot support the budget recomm"
+        },
+        {
+          "id": "ace796685158509cb478271d",
+          "title": "Integrity and Transparency in Financial Reporting: the PCAOB\u2019s FY 2025 Budget",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/statement-lizarraga-pcaob-fy2025-budget",
+          "summary": "Jaime Liz\u00e1rraga expresses support for the PCAOB's final budget during a speech and wishes everyone a pleasant holiday."
+        },
+        {
+          "id": "2bdf3b5c41eff5edaf31e761",
+          "title": "Part I.A. Like It\u2019s 1999: Statement at the Open Meeting to Consider the Public Company Accounting Oversight Board\u2019s 2025 Final Budget and Accounting Support Fee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-pcaob-budget-121824",
+          "summary": "Hester M. Peirce discusses the PCAOB's proposed 2025 budget of nearly $400 million during an SEC meeting. She raises concerns about whether the PCAOB's increased budget is effectively enhancing audit quality, pointing to rising deficiency rates and restatements in public companies. Peirce advocates "
+        },
+        {
+          "id": "d86d26ee79f4e3136683e981",
+          "title": "Statement in Support of the PCAOB\u2019s 2025 Budget",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-support-pcaob-2025-budget",
+          "summary": "Caroline A. Crenshaw supports the PCAOB's 2025 budget while highlighting regulations regarding staff salaries as dictated by the Sarbanes-Oxley Act."
+        },
+        {
+          "id": "1afbd2d0cd14d324a3ed2949",
+          "title": "Remarks before the 2024 PCAOB International Institute on Audit Regulation: Robust Auditing and Quality Control Standards \u2013 the Foundation for an Effective Regulatory Regime",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/munter-speech-2024-pcaob-international-institute",
+          "summary": "In his speech, Paul Munter discusses the importance of robust auditing and quality control standards in ensuring effective regulatory regimes. He emphasizes the need for independent standard-setting oversight, the relevance of the PCAOB in maintaining audit quality, and advances the conversation aro"
+        },
+        {
+          "id": "7790bf88423a3ecdccdab677",
+          "title": "Statement on Quality Control in Auditing",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-qc1000-090924",
+          "summary": "The SEC is set to approve a new standard aimed at improving the quality control systems of audit firms to enhance investor protection. This change addresses long-standing issues with existing standards and aims to create accountability and flexibility within audit practices."
+        }
+      ],
+      "sources": [
+        "Speech",
+        "federal_reserve_speech_testimony",
+        "finra_regulatory_notice",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "enforcement-actions",
+      "label": "Enforcement Actions & Penalties",
+      "canonical_tag": "disgorgement",
+      "cluster_tags": [
+        "civil penalty",
+        "disgorgement",
+        "enforcement action",
+        "enforcement actions",
+        "whistleblower"
+      ],
+      "description": "[dry-run] Emerging trend: Enforcement Actions & Penalties",
+      "total_mentions": 58,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2021-06-29",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "ac9a50abb039d0d770db45df",
+        "c10db63b421dd6a258196d2c",
+        "d64c9a3b776d1cb059c7e117",
+        "ab3bb5461f89d46a450b60a9",
+        "c891bcc100c63a667812be71",
+        "e910dc539fbf6d4b9c9b7247",
+        "641a8062dec4998567e803ed",
+        "60339dc4cc0c80dfe59a9133",
+        "45c2d0ccb47bf780d1be29e5",
+        "3dc7ffdb75404b8f346a5c5b"
+      ],
+      "top_docs": [
+        {
+          "id": "ac9a50abb039d0d770db45df",
+          "title": "Management Company For Saginaw-Based Auto Dealer To Pay Over $1.5 Million To Settle Fraud Allegations Regarding Paycheck Protection Program Loan",
+          "date": "2026-02-20",
+          "source_kind": "doj_usao_press_release",
+          "url": "https://www.justice.gov/usao-edmi/pr/management-company-saginaw-based-auto-dealer-pay-over-15-million-settle-fraud",
+          "summary": "The U.S. Attorney's Office for the Eastern District of Michigan announced that Garber Management Group, Inc., affiliated with the Garber Automotive Group, will pay $1,513,281 to settle civil allegations under the False Claims Act that it obtained a Paycheck Protection Program (PPP) loan for which it"
+        },
+        {
+          "id": "c10db63b421dd6a258196d2c",
+          "title": "Remarks at Securities Enforcement Forum D.C. 2024",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/wadhwa-remarks-securities-enforcement-forum-110624",
+          "summary": "Sanjay Wadhwa, Acting Director of the SEC's Division of Enforcement, discussed the actions taken by the SEC over the past fiscal year, including initiatives on recordkeeping compliance, whistleblower protections, and promoting cooperation from market participants. He highlighted significant enforcem"
+        },
+        {
+          "id": "d64c9a3b776d1cb059c7e117",
+          "title": "Nothing to See; Nothing to Say: Statement on Recent Whistleblower Awards",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-uyeda-statement-whistleblower-091924",
+          "summary": "Commissioners Hester M. Peirce and Mark T. Uyeda express concerns regarding recent whistleblower award determinations totaling $122 million, emphasizing the negative impact of redactions on public scrutiny and oversight."
+        },
+        {
+          "id": "ab3bb5461f89d46a450b60a9",
+          "title": "Remarks at New York City Bar Association Compliance Institute",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/grewal-remarks-nyc-bar-association-compliance-institute-102423",
+          "summary": "Gurbir S. Grewal, Director of the SEC's Division of Enforcement, emphasized the decline in public trust towards financial institutions during his speech at the NYC Bar Association Compliance Institute. He called for a culture of proactive compliance among compliance professionals and outlined the im"
+        },
+        {
+          "id": "c891bcc100c63a667812be71",
+          "title": "Statement on Final Amendments to the Whistleblower Program",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-whistleblower-program-082622",
+          "summary": "SEC adopts amendments to the whistleblower program, enhancing support for whistleblowers and improving protections for investors."
+        },
+        {
+          "id": "e910dc539fbf6d4b9c9b7247",
+          "title": "On the Consequences of an Inconsequential Rulemaking: Statement Regarding Amendments to Whistleblower Program Rules",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-whistleblower-program-082622",
+          "summary": "Hester M. Peirce critiques the SEC's recent amendments to whistleblower rules, deeming them inconsequential and harmful. She argues the changes complicate an already complex system without adequately addressing any real issues, while also questioning the effectiveness of the proposed amendments to i"
+        },
+        {
+          "id": "641a8062dec4998567e803ed",
+          "title": "Statement on the Final Rules Related to the Whistleblower Program",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-whistleblower-program-082622",
+          "summary": "Mark T. Uyeda of the SEC expresses concerns regarding the final amendments to the Whistleblower Program, stating that there is no clear justification or regulatory weakness that necessitates changes to recently adopted rules. He highlights the importance of monitoring the existing program rather tha"
+        },
+        {
+          "id": "60339dc4cc0c80dfe59a9133",
+          "title": "Statement on Amendments to the Whistleblower Program",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-amendments-whistleblower-program-021022",
+          "summary": "The SEC proposed amendments to enhance its whistleblower program, aiming to incentivize and reward whistleblowers more effectively."
+        },
+        {
+          "id": "45c2d0ccb47bf780d1be29e5",
+          "title": "Statement on Proposal to Revisit Recently Adopted Whistleblower Rule Amendments",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-adopted-whistleblower-rule-amendments-021022",
+          "summary": "In a speech, Hester M. Peirce critiques a proposal to revisit the recently amended whistleblower rules, arguing that there is no compelling reason to do so and that the current rules are functioning effectively. She emphasizes the importance of regulatory consistency and asserts that revisiting thes"
+        },
+        {
+          "id": "3dc7ffdb75404b8f346a5c5b",
+          "title": "Statement on the Commission\u2019s Action to Disregard Recently-Amended Whistleblower Rules",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-roisman-whistleblower-procedures-2021-08-05",
+          "summary": "The SEC issued a statement announcing new procedures for addressing certain issues under the Whistleblower Rules, which may nullify existing rules amidst ongoing litigation. This approach raises concerns about the stability of regulations."
+        }
+      ],
+      "sources": [
+        "Speech",
+        "doj_usao_press_release",
+        "sec_enforcement_litigation"
+      ]
+    },
+    {
+      "id": "capital-formation-ipos",
+      "label": "Capital Formation & IPOs",
+      "canonical_tag": "spac",
+      "cluster_tags": [
+        "capital raising",
+        "crowdfunding",
+        "ipo",
+        "ipo-policy",
+        "regulation a",
+        "regulation ats",
+        "regulation crowdfunding",
+        "spac"
+      ],
+      "description": "[dry-run] Emerging trend: Capital Formation & IPOs",
+      "total_mentions": 54,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2012-05-07",
+      "last_seen": "2026-02-26",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "a8aaca5b9675be46232fae91",
+        "bc36c717f78dd7799d7f52f4",
+        "7435ff38af249f2cc649f8c4",
+        "cb7773d6d9090b5034e90768",
+        "183d1491381beb0b2e68469c",
+        "f43a49a175db5c7c428b7c8c",
+        "641523ed5197d7724c95faa0",
+        "1b1e314d4c0a696a43c4ed2c",
+        "b8a6247e1278baffd56d1ab4",
+        "a213a25c416707bb773d90ba"
+      ],
+      "top_docs": [
+        {
+          "id": "a8aaca5b9675be46232fae91",
+          "title": "Remarks at U.S. Chamber of Commerce Center for Capital Markets Competitiveness",
+          "date": "2026-02-26",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-remarks-uscoc-invest-act-022326",
+          "summary": "In this speech at the U.S. Chamber of Commerce, SEC representative Paul S. Atkins emphasizes the importance of capital formation to American prosperity and competitiveness. He notes a significant long-term decline in the number of U.S. public companies and sets a goal to \"Make IPOs Great Again\" thro"
+        },
+        {
+          "id": "bc36c717f78dd7799d7f52f4",
+          "title": "Remarks at the Small Business Capital Formation Advisory Committee Meeting",
+          "date": "2026-02-26",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-sbcfac-022426",
+          "summary": "Commissioner Mark T. Uyeda addresses the SEC Small Business Capital Formation Advisory Committee, recognizing the departure of Advocate Stacey Bowers and highlighting recent SEC staff work aimed at improving small business capital formation. He emphasizes the 2025 Staff Report from the Office of the"
+        },
+        {
+          "id": "7435ff38af249f2cc649f8c4",
+          "title": "Bitcoin treasury news: Adam Back's SPAC merger with Cantor Equity Partners could come as soon as April",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/markets/2026/02/24/adam-back-s-bstr-moving-forward-with-public-listing-plans-hopes-for-april-approval",
+          "summary": "The article reports that Bitcoin Standard Treasury Company (BSTR), led by early Bitcoin pioneer Adam Back, is moving ahead with plans to go public via a SPAC merger with Cantor Equity Partners I (CEPO), targeting shareholder approval as soon as April 2026 despite sharp declines in bitcoin and bitcoi"
+        },
+        {
+          "id": "cb7773d6d9090b5034e90768",
+          "title": "Testimony Before the U.S. Senate Committee on Banking, Housing, and Urban Affairs",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-testimony-sbhuac-021226",
+          "summary": "Paul S. Atkins, Chairman of the SEC, testifies before the Senate Banking Committee about refocusing the SEC on its core mission: investor protection, fair and efficient markets, and capital formation. He argues that federal regulatory expansion has increased costs and reduced the number of U.S.-list"
+        },
+        {
+          "id": "183d1491381beb0b2e68469c",
+          "title": "Testimony Before the U.S. House Financial Services Committee",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-testimony-hfsc-021126",
+          "summary": "Paul S. Atkins, Chairman of the SEC, testifies before the House Financial Services Committee on recommitting the SEC to its core mission of investor protection, fair and efficient markets, and capital formation. He criticizes regulatory overgrowth and disclosure complexity, arguing that excessive an"
+        },
+        {
+          "id": "f43a49a175db5c7c428b7c8c",
+          "title": "Revitalizing America\u2019s Markets at 250",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-120225-revitalizing-americas-markets-250",
+          "summary": "In this speech at the New York Stock Exchange ahead of the U.S. 250th anniversary, SEC Chairman Paul S. Atkins argues that American prosperity has historically depended on free capital markets grounded in property rights, contract enforcement, and limited, predictable regulation. He traces a lineage"
+        },
+        {
+          "id": "641523ed5197d7724c95faa0",
+          "title": "Open Meeting Statement on Policy Statement Concerning Mandatory Arbitration and Amendments to Rule 431 of the Commission\u2019s Rules of Practice",
+          "date": "2026-02-19",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-091725-open-meeting-statement-policy-statement-concerning-mandatory-arbitration-amendments-rule-431",
+          "summary": "Paul S. Atkins, in his speech, addressed the SEC's delayed action on mandatory arbitration policy and Rule 431 amendments. He emphasized that the clarity provided by the policy statement should resolve uncertainties for companies considering IPOs. Atkins discussed the non-involvement of the SEC in t"
+        },
+        {
+          "id": "1b1e314d4c0a696a43c4ed2c",
+          "title": "Staying in Our Lane: Statement on Two Recommendations from the Division of Corporation Finance",
+          "date": "2026-02-19",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-recommendations-division-corporation-finance-091725",
+          "summary": "SEC Commissioner Hester M. Peirce emphasizes the SEC's recognition of its authority limits, especially concerning mandatory arbitration provisions in investor claims. The SEC will no longer consider the presence of arbitration clauses in its decision to accelerate the effectiveness of registration s"
+        },
+        {
+          "id": "b8a6247e1278baffd56d1ab4",
+          "title": "Angels and IPOs: Remarks Before the Small Business Capital Formation Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-remarks-sbcfac-022724",
+          "summary": "Hester M. Peirce's speech addresses the challenges and opportunities in small business capital formation, highlighting the importance of local angel networks and the need for regulatory changes to support IPOs and investor access."
+        },
+        {
+          "id": "a213a25c416707bb773d90ba",
+          "title": "Statement on Final Rules Regarding Special Purpose Acquisition Companies (SPACs), Shell Companies, and Projections",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-final-rule-012424",
+          "summary": "Gary Gensler's statement discusses the adoption of final rules to enhance investor protections in SPACs, aligning them with protections available in traditional IPOs. The rules will require more disclosures, hold SPACs accountable for projections, and enforce issuer obligations."
+        }
+      ],
+      "sources": [
+        "Speech",
+        "finra_regulatory_notice",
+        "newsapi_article",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "cybersecurity-operational-risk",
+      "label": "Cybersecurity & Operational Risk",
+      "canonical_tag": "cybersecurity",
+      "cluster_tags": [
+        "cybersecurity"
+      ],
+      "description": "[dry-run] Emerging trend: Cybersecurity & Operational Risk",
+      "total_mentions": 53,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2014-11-19",
+      "last_seen": "2026-02-24",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "170f47c03330894571aacf96",
+        "636545aeff417daa22a78eb9",
+        "12e568468f0111e4ed2e9a9b",
+        "a4dd0fe58ff8a28552cd2b96",
+        "d704bfc9ad345d84162b94b1",
+        "fd6c18025dbe8fecc295b809",
+        "2713f561bfc54e6e6b54d466",
+        "92597be2ded797cf8f32476f",
+        "2caffdff1d1825f5df9aa94b",
+        "6f1dce083b1eaa57cdf7228a"
+      ],
+      "top_docs": [
+        {
+          "id": "170f47c03330894571aacf96",
+          "title": "CNBC Daily Open: Unstable tariff situation and new AI disruption spark market sell-off",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.cnbc.com/2026/02/24/cnbc-daily-open-unstable-tariff-situation-and-new-ai-disruption-spark-market-sell-off.html",
+          "summary": "The article reports a broad market sell-off driven by fears that new AI tools could disrupt cybersecurity business models and by rising uncertainty over global tariffs. Anthropic\u2019s launch of Claude Code Security rattled confidence in cybersecurity firms, especially IBM, whose shares plunged over 13%"
+        },
+        {
+          "id": "636545aeff417daa22a78eb9",
+          "title": "Asia markets trade mixed after Trump revives tariff threat and AI fears hit tech",
+          "date": "2026-02-24",
+          "source_kind": "newsapi_article",
+          "url": "https://www.cnbc.com/2026/02/24/asia-markets-live-nikkei-225-hang-seng-index-kospi-tarriffs-trump-nikkei-pboc-lpr-trump-ai.html",
+          "summary": "The article reports that Asia-Pacific equity markets traded mixed as investors reacted to renewed U.S. tariff threats from President Donald Trump and growing concerns that artificial intelligence tools could disrupt established software and cybersecurity business models. Trump wrote on Truth Social "
+        },
+        {
+          "id": "12e568468f0111e4ed2e9a9b",
+          "title": "Statement Regarding Administrative Proceedings Against SolarWinds Customers",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-uyeda-statement-solarwinds-102224",
+          "summary": "The SEC's proceedings against SolarWinds customers following a significant cyberattack have raised concerns over the imposition of penalties on companies deemed victims. The statement dissenting the SEC's actions highlights issues with how material information is defined and the potential chilling e"
+        },
+        {
+          "id": "a4dd0fe58ff8a28552cd2b96",
+          "title": "Statement on Unauthorized Access to the SEC\u2019s @SECGov X.com Account",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-x-account",
+          "summary": "The SEC addressed an unauthorized access incident to its @SECGov X.com account, detailing the unauthorized party's actions and emphasizing the agency's commitment to cybersecurity."
+        },
+        {
+          "id": "d704bfc9ad345d84162b94b1",
+          "title": "Cybersecurity Disclosure",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gerding-cybersecurity-disclosure-20231214",
+          "summary": "In his speech, Erik Gerding outlined the SEC's newly adopted rules requiring public companies to disclose material cybersecurity incidents and related risk management details. The rules aim to provide investors with consistent and timely information to evaluate risks while allowing companies to dete"
+        },
+        {
+          "id": "fd6c18025dbe8fecc295b809",
+          "title": "Statement on Short Position and Short Activity Reporting by Institutional Investment Managers",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-short-sale-101323",
+          "summary": "Mark T. Uyeda addresses the SEC's proposed rule on short position and short activity reporting by institutional investment managers, arguing it discourages short selling, which is essential for price discovery and market efficiency. He critiques the expansive discretionary authority used by the SEC,"
+        },
+        {
+          "id": "2713f561bfc54e6e6b54d466",
+          "title": "Testimony Before the Senate Committee on Banking, Housing, and Urban Affairs",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-senate-testimony-091223",
+          "summary": "Gary Gensler's testimony before the Senate Committee underscores the SEC's mission of protecting investors and maintaining market integrity. He highlights the SEC's challenges and reforms, particularly in addressing technological changes, promoting efficiency, and enhancing disclosure for both priva"
+        },
+        {
+          "id": "92597be2ded797cf8f32476f",
+          "title": "Statement on Consolidated Audit Trail Revised Funding Model",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-cat-funding-090623",
+          "summary": "Mark T. Uyeda addressed the challenges and costs associated with the Consolidated Audit Trail (CAT), emphasizing the need for a Revised Funding Model and the importance of ensuring regulatory benefits outweigh costs. He expressed concerns about increasing expenses and unresolved issues surrounding C"
+        },
+        {
+          "id": "2caffdff1d1825f5df9aa94b",
+          "title": "Office Hours with Gary Gensler: Cybersecurity & Cyber Hygiene in the Financial Sector",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/office-hours-gary-gensler-cybersecurity-cyber-hygiene-financial-sector",
+          "summary": "Gary Gensler emphasizes the importance of cybersecurity in the financial sector, highlighting SEC regulations and recent enforcement actions to protect consumer data. He urges individuals to take proactive measures for cybersecurity awareness and protection."
+        },
+        {
+          "id": "6f1dce083b1eaa57cdf7228a",
+          "title": "Remarks at the Meeting of the Investor Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-iac-092122",
+          "summary": "Mark T. Uyeda addresses the Investor Advisory Committee, highlighting the importance of investor input, discussing various topics on the agenda including ESG fund disclosures and proposed securities regulations, and emphasizing the role of the Committee's recommendations."
+        }
+      ],
+      "sources": [
+        "Speech",
+        "federal_reserve_speech_testimony",
+        "finra_regulatory_notice",
+        "newsapi_article",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "sec-rulemaking-policy",
+      "label": "SEC Rulemaking & Policy",
+      "canonical_tag": "dodd-frank",
+      "cluster_tags": [
+        "dodd-frank",
+        "dodd-frank act",
+        "investment company act",
+        "proposed rule",
+        "regulatory reform",
+        "securities exchange act"
+      ],
+      "description": "[dry-run] Emerging trend: SEC Rulemaking & Policy",
+      "total_mentions": 47,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2021-03-11",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "b2551187cb37fdeef79d43eb",
+        "191d19ea0ed3932e37bcf51e",
+        "80ab9d299a4d8759a989f841",
+        "15f8c8f1ced265d56bab26bd",
+        "dc1a4ad98296fb3df5aff87c",
+        "42728118357f408ad98a18fe",
+        "7d13c4b082ba744f5efef0e1",
+        "ae0050ad906c1adbd25b9eb9",
+        "4217d749bf963db8dd9bdd94",
+        "6b5276f809dfe2ab3eb94bba"
+      ],
+      "top_docs": [
+        {
+          "id": "b2551187cb37fdeef79d43eb",
+          "title": "Narrowly Then Broadly: Statement on Concept Release on Residential Mortgage-Backed Securities Disclosures and Enhancements to Asset-Backed Securities Registration",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/narrowly-then-broadly-statement-concept-release-residential-mortgage-backed-securities-disclosures-narrowly-then-broadly-statement-concept-release-residential-mortgage-backed",
+          "summary": "Commissioner Hester M. Peirce explains that the SEC is issuing a Concept Release to seek public comment on multiple aspects of its regulatory framework for asset-backed securities (ABS), with particular focus on residential mortgage-backed securities (RMBS). The narrow focus is on whether to amend I"
+        },
+        {
+          "id": "191d19ea0ed3932e37bcf51e",
+          "title": "Prohibiting Conflicts of Interest in ABS Securitizations",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-securitizations-112723",
+          "summary": "The SEC has finalized a rule to prohibit conflicts of interest in asset-backed securities (ABS) securitizations, aligning with congressional goals and advancing the Dodd-Frank Act."
+        },
+        {
+          "id": "80ab9d299a4d8759a989f841",
+          "title": "Statement Regarding the Reporting of Securities Loans (Rule 10c-1a) and Short Position and Activity Reporting (Rule 13f-2)",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-short-sale-securities-lending-101323",
+          "summary": "Caroline A. Crenshaw expresses support for Rule 10c-1a and Rule 13f-2, aimed at enhancing transparency in short selling. The rules address historical data limitations highlighted during the 'meme' stock episode, providing essential insights for regulators and market participants."
+        },
+        {
+          "id": "15f8c8f1ced265d56bab26bd",
+          "title": "Shining a Light on Securities Lending",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-securities-lending-101323",
+          "summary": "Jaime Liz\u00e1rraga expresses support for the adoption of a final rule related to securities lending, acknowledging the efforts of the Commission staff and marking an important milestone for the Dodd-Frank Act."
+        },
+        {
+          "id": "dc1a4ad98296fb3df5aff87c",
+          "title": "Statement on Private Fund Advisers; Documentation of Registered Investment Adviser Compliance Reviews",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-private-fund-advisers-082323",
+          "summary": "Mark T. Uyeda critiques the SEC's new rules for private fund advisers, arguing they impose excessive restrictions compared to other investment advisers, potentially harming smaller firms, especially those owned by minorities and women."
+        },
+        {
+          "id": "42728118357f408ad98a18fe",
+          "title": "Statement on the Prohibition against Conflicts of Interest in Certain Securitizations Re-proposal",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-prohibition-against-conflicts-interest-certain-securitizations-re-proposal-012523",
+          "summary": "The SEC is re-proposing a rule under Section 621 of the Dodd-Frank Act to prohibit conflicts of interest in securitizations. This rule aims to protect investors by preventing entities involved in the creation and sale of asset-backed securities from engaging in transactions that conflict with invest"
+        },
+        {
+          "id": "7d13c4b082ba744f5efef0e1",
+          "title": "Enhancing Fund Voting Reporting",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-amendments-form-npx-110222",
+          "summary": "The SEC introduces enhancements to proxy voting reporting for mutual funds and ETFs, fulfilling a Dodd-Frank mandate. This aims to improve transparency and investor access to voting records, thus strengthening investor protection and accountability in capital markets."
+        },
+        {
+          "id": "ae0050ad906c1adbd25b9eb9",
+          "title": "Statement on Final Rules Regarding Clawbacks of Erroneously Awarded Compensation",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-clawbacks-102622",
+          "summary": "Gary Gensler discusses the adoption of final rules for clawbacks of erroneously awarded compensation, mandated by the Dodd-Frank Act. He emphasizes the need for transparency, accountability, and investor confidence in corporate financial statements, reinforcing the importance of recovering pay based"
+        },
+        {
+          "id": "4217d749bf963db8dd9bdd94",
+          "title": "Statement on Listing Standards for Recovery of Erroneously Awarded Compensation:",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-clawbacks-102622",
+          "summary": "The SEC adopted a rule to implement Section 954 of the Dodd-Frank Act, requiring public companies to recover erroneously awarded compensation to executives when financial statements are restated due to material errors. This aims to enhance fairness, corporate governance, and investor confidence whil"
+        },
+        {
+          "id": "6b5276f809dfe2ab3eb94bba",
+          "title": "Late Summer Sunshine: Statement on the Adoption of Pay Versus Performance",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-pay-vs-performance-082522",
+          "summary": "The SEC adopted a rule enhancing transparency in executive compensation disclosures, particularly focusing on how company performance impacts executive pay. This aims to improve investor understanding of corporate governance and accountability following past financial crises."
+        }
+      ],
+      "sources": [
+        "Speech",
+        "federal_reserve_speech_testimony"
+      ]
+    },
+    {
+      "id": "market-structure-trading",
+      "label": "Market Structure & Trading",
+      "canonical_tag": "market structure",
+      "cluster_tags": [
+        "alternative trading systems",
+        "best execution",
+        "market structure",
+        "payment for order flow"
+      ],
+      "description": "[dry-run] Emerging trend: Market Structure & Trading",
+      "total_mentions": 37,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2004-06-23",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "71fca3f8c5b6d5aa0c2af83c",
+        "25266121f1ddc5255b85d758",
+        "8e249b9a06b65aa8f8b2e8fc",
+        "e2ad3b57fe3e7e93b46d2e30",
+        "b5856d2c74a429046fdd1000",
+        "9064d2c02ab9769797796262",
+        "4901ff33015b6aeca0e8246f",
+        "02fc5ee99386a3b87cb2c09f",
+        "72c51053d73a26cb739ababf",
+        "54d01bdc2e862715c9a15e99"
+      ],
+      "top_docs": [
+        {
+          "id": "71fca3f8c5b6d5aa0c2af83c",
+          "title": "6,7 Meet 611: Remarks at the Roundtable on Rule 611 of Regulation NMS",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-roundtable-rule-611-regulation-nms-121625",
+          "summary": "Commissioner Hester M. Peirce delivers opening remarks at an SEC roundtable on Rule 611 of Regulation NMS (the order protection or trade-through rule). She frames her current inclination to revisit Rule 611 as a '6\u20267' on a 1\u201310 scale, emphasizing that any judgment must be contextualized by (1) the e"
+        },
+        {
+          "id": "25266121f1ddc5255b85d758",
+          "title": "Remarks at the Roundtable on Trade-Through Prohibitions",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-091825-remarks-roundtable-trade-through-prohibitions",
+          "summary": "Commissioner Paul S. Atkins reflects critically on Regulation NMS, with particular focus on Rule 611 (the Trade-through Rule). He argues that by mandating executions at or within the NBBO and prioritizing price above all other execution factors, the rule has distorted market structure, increased fra"
+        },
+        {
+          "id": "8e249b9a06b65aa8f8b2e8fc",
+          "title": "Remarks at the Roundtable on Rule 611 of Regulation NMS",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/selway-121625-remarks-roundtable-rule-611-regulation-nms",
+          "summary": "Jamie Selway, Director of the SEC\u2019s Division of Trading and Markets, opens the SEC\u2019s second roundtable on Rule 611 of Regulation NMS (the Trade-Through Rule), framing it as part of a broader reexamination of equity market structure after nearly twenty years of experience with Regulation NMS. He note"
+        },
+        {
+          "id": "e2ad3b57fe3e7e93b46d2e30",
+          "title": "Statement on Amendments to Tick Sizes, Access Fees, and Transparency of Better Priced Orders",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-regulation-nms-091824",
+          "summary": "Caroline A. Crenshaw expresses support for amendments aimed at improving tick sizes, access fees, and transparency of better-priced orders, acknowledging the efforts of various SEC divisions."
+        },
+        {
+          "id": "b5856d2c74a429046fdd1000",
+          "title": "Statement on Adoption of Rule Regarding Regulation NMS: Minimum Pricing Increments, Access Fees, and Transparency of Better Priced Orders",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-regulation-nms-091824",
+          "summary": "The SEC is adopting changes to the minimum pricing increments, access fee caps, and transparency requirements for trading NMS stocks, incorporating stakeholder feedback while acknowledging the complexities and uncertainties involved."
+        },
+        {
+          "id": "9064d2c02ab9769797796262",
+          "title": "My Take on Tick: Statement on Adoption of Regulation NMS: Minimum Pricing Increments, Access Fees, and Transparency of Better Priced Orders",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-regulation-nms-091824",
+          "summary": "Commissioner Hester M. Peirce's statement supports the final rule on Regulation NMS, which improves trading increments and reduces complexity. While she acknowledges benefits, she expresses concerns about the procedural path and the need for additional assessments before finalizing the rule."
+        },
+        {
+          "id": "4901ff33015b6aeca0e8246f",
+          "title": "Statement on Proposed Rule Regarding Disclosures of Order Execution Information",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-order-execution-20221214",
+          "summary": "Mark T. Uyeda discusses the SEC's proposal to update Rule 605 disclosures for order executions, highlighting the need for improved transparency and competition among broker-dealers and market venues. While supportive of the proposal's goals, he raises concerns about its analysis in the context of co"
+        },
+        {
+          "id": "02fc5ee99386a3b87cb2c09f",
+          "title": "Ordering Competition",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-order-competition-20221214",
+          "summary": "Hester M. Peirce expresses concerns about the SEC's proposal to standardize competition in capital markets, arguing it may disrupt rather than enhance market order. She states the proposal lacks justification, may raise costs for retail investors, and could lead to unintended consequences that affec"
+        },
+        {
+          "id": "72c51053d73a26cb739ababf",
+          "title": "Prepared Remarks Before the SIFMA Annual Meeting",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-sifma-110221",
+          "summary": "In his remarks at the SIFMA Annual Meeting, SEC Chairman Gary Gensler discussed the SEC's mission and emphasized the importance of efficiency, competition, transparency, market integrity, and resiliency in U.S. capital markets. He highlighted the need to adapt regulatory frameworks in light of techn"
+        },
+        {
+          "id": "54d01bdc2e862715c9a15e99",
+          "title": "Statement on Staff Report on Equity and Options Market Structure Conditions in Early 2021",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-staff-statement-2021-10-18",
+          "summary": "Gary Gensler addresses the SEC's staff report on the events surrounding meme stocks in early 2021, highlighting the need for market fairness and efficiency. Topics of concern include trading restrictions, digital engagement practices, market structure, and short selling dynamics. He expresses gratit"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "artificial-intelligence-technology",
+      "label": "Artificial Intelligence & Technology",
+      "canonical_tag": "fintech",
+      "cluster_tags": [
+        "artificial intelligence",
+        "fintech",
+        "predictive analytics",
+        "technology risk"
+      ],
+      "description": "[dry-run] Emerging trend: Artificial Intelligence & Technology",
+      "total_mentions": 30,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2019-08-21",
+      "last_seen": "2026-02-25",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "ca3366978d93967da746708f",
+        "c467ee25b5943e260a255bc9",
+        "e5da349632e10a724b87c1f7",
+        "90afcdc24b2afc93d1755fb4",
+        "bf48d0da2bb4e6f2d6439030",
+        "cadf8b235bf8259830e66063",
+        "7f566e7645a7ef3639794bc9",
+        "49bae7012730067fbe37744f",
+        "abf8c061390543ae78d29db7",
+        "b8da6cf068920b513c2dd06d"
+      ],
+      "top_docs": [
+        {
+          "id": "ca3366978d93967da746708f",
+          "title": "GD Culture (GDC) news: Management wins board approval to sell BTC",
+          "date": "2026-02-25",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/business/2026/02/25/bitcoin-treasury-firm-gd-culture-set-to-sell-btc-holdings-to-fund-share-buybacks",
+          "summary": "GD Culture Group (GDC) has received board approval to sell part of its 7,500-bitcoin reserve, currently valued at about $497 million, in order to help fund a previously announced $100 million stock repurchase program. The authorization gives management full discretion over the timing and amount of a"
+        },
+        {
+          "id": "c467ee25b5943e260a255bc9",
+          "title": "Office Hours With Gary Gensler: Fraud and Deception in Artificial Intelligence",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-transcript-fraud-deception-artificial-intelligence-101024",
+          "summary": "Gary Gensler discusses the implications of artificial intelligence (AI) in the context of securities law, emphasizing the potential for fraud and the need for regulatory guardrails to protect investors. He categorizes harm from AI into three types: Programmable Harm, Predictable Harm, and Unpredicta"
+        },
+        {
+          "id": "e5da349632e10a724b87c1f7",
+          "title": "Remarks to the 2023 NASAA Fall Annual Meeting \u2013 Modernizing Investor Protection for the Digital Age",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-remarks-nasaa-091023",
+          "summary": "Mark T. Uyeda, speaking at the NASAA Fall Annual Meeting, emphasizes the importance of modernizing investor protection in light of advancing technologies, particularly artificial intelligence. He stresses the need for regulators to adapt and collaborate with financial firms to enhance compliance and"
+        },
+        {
+          "id": "90afcdc24b2afc93d1755fb4",
+          "title": "Prepared Remarks Before the Small Business Capital Formation Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-remarks-sbcfac-080222",
+          "summary": "Gary Gensler expresses gratitude towards the committee members and introduces new commissioners. He emphasizes the importance of discussing small business capital formation, particularly in light of technological changes and current economic challenges."
+        },
+        {
+          "id": "bf48d0da2bb4e6f2d6439030",
+          "title": "Remarks at the October 28, 2021 Meeting of the Asset Management Advisory Committee",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/ten-siethoff-amac-20211028",
+          "summary": "Sarah ten Siethoff's remarks at the SEC's Asset Management Advisory Committee meeting cover important topics such as digital engagement practices, the challenges faced by small advisers and funds, and the implications of predictive data analytics in asset management."
+        },
+        {
+          "id": "cadf8b235bf8259830e66063",
+          "title": "Prepared Remarks At DC Fintech Week",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-dc-fintech-2021-10-21",
+          "summary": "Gary Gensler's remarks at DC Fintech Week highlight the evolving relationship between finance and technology. He emphasizes the importance of fintech innovations like artificial intelligence and cryptocurrency, while raising concerns about public policy implications, including potential biases and r"
+        },
+        {
+          "id": "7f566e7645a7ef3639794bc9",
+          "title": "AI, the Economy, and Financial Stability",
+          "date": "2025-11-21",
+          "source_kind": "federal_reserve_speech_testimony",
+          "url": "https://www.federalreserve.gov/newsevents/speech/jefferson20251121a.htm",
+          "summary": "Vice Chair Philip N. Jefferson discusses how artificial intelligence (AI) may affect the Federal Reserve's dual mandate and financial stability. He emphasizes AI's potential to be as transformative as past technologies by raising productivity, supporting economic growth, and possibly easing inflatio"
+        },
+        {
+          "id": "49bae7012730067fbe37744f",
+          "title": "AI and Central Banking",
+          "date": "2025-11-11",
+          "source_kind": "federal_reserve_speech_testimony",
+          "url": "https://www.federalreserve.gov/newsevents/speech/barr20251111a.htm",
+          "summary": "Governor Michael S. Barr outlines how artificial intelligence, particularly generative AI (GenAI), is reshaping the economy, the financial sector, and central banking. He argues that AI is a transformative technology whose ultimate impact could range from incremental task augmentation to a full econ"
+        },
+        {
+          "id": "abf8c061390543ae78d29db7",
+          "title": "Exploring the Possibilities and Risks of New Payment Technologies",
+          "date": "2025-10-16",
+          "source_kind": "federal_reserve_speech_testimony",
+          "url": "https://www.federalreserve.gov/newsevents/speech/barr20251016a.htm",
+          "summary": "Governor Michael S. Barr discusses how new payment technologies\u2014especially stablecoins\u2014could improve payment efficiency, while warning that their benefits depend on strong regulatory guardrails. He highlights potential advantages of stablecoins for remittances, trade finance, and multinational cash "
+        },
+        {
+          "id": "b8da6cf068920b513c2dd06d",
+          "title": "Innovation at the Speed of AI",
+          "date": "2025-10-15",
+          "source_kind": "federal_reserve_speech_testimony",
+          "url": "https://www.federalreserve.gov/newsevents/speech/waller20251015a.htm",
+          "summary": "Governor Christopher J. Waller argues that artificial intelligence is part of a long historical pattern of disruptive but ultimately beneficial technological change. He frames AI as accelerating three recurring dynamics: continuous disruption of work and social life, shifts in power away from incumb"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "federal_reserve_speech_testimony",
+        "newsapi_article",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "banking-systemic-risk",
+      "label": "Banking & Systemic Risk",
+      "canonical_tag": "systemic risk",
+      "cluster_tags": [
+        "bank regulation",
+        "capital requirements",
+        "stress testing",
+        "systemic risk"
+      ],
+      "description": "[dry-run] Emerging trend: Banking & Systemic Risk",
+      "total_mentions": 27,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2016-03-04",
+      "last_seen": "2026-02-19",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "66a36750a27f5b5fbed39e5d",
+        "f90affb8c3353b1c9a39357f",
+        "4866f267e22dfdf34fa16b4d",
+        "cc7d2f3ff1b5292092f1cb5d",
+        "b82eeeaacd81c01959b6da34",
+        "d93af439b36484c8783a2364",
+        "e8953a8b375fe496a7ad77d8",
+        "5aec9a44d2d2651af4ad24a6",
+        "05357dacf378a7feb037ae13",
+        "2129293955b4d73ef814579b"
+      ],
+      "top_docs": [
+        {
+          "id": "66a36750a27f5b5fbed39e5d",
+          "title": "Time to Fix the Form: Statement on Further Extension of Compliance Date for Form PF",
+          "date": "2026-02-19",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-091725-time-fix-form-statement-further-extension-compliance-date-form-pf",
+          "summary": "Hester M. Peirce supports extending the compliance date for Form PF amendments to October 1, 2026. She advocates for a substantive review of Form PF, highlighting concerns about its utility and impact on market competition. Peirce prefers a more extended compliance period to rethink the form's align"
+        },
+        {
+          "id": "f90affb8c3353b1c9a39357f",
+          "title": "Office Hours with Gary Gensler: Systemic Risk in Artificial Intelligence",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-transcript-systemic-risk-artificial-intelligence-091924",
+          "summary": "Gary Gensler addresses the systemic risks posed by artificial intelligence in capital markets, using the example of the movie 'Her' to illustrate the potential dangers of over-reliance on AI models and data aggregators."
+        },
+        {
+          "id": "4866f267e22dfdf34fa16b4d",
+          "title": "Curiouser and Curiouser: Statement on Amendments to Form PF to Amend Reporting Requirements for All Filers and Large Hedge Fund Advisers",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-amendments-form-pf-amend-reporting-reqs-020823",
+          "summary": "Commissioner Hester M. Peirce dissents on Form PF amendments, criticizing the expansion of information collection as driven by curiosity rather than regulatory necessity. She argues that the amendments lack clear justification, could lead to data overreach, and burden private fund advisers without a"
+        },
+        {
+          "id": "cc7d2f3ff1b5292092f1cb5d",
+          "title": "Private Equity: Past & Present, Charters & Code",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/birdthistle-remarks-private-funds-roundtable-111523",
+          "summary": "William Birdthistle's speech at the SEC roundtable discusses the historical and contemporary aspects of private equity regulation, emphasizing the balance between investor protection, market efficiency, and capital formation. He highlights the SEC's regulatory tools, including Form PF, which improve"
+        },
+        {
+          "id": "b82eeeaacd81c01959b6da34",
+          "title": "Statement on Treasury Clearing",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-treasury-clearing-091422",
+          "summary": "The SEC is proposing amendments to enhance transparency and reduce systemic risk in the U.S. Treasury securities market. The changes aim to increase central clearing of transactions and improve market resilience amid evolving trading dynamics and past market disruptions."
+        },
+        {
+          "id": "d93af439b36484c8783a2364",
+          "title": "Statement on Proposed Joint Amendments to Form PF",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-proposed-joint-amendments-form-pf-081022",
+          "summary": "Gary Gensler supports proposed amendments to Form PF aimed at improving transparency and monitoring of systemic risk in the private fund sector. The amendments focus on enhancing reporting for large hedge funds, including investment exposure, open positions, and borrowing arrangements."
+        },
+        {
+          "id": "e8953a8b375fe496a7ad77d8",
+          "title": "Statement on Clearing Agency Governance and Conflicts of Interest",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-statement-clearing-agency-governance-conflicts-interest-080822",
+          "summary": "Mark T. Uyeda's statement highlights concerns regarding proposed governance rules for clearing agencies, arguing they may limit competition, increase systemic risks, and fail to accommodate diverse business models. He calls for a more flexible regulatory approach to better mitigate these risks."
+        },
+        {
+          "id": "5aec9a44d2d2651af4ad24a6",
+          "title": "Statement on Form PF",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-form-pf-20220126",
+          "summary": "Gary Gensler supports amendments to Form PF to enhance regulatory oversight and assess systemic risk in private funds, emphasizing the need for timely reporting and addressing identified information gaps."
+        },
+        {
+          "id": "05357dacf378a7feb037ae13",
+          "title": "Statement on Proposed Amendments to Form PF",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lee-form-pf-20220126",
+          "summary": "The SEC has proposed amendments to Form PF to enhance investor protection and improve systemic risk monitoring in the growing private fund sector, which now manages over $11.7 trillion. The amendments require timely reporting of significant events affecting funds, improving transparency and regulato"
+        },
+        {
+          "id": "2129293955b4d73ef814579b",
+          "title": "Prepared Remarks at SEC Speaks",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-sec-speaks-2021-10-12",
+          "summary": "Gary Gensler's remarks at SEC Speaks discuss the transformative impact of digital analytics and AI in finance, emphasizing the potential benefits and challenges such as conflicts of interest, bias, and systemic risk. He advocates for policy considerations to navigate these issues while promoting the"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "federal_reserve_speech_testimony",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "corporate-disclosure-reporting",
+      "label": "Corporate Disclosure & Reporting",
+      "canonical_tag": "financial reporting",
+      "cluster_tags": [
+        "financial reporting"
+      ],
+      "description": "[dry-run] Emerging trend: Corporate Disclosure & Reporting",
+      "total_mentions": 21,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2020-07-01",
+      "last_seen": "2026-02-18",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "ace796685158509cb478271d",
+        "b3a4d5a3e390a68b0f7e55d8",
+        "9eaf59ebfafa1c6dcde92b2f",
+        "52be66f9ecf880e30bd5d1ed",
+        "9648c4035b4e8ce29fcd39b2",
+        "2545fbb4a61f288d24cffc21",
+        "a8bf4d9ee2b6f1100299e251",
+        "13e25da6ceaf65406a070b36",
+        "8b36c040cd078f13fe5c818a",
+        "3a1cdf643249769230b350c5"
+      ],
+      "top_docs": [
+        {
+          "id": "ace796685158509cb478271d",
+          "title": "Integrity and Transparency in Financial Reporting: the PCAOB\u2019s FY 2025 Budget",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/statement-lizarraga-pcaob-fy2025-budget",
+          "summary": "Jaime Liz\u00e1rraga expresses support for the PCAOB's final budget during a speech and wishes everyone a pleasant holiday."
+        },
+        {
+          "id": "b3a4d5a3e390a68b0f7e55d8",
+          "title": "Remarks before the 2024 AICPA & CIMA Conference on Current SEC and PCAOB Developments: Accounting Matters",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/munter-remarks-aicpa-cima-conference-120924",
+          "summary": "In a speech at the 2024 AICPA & CIMA Conference, SEC Chief Accountant Paul Munter emphasized the significance of ethical conduct in the accounting profession, the necessity for high-quality financial reporting, and the cooperative efforts required for effective accounting standards. He encouraged ac"
+        },
+        {
+          "id": "9eaf59ebfafa1c6dcde92b2f",
+          "title": "Statement on General Responsibilities of Auditors",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-remarks-pcaob-responsibilities-082024",
+          "summary": "SEC Chair Gary Gensler expresses support for proposed updates to auditor responsibilities, emphasizing modernization and the need for clarity in auditing standards to protect investor trust and adapt to technological advancements."
+        },
+        {
+          "id": "52be66f9ecf880e30bd5d1ed",
+          "title": "Enhancing Audit Quality Through Technology-Adaptable Audit Standards",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-remarks-pcaob-technology-082024",
+          "summary": "Jaime Liz\u00e1rraga expresses support for amendments to audit standards aimed at enhancing audit quality through adaptability to technological advancements."
+        },
+        {
+          "id": "9648c4035b4e8ce29fcd39b2",
+          "title": "Addressing Investor Needs through Application of the Updated Conceptual Framework in FASB Standard Setting",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/munter-statement-fasb-081224",
+          "summary": "Paul Munter, Chief Accountant of the SEC, emphasizes the importance of the updated Conceptual Framework from FASB in enhancing financial reporting standards to better meet investor needs and protect the public interest."
+        },
+        {
+          "id": "2545fbb4a61f288d24cffc21",
+          "title": "Robust Financial Reporting and Effective Gatekeepers: In Support of the PCAOB\u2019s FY 2024 Budget",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-pcaob-budget-121323",
+          "summary": "Jaime Liz\u00e1rraga expresses strong support for the PCAOB's FY 2024 budget, emphasizing its critical role in ensuring integrity in financial reporting and investor trust. The budget focuses on personnel costs and reinvestment into audit inspections to address rising audit deficiencies."
+        },
+        {
+          "id": "a8bf4d9ee2b6f1100299e251",
+          "title": "The Statement of Cash Flows: Improving the Quality of Cash Flow Information Provided to Investors",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/munter-statement-cash-flows-120423",
+          "summary": "Paul Munter emphasizes the integral role of the statement of cash flows in financial reporting, urging issuers and auditors to maintain high standards and rigor in its preparation. He highlights historical issues with cash flow reporting, including its prevalence in financial statement restatements,"
+        },
+        {
+          "id": "13e25da6ceaf65406a070b36",
+          "title": "The Importance of a Comprehensive Risk Assessment by Auditors and Management",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/munter-importance-risk-assessment-082523",
+          "summary": "Paul Munter emphasizes the necessity of comprehensive risk assessments by management and auditors to enhance financial reporting quality and internal controls. He highlights the risks of a narrow focus and calls for a holistic approach to address broader issues effectively, ensuring clear communicat"
+        },
+        {
+          "id": "8b36c040cd078f13fe5c818a",
+          "title": "Statement on Listing Standards for Recovery of Erroneously Awarded Compensation",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-clawbacks-102622",
+          "summary": "Caroline A. Crenshaw discusses SEC's rulemaking for recovering erroneously awarded executive compensation due to misreported financials, highlighting mandatory policies and investor disclosures."
+        },
+        {
+          "id": "3a1cdf643249769230b350c5",
+          "title": "Statement on the FASB\u2019s Agenda Consultation: Engagement with Investors and Other Stakeholders Vital to Development of High Quality Accounting Standards",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/munter-statement-fasb-agenda-consultation-02222022",
+          "summary": "In his statement, Paul Munter emphasizes the crucial role of stakeholder engagement, particularly with investors, in the FASB\u2019s standard-setting process. He highlights the need for improved processes to gather and incorporate feedback, ensure transparency, and prioritize areas like climate-related d"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "derivatives-structured-products",
+      "label": "Derivatives & Structured Products",
+      "canonical_tag": "securitization",
+      "cluster_tags": [
+        "securitization",
+        "swap dealers"
+      ],
+      "description": "[dry-run] Emerging trend: Derivatives & Structured Products",
+      "total_mentions": 12,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2016-03-04",
+      "last_seen": "2026-02-20",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "961cbe9fbc509c6cdd88fb94",
+        "b2551187cb37fdeef79d43eb",
+        "534cfae46e9b4e39a66a73a0",
+        "269e7eaa56a3f5395dfdb316",
+        "191d19ea0ed3932e37bcf51e",
+        "3293b537af8c21d46ae8c14f",
+        "836af32813d319bdfcd3d2be",
+        "1dd2ed22413d9ef79dde0533",
+        "42728118357f408ad98a18fe",
+        "8dc3990273effb61ed216e39"
+      ],
+      "top_docs": [
+        {
+          "id": "961cbe9fbc509c6cdd88fb94",
+          "title": "Coming Attractions From the Division of Corporation Finance",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/moloney-statement-coming-attractions-021326-coming-attractions-division-corporation-finance",
+          "summary": "The Director of the SEC\u2019s Division of Corporation Finance outlines an aggressive regulatory reform agenda aligned with Chairman Paul Atkins\u2019 priorities of facilitating capital formation, reducing regulatory burdens, and maintaining investor protection. Key forthcoming \"blockbuster\" initiatives inclu"
+        },
+        {
+          "id": "b2551187cb37fdeef79d43eb",
+          "title": "Narrowly Then Broadly: Statement on Concept Release on Residential Mortgage-Backed Securities Disclosures and Enhancements to Asset-Backed Securities Registration",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/narrowly-then-broadly-statement-concept-release-residential-mortgage-backed-securities-disclosures-narrowly-then-broadly-statement-concept-release-residential-mortgage-backed",
+          "summary": "Commissioner Hester M. Peirce explains that the SEC is issuing a Concept Release to seek public comment on multiple aspects of its regulatory framework for asset-backed securities (ABS), with particular focus on residential mortgage-backed securities (RMBS). The narrow focus is on whether to amend I"
+        },
+        {
+          "id": "534cfae46e9b4e39a66a73a0",
+          "title": "Statement Regarding Phase-In Termination Date for the De Minimis Exception to the Security-Based Swap Dealer Definition",
+          "date": "2026-02-20",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/atkins-102925-statement-regarding-phase-termination-date-de-minimis-exception-security-based-swap-dealer",
+          "summary": "The statement explains that security-based swap dealers (SBSDs) must register with the SEC if their dealing activity exceeds specified de minimis thresholds over the prior 12 months. Current rules include a phase-in period with temporarily higher thresholds for credit default swaps (CDSs) and other "
+        },
+        {
+          "id": "269e7eaa56a3f5395dfdb316",
+          "title": "Statement on the Final Rule: Prohibition Against Conflicts of Interest in Certain Securitizations",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-securitizations-112723",
+          "summary": "Mark T. Uyeda supports the adoption of Rule 192, which addresses conflicts of interest in securitizations. The rule incorporates feedback from commenters, making several adjustments to definitions and provisions. He emphasizes the importance of monitoring compliance and suggests a potential need for"
+        },
+        {
+          "id": "191d19ea0ed3932e37bcf51e",
+          "title": "Prohibiting Conflicts of Interest in ABS Securitizations",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/lizarraga-statement-securitizations-112723",
+          "summary": "The SEC has finalized a rule to prohibit conflicts of interest in asset-backed securities (ABS) securitizations, aligning with congressional goals and advancing the Dodd-Frank Act."
+        },
+        {
+          "id": "3293b537af8c21d46ae8c14f",
+          "title": "Unsettling End of an Era: Statement on Adoption of Rule Prohibiting Conflicts of Interest in Certain Securitizations",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-securitizations-112723",
+          "summary": "Commissioner Hester M. Peirce expresses concerns over a recently adopted rule prohibiting conflicts of interest in securitizations, citing its ambiguities and over-breadth. While acknowledging improvements from the earlier proposal, she calls for further public comment before finalization and critiq"
+        },
+        {
+          "id": "836af32813d319bdfcd3d2be",
+          "title": "Statement on Prohibiting Conflicts of Interest in Securitizations",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-prohibiting-conflicts-interest-securitizations-012523",
+          "summary": "SEC Chairman Gary Gensler supports the re-proposal of rules to prohibit conflicts of interest among market participants involved in asset-backed securities, highlighting the historical context of the 2008 financial crisis and the need for Congress-mandated reforms."
+        },
+        {
+          "id": "1dd2ed22413d9ef79dde0533",
+          "title": "Statement on Proposed Rule: \u201cProhibition Against Conflicts of Interest in Certain Securitizations\u201d",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-prohibition-against-conflicts-interest-012523",
+          "summary": "Hester M. Peirce expresses support for a proposed SEC rule aimed at prohibiting conflicts of interest in securitizations, while raising numerous concerns about its design, clarity, and implications for various stakeholders, including small entities and municipal organizations."
+        },
+        {
+          "id": "42728118357f408ad98a18fe",
+          "title": "Statement on the Prohibition against Conflicts of Interest in Certain Securitizations Re-proposal",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-statement-prohibition-against-conflicts-interest-certain-securitizations-re-proposal-012523",
+          "summary": "The SEC is re-proposing a rule under Section 621 of the Dodd-Frank Act to prohibit conflicts of interest in securitizations. This rule aims to protect investors by preventing entities involved in the creation and sale of asset-backed securities from engaging in transactions that conflict with invest"
+        },
+        {
+          "id": "8dc3990273effb61ed216e39",
+          "title": "Frequently Asked Questions Regarding Rule Amendments to Broker-Dealer, Security-Based Swap Dealer, and Major Security-Based Swap Participant Electronic Recordkeeping Requirements",
+          "date": "2026-01-06",
+          "source_kind": "sec_tm_faq",
+          "url": "https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions/rule-amendments-broker",
+          "summary": "The SEC Division of Trading and Markets FAQ explains implementation details for recent amendments to Exchange Act Rule 17a-4 governing electronic recordkeeping for broker-dealers, including those registered as SBSDs and MSBSPs. The staff clarifies that, as of the January 3, 2023 effective date, firm"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "sec_enforcement_litigation",
+        "sec_tm_faq"
+      ]
+    },
+    {
+      "id": "aml-financial-crime",
+      "label": "AML & Financial Crime",
+      "canonical_tag": "beneficial ownership",
+      "cluster_tags": [
+        "aml",
+        "beneficial ownership"
+      ],
+      "description": "[dry-run] Emerging trend: AML & Financial Crime",
+      "total_mentions": 9,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2023-03-28",
+      "last_seen": "2026-02-23",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "998e56689efa7a36073be357",
+        "9ba4ab3e9c1d3e0372d4d5e4",
+        "c1ad938eb89995dc1112f0d4",
+        "07c405dcd9e024aac6e0e32f",
+        "741b016479ff476ce0ad47ef",
+        "509f87e7aee0aaf2e03f934c",
+        "69a6e70723cc42ab839109e2",
+        "b717fa4030e854c2a009b358",
+        "a3bf8d9b987bc51b85b0b795"
+      ],
+      "top_docs": [
+        {
+          "id": "998e56689efa7a36073be357",
+          "title": "Austria's FMA bans KuCoin EU over anti-money laundering, compliance staff shortfalls",
+          "date": "2026-02-23",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/policy/2026/02/23/kucoin-banned-in-europe-over-anti-money-laundering-and-compliance-staff-shortfall",
+          "summary": "Austria's Financial Market Authority (FMA) has ordered KuCoin EU to immediately stop conducting new business and onboarding customers across the EU after the exchange lost key compliance staff just months after receiving a Markets in Crypto Assets (MiCA) license. The regulator said KuCoin EU no long"
+        },
+        {
+          "id": "9ba4ab3e9c1d3e0372d4d5e4",
+          "title": "Statement on Final Rules Regarding Beneficial Ownership",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-final-rules-regarding-beneficial-ownership-231010",
+          "summary": "The SEC adopted final rules shortening the deadlines for beneficial owners of over 5% of a company's shares to report their ownership, updating antiquated regulations to enhance market transparency and reduce information asymmetries."
+        },
+        {
+          "id": "c1ad938eb89995dc1112f0d4",
+          "title": "Appropriating Appropriate Asymmetries: Statement on Modernization of Beneficial Ownership Reporting Rule",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-statement-final-rules-regarding-beneficial-ownership-101023",
+          "summary": "Hester M. Peirce expresses her inability to support the new beneficial ownership reporting rule, while acknowledging the diligent work of the SEC staff. The final rule modifies existing definitions and deadlines but raises concerns about increased regulatory burdens and the impact on market efficien"
+        },
+        {
+          "id": "07c405dcd9e024aac6e0e32f",
+          "title": "Statement on Modernization of Beneficial Ownership Reporting",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/uyeda-statement-modernization-beneficial-ownership-reporting-231010",
+          "summary": "Commissioner Mark T. Uyeda announces approved amendments to shorten filing deadlines for beneficial ownership reports on Schedules 13D and 13G, recognizing advances in technology and the importance of shareholder activism."
+        },
+        {
+          "id": "741b016479ff476ce0ad47ef",
+          "title": "Statement on Beneficial Ownership Proposal",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-statement-beneficial-ownership-proposal-021022",
+          "summary": "The SEC proposes to shorten beneficial ownership reporting deadlines, enhancing transparency and reducing information asymmetries in the market."
+        },
+        {
+          "id": "509f87e7aee0aaf2e03f934c",
+          "title": "Dissenting Statement on Proposed Modernization of Beneficial Ownership Reporting",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-13d-20220210",
+          "summary": "Hester M. Peirce dissentingly critiques the SEC's proposed amendments to beneficial ownership reporting, arguing they fail to adequately consider market realities and the balance established by the Williams Act. She expresses concerns about the justification for shortening the reporting window from "
+        },
+        {
+          "id": "69a6e70723cc42ab839109e2",
+          "title": "U.S. DOJ hits Paxful for $4 million in case tied to illegal sex work, money laundering",
+          "date": "2026-02-11",
+          "source_kind": "newsapi_article",
+          "url": "https://www.coindesk.com/policy/2026/02/11/u-s-doj-hits-paxful-for-usd4-million-in-case-tied-to-illegal-sex-work-money-laundering",
+          "summary": "The U.S. Department of Justice (DOJ) secured a $4 million criminal penalty against former peer-to-peer bitcoin marketplace Paxful Holdings after the company pleaded guilty to facilitating illegal prostitution, violating anti-money-laundering (AML) laws, and knowingly handling criminal proceeds. Pros"
+        },
+        {
+          "id": "b717fa4030e854c2a009b358",
+          "title": "Comment on FinCEN\u2019s AML/CFT Program and SAR Filing for Registered Investment Advisers and Exempt Reporting Advisers Proposal",
+          "date": "2024-04-12",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/peirce-fincen-04122024",
+          "summary": "Hester M. Peirce, a commissioner at the SEC, expressed opposition to FinCEN's proposal to impose AML/CFT regulations on registered investment advisers and exempt reporting advisers, arguing that the need for such regulations is not convincingly justified and highlighting potential negative impacts o"
+        },
+        {
+          "id": "a3bf8d9b987bc51b85b0b795",
+          "title": "FINRA Shares Effective Practices to Address Risks of Fraudulent Transfers of Accounts Through ACATS",
+          "date": "2023-03-28",
+          "source_kind": "finra_regulatory_notice",
+          "url": "https://www.finra.org/rules-guidance/notices/23-06",
+          "summary": "FINRA Regulatory Notice 23-06 highlights a rising trend in fraudulent transfers of customer accounts through the Automated Customer Account Transfer Service (ACATS). It explains how bad actors use stolen personal identifying information to open accounts at a receiving member, initiate transfers from"
+        }
+      ],
+      "sources": [
+        "Speech",
+        "finra_regulatory_notice",
+        "newsapi_article"
+      ]
+    },
+    {
+      "id": "fixed-income-rates",
+      "label": "Fixed Income & Interest Rates",
+      "canonical_tag": "sofr",
+      "cluster_tags": [
+        "fixed income",
+        "sofr"
+      ],
+      "description": "[dry-run] Emerging trend: Fixed Income & Interest Rates",
+      "total_mentions": 7,
+      "recent_mentions": 0,
+      "growth_pct": 0.0,
+      "first_seen": "2021-03-11",
+      "last_seen": "2026-02-18",
+      "sparkline": [
+        {
+          "date": "2026-06-01",
+          "count": 0
+        },
+        {
+          "date": "2026-06-02",
+          "count": 0
+        },
+        {
+          "date": "2026-06-03",
+          "count": 0
+        },
+        {
+          "date": "2026-06-04",
+          "count": 0
+        },
+        {
+          "date": "2026-06-05",
+          "count": 0
+        },
+        {
+          "date": "2026-06-06",
+          "count": 0
+        },
+        {
+          "date": "2026-06-07",
+          "count": 0
+        },
+        {
+          "date": "2026-06-08",
+          "count": 0
+        },
+        {
+          "date": "2026-06-09",
+          "count": 0
+        },
+        {
+          "date": "2026-06-10",
+          "count": 0
+        },
+        {
+          "date": "2026-06-11",
+          "count": 0
+        },
+        {
+          "date": "2026-06-12",
+          "count": 0
+        },
+        {
+          "date": "2026-06-13",
+          "count": 0
+        },
+        {
+          "date": "2026-06-14",
+          "count": 0
+        },
+        {
+          "date": "2026-06-15",
+          "count": 0
+        },
+        {
+          "date": "2026-06-16",
+          "count": 0
+        },
+        {
+          "date": "2026-06-17",
+          "count": 0
+        },
+        {
+          "date": "2026-06-18",
+          "count": 0
+        },
+        {
+          "date": "2026-06-19",
+          "count": 0
+        },
+        {
+          "date": "2026-06-20",
+          "count": 0
+        },
+        {
+          "date": "2026-06-21",
+          "count": 0
+        },
+        {
+          "date": "2026-06-22",
+          "count": 0
+        },
+        {
+          "date": "2026-06-23",
+          "count": 0
+        },
+        {
+          "date": "2026-06-24",
+          "count": 0
+        },
+        {
+          "date": "2026-06-25",
+          "count": 0
+        },
+        {
+          "date": "2026-06-26",
+          "count": 0
+        },
+        {
+          "date": "2026-06-27",
+          "count": 0
+        },
+        {
+          "date": "2026-06-28",
+          "count": 0
+        },
+        {
+          "date": "2026-06-29",
+          "count": 0
+        },
+        {
+          "date": "2026-06-30",
+          "count": 0
+        }
+      ],
+      "top_doc_ids": [
+        "6b227e2c79a4df2809f4711b",
+        "944b27ac09a8634913cd7c67",
+        "9a7b13608d889bb5d914d284",
+        "36a0aac9bd6e9a5e61a994fd",
+        "bb023376fc12667646b61af9",
+        "4aeb981240d85e90106d58d8",
+        "80b37aa577f021c940b27b23"
+      ],
+      "top_docs": [
+        {
+          "id": "6b227e2c79a4df2809f4711b",
+          "title": "Prepared Remarks Before the Financial Stability Oversight Council: LIBOR",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-remarks-fsoc-libor-121622",
+          "summary": "Gary Gensler discusses the transition from LIBOR to alternatives like SOFR and expresses concerns regarding the adequacy of proposed rates, particularly the BSBY rate."
+        },
+        {
+          "id": "944b27ac09a8634913cd7c67",
+          "title": "Remarks Before the Alternative Reference Rates Committee\u2019s SOFR Symposium",
+          "date": "2026-02-18",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-remarks-alternative-reference-rates-committee-sofr-symposium-092021",
+          "summary": "Gary Gensler expresses concern over the transition from LIBOR to the Bloomberg Short-Term Bank Yield Index (BSBY) as a benchmark, arguing that BSBY has significant flaws and risks similar to those of LIBOR. He advocates for the Secured Overnight Financing Rate (SOFR) as a more robust alternative."
+        },
+        {
+          "id": "9a7b13608d889bb5d914d284",
+          "title": "Office Hours with Gary Gensler: What is the London Interbank Offered Rate, or LIBOR?",
+          "date": "2023-07-07",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/office-hours-gary-gensler-libor",
+          "summary": "Gary Gensler discusses the transition from LIBOR to its replacement, the Secured Overnight Financing Rate (SOFR), emphasizing the need for integrity in financial benchmarks after LIBOR's manipulation scandals."
+        },
+        {
+          "id": "36a0aac9bd6e9a5e61a994fd",
+          "title": "Fixed Income and Options: The Other Market Structures<br /> Remarks at the Fixed Income Forum Spring Roundtable",
+          "date": "2023-03-30",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/crenshaw-remarks-fixed-income-forum-spring-roundtable-033023",
+          "summary": "Caroline A. Crenshaw, speaking at the Fixed Income Forum, discusses the need for reforms in the fixed income and options markets to enhance transparency, competition, and investor protection. She highlights the disparities in market structures, particularly pointing out that retail investors face hi"
+        },
+        {
+          "id": "bb023376fc12667646b61af9",
+          "title": "\u201cThe Name\u2019s Bond:\" Remarks at City Week",
+          "date": "2022-04-26",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-names-bond-042622",
+          "summary": "In his speech at City Week, Gary Gensler discusses the significance and evolution of U.S. fixed income markets, emphasizing the need for transparency, modernization of rules for electronic trading platforms, and enhancing financial resiliency to benefit both investors and issuers."
+        },
+        {
+          "id": "4aeb981240d85e90106d58d8",
+          "title": "Prepared Remarks Before the Financial Stability Oversight Council - LIBOR",
+          "date": "2021-06-11",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/gensler-fsoc-libor-2021-06-11",
+          "summary": "Gary Gensler discusses the transition from LIBOR, highlighting its flaws and advocating for the Secured Overnight Financing Rate (SOFR) as a more stable alternative. He criticizes the Bloomberg Short-Term Bank Yield Index (BSBY) for having similar issues as LIBOR, emphasizing financial stability ris"
+        },
+        {
+          "id": "80b37aa577f021c940b27b23",
+          "title": "Statement on Fixed Income Trading and Investment Company Act Rule 17a-7",
+          "date": "2021-03-11",
+          "source_kind": "Speech",
+          "url": "https://www.sec.gov/newsroom/speeches-statements/roisman-statement-rule-17a7-031121",
+          "summary": "Elad L. Roisman commends the SEC's Division of Investment Management for seeking comments on Rule 17a-7 and highlights the importance of fixed income markets in the economy."
+        }
+      ],
+      "sources": [
+        "Speech"
+      ]
+    }
+  ]
+}

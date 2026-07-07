@@ -52,6 +52,8 @@ on:
           - wsj_dow_jones
           - reddit_post
           - substack_public_article
+          - sec_youtube_video
+          - youtube_video
           - bloomberg_public_latest
           - bloomberg_public_article
         default: sec_enforcement_litigation

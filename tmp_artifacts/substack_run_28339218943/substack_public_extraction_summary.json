@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "Substack discovery failed: sec session warmup: Failed to perform, curl: (56) CONNECT tunnel failed, response 502. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.; sec page 0: Failed to perform, curl: (56) CONNECT tunnel failed, response 502. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.; ipo session warmup: Failed to perform, curl: (56) CONNECT tunnel failed, response 502. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.",
+  "command": "extract",
+  "connector": "substack_public_article",
+  "ran_at": "2026-06-28T23:13:07Z"
+}

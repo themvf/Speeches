@@ -32,7 +32,8 @@ type SourceFilter =
   | "SIFMA"
   | "TRADE_ASSOCIATIONS"
   | "TRADE_MEDIA"
-  | "REDDIT";
+  | "REDDIT"
+  | "X";
 
 const FEED_RENDER_BATCH_SIZE = 20;
 const LIVE_FEED_REFRESH_LIMIT = 500;
@@ -269,6 +270,7 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "TRADE_ASSOCIATIONS", label: "Trade Associations" },
   { key: "TRADE_MEDIA", label: "Trade Media" },
   { key: "REDDIT", label: "Reddit" },
+  { key: "X", label: "X" },
 ];
 
 const TRADE_MEDIA_FEED_KEYS = new Set([
@@ -338,6 +340,13 @@ function getFeedMeta(feedKey: string, feedLabel?: string | null): FeedMeta {
   const known = FEED_META[feedKey];
   if (known) {
     return cleanFeedLabel && cleanFeedLabel !== feedKey ? { ...known, label: cleanFeedLabel } : known;
+  }
+  if (feedKey.startsWith("x_public_timeline_")) {
+    return {
+      label: cleanFeedLabel || labelFromFeedKey(feedKey) || "X",
+      code: "X",
+      color: "#c084fc",
+    };
   }
   if (feedKey.startsWith("document_")) {
     const sourceKind = feedKey.replace(/^document_/, "");
@@ -623,6 +632,9 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "REDDIT") {
     return sourceKind === "reddit_post" || text.includes("reddit.com");
+  }
+  if (sourceFilter === "X") {
+    return feedKey.startsWith("x_public_timeline_") || text.includes("x.com/") || text.includes("twitter.com/");
   }
   return false;
 }

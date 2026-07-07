@@ -1,0 +1,377 @@
+{
+  "mode": "ingest",
+  "ran_at": "2026-07-03T14:34:21Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "newsapi_auth": {
+    "source": "env:NEWSAPI_API_KEY",
+    "key_len": 32,
+    "key_fp": "62907f85fbce"
+  },
+  "query": "(\"securities fraud\" OR \"wire fraud\" OR \"market manipulation\" OR \"insider trading\" OR \"ponzi\" OR \"crypto enforcement\" OR \"stablecoin regulation\" OR \"money laundering\" OR \"AML\" OR \"Generative AI\" OR \"Agentic AI\" OR \"private credit\" OR \"investors\" OR \"Hack\" OR \"cyber attack\" OR \"prediction markets\") OR (SEC OR DOJ OR CFTC OR Treasury OR FinCEN OR Congress) NOT (\"sexual abuse\" OR \"sex\" OR \"rape\" OR \"CSAM\")",
+  "lookback_days": 30,
+  "domains": "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com",
+  "exclude_domains": "",
+  "max_pages": 10,
+  "page_size": 100,
+  "target_count": 100,
+  "sort_by": "publishedAt",
+  "from_date": "2026-06-03T14:34:01Z",
+  "to_date": "2026-07-03T14:34:01Z",
+  "selection": "new_or_updated",
+  "discovered_count": 100,
+  "candidate_count": 4,
+  "selected_count": 4,
+  "processed_count": 4,
+  "saved_new": 4,
+  "saved_updates": 0,
+  "processed_doc_ids": [
+    "06cbcd2bee30dfb657131541",
+    "d6c58cd524d99feeb1caf3c5",
+    "daf42da7dbf1355f9e135fd5",
+    "ef2960717403145d975bd2bc"
+  ],
+  "new_doc_ids": [
+    "06cbcd2bee30dfb657131541",
+    "d6c58cd524d99feeb1caf3c5",
+    "daf42da7dbf1355f9e135fd5",
+    "ef2960717403145d975bd2bc"
+  ],
+  "updated_doc_ids": [],
+  "discovered_preview": [
+    {
+      "title": "Blue Owl Investors Ask to Withdraw $4.7 Billion From Flagship Funds",
+      "source_name": "The Wall Street Journal",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T12:57:00Z",
+      "url": "https://www.wsj.com/finance/investing/blue-owl-investors-ask-to-withdraw-4-7-billion-from-flagship-funds-43c440cf",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "ShareChat eyes $400 million IPO next year after turning operationally profitable",
+      "source_name": "Bloomberg",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T02:11:20Z",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-02/sharechat-india-s-meta-rival-plans-400-million-ipo-next-year",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Autonomous drone startup Quantum Systems raises $1.2 billion as investors pile into defense",
+      "source_name": "CNBC",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T14:27:31Z",
+      "url": "https://www.cnbc.com/2026/07/02/autonomous-defense-startup-quantum-systems.html",
+      "ingest_status": "new"
+    },
+    {
+      "title": "Secretaries and admins grapple with a growing threat from AI",
+      "source_name": "Associated Press",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T10:29:43Z",
+      "url": "https://apnews.com/article/ai-chatgpt-secretaries-administrative-assistants-jobs-c5988294ce6a2828e83ef7fe42706c48",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Gold is on the verge of a ‘death cross’ that could surprisingly foreshadow gains",
+      "source_name": "MarketWatch",
+      "date": "June 30, 2026",
+      "published_at": "2026-06-30T17:03:00Z",
+      "url": "https://www.marketwatch.com/story/gold-is-on-the-verge-of-a-death-cross-that-could-surprisingly-foreshadow-gains-2605e99d",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Ondo Finance debuts SEC-aligned tokenized stock model with BlackRock ETF, Micron shares",
+      "source_name": "CoinDesk",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T14:16:02Z",
+      "url": "https://www.coindesk.com/business/2026/07/01/ondo-finance-debuts-sec-aligned-tokenized-stock-model-with-blackrock-etf-micron-shares",
+      "ingest_status": "new"
+    },
+    {
+      "title": "Nasdaq Opens Lower, Warsh Dodges Questions on July Rate Decision",
+      "source_name": "The Wall Street Journal",
+      "date": "July 01, 2026",
+      "published_at": "2026-07-01T14:08:00Z",
+      "url": "https://www.wsj.com/finance/stocks/u-s-stocks-futures-lower-as-rate-hike-expectations-weigh-3e6a2427",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Bitcoin falls to 21-month low on rate-hike fears",
+      "source_name": "Bloomberg",
+      "date": "July 01, 2026",
+      "published_at": "2026-07-01T03:32:03Z",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-01/bitcoin-falls-to-21-month-low-on-strategy-rate-hike-fears",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Trump says 'everybody's profiting' from recent market rallies — but it’s mostly the 1%",
+      "source_name": "CNBC",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T14:03:16Z",
+      "url": "https://www.cnbc.com/2026/07/02/trump-says-everybodys-profiting-from-market-gains-but-mostly-the-1percent.html",
+      "ingest_status": "new"
+    },
+    {
+      "title": "HUTCHMED Announces NMPA Approval for ORPATHYS® for the treatment of Gastric Cancer Patients with MET Amplification",
+      "source_name": "Associated Press",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T09:27:09Z",
+      "url": "https://apnews.com/press-release/globenewswire-mobile/press-release-093f716dfc0dc719964518c656995114",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Even Wall Street bulls are worried about a stock-market pullback after dazzling second quarter",
+      "source_name": "MarketWatch",
+      "date": "June 30, 2026",
+      "published_at": "2026-06-30T15:49:00Z",
+      "url": "https://www.marketwatch.com/story/even-wall-street-bulls-are-worried-about-a-stock-market-pullback-after-dazzling-second-quarter-d4799f26",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "U.S. payroll growth slowed sharply in June, with only 57,000 jobs added",
+      "source_name": "CoinDesk",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T12:37:50Z",
+      "url": "https://www.coindesk.com/markets/2026/07/02/u-s-payroll-growth-slowed-sharply-in-june-adding-only-57-000-jobs",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Brookfield bets on India’s AI data centre boom to drive renewable energy growth",
+      "source_name": "Bloomberg",
+      "date": "July 01, 2026",
+      "published_at": "2026-07-01T03:13:41Z",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-01/brookfield-sees-big-opportunity-in-powering-india-data-centers",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Stock market gains minted nearly 1 million new millionaires in 2025, new UBS report says",
+      "source_name": "CNBC",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T14:00:01Z",
+      "url": "https://www.cnbc.com/2026/07/02/stock-market-gains-new-millionaires-ubs.html",
+      "ingest_status": "new"
+    },
+    {
+      "title": "PureTech Founded Entity Celea Therapeutics Completes $180 Million Financing to Advance Deupirfenidone as a Potential New Standard of Care to Treat Idiopathic Pulmonary Fibrosis (IPF)",
+      "source_name": "Associated Press",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T08:43:21Z",
+      "url": "https://apnews.com/press-release/business-wire/press-release-aa5957a9445b484684ecef7ad15b10bb",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "It’s a tale of two S&P 500s as rotation out of top tech stocks shifts into overdrive",
+      "source_name": "MarketWatch",
+      "date": "June 27, 2026",
+      "published_at": "2026-06-27T11:30:00Z",
+      "url": "https://www.marketwatch.com/story/its-a-tale-of-two-s-p-500s-as-rotation-out-of-top-tech-stocks-shifts-into-overdrive-5254207f",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "A struggling Nasdaq-listed company that tried to copy Saylor's Bitcoin playbook is completely dumping crypto for AI",
+      "source_name": "CoinDesk",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T12:10:15Z",
+      "url": "https://www.coindesk.com/markets/2026/07/02/a-struggling-nasdaq-listed-company-that-tried-to-copy-saylor-s-bitcoin-playbook-is-completely-dumping-crypto-for-ai",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Microsoft commits $2.5 billion and 6,000 employees to new AI implementation unit",
+      "source_name": "CNBC",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T13:00:02Z",
+      "url": "https://www.cnbc.com/2026/07/02/microsoft-commits-2point5-billion-6000-employees-ai-implementation-unit.html",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "BTGO DEADLINE: Levi & Korsinsky Reminds BitGo Holdings, Inc. Investors of Upcoming Securities Class Action Deadline",
+      "source_name": "Associated Press",
+      "date": "July 02, 2026",
+      "published_at": "2026-07-02T03:28:44Z",
+      "url": "https://apnews.com/press-release/pr-newswire/press-release-0036829172b2f8b835ade9425d130b7b",
+      "ingest_status": "existing"
+    },
+    {
+      "title": "Tesla and Waymo duel in the robotaxi race — but the company spending the most builds no cars at all",
+      "source_name": "MarketWatch",
+      "date": "June 25, 2026",
+      "published_at": "2026-06-25T16:40:00Z",
+      "url": "https://www.marketwatch.com/story/tesla-and-waymo-are-chasing-the-robotaxi-dream-but-the-company-spending-the-most-to-win-builds-no-cars-at-all-0d8682b9",
+      "ingest_status": "existing"
+    }
+  ],
+  "failed_count": 0,
+  "failed": [],
+  "discovery_errors": [],
+  "discovered_by_domain": {
+    "wsj.com": 2,
+    "bloomberg.com": 3,
+    "cnbc.com": 25,
+    "apnews.com": 25,
+    "marketwatch.com": 21,
+    "coindesk.com": 24
+  },
+  "discovery_debug": {
+    "endpoint": "https://newsapi.org/v2/everything",
+    "query": "(\"securities fraud\" OR \"wire fraud\" OR \"market manipulation\" OR \"insider trading\" OR \"ponzi\" OR \"crypto enforcement\" OR \"stablecoin regulation\" OR \"money laundering\" OR \"AML\" OR \"Generative AI\" OR \"Agentic AI\" OR \"private credit\" OR \"investors\" OR \"Hack\" OR \"cyber attack\" OR \"prediction markets\") OR (SEC OR DOJ OR CFTC OR Treasury OR FinCEN OR Congress) NOT (\"sexual abuse\" OR \"sex\" OR \"rape\" OR \"CSAM\")",
+    "max_pages_requested": 10,
+    "page_size": 100,
+    "target_count": 100,
+    "from": "2026-06-03T14:34:01Z",
+    "to": "2026-07-03T14:34:01Z",
+    "language": "en",
+    "sort_by": "publishedAt",
+    "domains": "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com",
+    "exclude_domains": "",
+    "search_in": "",
+    "requested_domains": [
+      "reuters.com",
+      "wsj.com",
+      "bloomberg.com",
+      "ft.com",
+      "cnbc.com",
+      "apnews.com",
+      "marketwatch.com",
+      "coindesk.com"
+    ],
+    "priority_domains": [
+      "wsj.com",
+      "bloomberg.com",
+      "ft.com"
+    ],
+    "domain_split_used": true,
+    "domain_split_passes": [
+      {
+        "domain": "ft.com",
+        "reason": "target_count_reached_100",
+        "hits_after_pass": 0
+      },
+      {
+        "domain": "reuters.com",
+        "reason": "target_count_reached_100",
+        "hits_after_pass": 0
+      },
+      {
+        "domain": "cnbc.com",
+        "reason": "target_count_reached_100",
+        "hits_after_pass": 100
+      },
+      {
+        "domain": "apnews.com",
+        "reason": "target_count_reached_100",
+        "hits_after_pass": 100
+      },
+      {
+        "domain": "marketwatch.com",
+        "reason": "target_count_reached_100",
+        "hits_after_pass": 21
+      },
+      {
+        "domain": "coindesk.com",
+        "reason": "target_count_reached_100",
+        "hits_after_pass": 100
+      }
+    ],
+    "passes_run": [
+      "primary",
+      "domain_split:ft.com",
+      "domain_split:reuters.com",
+      "domain_split:cnbc.com",
+      "domain_split:apnews.com",
+      "domain_split:marketwatch.com",
+      "domain_split:coindesk.com"
+    ],
+    "fallback_no_domains_used": false,
+    "fallback_no_domains_reason": "",
+    "fallback_no_search_in_used": false,
+    "fallback_no_search_in_reason": "",
+    "fallback_widened_window_used": false,
+    "fallback_widened_window_reason": "",
+    "fallback_widened_from": "",
+    "stop_reason": "target_count_reached_100",
+    "total_results_reported": 1021,
+    "total_unique": 100,
+    "discovered_by_domain": {
+      "wsj.com": 2,
+      "bloomberg.com": 3,
+      "cnbc.com": 25,
+      "apnews.com": 25,
+      "marketwatch.com": 21,
+      "coindesk.com": 24
+    },
+    "pages": [
+      {
+        "pass": "primary",
+        "page": 1,
+        "returned_items": 100,
+        "unique_added": 100,
+        "domains": "reuters.com,wsj.com,bloomberg.com,ft.com,cnbc.com,apnews.com,marketwatch.com,coindesk.com",
+        "error_type": "",
+        "error_message": "",
+        "page_url": "https://newsapi.org/v2/everything?q=%28%22securities+fraud%22+OR+%22wire+fraud%22+OR+%22market+manipulation%22+OR+%22insider+trading%22+OR+%22ponzi%22+OR+%22crypto+enforcement%22+OR+%22stablecoin+regulation%22+OR+%22money+laundering%22+OR+%22AML%22+OR+%22Generative+AI%22+OR+%22Agentic+AI%22+OR+%22private+credit%22+OR+%22investors%22+OR+%22Hack%22+OR+%22cyber+attack%22+OR+%22prediction+markets%22%29+OR+%28SEC+OR+DOJ+OR+CFTC+OR+Treasury+OR+FinCEN+OR+Congress%29+NOT+%28%22sexual+abuse%22+OR+%22sex%22+OR+%22rape%22+OR+%22CSAM%22%29&language=en&sortBy=publishedAt&pageSize=100&from=2026-06-03T14%3A34%3A01Z&to=2026-07-03T14%3A34%3A01Z&domains=reuters.com%2Cwsj.com%2Cbloomberg.com%2Cft.com%2Ccnbc.com%2Capnews.com%2Cmarketwatch.com%2Ccoindesk.com&page=1"
+      },
+      {
+        "pass": "domain_split:ft.com",
+        "page": 1,
+        "returned_items": 0,
+        "unique_added": 0,
+        "domains": "ft.com",
+        "error_type": "",
+        "error_message": "",
+        "page_url": "https://newsapi.org/v2/everything?q=%28%22securities+fraud%22+OR+%22wire+fraud%22+OR+%22market+manipulation%22+OR+%22insider+trading%22+OR+%22ponzi%22+OR+%22crypto+enforcement%22+OR+%22stablecoin+regulation%22+OR+%22money+laundering%22+OR+%22AML%22+OR+%22Generative+AI%22+OR+%22Agentic+AI%22+OR+%22private+credit%22+OR+%22investors%22+OR+%22Hack%22+OR+%22cyber+attack%22+OR+%22prediction+markets%22%29+OR+%28SEC+OR+DOJ+OR+CFTC+OR+Treasury+OR+FinCEN+OR+Congress%29+NOT+%28%22sexual+abuse%22+OR+%22sex%22+OR+%22rape%22+OR+%22CSAM%22%29&language=en&sortBy=publishedAt&pageSize=100&from=2026-06-03T14%3A34%3A01Z&to=2026-07-03T14%3A34%3A01Z&domains=ft.com&page=1"
+      },
+      {
+        "pass": "domain_split:reuters.com",
+        "page": 1,
+        "returned_items": 0,
+        "unique_added": 0,
+        "domains": "reuters.com",
+        "error_type": "",
+        "error_message": "",
+        "page_url": "https://newsapi.org/v2/everything?q=%28%22securities+fraud%22+OR+%22wire+fraud%22+OR+%22market+manipulation%22+OR+%22insider+trading%22+OR+%22ponzi%22+OR+%22crypto+enforcement%22+OR+%22stablecoin+regulation%22+OR+%22money+laundering%22+OR+%22AML%22+OR+%22Generative+AI%22+OR+%22Agentic+AI%22+OR+%22private+credit%22+OR+%22investors%22+OR+%22Hack%22+OR+%22cyber+attack%22+OR+%22prediction+markets%22%29+OR+%28SEC+OR+DOJ+OR+CFTC+OR+Treasury+OR+FinCEN+OR+Congress%29+NOT+%28%22sexual+abuse%22+OR+%22sex%22+OR+%22rape%22+OR+%22CSAM%22%29&language=en&sortBy=publishedAt&pageSize=100&from=2026-06-03T14%3A34%3A01Z&to=2026-07-03T14%3A34%3A01Z&domains=reuters.com&page=1"
+      },
+      {
+        "pass": "domain_split:cnbc.com",
+        "page": 1,
+        "returned_items": 100,
+        "unique_added": 45,
+        "domains": "cnbc.com",
+        "error_type": "",
+        "error_message": "",
+        "page_url": "https://newsapi.org/v2/everything?q=%28%22securities+fraud%22+OR+%22wire+fraud%22+OR+%22market+manipulation%22+OR+%22insider+trading%22+OR+%22ponzi%22+OR+%22crypto+enforcement%22+OR+%22stablecoin+regulation%22+OR+%22money+laundering%22+OR+%22AML%22+OR+%22Generative+AI%22+OR+%22Agentic+AI%22+OR+%22private+credit%22+OR+%22investors%22+OR+%22Hack%22+OR+%22cyber+attack%22+OR+%22prediction+markets%22%29+OR+%28SEC+OR+DOJ+OR+CFTC+OR+Treasury+OR+FinCEN+OR+Congress%29+NOT+%28%22sexual+abuse%22+OR+%22sex%22+OR+%22rape%22+OR+%22CSAM%22%29&language=en&sortBy=publishedAt&pageSize=100&from=2026-06-03T14%3A34%3A01Z&to=2026-07-03T14%3A34%3A01Z&domains=cnbc.com&page=1"
+      },
+      {
+        "pass": "domain_split:apnews.com",
+        "page": 1,
+        "returned_items": 100,
+        "unique_added": 85,
+        "domains": "apnews.com",
+        "error_type": "",
+        "error_message": "",
+        "page_url": "https://newsapi.org/v2/everything?q=%28%22securities+fraud%22+OR+%22wire+fraud%22+OR+%22market+manipulation%22+OR+%22insider+trading%22+OR+%22ponzi%22+OR+%22crypto+enforcement%22+OR+%22stablecoin+regulation%22+OR+%22money+laundering%22+OR+%22AML%22+OR+%22Generative+AI%22+OR+%22Agentic+AI%22+OR+%22private+credit%22+OR+%22investors%22+OR+%22Hack%22+OR+%22cyber+attack%22+OR+%22prediction+markets%22%29+OR+%28SEC+OR+DOJ+OR+CFTC+OR+Treasury+OR+FinCEN+OR+Congress%29+NOT+%28%22sexual+abuse%22+OR+%22sex%22+OR+%22rape%22+OR+%22CSAM%22%29&language=en&sortBy=publishedAt&pageSize=100&from=2026-06-03T14%3A34%3A01Z&to=2026-07-03T14%3A34%3A01Z&domains=apnews.com&page=1"
+      },
+      {
+        "pass": "domain_split:marketwatch.com",
+        "page": 1,
+        "returned_items": 21,
+        "unique_added": 19,
+        "domains": "marketwatch.com",
+        "error_type": "",
+        "error_message": "",
+        "page_url": "https://newsapi.org/v2/everything?q=%28%22securities+fraud%22+OR+%22wire+fraud%22+OR+%22market+manipulation%22+OR+%22insider+trading%22+OR+%22ponzi%22+OR+%22crypto+enforcement%22+OR+%22stablecoin+regulation%22+OR+%22money+laundering%22+OR+%22AML%22+OR+%22Generative+AI%22+OR+%22Agentic+AI%22+OR+%22private+credit%22+OR+%22investors%22+OR+%22Hack%22+OR+%22cyber+attack%22+OR+%22prediction+markets%22%29+OR+%28SEC+OR+DOJ+OR+CFTC+OR+Treasury+OR+FinCEN+OR+Congress%29+NOT+%28%22sexual+abuse%22+OR+%22sex%22+OR+%22rape%22+OR+%22CSAM%22%29&language=en&sortBy=publishedAt&pageSize=100&from=2026-06-03T14%3A34%3A01Z&to=2026-07-03T14%3A34%3A01Z&domains=marketwatch.com&page=1"
+      },
+      {
+        "pass": "domain_split:coindesk.com",
+        "page": 1,
+        "returned_items": 100,
+        "unique_added": 77,
+        "domains": "coindesk.com",
+        "error_type": "",
+        "error_message": "",
+        "page_url": "https://newsapi.org/v2/everything?q=%28%22securities+fraud%22+OR+%22wire+fraud%22+OR+%22market+manipulation%22+OR+%22insider+trading%22+OR+%22ponzi%22+OR+%22crypto+enforcement%22+OR+%22stablecoin+regulation%22+OR+%22money+laundering%22+OR+%22AML%22+OR+%22Generative+AI%22+OR+%22Agentic+AI%22+OR+%22private+credit%22+OR+%22investors%22+OR+%22Hack%22+OR+%22cyber+attack%22+OR+%22prediction+markets%22%29+OR+%28SEC+OR+DOJ+OR+CFTC+OR+Treasury+OR+FinCEN+OR+Congress%29+NOT+%28%22sexual+abuse%22+OR+%22sex%22+OR+%22rape%22+OR+%22CSAM%22%29&language=en&sortBy=publishedAt&pageSize=100&from=2026-06-03T14%3A34%3A01Z&to=2026-07-03T14%3A34%3A01Z&domains=coindesk.com&page=1"
+      }
+    ]
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

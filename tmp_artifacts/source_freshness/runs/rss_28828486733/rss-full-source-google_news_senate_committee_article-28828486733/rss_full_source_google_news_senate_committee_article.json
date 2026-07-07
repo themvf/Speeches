@@ -1,0 +1,206 @@
+{
+  "mode": "extract",
+  "connector": "google_news_senate_committee_article",
+  "ran_at": "2026-07-06T22:51:25Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://news.google.com/",
+  "selection": "new_or_updated",
+  "max_pages": 2,
+  "limit": 30,
+  "include_pdfs": false,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 31,
+  "filtered_count": 30,
+  "excluded_count": 1,
+  "blocked_extraction_count": 1,
+  "candidate_count": 15,
+  "selected_count": 15,
+  "selected_preview": [
+    {
+      "title": "Warren Calls on Pulte to Resign from ODNI and FHFA As Committee Report Details Abuses of Power - Senate Committee on Banking, Housing, and Urban Affairs (.gov)",
+      "date": "July 06, 2026",
+      "url": "https://news.google.com/rss/articles/CBMi2wFBVV95cUxOSDFpRmZaWG1Cb2RHM2lSRmRmaU1zVEZwblRNd2hZbVBEbEZxeGZURUlkZ05aM1k1ak50NUIya21TdGlHVkp2M1ZybWIxRk1MNXdLNElHbzhmZElTSHQwNmtqaWtWU3BoaXJfenZFbUswZEZQb3Y5ZF9WLVA2OFZSbExyXzEybE9qeFJrZFREUFVaNEhGcmhidC0wRUxLVUZ1T3A4dVhKb2R2aGEyMmtZNlRFVlZlSUxQRjJ2bmtTMnRSWnFtZVZlcEhLV1UzX1owMnI2U3k1R3NEa2s?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Trump Accounts Create Financial Opportunity - Senate Committee on Finance (.gov)",
+      "date": "July 06, 2026",
+      "url": "https://news.google.com/rss/articles/CBMikwFBVV95cUxQRTV2Z2JaVkNacnJSYU9RdERBSUdTVzFMV19WbTNnbUhsUWF4M1p3MGpEOUp2YTI2SlBoZTJIQXNvd05tUENCY1R0QUo2VHNWWDZFd213UFlCNmpIUlFSTHdSdnp4R1l3M19OM2NFRmdXbmdyNHdZS09oMXdGcXc3TlQtZ05aN2ZDWk1LcE9yVGFlNnM?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Search Results | United States Senate Committee on the Judiciary - Senate Committee on the Judiciary (.gov)",
+      "date": "July 06, 2026",
+      "url": "https://news.google.com/rss/articles/CBMingFBVV95cUxPUzM0Z0VsT1EyQnFERW9LWVMyajhwTXdfTU9UTXk4YUI5LW9jckdKek1SUzg5Y3ZGdXBBT3JQZHBOOWtpOHctNjg2VDN1bnBGejdlMWJIcHlWZThWc1Jnb01wWTNWLU1WOVU5TE5nT2ptd2hLa25SUW1tODRoOWduYWM5cW5US3d3Y25lbEM4Y0hfWVdVUE13SEl2VGJEdw?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Nomination of Timothy Kelly to the US District Court for the District of Columbia Questions for the Record - Senate Committee on the Judiciary (.gov)",
+      "date": "July 05, 2026",
+      "url": "https://news.google.com/rss/articles/CBMijgFBVV95cUxPRUdCLUNyLXE5MjVHY3BlZG4xOGF5bFhLSWU1aElGdG1MSDVBLS1FSG9POEJhaTBKT1REaTlYT0ZtRDV1eEhCSVIzdTlNQU84aGFfTjRIdEZGYVdrSVVLc1pzVmxXR3NaR084eHlJQXpPbHJEbmxSZzhrWmpMZDNKeGlwWml0d1JSUDR0Vmpn?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "QUESTIONS FOR THE RECORD FROM SENATOR GRASSLEY SENATE JUDICIARY COMMITTEE HEARING ON “EXAMINING A CONSTITUTIONAL AMENDMENT TO - Senate Committee on the Judiciary (.gov)",
+      "date": "July 04, 2026",
+      "url": "https://news.google.com/rss/articles/CBMifkFVX3lxTE9xaEN0SjhDR1E5dkpNVUtNUXdtRTJHaDFaSTZob1lKd0xVNEhUeUgwdUtvTFJ0ejhQV1E1RWlSOWZ6ZGVrcENhbE00OS1PdWE1M3hTa1poaHQyc24wTEVJbFA5NWFyX2ZPSElfZFAxTWtoOXFWMW9yTmNCcThUdw?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "July 1, 2026 The Honorable Russell Vought Director Office of Management and Budget 725 17th Street NW Washington, DC 20503 Dear - Committee on Homeland Security & Governmental Affairs (.gov)",
+      "date": "July 01, 2026",
+      "url": "https://news.google.com/rss/articles/CBMiigFBVV95cUxNeUZWdndQbVZibFVzU3ZOM0xIMXk5cHQ4bGQ5cThaTWhHbElYcHJRUnFMSEZOSFBsXzcyX08zb3h4MllYOGoydDBXME5VOG1ydXgtcU50dWIwTncxMldmX0N5eVZ6VTZjNW83anZsMTdUeERkTkRFcndfNlktcnlPcmt6aUN4WlI3enc?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Scott, Hagerty Introduce Bill to Secure U.S. Technology Supply Chains from Foreign Adversaries - Senate Committee on Banking, Housing, and Urban Affairs (.gov)",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMi1wFBVV95cUxPMDd3Y0RYN0FuN3hYUDl4TnhfcUQtQ3RJUDBEUkRjeThmLUo5RVZwT0hxMVZqMExsWi1TLUZ4a1Rrd1BYaUswNk9fYzVhdkpvTVBnN2NVY2t5b1VvRFVnU1I2VWxvSTdhNkZIb3NlRFlmdUgyOVBSY1pTR0tFb3AxbGltV0JZb0tsUXpTR2Z4YTdtR2I2bi14RmI3d1lQTVBaMTFXSnVjeU03VHBvLV9DWWprT2NFdndEOC16ZXRSNHlfbWRwWWNGZkNxXzR3NU9iS0I1ODJRMA?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Warren Requests from Capital One Any Communications Between Trump’s New CFPB Nominee and Administration on Dropped Enforcement Action Against the Bank - Senate Committee on Banking, Housing, and Urban Affairs (.gov)",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMipAJBVV95cUxNekp2X3pVMWsyREtMelJrdjlHcTVCYUZxUkVwQWdfQ0F2V0sxc0Z3d21PNDY4cXktSEFxY0liVUQzOFR0U0FhWWVyTlZNNmlOeTBmWDNMT2dtUm1pem9UaWtWY2hPZzJpWDVPWVU2U0x6MUVRSDctNjJ2cHE3TFl6clZDbUJsWjB1MVZJYjZpajFyMThPc0hjMEd2TmstUEZXZG9qMFNBQlVVOUVTQnM4S0V0a24tUEgxU2FzVTZLSnhWUG9Id0kzemwyMV8wS1FrdU5XdFZuMHFuZHRDRzZBcG1YMjZmS3JGbFJORGE1RFlicXBqNktJTzFZS1VPdHBKazN1THZUTFZmNjd4eHA4NDhhdWpsY2JkZWdFWS1XdlBZU3dM?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Statement by Senator Elizabeth Warren on New Trump Crypto Financial Disclosures - Senate Committee on Banking, Housing, and Urban Affairs (.gov)",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMixwFBVV95cUxQOWV1eHZ3SUNpQzdxMXo3bndDVU1pSzBIYnVMYldnT1lITHpYdDVPdHd1V1l6eGxqTnVmUXhPaWRHNkg1VmdRZUY2anBhUmJURUFOc1FhNTJqNjd6RExRc0VWZEd5R09hb01Ld1ZUdXh2bFcxVkpqcU9MTFRqUGFFR04wLTRwNDdxbDJEQTRHTHN4SWQ2X1ZHbG5Fa2dhTXpSU3psLVB1MHhQVTdWc1F0V2MwM0lDd1p6NU5Hc0Nma0xTUzZBQ3E4?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Warren Presses NCUA Chair Hauptman On Proposals To Weaken Credit Unions - Senate Committee on Banking, Housing, and Urban Affairs (.gov)",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMivAFBVV95cUxNMUo5cGdVMWRkMVpRMmNLNDZmOHhVUFBMOHRHNTl6RFd1S3otME5JT0ZWbEVOVU53T2Q4bzdWR2ZaZTJEYTJ0OVB4NldlZTVpOHlQSWRTb1RSYlNsYW9DaHVyV3RKQ0Z1NWZ2V2lESUt6dDlpdGcyZTRtVlZOYklFaWh3bU4zOUVfQUEzT2MtdFRXUXhETVk4anpkZHdRRHR2bmRZQm12MVplTmllcThMUW8zZHRLNjVVc1FmdQ?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Ken Bacon - Senate Committee on the Judiciary (.gov)",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMihgFBVV95cUxQT0NWcnNmcUhzMTUyaHlDU2Y2TzVFNERxdkxYa1ppeXlhQWFDZVVqdUIzaTQyUUpidXRBdmt3NGo3dnZZeXVCVk53aW1JZ2ROb3VrVHQ1UmljRGRHM3FmdEwwb1ZfLUYzeGlPMFNWRTJOcGtneUtoWDRBY2hBZG1IemIwUlFQUQ?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Bereaved Families, Law Enforcement and Veterinary Organizations Cheer Combating Illicit Xylazine Act’s Advancement in the Must-Pass NDAA - Senate Committee on the Judiciary (.gov)",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMilAJBVV95cUxOTDBQeXE3RWxrYmRicV93UjI0a1ZGajdMeXp5YXZfanMtWF9yRXN3SmVydmpOenhyVmZTX25OdmlweC1QOGU1OFFyNlFqcVhjb3Q0MFJoNVlYQ0NzWkNxQ2RGX0tHWDVHd3NWVE1XQ2RtcHZBcUhiSjUtQXByQkdMbUk0YXNqdTlvZG9IU3RZVGp1aUN3cVVqTDVqUEtwbXgtSWRjaFNMc000SDVKZ1dLQy1jRUgyQ0JqN0NRSlIxZzhZcFZjQXlVSnAwbzlMd25LM3IwaG9MOGlZVjRZQlBIUFl3Vl9rZFl0Z1lYa1JZYTZyVGJaT0dUdFZ4LTFtczZuOVJ6Snl2d3dUMHdPOGpKUlBqM0Y?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Grassley, Hagerty Call Out the Federal Judiciary’s Use of Taxpayer Dollars on Gender, Climate Initiatives - Senate Committee on the Judiciary (.gov)",
+      "date": "June 29, 2026",
+      "url": "https://news.google.com/rss/articles/CBMi6gFBVV95cUxNQTJDVnlsQ1VQUlJIMUdmWmhFODkxWUZQb0ZyRU1IUndkQmR3aGJ3YnhTcmVBUjhNT3duTXU0dkpKVHRESEh4UVhhVGpsczU2b2V6c2JkdHJYZ3pfb0VYQ1c4UlVqV2FIM3FYMkszWmpJSThhUXl1eVJlZ0hkcTd0WTMta21CaVdxOHhndFpsdDNSWHVXRWtWaXQ5UWl2ODA1NmNqVjZkSGZNTVZ3OTJxemRzX1E0akx4d2N0cFBhd0VtRWtpTlFTZU5qSEVsWTd5cFM2UUhGSUJha05nVzRCNHk5N3pTaWQxN3c?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "June 29, 2026 President Donald J. Trump The White House 1600 Pennsylvania Avenue Washington, DC 20500 Dear Mr. President: We wri - Committee on Homeland Security & Governmental Affairs (.gov)",
+      "date": "June 29, 2026",
+      "url": "https://news.google.com/rss/articles/CBMilwFBVV95cUxQMnY1TnptR05wY2VsWklHM0phLW13bXVQZHo1cnhLeW5HdHA0UFltS3VqMTJRZk5pWDlIc2Z2UGRDNWNKYVk3N0xLR21iaXBKTGs4UDBfZnZqZnI1Ync2bDNiNW0wYkZZa2RvNE5FdGt2QVh4X2FKMGlpeHY1UjdWam11a1RRNlpFTE9tbzdJU0xSTFZ5OWNV?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Featured Legislation: Farm Bill - Senate Committee On Agriculture, Nutrition & Forestry (.gov)",
+      "date": "April 06, 2022",
+      "url": "https://news.google.com/rss/articles/CBMiZEFVX3lxTE5wZ01ON2xaekVXTlFTbFRBbVMzdTJMbWl1THQxeEM2OW14TXBTTXJ6T29TdzVOQ0xaandydDlpMEsxMlhpd3ZKVFRFS0t4QXpnTTV6eThrb0RnRzhhWG1hcUlPQ08?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    }
+  ],
+  "processed_count": 15,
+  "saved_new": 0,
+  "saved_updates": 15,
+  "invalid_wired_records_removed": 0,
+  "invalid_prnewswire_records_removed": 0,
+  "cjk_language_records_removed": 0,
+  "migrated_enrichment_ids": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [
+    {
+      "url": "https://news.google.com/rss/articles/CBMiigJBVV95cUxQTmZ0ZDVwZTktN0J5RjNUWnVxSS1QZVJkM0VKSi0tcFZ2RWRMRHozREhSeHZhM2g0aHM4b01tTXpPajU3ZGVTbFVIdmRaaURBUVptY2NpeFUzTXBtNGhRZV8ySDdCWlBYQW5uaWROUElKMlNITUhpUVhlYVY1QkJid2F3N0NBY253TFBhaEF1bzdnaW05VE8ySGdnMWpDUmZPRFVpVUlIQ011SjZhc2ttRVRnT3YwSFJfdVVJV05YazhQSkpGcTdaRlRacXQ5SmpMNVlMOThVWm9fTkk5UnJnOTQ2UGM3bXI4VGxBbl9PQk5XOGc5bURscEdpVjFOUWUtM0ZvNXJZQ0dJUQ?oc=5",
+      "title": "Following Trump's Nomination of Capital One Exec to Lead CFPB, Warren Requests Update From Eric Trump On Family's De-banking Lawsuit - Senate Committee on Banking, Housing, and Urban Affairs (.gov)",
+      "date": "July 02, 2026",
+      "source_name": "Google News: Senate Committees",
+      "source_key": "google_news_senate_committee_article",
+      "description": "Following Trump's Nomination of Capital One Exec to Lead CFPB, Warren Requests Update From Eric Trump On Family's De-banking Lawsuit\nSenate Committee on Banking, Housing, and Urban Affairs (.gov)",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Senate%20Banking%20Committee%22%20OR%20%22Senate%20Committee%20on%20Banking%2C%20Housing%2C%20and%20Urban%20Affairs%22%20OR%20site%3Abanking.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "general_litigation"
+    }
+  ],
+  "status_counts": {
+    "new": 15,
+    "update_available": 0,
+    "existing": 15,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "source_key": "google_news_senate_committee_article",
+    "source_label": "Google News: Senate Committees",
+    "base_url": "https://news.google.com/",
+    "max_pages": 2,
+    "include_rss": true,
+    "feed_urls_attempted": [
+      "https://news.google.com/rss/search?q=%22Senate%20Banking%20Committee%22%20OR%20%22Senate%20Committee%20on%20Banking%2C%20Housing%2C%20and%20Urban%20Affairs%22%20OR%20site%3Abanking.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Finance%20Committee%22%20OR%20%22Senate%20Committee%20on%20Finance%22%20OR%20site%3Afinance.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Agriculture%20Committee%22%20OR%20%22Senate%20Committee%20on%20Agriculture%2C%20Nutrition%2C%20and%20Forestry%22%20OR%20site%3Aagriculture.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Judiciary%20Committee%22%20OR%20%22Senate%20Committee%20on%20the%20Judiciary%22%20OR%20site%3Ajudiciary.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Homeland%20Security%20and%20Governmental%20Affairs%20Committee%22%20OR%20%22Senate%20HSGAC%22%20OR%20site%3Ahsgac.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Commerce%20Committee%22%20OR%20%22Senate%20Committee%20on%20Commerce%2C%20Science%2C%20and%20Transportation%22%20OR%20site%3Acommerce.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
+    ],
+    "feed_urls_succeeded": [
+      "https://news.google.com/rss/search?q=%22Senate%20Banking%20Committee%22%20OR%20%22Senate%20Committee%20on%20Banking%2C%20Housing%2C%20and%20Urban%20Affairs%22%20OR%20site%3Abanking.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Finance%20Committee%22%20OR%20%22Senate%20Committee%20on%20Finance%22%20OR%20site%3Afinance.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Agriculture%20Committee%22%20OR%20%22Senate%20Committee%20on%20Agriculture%2C%20Nutrition%2C%20and%20Forestry%22%20OR%20site%3Aagriculture.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Judiciary%20Committee%22%20OR%20%22Senate%20Committee%20on%20the%20Judiciary%22%20OR%20site%3Ajudiciary.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Homeland%20Security%20and%20Governmental%20Affairs%20Committee%22%20OR%20%22Senate%20HSGAC%22%20OR%20site%3Ahsgac.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22Senate%20Commerce%20Committee%22%20OR%20%22Senate%20Committee%20on%20Commerce%2C%20Science%2C%20and%20Transportation%22%20OR%20site%3Acommerce.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
+    ],
+    "listing_used": false,
+    "google_news_query": "",
+    "google_news_used": false,
+    "google_news_count": 0,
+    "discovered_count": 31
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

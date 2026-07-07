@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "403 Client Error: Forbidden for url: https://www.finra.org/rules-guidance/notices",
+  "command": "extract",
+  "connector": "finra_regulatory_notice",
+  "ran_at": "2026-06-17T15:27:38Z"
+}

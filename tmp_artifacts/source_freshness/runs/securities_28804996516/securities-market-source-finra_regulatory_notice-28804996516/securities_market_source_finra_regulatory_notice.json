@@ -1,0 +1,60 @@
+{
+  "mode": "extract",
+  "connector": "finra_regulatory_notice",
+  "ran_at": "2026-07-06T15:59:35Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://www.finra.org/rules-guidance/notices",
+  "selection": "new_or_updated",
+  "max_pages": 3,
+  "limit": 25,
+  "include_pdfs": true,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 5,
+  "filtered_count": 5,
+  "excluded_count": 0,
+  "blocked_extraction_count": 0,
+  "candidate_count": 3,
+  "selected_count": 3,
+  "processed_count": 0,
+  "saved_new": 0,
+  "saved_updates": 0,
+  "invalid_wired_records_removed": 0,
+  "invalid_prnewswire_records_removed": 0,
+  "cjk_language_records_removed": 0,
+  "migrated_enrichment_ids": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 3,
+  "skipped_blocked": [
+    {
+      "url": "https://www.finra.org/rules-guidance/notices/26-12",
+      "title": "Summary\nIn November 2025, Securities and Exchange Commission (SEC) staff issued a no-action letter permitting registered representative-owned personal services entities to receive transaction-based compensation without broker-dealer registration, subject to conditions. This\nNotice\nprovides guidance regarding the manner in which FINRA rules apply in relation to the no-action letter. This\nNotice\ndoes not apply new requirements beyond the no-action letter requirements.",
+      "reason": "FINRA blocked detail-page fetch and no existing record was available to repair."
+    },
+    {
+      "url": "https://www.finra.org/rules-guidance/notices/26-11",
+      "title": "FINRA is publishing updated interpretations of its margin rule (FINRA Rule 4210) to provide guidance to members in implementing the new intraday margin standards. Correspondingly, FINRA is deleting all interpretations relating to the former day trading margin requirements, which the new intraday margin standards have replaced in their entirety. Also, FINRA has made available educational resources, which members can share with customers, that provide information about the new intraday margin standards and margin accounts.",
+      "reason": "FINRA blocked detail-page fetch and no existing record was available to repair."
+    },
+    {
+      "url": "https://www.finra.org/rules-guidance/notices/26-10",
+      "title": "FINRA has adopted new intraday margin standards to replace in their entirety the outdated day trading margin requirements, including the day trade count requirements for designating a customer as a “pattern day trader” and the $25,000 pattern day trader minimum equity requirement.",
+      "reason": "FINRA blocked detail-page fetch and no existing record was available to repair."
+    }
+  ],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 3,
+    "update_available": 0,
+    "existing": 2,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {},
+  "dry_run": false,
+  "rule_summaries_rebuilt": false
+}

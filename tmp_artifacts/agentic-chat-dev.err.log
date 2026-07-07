@@ -1,0 +1,208 @@
+ ⚠ Cross origin request detected from 127.0.0.1 to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\routes-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\routes-manifest.json',
+  page: '/api/market'
+}
+ ⨯ Error: Cannot find module './1331.js'
+Require stack:
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\webpack-runtime.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\pages\_document.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\require.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\load-components.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\utils.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\options.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\index.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\parse-module.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\get-page-static-info.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-server.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\start-server.js
+    at <unknown> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8448)
+    at Object.<anonymous> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8510) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array],
+  page: '/chats'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+[Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\routes-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\routes-manifest.json',
+  page: '/api/market'
+}
+Error: Cannot find module './1331.js'
+Require stack:
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\webpack-runtime.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\pages\_document.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\require.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\load-components.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\utils.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\options.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\index.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\parse-module.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\get-page-static-info.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-server.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\start-server.js
+    at <unknown> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8448)
+    at Object.<anonymous> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8510) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array],
+  page: '/chats'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+[Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+[Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+ ⨯ Error: Cannot find module './1331.js'
+Require stack:
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\webpack-runtime.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\pages\_document.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\require.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\load-components.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\utils.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\options.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\index.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\parse-module.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\get-page-static-info.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-server.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\start-server.js
+    at <unknown> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8448)
+    at Object.<anonymous> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8510) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array],
+  page: '/chats'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+Error: Cannot find module './1331.js'
+Require stack:
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\webpack-runtime.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\pages\_document.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\require.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\load-components.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\utils.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\options.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\index.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\parse-module.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\get-page-static-info.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-server.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\start-server.js
+    at <unknown> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8448)
+    at Object.<anonymous> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8510) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array],
+  page: '/chats'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+[Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+ ⨯ Error: Cannot find module './1331.js'
+Require stack:
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\webpack-runtime.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\pages\_document.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\require.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\load-components.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\utils.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\options.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\index.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\parse-module.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\get-page-static-info.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-server.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\start-server.js
+    at <unknown> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8448)
+    at Object.<anonymous> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8510) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array],
+  page: '/chats'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+Error: Cannot find module './1331.js'
+Require stack:
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\webpack-runtime.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\pages\_document.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\require.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\load-components.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\utils.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\options.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\swc\index.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\parse-module.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\build\analysis\get-page-static-info.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\router-server.js
+- C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\node_modules\next\dist\server\lib\start-server.js
+    at <unknown> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8448)
+    at Object.<anonymous> (C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\server\app\chats\page.js:2:8510) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array],
+  page: '/chats'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}
+[Error: ENOENT: no such file or directory, open 'C:\Docs\_AI Python Projects\Firecrawl\sec_speeches\apps\web\.next\prerender-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Docs\\_AI Python Projects\\Firecrawl\\sec_speeches\\apps\\web\\.next\\prerender-manifest.json'
+}

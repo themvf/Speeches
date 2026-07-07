@@ -1,0 +1,87 @@
+{
+  "mode": "extract",
+  "connector": "decrypt_article",
+  "ran_at": "2026-07-06T22:55:29Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://decrypt.co/",
+  "selection": "new_or_updated",
+  "max_pages": 2,
+  "limit": 30,
+  "include_pdfs": false,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 38,
+  "filtered_count": 38,
+  "excluded_count": 0,
+  "blocked_extraction_count": 0,
+  "candidate_count": 3,
+  "selected_count": 3,
+  "selected_preview": [
+    {
+      "title": "ByteDance and Alibaba to Pull Agent Features as China Cracks Down on Humanlike AI",
+      "date": "July 06, 2026",
+      "url": "https://decrypt.co/372873/bytedance-alibaba-agent-features-china-cracks-down-humanlike-ai",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "UK Foreign Secretary Warns of 'AI Hiroshima' if Policymakers Don’t Act",
+      "date": "July 06, 2026",
+      "url": "https://decrypt.co/372855/uk-foreign-secretary-warns-ai-hiroshima",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Solana Meme Coin Bonk Treasury Drained of $20 Million in 'Malicious' Governance Attack",
+      "date": "July 06, 2026",
+      "url": "https://decrypt.co/372862/solana-meme-coin-bonk-treasury-drained-20-million",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    }
+  ],
+  "processed_count": 3,
+  "saved_new": 3,
+  "saved_updates": 0,
+  "invalid_wired_records_removed": 0,
+  "invalid_prnewswire_records_removed": 0,
+  "cjk_language_records_removed": 0,
+  "migrated_enrichment_ids": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 3,
+    "update_available": 0,
+    "existing": 35,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "source_key": "decrypt_article",
+    "source_label": "Decrypt",
+    "base_url": "https://decrypt.co/",
+    "max_pages": 2,
+    "include_rss": true,
+    "feed_urls_attempted": [
+      "https://decrypt.co/feed"
+    ],
+    "feed_urls_succeeded": [
+      "https://decrypt.co/feed"
+    ],
+    "listing_used": false,
+    "google_news_query": "",
+    "google_news_used": false,
+    "google_news_count": 0,
+    "discovered_count": 38
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

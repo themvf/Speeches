@@ -1,0 +1,9 @@
+{
+  "mode": "enrich",
+  "skipped": true,
+  "reason": "automatic_enrichment_paused",
+  "ran_at": "2026-07-03T14:34:21Z",
+  "processed_count": 0,
+  "enriched_count": 0,
+  "fallback_enriched_count": 0
+}

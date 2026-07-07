@@ -1,0 +1,29 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-07-06T22:48:15Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "provider": "deepseek",
+  "source_kind": "prnewswire_article",
+  "mode_selection": "only_missing_or_failed",
+  "order": "recent",
+  "future_dated_candidate_count": 0,
+  "requested_doc_ids": [],
+  "candidate_count": 1,
+  "selected_count": 1,
+  "processed_count": 1,
+  "enriched_count": 1,
+  "fallback_enriched_count": 0,
+  "used_models": [
+    "deepseek-v4-flash"
+  ],
+  "selected_preview": [
+    {
+      "doc_id": "8e29ef3fb2546c339d5198ac",
+      "date": "July 06, 2026",
+      "title": "PropAccount.com Adds Prediction Markets to Its Multi-Asset Prop Firm Platform"
+    }
+  ],
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

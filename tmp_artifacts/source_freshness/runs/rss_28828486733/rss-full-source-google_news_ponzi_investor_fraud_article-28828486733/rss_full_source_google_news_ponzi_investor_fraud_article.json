@@ -1,0 +1,540 @@
+{
+  "mode": "extract",
+  "connector": "google_news_ponzi_investor_fraud_article",
+  "ran_at": "2026-07-06T22:49:48Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://news.google.com/",
+  "selection": "new_or_updated",
+  "max_pages": 2,
+  "limit": 30,
+  "include_pdfs": false,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 100,
+  "filtered_count": 22,
+  "excluded_count": 78,
+  "blocked_extraction_count": 78,
+  "candidate_count": 22,
+  "selected_count": 22,
+  "selected_preview": [
+    {
+      "title": "Two southeast Iowa men indicted in Ponzi scheme - Tri States Public Radio | TSPR | WIUM",
+      "date": "July 06, 2026",
+      "url": "https://news.google.com/rss/articles/CBMimwFBVV95cUxPUDhMUVlhc0k2Wjh6c0hWQmdGbUtrOXFLcDJ3bE54ZW56cXV1RjB0bWtyd0NwN3hIOE5iWmVvczd0Zy1rNHIzZlhqZ1UyclJwNThyR3RWQ0VIcUZqUzJoNFJqS1BjWHJQdnVQWEhUZUJYUTNKNFhOMWRvby1qTllYZ3pDYVNtSnF4NXRuYjY0MUJsWW5sMTRncTFEUQ?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Ohio man faces 20 felony counts over $200,000 cannabis candy investment fraud - MMJDaily",
+      "date": "July 06, 2026",
+      "url": "https://news.google.com/rss/articles/CBMiugFBVV95cUxOYTJOVERoZ3ZBUkppeG9KRWtjb0tONk12azZ6VlZnNGlvb3BPTXdEX042VUx1Vk9IUkRPOGg0clJuRW1qUFFEdDJjTnZUOE02MlJid1VJa0lIZ0p5TnJ6ZUstbzduQzI0dGJ2emQ1RnhHeUhkdXRyQ2NmX3RHSkVwZEJUbmI4Z0p1Qm9ncmNuQlhqa3ZjR3JuanM3OUI2X3NWN25xR0NhUVo3R2xVSnhUUEJ6d0o3eHJzNEE?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Florida crypto CEO pleads guilty in $250 million Ponzi scheme that hit 1,000 investors - The Cool Down",
+      "date": "July 05, 2026",
+      "url": "https://news.google.com/rss/articles/CBMikwFBVV95cUxQZUdjd0ZaZXpsWS15alRtTEVtclRzc0RkX0wxUlAwZ0ZhNWhXZHBZdFByZDM1cFBJMzVUV2FKTDJfckIwOUpQbnNIYmszZExCU1U0c1dXN200anN1TGFkRHd4cnUwYnpaSlBsVE5QZXRURFlpcmlEMzZTVjY2dHp2UWJSdjRfRUtEcnd0LWJxMWFVcjA?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Florida crypto CEO pleads guilty in $250 million Ponzi scheme that hit 1,000 investors - MSN",
+      "date": "July 05, 2026",
+      "url": "https://news.google.com/rss/articles/CBMi8wFBVV95cUxOU25USGk3bVVwWlpjV0xSX0RzX3VGNFotZm1MVDhWTzF3TTlLc294UGV2UEFOZVlCLXVVYTVaZXFnRF9jRTdoUmZscGdGbXFUUkZwcGtkbVBmTWFHREU5RDhXaWQxUWc1d2NGbi00YVV6VmJ6MFpKTzIzcUlqeUJkYVhaY1dqczQzVGR4Y0RPRjM3LVc1TFJTajVOTzFra1BPNVNhaFNxSXN0clRidUJiUlZNQVVad1N1UkhKbndSYUdnalNvU0pPMWNBc1lXUUtha1dFWTlBREtNUjQxZ0tOd1dBdUVnWllGUl9jRDlWRUYxNVE?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "San Diego man pleads guilty in ADU investment fraud scheme - 10News.com",
+      "date": "July 03, 2026",
+      "url": "https://news.google.com/rss/articles/CBMingFBVV95cUxNcG41Z2tRZ1o2UWF4NmRTeGFEZHJqUGJqcjVzblVoTzg3VGs1RjBPNlFSWG1RR0FPRG5CTEkyUTJidDFmT2JKcnk4cl83bWlXMWhTZ3A4QWhRbGZBb09rdUJGU3R6S2lBODdUUUJJRklMVFgteDZlRmdsNERZMjU2N0pFM2ZUcFIzUTl2ZnplWENfR2hHb3NGNjRnXzhjUQ?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "2 southeast Iowa men face federal charges for Ponzi scheme - WGEM",
+      "date": "July 02, 2026",
+      "url": "https://news.google.com/rss/articles/CBMimAFBVV95cUxQNjRBVWJyeGdwdFZnVHRRODBVeUJtVlVPemFNUm91WkZKTWNiQW9UXzBBYXBiNG1fOGVXeDNnc1NPQXNoZUljNU9ubndXQ0V2bUhMREtQVlRTcjc5VTA0bUoyeDQ2cjJCbjNFYk1pTTRza0gySHVDUHVxR0pzVTBqU0cxTFF1U1JQQlNZbkdpVlZYbnJHOF9ZMQ?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "2 southeast Iowa men face federal charges for Ponzi scheme - KWQC",
+      "date": "July 02, 2026",
+      "url": "https://news.google.com/rss/articles/CBMimAFBVV95cUxObUxZeWFSQkF6Tm1nSzdMRTY3a3lPSG1LNE1DYWxZeWpubWhSMEE0Y09lejRaaXlYM0NTZnNQbThvNmlvMUhRTC1CNWdwbzN6Y3ZSZERqZmpTM1dpWDBvZmg3RVJXaHpMWmp5eXFtS1F1Qi03bEo2ejVSbHptdHczVlBlSmVKTWtLVkVLQzU4M1dEWXVNOU54Mg?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Defendants Sentenced in Decade-Long Ponzi Scheme - Ohio Attorney General (.gov)",
+      "date": "July 01, 2026",
+      "url": "https://news.google.com/rss/articles/CBMitAFBVV95cUxNQVJFV0NPMEkxLUY0ODhXc01ETTdrV0VJcTZsUG5yU19kY2F2OGU2OVpaYzlEYWlfcTBmWXAwdUtOZUpsZTNDb0hwTHFXRXFqakdFdmNRQVdYTEo2czBIUmwzU2lpVzZSODl4WkxSLXJtSVQ5YkpBRE5yN2pTRkxnVWFfRFF3bzRhNFdybUhIRlhrMHVhZ0EtN1pfaGxINHJZRnU3bjlMRks2djdkZDhBVU50Q2U?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Norristown man charged with operating a $3.8 million Ponzi scheme - NBC10 Philadelphia",
+      "date": "July 01, 2026",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxNUmF0eV9YZDZvMWhvYkppZXBlN2MxT1QtX1Zya1huYktyN215bEJYeFhFUTNXbE1nUVB3SGsxVE9iTXZSM2h4QzBLUWs5cG9INVBPOGh1STRVV0kyZGkydEpEejdfUUt0ZVFXWjg3eXc5SVpleHRwWjU3akNUQ1NZd09ZQ3IyQlNVSjVKR01uNzI4ejBJbWpISl9lc1ZQSVVHMHlJZ3JaZGw5YnU1ZmJjZ3pHV2J3ZmfSAb8BQVVfeXFMTUEzRXNwV0k5OTRVMFlzQXJfOEM0ZW9Hc243Rm5wZUs5QWU3YTljVDE3endUX2lFUjlEdGVZdlA1ZjNmVXU3ZU1mNzVDWUtxYWlwWWo2MWo0eGl0YTI3M0lya3lieHRvVV9JMDE3dmxJUjlMcjM4U3dSTjZmNlBLYWNKVEJhUTRvZWF4QWZMWjFZY1N2Rzc5NTlKMGVudTdMdnVuWU1lUTFZVE1vUkE0d3VDYm81bGx5bDZ6OE1RTjA?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Real Property-Real Estate Development-Misappropriation of Investment-Fraud - Missouri Lawyers Media",
+      "date": "July 01, 2026",
+      "url": "https://news.google.com/rss/articles/CBMiswFBVV95cUxQNzhBX1N0eUtyZGFTNHo4dmloRE05VzZzVU44U3RmX0VfUk5UNkxuZVBUQndVUzhZSDZOc0pnUTVxSkRvcFFubXVfTWxUWW1OMnlWQ0h0Ykd3clJ2WEJsWXlIYVQ1bkp0MW53Z0hsSGo1S0ZuNXdTeVVRam9XZ0Q4NVR1dW5iOTl2TlRJYW1RRDZhZ2hGS1Nxa3pJeXNoMEU5NF9zRHM1bU10WTlxYzlRSV9vRQ?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Players in $72M decades-long Ponzi scheme sentenced in Ohio - WANE 15",
+      "date": "July 01, 2026",
+      "url": "https://news.google.com/rss/articles/CBMilwFBVV95cUxPZTlrUFpBSXRHeXVqY196N0duR05SWXlqZTNLSEV1QXc2V2V2REJJSklsYlhRcm16cFI2bjh3M2pjYlREVzFGNi02TUI3Y09jZ1ZuR0RTNVh0MTU3V0NwSm02OV9MYVpuMVpiNnRUUnpuY2tDWUhrTV9NR19XUTl1bjRNVzBZRjNRN1JRSFZDODNLNTRjb2pN0gGcAUFVX3lxTE9raUJ0WEZzN1ZySFRoc3VqU3ZsZXY1eHpKOE1rdU5IeDE3Z041YnRiNzRhT0pUOTZWbVVWVnZVaDRRREhnNlJrZEVoSDdYSzZPblRQVDNnV0hIRjJpRTJmM29PYkVHRVB1V0lTMUFDclEza3VoaWtmQkwyUEY5eVVZRU5EMkNsLWw3MHlLdlNHbzdXektaZXBPUDB6cA?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Four People Sentenced for Roles in $72 Million Ohio Ponzi Scheme - Bloomberg Law News",
+      "date": "July 01, 2026",
+      "url": "https://news.google.com/rss/articles/CBMipwFBVV95cUxPNUNYNW5EbnBYN043SG5vRkU1YmFXSW9CdEVjVzVDLUpIVkFha2dSTmVMZVFNWE5GTTJyWVUzUzF2R1NMTlZYNjFSdjZGS2k2X1lfMXozdmlQeXgtXy1MNU9Ycm85cTVoM1F1Z01JTFBReHRFVXpEREV5NUxIZ09FZkZPR3NiNHh1b0hLY1NlaVJiUlNFeGVxVU5ZOElYc1k0Z0laTW9tOA?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "EFCC arraigns man for alleged $8.4m, US$3.6m investment fraud - Blueprint Newspapers",
+      "date": "July 01, 2026",
+      "url": "https://news.google.com/rss/articles/CBMihwFBVV95cUxOUk8xTXdzLU1qSXF4ei1sMVU2LW91aGlLM01MV1MwVUVSZndXa3JyNGlEN3VLWFZzajdHMFpSNnRUeFY2SGhiZFRJVDNOanFqZ0xMampqdDlnTXFPWUZyOGtqOExYZGY1WHZrWWdYazByYmZuTnJ5bU45MTc5N1ZlMzktZGY4Vjg?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "CEO of Orlando company pleads guilty to running $400 million cryptocurrency Ponzi scheme - Orlando-News.com",
+      "date": "July 01, 2026",
+      "url": "https://news.google.com/rss/articles/CBMixwFBVV95cUxPd1FYYUVXVDZDQ3JaN3ZjU1dINEFha2NyNjdfMUdESUxFRnNhOFc4SnFlYlU3VGJDMUVGRGlvNlpLU2NpSUU2U2VnVERjckx4dlVHV3FoT3hUVFFLd3RzZEE3dHFlc0E0eS1HVm02YzVEUjExaFo1Mk0wSDFmUHNhdF9MZjV4TkZtX2o3U244ZTJCRnpoc2dibTZfMFdQYXhyaTBIR1phMGlISE84eFFuVTA4Q24zOU9PdXN6eXMtM25ONlpzODFn?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Ex-Goliath Ventures CEO pleads guilty in $328M crypto Ponzi scheme - FOX 35 Orlando",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMiqAFBVV95cUxOQ1JGcFh3N0lyanR4endteVFjVXF3WmJPSnNfdnpfRnBXelNOeE16a2tsdTB6VkFzY09WSEtXZGRGSkF0elViTVRHQVpXYVFvMzdES3l6czFXSnRpaW8xVjllMWZLTUlQSllLZTlSOUxFMVduTzZpZUM2VzJzYUItYk1wT1FyTl9EN0JDQjVRNDF5N3hYVkxxdS1lX3VBVlljNHYtMVdEU0fSAa4BQVVfeXFMTmNRbTZFalVUQy1FMUlPNnRMYWVPSXZmR0d4Qnptc3lpRm5rU05Rd05vU0pSS3ZjUmZfN1g1WnFweklDWk1UY0pHZDVTaExOcWpmLWFFcXl4UlpEd1lVaGtrZkFXWTNfVlRTSktVUW1TdV9ndDJhaVJ5Z3lueHlha3I0SXZMTlh2TEthSXVwYmZEZkdEOXRVd09nS3Rid3VIelJJOUotRWhjaXpidlNB?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Orlando ponzi scheme suspect pleads guilty to fraud - WKMG",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMipgFBVV95cUxPaG1BamlUSjNSdUpyT0hYSUZKb3MxR0Fra3hldk5NeTdrdDQzWkNaaWNsLXdXUU9hMEVUdS15V3Zqd2tjNUlKb0VSYmMyMC1adEozaXhHS1BxdDY1Wk9NVlRJMEhwZ2tiQk81X0xHNk5IbzZKcW5scVpNUVQ4VXhsWTg3YmROWUVScnZVTFlkSlY1REhET05QdzlOZ3hfcTFXa0hRLUNB?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Christopher Delgado pleads guilty to Ponzi scheme - FOX 35 Orlando",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMiZkFVX3lxTFA4OEJWV2lGV3Nkd3ZyaDAtQ3doQ3BVUXlHcTVLRnN3WGVrV2hRV2ZKUy00RldQd1JCRDBDSHNEUXYwdURGUThJbjhKNnM0V29LY1J0UVgtczVwVEcxcWJGNlZxazhaUdIBa0FVX3lxTE1MSnI0Q2lzNEdDZThjcnZ0MkNYUk5Hc3k5NmI3bGlHMl9FT3ViTHN2VkV4OEJCUGJ0bWtXYkh1NE9YODZMWVR1ME1Bd3I4bElsTXkzNFNPTU8wbjF5bTNzR3UyOWxTU2tJQ2p3?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Goliath Ventures chief pleads guilty in US to operating crypto Ponzi scheme - MLex",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMiugFBVV95cUxPNnBWOHVRWk55Q25IYzR0T0owcUJxaUtWaWU5T3BNZVdlRmJPenRvR1d2V2JIQlY0dkdGMUZjMzNCVGZRa2tOanI4aS1aNUhCQmY1Tm5MVVRuV2JXU2JPakgzVG1VS29fZGgyWkRFZ0RFUFR6QndTMUZQUTBFcTltV1VlQ3A1TkVOTUNTLWg3QXBnd2NPZ3ZUaFY0MkFrSmljRzhkRUp0a29MRURxeGRLM0dTZnNPYnhuVVHSAVpBVV95cUxOVjBPMHJpLTZRb0ttQVpjMEJvRElnSVBhUmw3cTZnYjJmWmhjMzllaklTN2M2dHFJSWc5MHRkWURMNVdib2JoOUZsRUJ1M0t5V2swWk9BNDY1YUE?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Goliath Ventures chief pleads guilty in US to operating crypto Ponzi scheme - MLex",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMiWkFVX3lxTE5WME8wcmktNlFvS21BWmMwQm9ESWdJUGFSbDdxNmdiMmZaaGMzOWVqSVM3YzZ0cUlJZzkwdGRZREw1V2JvYmg5RmxFQnUzS3lXazBaT0E0NjVhQdIBWkFVX3lxTE5WME8wcmktNlFvS21BWmMwQm9ESWdJUGFSbDdxNmdiMmZaaGMzOWVqSVM3YzZ0cUlJZzkwdGRZREw1V2JvYmg5RmxFQnUzS3lXazBaT0E0NjVhQQ?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "MONTCO Male Charged By State Attorney General For Duping Investors In Multi Million Dollar Ponzi Scheme - Delaware Valley News",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMi3wFBVV95cUxPdjJkN2h2MURjUFRET2JjSHc3RHMzNGcxU3BXaVFEN0FOSDd3UkE0ZjFlbml3UnJuN01oSzdFM0IzeURzLWt1YkNOYkFVUDBrRzhKcVNwX1J0aDhsQnY3d0thMnVuSUxJZFQ4b1dlV1RhejFVNmpHaHlvM0dsaFJzTlNyakxnUnF3Z2tYVnlpZ05TMnN5M0lXZHk2R1NrSGNWbWg0UWhrTnI3aWRnODNndHl2b090Q0pXWkNoQXI4NGFCVzUtOEpMcl9GQnVsWFU3YkxzMFZjOTJhOW8yLWo40gHkAUFVX3lxTE0xcnBSS3BTX1hZaVkzSVpYeVNQYUNudk83TEFuQTJfM19GVXRGb3Z6X3BVOG1fRXA1b1J4dHcxWUhtN011SVhDVWlxcEdrYzF4bGxwaC1UNk92U2JuYXoxdTU5SUxvbTZzZWNjeGt6aHRYLVRTUkpmOExXeDBUNTZSd1BWQTE4NVdhdnZ6ajZfdDJWRU1sMEFCWk9ERzNQSWR5clZnR014bWJYNU5GLW9aUnpzc0tlZ2RadUtjZDBWcjI5NUU1bjF2WFhLcjFlM0c2OFIzWDhFMDl2N3llTGdZMEpLSA?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "EFCC Arraigns Man Over Alleged AUD$8.4m, US$3.6m Crypto Investment Fraud - TVC News",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMimAFBVV95cUxQTW1zZm9LUHJuY21wRnZ4ZkhyWXJ0clBMMnNOaDdPNzdDQ1VZTnpKdlhwMU1vbGd2ZmJFYkZuWmlIZGZKYWRaVlFtUTNnR3F1WDIwTXhkR2dhSllGZzdvWTNGVHliWjVHbWJ5ZW42MTdFejc3OC0xQUZILWVuSzE1U0ZqcEc3ZXY4Ty1hdVZBbVhvcEFNX2h2eA?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    },
+    {
+      "title": "Chinese Businessman Guo Wengui Sentenced to 30 Years in US Prison for Investor Fraud - Estimate Dispersion - dars.gov.et",
+      "date": "June 30, 2026",
+      "url": "https://news.google.com/rss/articles/CBMixwFBVV95cUxNZUU4VXJBNG9MR3Q3ajlLX0hZWFZTejBySXpTY1Ntc1BZSUtiZzdNb0dneHl0TmczVFdGM1paTW9GeEZfUmJEVHMzRDR0eGREbWN0UjlMM0tJZlM4X3czaUdBOVZ4S0xlSjIySm03RFFIazlnZklLaW9Cenc4cmZsYlY5WmZPZnFia24zMnF1bTdILWhfN2pXRFBVVDhVOVhGeGREeWYwTEtUQTV1TVpkMHNVWmtSM2NrTmVuSEdDWjh3UXNIRGo0?oc=5",
+      "ingest_status": "new",
+      "discovery_mode": "",
+      "publication_name": ""
+    }
+  ],
+  "processed_count": 22,
+  "saved_new": 0,
+  "saved_updates": 22,
+  "invalid_wired_records_removed": 0,
+  "invalid_prnewswire_records_removed": 0,
+  "cjk_language_records_removed": 0,
+  "migrated_enrichment_ids": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [
+    {
+      "url": "https://news.google.com/rss/articles/CBMixAFBVV95cUxQd1htYXJUbmYtV0RIdExHbEhMWjJwR1lzc1RoQUJVWE5UaU5DbGRKUHZGR3M3WW1ZN3Z2Z1loNHVpX2x0ZFVkTk5KOVRodU5fcm9XU2RwX3lmeXQ0b1BMdU13UUZTNmU3ZXdfWkwwenpHR05ZaWZ4VmdjT2VVdjBQU3lVSVVONndlUU9keUEyRHZDMDU2cXRlNmdEU2ZJTmdFcnR3TjZsTVJJMWRHdzRjWW5nT2laTXE5UnpfVUpzMUVDcjN1?oc=5",
+      "title": "House passes bipartisan bill to shield seniors from investment fraud - InvestmentNews",
+      "date": "July 06, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "House passes bipartisan bill to shield seniors from investment fraud\nInvestmentNews",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMirgFBVV95cUxQRXJYcUE4TnV3MS0wRHZ5cFBzQ1lUZWNha0VqOGZyUFRxZVU0b1R0S0cyYVFQcUo2eGc2M05XamNDU19iMHBHaVRBQ3R6MXBzTDVUd3NKcG95alQ5aHVuOGZ5bEJJTzdsTDlTcGU2UE5zWkhqbmRhOXM0Mk9fVmhkdmNTSTdzRlNxLW94VmtQM09rVTV0NHBWMFA1T1drbldNSHVTVmdXQlE0cFgwTWc?oc=5",
+      "title": "Fraudster Pleads Guilty To Ponzi Scheme Involving Millions Worth of Snowmobiles - RideApart.com",
+      "date": "July 06, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Fraudster Pleads Guilty To Ponzi Scheme Involving Millions Worth of Snowmobiles\nRideApart.com",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMixwFBVV95cUxNVm5XbDFCXzEtYV9CaEUydmxvanVjalZqSUxMZ3dFV2dtQzRoN3dkNDRNc19FQXVqdUNrell1UUhDb3pUckVEMGRiSEl5TmZMX1pLMFZlNG0teVowdFlTSXBEQTd0VWExeVVORXBuaFJSU1dXc2Zwb1Z2TXpWd3hnQ2lvMGd5TVlBMnpfLTJ6QzdyYmtZX2poTTlqVllRb1hmVlRpYURqbmxtWTBNQnY5ZU9Wb3ZtY2FQd1Y4N2hKUS1CZFNWM1Zn0gHMAUFVX3lxTE1MejhCQ2dId0tyTDBIQkVULUJkVXljSS1tNENMZnJISm5fWkpTNV9mQlBqam15d3g3NEpRbmRYdk9yX1NVU00yNWVQNENCZjhHQWNHNTktLWdMLWFiVWt1TllDLWY5UTFmZ2JIdVBiZ3EwS3kwYm1DWkZhT2h6VFpZY2RJQkxsaTVtN0EtNnBMUDJEdkxMT3dwd0Y1allOSDlQVTFNd0dGbkVRMGFEeGdZX3pSUmJJUEZ2ZWUtSnpJMGRlRFNrZ1BRR2ZyQw?oc=5",
+      "title": "Federal Judge Upholds Verdict Against Musk in Twitter Investor Fraud Case - Devdiscourse",
+      "date": "July 06, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Federal Judge Upholds Verdict Against Musk in Twitter Investor Fraud Case\nDevdiscourse",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMimgFBVV95cUxPN0VpenFRaDkxWWExTEpubjkzRVRndUZlTTVlQlVFalg4aFFzT1c5a2VIb1VBUnVZbTBncXlRRnNWTVZBYUd3LWcyeWhYNFdIcFhOd0NablYtSmlpek9ScWhndFcyZ1VUeHotYWpudTlqM1BxLUhaMkVtQWRabmlZZS1lMEtJaG5zRmd5QWhvZU02cTk0T09rOWVR0gGYAUFVX3lxTFBucnVtdnB1Z3NsUThKQ2pNZ1huNWJLYnFIX3praFpYNFhsWnNlX3FId0tySkp5LWJ2T2trWVFsQTBybWtGeHRqNTR5Q0laWWNGTllzZWRhdUM4SHJsMHBiVVZtSW5rYndvSEdXNlBuX2tEN0cwYUhHbUN4WWg1QWZwMXlFd1hNdkpiOURjQzhVOUFVdWQwZnBu?oc=5",
+      "title": "Over GH¢3 million lost to online investment fraud in first half of 2026 — CSA - Modern Ghana",
+      "date": "July 06, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Over GH¢3 million lost to online investment fraud in first half of 2026 — CSA\nModern Ghana",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMipAFBVV95cUxOUzZrVHlUZ0E1UmhkcEdHU1JtV29rZFp6NlJyX3k2UjdfMzRMTXNENldFVjNHM1pzVUhVU1FiTGhncmlzbXBfYkNxdUZJQ21oZF8xN1ozaWZmQXR5cGFLRHV0NjBpSWZWaG1NeHFMTGVOMWkzR1d3b25uVFA5a0xSSzVrUWxhcm53bGJFa1dJeXpIN09VM1RNN1RuV1dtaXRvZzcycQ?oc=5",
+      "title": "Delhi police arrest two in Rs 1.56 crore online investment fraud case - The News Mill",
+      "date": "July 06, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Delhi police arrest two in Rs 1.56 crore online investment fraud case\nThe News Mill",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMigAJBVV95cUxNaTdYZ0RUT3dkbnM5X3F0MGQ4ckhPVkZvczR2MFBYemZMTGUtbURzOVdQMm5nQ1Y2VUt1QXZ0OEZieWxBeVRoeGxPTU9wQ2RJNUViN2RsVTk2ZTVZUWhWRkFHVzZCR1JHbFYtN3BTV0VRMU0zanp0bTg1X2oxVDRhR0hwUlI2bVdYTWR3N2NRZTZOVzNkaHdqZXlsWlVYNTlhaFpjbTlmUVQzZ2QwVG80c2tDM09JSm16VW9vVmJUSWR4REJMWEl1NUZnS2ZsNkhSUWZHdzhBTGEwZFEyYmx1VXhFNTBSM3lrdkQwcEdmdTl4dmpJeHhGR0lEZ2JCcDVV?oc=5",
+      "title": "Javed Jaffrey family's ₹16.24 crore investment fraud: Crime Branch arrests key accused; BMC officer remains untraceable - MSN",
+      "date": "July 06, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Javed Jaffrey family's ₹16.24 crore investment fraud: Crime Branch arrests key accused; BMC officer remains untraceable\nMSN",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMimAFBVV95cUxQN2hCc0pFaDJ6OVdtdGIwUDZiRmVCZkJuVFd4S2RvWnZoYWpiU01WV1F4dUVSandpMkVabUpHTGlTbnJKZ1gwMWY3cEF5VU5FVWhGaEU1dk1rSWU2Y1RTTlRULWpJMDc5NmhvajBsZVJtYUVSZzJfTktBdWRCVmNyU1FUeDN6YjU5aU5KZDBwSDFySXRtaHhVXw?oc=5",
+      "title": "Delhi Police arrest two in Rs 80 lakh investment fraud case - The News Mill",
+      "date": "July 06, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Delhi Police arrest two in Rs 80 lakh investment fraud case\nThe News Mill",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMi2AFBVV95cUxQd2N5dUdRQ1hZYUlKU0ZBaXdBX2s5MGxmZmtJZTdobUtGUG9QRllSSWY4dmlmRGEtNGpOdl91Y0t2TkEtVml0UDV5NExQQTk1RVVuNGo0Z2xLNHVVQXljX3B0eFJVUTZlRFdyYlQ3U0tqeGpPSnBGTmRxRTE4cnItV1kzc080QjFZSWNjQi1wVU4yZy0wM1AxRGM5QU5SZDA2UlFVeU1RSjhnRVBKU0xNSE04U1NBRXNLeHpGU0FIWUJBeXFoVGdJUVdEajR5eUZ3Y1BwOElEdGI?oc=5",
+      "title": "Is Strategy's STRC A Ponzi Scheme? Peter Schiff Makes His Case Against Saylor - Stocktwits",
+      "date": "July 05, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Is Strategy's STRC A Ponzi Scheme? Peter Schiff Makes His Case Against Saylor\nStocktwits",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMieEFVX3lxTE5HMGRJX3F2TWtZaHA1VWV1Nm94UTVnVmhxSVMwU1RpMHdxeXEzWTl0NDB3dUphQ3dKODVXUUxRS0JQaHFPYjdkLUE0ajdFZDlJd3BCeHZnUWNpa3FFMXpVV3d3cUpaQTdnSDdHVm5NZEg2akRJcWFXeg?oc=5",
+      "title": "$3.8M Ponzi Scheme Bilking 50 Investors Run By Norristown Man: PA AG - AOL.com",
+      "date": "July 05, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "$3.8M Ponzi Scheme Bilking 50 Investors Run By Norristown Man: PA AG\nAOL.com",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMi0gFBVV95cUxQMW45bUl6VWx6R0pwaTRubFpnQTYya0x3Tkpyd05PVC11SnFLdExVaUtGcjNzMzdrbGdUdHp2S2hrLUwtWDZTNy1uMWxicnBBajViUmt4OHRKcTVLNVlZTmxCNGMzR3RiQ01SRjItOThyYjltZ2tBMTYtN1R0NG1Jelh3c01NNnFpRG93Rk5lWGRpZGNrWkRIcHV1T3pYN0JlYk42eENxVHVUZm9MZElwQXdBSUdKbnJ3cXFnNmJoT243eVdHV1NZa0RrR1RiUE9iZFHSAdcBQVVfeXFMTTJwc0xERExxUkd5Z0kxU3BlMU1aSmt4eGtyM0NIRHotbDJ0VVp5eGhNb3dwY1pmQ2tSMVpWUzNGaDJndEVuQWRCRmotdnQzVGViS09xb1VjWXZwV29EVVVEcmp5YjBXYzN2M0xDSjZvbncwbWFXdU1sTVlxQ0xWNUxQNG1sU1d4T2ROUnJXSGdrdndtRXBKSVZMYWViazRKYkFxUWlUMklzek9FOHdmcTZGVUlrN0Z3V05aSkhIQm9udzU0NXJnWmFHS0RFeVM1MUg1MnJpNE0?oc=5",
+      "title": "Rajkot man ends life after losing Rs 1.4cr in investment fraud - The Times of India",
+      "date": "July 05, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Rajkot man ends life after losing Rs 1.4cr in investment fraud\nThe Times of India",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMigwFBVV95cUxOTUZEaXZWMDZRRzVSNFhndXBEaTl5OWtZS1NjNkFreDRiTVRhQXZROXZ4eDRMTTFzQTVsMDFZbVBKZ1cyd003TFlWTEtNU0g5UElPd3Awby1sTW1LQjhKcjQ1ejNKZWNyQ1YzTE56bHlJc1hkSmliazduSUpUVmh2THJqOA?oc=5",
+      "title": "5,300 Crore ‘Mr Pips’ Investment Fraud: 188 Accused Face Prosecution in Massive Crackdown - The420.in",
+      "date": "July 05, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "5,300 Crore ‘Mr Pips’ Investment Fraud: 188 Accused Face Prosecution in Massive Crackdown\nThe420.in",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE02UVdDakhRMlVOYjZwVVJFb1NOeHM5cmx3elV3Z3FxejF5Vi1rUW53U3Z6My1hRnUxNmZ1cnZZWmdDa2pYcFF0bnJ6VDVqbkNnckdTaWdzZVNhZTg?oc=5",
+      "title": "Calgary, Alberta Snow Storm Of September 2019 Ponzi Scheme (K3MkPLIPKr) - Mshale",
+      "date": "July 05, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Calgary, Alberta Snow Storm Of September 2019 Ponzi Scheme (K3MkPLIPKr)\nMshale",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMia0FVX3lxTE54VGl5dmRVRWxFbWs3dTVWSlJBaHRLYmVaeDlGNEhhOUdWYXRPQVV4dEJPUl9ELXd0NmNvdFVjcWFwU3NWcUpFR1lubW5tR2Zid1U0SThKZ2V5bW9zMmZSdDQ4cnpzcEo0ckZF?oc=5",
+      "title": "Three Women Among Accused In Udupi Investment Fraud Case - The420.in",
+      "date": "July 05, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Three Women Among Accused In Udupi Investment Fraud Case\nThe420.in",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE9yRU1yaXNEcURVc0ZIbzAtLW9zTC1kN2plVllQWDV5eWNGeU0zLWhNOFNQQzdBbFlOV1Q4aVN4REstUGU5Vlpia2JiWjhaWFJ5cC1ZNHZ3c0h2SUE?oc=5",
+      "title": "Sin Boy - #31# (Official Music Video) Ponzi Scheme (hQvteqiyyO) - Mshale",
+      "date": "July 04, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Sin Boy - #31# (Official Music Video) Ponzi Scheme (hQvteqiyyO)\nMshale",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE03UEV4dU1GTWp0enFUTVRRLWRoeTBZazRxWDZ6VEJMVktDbzVyMjZsajd5cmF2am9Ld2xuZWFjNlVkeFd3SjZNQWUzcWFEMG83aTNrOXlEREctRDA?oc=5",
+      "title": "Wizkid - Essence (From The Tonight Show Starring Jimmy Fallon) Ft. Tems Ponzi Scheme (11NsOZnlrM) - Mshale",
+      "date": "July 04, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Wizkid - Essence (From The Tonight Show Starring Jimmy Fallon) Ft. Tems Ponzi Scheme (11NsOZnlrM)\nMshale",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiygFBVV95cUxOcTBMWVFtYzlicTNib2p6Z0RqUlFGcjBUSlZiOEpCTE5MRzEzVjM4czJST3Mtc3VuOXFuV1hiZzFKaS1YMjJ5REdja2JvMjc4YUpRd3N1U0NTSjY5TnFKcWZVbmJpdGpJbm5OUDZvOTg3WF80YlF2SFl5bWNhemtKUW91bkZzLU8tUkpmSXdSVkhOV3hEX1FoMVktc2FRams1TzVCTklNMnM1dG4wZ2I3dFhZSmJUQ1hqaXJVLWJQWnozcWlEd1NBLUx3?oc=5",
+      "title": "Norristown man charged with running Ponzi scheme that bilked more than $3.8 million - MSN",
+      "date": "July 04, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Norristown man charged with running Ponzi scheme that bilked more than $3.8 million\nMSN",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMirgFBVV95cUxOa2RzLVZUTFBTaS1aWGRkcHd5V21NZ2lnQ3pTVnJ2VTFaZEJBakFoeUdTQlNfOTVxV0JWVEI5QXE3YXRtY2tVQWVYZmR0WXE3aWhaZV9lSDRHdGFIbE15c3JoTDAxa19MSFUyTEhYNmRrd1NSMk9mOUpLODBfSmNWSVItNkVtNW9NYm94eU5NSTBpaUswcjJaWnEzMWtfc1htZndQTEtWak5NUzctNVHSAbMBQVVfeXFMUFdodlI2QUNBSzRIeWVRMEVrMVZya0ZJRXJudVR6QUc0VFFsOFp5b2s4akFLT0RKR1VpUjNyNGZZczJSWi1pS1ZIWlpScll3OGJEZS0tLTlIeFAzR3NvTGtOQ3ZNOG1XdFNhV05fb1ZEY3NkcUxuLXNmV3FHdUR6d2xnZ3ZoNzVPbVRfNFoyU2lIbldRZ3RyN291V2xBV2tOSVVWa1BUZnpyX2lGUUJ2bHh2TDQ?oc=5",
+      "title": "Man held for ₹30-crore investment fraud | Mumbai news - Hindustan Times",
+      "date": "July 04, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Man held for ₹30-crore investment fraud | Mumbai news\nHindustan Times",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiwwFBVV95cUxOQ0dvak1UdlR6eF8tbkRTZzdyUGhTYmlpaHhsZkQtd3FKWTRzdTNMbV9zQlFDY3JhbGFJUUtVZ3V3Vk5yaE1memZKeU9vR1hfRkhzdDNZV0NyaGNlQUxIekF0THVHVkswalUxZFhwQnNCelh1Vl9WdTAzZy00Mnd2amk4a3BPQkVYWEJNSHhUVnFGbjZHU1hHUTJCcXVKQzlfUDNmX3ZSTTlpWkFFSG9oWjBjZHkxc2tnUFJwQWJWUVBvTjTSAcgBQVVfeXFMTi00ZU5Ia2w5M3JCS3NtaFA4UFRycDF4eFBRUTdJQzYxdUdya2EwNG10MVI4TEotcnhLaXpIUXgzUTBON21zSFgxbDJzcXZjdkhLb3FyeTJjVDNDRzFaNTdTTWJWbWc4QVZSbi13dkFGR1Y0RzZWVXEyQnZtcm9LVXRsREV4UllpWU1POXZLZUtyazNFcjB3V2RzVG1XUmM4Q2lsSzFGQ3ZsU2o0WjJwXzlaYzVyeFdiZ0Raa05LLWZ5VnZpWWJCS24?oc=5",
+      "title": "Four booked for ₹30.9 lakh share investment fraud - The Times of India",
+      "date": "July 04, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Four booked for ₹30.9 lakh share investment fraud\nThe Times of India",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiowFBVV95cUxObGFiYWJ2d3RKQnVhQ1hqcURaNUlsazBLVW9RSk5OWVJJaGtZYWRJbXM2TFBnaUdSWl9PUk1hRkJMZnJEY0FaR21nUjVUb0N0TmRzVDZJZi1XTTlWVDhMOHptRzFrWUVqZGR1YzRrWWMtQ2lYUDJoblNybzBDVllhUUdNSHBfeXlyZ3Jqak5rcFVxTnA1MDZTbFJOclQwM2VWTW1r?oc=5",
+      "title": "Delhi cyber police arrest five in Rs 12.2 lakh investment fraud case - The News Mill",
+      "date": "July 04, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Delhi cyber police arrest five in Rs 12.2 lakh investment fraud case\nThe News Mill",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMimwFBVV95cUxPeUJZSXNIcXZ2LUVKV0lFODRFYThpTlYyMFlVZ0JSeGZ1N1ZHWDhTMFVTaGtMVUFkWVdNTW04TnRJTzRoRm1PeXkyVGpzSWRFWWZLMkItWGlGdkVqRThIQ1ZWcWNQcjJiZE9BdVpGcEpOQnA0enRoN2M3X2xIdE9ST1Q5WXRnc0o3MW8tclpLUmZDcmNMWS1Vd2Iyaw?oc=5",
+      "title": "Crypto trading bot just a Ponzi scheme: SEC - Investment Executive",
+      "date": "July 03, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Crypto trading bot just a Ponzi scheme: SEC\nInvestment Executive",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMi0gFBVV95cUxQWGJlaFk5QS1RVWJKV1VwWkNCVG1TbS15VTNHX1BrMGE5WEd6TzNVRk1mNndGM1pfUnJxX3RDNEdDOGhvOWVWdGpGNkE1dWh3cVZDSDBpMzRsOFFUQUx5aWkwWlRKbURkbFg3S0xWSUI1N3lpUVVKSU5PWkRnd0VPdWgzS1FtTWFobFo0bHppM3IwOFd6NEhZb284cGFtMEE5TlJTbFJESXJDZmZYMk5vaFdSbjZLTnlGQmYycFg0eGFScXk2dElfenRnWnZNLUtJcVHSAdgBQVVfeXFMUEI0dV9DcW1YeHItU2xBNEpJNU01MTZGZUp3RDRtWTZhRnNCRGMtM1ZKY2RabHNVTEtHbjlocE9jUHozZkM5ZjJ3Ulp3YjVzQ0lNWVBHQ25jcEk5RVlkWWZaUVRZMXIyN0ppQUNDTU40dUhxUkZMYkpjb2xGWFowSHdMTlNXejd6cnFvQ3NyWVUtaEtiaUt6S0w4Qi1YRHI4VnhheVRYMTVnc0xNTEVxS2NKdTRzVkpoQ2JBWlE0TDE5cWc3YzdBZXRGWEJUUzBocTVXX0FOUGpf?oc=5",
+      "title": "ED auctions seized aircraft for ₹3 crore in Falcon Ponzi scheme case - The Hindu",
+      "date": "July 03, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "ED auctions seized aircraft for ₹3 crore in Falcon Ponzi scheme case\nThe Hindu",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMirgFBVV95cUxQbG96MnBzNUU0NU85WXo1UmVremNaWkJ2NFl4VnUxWDE1bjF2X3FaV0pzWWpwOTdCTG9kM3dkQ3FWSDlYRG1YLXktR3dMYnpIZ0JpNzJtRkZ3dHpzdmdQclJaNjRoeW01TmJYb1JvaVJ5RHNzbE8tdlU0SVkweUlkQXh4TDVYYThUbWlKelFrT25zelN0VUhlX05OSHBuM0lCQW9sMThrdDJQSzdwUXfSAbMBQVVfeXFMTkRGODJrcF9lTHk0dU5laWFRUHBzcWhoNWNKN1ZYS1NSeEduWDg3VzZYcWdHM2lCSlViNkJ0YXZGUjlkTS1JMjFCcDR0N1NMc3VCdE5oSzFfdWRUcmpET2tKdVZ0bC10cUFPY3o3bXZXdmNuT0pMTzJfR2tzMUhMc1BNNi1vbmN2cXVnN2ZwX2tWYzl2Rkx0a1J3eHdmZGxjTjd2RTluaC1pRUhfUUZXN1hHcU0?oc=5",
+      "title": "Trust Gold owner held over alleged Tk14.38cr investment fraud - The Business Standard",
+      "date": "July 03, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Trust Gold owner held over alleged Tk14.38cr investment fraud\nThe Business Standard",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiuwFBVV95cUxPZWN4NUZrOENlY2xOMkdsalJ5WjRZNl9ySnhYS1d5NVdUd292dDNrQllqenl0VGRubl9vNE0zcThxUXM1am11MFY5SDdpTnFEQ3R4bVhBdF9qWE1DcHVpMjhsaTF6RDFfeUJsaUtBRnNPTkRCV1dwbFZiWW5wXzNtQ0d2M2poNjNkTEpGTkhLX3FuZHBSa0RoTUxlRFFqUTVxQ3RPcmEtbk1USFZndXYxeW1JZHFsWlFGc1RJ0gG-AUFVX3lxTFBPaE1Jc0hJUTRXcUNuYTJ6V2dKNzE2Y2ZNSzlLdFNSQWlWc3l0RHoxWmE4SjRySWpFaGwzYmc0V3hPVVRkYTg5c1RIUzgwUWJkdlh4SVh2cWFmcHNXU0MtOXh3OWJUa0NTR05EOWpzQnZLYWU4YVRJNjA5Z0ZyV0ZWbDF3ZkM4dUxWMkVTM1h1OG1uSWpLSE1QdERLTHV6ZHlqTnMtYkNka18xR0sySVdQWFY2Vy1YX1pNQ2RpYWc?oc=5",
+      "title": "ED auctions seized Hawker 800A biz jet for Rs 3 cr in Ponzi scheme case - Rediff",
+      "date": "July 03, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "ED auctions seized Hawker 800A biz jet for Rs 3 cr in Ponzi scheme case\nRediff",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiVEFVX3lxTE1jRmRqZDBhVnFsck5OV1RsMGo4Q2REM2VsNEotVWprUnplVWNldXhla0FkYVVsdldyTC1hZW5RT1FhREhvVGJnNzkwbWhlZ0Q2ZTQwZw?oc=5",
+      "title": "Cube Entertainment, the agency of the group's children, urged caution against investment fraud relat.. - 매일경제",
+      "date": "July 03, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Cube Entertainment, the agency of the group's children, urged caution against investment fraud relat..\n매일경제",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMixAFBVV95cUxNUnBEQ1oxb0dkdDU0ZDEzbHBCdXQ2Q2h2MHM3YjRwTkxTZlZqVUZnX0dsa2dEN1NTVFliTkZZSjJOVklDUTd4aS1oTlNwVkFqVU5VdGFfZ28tcDFjQXowX0t4b2pyaUdHNTNYbzZfWmVnZl8xSVVqVDNxRmswYUdqbHdINzN5aTVQVUZoS3BTdUZfT0FGRF9UVWUzM1piMm1KVTN5M1NPVjhZeXZrRWkzVFhPTXRvdGxlWlNNRlJUTFp5cFFk0gHKAUFVX3lxTFBIcHpDZ3hCZGVVczZCLTN1djJ6TUdObHZrbTZocDhTa2s4VjJUWjFBenRRZ1ktS3hnSENLcUtpdWxhc1drbEYycmxwZUpKR2lEa0h0ajVMUzJzbVRqa1pucDh6cjdFeUVhdmllamJzUHJSN2E4NXVLVGpmRVQxbEk1WmRYTVNLdFJkVW1KcXVObnVYVDZJU1pnWW9HLXZFZmFhNm1zSjdPakN6S2lOLTdLUi1PQmtwRWpNa1FvZEZraHJPa25jYU9iMWc?oc=5",
+      "title": "Ahmedabad: 80-yr-old loses ₹18L to investment fraud - The Times of India",
+      "date": "July 03, 2026",
+      "source_name": "Google News: Ponzi & Investor Fraud",
+      "source_key": "google_news_ponzi_investor_fraud_article",
+      "description": "Ahmedabad: 80-yr-old loses ₹18L to investment fraud\nThe Times of India",
+      "source_format": "html",
+      "discovery_source": "rss",
+      "feed_url": "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+      "exclude_reason": "non_us_fraud_jurisdiction"
+    }
+  ],
+  "status_counts": {
+    "new": 22,
+    "update_available": 0,
+    "existing": 0,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "source_key": "google_news_ponzi_investor_fraud_article",
+    "source_label": "Google News: Ponzi & Investor Fraud",
+    "base_url": "https://news.google.com/",
+    "max_pages": 2,
+    "include_rss": true,
+    "feed_urls_attempted": [
+      "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
+    ],
+    "feed_urls_succeeded": [
+      "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
+    ],
+    "listing_used": false,
+    "google_news_query": "",
+    "google_news_used": false,
+    "google_news_count": 0,
+    "discovered_count": 100
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

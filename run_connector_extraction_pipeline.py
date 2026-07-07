@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import run_financial_news_pipeline as core
+from source_health import record_source_health
 
 
 SEC_TM_FAQ_DEFAULT_URL = "https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions"
@@ -32,6 +33,13 @@ BLOOMBERG_PUBLIC_DEFAULT_URL = ""
 SUBSTACK_PUBLIC_DEFAULT_URL = "https://substack.com/api/v1/post/search"
 WSJ_DOW_JONES_DEFAULT_URL = "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews"
 HEDGE_FUND_LETTER_DEFAULT_URL = "https://fiscal.ai/fund-letters/"
+SEC_YOUTUBE_DEFAULT_URL = "https://www.youtube.com/user/SECViews"
+YOUTUBE_DEFAULT_URL = ""
+
+YOUTUBE_CONNECTORS = {
+    "sec_youtube_video",
+    "youtube_video",
+}
 
 BLOOMBERG_CONNECTORS = {
     "bloomberg_public_article",
@@ -98,6 +106,7 @@ SUPPORTED_CONNECTORS = {
     "bloomberg_apify_article",
     "bloomberg_latest_apify",
     "substack_public_article",
+    *YOUTUBE_CONNECTORS,
     "wsj_dow_jones",
     "reddit_post",
     "hedge_fund_letter",
@@ -142,6 +151,10 @@ def _default_base_url(connector: str) -> str:
         return BLOOMBERG_PUBLIC_DEFAULT_URL
     if connector == "substack_public_article":
         return SUBSTACK_PUBLIC_DEFAULT_URL
+    if connector == "sec_youtube_video":
+        return SEC_YOUTUBE_DEFAULT_URL
+    if connector == "youtube_video":
+        return YOUTUBE_DEFAULT_URL
     if connector == "wsj_dow_jones":
         return WSJ_DOW_JONES_DEFAULT_URL
     if connector == "reddit_post":
@@ -900,6 +913,18 @@ def _discover_connector(
             keywords=keywords,
             max_pages=max_pages,
             include_feeds=include_rss,
+        )
+        debug = getattr(scraper, "last_discovery_debug", {})
+        return scraper, docs, debug if isinstance(debug, dict) else {}
+
+    if connector in YOUTUBE_CONNECTORS:
+        from youtube_video_scraper import YouTubeVideoScraper
+
+        scraper = YouTubeVideoScraper()
+        docs = scraper.discover_documents(
+            channel_ref=base_url,
+            max_pages=max_pages,
+            limit=max(1, int(max_pages or 1) * 15),
         )
         debug = getattr(scraper, "last_discovery_debug", {})
         return scraper, docs, debug if isinstance(debug, dict) else {}
@@ -1864,6 +1889,55 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["connector_mode"] = "public"
         return record
 
+    if connector in YOUTUBE_CONNECTORS:
+        extracted = scraper.extract_document(
+            entry.get("url", "") or entry.get("video_id", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("published_at", "") or entry.get("date", ""),
+        )
+        data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        video_id = str(data.get("video_id", "") or entry.get("video_id", "")).strip()
+        is_sec_youtube = connector == "sec_youtube_video"
+        source_kind = "sec_youtube_video" if is_sec_youtube else "youtube_video"
+        org_label = "SEC" if is_sec_youtube else "YouTube"
+        speaker_label = "SEC" if is_sec_youtube else "YouTube"
+        fallback_stem = "sec-youtube-video" if is_sec_youtube else "youtube-video"
+        title = str(data.get("title", "") or entry.get("title", "")).strip() or (
+            "SEC YouTube video" if is_sec_youtube else "YouTube video"
+        )
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 25:
+            raise RuntimeError(f"YouTube transcript for {video_id or src_url} is too short.")
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization=org_label,
+            title=title,
+            speaker=speaker_label,
+            doc_date=_parse_doc_date(date_text),
+            doc_type="Video Transcript",
+            source_url=src_url,
+            source_filename=_safe_source_name(src_url or video_id, f"{fallback_stem}-{idx}", ".txt"),
+            source_ext=".txt",
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv="sec,youtube,video,transcript,roundtable" if is_sec_youtube else "youtube,video,transcript",
+            source_kind=source_kind,
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = source_kind
+        metadata["source_index_url"] = base_url
+        metadata["published_date"] = date_text
+        metadata["published_at"] = str(entry.get("published_at", "") or data.get("published_at", "") or "").strip()
+        metadata["youtube_video_id"] = video_id
+        metadata["youtube_channel_id"] = str(entry.get("channel_id", "") or "").strip()
+        metadata["youtube_url"] = src_url
+        metadata["transcript_source"] = "youtube_transcript_api"
+        metadata["discovery_source"] = str(entry.get("discovery_source", "") or "youtube_channel_rss").strip()
+        metadata["connector_mode"] = "public"
+        return record
+
     if connector in TRADE_MEDIA_CONNECTORS:
         from trade_media_scraper import TRADE_MEDIA_SOURCES
 
@@ -2268,7 +2342,7 @@ def _has_item_failures(summary: Dict[str, Any]) -> bool:
 def _should_fail_for_item_failures(connector: str, summary: Dict[str, Any]) -> bool:
     if not _has_item_failures(summary):
         return False
-    if connector == "substack_public_article":
+    if connector in {"substack_public_article", *YOUTUBE_CONNECTORS}:
         try:
             processed_count = int(summary.get("processed_count", 0) or 0)
         except (TypeError, ValueError):
@@ -2332,6 +2406,7 @@ def main() -> int:
             "ran_at": core._utc_now_iso(),
         }
         core._write_summary(getattr(args, "summary_path", ""), payload)
+        record_source_health(payload)
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 1
 
@@ -2341,12 +2416,14 @@ def main() -> int:
             summary["ok"] = False
             summary["error"] = failure_message
             core._write_summary(getattr(args, "summary_path", ""), summary)
+            record_source_health(summary)
             print(json.dumps(summary, indent=2, ensure_ascii=False))
             return 1
         summary["partial_failure"] = True
         summary["warning"] = failure_message
 
     summary["ok"] = True
+    record_source_health(summary)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0
 

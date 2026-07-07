@@ -58,3 +58,23 @@ Avoid starting with Telegram history or TradingView data ingestion. Those should
 - Store enough raw metadata to audit why a ticker appeared in a summary.
 - Separate source-backed facts from model-generated summaries.
 - Add per-connector rate limits, retries, and failure reporting before production scheduling.
+
+## Deferred X Account Monitoring
+
+The user is interested in tracking a small curated list of X accounts, but this work is paused for now. Do not enable scheduled X ingestion, purchase credits, add proxy-based scraping, or expand X monitoring unless the user explicitly asks to resume it.
+
+Current budget estimate for official X API v2 pay-per-use:
+
+- X charges roughly `$0.005` per post read and `$0.010` per user read.
+- Tracking 25 accounts once per day costs about `$3.75/month` for 1 post per account per day, `$18.75/month` for 5 posts each, `$37.50/month` for 10 posts each, and `$75/month` for 20 posts each.
+- User lookups add about `$7.50/month` if done daily, but should be reduced to a one-time roughly `$0.25` cost by caching X user IDs after the first lookup.
+- DeepSeek enrichment on this volume should be minor compared with X API reads when using `deepseek-v4-flash`.
+
+If resumed, prefer this low-budget architecture:
+
+1. Use official X API v2 with `X_BEARER_TOKEN` as the primary provider.
+2. Cache X user IDs for configured handles and avoid repeated user lookup charges.
+3. Poll no more than once daily initially, with a hard per-run post limit.
+4. Store posts in the existing feed/article pipeline with source chips like `X: @SECGov`.
+5. Run DeepSeek enrichment only on stored posts that pass topic/source gates.
+6. Treat unauthenticated syndication endpoints as opportunistic fallback only; do not rely on them for production freshness.

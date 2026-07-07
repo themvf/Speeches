@@ -1,0 +1,148 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-06-30T23:28:25Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "provider": "deepseek",
+  "source_kind": "newsapi_article",
+  "mode_selection": "all",
+  "order": "recent",
+  "requested_doc_ids": [],
+  "candidate_count": 3719,
+  "selected_count": 25,
+  "processed_count": 25,
+  "enriched_count": 25,
+  "fallback_enriched_count": 0,
+  "used_models": [
+    "deepseek-v4-flash"
+  ],
+  "selected_preview": [
+    {
+      "doc_id": "f6660e4d52273fb76912ae93",
+      "date": "May 31, 2027",
+      "title": "Brazil's central bank bans stablecoin and crypto settlement in cross-border payments"
+    },
+    {
+      "doc_id": "013f40e16f00e9912698a13b",
+      "date": "December 31, 2026",
+      "title": "Asia’s biggest bitcoin buyer now wants to build the BTC ecosystem"
+    },
+    {
+      "doc_id": "3a03ad4fa38312bddacfdd50",
+      "date": "August 01, 2026",
+      "title": "Why Minnesota is empowering local banks to fight Wall Street for crypto revenue"
+    },
+    {
+      "doc_id": "9262d6751754d574d0a8a8cc",
+      "date": "June 29, 2026",
+      "title": "Banks to retire high-cost funds with diaspora money, says Axis Bank chief"
+    },
+    {
+      "doc_id": "78e195513d86538bcabdaca6",
+      "date": "June 29, 2026",
+      "title": "Treasury yields little changed as investors look ahead to key jobs data"
+    },
+    {
+      "doc_id": "cbd5214cc8e0c8364550cf3a",
+      "date": "June 29, 2026",
+      "title": "Harbour BioMed Appoints Dr. Lloyd Klickstein as Scientific Advisor for Immunology"
+    },
+    {
+      "doc_id": "0cf01a423feae2c03543ed27",
+      "date": "June 29, 2026",
+      "title": "Crypto exchange BitMEX loses CEO, CFO and head of growth"
+    },
+    {
+      "doc_id": "e35dcf2a708bc78d65650518",
+      "date": "June 29, 2026",
+      "title": "Shapoorji refinancing delays spur some bondholders to seek exit"
+    },
+    {
+      "doc_id": "1f3759169d3445a613e31c47",
+      "date": "June 29, 2026",
+      "title": "Putin’s fuel shortage admission signals growing strain on Russia’s energy infrastructure"
+    },
+    {
+      "doc_id": "5069a892d13fad98bd8f2329",
+      "date": "June 29, 2026",
+      "title": "Bitcoin bottom might not be in as S.Korea announces massive $518 billion AI chip push"
+    },
+    {
+      "doc_id": "4cea65574be99018c806fb5b",
+      "date": "June 29, 2026",
+      "title": "India, China see top firms lose market dominance in AI lag"
+    },
+    {
+      "doc_id": "9cb0d493be1e3d80c6adf766",
+      "date": "June 29, 2026",
+      "title": "Baidu shares jump 7% as AI chip arm Kunlunxin said to target $50 billion Hong Kong IPO"
+    },
+    {
+      "doc_id": "3df7dd746d563e66c7cf481f",
+      "date": "June 29, 2026",
+      "title": "Bitcoin (BTC) news: Spot bitcoin ETFs post record $4 billion outflow in June"
+    },
+    {
+      "doc_id": "1f30609a55a5c320af4aa232",
+      "date": "June 29, 2026",
+      "title": "South Korea says Samsung and SK Hynix investing in AI, semiconductor mega-projects"
+    },
+    {
+      "doc_id": "5fb0f38c339b661ad333deb8",
+      "date": "June 29, 2026",
+      "title": "CNBC Daily Open: Another weekend escalation in Iran, another market shrug"
+    },
+    {
+      "doc_id": "16055aedd8aea7da0db02f60",
+      "date": "June 29, 2026",
+      "title": "SpaceX's $25 billion bond sale drives huge demand - and a potential headache for investors"
+    },
+    {
+      "doc_id": "f1352a5c9ade5259be2ce296",
+      "date": "June 29, 2026",
+      "title": "USD-INR price: USDT jumps to 8.5% premium in India after crypto payment crackdown"
+    },
+    {
+      "doc_id": "2dd0c2a9f392736162a933f1",
+      "date": "June 29, 2026",
+      "title": "Trump bought as much as $5 million in Axon stock before ICE sought $220 million Taser deal"
+    },
+    {
+      "doc_id": "728f76976d2ee581eb44b2e4",
+      "date": "June 29, 2026",
+      "title": "Bitcoin (BTC) price has no friends right now except dollar, U.S. Treasury yield positioning data: Crypto Daily"
+    },
+    {
+      "doc_id": "8de528e420a1a464675b1457",
+      "date": "June 29, 2026",
+      "title": "Bitcoin (BTC) price steadies as analysts warn more downside lies ahead"
+    },
+    {
+      "doc_id": "4042ae707f25f906bb15f7e5",
+      "date": "June 29, 2026",
+      "title": "Bitcoin remains below key onchain and technical levels, leaving it in no man's land"
+    },
+    {
+      "doc_id": "5982b165110f50ef1dae9b16",
+      "date": "June 29, 2026",
+      "title": "New MiCA regime in Europe, U.S. nonfarm payrolls for June: Crypto Week Ahead: Crypto Week Ahead"
+    },
+    {
+      "doc_id": "c67a1ed8eec40a1484641fa8",
+      "date": "June 29, 2026",
+      "title": "Comcast splitsville, fragile Iran truce, Kohl's comeback and more in Morning Squawk"
+    },
+    {
+      "doc_id": "fdbb4f633f989cc5b5340eae",
+      "date": "June 29, 2026",
+      "title": "Prediction market consolidation could spark wave of M&A across sports betting, Bernstein says"
+    },
+    {
+      "doc_id": "c5c0baf1aa5f00d8ac134aba",
+      "date": "June 29, 2026",
+      "title": "Tom Lee blames bitcoin, ether weakness on quarter-end rebalancing as Bitmine (BMNR) buys $43M ETH"
+    }
+  ],
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

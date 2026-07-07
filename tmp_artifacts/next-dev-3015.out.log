@@ -1,0 +1,12 @@
+
+> sec-speeches-web@0.1.0 dev
+> next dev --port 3015
+
+   ▲ Next.js 15.5.18
+   - Local:        http://localhost:3015
+   - Network:      http://192.168.86.128:3015
+
+ ✓ Starting...
+ ✓ Ready in 4.2s
+ ○ Compiling / ...
+ ✓ Compiled / in 13.3s (928 modules)

@@ -89,6 +89,8 @@ All GitHub Actions cron expressions are UTC. The Vercel cron in `apps/web/vercel
 | `bloomberg_latest_apify` | Legacy Bloomberg alias | No default URL | No | No | None | Legacy alias; deprecate or map intentionally |
 | `bloomberg_apify_article` | Legacy Bloomberg alias | No default URL | No | No | None | Legacy alias; deprecate or map intentionally |
 | `substack_public_article` | Substack public search/feed | `https://substack.com/api/v1/post/search` | Yes, dedicated scheduled workflow dispatch | Yes | `substack-public-3hour.yml`: `0 */3 * * *` | Covered |
+| `sec_youtube_video` | SEC YouTube video transcripts | `https://www.youtube.com/user/SECViews` | Yes | Yes | `sec-youtube-videos-daily.yml`: `20 14 * * *` | Covered |
+| `youtube_video` | Configurable YouTube channel transcripts | Requires a YouTube channel URL, handle, channel ID, or uploads RSS URL override | Yes, with `base_url` override | No | None | On-demand source for selected public channels |
 | `jdsupra_article` | JD Supra legal/regulatory analysis | `https://www.jdsupra.com/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `investmentnews_article` | InvestmentNews wealth-management news | `https://www.investmentnews.com/` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |
 | `citywire_article` | Citywire asset-management news | `https://citywire.com/us/news` | Yes | Yes | `connector-gap-6hour.yml`: `0 */6 * * *` | Covered |

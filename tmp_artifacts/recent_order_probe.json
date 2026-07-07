@@ -1,0 +1,36 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-06-30T23:23:33Z",
+  "require_remote_persistence": false,
+  "remote_persistence": true,
+  "provider": "deepseek",
+  "source_kind": "newsapi_article",
+  "mode_selection": "all",
+  "order": "recent",
+  "requested_doc_ids": [],
+  "candidate_count": 113,
+  "selected_count": 3,
+  "processed_count": 3,
+  "enriched_count": 0,
+  "fallback_enriched_count": 3,
+  "used_models": [],
+  "selected_preview": [
+    {
+      "doc_id": "dfc8ec665e83b2c5570cca0f",
+      "date": "April 02, 2026",
+      "title": "The Protocol: Blockchain sleuth ZachXBT alleges Axiom employee conducted insider trading"
+    },
+    {
+      "doc_id": "13632333364f92188c383c69",
+      "date": "March 03, 2026",
+      "title": "Blackstone’s Gray: Market ‘noise’ fueled record redemptions from world’s largest private credit fund"
+    },
+    {
+      "doc_id": "8df36fe3d158fda38bf88818",
+      "date": "March 03, 2026",
+      "title": "CFTC chief Selig to clear path for U.S. perpetual futures in coming weeks"
+    }
+  ],
+  "dry_run": true,
+  "rule_summaries_rebuilt": false
+}

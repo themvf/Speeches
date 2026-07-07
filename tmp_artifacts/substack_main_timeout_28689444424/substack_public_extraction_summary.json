@@ -1,0 +1,996 @@
+{
+  "mode": "extract",
+  "connector": "substack_public_article",
+  "ran_at": "2026-07-04T00:44:53Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://substack.com/api/v1/post/search",
+  "selection": "new_or_updated",
+  "max_pages": 1,
+  "limit": 60,
+  "include_pdfs": false,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 500,
+  "filtered_count": 489,
+  "excluded_count": 11,
+  "candidate_count": 487,
+  "selected_count": 60,
+  "processed_count": 60,
+  "saved_new": 42,
+  "saved_updates": 18,
+  "invalid_wired_records_removed": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [
+    {
+      "url": "https://fintechiseasy.com/p/a-diasporans-guide-to-detty-december",
+      "title": "The Unofficial Payments and Fintech Guide to Detty December™️",
+      "date": "Wed, 03 Dec 2025 13:31:34 GMT",
+      "slug": "a-diasporans-guide-to-detty-december",
+      "substack_post_id": "https://fintechiseasy.com/p/a-diasporans-guide-to-detty-december",
+      "publication_id": "",
+      "publication_name": "Fintech Is Easy",
+      "authors": [
+        "Nnanna"
+      ],
+      "summary": "No AMEX and Apple Pay, no problem, we've got you covered.",
+      "preview_text": "No AMEX and Apple Pay, no problem, we've got you covered.",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "",
+      "free_unlock_required": false,
+      "wordcount": 0,
+      "reaction_count": 0,
+      "comment_count": 0,
+      "matched_keywords": [],
+      "search_position": 8,
+      "feed_url": "https://fintechiseasy.com/feed",
+      "feed_tags": [
+        "fintech-is-easy",
+        "fintech",
+        "payments",
+        "banking"
+      ],
+      "discovery_mode": "feed",
+      "discovery_modes": [
+        "feed"
+      ],
+      "matched_topic_keys": [
+        "AI_TECH"
+      ],
+      "matched_topic_labels": [
+        "AI & Tech"
+      ],
+      "matched_topic_keywords": [
+        "fintech"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Practical consumer guide on payments and fintech for a festival."
+    },
+    {
+      "url": "https://themacrocompass.substack.com/p/policymaking-protest-assets-ppas",
+      "title": "Policymaking Protest Assets (PPAs)",
+      "date": "Tue, 15 Jul 2025 14:33:28 GMT",
+      "slug": "policymaking-protest-assets-ppas",
+      "substack_post_id": "https://themacrocompass.substack.com/p/policymaking-protest-assets-ppas",
+      "publication_id": "",
+      "publication_name": "The Macro Compass",
+      "authors": [
+        "Alfonso Peccatiello (Alf)"
+      ],
+      "summary": "Time To Have A Deep Look At Your Portfolio",
+      "preview_text": "Time To Have A Deep Look At Your Portfolio",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "",
+      "free_unlock_required": false,
+      "wordcount": 0,
+      "reaction_count": 0,
+      "comment_count": 0,
+      "matched_keywords": [],
+      "search_position": 9,
+      "feed_url": "https://themacrocompass.substack.com/feed",
+      "feed_tags": [
+        "macro-compass",
+        "macro",
+        "financial-markets",
+        "rates"
+      ],
+      "discovery_mode": "feed",
+      "discovery_modes": [
+        "feed"
+      ],
+      "matched_topic_keys": [
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "market"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.9,
+      "relevance_reason": "Title and subtitle suggest portfolio advice for individuals."
+    },
+    {
+      "url": "https://themacrocompass.substack.com/p/the-best-assets-you-dont-but-should",
+      "title": "The Best Assets You Don't (But Should) Own in 2026",
+      "date": "Sun, 30 Nov 2025 18:31:20 GMT",
+      "slug": "the-best-assets-you-dont-but-should",
+      "substack_post_id": "https://themacrocompass.substack.com/p/the-best-assets-you-dont-but-should",
+      "publication_id": "",
+      "publication_name": "The Macro Compass",
+      "authors": [
+        "Alfonso Peccatiello (Alf)"
+      ],
+      "summary": "I Am Not Long Enough These Assets",
+      "preview_text": "I Am Not Long Enough These Assets",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "",
+      "free_unlock_required": false,
+      "wordcount": 0,
+      "reaction_count": 0,
+      "comment_count": 0,
+      "matched_keywords": [],
+      "search_position": 4,
+      "feed_url": "https://themacrocompass.substack.com/feed",
+      "feed_tags": [
+        "macro-compass",
+        "macro",
+        "financial-markets",
+        "rates"
+      ],
+      "discovery_mode": "feed",
+      "discovery_modes": [
+        "feed"
+      ],
+      "matched_topic_keys": [
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "market"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.85,
+      "relevance_reason": "Personal investing advice and asset recommendations."
+    },
+    {
+      "url": "https://themacrocompass.substack.com/p/may-the-odds-be-ever-in-your-favor",
+      "title": "May The Odds Be Ever In Your Favor",
+      "date": "Mon, 25 Aug 2025 09:10:35 GMT",
+      "slug": "may-the-odds-be-ever-in-your-favor",
+      "substack_post_id": "https://themacrocompass.substack.com/p/may-the-odds-be-ever-in-your-favor",
+      "publication_id": "",
+      "publication_name": "The Macro Compass",
+      "authors": [
+        "Alfonso Peccatiello (Alf)"
+      ],
+      "summary": "About sizing, stop losses and right-tail returns",
+      "preview_text": "About sizing, stop losses and right-tail returns",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "",
+      "free_unlock_required": false,
+      "wordcount": 0,
+      "reaction_count": 0,
+      "comment_count": 0,
+      "matched_keywords": [],
+      "search_position": 7,
+      "feed_url": "https://themacrocompass.substack.com/feed",
+      "feed_tags": [
+        "macro-compass",
+        "macro",
+        "financial-markets",
+        "rates"
+      ],
+      "discovery_mode": "feed",
+      "discovery_modes": [
+        "feed"
+      ],
+      "matched_topic_keys": [
+        "AI_TECH",
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "AI & Tech",
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "ai",
+        "market"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Trading advice on sizing, stop losses, right-tail returns."
+    },
+    {
+      "url": "https://themacrocompass.substack.com/p/may-the-odds-be-ever-in-your-favor-576",
+      "title": "May The Odds Be Ever In Your Favor",
+      "date": "Mon, 19 Jan 2026 08:46:05 GMT",
+      "slug": "may-the-odds-be-ever-in-your-favor-576",
+      "substack_post_id": "https://themacrocompass.substack.com/p/may-the-odds-be-ever-in-your-favor-576",
+      "publication_id": "",
+      "publication_name": "The Macro Compass",
+      "authors": [
+        "Alfonso Peccatiello (Alf)"
+      ],
+      "summary": "A Guide To Sizing Macro Trades",
+      "preview_text": "A Guide To Sizing Macro Trades",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "",
+      "free_unlock_required": false,
+      "wordcount": 0,
+      "reaction_count": 0,
+      "comment_count": 0,
+      "matched_keywords": [],
+      "search_position": 3,
+      "feed_url": "https://themacrocompass.substack.com/feed",
+      "feed_tags": [
+        "macro-compass",
+        "macro",
+        "financial-markets",
+        "rates"
+      ],
+      "discovery_mode": "feed",
+      "discovery_modes": [
+        "feed"
+      ],
+      "matched_topic_keys": [
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "market"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Guide to sizing macro trades; likely personal investing advice."
+    },
+    {
+      "url": "https://bazabtc.substack.com/p/eth-eth-is-at-risk-how-to-profit",
+      "title": "\"ETH в опасности\". Как заработать на снижении? \"ETH is at risk.\" How to profit from a decline? (Ru/Eng)",
+      "date": "2026-06-30T19:52:17.523Z",
+      "slug": "eth-eth-is-at-risk-how-to-profit",
+      "substack_post_id": 204323039,
+      "publication_id": 7718534,
+      "publication_name": "MARKET INSIGHTS",
+      "authors": [
+        "MARKET INSIGHTS"
+      ],
+      "summary": "СТРАТЕГИЯ! STRATEGY!",
+      "preview_text": "Приветствую всех Трейдеров и подписчиков! В данном аналитическом исследовании я беру курс на практическую сторону отработки медвежьего цикла. А именно, на “стратегию совершения сделок на отбой”. Если Вы не Трейдер, а Инвестор, Вам будет полезно изучить этот материал целиком, так как его суть, отвечает на вопрос о конкретных целях снижения медвежьей фазы…",
+      "post_tags": [
+        "eth",
+        "market insights"
+      ],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 1258,
+      "reaction_count": 46,
+      "comment_count": 7,
+      "matched_keywords": [
+        "market"
+      ],
+      "search_position": 7,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "market"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.9,
+      "relevance_reason": "Trading strategy advice for individuals to profit from ETH decline."
+    },
+    {
+      "url": "https://adinaflores.substack.com/p/my-complaint-against-whitestar-group",
+      "title": "My Complaint Against Whitestar Group Has Been Moved to Enforcement Review",
+      "date": "2026-06-29T19:57:12.950Z",
+      "slug": "my-complaint-against-whitestar-group",
+      "substack_post_id": 204171126,
+      "publication_id": 2016425,
+      "publication_name": "Adina’s Substack",
+      "authors": [
+        "Adina Flores"
+      ],
+      "summary": "A single turning point in my case: the day the Bureau advanced my complaint to enforcement.",
+      "preview_text": "A Significant Shift in My Case",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 591,
+      "reaction_count": 6,
+      "comment_count": 0,
+      "matched_keywords": [
+        "enforcement"
+      ],
+      "search_position": 12,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "ENFORCEMENT",
+        "AI_TECH"
+      ],
+      "matched_topic_labels": [
+        "Enforcement",
+        "AI & Tech"
+      ],
+      "matched_topic_keywords": [
+        "enforcement",
+        "ai"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Personal complaint about enforcement review, consumer finance matter."
+    },
+    {
+      "url": "https://thinkingcrypto.substack.com/p/crypto-bottom-signals-are-flashing",
+      "title": "Crypto Bottom Signals Are Flashing!👀",
+      "date": "2026-06-29T17:06:30.496Z",
+      "slug": "crypto-bottom-signals-are-flashing",
+      "substack_post_id": 204058286,
+      "publication_id": 305711,
+      "publication_name": "The Thinking Crypto Report",
+      "authors": [
+        "Thinking Crypto Podcast"
+      ],
+      "summary": "Key metrics and signals indicate that the bottom may be near for Bitcoin and altcoins.",
+      "preview_text": "Hey Thinkers 💡",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 1108,
+      "reaction_count": 6,
+      "comment_count": 0,
+      "matched_keywords": [
+        "crypto"
+      ],
+      "search_position": 11,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "CRYPTO"
+      ],
+      "matched_topic_labels": [
+        "Crypto"
+      ],
+      "matched_topic_keywords": [
+        "crypto",
+        "bitcoin"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.85,
+      "relevance_reason": "Crypto trading signals and bottom indicators for individual investors."
+    },
+    {
+      "url": "https://oleroladele.substack.com/p/ipo-scam-or-opportunity",
+      "title": "“IPO SCAM?” OR OPPORTUNITY?",
+      "date": "2026-06-29T09:02:25.858Z",
+      "slug": "ipo-scam-or-opportunity",
+      "substack_post_id": 204079062,
+      "publication_id": 2361911,
+      "publication_name": "Money Wit Newsletter",
+      "authors": [
+        "The Money Wit"
+      ],
+      "summary": "Let's talk about how the current Global, African and National affect you as a person.",
+      "preview_text": "In this audio, Oler Oladele, CFA breaks down three big stories shaping Africa’s markets right now—and what they actually mean for your money:",
+      "post_tags": [
+        "global news",
+        "opec",
+        "weekly news review",
+        "Investing",
+        "SMEs",
+        "CBN",
+        "business",
+        "NGX",
+        "FX",
+        "Oler Oladele",
+        "finance education",
+        "money news",
+        "Debt",
+        "Africa food economy fintech",
+        "cryptocurriencies",
+        "Wealth Building",
+        "NigeriaStockMarket",
+        "Nigeria remittances 2026",
+        "Seplat",
+        "investment",
+        "financial mistakes",
+        "CBN IMTO naira settlement",
+        "nigerian investment",
+        "AFRICA",
+        "AI",
+        "African diaspora investment",
+        "Dangote refinery exports Africa",
+        "nigerian stock market",
+        "uae"
+      ],
+      "post_type": "podcast",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 399,
+      "reaction_count": 0,
+      "comment_count": 0,
+      "matched_keywords": [
+        "ipo"
+      ],
+      "search_position": 16,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "CAPITAL_FORMATION",
+        "ENFORCEMENT",
+        "AI_TECH",
+        "CRYPTO",
+        "CREDIT_MARKETS",
+        "FINANCIAL_MARKETS",
+        "ECONOMIC_GROWTH"
+      ],
+      "matched_topic_labels": [
+        "Capital Formation",
+        "Enforcement",
+        "AI & Tech",
+        "Crypto",
+        "Credit Markets",
+        "Financial Markets",
+        "Economic Growth"
+      ],
+      "matched_topic_keywords": [
+        "ipo",
+        "fine",
+        "settlement",
+        "ai",
+        "fintech",
+        "crypto",
+        "debt",
+        "market",
+        "stock",
+        "dow",
+        "economy"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "IPO discussion framed as opportunity for individual investors."
+    },
+    {
+      "url": "https://cryptocrib.substack.com/p/crypto-crib-weekly-beb",
+      "title": "Crypto Crib Weekly",
+      "date": "2026-06-29T07:49:09.403Z",
+      "slug": "crypto-crib-weekly-beb",
+      "substack_post_id": 204074421,
+      "publication_id": 1808999,
+      "publication_name": "The Crypto Crib",
+      "authors": [
+        "Crypto Crib"
+      ],
+      "summary": "Stocks Surge, Crypto Consolidates!",
+      "preview_text": "A Tale of Two Markets",
+      "post_tags": [
+        "clarity act",
+        "bitcoin",
+        "etfs",
+        "crypto",
+        "stablecoins",
+        "btc",
+        "Michael saylor"
+      ],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 668,
+      "reaction_count": 8,
+      "comment_count": 2,
+      "matched_keywords": [
+        "crypto"
+      ],
+      "search_position": 3,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "CRYPTO",
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "Crypto",
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "crypto",
+        "bitcoin",
+        "stablecoin",
+        "market",
+        "stock"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Crypto weekly newsletter with stock and crypto consolidation advice for individuals."
+    },
+    {
+      "url": "https://capitanmarket.substack.com/p/otro-jueves-cobarde-84",
+      "title": "Otro jueves cobarde #84",
+      "date": "2026-06-25T12:57:36.927Z",
+      "slug": "otro-jueves-cobarde-84",
+      "substack_post_id": 203540824,
+      "publication_id": 2213377,
+      "publication_name": "Capitán Market",
+      "authors": [
+        "Capitán Market / Inversiones"
+      ],
+      "summary": "Oportunidad con Netflix.",
+      "preview_text": "Volví a comprar Netflix. A $73.",
+      "post_tags": [],
+      "post_type": "newsletter",
+      "audience": "everyone",
+      "free_unlock_required": false,
+      "wordcount": 1345,
+      "reaction_count": 3,
+      "comment_count": 0,
+      "matched_keywords": [
+        "market"
+      ],
+      "search_position": 12,
+      "discovery_mode": "search",
+      "discovery_modes": [
+        "search"
+      ],
+      "matched_topic_keys": [
+        "FINANCIAL_MARKETS"
+      ],
+      "matched_topic_labels": [
+        "Financial Markets"
+      ],
+      "matched_topic_keywords": [
+        "market"
+      ],
+      "relevance_classification": "personal_finance",
+      "relevance_confidence": 0.8,
+      "relevance_reason": "Spanish language post about buying Netflix stock, personal investing tip."
+    }
+  ],
+  "status_counts": {
+    "new": 422,
+    "update_available": 65,
+    "existing": 2,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "mode": "public_substack_api",
+    "search_url": "https://substack.com/api/v1/post/search",
+    "keywords": [
+      "sec",
+      "ipo",
+      "aml",
+      "enforcement",
+      "ai",
+      "crypto",
+      "credit",
+      "market",
+      "economy"
+    ],
+    "pages_per_keyword": 1,
+    "proxy_configured": true,
+    "proxy_config_error": "",
+    "requests": [
+      {
+        "keyword": "sec",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "ipo",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "aml",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "enforcement",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "ai",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "crypto",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "credit",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "market",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      },
+      {
+        "keyword": "economy",
+        "page": 0,
+        "result_count": 20,
+        "more": true
+      }
+    ],
+    "errors": [],
+    "feed_discovery": {
+      "mode": "curated_substack_feeds",
+      "feeds": [
+        {
+          "label": "Capitol Account",
+          "feed_url": "https://www.capitolaccountdc.com/feed",
+          "tags_csv": "capitol-account,financial-regulation,washington-policy"
+        },
+        {
+          "label": "FinRegRag",
+          "feed_url": "https://www.finregrag.com/feed",
+          "tags_csv": "finregrag,financial-regulation,policy-commentary"
+        },
+        {
+          "label": "Bank Reg Blog",
+          "feed_url": "https://bankregblog.substack.com/feed",
+          "tags_csv": "bank-reg-blog,bank-regulation,financial-policy"
+        },
+        {
+          "label": "The Public Interest by Better Markets",
+          "feed_url": "https://bettermarkets.substack.com/feed",
+          "tags_csv": "better-markets,market-structure,financial-stability"
+        },
+        {
+          "label": "DeFi Education Fund",
+          "feed_url": "https://defieducationfund.substack.com/feed",
+          "tags_csv": "defi-education-fund,defi,crypto-policy"
+        },
+        {
+          "label": "Trustless Policy",
+          "feed_url": "https://trustlesspolicy.substack.com/feed",
+          "tags_csv": "trustless-policy,crypto-policy,market-structure"
+        },
+        {
+          "label": "Fintech Business Weekly",
+          "feed_url": "https://fintechbusinessweekly.substack.com/feed",
+          "tags_csv": "fintech-business-weekly,fintech,banking"
+        },
+        {
+          "label": "The Dig",
+          "feed_url": "https://thedig.substack.com/feed",
+          "tags_csv": "the-dig,accounting,audit,governance"
+        },
+        {
+          "label": "Doomberg",
+          "feed_url": "https://newsletter.doomberg.com/feed",
+          "tags_csv": "doomberg,financial-markets,energy,macro"
+        },
+        {
+          "label": "Net Interest",
+          "feed_url": "https://www.netinterest.co/feed",
+          "tags_csv": "net-interest,financial-markets,banking,asset-management"
+        },
+        {
+          "label": "The Overshoot",
+          "feed_url": "https://theovershoot.co/feed",
+          "tags_csv": "the-overshoot,macro,economic-policy,financial-markets"
+        },
+        {
+          "label": "Apricitas Economics",
+          "feed_url": "https://www.apricitas.io/feed",
+          "tags_csv": "apricitas,economics,macro,financial-markets"
+        },
+        {
+          "label": "The Macro Compass",
+          "feed_url": "https://themacrocompass.substack.com/feed",
+          "tags_csv": "macro-compass,macro,financial-markets,rates"
+        },
+        {
+          "label": "Payments Wrap Up",
+          "feed_url": "https://www.paymentswrapup.com/feed",
+          "tags_csv": "payments-wrap-up,payments,fintech,banking"
+        },
+        {
+          "label": "Canadian Fintech",
+          "feed_url": "https://canadianfintech.substack.com/feed",
+          "tags_csv": "canadian-fintech,fintech,open-banking,financial-policy"
+        },
+        {
+          "label": "Fintech Is Easy",
+          "feed_url": "https://fintechiseasy.com/feed",
+          "tags_csv": "fintech-is-easy,fintech,payments,banking"
+        },
+        {
+          "label": "Web3 vs. the Law",
+          "feed_url": "https://davidlopezkurtz.substack.com/feed",
+          "tags_csv": "web3-law,crypto-policy,securities-regulation,digital-assets"
+        },
+        {
+          "label": "Venture in Security",
+          "feed_url": "https://ventureinsecurity.net/feed",
+          "tags_csv": "venture-in-security,cybersecurity,security-market,security-leadership"
+        },
+        {
+          "label": "Resilient Cyber",
+          "feed_url": "https://www.resilientcyber.io/feed",
+          "tags_csv": "resilient-cyber,cybersecurity,cyber-policy,security-risk"
+        },
+        {
+          "label": "The Cybersecurity Pulse",
+          "feed_url": "https://www.cybersecuritypulse.net/feed",
+          "tags_csv": "cybersecurity-pulse,cybersecurity,threats,security-operations"
+        },
+        {
+          "label": "Cybersecurity Chronicles",
+          "feed_url": "https://cybersecuritychronicles.substack.com/feed",
+          "tags_csv": "cybersecurity-chronicles,cyber-risk,governance,security-policy"
+        },
+        {
+          "label": "CyberMaterial",
+          "feed_url": "https://www.cybermaterial.com/feed",
+          "tags_csv": "cybermaterial,cybersecurity,threat-intelligence,security-news"
+        },
+        {
+          "label": "ToxSec",
+          "feed_url": "https://www.toxsec.com/feed",
+          "tags_csv": "toxsec,cybersecurity,ai-security,security-research"
+        },
+        {
+          "label": "TechLetters",
+          "feed_url": "https://techletters.substack.com/feed",
+          "tags_csv": "techletters,cyber-policy,privacy,technology-policy"
+        },
+        {
+          "label": "Imperva Weekly Threat Intelligence",
+          "feed_url": "https://imperva.substack.com/feed",
+          "tags_csv": "imperva,threat-intelligence,cybersecurity,security-operations"
+        },
+        {
+          "label": "The Attack Surface",
+          "feed_url": "https://attacksurfaceai.substack.com/feed",
+          "tags_csv": "attack-surface,ai-security,cybersecurity,threat-intelligence"
+        },
+        {
+          "label": "Import AI",
+          "feed_url": "https://importai.substack.com/feed",
+          "tags_csv": "import-ai,artificial-intelligence,ai-policy,frontier-ai"
+        },
+        {
+          "label": "One Useful Thing",
+          "feed_url": "https://www.oneusefulthing.org/feed",
+          "tags_csv": "one-useful-thing,artificial-intelligence,generative-ai,ai-adoption"
+        },
+        {
+          "label": "Interconnects",
+          "feed_url": "https://www.interconnects.ai/feed",
+          "tags_csv": "interconnects,artificial-intelligence,open-models,ai-research"
+        },
+        {
+          "label": "AI as Normal Technology",
+          "feed_url": "https://www.normaltech.ai/feed",
+          "tags_csv": "normal-technology,artificial-intelligence,ai-policy,technology-policy"
+        },
+        {
+          "label": "a16z AI Policy Brief",
+          "feed_url": "https://a16zpolicy.substack.com/feed",
+          "tags_csv": "a16z-ai-policy,ai-policy,technology-policy,venture-capital"
+        },
+        {
+          "label": "DC/ai Decoded",
+          "feed_url": "https://www.dcaidecoded.com/feed",
+          "tags_csv": "dc-ai-decoded,ai-policy,federal-policy,artificial-intelligence"
+        },
+        {
+          "label": "Asia AI Policy Monitor",
+          "feed_url": "https://asiaaipolicymonitor.substack.com/feed",
+          "tags_csv": "asia-ai-policy,ai-policy,technology-policy,artificial-intelligence"
+        }
+      ],
+      "max_items_per_feed": 10,
+      "proxy_configured": true,
+      "proxy_config_error": "",
+      "requests": [
+        {
+          "feed_url": "https://www.capitolaccountdc.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.finregrag.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://bankregblog.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://bettermarkets.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://defieducationfund.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://trustlesspolicy.substack.com/feed",
+          "result_count": 7
+        },
+        {
+          "feed_url": "https://fintechbusinessweekly.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://thedig.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://newsletter.doomberg.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.netinterest.co/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://theovershoot.co/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.apricitas.io/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://themacrocompass.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.paymentswrapup.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://canadianfintech.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://fintechiseasy.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://davidlopezkurtz.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://ventureinsecurity.net/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.resilientcyber.io/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.cybersecuritypulse.net/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://cybersecuritychronicles.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.cybermaterial.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.toxsec.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://techletters.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://imperva.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://attacksurfaceai.substack.com/feed",
+          "result_count": 4
+        },
+        {
+          "feed_url": "https://importai.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.oneusefulthing.org/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.interconnects.ai/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.normaltech.ai/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://a16zpolicy.substack.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://www.dcaidecoded.com/feed",
+          "result_count": 20
+        },
+        {
+          "feed_url": "https://asiaaipolicymonitor.substack.com/feed",
+          "result_count": 20
+        }
+      ],
+      "errors": [],
+      "items_found": 321
+    },
+    "include_feeds": true,
+    "items_found": 500,
+    "topic_rule_count": 9,
+    "topic_keywords_used": [
+      "sec",
+      "ipo",
+      "aml",
+      "enforcement",
+      "ai",
+      "crypto",
+      "credit",
+      "market",
+      "economy"
+    ],
+    "topic_keywords_source": "rss_topic_rules",
+    "topic_keywords_limit": 9,
+    "relevance_provider": "deepseek",
+    "relevance_model": "deepseek-v4-flash",
+    "relevance_included_count": 489,
+    "relevance_excluded_count": 11
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

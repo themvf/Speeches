@@ -7890,6 +7890,292 @@ elif page == "Extraction":
     custom_payload = _load_custom_documents()
     custom_docs = _custom_docs_as_speeches(custom_payload)
 
+    def _render_youtube_connector(
+        *,
+        heading,
+        caption,
+        state_prefix,
+        default_channel_url,
+        default_org_label,
+        default_speaker_label,
+        source_kind,
+        tags_csv,
+        custom_payload_obj,
+        custom_docs_list,
+        knowledge_data_obj,
+        allow_metadata_inputs=False,
+    ):
+        st.subheader(heading)
+        st.caption(caption)
+
+        youtube_channel_url = st.text_input(
+            "YouTube Channel URL",
+            value=default_channel_url,
+            key=f"{state_prefix}_channel_url",
+            help="Supports channel URLs, handle URLs, user URLs, channel IDs, or YouTube RSS feed URLs.",
+        ).strip()
+        if source_kind == "sec_youtube_video":
+            youtube_channel_url = youtube_channel_url or default_channel_url
+
+        if allow_metadata_inputs:
+            yt_meta_col1, yt_meta_col2 = st.columns(2)
+            with yt_meta_col1:
+                org_label = st.text_input(
+                    "Organization Label",
+                    value=default_org_label,
+                    key=f"{state_prefix}_org_label",
+                ).strip() or default_org_label
+            with yt_meta_col2:
+                speaker_label = st.text_input(
+                    "Speaker/Author Label",
+                    value=default_speaker_label,
+                    key=f"{state_prefix}_speaker_label",
+                ).strip() or default_speaker_label
+            yt_tags_csv = st.text_input(
+                "Tags (comma-separated)",
+                value=tags_csv,
+                key=f"{state_prefix}_tags",
+            ).strip() or tags_csv
+        else:
+            org_label = default_org_label
+            speaker_label = default_speaker_label
+            yt_tags_csv = tags_csv
+
+        youtube_max_items = st.slider(
+            "Videos To Discover",
+            min_value=5,
+            max_value=50,
+            value=15,
+            key=f"{state_prefix}_max_items",
+        )
+
+        yt_btn_col1, yt_btn_col2 = st.columns(2)
+        with yt_btn_col1:
+            discover_youtube = st.button("Discover YouTube Videos", key=f"{state_prefix}_discover")
+        with yt_btn_col2:
+            clear_youtube = st.button("Clear YouTube Results", key=f"{state_prefix}_clear")
+
+        state_key = f"{state_prefix}_discovered"
+        debug_key = f"{state_prefix}_debug"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = []
+        if debug_key not in st.session_state:
+            st.session_state[debug_key] = {}
+        if clear_youtube:
+            st.session_state[state_key] = []
+            st.session_state[debug_key] = {}
+
+        if discover_youtube:
+            if not youtube_channel_url:
+                st.error("Enter a YouTube channel URL before discovery.")
+            else:
+                try:
+                    from youtube_video_scraper import YouTubeVideoScraper
+
+                    with st.spinner(f"Discovering videos from {org_label} YouTube..."):
+                        youtube_scraper = YouTubeVideoScraper()
+                        discovered = youtube_scraper.discover_documents(
+                            channel_ref=youtube_channel_url,
+                            max_pages=1,
+                            limit=youtube_max_items,
+                        )
+                        debug_payload = getattr(youtube_scraper, "last_discovery_debug", {})
+                        if isinstance(debug_payload, dict):
+                            st.session_state[debug_key] = debug_payload
+
+                    existing_custom = {}
+                    existing_identity = {}
+                    for item in custom_docs_list:
+                        m = item.get("metadata", {})
+                        existing_custom[_url_match_key(m.get("url", ""))] = m
+                        identity_key = (
+                            str(m.get("source_kind", "") or "").strip().lower(),
+                            re.sub(r"\s+", " ", str(m.get("title", "") or "").strip()).lower(),
+                            str(m.get("published_date") or m.get("date") or "").strip(),
+                        )
+                        if identity_key[0] and identity_key[1]:
+                            existing_identity[identity_key] = m
+
+                    existing_speech_urls = {
+                        _url_match_key(s.get("metadata", {}).get("url", ""))
+                        for s in raw_data.get("speeches", [])
+                    }
+
+                    for entry in discovered:
+                        key = _url_match_key(entry.get("url", ""))
+                        status = "new"
+                        existing_meta = existing_custom.get(key)
+                        if not existing_meta:
+                            identity_key = (
+                                source_kind,
+                                re.sub(r"\s+", " ", str(entry.get("title", "") or "").strip()).lower(),
+                                str(entry.get("date", "") or "").strip(),
+                            )
+                            existing_meta = existing_identity.get(identity_key)
+                        if existing_meta:
+                            existing_date = str(
+                                existing_meta.get("published_date")
+                                or existing_meta.get("date")
+                                or ""
+                            ).strip()
+                            incoming_date = str(entry.get("date", "") or "").strip()
+                            existing_title = str(existing_meta.get("title", "") or "").strip()
+                            incoming_title = str(entry.get("title", "") or "").strip()
+                            if (
+                                (incoming_date and existing_date and incoming_date != existing_date)
+                                or (incoming_title and existing_title and incoming_title != existing_title)
+                            ):
+                                status = "update_available"
+                            else:
+                                status = "existing"
+                        elif key in existing_speech_urls:
+                            status = "existing_in_speeches"
+                        entry["ingest_status"] = status
+                        entry["source_key"] = source_kind
+
+                    st.session_state[state_key] = discovered
+                    new_count = sum(
+                        1 for d in discovered if d.get("ingest_status") in {"new", "update_available"}
+                    )
+                    st.success(f"Discovered {len(discovered)} videos ({new_count} new/update candidates).")
+                except Exception as e:
+                    st.session_state[debug_key] = {"error": str(e)}
+                    st.error(f"YouTube discovery failed: {e}")
+
+        youtube_debug = st.session_state.get(debug_key, {})
+        if isinstance(youtube_debug, dict) and youtube_debug:
+            with st.expander("YouTube Discovery Debug", expanded=False):
+                if youtube_debug.get("error"):
+                    st.error(str(youtube_debug.get("error", "")))
+                else:
+                    st.json(youtube_debug)
+
+        discovered_videos = st.session_state.get(state_key, [])
+        if discovered_videos:
+            yt_df = pd.DataFrame(discovered_videos)
+            yt_df = _sort_table_by_date(yt_df, date_col="date")
+            show_cols = [c for c in ["date", "title", "ingest_status", "url"] if c in yt_df.columns]
+            st.dataframe(yt_df[show_cols], use_container_width=True, hide_index=True)
+
+            yt_filter = st.selectbox(
+                "YouTube Ingest Selection",
+                ["New/Updates Only", "All Discovered"],
+                key=f"{state_prefix}_ingest_filter",
+            )
+            if yt_filter == "New/Updates Only":
+                yt_candidates = [
+                    d for d in discovered_videos if d.get("ingest_status") in {"new", "update_available"}
+                ]
+            else:
+                yt_candidates = list(discovered_videos)
+
+            yt_count = len(yt_candidates)
+            if yt_count <= 0:
+                yt_limit = 0
+                st.caption("No YouTube videos match the selected ingest filter.")
+            elif yt_count == 1:
+                yt_limit = 1
+                st.caption("1 YouTube video selected for ingest.")
+            else:
+                yt_limit = st.slider(
+                    "YouTube Videos To Ingest",
+                    min_value=1,
+                    max_value=yt_count,
+                    value=min(5, yt_count),
+                    key=f"{state_prefix}_ingest_limit",
+                )
+            st.caption(f"{yt_count} YouTube videos currently match this ingest selection.")
+
+            if st.button("Run YouTube Transcript Extraction", disabled=(yt_limit <= 0), key=f"{state_prefix}_ingest"):
+                try:
+                    from youtube_video_scraper import YouTubeVideoScraper
+
+                    youtube_scraper = YouTubeVideoScraper()
+                    progress = st.progress(0, text="Starting YouTube transcript ingest...")
+                    saved_new = 0
+                    saved_updates = 0
+                    failed = []
+
+                    selected = yt_candidates[:yt_limit]
+                    for idx, entry in enumerate(selected, 1):
+                        progress.progress(
+                            idx / yt_limit,
+                            text=f"Ingesting {idx}/{yt_limit}: {entry.get('title', '')[:80]}",
+                        )
+                        try:
+                            extracted = youtube_scraper.extract_document(
+                                entry.get("url", "") or entry.get("video_id", ""),
+                                fallback_title=entry.get("title", ""),
+                                fallback_date=entry.get("published_at", "") or entry.get("date", ""),
+                            )
+                            data = extracted.get("data", {}) if isinstance(extracted.get("data", {}), dict) else {}
+                            text = str(data.get("full_text", "") or "").strip()
+                            if len(text.split()) < 25:
+                                raise RuntimeError("YouTube transcript appears too short; skipping.")
+
+                            src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+                            video_id = str(data.get("video_id", "") or entry.get("video_id", "")).strip()
+                            date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+                            parsed_date = _parse_single_date(date_text)
+                            if pd.notna(parsed_date):
+                                doc_date_value = parsed_date.date()
+                            else:
+                                doc_date_value = date_text
+                            filename_stem = _safe_filename(f"{source_kind}-{video_id or idx}")
+
+                            record = _create_uploaded_document_record(
+                                text=text,
+                                organization=org_label,
+                                title=str(data.get("title", "") or entry.get("title", "")).strip() or "YouTube Video",
+                                speaker=speaker_label,
+                                doc_date=doc_date_value,
+                                doc_type="Video Transcript",
+                                source_url=src_url,
+                                source_filename=f"{filename_stem}.txt",
+                                source_ext=".txt",
+                                source_local_path="",
+                                source_gcs_path="",
+                                tags_csv=yt_tags_csv,
+                                source_kind=source_kind,
+                            )
+                            rm = record.setdefault("metadata", {})
+                            rm["source_family"] = source_kind
+                            rm["source_index_url"] = youtube_channel_url
+                            rm["published_date"] = date_text
+                            rm["published_at"] = str(entry.get("published_at", "") or data.get("published_at", "") or "").strip()
+                            rm["youtube_video_id"] = video_id
+                            rm["youtube_channel_id"] = str(entry.get("channel_id", "") or "").strip()
+                            rm["youtube_url"] = src_url
+                            rm["transcript_source"] = "youtube_transcript_api"
+                            rm["discovery_source"] = str(entry.get("discovery_source", "") or "youtube_channel_rss").strip()
+
+                            replaced = _upsert_custom_document_record(custom_payload_obj, record)
+                            if replaced:
+                                saved_updates += 1
+                            else:
+                                saved_new += 1
+
+                        except Exception as e:
+                            failed.append(f"{entry.get('title', 'Untitled')}: {e}")
+
+                    progress.progress(1.0, text="YouTube ingest complete.")
+                    if saved_new or saved_updates:
+                        _save_custom_documents(custom_payload_obj)
+                        st.success(
+                            f"Saved {saved_new} new YouTube transcripts and updated {saved_updates} existing transcripts."
+                        )
+                        custom_payload_obj = _load_custom_documents()
+                        custom_docs_list = _custom_docs_as_speeches(custom_payload_obj)
+                        knowledge_data_obj = _build_knowledge_data(raw_data, custom_payload_obj)
+                    if failed:
+                        st.warning(f"{len(failed)} YouTube videos failed ingest.")
+                        for msg in failed[:20]:
+                            st.write(f"- {msg}")
+                except Exception as e:
+                    st.error(f"YouTube ingest failed: {e}")
+
+        return custom_payload_obj, custom_docs_list, knowledge_data_obj
+
     st.subheader("SEC Connector: Speeches")
     st.markdown("Discover and extract SEC speeches by date range.")
 
@@ -8011,6 +8297,38 @@ elif page == "Extraction":
                     st.write(f"- {title}")
     else:
         st.info("Use the SEC speech date range above and click **Discover SEC Speeches**.")
+
+    st.markdown("---")
+    custom_payload, custom_docs, knowledge_data = _render_youtube_connector(
+        heading="SEC Connector: YouTube",
+        caption="Pinned source for SEC YouTube channel videos. Ingests transcript text into the document corpus.",
+        state_prefix="sec_youtube",
+        default_channel_url="https://www.youtube.com/user/SECViews",
+        default_org_label="SEC",
+        default_speaker_label="SEC",
+        source_kind="sec_youtube_video",
+        tags_csv="sec,youtube,video,transcript,roundtable",
+        custom_payload_obj=custom_payload,
+        custom_docs_list=custom_docs,
+        knowledge_data_obj=knowledge_data,
+        allow_metadata_inputs=False,
+    )
+
+    st.markdown("---")
+    custom_payload, custom_docs, knowledge_data = _render_youtube_connector(
+        heading="YouTube Connector",
+        caption="Discover and ingest transcript text from any public YouTube channel with available transcripts.",
+        state_prefix="youtube",
+        default_channel_url="",
+        default_org_label="YouTube",
+        default_speaker_label="YouTube",
+        source_kind="youtube_video",
+        tags_csv="youtube,video,transcript",
+        custom_payload_obj=custom_payload,
+        custom_docs_list=custom_docs,
+        knowledge_data_obj=knowledge_data,
+        allow_metadata_inputs=True,
+    )
 
     st.markdown("---")
     st.subheader("Manual Upload")

@@ -21,7 +21,8 @@ type OrgIndexStatus = {
 };
 
 /* ─── RSS Feed types ───────────────────────────────────────────────── */
-type RssFeed = { id: number; label: string; feed_url: string; active: boolean; refresh_interval_minutes?: number; last_refresh_at?: string | null };
+type RssFeed = { id: number; label: string; feed_url: string; feed_key: string; active: boolean; refresh_interval_minutes?: number; last_refresh_at?: string | null };
+type XAccountFeed = RssFeed & { username: string };
 type TopicRule = { id: number; topic_key: string; label: string; keywords: string; active: boolean; sort_order: number };
 
 /* ─── Ticker types ─────────────────────────────────────────────────── */
@@ -82,6 +83,72 @@ type MetricsData = {
     processed_count: number;
     failed_count: number;
   };
+};
+
+type SourceHealthCounts = {
+  discovered?: number;
+  processed?: number;
+  saved_new?: number;
+  saved_updates?: number;
+  failed?: number;
+  enriched?: number;
+  fallback_enriched?: number;
+};
+
+type SourceHealthSource = {
+  source_key: string;
+  last_run_at?: string;
+  last_status?: string;
+  last_error_category?: string;
+  last_error?: string;
+  last_workflow?: string;
+  last_run_id?: string;
+  last_counts?: SourceHealthCounts;
+  last_success_at?: string;
+  consecutive_failures?: number;
+};
+
+type SourceHealthRun = {
+  id?: string;
+  source_key: string;
+  command?: string;
+  workflow?: string;
+  run_id?: string;
+  status?: string;
+  ran_at?: string;
+  error_category?: string;
+  sample_error?: string;
+  discovered_count?: number;
+  processed_count?: number;
+  saved_new?: number;
+  saved_updates?: number;
+  failed_count?: number;
+  enriched_count?: number;
+  fallback_enriched_count?: number;
+};
+
+type SourceHealthReport = {
+  generated_at?: string;
+  recent_run_count?: number;
+  recent_failed_run_count?: number;
+  recent_partial_run_count?: number;
+  failing_sources?: SourceHealthSource[];
+  stale_sources?: SourceHealthSource[];
+  quiet_sources?: SourceHealthSource[];
+  error_categories?: Record<string, number>;
+  recent_runs?: SourceHealthRun[];
+};
+
+type SourceHealthData = {
+  updated_at: string;
+  sources: SourceHealthSource[];
+  runs: SourceHealthRun[];
+  latest_report?: {
+    generated_at?: string;
+    title?: string;
+    ai_review?: string;
+    report?: SourceHealthReport;
+  } | null;
 };
 
 /* ─── Workflow definitions ─────────────────────────────────────────── */
@@ -198,6 +265,34 @@ function fmtDateTime(value: string | undefined): string {
   return Number.isNaN(parsed.getTime())
     ? value
     : parsed.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function sourceHealthStatusClass(status: string | undefined): string {
+  if (status === "success") {
+    return "border-[color:rgba(65,211,157,0.45)] bg-[color:rgba(65,211,157,0.08)] text-[#41d39d]";
+  }
+  if (status === "partial") {
+    return "border-[color:rgba(255,199,95,0.45)] bg-[color:rgba(255,199,95,0.08)] text-[color:var(--warn)]";
+  }
+  if (status === "failed") {
+    return "border-[color:rgba(255,107,127,0.45)] bg-[color:rgba(255,107,127,0.08)] text-[color:var(--danger)]";
+  }
+  return "border-[color:var(--line)] bg-[color:rgba(255,255,255,0.03)] text-[color:var(--ink-faint)]";
+}
+
+function sourceHealthAction(source: SourceHealthSource): string {
+  const category = source.last_error_category || "";
+  if (category === "blocked_403") return "Try proxy first, then rotate or replace source.";
+  if (category === "rate_limited_429") return "Back off cadence or add source-specific throttling.";
+  if (category === "stale_404") return "Refresh the URL or retire the connector.";
+  if (category === "proxy_tunnel" || category === "network_tls") return "Check proxy/TLS path and retry.";
+  if (category === "parser") return "Fix parser or feed format handling.";
+  if (category === "auth") return "Check API credentials.";
+  if (category === "model_access") return "Check model name and DeepSeek access.";
+  if (category === "no_discovery" || category === "no_new_items") return "Watch if this source is expected to be active.";
+  if (source.last_status === "failed") return "Investigate latest error.";
+  if (source.last_status === "partial") return "Review failed item sample.";
+  return "No action.";
 }
 
 /* ─── Knowledge Index ──────────────────────────────────────────────── */
@@ -480,6 +575,170 @@ function ConnectorAuditSection() {
   );
 }
 
+function SourceHealthSection() {
+  const [data, setData] = useState<SourceHealthData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/source-health")
+      .then((res) => res.json())
+      .then((payload: { ok: boolean; data?: SourceHealthData; error?: string }) => {
+        if (payload?.ok && payload.data) {
+          setData({
+            ...payload.data,
+            sources: Array.isArray(payload.data.sources) ? payload.data.sources : [],
+            runs: Array.isArray(payload.data.runs) ? payload.data.runs : [],
+          });
+          setError("");
+        } else {
+          setError(String(payload?.error || "Failed to load source health."));
+        }
+      })
+      .catch(() => setError("Network error while loading source health."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const sources = data?.sources || [];
+  const report = data?.latest_report?.report;
+  const sourceTime = (value: string | undefined) => {
+    const parsed = Date.parse(value || "");
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const failingCount = report?.failing_sources?.length ?? sources.filter((source) => source.last_status === "failed" || Number(source.consecutive_failures || 0) > 0).length;
+  const staleCount = report?.stale_sources?.length ?? 0;
+  const quietCount = report?.quiet_sources?.length ?? 0;
+  const recentRunCount = report?.recent_run_count ?? data?.runs.length ?? 0;
+  const recentFailedCount = report?.recent_failed_run_count ?? data?.runs.filter((run) => run.status === "failed").length ?? 0;
+  const rankedSources = [...sources]
+    .sort((a, b) => {
+      const aScore = a.last_status === "failed" ? 3 : a.last_status === "partial" ? 2 : Number(a.consecutive_failures || 0) > 0 ? 1 : 0;
+      const bScore = b.last_status === "failed" ? 3 : b.last_status === "partial" ? 2 : Number(b.consecutive_failures || 0) > 0 ? 1 : 0;
+      return bScore - aScore || sourceTime(b.last_run_at) - sourceTime(a.last_run_at) || a.source_key.localeCompare(b.source_key);
+    })
+    .slice(0, 15);
+  const reportRuns = report?.recent_runs?.length ? report.recent_runs : data?.runs || [];
+  const runsNeedingReview = reportRuns
+    .filter((run) => run.status === "failed" || run.status === "partial" || (run.error_category && run.error_category !== "none"))
+    .slice(0, 8);
+  const categories = report?.error_categories || {};
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Source Health</h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Daily source failure log with structured categories, recent run counts, and DeepSeek review notes.</p>
+
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        {loading ? <p className="text-xs text-[color:var(--ink-faint)]">Loading source health...</p> : null}
+        {error ? <p className="text-xs text-[color:var(--danger)]">{error}</p> : null}
+        {!loading && !error && data ? (
+          <div className="grid gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              <article className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Tracked Sources</p>
+                <p className="mt-1 text-xl font-semibold text-[color:var(--ink)]">{fmtNumber(sources.length)}</p>
+              </article>
+              <article className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Recent Runs</p>
+                <p className="mt-1 text-xl font-semibold text-[color:var(--ink)]">{fmtNumber(recentRunCount)}</p>
+              </article>
+              <article className="rounded-lg border border-[color:rgba(255,107,127,0.35)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Failing</p>
+                <p className={`mt-1 text-xl font-semibold ${failingCount ? "text-[color:var(--danger)]" : "text-[color:var(--ink-faint)]"}`}>{fmtNumber(failingCount)}</p>
+              </article>
+              <article className="rounded-lg border border-[color:rgba(255,199,95,0.35)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Stale</p>
+                <p className={`mt-1 text-xl font-semibold ${staleCount ? "text-[color:var(--warn)]" : "text-[color:var(--ink-faint)]"}`}>{fmtNumber(staleCount)}</p>
+              </article>
+              <article className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--ink-faint)]">Quiet</p>
+                <p className="mt-1 text-xl font-semibold text-[color:var(--ink-faint)]">{fmtNumber(quietCount)}</p>
+              </article>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[color:var(--line)] px-3 py-2 text-xs text-[color:var(--ink-faint)]">
+              <span>Log updated: {fmtDateTime(data.updated_at)}</span>
+              <span>Recent failures: {fmtNumber(recentFailedCount)}</span>
+              {Object.keys(categories).length ? (
+                <span>
+                  Categories: {Object.entries(categories).map(([key, count]) => `${key} ${count}`).join(", ")}
+                </span>
+              ) : null}
+            </div>
+
+            {data.latest_report?.ai_review ? (
+              <div className="rounded-lg border border-[color:rgba(83,210,255,0.25)] bg-[color:rgba(83,210,255,0.05)] px-3 py-3">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--accent)]">DeepSeek Review</p>
+                <p className="whitespace-pre-wrap text-xs leading-relaxed text-[color:var(--ink)]">{data.latest_report.ai_review}</p>
+              </div>
+            ) : null}
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-xs">
+                <thead>
+                  <tr className="border-b border-[color:var(--line)] text-left text-[color:var(--ink-faint)]">
+                    <th className="pb-2 pr-4 font-semibold">Source</th>
+                    <th className="pb-2 pr-4 font-semibold">Status</th>
+                    <th className="pb-2 pr-4 font-semibold">Last Run</th>
+                    <th className="pb-2 pr-4 text-right font-semibold">Counts</th>
+                    <th className="pb-2 pr-4 font-semibold">Category</th>
+                    <th className="pb-2 font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankedSources.map((source) => {
+                    const counts = source.last_counts || {};
+                    return (
+                      <tr key={source.source_key} className="border-b border-[color:rgba(255,255,255,0.04)]">
+                        <td className="py-2 pr-4 font-mono text-[color:var(--ink)]">{source.source_key}</td>
+                        <td className="py-2 pr-4">
+                          <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${sourceHealthStatusClass(source.last_status)}`}>
+                            {source.last_status || "unknown"}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4 text-[color:var(--ink-faint)]">{fmtDateTime(source.last_run_at)}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-[color:var(--ink-faint)]">
+                          {fmtNumber(counts.discovered)} found / {fmtNumber(counts.processed)} processed / {fmtNumber(counts.failed)} failed
+                        </td>
+                        <td className="py-2 pr-4 font-mono text-[color:var(--ink-faint)]">{source.last_error_category || "none"}</td>
+                        <td className="py-2 text-[color:var(--ink-faint)]">{sourceHealthAction(source)}</td>
+                      </tr>
+                    );
+                  })}
+                  {rankedSources.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-[color:var(--ink-faint)]">No source health records yet.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            {runsNeedingReview.length ? (
+              <div className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Recent Runs Needing Review</p>
+                <div className="grid gap-2">
+                  {runsNeedingReview.map((run) => (
+                    <div key={`${run.id || run.source_key}-${run.ran_at || ""}`} className="grid gap-1 rounded border border-[color:rgba(255,255,255,0.05)] px-2 py-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[color:var(--ink)]">{run.source_key}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${sourceHealthStatusClass(run.status)}`}>{run.status || "unknown"}</span>
+                        <span className="text-[color:var(--ink-faint)]">{fmtDateTime(run.ran_at)}</span>
+                        <span className="font-mono text-[color:var(--ink-faint)]">{run.error_category || "none"}</span>
+                      </div>
+                      {run.sample_error ? <p className="line-clamp-2 text-[color:var(--ink-faint)]">{run.sample_error}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function FeedManagerSection() {
   const [feeds, setFeeds] = useState<RssFeed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -604,6 +863,243 @@ function FeedManagerSection() {
 }
 
 /* ─── Topic Rules Manager ──────────────────────────────────────────── */
+type XRefreshResult = {
+  inserted: number;
+  feeds: Array<{ feedKey: string; label: string; fetched: number; matched: number; filtered: number; inserted: number; provider?: string; error?: string }>;
+  analysis: { selected_count: number; saved_count: number; failed_count: number };
+};
+
+function XAccountManagerSection() {
+  const [accounts, setAccounts] = useState<XAccountFeed[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [newAccount, setNewAccount] = useState("");
+  const [newInterval, setNewInterval] = useState("180");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshLimit, setRefreshLimit] = useState("20");
+  const [analysisLimit, setAnalysisLimit] = useState("10");
+  const [refreshResult, setRefreshResult] = useState<XRefreshResult | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  async function loadAccounts() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/x-accounts");
+      const data = await res.json();
+      if (data.ok) setAccounts(data.data.accounts);
+      else setError(data.error || "Failed to load X accounts.");
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadAccounts();
+  }, []);
+
+  async function handleAdd() {
+    if (!newAccount.trim()) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      const res = await fetch("/api/admin/x-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account: newAccount.trim(), refreshIntervalMinutes: newInterval }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setAccounts((prev) => {
+          const next = data.data.account as XAccountFeed;
+          const rest = prev.filter((item) => item.feed_key !== next.feed_key);
+          return [...rest, next].sort((a, b) => a.label.localeCompare(b.label));
+        });
+        setNewAccount("");
+      } else {
+        setAddError(data.error || "Failed to add account.");
+      }
+    } catch {
+      setAddError("Network error");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleToggle(account: XAccountFeed) {
+    try {
+      const res = await fetch(`/api/admin/feeds/${account.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !account.active }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Toggle failed");
+        return;
+      }
+      setAccounts((prev) => prev.map((item) => item.id === account.id ? { ...item, active: !item.active } : item));
+    } catch {
+      setError("Network error");
+    }
+  }
+
+  async function handleDelete(account: XAccountFeed) {
+    try {
+      const res = await fetch(`/api/admin/feeds/${account.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Delete failed");
+        return;
+      }
+      setAccounts((prev) => prev.filter((item) => item.id !== account.id));
+    } catch {
+      setError("Network error");
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    setRefreshResult(null);
+    setRefreshError(null);
+    try {
+      const res = await fetch("/api/admin/x-accounts/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: refreshLimit, analysisLimit }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setRefreshResult(data.data);
+        await loadAccounts();
+      } else {
+        setRefreshError(data.error || "Refresh failed.");
+      }
+    } catch {
+      setRefreshError("Network error");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  const activeCount = accounts.filter((account) => account.active).length;
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">X Accounts</h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">Stored account timelines use source chips like X: @SECGov and category matching from active Topic Rules.</p>
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        {loading && <p className="text-xs text-[color:var(--ink-faint)]">Loading...</p>}
+        {error && <p className="text-xs text-[color:var(--danger)]">{error}</p>}
+        {!loading && accounts.length === 0 && <p className="text-xs text-[color:var(--ink-faint)]">No X accounts configured.</p>}
+        <ul className="space-y-2">
+          {accounts.map((account) => (
+            <li key={account.id} className="flex items-center gap-3">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={account.active}
+                  onChange={() => handleToggle(account)}
+                  className="h-4 w-4 rounded accent-[color:var(--accent)]"
+                />
+              </label>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-[color:var(--ink)]">{account.label}</span>
+                <span className="block truncate text-xs text-[color:var(--ink-faint)]">{account.feed_url}</span>
+                <span className="block text-xs text-[color:var(--ink-faint)]">
+                  Every {account.refresh_interval_minutes ?? 180} min{account.last_refresh_at ? ` | Last refresh ${new Date(account.last_refresh_at).toLocaleString()}` : ""}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => handleDelete(account)}
+                className="flex-shrink-0 rounded-lg border border-[color:rgba(255,107,127,0.4)] bg-[color:rgba(255,107,127,0.1)] px-3 py-1 text-xs font-semibold text-[color:var(--danger)] hover:bg-[color:rgba(255,107,127,0.2)]"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-4 border-t border-[color:var(--line)] pt-4">
+          <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">Add Account</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem_auto]">
+            <input
+              type="text"
+              value={newAccount}
+              onChange={(e) => setNewAccount(e.target.value)}
+              placeholder="@SECGov"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <input
+              type="number"
+              min={15}
+              max={1440}
+              value={newInterval}
+              onChange={(e) => setNewInterval(e.target.value)}
+              className="form-control px-2 py-1.5 text-sm"
+              aria-label="Refresh interval minutes"
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={adding || !newAccount.trim()}
+              className="btn-solid rounded-xl px-4 py-1.5 text-sm disabled:opacity-40"
+            >
+              {adding ? "Adding..." : "Add"}
+            </button>
+          </div>
+          {addError && <p className="mt-1 text-xs text-[color:var(--danger)]">{addError}</p>}
+        </div>
+
+        <div className="mt-4 border-t border-[color:var(--line)] pt-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[8rem_8rem_auto_1fr]">
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={refreshLimit}
+              onChange={(e) => setRefreshLimit(e.target.value)}
+              className="form-control px-2 py-1.5 text-sm"
+              aria-label="Posts per account"
+            />
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={analysisLimit}
+              onChange={(e) => setAnalysisLimit(e.target.value)}
+              className="form-control px-2 py-1.5 text-sm"
+              aria-label="DeepSeek analysis limit"
+            />
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing || activeCount === 0}
+              className="btn-solid rounded-xl px-4 py-1.5 text-sm disabled:opacity-40"
+            >
+              {refreshing ? "Refreshing..." : "Refresh Active"}
+            </button>
+            <span className="self-center text-xs text-[color:var(--ink-faint)]">{activeCount} active</span>
+          </div>
+          {refreshError && <p className="mt-2 text-xs text-[color:var(--danger)]">{refreshError}</p>}
+          {refreshResult && (
+            <p className="mt-2 text-xs text-[color:var(--ink-faint)]">
+              Inserted {refreshResult.inserted}; DeepSeek saved {refreshResult.analysis.saved_count}/{refreshResult.analysis.selected_count}.
+              {refreshResult.feeds[0]?.provider ? ` Provider: ${refreshResult.feeds[0].provider}.` : ""}
+              {refreshResult.feeds.some((feed) => feed.error) ? " Some X requests returned errors." : ""}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 type TopicReviewRow = {
   rule: TopicRule;
   recommendation?: TopicRuleRecommendation;
@@ -2335,7 +2831,11 @@ export default function AdminPage() {
       <SectionDivider label="Connector Audit" />
       <ConnectorAuditSection />
 
+      <SectionDivider label="Source Health" />
+      <SourceHealthSection />
+
       <SectionDivider label="Intel Feed" />
+      <XAccountManagerSection />
       <FeedManagerSection />
       <TopicRulesSection />
 

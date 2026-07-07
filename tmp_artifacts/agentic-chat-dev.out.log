@@ -1,0 +1,34 @@
+
+> sec-speeches-web@0.1.0 dev
+> next dev -p 3010
+
+   ▲ Next.js 15.5.18
+   - Local:        http://localhost:3010
+   - Network:      http://192.168.86.128:3010
+
+ ✓ Starting...
+ ✓ Ready in 3.6s
+ ○ Compiling /chats ...
+ ✓ Compiled /chats in 1530ms (619 modules)
+ GET /chats 200 in 2718ms
+ GET /chats 200 in 207ms
+ ○ Compiling /api/market ...
+ ✓ Compiled /api/market in 814ms (642 modules)
+ GET /api/market 200 in 1278ms
+ ○ Compiling /api/chats/ask ...
+ ✓ Compiled /api/chats/ask in 888ms (913 modules)
+ POST /api/chats/ask 500 in 1304ms
+ ✓ Compiled in 3.4s (930 modules)
+ GET /api/market 200 in 1691ms
+ GET /chats 200 in 322ms
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 4.3s (989 modules)
+ GET /api/market 500 in 11948ms
+ GET /api/market 500 in 433ms
+ GET /chats 500 in 8488ms
+ GET /chats 500 in 365ms
+ GET /chats 500 in 1127ms
+ GET /chats 500 in 496ms
+ GET /chats 500 in 702ms
+ GET /chats 500 in 330ms
+[?25h

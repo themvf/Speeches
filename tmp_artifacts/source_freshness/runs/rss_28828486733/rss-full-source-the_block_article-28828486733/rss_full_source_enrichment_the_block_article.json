@@ -1,0 +1,29 @@
+{
+  "mode": "enrich",
+  "ran_at": "2026-07-06T22:57:32Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "provider": "deepseek",
+  "source_kind": "the_block_article",
+  "mode_selection": "only_missing_or_failed",
+  "order": "recent",
+  "future_dated_candidate_count": 0,
+  "requested_doc_ids": [],
+  "candidate_count": 1,
+  "selected_count": 1,
+  "processed_count": 1,
+  "enriched_count": 1,
+  "fallback_enriched_count": 0,
+  "used_models": [
+    "deepseek-v4-flash"
+  ],
+  "selected_preview": [
+    {
+      "doc_id": "1bb125a816b35ca761280fc6",
+      "date": "July 06, 2026",
+      "title": "Grayscale says Strategy's recent bitcoin sales should restore confidence in its financing structure"
+    }
+  ],
+  "dry_run": false,
+  "rule_summaries_rebuilt": true
+}

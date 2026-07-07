@@ -1,0 +1,77 @@
+
+> sec-speeches-web@0.1.0 dev
+> next dev --port 3025
+
+   ▲ Next.js 15.5.18
+   - Local:        http://localhost:3025
+   - Network:      http://192.168.86.128:3025
+
+ ✓ Starting...
+ ✓ Ready in 2.8s
+ ○ Compiling /api/trends ...
+ ✓ Compiled /api/trends in 3.8s (573 modules)
+ GET /api/trends 200 in 4120ms
+ ○ Compiling /trends-monitor ...
+ ✓ Compiled /trends-monitor in 5.8s (935 modules)
+ GET /api/trends 200 in 6013ms
+ GET /trends-monitor 200 in 6731ms
+ GET /trends-monitor 200 in 129ms
+ ○ Compiling /api/trends ...
+ ✓ Compiled /api/trends in 619ms (910 modules)
+ GET /api/trends 200 in 730ms
+ GET /api/market 200 in 1034ms
+ GET /api/trends?range=7d 200 in 37ms
+ GET /api/trends?range=30d 200 in 25ms
+ GET /api/trends 200 in 24ms
+ ✓ Compiled in 697ms (249 modules)
+ ✓ Compiled in 268ms (249 modules)
+ ✓ Compiled in 823ms (627 modules)
+ ✓ Compiled in 539ms (249 modules)
+ ✓ Compiled in 395ms (249 modules)
+ ✓ Compiled in 322ms (249 modules)
+ ✓ Compiled in 443ms (249 modules)
+ ○ Compiling /api/intel/feed ...
+ ✓ Compiled /api/intel/feed in 835ms (912 modules)
+ GET /api/intel/feed?limit=400 200 in 1499ms
+ ✓ Compiled in 607ms (249 modules)
+ ✓ Compiled in 334ms (249 modules)
+ ✓ Compiled in 259ms (378 modules)
+ ✓ Compiled in 460ms (249 modules)
+ ✓ Compiled in 525ms (249 modules)
+ ✓ Compiled in 374ms (249 modules)
+ ✓ Compiled in 330ms (249 modules)
+ ✓ Compiled in 559ms (249 modules)
+ ✓ Compiled in 391ms (249 modules)
+ ✓ Compiled in 414ms (249 modules)
+ ✓ Compiled in 386ms (249 modules)
+ ○ Compiling /api/intel/analyze ...
+ ✓ Compiled /api/intel/analyze in 542ms (677 modules)
+ ✓ Compiled in 420ms (249 modules)
+ GET /api/intel/feed?limit=5 200 in 1727ms
+ ✓ Compiled in 873ms (249 modules)
+ POST /api/intel/analyze 200 in 5148ms
+ POST /api/intel/analyze 200 in 5854ms
+ ✓ Compiled in 319ms (378 modules)
+ ✓ Compiled /api/intel/feed in 397ms (677 modules)
+ GET /api/intel/feed?limit=80 200 in 1041ms
+ ✓ Compiled in 666ms (249 modules)
+ ✓ Compiled in 239ms (378 modules)
+ ✓ Compiled in 987ms (249 modules)
+ ✓ Compiled in 530ms (249 modules)
+ ✓ Compiled in 436ms (249 modules)
+ ✓ Compiled in 530ms (249 modules)
+ ✓ Compiled in 680ms (249 modules)
+ ✓ Compiled in 338ms (249 modules)
+ ✓ Compiled in 387ms (249 modules)
+ ✓ Compiled in 427ms (249 modules)
+ ✓ Compiled in 458ms (249 modules)
+ ✓ Compiled in 442ms (249 modules)
+ ✓ Compiled in 690ms (249 modules)
+ ✓ Compiled in 439ms (249 modules)
+ ✓ Compiled in 449ms (249 modules)
+ ○ Compiling / ...
+ ✓ Compiled /api/intel/feed in 2.6s (932 modules)
+ GET /api/intel/feed?limit=100&verify=f29486d-local 200 in 1659ms
+ GET /?verify=f29486d-local 200 in 3640ms
+ GET /?verify=f29486d-local-html 200 in 153ms
+[?25h

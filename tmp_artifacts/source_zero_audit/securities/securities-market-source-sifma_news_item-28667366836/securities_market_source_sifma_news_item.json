@@ -1,0 +1,62 @@
+{
+  "mode": "extract",
+  "connector": "sifma_news_item",
+  "ran_at": "2026-07-03T14:47:40Z",
+  "require_remote_persistence": true,
+  "remote_persistence": true,
+  "base_url": "https://www.sifma.org/news",
+  "selection": "new_or_updated",
+  "max_pages": 3,
+  "limit": 25,
+  "include_pdfs": true,
+  "include_rss": true,
+  "exclude_terms": [],
+  "keywords": [],
+  "discovered_count": 6,
+  "filtered_count": 6,
+  "excluded_count": 0,
+  "candidate_count": 0,
+  "selected_count": 0,
+  "processed_count": 0,
+  "saved_new": 0,
+  "saved_updates": 0,
+  "failed_count": 0,
+  "failed": [],
+  "duplicate_records_removed": 0,
+  "legacy_bloomberg_records_removed": 0,
+  "skipped_blocked_count": 0,
+  "skipped_blocked": [],
+  "excluded_preview": [],
+  "status_counts": {
+    "new": 0,
+    "update_available": 0,
+    "existing": 6,
+    "existing_in_speeches": 0
+  },
+  "discovery_debug": {
+    "base_url": "https://www.sifma.org/news",
+    "max_pages_requested": 3,
+    "pages": [
+      {
+        "page_url": "https://www.sifma.org/news",
+        "final_url": "https://www.sifma.org/news",
+        "status_code": 200,
+        "checkpoint_blocked": false,
+        "proxy_configured": false,
+        "proxy_config_error": "Proxy URL must use http, https, socks5, or socks5h.",
+        "returned_items": 6,
+        "next_page_url": "",
+        "page": 1,
+        "unique_added": 6
+      }
+    ],
+    "listing_added": 6,
+    "total_unique": 6,
+    "checkpoint_blocked": false,
+    "proxy_configured": false,
+    "proxy_config_error": "Proxy URL must use http, https, socks5, or socks5h.",
+    "stop_reason": "pagination_exhausted"
+  },
+  "dry_run": false,
+  "rule_summaries_rebuilt": false
+}

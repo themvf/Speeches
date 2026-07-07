@@ -1,0 +1,76 @@
+
+> sec-speeches-web@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.18
+   - Local:        http://localhost:3015
+   - Network:      http://192.168.86.128:3015
+
+ ✓ Starting...
+ ✓ Ready in 4s
+ ○ Compiling /api/intel/feed ...
+ ✓ Compiled /api/intel/feed in 4.6s (582 modules)
+ GET /api/intel/feed 500 in 5414ms
+ GET /api/intel/feed 500 in 57ms
+ ✓ Compiled in 465ms (387 modules)
+ GET /api/intel/feed?limit=25 200 in 751ms
+ ✓ Compiled in 252ms (387 modules)
+ GET /api/intel/feed?limit=25 200 in 661ms
+ ○ Compiling /intelbeta ...
+ ✓ Compiled /intelbeta in 4.9s (629 modules)
+ GET /intelbeta 200 in 5882ms
+ ○ Compiling / ...
+ ✓ Compiled / in 2.7s (929 modules)
+ GET /api/market 200 in 4721ms
+ GET / 200 in 5460ms
+ GET /api/market 200 in 104ms
+ ○ Compiling /api/intel/feed ...
+ ✓ Compiled /api/intel/feed in 1204ms (697 modules)
+ GET /api/intel/feed?limit=250 200 in 2145ms
+ GET /api/intel/feed?limit=250 200 in 121ms
+ GET /api/intel/feed?limit=25 200 in 855ms
+ GET /api/intel/feed?limit=25 200 in 680ms
+ GET / 200 in 1284ms
+ GET /api/intel/feed?limit=250 200 in 96ms
+ GET /api/market 200 in 302ms
+ GET /api/intel/feed?limit=250 200 in 99ms
+ GET /api/intel/feed?limit=25 200 in 713ms
+ GET /api/intel/feed?limit=25 200 in 657ms
+ GET /api/intel/feed?limit=50 200 in 713ms
+ GET / 200 in 748ms
+ GET /api/intel/feed?limit=250 200 in 115ms
+ GET /api/market 200 in 258ms
+ GET /api/intel/feed?limit=250 200 in 74ms
+ ✓ Compiled in 552ms (656 modules)
+ ✓ Compiled in 904ms (911 modules)
+ ✓ Compiled in 353ms (255 modules)
+ ✓ Compiled /api/intel/feed in 208ms (683 modules)
+ GET /api/intel/feed?limit=25 200 in 997ms
+ ✓ Compiled in 1214ms (911 modules)
+ ✓ Compiled in 728ms (911 modules)
+ GET / 200 in 1037ms
+ ✓ Compiled /api/intel/feed in 440ms (678 modules)
+ ✓ Compiled (687 modules)
+ GET /api/intel/feed?limit=250 200 in 1091ms
+ GET /api/intel/feed?limit=250 200 in 70ms
+ GET /api/market 200 in 1418ms
+ GET /api/intel/feed?limit=5 200 in 69ms
+ GET /api/intel/feed?limit=50 200 in 117ms
+ ✓ Compiled in 1046ms (942 modules)
+ GET / 200 in 944ms
+ GET /api/intel/feed?limit=250 200 in 127ms
+ GET /api/market 200 in 276ms
+ GET /api/intel/feed?limit=250 200 in 64ms
+ GET /api/intel/feed 200 in 528ms
+ GET /api/intel/feed 200 in 73ms
+ GET /api/intel/feed 200 in 60ms
+ ✓ Compiled in 644ms (656 modules)
+ ✓ Compiled in 2000ms (911 modules)
+ ✓ Compiled in 1394ms (911 modules)
+ ✓ Compiled in 401ms (255 modules)
+ ✓ Compiled in 790ms (255 modules)
+ ✓ Compiled in 528ms (255 modules)
+ ✓ Compiled in 508ms (255 modules)
+ ✓ Compiled in 399ms (255 modules)
+ ✓ Compiled in 1136ms (911 modules)
+ ✓ Compiled in 918ms (911 modules)

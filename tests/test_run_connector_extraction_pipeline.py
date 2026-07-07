@@ -94,6 +94,20 @@ class WSJScraperStub:
         }
 
 
+class YouTubeScraperStub:
+    def extract_document(self, url, **kwargs):
+        return {
+            "data": {
+                "url": url,
+                "video_id": "abc123def45",
+                "title": kwargs.get("fallback_title", "Example Video"),
+                "date": kwargs.get("fallback_date", "June 27, 2026"),
+                "published_at": kwargs.get("fallback_date", "2026-06-27T12:00:00Z"),
+                "full_text": " ".join(["youtube transcript text"] * 30),
+            }
+        }
+
+
 class HedgeFundLetterScraperStub:
     def extract_document(self, entry):
         return {
@@ -266,6 +280,13 @@ def test_gap_connectors_are_registered_with_defaults():
         assert pipeline._default_base_url(connector)
 
 
+def test_youtube_connectors_are_registered():
+    assert "sec_youtube_video" in pipeline.SUPPORTED_CONNECTORS
+    assert "youtube_video" in pipeline.SUPPORTED_CONNECTORS
+    assert pipeline._default_base_url("sec_youtube_video")
+    assert pipeline._default_base_url("youtube_video") == ""
+
+
 def test_trade_media_extract_record_builds_document():
     entry = {
         "url": "https://www.jdsupra.com/legalnews/example-123/",
@@ -308,6 +329,54 @@ def test_wsj_dow_jones_extract_record_builds_document():
     assert record["metadata"]["source_kind"] == "wsj_dow_jones"
     assert record["metadata"]["organization"] == "WSJ / Dow Jones"
     assert record["metadata"]["extraction_mode"] == "rss_description"
+
+
+def test_sec_youtube_extract_record_builds_sec_document():
+    entry = {
+        "url": "https://www.youtube.com/watch?v=abc123def45",
+        "video_id": "abc123def45",
+        "title": "SEC Roundtable",
+        "date": "June 27, 2026",
+        "published_at": "2026-06-27T12:00:00Z",
+        "channel_id": "UCSEC",
+    }
+
+    record = pipeline._extract_record(
+        connector="sec_youtube_video",
+        scraper=YouTubeScraperStub(),
+        entry=entry,
+        idx=1,
+        base_url="https://www.youtube.com/user/SECViews",
+    )
+
+    assert record["metadata"]["organization"] == "SEC"
+    assert record["metadata"]["source_kind"] == "sec_youtube_video"
+    assert record["metadata"]["youtube_video_id"] == "abc123def45"
+    assert "sec" in record["metadata"]["tags"]
+
+
+def test_generic_youtube_extract_record_builds_youtube_document():
+    entry = {
+        "url": "https://www.youtube.com/watch?v=abc123def45",
+        "video_id": "abc123def45",
+        "title": "Market Structure Interview",
+        "date": "June 27, 2026",
+        "published_at": "2026-06-27T12:00:00Z",
+        "channel_id": "UCEXAMPLE",
+    }
+
+    record = pipeline._extract_record(
+        connector="youtube_video",
+        scraper=YouTubeScraperStub(),
+        entry=entry,
+        idx=1,
+        base_url="https://www.youtube.com/@example",
+    )
+
+    assert record["metadata"]["organization"] == "YouTube"
+    assert record["metadata"]["source_kind"] == "youtube_video"
+    assert record["metadata"]["source_family"] == "youtube_video"
+    assert record["metadata"]["youtube_channel_id"] == "UCEXAMPLE"
 
 
 def test_invalid_wired_coupon_records_are_pruned():
