@@ -33,6 +33,7 @@ type SourceFilter =
   | "TRADE_ASSOCIATIONS"
   | "TRADE_MEDIA"
   | "REDDIT"
+  | "YOUTUBE"
   | "X";
 
 const FEED_RENDER_BATCH_SIZE = 20;
@@ -107,6 +108,7 @@ interface FeedItemAnalysis {
   keywords: string[];
   individuals: string[];
   entities: string[];
+  topics: string[];
   model: string;
   generated_at: string;
   fallback: boolean;
@@ -125,6 +127,7 @@ function toFeedItemAnalysis(value: unknown): FeedItemAnalysis | undefined {
     keywords: Array.isArray(src.keywords) ? src.keywords.map(String).filter(Boolean) : [],
     individuals: Array.isArray(src.individuals) ? src.individuals.map(String).filter(Boolean) : [],
     entities: Array.isArray(src.entities) ? src.entities.map(String).filter(Boolean) : [],
+    topics: Array.isArray((src as { topics?: unknown }).topics) ? (src as { topics?: unknown[] }).topics?.map(String).filter(Boolean) ?? [] : [],
     model: String(src.model || ""),
     generated_at: String(src.generated_at || ""),
     fallback: Boolean(src.fallback),
@@ -249,6 +252,9 @@ const FEED_META: Record<string, FeedMeta> = {
   document_liberty_street_economics_article: { label: "Liberty Street Economics", code: "LSE", color: "#91a7ff" },
   document_wealth_of_common_sense_article: { label: "A Wealth of Common Sense", code: "AWC", color: "#ffc078" },
   document_wsj_dow_jones: { label: "WSJ / Dow Jones", code: "WSJ", color: "#63a8ff" },
+  document_wsj_rss_article: { label: "WSJ / Dow Jones", code: "WSJ", color: "#63a8ff" },
+  document_sec_youtube_video: { label: "SEC YouTube", code: "YT", color: "#ff6b6b" },
+  document_youtube_video: { label: "YouTube", code: "YT", color: "#ff6b6b" },
   document_reddit_post: { label: "Reddit", code: "RDDT", color: "#ff922b" },
 };
 
@@ -270,6 +276,7 @@ const SOURCE_FILTERS: Array<{ key: Exclude<SourceFilter, "ALL">; label: string }
   { key: "TRADE_ASSOCIATIONS", label: "Trade Associations" },
   { key: "TRADE_MEDIA", label: "Trade Media" },
   { key: "REDDIT", label: "Reddit" },
+  { key: "YOUTUBE", label: "YouTube" },
   { key: "X", label: "X" },
 ];
 
@@ -456,6 +463,8 @@ function articleSourceText(article: FeedItem): string {
     article.author ?? "",
     article.source_kind ?? "",
     article.doc_type ?? "",
+    article.title ?? "",
+    article.description ?? "",
     article.url ?? "",
   ].join(" ").toLowerCase();
 }
@@ -510,6 +519,102 @@ function fallbackDocumentTopicMatches(article: FeedItem, rules: TopicRuleView[])
       };
     })
     .filter((topic): topic is TopicRuleView => Boolean(topic))
+    .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
+}
+
+function canonicalTopicLabel(value: string): string {
+  return decodeEntities(value || "").replace(/\s+/g, " ").trim();
+}
+
+function dynamicTopicKey(label: string): string {
+  const normalized = canonicalTopicLabel(label)
+    .toUpperCase()
+    .replace(/&/g, " AND ")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized ? `DYNAMIC_${normalized}` : "";
+}
+
+function topicIdentity(value: string): string {
+  return canonicalTopicLabel(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function feedItemAssignedTopicLabels(article: FeedItem): string[] {
+  const analysis = toFeedItemAnalysis(article.analysis);
+  const labels = [
+    ...(article.topics ?? []),
+    ...(analysis?.topics ?? []),
+  ]
+    .map(canonicalTopicLabel)
+    .filter(Boolean);
+  return [...new Set(labels)];
+}
+
+function deriveVisibleTopicRules(items: FeedItem[], configuredRules: TopicRuleView[]): TopicRuleView[] {
+  const byKey = new Map(configuredRules.map((rule) => [rule.topic_key, rule]));
+  const knownIdentities = new Set<string>();
+  for (const rule of configuredRules) {
+    knownIdentities.add(topicIdentity(rule.label));
+    knownIdentities.add(topicIdentity(rule.topic_key));
+  }
+
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const item of items) {
+    for (const label of feedItemAssignedTopicLabels(item)) {
+      const identity = topicIdentity(label);
+      if (!identity || knownIdentities.has(identity)) {
+        continue;
+      }
+      const current = counts.get(identity);
+      if (current) {
+        current.count += 1;
+      } else {
+        counts.set(identity, { label, count: 1 });
+      }
+    }
+  }
+
+  const dynamicRules: TopicRuleView[] = [];
+  for (const [index, entry] of [...counts.values()]
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .entries()) {
+    const key = dynamicTopicKey(entry.label);
+    if (!key || byKey.has(key)) {
+      continue;
+    }
+    dynamicRules.push({
+      topic_key: key,
+      label: entry.label,
+      keywords: [entry.label],
+      keywordMatchers: [],
+      sort_order: 1000 + index,
+    });
+  }
+
+  return [...configuredRules, ...dynamicRules]
+    .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
+}
+
+function assignedTopicMatches(article: FeedItem, rules: TopicRuleView[]): TopicRuleView[] {
+  const identities = new Set(feedItemAssignedTopicLabels(article).map(topicIdentity).filter(Boolean));
+  if (identities.size === 0) return [];
+  return rules.filter((rule) => (
+    identities.has(topicIdentity(rule.label)) ||
+    identities.has(topicIdentity(rule.topic_key)) ||
+    (rule.topic_key.startsWith("DYNAMIC_") && identities.has(topicIdentity(rule.topic_key.replace(/^DYNAMIC_/, ""))))
+  ));
+}
+
+function mergeTopicMatches(...groups: TopicRuleView[][]): TopicRuleView[] {
+  const merged = new Map<string, TopicRuleView>();
+  for (const group of groups) {
+    for (const topic of group) {
+      if (!merged.has(topic.topic_key)) {
+        merged.set(topic.topic_key, topic);
+      }
+    }
+  }
+  return [...merged.values()]
     .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
 }
 
@@ -578,7 +683,17 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     return sourceKind === "congress_crs_product" || text.includes("congress.gov") || text.includes("crs product");
   }
   if (sourceFilter === "WSJ") {
-    return feedKey.startsWith("wsj_") || sourceKind === "wsj_rss_article" || sourceKind === "wsj_dow_jones" || text.includes("wall street journal") || text.includes("wsj.com") || text.includes("dowjones");
+    return (
+      feedKey.startsWith("wsj_") ||
+      feedKey === "document_wsj_dow_jones" ||
+      feedKey === "document_wsj_rss_article" ||
+      sourceKind === "wsj_rss_article" ||
+      sourceKind === "wsj_dow_jones" ||
+      text.includes("wall street journal") ||
+      text.includes("wsj.com") ||
+      text.includes("dow jones") ||
+      text.includes("dowjones")
+    );
   }
   if (sourceFilter === "BLOOMBERG") {
     return sourceKind === "bloomberg_apify_article" || sourceKind === "bloomberg_public_article" || text.includes("bloomberg.com") || text.includes("bloomberg");
@@ -632,6 +747,16 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "REDDIT") {
     return sourceKind === "reddit_post" || text.includes("reddit.com");
+  }
+  if (sourceFilter === "YOUTUBE") {
+    return (
+      feedKey === "document_sec_youtube_video" ||
+      feedKey === "document_youtube_video" ||
+      sourceKind === "sec_youtube_video" ||
+      sourceKind === "youtube_video" ||
+      text.includes("youtube.com") ||
+      text.includes("youtu.be")
+    );
   }
   if (sourceFilter === "X") {
     return feedKey.startsWith("x_public_timeline_") || text.includes("x.com/") || text.includes("twitter.com/");
@@ -1059,6 +1184,7 @@ function documentToFeedItem(document: DocumentListItem): FeedItem {
     id: stableNegativeId(document.document_id),
     guid: document.document_id,
     feed_key: `document_${document.source_kind || "document"}`,
+    feed_label: document.organization || document.source_kind || "Document",
     title: document.title || "Untitled document",
     url: document.url,
     description: documentDescription(document),
@@ -1987,7 +2113,10 @@ export function IntelBetaDashboard({
   const [feedAnalysisLoading, setFeedAnalysisLoading] = useState<Record<string, boolean>>({});
   const [feedAnalysisError, setFeedAnalysisError] = useState<Record<string, string>>({});
 
-  const visibleTopicRules = useMemo(() => normalizeTopicRules(topicRules), [topicRules]);
+  const visibleTopicRules = useMemo(
+    () => deriveVisibleTopicRules(feedItems, normalizeTopicRules(topicRules)),
+    [feedItems, topicRules]
+  );
   const topicIndex = useMemo(() => {
     const topicMatchesByArticleId = new Map<number, TopicRuleView[]>();
     const topicCounts = new Map<string, number>();
@@ -1995,7 +2124,11 @@ export function IntelBetaDashboard({
 
     for (const article of feedItems) {
       const directMatches = getMatchingTopics(article, visibleTopicRules);
-      const matches = directMatches.length > 0 ? directMatches : fallbackDocumentTopicMatches(article, visibleTopicRules);
+      const matches = mergeTopicMatches(
+        directMatches,
+        assignedTopicMatches(article, visibleTopicRules),
+        fallbackDocumentTopicMatches(article, visibleTopicRules)
+      );
       topicMatchesByArticleId.set(article.id, matches);
       if (matches.length === 0 && article.item_type !== "document") {
         continue;
@@ -2012,7 +2145,7 @@ export function IntelBetaDashboard({
   const sourceIndex = useMemo(() => {
     const sourceMatchesByArticleId = new Map<number, Set<SourceFilter>>();
     const counts = new Map<SourceFilter, number>();
-    for (const article of matchedArticles) {
+    for (const article of feedItems) {
       const matches = new Set<SourceFilter>();
       for (const source of SOURCE_FILTERS) {
         if (matchesSourceFilter(article, source.key)) {
@@ -2023,7 +2156,7 @@ export function IntelBetaDashboard({
       sourceMatchesByArticleId.set(article.id, matches);
     }
     return { sourceCounts: counts, sourceMatchesByArticleId };
-  }, [matchedArticles]);
+  }, [feedItems]);
   const sourceCounts = sourceIndex.sourceCounts;
   const selectedRule = selectedTopic === "ALL"
     ? null
@@ -2167,14 +2300,16 @@ export function IntelBetaDashboard({
   }, []);
 
   const filtered = useMemo(
-    () =>
-      matchedArticles.filter(
+    () => {
+      const topicScopedItems = selectedRule ? matchedArticles : feedItems;
+      return topicScopedItems.filter(
         (article) =>
           matchesTopic(article, selectedRule, topicIndex.topicMatchesByArticleId) &&
           (selectedSource === "ALL" || !!sourceIndex.sourceMatchesByArticleId.get(article.id)?.has(selectedSource)) &&
           matchesSearch(article, deferredSearchTerm)
-      ),
-    [deferredSearchTerm, matchedArticles, selectedRule, selectedSource, sourceIndex.sourceMatchesByArticleId, topicIndex.topicMatchesByArticleId]
+      );
+    },
+    [deferredSearchTerm, feedItems, matchedArticles, selectedRule, selectedSource, sourceIndex.sourceMatchesByArticleId, topicIndex.topicMatchesByArticleId]
   );
   const visibleFiltered = useMemo(
     () => filtered.slice(0, visibleItemLimit),
@@ -2347,6 +2482,10 @@ export function IntelBetaDashboard({
             borderBottom: isMobile ? "1px solid rgba(99, 127, 170, 0.16)" : "none",
             padding: isMobile ? "12px" : "14px 10px 18px",
             background: "linear-gradient(180deg, rgba(8,17,29,0.92), rgba(10,21,34,0.98))",
+            maxHeight: isMobile ? "none" : "calc(100vh - 132px)",
+            overflowY: isMobile ? "visible" : "auto",
+            overscrollBehavior: "contain",
+            scrollbarGutter: "stable",
           }}
         >
           {isMobile ? (
@@ -2386,7 +2525,7 @@ export function IntelBetaDashboard({
                     fontSize: 13,
                   }}
                 >
-                  <option value="ALL">All Topics ({matchedArticles.length})</option>
+                  <option value="ALL">All Topics ({feedItems.length})</option>
                   {visibleTopicRules.map((rule) => (
                     <option key={rule.topic_key} value={rule.topic_key}>
                       {rule.label} ({topicIndex.topicCounts.get(rule.topic_key) ?? 0})
@@ -2412,7 +2551,7 @@ export function IntelBetaDashboard({
                     fontSize: 13,
                   }}
                 >
-                  <option value="ALL">All Sources ({matchedArticles.length})</option>
+                  <option value="ALL">All Sources ({feedItems.length})</option>
                   {SOURCE_FILTERS.map((source) => (
                     <option key={source.key} value={source.key}>
                       {source.label} ({sourceCounts.get(source.key) ?? 0})
@@ -2449,7 +2588,7 @@ export function IntelBetaDashboard({
                   label="All Topics"
                   active={selectedTopic === "ALL"}
                   onClick={() => setSelectedTopic("ALL")}
-                  count={matchedArticles.length}
+                  count={feedItems.length}
                 />
                 {visibleTopicRules.map((rule) => (
                   <TopicButton
@@ -2469,7 +2608,7 @@ export function IntelBetaDashboard({
                   label="All Sources"
                   active={selectedSource === "ALL"}
                   onClick={() => selectSourceFilter("ALL")}
-                  count={matchedArticles.length}
+                  count={feedItems.length}
                 />
                 {SOURCE_FILTERS.map((source) => (
                   <TopicButton
