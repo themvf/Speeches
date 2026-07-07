@@ -39,6 +39,7 @@ type SourceFilter =
 const FEED_RENDER_BATCH_SIZE = 20;
 const LIVE_FEED_REFRESH_LIMIT = 500;
 const LIVE_FEED_POLL_INTERVAL_MS = 60 * 60_000;
+const FEED_ANALYSIS_VERSION = 2;
 
 type FeedMeta = {
   label: string;
@@ -112,6 +113,7 @@ interface FeedItemAnalysis {
   model: string;
   generated_at: string;
   fallback: boolean;
+  analysis_version: number;
 }
 
 function toFeedItemAnalysis(value: unknown): FeedItemAnalysis | undefined {
@@ -131,6 +133,7 @@ function toFeedItemAnalysis(value: unknown): FeedItemAnalysis | undefined {
     model: String(src.model || ""),
     generated_at: String(src.generated_at || ""),
     fallback: Boolean(src.fallback),
+    analysis_version: Number((src as { analysis_version?: unknown }).analysis_version || 0),
   };
 }
 
@@ -383,7 +386,11 @@ function isDeepSeekFeedAnalysis(analysis: FeedItemAnalysis | undefined): boolean
 }
 
 function shouldRegenerateFeedAnalysis(analysis: FeedItemAnalysis | undefined): boolean {
-  return Boolean(analysis) && (Boolean(analysis?.fallback) || !isDeepSeekFeedAnalysis(analysis));
+  return Boolean(analysis) && (
+    Number(analysis?.analysis_version || 0) < FEED_ANALYSIS_VERSION ||
+    Boolean(analysis?.fallback) ||
+    !isDeepSeekFeedAnalysis(analysis)
+  );
 }
 
 function feedAnalysisModelLabel(analysis: FeedItemAnalysis | undefined): string {
@@ -769,6 +776,31 @@ function isBloombergArticle(article: FeedItem): boolean {
   return article.item_type === "document" && (sourceKind === "bloomberg_apify_article" || sourceKind === "bloomberg_public_article");
 }
 
+function canOpenStoredSourceText(article: FeedItem): boolean {
+  return article.item_type === "document" && Boolean(article.document_id);
+}
+
+function sourceTextButtonLabel(article: FeedItem): string {
+  const sourceKind = String(article.source_kind || "").toLowerCase();
+  const docType = String(article.doc_type || "").toLowerCase();
+  const haystack = `${sourceKind} ${docType} ${article.title || ""}`.toLowerCase();
+  if (haystack.includes("youtube") || haystack.includes("video") || haystack.includes("transcript")) {
+    return "Read Transcript";
+  }
+  if (haystack.includes("testimony")) {
+    return "Read Testimony";
+  }
+  if (isBloombergArticle(article)) {
+    return "Read Article";
+  }
+  return "Read Document";
+}
+
+function sourceTextModalLabel(article: FeedItem): string {
+  const label = sourceTextButtonLabel(article).replace(/^Read\s+/i, "");
+  return label ? `Full ${label}` : "Stored Source Text";
+}
+
 function savedArticleId(article: FeedItem): string {
   if (article.item_type === "document" && article.document_id) {
     return `document:${article.document_id}`;
@@ -1019,12 +1051,13 @@ function FullArticleModal({
       ? detail.content.full_text.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)
       : [];
   const sourceLabel = feedSourceLabel(article, getFeedMeta(article.feed_key, article.feed_label));
+  const modalLabel = sourceTextModalLabel(article);
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Full Bloomberg article"
+      aria-label={modalLabel}
       style={{
         position: "fixed",
         inset: 0,
@@ -1070,7 +1103,7 @@ function FullArticleModal({
               {article.author ? <span className="tone-chip">By {decodeEntities(article.author)}</span> : null}
             </div>
             <h2 style={{ margin: 0, color: "#f4f7fc", fontSize: compact ? 17 : 20, lineHeight: 1.35 }}>
-              {decodeEntities(article.title || "Bloomberg article")}
+              {decodeEntities(article.title || modalLabel)}
             </h2>
           </div>
           <button
@@ -1094,7 +1127,7 @@ function FullArticleModal({
         </div>
         <div style={{ overflow: "auto", padding: compact ? "14px" : "18px 20px 22px" }}>
           {loading ? (
-            <p style={{ color: "#9fb0c7", fontSize: 13 }}>Loading article text...</p>
+            <p style={{ color: "#9fb0c7", fontSize: 13 }}>Loading stored source text...</p>
           ) : error ? (
             <div style={{ display: "grid", gap: 10 }}>
               <p style={{ color: "#ff8aa0", fontSize: 13 }}>{error}</p>
@@ -1111,12 +1144,12 @@ function FullArticleModal({
               ))}
             </article>
           ) : (
-            <p style={{ color: "#9fb0c7", fontSize: 13 }}>No stored article text is available yet.</p>
+            <p style={{ color: "#9fb0c7", fontSize: 13 }}>No stored source text is available yet.</p>
           )}
           {article.url ? (
             <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(112,142,187,0.14)" }}>
               <a href={article.url} target="_blank" rel="noopener noreferrer" className="link-inline text-xs">
-                Open original Bloomberg page
+                Open original source page
               </a>
             </div>
           ) : null}
@@ -1399,7 +1432,8 @@ function FeedRow({
       : "transparent";
   const rowAccent = hasFirmMatch ? "inset 3px 0 0 rgba(184, 143, 255, 0.72)" : undefined;
   const description = ellipsize(article.description ?? "", article.item_type === "document" ? 120 : 82);
-  const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
+  const showFullArticle = canOpenStoredSourceText(article) && !!onOpenFullArticle;
+  const fullArticleLabel = sourceTextButtonLabel(article);
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
     background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
@@ -1492,7 +1526,7 @@ function FeedRow({
               }}
               style={{ ...analysisButtonStyle, justifySelf: "start" }}
             >
-              Read Article
+              {fullArticleLabel}
             </button>
           ) : null}
         </div>
@@ -1566,7 +1600,7 @@ function FeedRow({
               }}
               style={analysisButtonStyle}
             >
-              Read Article
+              {fullArticleLabel}
             </button>
           ) : null}
         </div>
@@ -1610,7 +1644,8 @@ function FeaturedCard({
   const hasFirmMatch = matchedFirms.length > 0;
   const firmMatchBackground = hasFirmMatch ? "rgba(137, 87, 229, 0.06)" : "transparent";
   const firmMatchAccent = hasFirmMatch ? "inset 3px 0 0 rgba(184, 143, 255, 0.72)" : undefined;
-  const showFullArticle = isBloombergArticle(article) && !!onOpenFullArticle;
+  const showFullArticle = canOpenStoredSourceText(article) && !!onOpenFullArticle;
+  const fullArticleLabel = sourceTextButtonLabel(article);
   const analysisButtonStyle = {
     border: analysisOpen ? "1px solid rgba(79,213,255,0.55)" : "1px solid rgba(90,118,162,0.28)",
     background: analysisOpen ? "rgba(79,213,255,0.12)" : "rgba(14,24,39,0.58)",
@@ -1706,7 +1741,7 @@ function FeaturedCard({
               }}
               style={{ ...analysisButtonStyle, justifySelf: "start" }}
             >
-              Read Article
+              {fullArticleLabel}
             </button>
           ) : null}
         </div>
@@ -1837,7 +1872,7 @@ function FeaturedCard({
             }}
             style={analysisButtonStyle}
           >
-            Read Article
+            {fullArticleLabel}
           </button>
         ) : null}
       </div>
@@ -2367,6 +2402,7 @@ export function IntelBetaDashboard({
         method: "POST",
         body: JSON.stringify({
           article_id: article.item_type === "document" ? "" : article.id,
+          document_id: article.item_type === "document" ? article.document_id || "" : "",
           guid: article.guid || "",
           title: decodeEntities(article.title || ""),
           description: decodeEntities(article.description || ""),
@@ -2377,6 +2413,8 @@ export function IntelBetaDashboard({
           tone_label: article.tone_label || "",
           topics,
           item_type: article.item_type || "article",
+          source_kind: article.source_kind || "",
+          doc_type: article.doc_type || "",
         }),
       });
       setFeedAnalyses((prev) => ({ ...prev, [itemKey]: payload.analysis }));

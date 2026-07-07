@@ -158,12 +158,17 @@ def deepseek_feed_analysis(row: Dict[str, Any], topics: List[str], model: str, a
         ]
     )
     instructions = (
-        "You are a financial and regulatory intelligence analyst deciding whether this feed item should be monitored, "
+        "You are a senior financial-regulatory intelligence analyst deciding whether this feed item should be monitored, "
         "saved, briefed, escalated, or ignored. Use only the supplied title, source, author, date, URL, matched topics, "
         "tone label, and RSS/feed excerpt. Do not add outside facts, background, or assumptions. If a fact needed for "
         "assessment is missing, state the exact missing fact in risk_signals or follow_up_questions instead of inferring it. "
         "Return dense, source-bounded JSON for a working analyst. Do not write a generic news summary, media recap, or "
-        "basic explanation of common terms. thesis: one concrete sentence naming the event, entity, agency, market, "
+        "basic explanation of common terms. For speeches, testimony, roundtables, videos, and transcripts, prioritize "
+        "policy posture, rulemaking direction, supervisory emphasis, market-structure implications, investor-protection themes, "
+        "affected registrants/intermediaries, timing signals, and exact statements that need source review. Do not call a "
+        "speech, testimony, roundtable, education item, or video an enforcement risk unless the supplied text explicitly says "
+        "investigation, enforcement, charges, litigation, settlement, penalty, fraud, suspension, or similar. "
+        "thesis: one concrete sentence naming the event, entity, agency, market, "
         "product, person, proceeding, or transaction supplied in the input. why_it_matters: 3-5 bullets tied to the "
         "supplied facts and to at least one of policy, enforcement posture, supervision, compliance controls, market "
         "structure, investor/customer harm, litigation, capital markets, or financial-stability impact. risk_signals: "
@@ -204,6 +209,7 @@ def deepseek_feed_analysis(row: Dict[str, Any], topics: List[str], model: str, a
         "model": model,
         "generated_at": utc_now_iso(),
         "fallback": False,
+        "analysis_version": 2,
     }
 
 

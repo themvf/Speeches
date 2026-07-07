@@ -1,6 +1,8 @@
 import { normalizeText } from "@/lib/server/api-utils";
 import { getOpenAiConfig } from "@/lib/server/env";
 
+export const FEED_ANALYSIS_VERSION = 2;
+
 export interface FeedAnalysisInput {
   title: string;
   description: string;
@@ -11,6 +13,9 @@ export interface FeedAnalysisInput {
   tone_label: string;
   topics: string[];
   item_type: string;
+  source_kind?: string;
+  doc_type?: string;
+  document_text?: string;
 }
 
 export interface FeedAnalysis {
@@ -24,6 +29,7 @@ export interface FeedAnalysis {
   model: string;
   generated_at: string;
   fallback: boolean;
+  analysis_version: number;
 }
 
 interface OpenAiTextContent {
@@ -110,6 +116,7 @@ function hasWeakFeedAnalysisFields(analysis: {
 }
 
 export function shouldRefreshFeedAnalysisForDeepSeek(analysis: {
+  analysis_version?: number;
   model?: string;
   fallback?: boolean;
   thesis?: string;
@@ -119,6 +126,9 @@ export function shouldRefreshFeedAnalysisForDeepSeek(analysis: {
 } | null | undefined): boolean {
   if (!isDeepSeekFeedAnalysisConfigured() || !analysis) {
     return false;
+  }
+  if (Number(analysis.analysis_version || 0) < FEED_ANALYSIS_VERSION) {
+    return true;
   }
   const model = normalizeText(analysis.model).toLowerCase();
   return Boolean(analysis.fallback) || !model.startsWith("deepseek") || hasWeakFeedAnalysisFields(analysis);
@@ -170,6 +180,7 @@ function coerceAnalysis(raw: unknown, model: string, fallback: boolean): FeedAna
     model,
     generated_at: new Date().toISOString(),
     fallback,
+    analysis_version: FEED_ANALYSIS_VERSION,
   };
 }
 
@@ -230,19 +241,37 @@ function heuristicEntities(input: FeedAnalysisInput): { individuals: string[]; e
 
 export function fallbackFeedAnalysis(input: FeedAnalysisInput, model = "heuristic"): FeedAnalysis {
   const title = normalizeText(input.title) || "Untitled feed item";
-  const summary = normalizeText(input.description);
+  const summary = analysisText(input);
   const topicText = input.topics.length ? ` It maps to ${input.topics.slice(0, 3).join(", ")}.` : "";
   const { individuals, entities } = heuristicEntities(input);
+  const regulatorDoc = isRegulatorDocument(input);
+  const speechDoc = isSpeechTestimonyOrTranscript(input);
   return {
-    thesis: summary ? `${title}: ${summary.slice(0, 260)}` : `${title}.${topicText}`,
+    thesis: speechDoc
+      ? contextualThesis(input)
+      : summary
+        ? `${title}: ${summary.slice(0, 260)}`
+        : `${title}.${topicText}`,
     why_it_matters: [
-      topicText ? `Topic relevance:${topicText}` : "This item entered the live regulatory intelligence feed and may warrant source review.",
-      input.source ? `Source context: ${input.source}.` : "Source context is limited in the RSS metadata.",
+      regulatorDoc
+        ? "Primary-source regulator material can signal agency priorities, supervision themes, rulemaking direction, and compliance expectations."
+        : topicText
+          ? `Topic relevance:${topicText}`
+          : "This item entered the live regulatory intelligence feed and may warrant source review.",
+      speechDoc
+        ? "Speech, testimony, video, or transcript content should be checked for exact policy statements, timing signals, and rule references."
+        : input.source
+          ? `Source context: ${input.source}.`
+          : "Source context is limited in the RSS metadata.",
       input.published_at ? `Published date: ${input.published_at}.` : "Published date was not supplied by the feed.",
     ],
     risk_signals: [
-      input.tone_label ? `Feed tone classified as ${input.tone_label}.` : "No sentiment signal was supplied.",
-      summary.length < 120 ? "RSS summary is short; review the source before relying on conclusions." : "Analysis is based on RSS metadata and summary text.",
+      speechDoc
+        ? "Verify whether the remarks announce a new position, restate existing policy, or summarize outreach before briefing them as a policy shift."
+        : input.tone_label
+          ? `Feed tone classified as ${input.tone_label}.`
+          : "No sentiment signal was supplied.",
+      summary.length < 220 ? "Available text is short; review the stored source text before relying on conclusions." : "Analysis is based on supplied feed and stored document text.",
     ],
     follow_up_questions: [
       "Does the source article identify a concrete regulatory action, investigation, rulemaking, market impact, or compliance obligation?",
@@ -254,6 +283,7 @@ export function fallbackFeedAnalysis(input: FeedAnalysisInput, model = "heuristi
     model,
     generated_at: new Date().toISOString(),
     fallback: true,
+    analysis_version: FEED_ANALYSIS_VERSION,
   };
 }
 
@@ -284,25 +314,74 @@ function uniqueText(values: string[], maxItems: number): string[] {
   return out;
 }
 
+function sourceText(input: FeedAnalysisInput): string {
+  return normalizeText([
+    input.title,
+    input.description,
+    input.document_text,
+    input.source,
+    input.author,
+    input.source_kind,
+    input.doc_type,
+    input.url,
+    ...input.topics,
+  ].join(" "));
+}
+
+function analysisText(input: FeedAnalysisInput): string {
+  return normalizeText(`${input.description}\n\n${input.document_text || ""}`);
+}
+
 function isSparseFeedInput(input: FeedAnalysisInput): boolean {
-  return normalizeText(input.description).length < 180;
+  return analysisText(input).length < 220;
+}
+
+function isRegulatorDocument(input: FeedAnalysisInput): boolean {
+  const text = sourceText(input).toLowerCase();
+  return /\b(sec|securities and exchange commission|finra|cftc|federal reserve|treasury|occ|fdic|pcaob|msrb|doj)\b/.test(text);
+}
+
+function isSpeechTestimonyOrTranscript(input: FeedAnalysisInput): boolean {
+  const text = sourceText(input).toLowerCase();
+  return /\b(speech|remarks|statement|testimony|hearing|transcript|youtube|video|roundtable|chairman|commissioner|governor)\b/.test(text);
+}
+
+function isEnforcementItem(input: FeedAnalysisInput): boolean {
+  const text = sourceText(input).toLowerCase();
+  return (
+    /\b(enforcement|litigation release|administrative proceeding|trading suspension|complaint|charges?|settlement|judgment|injunction|penalt|fraud|insider[\s-]+trading)\b/.test(text) ||
+    /\bsec_enforcement|sec_administrative|sec_trading_suspension\b/.test(text)
+  );
 }
 
 function contextualWhyItMatters(input: FeedAnalysisInput): string[] {
-  const title = normalizeText(input.title);
-  const description = normalizeText(input.description);
   const source = normalizeText(input.source);
-  const text = `${title} ${description}`.toLowerCase();
+  const text = sourceText(input).toLowerCase();
   const topics = input.topics.filter(Boolean);
   const out: string[] = [];
+  const regulatorDoc = isRegulatorDocument(input);
+  const speechDoc = isSpeechTestimonyOrTranscript(input);
+  const enforcementItem = isEnforcementItem(input);
 
   if (topics.length) {
-    out.push(`Maps to ${topics.slice(0, 2).join(" and ")} because the item concerns ${title || "the reported development"}.`);
+    out.push(`Maps to ${topics.slice(0, 2).join(" and ")} based on the supplied title, source, topics, and text.`);
+  }
+  if (regulatorDoc && speechDoc) {
+    out.push("Regulator speeches, testimony, and transcripts are primary-source signals for agency priorities, rulemaking direction, supervisory emphasis, and market-structure policy.");
+  }
+  if (/\b(investor education|financial education|retail investor|main street|financial literacy)\b/i.test(text)) {
+    out.push("Investor-education messaging can indicate where the agency sees retail confusion, disclosure gaps, or conduct risks that may shape exams, guidance, or outreach.");
+  }
+  if (/\b(roundtable|hearing|testimony)\b/i.test(text)) {
+    out.push("The forum matters because public testimony or roundtable remarks can preview policy arguments, stakeholder concerns, and questions Congress or the agency may revisit.");
+  }
+  if (/\b(crypto|digital asset|stablecoin|token|market structure|equity market|treasury market|clearing|settlement|disclosure|private fund|investment adviser|broker-dealer)\b/i.test(text)) {
+    out.push("The item touches a regulated market, product, or intermediary that may affect compliance monitoring, disclosure controls, supervision, or market-structure planning.");
   }
   if (/\binsider[\s-]+trad/i.test(text)) {
     out.push("Insider-trading allegations are relevant to MNPI controls, restricted-list monitoring, employee trading policies, and broker-dealer surveillance.");
   }
-  if (/\b(sec|securities and exchange commission)\b/i.test(text)) {
+  if (enforcementItem && /\b(sec|securities and exchange commission)\b/i.test(text)) {
     out.push("SEC involvement makes this relevant for enforcement posture, investigation-stage risk, and securities-market compliance monitoring.");
   }
   if (/\b(probe|probes|investigat|inquir|exam|charge|sue|sues|settle|fine|penalt)/i.test(text)) {
@@ -319,26 +398,29 @@ function contextualWhyItMatters(input: FeedAnalysisInput): string[] {
 }
 
 function contextualRiskSignals(input: FeedAnalysisInput): string[] {
-  const title = normalizeText(input.title);
-  const description = normalizeText(input.description);
-  const text = `${title} ${description}`.toLowerCase();
+  const text = sourceText(input).toLowerCase();
   const out: string[] = [];
+  const speechDoc = isSpeechTestimonyOrTranscript(input);
+  const enforcementItem = isEnforcementItem(input);
 
   if (/\binsider[\s-]+trad/i.test(text)) out.push("Alleged insider trading or material-nonpublic-information misuse");
-  if (/\b(sec|securities and exchange commission)\b/i.test(text)) out.push("SEC inquiry, investigation, or enforcement posture");
+  if (enforcementItem && /\b(sec|securities and exchange commission)\b/i.test(text)) out.push("SEC inquiry, investigation, or enforcement posture");
   if (/\b(probe|probes|investigat|inquir|exam)\b/i.test(text)) out.push("Investigation-stage facts are incomplete");
   if (/\b(loss|losses|cost|harm|damage|victim)\b/i.test(text)) out.push("Reported financial loss or market harm");
+  if (speechDoc) {
+    out.push("Review the stored transcript or testimony for exact quoted commitments, rule references, timing signals, and limiting language.");
+    out.push("The feed view may not identify whether the remarks announce policy, restate existing priorities, or merely summarize outreach.");
+  }
   if (isSparseFeedInput(input)) {
-    out.push("RSS excerpt omits key facts such as affected instruments, parties, dates, and source qualifications");
-    out.push("Limited feed metadata should be checked against the full source before relying on the signal");
+    out.push("The available text is short; verify affected instruments, parties, dates, legal authority, and source qualifications before relying on the signal.");
+    out.push("Limited metadata should be checked against the full source before using the item in a briefing.");
   }
 
   return uniqueText(out, 5);
 }
 
 function contextualFollowUps(input: FeedAnalysisInput): string[] {
-  const title = normalizeText(input.title);
-  const text = `${title} ${normalizeText(input.description)}`.toLowerCase();
+  const text = sourceText(input).toLowerCase();
   const out: string[] = [];
 
   if (/\binsider[\s-]+trad/i.test(text)) {
@@ -350,6 +432,10 @@ function contextualFollowUps(input: FeedAnalysisInput): string[] {
   }
   if (/\b(loss|losses|cost|harm|damage|victim)\b/i.test(text)) {
     out.push("Who suffered the reported loss and what transaction or market event caused it?");
+  }
+  if (isSpeechTestimonyOrTranscript(input)) {
+    out.push("What exact policy position, rule reference, market practice, or compliance expectation does the speaker identify?");
+    out.push("Does the testimony or transcript include timing, next steps, dissenting views, or limits on the agency position?");
   }
   if (!out.length) {
     out.push("What concrete regulatory action, market impact, compliance obligation, or affected entity does the full article identify?");
@@ -364,6 +450,11 @@ function contextualFollowUps(input: FeedAnalysisInput): string[] {
 function contextualThesis(input: FeedAnalysisInput): string {
   const title = normalizeText(input.title);
   const source = normalizeText(input.source);
+  const docType = normalizeText(input.doc_type || "");
+  if (isSpeechTestimonyOrTranscript(input)) {
+    const label = docType || (sourceText(input).toLowerCase().includes("transcript") ? "transcript" : "remarks");
+    return source ? `${source} ${label.toLowerCase()} concerns ${title}.` : `${label} concerns ${title}.`;
+  }
   if (!title) return normalizeText(input.description).slice(0, 260);
   return source ? `${source} reports: ${title}.` : `${title}.`;
 }
@@ -435,6 +526,7 @@ function strengthenFeedAnalysis(input: FeedAnalysisInput, analysis: FeedAnalysis
     keywords,
     individuals,
     entities,
+    analysis_version: FEED_ANALYSIS_VERSION,
   };
 }
 
@@ -454,20 +546,28 @@ export async function generateFeedAnalysis(input: FeedAnalysisInput, modelOverri
     `Feed tone: ${normalizeText(input.tone_label)}`,
     `Matched topics: ${input.topics.join(", ")}`,
     `Item type: ${normalizeText(input.item_type) || "article"}`,
+    `Source kind: ${normalizeText(input.source_kind || "")}`,
+    `Document type: ${normalizeText(input.doc_type || "")}`,
     "",
     "RSS summary / excerpt:",
     normalizeText(input.description).slice(0, 6000),
+    "",
+    "Stored document text / transcript / testimony excerpt:",
+    normalizeText(input.document_text || "").slice(0, 14000),
   ].join("\n");
 
   const instructions = [
-    "You are a financial and regulatory intelligence analyst deciding whether this feed item should be monitored, saved, briefed, escalated, or ignored.",
-    "Use only the supplied title, source, author, date, URL, matched topics, tone label, and RSS/feed excerpt. Do not add outside facts, background, or assumptions.",
+    "You are a senior financial-regulatory intelligence analyst for a website used to monitor regulators, enforcement, markets, supervision, compliance, and policy posture.",
+    "Decide whether this item should be monitored, saved, briefed, escalated, or ignored.",
+    "Use only the supplied title, source, author, date, URL, matched topics, tone label, source kind, document type, RSS/feed excerpt, and stored document text. Do not add outside facts, background, or assumptions.",
     "If a fact needed for assessment is missing, state the exact missing fact in risk_signals or follow_up_questions instead of inferring it.",
     "Return dense, source-bounded JSON for a working analyst. Do not write a generic news summary, media recap, or basic explanation of common terms.",
-    "thesis: one concrete sentence naming the event, entity, agency, market, product, person, proceeding, or transaction supplied in the input.",
-    "why_it_matters: 3-5 bullets tied to the supplied facts and to at least one of policy, enforcement posture, supervision, compliance controls, market structure, investor/customer harm, litigation, capital markets, or financial-stability impact.",
-    "risk_signals: 2-5 concrete red flags, uncertainties, or missing facts. Do not use vague labels like 'potential regulatory risk' unless tied to a named fact from the input.",
-    "follow_up_questions: 2-5 item-specific questions about parties, securities/instruments, dates, rules, procedural posture, jurisdiction, losses, obligations, or market impact where relevant.",
+    "For speeches, testimony, roundtables, videos, and transcripts, prioritize policy posture, rulemaking direction, supervisory emphasis, market-structure implications, investor-protection themes, affected registrants/intermediaries, timing signals, and exact statements that need source review.",
+    "Do not call a speech, testimony, roundtable, education item, or video an enforcement risk unless the supplied text explicitly says investigation, enforcement, charges, litigation, settlement, penalty, fraud, suspension, or similar.",
+    "thesis: one concrete sentence naming the event, agency, speaker, market/product, policy topic, proceeding, or transaction supplied in the input. Avoid repeating the headline verbatim unless the input has no other substance.",
+    "why_it_matters: 3-5 bullets tied to the supplied facts and to at least one of policy, enforcement posture, supervision, compliance controls, market structure, investor/customer harm, litigation, capital markets, financial-stability impact, or regulatory agenda.",
+    "risk_signals: 2-5 concrete red flags, uncertainties, missing facts, or source-review needs. For testimony/transcripts, include exact-quote/timing/rule-reference checks rather than generic risk labels.",
+    "follow_up_questions: 2-5 item-specific questions about policy position, rule references, parties, securities/instruments, dates, procedural posture, jurisdiction, losses, obligations, next steps, or market impact where relevant.",
     "keywords, individuals, and entities must be extracted only from the title, source, author, topics, URL, and excerpt; avoid author fragments and generic media words.",
     "Use empty arrays only when the supplied text truly does not identify a category.",
   ].join("\n");
