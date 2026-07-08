@@ -52,7 +52,7 @@ function getRecapProviderConfig(): RecapProviderConfig {
       readEnv("RECAP_ANALYSIS_MODEL") ||
       readEnv("DEEPSEEK_MODEL") ||
       readEnv("DEEPSEEK_CHAT_MODEL") ||
-      "deepseek-v4-flash",
+      "deepseek-v4-pro",
     baseUrl: readEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
   };
 }
