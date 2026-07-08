@@ -18,7 +18,8 @@ export const maxDuration = 60;
 
 const MAX_ITEMS_PER_TOPIC = 20;
 const MIN_RECAP_SUMMARY_CHARS = 320;
-const MODEL_REQUEST_TIMEOUT_MS = 25_000;
+const MODEL_REQUEST_TIMEOUT_MS = 7_000;
+const MAX_MODEL_ATTEMPTS = 1;
 const DEFAULT_TOPIC_BATCH_SIZE = 1;
 const MAX_TOPIC_BATCH_SIZE = 2;
 
@@ -138,6 +139,50 @@ function filterTopicItems(rule: TopicRuleView, items: RecapItem[]): RecapItem[] 
   return deduped;
 }
 
+function compactSentence(value: string, maxLength = 220): string {
+  const cleaned = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength - 1).replace(/\s+\S*$/, "")}.`;
+}
+
+function sourceTitleList(items: RecapItem[], count: number): string {
+  const titles = items
+    .slice(0, count)
+    .map((item) => compactSentence(item.title, 120))
+    .filter(Boolean);
+  if (titles.length === 0) return "the matched source set";
+  if (titles.length === 1) return titles[0];
+  return `${titles.slice(0, -1).join("; ")}; and ${titles[titles.length - 1]}`;
+}
+
+function buildSourceFallbackSummary(topicLabel: string, items: RecapItem[], reason: string): string {
+  const topItems = dedupeRecapItems(items).slice(0, MAX_ITEMS_PER_TOPIC);
+  const regulatoryDocs = topItems.filter((item) => item.source_type === "document");
+  const newsItems = topItems.filter((item) => item.source_type === "article");
+  const leadItems = regulatoryDocs.length > 0 ? regulatoryDocs : topItems;
+  const leadSource = sourceTitleList(leadItems, 2);
+  const newsSource = sourceTitleList(newsItems, 2);
+  const sourceMix = `${regulatoryDocs.length} regulatory document${regulatoryDocs.length === 1 ? "" : "s"} and ${newsItems.length} news item${newsItems.length === 1 ? "" : "s"}`;
+
+  console.warn("[recap/generate] using source fallback summary", {
+    topicLabel,
+    reason,
+    items: topItems.length,
+  });
+
+  return [
+    `**Executive Summary:** ${topicLabel} had ${topItems.length} matched source${topItems.length === 1 ? "" : "s"} in the selected recap window, including ${sourceMix}. The most relevant regulatory signal comes from ${leadSource}, while the broader public-news backdrop includes ${newsSource}. For financial regulators, the practical takeaway is to triage whether these developments affect supervisory priorities, enforcement exposure, market integrity, investor protection, operational resilience, or disclosure obligations before relying on the feed as complete.`,
+    "",
+    "**Key Points:**",
+    `- Primary regulatory source set: ${sourceTitleList(leadItems, 3)}.`,
+    `- News and market context: ${sourceTitleList(newsItems.length > 0 ? newsItems : topItems, 3)}.`,
+    "- Follow-up review should identify affected firms, products, jurisdictions, filing deadlines, enforcement posture, and whether any official source has superseded or narrowed the public reporting.",
+    "- Treat this as a source-grounded fallback recap because the model response was unavailable or incomplete inside the production request window.",
+  ].join("\n");
+}
+
 async function generateTopicSummary(
   topicLabel: string,
   items: RecapItem[],
@@ -176,7 +221,7 @@ async function generateTopicSummary(
   };
 
   let lastError: Error | null = null;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), MODEL_REQUEST_TIMEOUT_MS);
     let res: Response;
@@ -204,26 +249,40 @@ async function generateTopicSummary(
       });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`${providerLabel(cfg.provider)} request timed out while generating ${topicLabel}`);
+        lastError = new Error(`${providerLabel(cfg.provider)} request timed out while generating ${topicLabel}`);
+        break;
       }
-      throw error;
+      lastError = error instanceof Error ? error : new Error(String(error));
+      break;
     } finally {
       clearTimeout(timeoutId);
     }
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new Error(`${providerLabel(cfg.provider)} error ${res.status}: ${body.slice(0, 300)}`);
+      lastError = new Error(`${providerLabel(cfg.provider)} error ${res.status}: ${body.slice(0, 300)}`);
+      break;
     }
-    const json = (await res.json()) as { choices: { message: { content: string } }[] };
-    const content = json.choices[0]?.message?.content?.trim() ?? "";
+    let content = "";
+    try {
+      const json = (await res.json()) as { choices: { message: { content: string } }[] };
+      content = json.choices[0]?.message?.content?.trim() ?? "";
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      break;
+    }
     try {
       return validateSummary(content);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
-  throw lastError ?? new Error(`${providerLabel(cfg.provider)} did not return a usable recap for ${topicLabel}.`);
+
+  return buildSourceFallbackSummary(
+    topicLabel,
+    items,
+    lastError?.message ?? `${providerLabel(cfg.provider)} did not return a usable recap.`
+  );
 }
 
 function matchItemsToTopics(
@@ -251,6 +310,7 @@ function matchItemsToTopics(
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const requestStartedAt = Date.now();
   const ip = getClientIp(req.headers);
   if (await isRateLimited(getGenerateIpLimiter(), ip)) {
     return NextResponse.json({ ok: false, error: "Rate limit exceeded. Please slow down." }, { status: 429 });
@@ -273,6 +333,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const batchSize = Number.isFinite(body.batchSize)
       ? Math.min(MAX_TOPIC_BATCH_SIZE, Math.max(1, Math.floor(Number(body.batchSize))))
       : DEFAULT_TOPIC_BATCH_SIZE;
+    console.info("[recap/generate] start", { recapDate, cursor, batchSize });
 
     let since: Date;
     let until: Date | undefined;
@@ -291,6 +352,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       loadCorpusDocuments(),
       loadEnrichmentState(),
     ]);
+    console.info("[recap/generate] loaded inputs", {
+      recapDate,
+      selectedTopics: selectedTopicKeys.length,
+      rules: rawRules.length,
+      articles: articles.length,
+      corpusDocs: corpusDocs.length,
+      elapsedMs: Date.now() - requestStartedAt,
+    });
 
     if (selectedTopicKeys.length === 0) {
       return NextResponse.json({ ok: false, error: "No topics selected. Save topic settings first." }, { status: 400 });
@@ -393,6 +462,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     for (const rule of batchRules) {
       try {
+        console.info("[recap/generate] topic start", {
+          topicKey: rule.topic_key,
+          topicLabel: rule.label,
+          elapsedMs: Date.now() - requestStartedAt,
+        });
         const topicItems = filterTopicItems(rule, [
           ...(articleMap.get(rule.topic_key) ?? []),
           ...(corpusMap.get(rule.topic_key) ?? []),
@@ -430,6 +504,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }]);
 
         results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicItems.length, summary });
+        console.info("[recap/generate] topic saved", {
+          topicKey: rule.topic_key,
+          items: topicItems.length,
+          elapsedMs: Date.now() - requestStartedAt,
+        });
       } catch (error) {
         failed.push({
           topic_key: rule.topic_key,
@@ -451,6 +530,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         nextCursor,
         remaining: Math.max(0, selectedRules.length - nextCursor),
         done,
+        elapsedMs: Date.now() - requestStartedAt,
       },
     });
   } catch (err) {

@@ -1,6 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "functions": {
+    "app/api/intel/recap/generate/route.ts": {
+      "maxDuration": 60
+    }
+  },
   "crons": [
     { "path": "/api/intel/rss-refresh", "schedule": "*/10 * * * *" }
   ]
