@@ -18,6 +18,9 @@ export const maxDuration = 60;
 
 const MAX_ITEMS_PER_TOPIC = 20;
 const MIN_RECAP_SUMMARY_CHARS = 320;
+const MODEL_REQUEST_TIMEOUT_MS = 25_000;
+const DEFAULT_TOPIC_BATCH_SIZE = 1;
+const MAX_TOPIC_BATCH_SIZE = 2;
 
 type RecapProviderConfig = {
   provider: "deepseek" | "openai";
@@ -85,6 +88,12 @@ type RecapItem = {
   source_kind?: string; // e.g. "sec_speech", "custom" — used for UI labeling
   speaker?: string;
   tone_label?: "positive" | "neutral" | "negative" | null;
+};
+
+type GenerateRecapBody = {
+  date?: string;
+  cursor?: number;
+  batchSize?: number;
 };
 
 function normalizeRecapKey(value: string): string {
@@ -169,7 +178,7 @@ async function generateTopicSummary(
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45_000);
+    const timeoutId = setTimeout(() => controller.abort(), MODEL_REQUEST_TIMEOUT_MS);
     let res: Response;
     try {
       res = await fetch(`${cfg.baseUrl}/chat/completions`, {
@@ -257,9 +266,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ ok: false, error: `${providerLabel(cfg.provider)} not configured (${missingKey} missing)` }, { status: 500 });
     }
 
-    const body = await req.json().catch(() => ({})) as { date?: string };
+    const body = await req.json().catch(() => ({})) as GenerateRecapBody;
     const todayIso = new Date().toISOString().split("T")[0] as string;
     const recapDate = body.date ?? todayIso;
+    const cursor = Number.isFinite(body.cursor) ? Math.max(0, Math.floor(Number(body.cursor))) : 0;
+    const batchSize = Number.isFinite(body.batchSize)
+      ? Math.min(MAX_TOPIC_BATCH_SIZE, Math.max(1, Math.floor(Number(body.batchSize))))
+      : DEFAULT_TOPIC_BATCH_SIZE;
 
     let since: Date;
     let until: Date | undefined;
@@ -296,6 +309,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 400 }
       );
     }
+    const batchRules = selectedRules.slice(cursor, cursor + batchSize);
+    const nextCursor = Math.min(selectedRules.length, cursor + batchRules.length);
+    const done = nextCursor >= selectedRules.length;
+
+    if (batchRules.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        data: {
+          date: recapDate,
+          topics: [],
+          skipped: [],
+          failed: [],
+          cursor,
+          nextCursor: selectedRules.length,
+          remaining: 0,
+          done: true,
+        },
+      });
+    }
+
     await deleteBlockedRssArticles(rawRules).catch((error) => {
       console.error("[recap/generate] RSS policy cleanup failed:", error);
       return 0;
@@ -358,70 +391,68 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const skipped: { topic_key: string; topic_label: string }[] = [];
     const failed: { topic_key: string; topic_label: string; error: string }[] = [];
 
-    const settled = await Promise.allSettled(selectedRules.map(async (rule) => {
-      const topicItems = filterTopicItems(rule, [
-        ...(articleMap.get(rule.topic_key) ?? []),
-        ...(corpusMap.get(rule.topic_key) ?? []),
-      ]);
+    for (const rule of batchRules) {
+      try {
+        const topicItems = filterTopicItems(rule, [
+          ...(articleMap.get(rule.topic_key) ?? []),
+          ...(corpusMap.get(rule.topic_key) ?? []),
+        ]);
 
-      if (topicItems.length === 0) {
-        skipped.push({ topic_key: rule.topic_key, topic_label: rule.label });
-        return;
-      }
+        if (topicItems.length === 0) {
+          skipped.push({ topic_key: rule.topic_key, topic_label: rule.label });
+          continue;
+        }
 
-      const summary = await generateTopicSummary(rule.label, topicItems, cfg);
+        const summary = await generateTopicSummary(rule.label, topicItems, cfg);
 
-      const positive_count = topicItems.filter((i) => i.tone_label === "positive").length;
-      const negative_count = topicItems.filter((i) => i.tone_label === "negative").length;
-      const neutral_count = topicItems.filter((i) => i.tone_label === "neutral").length;
+        const positive_count = topicItems.filter((i) => i.tone_label === "positive").length;
+        const negative_count = topicItems.filter((i) => i.tone_label === "negative").length;
+        const neutral_count = topicItems.filter((i) => i.tone_label === "neutral").length;
 
-      const sources: RecapSource[] = topicItems.slice(0, MAX_ITEMS_PER_TOPIC).map((i) => ({
-        title: i.title,
-        url: i.url,
-        source_type: i.source_type,
-        source_kind: i.source_kind,
-        speaker: i.speaker,
-      }));
+        const sources: RecapSource[] = topicItems.slice(0, MAX_ITEMS_PER_TOPIC).map((i) => ({
+          title: i.title,
+          url: i.url,
+          source_type: i.source_type,
+          source_kind: i.source_kind,
+          speaker: i.speaker,
+        }));
 
-      await saveRecapRows([{
-        recap_date: recapDate,
-        topic_key: rule.topic_key,
-        topic_label: rule.label,
-        summary,
-        article_count: topicItems.length,
-        positive_count,
-        negative_count,
-        neutral_count,
-        sources,
-      }]);
+        await saveRecapRows([{
+          recap_date: recapDate,
+          topic_key: rule.topic_key,
+          topic_label: rule.label,
+          summary,
+          article_count: topicItems.length,
+          positive_count,
+          negative_count,
+          neutral_count,
+          sources,
+        }]);
 
-      results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicItems.length, summary });
-    }));
-
-    settled.forEach((outcome, index) => {
-      if (outcome.status === "rejected") {
-        const rule = selectedRules[index];
+        results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicItems.length, summary });
+      } catch (error) {
         failed.push({
-          topic_key: rule?.topic_key ?? "",
-          topic_label: rule?.label ?? "Unknown topic",
-          error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+          topic_key: rule.topic_key,
+          topic_label: rule.label,
+          error: error instanceof Error ? error.message : String(error),
         });
-        console.error("[recap/generate] topic failed:", outcome.reason);
+        console.error("[recap/generate] topic failed:", error);
       }
-    });
-
-    if (results.length === 0 && failed.length > 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Recap generation failed for all matching topics: ${failed.map((item) => `${item.topic_label}: ${item.error}`).join("; ")}`,
-          data: { date: recapDate, topics: results, skipped, failed },
-        },
-        { status: 502 }
-      );
     }
 
-    return NextResponse.json({ ok: true, data: { date: recapDate, topics: results, skipped, failed } });
+    return NextResponse.json({
+      ok: true,
+      data: {
+        date: recapDate,
+        topics: results,
+        skipped,
+        failed,
+        cursor,
+        nextCursor,
+        remaining: Math.max(0, selectedRules.length - nextCursor),
+        done,
+      },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[recap/generate]", message);

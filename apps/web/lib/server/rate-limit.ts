@@ -41,12 +41,12 @@ export function getFeedLimiter() {
 }
 
 export function getGenerateIpLimiter() {
-  if (generateIpLimiter === undefined) generateIpLimiter = makeLimiter("rl:generate:ip", 3, "1 m");
+  if (generateIpLimiter === undefined) generateIpLimiter = makeLimiter("rl:generate:ip", 30, "1 m");
   return generateIpLimiter;
 }
 
 export function getGenerateGlobalLimiter() {
-  if (generateGlobalLimiter === undefined) generateGlobalLimiter = makeLimiter("rl:generate:global", 10, "1 m");
+  if (generateGlobalLimiter === undefined) generateGlobalLimiter = makeLimiter("rl:generate:global", 60, "1 m");
   return generateGlobalLimiter;
 }
 

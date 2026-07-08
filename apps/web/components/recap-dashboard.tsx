@@ -163,6 +163,7 @@ export function RecapDashboard({
 
   const [recap, setRecap] = useState<DailyRecapRow[]>(initialRecap);
   const [generating, setGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [skippedTopics, setSkippedTopics] = useState<{ topic_key: string; topic_label: string }[]>([]);
   const [loadingDate, setLoadingDate] = useState(false);
@@ -224,37 +225,67 @@ export function RecapDashboard({
 
   const generate = async () => {
     setGenerating(true);
+    setGenerateProgress("Starting recap generation...");
     setGenerateError(null);
+    setSkippedTopics([]);
     try {
-      const res = await fetch("/api/intel/recap/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: viewDate }),
-      });
-      let json: {
-        ok: boolean;
-        error?: string;
-        data?: {
-          topics?: { topic_key: string; topic_label: string; article_count: number; summary: string }[];
-          skipped?: { topic_key: string; topic_label: string }[];
-          failed?: { topic_key: string; topic_label: string; error: string }[];
+      let cursor = 0;
+      let done = false;
+      const allSkipped: { topic_key: string; topic_label: string }[] = [];
+      const allFailed: { topic_key: string; topic_label: string; error: string }[] = [];
+      let generatedCount = 0;
+
+      while (!done) {
+        const res = await fetch("/api/intel/recap/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: viewDate, cursor, batchSize: 1 }),
+        });
+        let json: {
+          ok: boolean;
+          error?: string;
+          data?: {
+            topics?: { topic_key: string; topic_label: string; article_count: number; summary: string }[];
+            skipped?: { topic_key: string; topic_label: string }[];
+            failed?: { topic_key: string; topic_label: string; error: string }[];
+            nextCursor?: number;
+            remaining?: number;
+            done?: boolean;
+          };
         };
-      };
-      try {
-        json = (await res.json()) as { ok: boolean; error?: string };
-      } catch {
-        setGenerateError(`Server error ${res.status}: ${res.statusText || "non-JSON response"}`);
-        return;
+        try {
+          json = (await res.json()) as { ok: boolean; error?: string };
+        } catch {
+          setGenerateError(`Server error ${res.status}: ${res.statusText || "non-JSON response"}`);
+          return;
+        }
+        if (!json.ok) {
+          setGenerateError(json.error ?? `Generation failed (HTTP ${res.status}).`);
+          return;
+        }
+
+        generatedCount += json.data?.topics?.length ?? 0;
+        allSkipped.push(...(json.data?.skipped ?? []));
+        allFailed.push(...(json.data?.failed ?? []));
+
+        done = Boolean(json.data?.done);
+        if (!done && typeof json.data?.nextCursor !== "number") {
+          setGenerateError("The recap request did not return a continuation cursor. Reload the page and retry.");
+          return;
+        }
+        cursor = json.data?.nextCursor ?? cursor + 1;
+        setGenerateProgress((json.data?.remaining ?? 0) > 0
+          ? `Generating recap topics... ${json.data?.remaining} remaining`
+          : "Reloading generated recap..."
+        );
       }
-      if (!json.ok) {
-        setGenerateError(json.error ?? `Generation failed (HTTP ${res.status}).`);
-        return;
+
+      const uniqueSkipped = Array.from(new Map(allSkipped.map((topic) => [topic.topic_key, topic])).values());
+      setSkippedTopics(uniqueSkipped);
+      if (allFailed.length > 0) {
+        setGenerateError(`Some topics failed: ${allFailed.map((item) => `${item.topic_label}: ${item.error}`).join("; ")}`);
       }
-      setSkippedTopics(json.data?.skipped ?? []);
-      if ((json.data?.failed ?? []).length > 0) {
-        setGenerateError(`Some topics failed: ${(json.data?.failed ?? []).map((item) => `${item.topic_label}: ${item.error}`).join("; ")}`);
-      }
-      if ((json.data?.topics ?? []).length === 0 && (json.data?.skipped ?? []).length === 0 && (json.data?.failed ?? []).length === 0) {
+      if (generatedCount === 0 && uniqueSkipped.length === 0 && allFailed.length === 0) {
         setGenerateError("The recap request completed, but no topic rows were generated. Save recap settings again, then retry.");
       }
       const recapRes = await fetch(`/api/intel/recap?date=${viewDate}`);
@@ -268,6 +299,7 @@ export function RecapDashboard({
       setGenerateError(err instanceof Error ? err.message : String(err));
     } finally {
       setGenerating(false);
+      setGenerateProgress(null);
     }
   };
 
@@ -331,6 +363,10 @@ export function RecapDashboard({
             {generating ? "Generating…" : recap.length > 0 ? "Regenerate" : "Generate Recap"}
           </button>
         </div>
+
+        {generateProgress && (
+          <p className="mt-3 text-xs text-[color:var(--ink-faint)]">{generateProgress}</p>
+        )}
 
         {generateError && (
           <p className="callout callout-error mt-3">{generateError}</p>
