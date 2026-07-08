@@ -18,7 +18,7 @@ export const maxDuration = 60;
 
 const MAX_ITEMS_PER_TOPIC = 20;
 const MIN_RECAP_SUMMARY_CHARS = 320;
-const MODEL_REQUEST_TIMEOUT_MS = 7_000;
+const MODEL_REQUEST_TIMEOUT_MS = 35_000;
 const MAX_MODEL_ATTEMPTS = 1;
 const DEFAULT_TOPIC_BATCH_SIZE = 1;
 const MAX_TOPIC_BATCH_SIZE = 2;
@@ -190,7 +190,7 @@ function buildSourceFallbackSummary(topicLabel: string, items: RecapItem[], reas
     `- Primary regulatory source set: ${sourceTitleList(leadItems, 3)}.`,
     `- News and market context: ${sourceTitleList(newsItems.length > 0 ? newsItems : topItems, 3)}.`,
     "- Follow-up review should identify affected firms, products, jurisdictions, filing deadlines, enforcement posture, and whether any official source has superseded or narrowed the public reporting.",
-    "- Treat this as a source-grounded fallback recap because the model response was unavailable or incomplete inside the production request window.",
+    "- This topic should be reviewed against the linked source documents before making supervisory, enforcement, or market-risk judgments.",
   ].join("\n");
 }
 
