@@ -18,6 +18,45 @@ export const maxDuration = 60;
 
 const MAX_ITEMS_PER_TOPIC = 20;
 
+type RecapProviderConfig = {
+  provider: "deepseek" | "openai";
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+};
+
+function readEnv(name: string, fallback = ""): string {
+  return String(process.env[name] ?? fallback).trim();
+}
+
+function providerLabel(provider: RecapProviderConfig["provider"]): string {
+  return provider === "deepseek" ? "DeepSeek" : "OpenAI";
+}
+
+function getRecapProviderConfig(): RecapProviderConfig {
+  const explicitProvider = readEnv("RECAP_ANALYSIS_PROVIDER").toLowerCase();
+  if (explicitProvider === "openai") {
+    const openai = getOpenAiConfig();
+    return {
+      provider: "openai",
+      apiKey: openai.apiKey,
+      model: readEnv("RECAP_ANALYSIS_MODEL") || openai.model,
+      baseUrl: openai.baseUrl,
+    };
+  }
+
+  return {
+    provider: "deepseek",
+    apiKey: readEnv("DEEPSEEK_API") || readEnv("DEEPSEEK_API_KEY"),
+    model:
+      readEnv("RECAP_ANALYSIS_MODEL") ||
+      readEnv("DEEPSEEK_MODEL") ||
+      readEnv("DEEPSEEK_CHAT_MODEL") ||
+      "deepseek-v4-flash",
+    baseUrl: readEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+  };
+}
+
 function normalizeDocDate(dateStr: string): string | null {
   if (!dateStr) return null;
   // Already YYYY-MM-DD
@@ -50,7 +89,7 @@ type RecapItem = {
 async function generateTopicSummary(
   topicLabel: string,
   items: RecapItem[],
-  cfg: { apiKey: string; model: string; baseUrl: string }
+  cfg: RecapProviderConfig
 ): Promise<string> {
   const itemList = items
     .slice(0, MAX_ITEMS_PER_TOPIC)
@@ -84,7 +123,7 @@ async function generateTopicSummary(
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`OpenAI request timed out while generating ${topicLabel}`);
+      throw new Error(`${providerLabel(cfg.provider)} request timed out while generating ${topicLabel}`);
     }
     throw error;
   } finally {
@@ -93,7 +132,7 @@ async function generateTopicSummary(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`OpenAI error ${res.status}: ${body.slice(0, 300)}`);
+    throw new Error(`${providerLabel(cfg.provider)} error ${res.status}: ${body.slice(0, 300)}`);
   }
   const json = (await res.json()) as { choices: { message: { content: string } }[] };
   return json.choices[0]?.message?.content?.trim() ?? "";
@@ -133,9 +172,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const cfg = getOpenAiConfig();
+    const cfg = getRecapProviderConfig();
     if (!cfg.apiKey) {
-      return NextResponse.json({ ok: false, error: "OpenAI not configured (OPENAI_API_KEY missing)" }, { status: 500 });
+      const missingKey = cfg.provider === "deepseek" ? "DEEPSEEK_API" : "OPENAI_API_KEY";
+      return NextResponse.json({ ok: false, error: `${providerLabel(cfg.provider)} not configured (${missingKey} missing)` }, { status: 500 });
     }
 
     const body = await req.json().catch(() => ({})) as { date?: string };
