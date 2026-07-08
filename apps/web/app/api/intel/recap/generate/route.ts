@@ -5,9 +5,9 @@ import {
   getTopicRules,
   getRecentArticles,
   saveRecapRows,
+  type StoredRssArticle,
   type RecapSource,
 } from "@/lib/server/neon";
-import { loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-store";
 import { getOpenAiConfig } from "@/lib/server/env";
 import { getTopicMatches, normalizeTopicRules, type TopicRuleView } from "@/lib/intel-topic-matching";
 import { getClientIp, getGenerateGlobalLimiter, getGenerateIpLimiter, isRateLimited } from "@/lib/server/rate-limit";
@@ -22,6 +22,19 @@ const MODEL_REQUEST_TIMEOUT_MS = 7_000;
 const MAX_MODEL_ATTEMPTS = 1;
 const DEFAULT_TOPIC_BATCH_SIZE = 1;
 const MAX_TOPIC_BATCH_SIZE = 2;
+const OFFICIAL_FEED_PREFIXES = [
+  "sec_",
+  "finra_",
+  "cftc_",
+  "fed_",
+  "occ_",
+  "cfpb_",
+  "ftc_",
+  "doj_",
+  "treasury_",
+  "congress_",
+  "cisa_",
+];
 
 type RecapProviderConfig = {
   provider: "deepseek" | "openai";
@@ -62,23 +75,8 @@ function getRecapProviderConfig(): RecapProviderConfig {
   };
 }
 
-function normalizeDocDate(dateStr: string): string | null {
-  if (!dateStr) return null;
-  // Already YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.slice(0, 10);
-  // Try JS Date parsing for "May 11, 2026", "11/05/2026", etc.
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 // Articles require a title match (100+) to avoid false positives from passing mentions.
-// Corpus docs use enrichment tags/keywords for matching — LLM-curated, so a
-// description-level match (50+) is reliable.
 const MIN_ARTICLE_SCORE = 100;
-const MIN_CORPUS_SCORE = 50;
 
 type RecapItem = {
   title: string;
@@ -137,6 +135,19 @@ function filterTopicItems(rule: TopicRuleView, items: RecapItem[]): RecapItem[] 
     return deduped.filter(isPonziInvestorFraudItem);
   }
   return deduped;
+}
+
+function isOfficialRegulatoryFeed(feedKey: string): boolean {
+  const normalized = String(feedKey || "").toLowerCase();
+  return OFFICIAL_FEED_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+function recapSourceKindForArticle(article: StoredRssArticle): string | undefined {
+  const feedKey = String(article.feed_key || "").toLowerCase();
+  if (feedKey === "sec_speeches_statements") return "sec_speech";
+  if (feedKey === "cftc_speeches_testimony") return "cftc_public_statement_remark";
+  if (isOfficialRegulatoryFeed(feedKey)) return feedKey;
+  return undefined;
 }
 
 function compactSentence(value: string, maxLength = 220): string {
@@ -345,19 +356,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       until = nextDay;
     }
 
-    const [selectedTopicKeys, rawRules, articles, corpusDocs, enrichmentState] = await Promise.all([
+    const [selectedTopicKeys, rawRules, articles] = await Promise.all([
       getRecapSettings(),
       getTopicRules(true),
       getRecentArticles({ limit: 400, since, until }),
-      loadCorpusDocuments(),
-      loadEnrichmentState(),
     ]);
     console.info("[recap/generate] loaded inputs", {
       recapDate,
       selectedTopics: selectedTopicKeys.length,
       rules: rawRules.length,
       articles: articles.length,
-      corpusDocs: corpusDocs.length,
       elapsedMs: Date.now() - requestStartedAt,
     });
 
@@ -416,45 +424,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       title: a.title,
       description: a.description ?? "",
       url: a.url,
-      source_type: "article",
+      source_type: isOfficialRegulatoryFeed(a.feed_key) ? "document" : "article",
+      source_kind: recapSourceKindForArticle(a),
       tone_label: a.tone_label,
     }));
 
-    // Corpus docs — filter by date, match via enrichment tags + keywords (relaxed threshold)
-    const enrichmentEntries = enrichmentState.entries ?? {};
-    const corpusItems: RecapItem[] = corpusDocs
-      .filter((doc) => doc.metadata.full_text_available !== false)
-      .filter((doc) => {
-        const dateStr = doc.metadata.published_date || doc.metadata.date || "";
-        return normalizeDocDate(dateStr) === recapDate;
-      })
-      .map((doc) => {
-        const enrichment = enrichmentEntries[doc.metadata.document_id];
-        const tags: string[] = enrichment?.enrichment?.tags ?? [];
-        const keywords: string[] = enrichment?.enrichment?.keywords ?? [];
-
-        // matchText = enrichment tags + keywords joined; used for topic matching
-        const matchText = [...tags, ...keywords].join(" ") || undefined;
-
-        // description = enrichment summary for the LLM prompt
-        const description =
-          enrichment?.enrichment?.summary ||
-          doc.metadata.summary ||
-          doc.content.full_text.slice(0, 400);
-
-        return {
-          title: doc.metadata.title,
-          description,
-          matchText,
-          url: doc.metadata.url,
-          source_type: "document" as const,
-          source_kind: doc.metadata.source_kind || undefined,
-          speaker: doc.metadata.speaker || undefined,
-        };
-      });
-
     const articleMap = matchItemsToTopics(articleItems, selectedRules, MIN_ARTICLE_SCORE);
-    const corpusMap = matchItemsToTopics(corpusItems, selectedRules, MIN_CORPUS_SCORE);
 
     const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
     const skipped: { topic_key: string; topic_label: string }[] = [];
@@ -467,10 +442,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           topicLabel: rule.label,
           elapsedMs: Date.now() - requestStartedAt,
         });
-        const topicItems = filterTopicItems(rule, [
-          ...(articleMap.get(rule.topic_key) ?? []),
-          ...(corpusMap.get(rule.topic_key) ?? []),
-        ]);
+        const topicItems = filterTopicItems(rule, articleMap.get(rule.topic_key) ?? []);
 
         if (topicItems.length === 0) {
           skipped.push({ topic_key: rule.topic_key, topic_label: rule.label });
