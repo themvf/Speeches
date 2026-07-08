@@ -88,6 +88,7 @@ TRADE_ASSOCIATION_CONNECTORS = {
 SUPPORTED_CONNECTORS = {
     "sec_speech",
     "sec_tm_faq",
+    "sec_rule_comment",
     "sec_enforcement_litigation",
     "finra_regulatory_notice",
     "finra_comment_letter",
@@ -123,6 +124,8 @@ def _default_base_url(connector: str) -> str:
         return SEC_SPEECH_DEFAULT_URL
     if connector == "sec_tm_faq":
         return SEC_TM_FAQ_DEFAULT_URL
+    if connector == "sec_rule_comment":
+        return ""
     if connector == "sec_enforcement_litigation":
         return SEC_LIT_DEFAULT_URL
     if connector == "finra_regulatory_notice":
@@ -723,6 +726,39 @@ def _status_for_entry(
             return "update_available"
         return "existing"
 
+    if connector == "sec_rule_comment":
+        entry_kind = _normalize_space(entry.get("entry_kind", "")).lower()
+        existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
+        incoming_date = _normalize_space(entry.get("date", ""))
+        existing_file = _normalize_space(existing_meta.get("file_number") or existing_meta.get("notice_number") or "").upper()
+        incoming_file = _normalize_space(entry.get("file_number") or entry.get("notice_number") or "").upper()
+        if entry_kind == "rule":
+            existing_type = _normalize_space(existing_meta.get("rule_type") or existing_meta.get("doc_type") or "")
+            incoming_type = _normalize_space(entry.get("rule_type", ""))
+            existing_effective = _normalize_space(existing_meta.get("effective_date", ""))
+            incoming_effective = _normalize_space(entry.get("effective_date", ""))
+            if (
+                (incoming_date and existing_date and incoming_date != existing_date)
+                or (incoming_file and existing_file and incoming_file != existing_file)
+                or (incoming_type and existing_type and incoming_type != existing_type)
+                or (incoming_effective and existing_effective and incoming_effective != existing_effective)
+            ):
+                return "update_available"
+            return "existing"
+
+        existing_commenter = _normalize_space(existing_meta.get("commenter_name") or existing_meta.get("speaker") or "")
+        incoming_commenter = _normalize_space(entry.get("commenter_name", ""))
+        existing_letter_type = _normalize_space(existing_meta.get("letter_type", ""))
+        incoming_letter_type = _normalize_space(entry.get("letter_type", ""))
+        if (
+            (incoming_date and existing_date and incoming_date != existing_date)
+            or (incoming_file and existing_file and incoming_file != existing_file)
+            or (incoming_commenter and existing_commenter and incoming_commenter != existing_commenter)
+            or (incoming_letter_type and existing_letter_type and incoming_letter_type != existing_letter_type)
+        ):
+            return "update_available"
+        return "existing"
+
     if connector == "sifma_news_item":
         existing_date = _normalize_space(existing_meta.get("published_date") or existing_meta.get("date") or "")
         incoming_date = _normalize_space(entry.get("date", ""))
@@ -847,6 +883,13 @@ def _discover_connector(
 
         scraper = TradingMarketsFAQScraper()
         docs = scraper.discover_documents(index_url=base_url, include_pdfs=include_pdfs)
+        return scraper, docs, {}
+
+    if connector == "sec_rule_comment":
+        from sec_rule_comments_scraper import SECRuleCommentsScraper
+
+        scraper = SECRuleCommentsScraper()
+        docs = scraper.discover_documents(rule_url=base_url, include_pdfs=include_pdfs)
         return scraper, docs, {}
 
     if connector == "sec_enforcement_litigation":
@@ -1168,6 +1211,137 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         metadata["published_date"] = str(entry.get("published_date", "") or "")
         metadata["updated_date"] = str(entry.get("updated_date", "") or "")
         metadata["last_reviewed_or_updated"] = str(data.get("last_reviewed_or_updated", "") or entry.get("updated_date", "") or "")
+        return record
+
+    if connector == "sec_rule_comment":
+        entry_kind = _normalize_space(entry.get("entry_kind", "")).lower()
+        if entry_kind == "rule":
+            extracted = scraper.extract_rule(
+                entry.get("url", ""),
+                fallback_title=entry.get("title", ""),
+                fallback_date=entry.get("date", ""),
+                fallback_file_number=entry.get("file_number", ""),
+                fallback_release_numbers=entry.get("release_numbers", []),
+                fallback_rule_type=entry.get("rule_type", ""),
+                fallback_comments_url=entry.get("comments_url", ""),
+                fallback_pdf_url=entry.get("pdf_url", ""),
+                fallback_effective_date=entry.get("effective_date", ""),
+                fallback_sec_issue_date=entry.get("sec_issue_date", ""),
+                fallback_federal_register_publish_date=entry.get("federal_register_publish_date", ""),
+            )
+            if not extracted.get("success"):
+                raise RuntimeError("Extraction returned unsuccessful result.")
+            data = extracted.get("data", {})
+            text = str(data.get("full_text", "") or "").strip()
+            if len(text.split()) < 80:
+                raise RuntimeError("Extracted text appears too short; skipping.")
+            src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+            source_format = str(data.get("source_format", "") or entry.get("source_format", "html")).strip().lower()
+            source_ext = ".pdf" if source_format == "pdf" else ".html"
+            date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+            rule_type = str(data.get("rule_type", "") or entry.get("rule_type", "") or "Rule Release").strip()
+            file_number = str(data.get("file_number", "") or entry.get("file_number", "")).strip().upper()
+            tags_csv = "sec,rulemaking,rule-release,public-comment"
+            if file_number:
+                tags_csv = f"{tags_csv},file-{file_number.lower()}"
+            record = core._create_uploaded_document_record(
+                text=text,
+                organization="SEC",
+                title=str(data.get("title", "") or entry.get("title", "")).strip() or "SEC Rule Release",
+                speaker="SEC",
+                doc_date=_parse_doc_date(date_text),
+                doc_type=rule_type or "Rule Release",
+                source_url=src_url,
+                source_filename=_safe_source_name(src_url, f"sec-rule-release-{idx}", source_ext),
+                source_ext=source_ext,
+                source_local_path="",
+                source_gcs_path="",
+                tags_csv=tags_csv,
+                source_kind="sec_rule_release",
+            )
+            metadata = record.setdefault("metadata", {})
+            metadata["source_family"] = "sec_rule"
+            metadata["source_index_url"] = base_url
+            metadata["published_date"] = date_text
+            metadata["file_number"] = file_number
+            metadata["notice_number"] = file_number
+            metadata["release_numbers"] = data.get("release_numbers", []) if isinstance(data.get("release_numbers", []), list) else []
+            metadata["rule_type"] = rule_type
+            metadata["sec_issue_date"] = str(data.get("sec_issue_date", "") or entry.get("sec_issue_date", "")).strip()
+            metadata["effective_date"] = str(data.get("effective_date", "") or entry.get("effective_date", "")).strip()
+            metadata["federal_register_publish_date"] = str(
+                data.get("federal_register_publish_date", "") or entry.get("federal_register_publish_date", "")
+            ).strip()
+            metadata["rule_url"] = src_url
+            metadata["notice_url"] = src_url
+            metadata["comments_url"] = str(data.get("comments_url", "") or entry.get("comments_url", "")).strip()
+            metadata["notice_title"] = str(data.get("title", "") or entry.get("title", "")).strip()
+            metadata["pdf_url"] = str(data.get("pdf_url", "") or entry.get("pdf_url", "")).strip()
+            metadata["source_format"] = source_format
+            metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
+            return record
+
+        extracted = scraper.extract_comment(
+            entry.get("url", ""),
+            fallback_title=entry.get("title", ""),
+            fallback_date=entry.get("date", ""),
+            fallback_commenter_name=entry.get("commenter_name", ""),
+            fallback_file_number=entry.get("file_number", "") or entry.get("notice_number", ""),
+            fallback_release_numbers=entry.get("release_numbers", []),
+            fallback_rule_title=entry.get("rule_title", "") or entry.get("notice_title", ""),
+            fallback_rule_url=entry.get("rule_url", "") or base_url,
+            fallback_comments_url=entry.get("comments_url", ""),
+            fallback_letter_type=entry.get("letter_type", ""),
+        )
+        if not extracted.get("success"):
+            raise RuntimeError("Extraction returned unsuccessful result.")
+        data = extracted.get("data", {})
+        text = str(data.get("full_text", "") or "").strip()
+        if len(text.split()) < 20:
+            raise RuntimeError("Extracted text appears too short; skipping.")
+        src_url = str(data.get("url", "") or entry.get("url", "")).strip()
+        source_format = str(data.get("source_format", "") or entry.get("source_format", "html")).strip().lower()
+        source_ext = ".pdf" if source_format == "pdf" else ".txt" if source_format == "txt" else ".html"
+        date_text = str(data.get("date", "") or entry.get("date", "")).strip()
+        commenter_name = str(data.get("commenter_name", "") or entry.get("commenter_name", "")).strip()
+        commenter_org = str(data.get("commenter_org", "") or "").strip()
+        file_number = str(data.get("file_number", "") or entry.get("file_number", "") or entry.get("notice_number", "")).strip().upper()
+        tags_csv = "sec,rulemaking,public-comment"
+        if file_number:
+            tags_csv = f"{tags_csv},file-{file_number.lower()}"
+        record = core._create_uploaded_document_record(
+            text=text,
+            organization="SEC",
+            title=str(data.get("title", "") or entry.get("title", "")).strip() or "Public Comment",
+            speaker=commenter_name or commenter_org or "Commenter",
+            doc_date=_parse_doc_date(date_text),
+            doc_type="Public Comment",
+            source_url=src_url,
+            source_filename=_safe_source_name(src_url, f"sec-rule-comment-{idx}", source_ext),
+            source_ext=source_ext,
+            source_local_path="",
+            source_gcs_path="",
+            tags_csv=tags_csv,
+            source_kind="sec_rule_comment",
+        )
+        metadata = record.setdefault("metadata", {})
+        metadata["source_family"] = "sec_rule"
+        metadata["source_index_url"] = str(data.get("rule_url", "") or entry.get("rule_url", "") or base_url).strip()
+        metadata["published_date"] = date_text
+        metadata["file_number"] = file_number
+        metadata["notice_number"] = file_number
+        metadata["release_numbers"] = data.get("release_numbers", []) if isinstance(data.get("release_numbers", []), list) else []
+        metadata["rule_url"] = str(data.get("rule_url", "") or entry.get("rule_url", "") or base_url).strip()
+        metadata["notice_url"] = metadata["rule_url"]
+        metadata["comments_url"] = str(data.get("comments_url", "") or entry.get("comments_url", "")).strip()
+        metadata["notice_title"] = str(data.get("rule_title", "") or entry.get("rule_title", "") or entry.get("notice_title", "")).strip()
+        metadata["comment_url"] = str(data.get("comment_url", "") or entry.get("comment_url", "") or src_url).strip()
+        metadata["pdf_url"] = str(data.get("pdf_url", "") or entry.get("pdf_url", "")).strip()
+        metadata["commenter_name"] = commenter_name
+        metadata["commenter_org"] = commenter_org
+        metadata["letter_type"] = str(data.get("letter_type", "") or entry.get("letter_type", "")).strip()
+        metadata["source_format"] = source_format
+        metadata["discovery_source"] = str(entry.get("discovery_source", "") or "").strip()
         return record
 
     if connector == "sec_enforcement_litigation":

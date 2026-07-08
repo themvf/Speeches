@@ -163,6 +163,26 @@ class YouTubeVideoScraper:
         return out
 
     def discover_documents(self, channel_ref: str = "", max_pages: int = 1, limit: int = 25) -> List[Dict[str, Any]]:
+        direct_video_id = _video_id_from_url(channel_ref)
+        if direct_video_id:
+            video = {
+                "video_id": direct_video_id,
+                "title": direct_video_id,
+                "url": YOUTUBE_WATCH_URL.format(video_id=direct_video_id),
+                "date": "",
+                "published_at": "",
+                "updated_at": "",
+                "channel_id": "",
+                "discovery_source": "youtube_video_url",
+            }
+            self.last_discovery_debug = {
+                "video_url": channel_ref,
+                "video_id": direct_video_id,
+                "discovered_count": 1,
+                "mode": "direct_video",
+            }
+            return [video]
+
         channel_id = self.resolve_channel_id(channel_ref or SEC_YOUTUBE_DEFAULT_URL)
         max_items = max(1, min(50, int(limit or 25), int(max_pages or 1) * 15))
         entries = self.fetch_rss_entries(channel_id, max_items=max_items)

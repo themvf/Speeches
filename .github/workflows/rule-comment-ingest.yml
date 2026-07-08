@@ -1,0 +1,92 @@
+name: Rule and Comment Ingest
+
+on:
+  schedule:
+    - cron: "35 13 * * *"
+  workflow_dispatch:
+    inputs:
+      source_type:
+        description: "Rule/comment source type"
+        required: false
+        type: choice
+        options:
+          - sec_rule_page
+          - sec_comment_url
+          - finra_rule_page
+          - finra_comment_url
+        default: sec_rule_page
+      source_url:
+        description: "SEC/FINRA rule page or comment URL"
+        required: false
+        default: ""
+      monitor_days:
+        description: "Days to monitor this source"
+        required: false
+        default: "95"
+      extraction_limit:
+        description: "Maximum rule/comment items to extract per source"
+        required: false
+        default: "50"
+      enrich_limit:
+        description: "Maximum extracted rule/comment documents to enrich"
+        required: false
+        default: "50"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rule-comment-ingest
+  cancel-in-progress: false
+
+jobs:
+  rule-comments:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
+      WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
+      WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
+      SOURCE_TYPE: ${{ github.event.inputs.source_type || 'sec_rule_page' }}
+      SOURCE_URL: ${{ github.event.inputs.source_url || '' }}
+      MONITOR_DAYS: ${{ github.event.inputs.monitor_days || '95' }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '50' }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '50' }}
+      ENRICH_MODEL: deepseek-v4-pro
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Rule and Comment Monitor
+        run: |
+          set -euo pipefail
+          args=(--run-all --require-remote-persistence --extraction-limit "${EXTRACTION_LIMIT}" --enrich-limit "${ENRICH_LIMIT}" --provider deepseek --model "${ENRICH_MODEL}" --summary-path rule_comment_monitor_summary.json)
+          if [ -n "${SOURCE_URL}" ]; then
+            args+=(--source-type "${SOURCE_TYPE}" --source-url "${SOURCE_URL}" --monitor-days "${MONITOR_DAYS}")
+          fi
+          python scripts/run_comment_source_monitor.py "${args[@]}"
+
+      - name: Upload Rule and Comment Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rule-comment-ingest-${{ github.run_id }}
+          path: |
+            rule_comment_monitor_summary.json
+            comment_monitor_*.json
+          if-no-files-found: ignore

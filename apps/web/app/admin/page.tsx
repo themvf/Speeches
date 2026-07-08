@@ -161,6 +161,7 @@ const POLICY_EXTRACTION_FIELDS: FieldDef[] = [
     options: [
       { value: "sec_speech", label: "SEC Speech" },
       { value: "sec_tm_faq", label: "SEC TM FAQ" },
+      { value: "sec_rule_comment", label: "SEC Rule Release + Public Comments" },
       { value: "sec_enforcement_litigation", label: "SEC Enforcement Litigation" },
       { value: "finra_regulatory_notice", label: "FINRA Regulatory Notice" },
       { value: "finra_comment_letter", label: "FINRA Rule Comment Letter" },
@@ -245,6 +246,31 @@ const NEWS_INGEST_FIELDS: FieldDef[] = [
       { value: "all", label: "All" },
     ],
   },
+];
+
+const YOUTUBE_VIDEO_FIELDS: FieldDef[] = [
+  { name: "video_url", label: "YouTube video URL", type: "text", placeholder: "https://www.youtube.com/watch?v=..." },
+  { name: "extraction_limit", label: "Extraction limit", type: "number", default: "2" },
+  { name: "enrich_limit", label: "Enrichment limit", type: "number", default: "2" },
+];
+
+const RULE_COMMENT_FIELDS: FieldDef[] = [
+  {
+    name: "source_type",
+    label: "Source type",
+    type: "select",
+    default: "sec_rule_page",
+    options: [
+      { value: "sec_rule_page", label: "SEC Rule Page URL" },
+      { value: "sec_comment_url", label: "SEC Comment File URL" },
+      { value: "finra_rule_page", label: "FINRA Rule Page URL" },
+      { value: "finra_comment_url", label: "FINRA Comment File URL" },
+    ],
+  },
+  { name: "source_url", label: "Rule or comment URL", type: "text", placeholder: "https://www.sec.gov/... or https://www.finra.org/..." },
+  { name: "monitor_days", label: "Monitor days", type: "number", default: "95" },
+  { name: "extraction_limit", label: "Extraction limit", type: "number", default: "50" },
+  { name: "enrich_limit", label: "Enrichment limit", type: "number", default: "50" },
 ];
 
 
@@ -2852,6 +2878,20 @@ export default function AdminPage() {
       <SectionDivider label="GitHub Actions" />
 
       <BloombergOnDemandSection />
+
+      <WorkflowPanel
+        title="YouTube Video Ingest"
+        description="Ingest and enrich an individual YouTube video transcript on demand."
+        workflowFile="youtube-video-ingest.yml"
+        fields={YOUTUBE_VIDEO_FIELDS}
+      />
+
+      <WorkflowPanel
+        title="Rule and Comment Ingest"
+        description="Ingest and enrich SEC or FINRA rule/comment URLs, then monitor submitted comment sources daily for 95 days."
+        workflowFile="rule-comment-ingest.yml"
+        fields={RULE_COMMENT_FIELDS}
+      />
 
       <WorkflowPanel
         title="Policy Extraction"

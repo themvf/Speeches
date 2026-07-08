@@ -362,9 +362,48 @@ class SECRuleCommentsScraper:
         return out
 
     def discover_documents(self, rule_url: str, include_pdfs: bool = True) -> List[Dict[str, Any]]:
+        normalized_url = _normalize_request_url(rule_url)
+        parsed = urlparse(normalized_url)
+        path = (parsed.path or "").lower()
+
+        if _looks_like_sec_comment_href(normalized_url):
+            return [
+                {
+                    "entry_kind": "comment",
+                    "url": normalized_url,
+                    "title": "Public Comment",
+                    "date": "",
+                    "file_number": _file_number_from_text(normalized_url),
+                    "notice_number": _file_number_from_text(normalized_url),
+                    "release_numbers": [],
+                    "rule_title": "",
+                    "rule_url": "",
+                    "comments_url": "",
+                    "commenter_name": "",
+                    "letter_type": "",
+                    "source_format": _comment_source_format(normalized_url),
+                    "discovery_source": "direct_comment_url",
+                }
+            ]
+
         response = self._fetch(rule_url, timeout=60)
         final_rule_url = _normalize_request_url(getattr(response, "url", rule_url) or rule_url)
         soup = BeautifulSoup(response.text, "html.parser")
+
+        if "/rules-regulations/public-comments/" in path:
+            file_number = _file_number_from_text(final_rule_url)
+            return self._parse_comment_listing(
+                soup,
+                final_rule_url,
+                {
+                    "title": "",
+                    "file_number": file_number,
+                    "release_numbers": [],
+                    "rule_url": "",
+                },
+                include_pdfs=include_pdfs,
+            )
+
         rule_metadata = self._parse_rule_page_metadata(soup, final_rule_url)
         rule_metadata["rule_url"] = final_rule_url
 

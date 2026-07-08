@@ -317,6 +317,21 @@ class FINRARegulatoryNoticeScraper:
         include_rss: bool = True,
         rss_url: str = FINRA_NOTICES_RSS_URL,
     ) -> List[Dict[str, str]]:
+        parsed_base = urlparse(str(base_url or "").strip())
+        if re.search(r"/rules-guidance/notices/\d{2}-\d{2}(?:/)?$", (parsed_base.path or "").lower()):
+            notice_number = _notice_number_from_text(base_url)
+            return [
+                {
+                    "url": str(base_url or "").strip(),
+                    "title": f"Regulatory Notice {notice_number}" if notice_number else "FINRA Regulatory Notice",
+                    "date": "",
+                    "notice_number": notice_number,
+                    "effective_date": "",
+                    "comment_deadline": "",
+                    "discovery_source": "direct_notice_url",
+                }
+            ]
+
         merged = {}
         sources = []
         errors = []

@@ -137,6 +137,29 @@ class FINRACommentLetterScraper:
         return f"{scheme}://{netloc}{path}"
 
     def discover_documents(self, notice_url: str, include_pdfs: bool = True) -> List[Dict[str, str]]:
+        initial_url = str(notice_url or "").strip()
+        initial_path = urlparse(initial_url).path.lower()
+        if "/rules-guidance/notices/comment/" in initial_path or "/noticecomment/" in initial_path:
+            is_pdf = _is_pdf_url(initial_url)
+            if is_pdf and not include_pdfs:
+                return []
+            notice_number = _notice_number_from_text(initial_url)
+            title = _commenter_from_label(initial_url.rsplit("/", 1)[-1].replace("-", " "))
+            return [
+                {
+                    "url": initial_url,
+                    "title": title or "Comment Letter",
+                    "date": "",
+                    "commenter_name": title,
+                    "notice_number": notice_number,
+                    "notice_title": "",
+                    "notice_url": "",
+                    "comments_url": "",
+                    "source_format": "pdf" if is_pdf else "html",
+                    "discovery_source": "direct_comment_url",
+                }
+            ]
+
         response = self._fetch(notice_url, timeout=60)
         final_url = str(getattr(response, "url", notice_url) or notice_url)
         soup = BeautifulSoup(response.text, "html.parser")

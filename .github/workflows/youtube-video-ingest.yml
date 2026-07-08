@@ -1,0 +1,90 @@
+name: YouTube Video Ingest (On Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Individual YouTube video URL"
+        required: true
+        default: ""
+      extraction_limit:
+        description: "Maximum videos to extract"
+        required: false
+        default: "2"
+      enrich_limit:
+        description: "Maximum video transcript documents to enrich"
+        required: false
+        default: "2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: youtube-video-ingest-manual
+  cancel-in-progress: false
+
+jobs:
+  youtube-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
+      WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
+      YOUTUBE_PROXY_URL: ${{ secrets.YOUTUBE_PROXY_URL }}
+      VIDEO_URL: ${{ github.event.inputs.video_url || '' }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '2' }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '2' }}
+      ENRICH_MODEL: deepseek-v4-pro
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Extract YouTube Video Transcript
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector youtube_video \
+            --base-url "${VIDEO_URL}" \
+            --selection new_or_updated \
+            --limit "${EXTRACTION_LIMIT}" \
+            --max-pages 1 \
+            --require-remote-persistence \
+            --summary-path youtube_video_extraction_summary.json
+
+      - name: Enrich YouTube Video Transcript
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --source-kind youtube_video \
+            --mode only_missing_or_failed \
+            --doc-ids-from-summary youtube_video_extraction_summary.json \
+            --limit "${ENRICH_LIMIT}" \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --summary-path youtube_video_enrich_summary.json
+
+      - name: Upload YouTube Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-video-ingest-${{ github.run_id }}
+          path: |
+            youtube_video_extraction_summary.json
+            youtube_video_enrich_summary.json
+          if-no-files-found: ignore

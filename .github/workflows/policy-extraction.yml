@@ -10,6 +10,7 @@ on:
         options:
           - sec_speech
           - sec_tm_faq
+          - sec_rule_comment
           - sec_enforcement_litigation
           - finra_awc
           - finra_regulatory_notice
