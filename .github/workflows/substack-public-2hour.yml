@@ -38,7 +38,7 @@ jobs:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
-      ENRICH_MODEL: deepseek-v4-flash
+      ENRICH_MODEL: deepseek-v4-pro
       RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
       SUBSTACK_PROXY_URL: ${{ secrets.SUBSTACK_PROXY_URL || secrets.RESIDENTIAL_PROXY_URL || secrets.APIFY_PROXY_URL }}
       KEYWORDS: ${{ github.event.inputs.keywords || '' }}

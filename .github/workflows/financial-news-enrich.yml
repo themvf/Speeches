@@ -43,7 +43,7 @@ on:
       model:
         description: "Model to use for hosted enrichment"
         required: false
-        default: "deepseek-v4-flash"
+        default: "deepseek-v4-pro"
 
 permissions:
   contents: read
@@ -66,7 +66,7 @@ jobs:
       SOURCE_KIND: ${{ github.event.inputs.source_kind || 'newsapi_article' }}
       ENRICH_ORDER: ${{ github.event.inputs.order || 'recent' }}
       ENRICH_PROVIDER: ${{ github.event.inputs.provider || 'deepseek' }}
-      ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-pro' }}
       HEURISTIC_ONLY: ${{ github.event.inputs.heuristic_only || 'false' }}
 
     steps:

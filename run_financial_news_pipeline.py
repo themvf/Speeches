@@ -1492,7 +1492,7 @@ def _candidate_chat_models() -> List[str]:
 
 
 def _candidate_deepseek_models() -> List[str]:
-    return ["deepseek-v4-flash", "deepseek-chat"]
+    return ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat"]
 
 
 def _list_project_models(client: Any) -> List[str]:

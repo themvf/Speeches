@@ -72,7 +72,7 @@ function getFeedAnalysisConfig(modelOverride = ""): FeedAnalysisProviderConfig {
     readEnv("FEED_ANALYSIS_MODEL") ||
     readEnv("DEEPSEEK_MODEL") ||
     readEnv("DEEPSEEK_CHAT_MODEL") ||
-    "deepseek-v4-flash";
+    "deepseek-v4-pro";
 
   if (explicitProvider === "openai") {
     const openai = getOpenAiConfig();

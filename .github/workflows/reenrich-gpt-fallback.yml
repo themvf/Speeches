@@ -6,7 +6,7 @@ on:
       model:
         description: "DeepSeek model to use"
         required: false
-        default: "deepseek-v4-flash"
+        default: "deepseek-v4-pro"
       max_docs:
         description: "Maximum corpus documents to process; 0 means all found"
         required: false
@@ -38,7 +38,7 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
+      MODEL: ${{ github.event.inputs.model || 'deepseek-v4-pro' }}
       MAX_DOCS: ${{ github.event.inputs.max_docs || '0' }}
       RSS_LIMIT: ${{ github.event.inputs.rss_limit || '500' }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}

@@ -1817,7 +1817,7 @@ export function PolicyResearchHub({ mode = "home" }: PolicyResearchHubProps) {
                 </select>
                 <input
                   className="form-control px-2 py-1.5"
-                  placeholder="deepseek-v4-flash"
+                  placeholder="deepseek-v4-pro"
                   value={enrich.model}
                   onChange={(e) => setEnrich({ ...enrich, model: e.target.value })}
                 />

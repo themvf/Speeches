@@ -44,7 +44,7 @@ jobs:
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '10' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '1' }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '10' }}
-      ENRICH_MODEL: deepseek-v4-flash
+      ENRICH_MODEL: deepseek-v4-pro
 
     steps:
       - name: Checkout

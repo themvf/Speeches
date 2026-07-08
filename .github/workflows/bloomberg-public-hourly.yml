@@ -29,7 +29,7 @@ jobs:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
-      ENRICH_MODEL: deepseek-v4-flash
+      ENRICH_MODEL: deepseek-v4-pro
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '20' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '20' }}
 

@@ -2100,7 +2100,7 @@ function EnrichmentPipelineSection() {
                 type="text"
                 value={enrich.model}
                 onChange={(e) => setEnrich((p) => ({ ...p, model: e.target.value }))}
-                placeholder="e.g. deepseek-v4-flash (leave blank for default)"
+                placeholder="e.g. deepseek-v4-pro (leave blank for default)"
                 className="form-control px-2 py-1.5 text-sm"
               />
             </div>

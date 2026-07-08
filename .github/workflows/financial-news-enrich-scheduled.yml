@@ -14,7 +14,7 @@ on:
       model:
         description: "Model for hosted enrichment"
         required: false
-        default: "deepseek-v4-flash"
+        default: "deepseek-v4-pro"
 
 permissions:
   contents: read
@@ -33,7 +33,7 @@ jobs:
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
       SOURCE_KIND: ${{ github.event.inputs.source_kind || 'newsapi_article' }}
-      ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-flash' }}
+      ENRICH_MODEL: ${{ github.event.inputs.model || 'deepseek-v4-pro' }}
 
     steps:
       - name: Checkout
