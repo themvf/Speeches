@@ -503,43 +503,15 @@ function fallbackDocumentTopicMatches(article: FeedItem, rules: TopicRuleView[])
   }
 
   if (topicKeys.size === 0) return [];
-  const fallbackLabels: Record<string, { label: string; sort_order: number }> = {
-    COMMODITIES_ENERGY_MARKETS: { label: "Commodities & Energy Markets", sort_order: 160 },
-    GEOPOLITICAL_TRADE_RISK: { label: "Geopolitical & Trade Risk", sort_order: 170 },
-    CAPITAL_FORMATION: { label: "Capital Formation", sort_order: 20 },
-    BANKING_PAYMENTS: { label: "Banking & Payments", sort_order: 90 },
-    ECONOMIC_GROWTH: { label: "Economic Growth", sort_order: 120 },
-  };
 
   return [...topicKeys]
-    .map((key) => {
-      const configured = rules.find((rule) => rule.topic_key === key);
-      if (configured) return configured;
-      const fallback = fallbackLabels[key];
-      if (!fallback) return null;
-      return {
-        topic_key: key,
-        label: fallback.label,
-        keywords: [],
-        keywordMatchers: [],
-        sort_order: fallback.sort_order,
-      };
-    })
+    .map((key) => rules.find((rule) => rule.topic_key === key) ?? null)
     .filter((topic): topic is TopicRuleView => Boolean(topic))
     .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
 }
 
 function canonicalTopicLabel(value: string): string {
   return decodeEntities(value || "").replace(/\s+/g, " ").trim();
-}
-
-function dynamicTopicKey(label: string): string {
-  const normalized = canonicalTopicLabel(label)
-    .toUpperCase()
-    .replace(/&/g, " AND ")
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return normalized ? `DYNAMIC_${normalized}` : "";
 }
 
 function topicIdentity(value: string): string {
@@ -557,58 +529,12 @@ function feedItemAssignedTopicLabels(article: FeedItem): string[] {
   return [...new Set(labels)];
 }
 
-function deriveVisibleTopicRules(items: FeedItem[], configuredRules: TopicRuleView[]): TopicRuleView[] {
-  const byKey = new Map(configuredRules.map((rule) => [rule.topic_key, rule]));
-  const knownIdentities = new Set<string>();
-  for (const rule of configuredRules) {
-    knownIdentities.add(topicIdentity(rule.label));
-    knownIdentities.add(topicIdentity(rule.topic_key));
-  }
-
-  const counts = new Map<string, { label: string; count: number }>();
-  for (const item of items) {
-    for (const label of feedItemAssignedTopicLabels(item)) {
-      const identity = topicIdentity(label);
-      if (!identity || knownIdentities.has(identity)) {
-        continue;
-      }
-      const current = counts.get(identity);
-      if (current) {
-        current.count += 1;
-      } else {
-        counts.set(identity, { label, count: 1 });
-      }
-    }
-  }
-
-  const dynamicRules: TopicRuleView[] = [];
-  for (const [index, entry] of [...counts.values()]
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
-    .entries()) {
-    const key = dynamicTopicKey(entry.label);
-    if (!key || byKey.has(key)) {
-      continue;
-    }
-    dynamicRules.push({
-      topic_key: key,
-      label: entry.label,
-      keywords: [entry.label],
-      keywordMatchers: [],
-      sort_order: 1000 + index,
-    });
-  }
-
-  return [...configuredRules, ...dynamicRules]
-    .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
-}
-
 function assignedTopicMatches(article: FeedItem, rules: TopicRuleView[]): TopicRuleView[] {
   const identities = new Set(feedItemAssignedTopicLabels(article).map(topicIdentity).filter(Boolean));
   if (identities.size === 0) return [];
   return rules.filter((rule) => (
     identities.has(topicIdentity(rule.label)) ||
-    identities.has(topicIdentity(rule.topic_key)) ||
-    (rule.topic_key.startsWith("DYNAMIC_") && identities.has(topicIdentity(rule.topic_key.replace(/^DYNAMIC_/, ""))))
+    identities.has(topicIdentity(rule.topic_key))
   ));
 }
 
@@ -2149,8 +2075,9 @@ export function IntelBetaDashboard({
   const [feedAnalysisError, setFeedAnalysisError] = useState<Record<string, string>>({});
 
   const visibleTopicRules = useMemo(
-    () => deriveVisibleTopicRules(feedItems, normalizeTopicRules(topicRules)),
-    [feedItems, topicRules]
+    () => normalizeTopicRules(topicRules)
+      .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label)),
+    [topicRules]
   );
   const topicIndex = useMemo(() => {
     const topicMatchesByArticleId = new Map<number, TopicRuleView[]>();
