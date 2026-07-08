@@ -235,9 +235,8 @@ async function generateTopicSummary(
   for (let attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), MODEL_REQUEST_TIMEOUT_MS);
-    let res: Response;
     try {
-      res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+      const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -258,6 +257,27 @@ async function generateTopicSummary(
         }),
         signal: controller.signal,
       });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        lastError = new Error(`${providerLabel(cfg.provider)} error ${res.status}: ${body.slice(0, 300)}`);
+        break;
+      }
+
+      let content = "";
+      try {
+        const json = (await res.json()) as { choices: { message: { content: string } }[] };
+        content = json.choices[0]?.message?.content?.trim() ?? "";
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        break;
+      }
+
+      try {
+        return validateSummary(content);
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         lastError = new Error(`${providerLabel(cfg.provider)} request timed out while generating ${topicLabel}`);
@@ -267,25 +287,6 @@ async function generateTopicSummary(
       break;
     } finally {
       clearTimeout(timeoutId);
-    }
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      lastError = new Error(`${providerLabel(cfg.provider)} error ${res.status}: ${body.slice(0, 300)}`);
-      break;
-    }
-    let content = "";
-    try {
-      const json = (await res.json()) as { choices: { message: { content: string } }[] };
-      content = json.choices[0]?.message?.content?.trim() ?? "";
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      break;
-    }
-    try {
-      return validateSummary(content);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
 
