@@ -222,7 +222,15 @@ export function RecapDashboard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: viewDate }),
       });
-      let json: { ok: boolean; error?: string; data?: { skipped?: { topic_key: string; topic_label: string }[] } };
+      let json: {
+        ok: boolean;
+        error?: string;
+        data?: {
+          topics?: { topic_key: string; topic_label: string; article_count: number; summary: string }[];
+          skipped?: { topic_key: string; topic_label: string }[];
+          failed?: { topic_key: string; topic_label: string; error: string }[];
+        };
+      };
       try {
         json = (await res.json()) as { ok: boolean; error?: string };
       } catch {
@@ -234,6 +242,12 @@ export function RecapDashboard({
         return;
       }
       setSkippedTopics(json.data?.skipped ?? []);
+      if ((json.data?.failed ?? []).length > 0) {
+        setGenerateError(`Some topics failed: ${(json.data?.failed ?? []).map((item) => `${item.topic_label}: ${item.error}`).join("; ")}`);
+      }
+      if ((json.data?.topics ?? []).length === 0 && (json.data?.skipped ?? []).length === 0 && (json.data?.failed ?? []).length === 0) {
+        setGenerateError("The recap request completed, but no topic rows were generated. Save recap settings again, then retry.");
+      }
       const recapRes = await fetch(`/api/intel/recap?date=${viewDate}`);
       if (!recapRes.ok) {
         setGenerateError(`Failed to reload recap (HTTP ${recapRes.status})`);

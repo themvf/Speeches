@@ -14,15 +14,14 @@ export default async function RecapPage() {
   let topicRules: Awaited<ReturnType<typeof getTopicRules>> = [];
   let recap: Awaited<ReturnType<typeof getTodaysRecap>> = [];
 
-  try {
-    [selectedKeys, topicRules, recap] = await Promise.all([
-      getRecapSettings(),
-      getTopicRules(true),
-      getTodaysRecap(),
-    ]);
-  } catch {
-    // DB not yet configured; render empty state
-  }
+  const [selectedKeysResult, topicRulesResult, recapResult] = await Promise.allSettled([
+    getRecapSettings(),
+    getTopicRules(true),
+    getTodaysRecap(),
+  ]);
+  if (selectedKeysResult.status === "fulfilled") selectedKeys = selectedKeysResult.value;
+  if (topicRulesResult.status === "fulfilled") topicRules = topicRulesResult.value;
+  if (recapResult.status === "fulfilled") recap = recapResult.value;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-6 md:px-8">

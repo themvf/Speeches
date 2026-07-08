@@ -64,19 +64,32 @@ async function generateTopicSummary(
 
   const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${items.length} sources about "${topicLabel}" from the past 24 hours. Sources are labeled [News] or [Regulatory Document]. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Prioritize regulatory documents over news when relevant. Be direct and analytical. Synthesize — do not quote or list sources individually.\n\nSources:\n${itemList}`;
 
-  const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${cfg.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: cfg.model,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 700,
-      temperature: 0.4,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45_000);
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 700,
+        temperature: 0.4,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`OpenAI request timed out while generating ${topicLabel}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -153,6 +166,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const rules = normalizeTopicRules(rawRules);
     const selectedRules = rules.filter((r) => selectedTopicKeys.includes(r.topic_key));
+    if (selectedRules.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: rawRules.length === 0
+            ? "No active recap topic rules are available. Reload the page and save recap topics again."
+            : "The saved recap topics no longer match active topic rules. Save recap settings again, then generate the recap.",
+        },
+        { status: 400 }
+      );
+    }
     await deleteBlockedRssArticles(rawRules).catch((error) => {
       console.error("[recap/generate] RSS policy cleanup failed:", error);
       return 0;
@@ -213,6 +237,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
     const skipped: { topic_key: string; topic_label: string }[] = [];
+    const failed: { topic_key: string; topic_label: string; error: string }[] = [];
 
     const settled = await Promise.allSettled(selectedRules.map(async (rule) => {
       const topicItems: RecapItem[] = [
@@ -254,13 +279,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicItems.length, summary });
     }));
 
-    for (const outcome of settled) {
+    settled.forEach((outcome, index) => {
       if (outcome.status === "rejected") {
+        const rule = selectedRules[index];
+        failed.push({
+          topic_key: rule?.topic_key ?? "",
+          topic_label: rule?.label ?? "Unknown topic",
+          error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+        });
         console.error("[recap/generate] topic failed:", outcome.reason);
       }
+    });
+
+    if (results.length === 0 && failed.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Recap generation failed for all matching topics: ${failed.map((item) => `${item.topic_label}: ${item.error}`).join("; ")}`,
+          data: { date: recapDate, topics: results, skipped, failed },
+        },
+        { status: 502 }
+      );
     }
 
-    return NextResponse.json({ ok: true, data: { date: recapDate, topics: results, skipped } });
+    return NextResponse.json({ ok: true, data: { date: recapDate, topics: results, skipped, failed } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[recap/generate]", message);
