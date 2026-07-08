@@ -451,12 +451,47 @@ export async function ensureSchema(): Promise<void> {
 async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
   for (const [key, { label, feedUrl, refreshIntervalMinutes }] of Object.entries(DEFAULT_RSS_FEEDS)) {
     const intervalMinutes = Math.max(1, Math.round(Number(refreshIntervalMinutes || 10)));
+    const keyRows = (await sql`
+      SELECT id
+      FROM rss_feeds
+      WHERE feed_key = ${key}
+      LIMIT 1
+    `) as unknown as Array<{ id: number }>;
+    const conflictingUrlRows = (await sql`
+      SELECT id
+      FROM rss_feeds
+      WHERE feed_url = ${feedUrl}
+        AND feed_key <> ${key}
+      LIMIT 1
+    `) as unknown as Array<{ id: number }>;
+
+    if (keyRows.length > 0) {
+      if (conflictingUrlRows.length > 0) {
+        await sql`
+          UPDATE rss_feeds
+          SET
+            label = ${label},
+            refresh_interval_minutes = ${intervalMinutes}
+          WHERE feed_key = ${key}
+        `;
+      } else {
+        await sql`
+          UPDATE rss_feeds
+          SET
+            label = ${label},
+            feed_url = ${feedUrl},
+            refresh_interval_minutes = ${intervalMinutes}
+          WHERE feed_key = ${key}
+        `;
+      }
+      continue;
+    }
+
     await sql`
       INSERT INTO rss_feeds (label, feed_url, feed_key, refresh_interval_minutes)
       VALUES (${label}, ${feedUrl}, ${key}, ${intervalMinutes})
       ON CONFLICT (feed_url) DO UPDATE SET
         label = EXCLUDED.label,
-        feed_key = EXCLUDED.feed_key,
         refresh_interval_minutes = EXCLUDED.refresh_interval_minutes
     `;
   }
