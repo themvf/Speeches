@@ -21,6 +21,8 @@ const ALLOWED_WORKFLOWS = new Set([
   "aml-news-ingest.yml",
   "daily-health-check.yml",
   "python-tests.yml",
+  "youtube-video-ingest.yml",
+  "sec-youtube-videos-daily.yml",
 ]);
 
 export async function GET(req: NextRequest): Promise<NextResponse> {

@@ -10,11 +10,11 @@ on:
       extraction_limit:
         description: "Maximum videos to extract"
         required: false
-        default: "2"
+        default: "1"
       enrich_limit:
         description: "Maximum video transcript documents to enrich"
         required: false
-        default: "2"
+        default: "1"
 
 permissions:
   contents: read
@@ -35,8 +35,8 @@ jobs:
       WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
       YOUTUBE_PROXY_URL: ${{ secrets.YOUTUBE_PROXY_URL }}
       VIDEO_URL: ${{ github.event.inputs.video_url || '' }}
-      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '2' }}
-      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '2' }}
+      EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '1' }}
+      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '1' }}
       ENRICH_MODEL: deepseek-v4-pro
 
     steps:

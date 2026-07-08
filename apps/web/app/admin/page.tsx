@@ -249,9 +249,14 @@ const NEWS_INGEST_FIELDS: FieldDef[] = [
 ];
 
 const YOUTUBE_VIDEO_FIELDS: FieldDef[] = [
-  { name: "video_url", label: "YouTube video URL", type: "text", placeholder: "https://www.youtube.com/watch?v=..." },
-  { name: "extraction_limit", label: "Extraction limit", type: "number", default: "2" },
-  { name: "enrich_limit", label: "Enrichment limit", type: "number", default: "2" },
+  { name: "video_url", label: "Individual YouTube video URL", type: "text", placeholder: "https://www.youtube.com/watch?v=..." },
+];
+
+const YOUTUBE_CONTINUOUS_FIELDS: FieldDef[] = [
+  { name: "channel_ref", label: "Run-now channel override", type: "text", default: "https://www.youtube.com/user/SECViews", placeholder: "https://www.youtube.com/@SECViews" },
+  { name: "extraction_limit", label: "Latest videos to scan per run", type: "number", default: "2" },
+  { name: "enrich_limit", label: "New transcript docs to enrich per run", type: "number", default: "2" },
+  { name: "max_pages", label: "RSS pages to scan", type: "number", default: "1" },
 ];
 
 const RULE_COMMENT_FIELDS: FieldDef[] = [
@@ -2879,11 +2884,20 @@ export default function AdminPage() {
 
       <BloombergOnDemandSection />
 
+      <SectionDivider label="YouTube Workflows" />
+
       <WorkflowPanel
-        title="YouTube Video Ingest"
-        description="Ingest and enrich an individual YouTube video transcript on demand."
+        title="YouTube Ad Hoc Video"
+        description="Paste one specific YouTube video URL. This runs once and enriches that video's transcript."
         workflowFile="youtube-video-ingest.yml"
         fields={YOUTUBE_VIDEO_FIELDS}
+      />
+
+      <WorkflowPanel
+        title="YouTube Continuous Channel Extraction"
+        description="Daily SEC channel extraction. Use this to run the continuous extractor now; the channel field overrides this manual run only."
+        workflowFile="sec-youtube-videos-daily.yml"
+        fields={YOUTUBE_CONTINUOUS_FIELDS}
       />
 
       <WorkflowPanel
