@@ -24,6 +24,19 @@ type OrgIndexStatus = {
 type RssFeed = { id: number; label: string; feed_url: string; feed_key: string; active: boolean; refresh_interval_minutes?: number; last_refresh_at?: string | null };
 type XAccountFeed = RssFeed & { username: string };
 type TopicRule = { id: number; topic_key: string; label: string; keywords: string; active: boolean; sort_order: number };
+type YouTubeChannelConfig = {
+  id: string;
+  label: string;
+  channel_ref: string;
+  active: boolean;
+  extraction_limit: number;
+  enrich_limit: number;
+  max_pages: number;
+  connector?: "sec_youtube_video" | "youtube_video";
+  last_run_at?: string;
+  last_status?: string;
+  last_error?: string;
+};
 
 /* ─── Ticker types ─────────────────────────────────────────────────── */
 type TickerEntry = { symbol: string; name: string };
@@ -250,13 +263,6 @@ const NEWS_INGEST_FIELDS: FieldDef[] = [
 
 const YOUTUBE_VIDEO_FIELDS: FieldDef[] = [
   { name: "video_url", label: "Individual YouTube video URL", type: "text", placeholder: "https://www.youtube.com/watch?v=..." },
-];
-
-const YOUTUBE_CONTINUOUS_FIELDS: FieldDef[] = [
-  { name: "channel_ref", label: "Run-now channel override", type: "text", default: "https://www.youtube.com/user/SECViews", placeholder: "https://www.youtube.com/@SECViews" },
-  { name: "extraction_limit", label: "Latest videos to scan per run", type: "number", default: "2" },
-  { name: "enrich_limit", label: "New transcript docs to enrich per run", type: "number", default: "2" },
-  { name: "max_pages", label: "RSS pages to scan", type: "number", default: "1" },
 ];
 
 const RULE_COMMENT_FIELDS: FieldDef[] = [
@@ -886,6 +892,283 @@ function FeedManagerSection() {
               {adding ? "Adding…" : "Add"}
             </button>
           </div>
+          {addError && <p className="mt-1 text-xs text-[color:var(--danger)]">{addError}</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function YouTubeChannelManagerSection() {
+  const [channels, setChannels] = useState<YouTubeChannelConfig[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [newLabel, setNewLabel] = useState("");
+  const [newRef, setNewRef] = useState("");
+  const [newExtractionLimit, setNewExtractionLimit] = useState("2");
+  const [newEnrichLimit, setNewEnrichLimit] = useState("2");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [dispatching, setDispatching] = useState<string | null>(null);
+  const [dispatchStatus, setDispatchStatus] = useState<Record<string, "ok" | "error">>({});
+  const [dispatchError, setDispatchError] = useState<Record<string, string>>({});
+
+  async function loadChannels() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/youtube-channels");
+      const data = await res.json() as {
+        ok: boolean;
+        data?: { channels: YouTubeChannelConfig[]; updated_at?: string };
+        error?: string;
+      };
+      if (data.ok && data.data) {
+        setChannels(data.data.channels || []);
+        setUpdatedAt(data.data.updated_at || null);
+      } else {
+        setError(data.error || "Failed to load YouTube channels.");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadChannels();
+  }, []);
+
+  async function handleAdd() {
+    if (!newLabel.trim() || !newRef.trim()) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      const res = await fetch("/api/admin/youtube-channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: newLabel.trim(),
+          channelRef: newRef.trim(),
+          extractionLimit: newExtractionLimit,
+          enrichLimit: newEnrichLimit,
+          maxPages: 1,
+        }),
+      });
+      const data = await res.json() as { ok: boolean; data?: { channels: YouTubeChannelConfig[]; updated_at?: string }; error?: string };
+      if (data.ok && data.data) {
+        setChannels(data.data.channels || []);
+        setUpdatedAt(data.data.updated_at || null);
+        setNewLabel("");
+        setNewRef("");
+        setNewExtractionLimit("2");
+        setNewEnrichLimit("2");
+      } else {
+        setAddError(data.error || "Failed to add YouTube channel.");
+      }
+    } catch {
+      setAddError("Network error");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleToggle(channel: YouTubeChannelConfig) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/youtube-channels/${encodeURIComponent(channel.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !channel.active }),
+      });
+      const data = await res.json() as { ok: boolean; data?: { channels: YouTubeChannelConfig[]; updated_at?: string }; error?: string };
+      if (data.ok && data.data) {
+        setChannels(data.data.channels || []);
+        setUpdatedAt(data.data.updated_at || null);
+      } else {
+        setError(data.error || "Toggle failed");
+      }
+    } catch {
+      setError("Network error");
+    }
+  }
+
+  async function handleDelete(channel: YouTubeChannelConfig) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/youtube-channels/${encodeURIComponent(channel.id)}`, { method: "DELETE" });
+      const data = await res.json() as { ok: boolean; data?: { channels: YouTubeChannelConfig[]; updated_at?: string }; error?: string };
+      if (data.ok && data.data) {
+        setChannels(data.data.channels || []);
+        setUpdatedAt(data.data.updated_at || null);
+      } else {
+        setError(data.error || "Delete failed");
+      }
+    } catch {
+      setError("Network error");
+    }
+  }
+
+  async function dispatchYouTubeRun(key: string, inputs: Record<string, string>) {
+    setDispatching(key);
+    setDispatchStatus((prev) => ({ ...prev, [key]: "ok" }));
+    setDispatchError((prev) => ({ ...prev, [key]: "" }));
+    try {
+      const res = await fetch("/api/admin/workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflow: "sec-youtube-videos-daily.yml", inputs }),
+      });
+      const data = await res.json().catch(() => ({ ok: false })) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      setDispatchStatus((prev) => ({ ...prev, [key]: "ok" }));
+    } catch (err) {
+      setDispatchStatus((prev) => ({ ...prev, [key]: "error" }));
+      setDispatchError((prev) => ({ ...prev, [key]: err instanceof Error ? err.message : "Dispatch failed" }));
+    } finally {
+      setDispatching(null);
+    }
+  }
+
+  function runSingleChannel(channel: YouTubeChannelConfig) {
+    void dispatchYouTubeRun(channel.id, {
+      channel_ref: channel.channel_ref,
+      extraction_limit: String(channel.extraction_limit || 2),
+      enrich_limit: String(channel.enrich_limit || 2),
+      max_pages: String(channel.max_pages || 1),
+    });
+  }
+
+  const activeCount = channels.filter((channel) => channel.active).length;
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
+        YouTube Continuous Channels
+      </h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">
+        Add channel URLs, handles, channel IDs, or uploads RSS URLs here. Active channels are scanned by the daily YouTube workflow.
+      </p>
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => dispatchYouTubeRun("all", {})}
+            disabled={dispatching === "all" || activeCount === 0}
+            className="btn-solid rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-40"
+          >
+            {dispatching === "all" ? "Dispatching..." : `Run All Active Channels (${activeCount})`}
+          </button>
+          <span className="text-xs text-[color:var(--ink-faint)]">
+            Daily schedule uses this same active list{updatedAt ? ` | Config saved ${new Date(updatedAt).toLocaleString()}` : ""}.
+          </span>
+          <span className="ml-auto">
+            <JobStatusBadge workflowFile="sec-youtube-videos-daily.yml" />
+          </span>
+        </div>
+        {dispatchStatus.all === "error" && (
+          <p className="mb-3 text-xs text-[color:var(--danger)]">Run failed: {dispatchError.all || "Dispatch failed"}</p>
+        )}
+        {loading && <p className="text-xs text-[color:var(--ink-faint)]">Loading...</p>}
+        {error && <p className="text-xs text-[color:var(--danger)]">{error}</p>}
+        {!loading && channels.length === 0 && <p className="text-xs text-[color:var(--ink-faint)]">No YouTube channels configured.</p>}
+        <ul className="space-y-2">
+          {channels.map((channel) => (
+            <li key={channel.id} className="flex flex-col gap-2 rounded-lg border border-[color:rgba(82,120,160,0.25)] bg-[color:rgba(4,13,24,0.45)] px-3 py-3 sm:flex-row sm:items-center">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={channel.active}
+                  onChange={() => handleToggle(channel)}
+                  className="h-4 w-4 rounded accent-[color:var(--accent)]"
+                />
+              </label>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-[color:var(--ink)]">{channel.label}</span>
+                <span className="block truncate text-xs text-[color:var(--ink-faint)]">{channel.channel_ref}</span>
+                <span className="block text-xs text-[color:var(--ink-faint)]">
+                  {channel.extraction_limit || 2} latest videos | enrich {channel.enrich_limit || 2}
+                  {channel.last_run_at ? ` | Last run ${new Date(channel.last_run_at).toLocaleString()}` : ""}
+                  {channel.last_status ? ` | ${channel.last_status}` : ""}
+                </span>
+                {channel.last_error ? <span className="block text-xs text-[color:var(--danger)]">{channel.last_error}</span> : null}
+                {dispatchStatus[channel.id] === "error" ? (
+                  <span className="block text-xs text-[color:var(--danger)]">Run failed: {dispatchError[channel.id] || "Dispatch failed"}</span>
+                ) : null}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => runSingleChannel(channel)}
+                  disabled={dispatching === channel.id}
+                  className="rounded-lg border border-[color:rgba(79,213,255,0.35)] bg-[color:rgba(79,213,255,0.08)] px-3 py-1 text-xs font-semibold text-[color:var(--accent)] hover:bg-[color:rgba(79,213,255,0.15)] disabled:opacity-40"
+                >
+                  {dispatching === channel.id ? "Running..." : "Run Now"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(channel)}
+                  disabled={channel.id === "sec_views"}
+                  className="rounded-lg border border-[color:rgba(255,107,127,0.4)] bg-[color:rgba(255,107,127,0.1)] px-3 py-1 text-xs font-semibold text-[color:var(--danger)] hover:bg-[color:rgba(255,107,127,0.2)] disabled:cursor-not-allowed disabled:opacity-35"
+                  title={channel.id === "sec_views" ? "Deactivate the default SEC channel instead of removing it." : undefined}
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-4 border-t border-[color:var(--line)] pt-4">
+          <p className="mb-2 text-xs font-semibold text-[color:var(--ink-faint)]">Add Continuous Channel</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_2fr_120px_120px_auto]">
+            <input
+              type="text"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="Label"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <input
+              type="text"
+              value={newRef}
+              onChange={(e) => setNewRef(e.target.value)}
+              placeholder="Channel URL, @handle, channel ID, or uploads RSS"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <input
+              type="number"
+              value={newExtractionLimit}
+              onChange={(e) => setNewExtractionLimit(e.target.value)}
+              min={1}
+              max={50}
+              title="Latest videos to scan per run"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <input
+              type="number"
+              value={newEnrichLimit}
+              onChange={(e) => setNewEnrichLimit(e.target.value)}
+              min={1}
+              max={50}
+              title="New transcript docs to enrich per run"
+              className="form-control px-2 py-1.5 text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={adding || !newLabel.trim() || !newRef.trim()}
+              className="btn-solid rounded-xl px-4 py-1.5 text-sm disabled:opacity-40"
+            >
+              {adding ? "Adding..." : "Add"}
+            </button>
+          </div>
+          <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">
+            The numeric fields are latest videos to scan and new transcripts to enrich per run. Defaults are 2 and 2.
+          </p>
           {addError && <p className="mt-1 text-xs text-[color:var(--danger)]">{addError}</p>}
         </div>
       </div>
@@ -2893,12 +3176,7 @@ export default function AdminPage() {
         fields={YOUTUBE_VIDEO_FIELDS}
       />
 
-      <WorkflowPanel
-        title="YouTube Continuous Channel Extraction"
-        description="Daily SEC channel extraction. Use this to run the continuous extractor now; the channel field overrides this manual run only."
-        workflowFile="sec-youtube-videos-daily.yml"
-        fields={YOUTUBE_CONTINUOUS_FIELDS}
-      />
+      <YouTubeChannelManagerSection />
 
       <WorkflowPanel
         title="Rule and Comment Ingest"
