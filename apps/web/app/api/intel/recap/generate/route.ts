@@ -17,6 +17,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MAX_ITEMS_PER_TOPIC = 20;
+const MIN_RECAP_SUMMARY_CHARS = 320;
 
 type RecapProviderConfig = {
   provider: "deepseek" | "openai";
@@ -103,39 +104,75 @@ async function generateTopicSummary(
 
   const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${items.length} sources about "${topicLabel}" from the past 24 hours. Sources are labeled [News] or [Regulatory Document]. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Prioritize regulatory documents over news when relevant. Be direct and analytical. Synthesize — do not quote or list sources individually.\n\nSources:\n${itemList}`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45_000);
-  let res: Response;
-  try {
-    res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 700,
-        temperature: 0.4,
-      }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`${providerLabel(cfg.provider)} request timed out while generating ${topicLabel}`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const fullPrompt = `${prompt}\n\nAdditional requirements: The Executive Summary must be 3 complete sentences and 90-150 words total. The response must include at least three complete Key Points. Do not return sentence fragments or stop after a partial phrase.`;
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`${providerLabel(cfg.provider)} error ${res.status}: ${body.slice(0, 300)}`);
+  const validateSummary = (value: string): string => {
+    const cleaned = value.trim();
+    const bulletCount = (cleaned.match(/(?:^|\n)-\s+\S/g) || []).length;
+    if (cleaned.length < MIN_RECAP_SUMMARY_CHARS) {
+      throw new Error(`${providerLabel(cfg.provider)} returned an incomplete recap for ${topicLabel}: response was only ${cleaned.length} characters.`);
+    }
+    if (!/\*\*Executive Summary:\*\*/i.test(cleaned)) {
+      throw new Error(`${providerLabel(cfg.provider)} returned a recap without an Executive Summary section for ${topicLabel}.`);
+    }
+    if (!/\*\*Key Points:\*\*/i.test(cleaned) || bulletCount < 3) {
+      throw new Error(`${providerLabel(cfg.provider)} returned a recap without at least three key points for ${topicLabel}.`);
+    }
+    if (/[A-Za-z0-9,'")\]]$/.test(cleaned)) {
+      throw new Error(`${providerLabel(cfg.provider)} returned a recap that appears to end mid-sentence for ${topicLabel}.`);
+    }
+    return cleaned;
+  };
+
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45_000);
+    let res: Response;
+    try {
+      res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cfg.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: cfg.model,
+          messages: [
+            {
+              role: "user",
+              content: attempt === 1
+                ? fullPrompt
+                : `${fullPrompt}\n\nPrevious response was incomplete or malformed. Regenerate the full recap now. Include the Executive Summary and at least three complete Key Points.`,
+            },
+          ],
+          max_tokens: 1200,
+          temperature: 0.25,
+        }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`${providerLabel(cfg.provider)} request timed out while generating ${topicLabel}`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`${providerLabel(cfg.provider)} error ${res.status}: ${body.slice(0, 300)}`);
+    }
+    const json = (await res.json()) as { choices: { message: { content: string } }[] };
+    const content = json.choices[0]?.message?.content?.trim() ?? "";
+    try {
+      return validateSummary(content);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
   }
-  const json = (await res.json()) as { choices: { message: { content: string } }[] };
-  return json.choices[0]?.message?.content?.trim() ?? "";
+  throw lastError ?? new Error(`${providerLabel(cfg.provider)} did not return a usable recap for ${topicLabel}.`);
 }
 
 function matchItemsToTopics(
