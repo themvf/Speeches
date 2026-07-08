@@ -77,6 +77,7 @@ export type RssFeed = {
   feed_url: string;
   feed_key: string;
   active: boolean;
+  active_manually_set?: boolean;
   refresh_interval_minutes: number;
   last_refresh_at: string | null;
   added_at: string;
@@ -407,6 +408,7 @@ export async function ensureSchema(): Promise<void> {
   `;
   await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS refresh_interval_minutes INTEGER NOT NULL DEFAULT 10`;
   await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS last_refresh_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS active_manually_set BOOLEAN NOT NULL DEFAULT false`;
   await sql`
     CREATE TABLE IF NOT EXISTS rss_topic_rules (
       id         SERIAL PRIMARY KEY,
@@ -509,18 +511,22 @@ async function applyFeedSourceMigrations(sql: ReturnType<typeof neon>): Promise<
   await sql`
     UPDATE rss_feeds
     SET active = false
-    WHERE feed_key = ANY(${DEPRECATED_RSS_FEED_KEYS})
-       OR feed_url = ANY(${[
-         "https://www.bleepingcomputer.com/feed/",
-         "https://www.darkreading.com/rss.xml",
-         "https://www.securityweek.com/feed/",
-         "https://www.microsoft.com/en-us/security/blog/feed/",
-       ]})
+    WHERE active_manually_set = false
+      AND (
+        feed_key = ANY(${DEPRECATED_RSS_FEED_KEYS})
+        OR feed_url = ANY(${[
+          "https://www.bleepingcomputer.com/feed/",
+          "https://www.darkreading.com/rss.xml",
+          "https://www.securityweek.com/feed/",
+          "https://www.microsoft.com/en-us/security/blog/feed/",
+        ]})
+      )
   `;
   await sql`
     UPDATE rss_feeds
     SET active = true
-    WHERE feed_key = ANY(${ACTIVE_RSS_FEED_KEYS})
+    WHERE active_manually_set = false
+      AND feed_key = ANY(${ACTIVE_RSS_FEED_KEYS})
   `;
 }
 
@@ -624,8 +630,9 @@ export async function markFeedRefreshed(feedKey: string): Promise<void> {
 }
 
 export async function toggleFeed(id: number, active: boolean): Promise<void> {
+  await ensureSchema();
   const sql = getSql();
-  await sql`UPDATE rss_feeds SET active = ${active} WHERE id = ${id}`;
+  await sql`UPDATE rss_feeds SET active = ${active}, active_manually_set = true WHERE id = ${id}`;
 }
 
 export async function deleteFeed(id: number): Promise<void> {
