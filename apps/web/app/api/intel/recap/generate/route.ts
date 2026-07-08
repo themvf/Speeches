@@ -87,6 +87,48 @@ type RecapItem = {
   tone_label?: "positive" | "neutral" | "negative" | null;
 };
 
+function normalizeRecapKey(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/https?:\/\/(?:www\.)?/g, "")
+    .replace(/[?&#].*$/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function recapItemIdentity(item: RecapItem): string {
+  const urlKey = normalizeRecapKey(item.url);
+  const titleKey = normalizeRecapKey(item.title)
+    .replace(/\s+(?:the )?(?:[a-z0-9&.\- ]{2,40})$/i, "")
+    .trim();
+  return urlKey || titleKey;
+}
+
+function dedupeRecapItems(items: RecapItem[]): RecapItem[] {
+  const seen = new Set<string>();
+  const out: RecapItem[] = [];
+  for (const item of items) {
+    const identity = recapItemIdentity(item);
+    if (identity && seen.has(identity)) continue;
+    if (identity) seen.add(identity);
+    out.push(item);
+  }
+  return out;
+}
+
+function isPonziInvestorFraudItem(item: RecapItem): boolean {
+  const text = `${item.title} ${item.description} ${item.matchText || ""}`.toLowerCase();
+  return /\b(?:ponzi|investment fraud|investor fraud|securities fraud|offering fraud|fraudulent securities offering|misappropriat(?:ed|ion) (?:investor )?funds?|crypto fraud|wire fraud|commodity pool fraud)\b/.test(text);
+}
+
+function filterTopicItems(rule: TopicRuleView, items: RecapItem[]): RecapItem[] {
+  const deduped = dedupeRecapItems(items);
+  if (rule.topic_key === "PONZI_INVESTOR_FRAUD") {
+    return deduped.filter(isPonziInvestorFraudItem);
+  }
+  return deduped;
+}
+
 async function generateTopicSummary(
   topicLabel: string,
   items: RecapItem[],
@@ -317,10 +359,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const failed: { topic_key: string; topic_label: string; error: string }[] = [];
 
     const settled = await Promise.allSettled(selectedRules.map(async (rule) => {
-      const topicItems: RecapItem[] = [
+      const topicItems = filterTopicItems(rule, [
         ...(articleMap.get(rule.topic_key) ?? []),
         ...(corpusMap.get(rule.topic_key) ?? []),
-      ];
+      ]);
 
       if (topicItems.length === 0) {
         skipped.push({ topic_key: rule.topic_key, topic_label: rule.label });

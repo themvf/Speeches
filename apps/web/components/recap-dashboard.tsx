@@ -84,8 +84,17 @@ function SourcesList({ sources }: { sources: RecapSource[] }) {
   if (!sources.length) return null;
 
   const secSpeeches = sources.filter((s) => s.source_type === "document" && s.source_kind === "sec_speech");
-  const otherDocs = sources.filter((s) => s.source_type === "document" && s.source_kind !== "sec_speech");
-  const news = sources.filter((s) => s.source_type !== "document");
+  const isNewsLikeDocument = (s: RecapSource) => {
+    const sourceKind = String(s.source_kind || "").toLowerCase();
+    return s.source_type === "document" && (
+      sourceKind.includes("article") ||
+      sourceKind.startsWith("google_news_") ||
+      sourceKind === "newsapi_article" ||
+      sourceKind.includes("public_article")
+    );
+  };
+  const otherDocs = sources.filter((s) => s.source_type === "document" && s.source_kind !== "sec_speech" && !isNewsLikeDocument(s));
+  const news = sources.filter((s) => s.source_type !== "document" || isNewsLikeDocument(s));
 
   return (
     <div className="mt-4 space-y-3 border-t border-[color:var(--line)] pt-3">
