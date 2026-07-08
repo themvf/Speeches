@@ -20,6 +20,7 @@ const MAX_ITEMS_PER_TOPIC = 20;
 const MIN_RECAP_SUMMARY_CHARS = 320;
 const MODEL_REQUEST_TIMEOUT_MS = 35_000;
 const MAX_MODEL_ATTEMPTS = 1;
+const MAX_RECAP_OUTPUT_TOKENS = 1600;
 const DEFAULT_TOPIC_BATCH_SIZE = 1;
 const MAX_TOPIC_BATCH_SIZE = 2;
 const OFFICIAL_FEED_PREFIXES = [
@@ -236,25 +237,28 @@ async function generateTopicSummary(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), MODEL_REQUEST_TIMEOUT_MS);
     try {
+      const requestBody = {
+        model: cfg.model,
+        messages: [
+          {
+            role: "user",
+            content: attempt === 1
+              ? fullPrompt
+              : `${fullPrompt}\n\nPrevious response was incomplete or malformed. Regenerate the full recap now. Include the Executive Summary and at least three complete Key Points.`,
+          },
+        ],
+        max_tokens: MAX_RECAP_OUTPUT_TOKENS,
+        temperature: 0.25,
+        ...(cfg.provider === "deepseek" ? { thinking: { type: "disabled" } } : {}),
+      };
+
       const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${cfg.apiKey}`,
         },
-        body: JSON.stringify({
-          model: cfg.model,
-          messages: [
-            {
-              role: "user",
-              content: attempt === 1
-                ? fullPrompt
-                : `${fullPrompt}\n\nPrevious response was incomplete or malformed. Regenerate the full recap now. Include the Executive Summary and at least three complete Key Points.`,
-            },
-          ],
-          max_tokens: 1200,
-          temperature: 0.25,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
@@ -266,8 +270,25 @@ async function generateTopicSummary(
 
       let content = "";
       try {
-        const json = (await res.json()) as { choices: { message: { content: string } }[] };
-        content = json.choices[0]?.message?.content?.trim() ?? "";
+        const json = (await res.json()) as {
+          choices: {
+            finish_reason?: string | null;
+            message?: { content?: string | null; reasoning_content?: string | null };
+          }[];
+          model?: string;
+          usage?: { completion_tokens?: number; total_tokens?: number };
+        };
+        const choice = json.choices[0];
+        content = choice?.message?.content?.trim() ?? "";
+        console.info("[recap/generate] model response", {
+          provider: cfg.provider,
+          model: json.model ?? cfg.model,
+          finishReason: choice?.finish_reason ?? null,
+          contentLength: content.length,
+          reasoningLength: choice?.message?.reasoning_content?.length ?? 0,
+          completionTokens: json.usage?.completion_tokens ?? null,
+          totalTokens: json.usage?.total_tokens ?? null,
+        });
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         break;
