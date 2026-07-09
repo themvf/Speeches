@@ -1,5 +1,24 @@
 # CLAUDE.md
 
+## Ingestion Pipeline Review - July 2026
+
+Use this note when debugging missing/duplicated documents, corpus data loss, or scheduled ingestion job conflicts. Findings below are from a full review of the connector extraction, enrichment, and RSS ingestion pipeline; fixes are proposed but not all applied yet — check git history/blame on the referenced files to see current status before assuming a finding is still open.
+
+### Critical findings
+
+- **A transient GCS read failure can silently roll back or wipe the corpus.** Both `_load_json_store` (`run_financial_news_pipeline.py`) and `POST /api/admin/documents` (`apps/web/app/api/admin/documents/route.ts`) treat a failed remote read the same as "no data exists," then save that empty/stale payload back over the real corpus in `custom_documents.json`. `--require-remote-persistence` only guards writes, not reads. Fix: track whether the remote load actually succeeded and refuse to save under `require_remote_persistence` if it fell back to local/empty; make `downloadGcsJson` distinguish not-found from error.
+- **All YouTube videos collapse to one dedup key.** `_url_match_key` (`run_financial_news_pipeline.py`) strips query strings, so every `youtube.com/watch?v=<id>` URL normalizes to the same key — each new video ingested overwrites the previous one in `custom_documents.json`, meaning the YouTube channel connectors (`youtube_video`, `sec_youtube_video`) are losing almost all transcripts. Also collapses `http://` vs `https://` variants of any URL. Fix: keep the query string (or canonicalize YouTube URLs to `youtu.be/<id>`) and normalize scheme before hashing; add a regression test asserting two `watch?v=` URLs produce distinct keys; backfill/re-key existing records.
+- **Lost-update races between concurrent workflows writing the same JSON blob.** ~15 scheduled GitHub Actions workflows plus Vercel admin routes all do unguarded read-modify-write of `custom_documents.json` / `document_enrichment_state.json` / `rule_summaries.json` with only per-workflow concurrency groups; overlapping schedules (e.g. bloomberg-public-hourly and connector-gap-6hour both at minute 0) can silently drop each other's writes. Fix: optimistic concurrency via GCS `generation` match with retry-and-reapply on conflict (first step); longer-term, migrate documents to normalized Neon storage instead of one JSON blob.
+
+### High/medium findings
+
+- Single-JSON-blob storage for the whole corpus doesn't scale (O(N) linear scans, full re-upload per ~25 new docs) and is the root cause of the race above — plan a Neon-backed schema migration.
+- `/api/intel/rss-refresh/route.ts` is fail-open (skips auth entirely) if `CRON_SECRET`/`RSS_REENRICH_SECRET` are both unset — should fail closed (503) like the admin middleware does.
+- `neon_feeds.py add_feed()` still inserts with `ON CONFLICT (feed_url)` instead of `feed_key`, reintroducing the exact `rss_feeds_feed_key_key` duplicate-key bug already fixed in `apps/web/lib/server/neon.ts` (see smoke-fix section above).
+- `_should_fail_for_item_failures` (`run_connector_extraction_pipeline.py`) fails the whole workflow run on any single item-level extraction failure for most connectors, even at 29/30 success — creates alarm fatigue that trains you to ignore real failures.
+- `markFeedRefreshed` runs in a `finally` block in `rss-refresh/route.ts`, so persistently-failing feeds still look "recently refreshed" to `dueOnly` scheduling and their failures become invisible over time.
+- Metadata-fallback stub records (`_build_short_text_fallback`) flow into DeepSeek enrichment unfiltered — wastes enrichment calls summarizing placeholder text instead of skipping until real body text is recovered.
+
 ## Production Endpoint Smoke Fix - July 2026
 
 Use this note when debugging app endpoint smoke failures or future regressions in the production dashboard APIs.
