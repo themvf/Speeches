@@ -4,6 +4,7 @@ import { deleteBlockedRssArticles, deleteInvalidCouponArticles, deleteNonEnglish
 import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 import { FINRA_MEMBER_FIRM_NEWS_FEED_KEY, FINRA_MEMBER_FIRM_NEWS_LABEL, fetchFinraMemberFirmRssBatch } from "@/lib/server/finra-member-firm-rss";
+import { checkCronAuth } from "@/lib/server/api-utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 55;
@@ -30,14 +31,9 @@ function parseAnalysisFeedKeys(searchParams: URLSearchParams): string[] {
 }
 
 async function handleRefresh(req: NextRequest): Promise<NextResponse> {
-  const secret = process.env.CRON_SECRET ?? "";
-  const maintenanceSecret = process.env.RSS_REENRICH_SECRET ?? "";
-  const acceptedTokens = [secret, maintenanceSecret].filter(Boolean).map((token) => `Bearer ${token}`);
-  if (acceptedTokens.length > 0) {
-    const authHeader = req.headers.get("authorization") ?? "";
-    if (!acceptedTokens.includes(authHeader)) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
+  const auth = checkCronAuth(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
 
   try {
@@ -60,11 +56,22 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
 
   const feedResults = await Promise.all(
     activeFeeds.map(async (feed) => {
+      let errorMessage: string | undefined;
+      let result: {
+        feedKey: string;
+        label: string;
+        refreshIntervalMinutes: number;
+        fetched: number;
+        matched: number;
+        filtered: number;
+        inserted: number;
+        error?: string;
+      };
       try {
         const rawArticles = await fetchRssFeed(feed.feed_url, rssFetchLimitForFeed(feed.feed_key));
         const filtered = filterRssArticlesForIngestion(feed.feed_key, rawArticles, ingestionTopicRules);
         const inserted = await upsertRssArticles(filtered.articles, feed.feed_key);
-        return {
+        result = {
           feedKey: feed.feed_key,
           label: feed.label,
           refreshIntervalMinutes: feed.refresh_interval_minutes,
@@ -74,7 +81,8 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
           inserted,
         };
       } catch (err) {
-        return {
+        errorMessage = String(err);
+        result = {
           feedKey: feed.feed_key,
           label: feed.label,
           refreshIntervalMinutes: feed.refresh_interval_minutes,
@@ -82,13 +90,16 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
           matched: 0,
           filtered: 0,
           inserted: 0,
-          error: String(err),
+          error: errorMessage,
         };
-      } finally {
-        await markFeedRefreshed(feed.feed_key).catch((error) => {
-          console.error(`[intel/rss-refresh] failed to mark feed refreshed for ${feed.feed_key}:`, error);
-        });
       }
+      // Still marks refreshed on failure (rate-limits retries against a
+      // persistently broken feed), but now records the error/streak instead
+      // of masking it - see last_error/consecutive_failures on rss_feeds.
+      await markFeedRefreshed(feed.feed_key, errorMessage).catch((error) => {
+        console.error(`[intel/rss-refresh] failed to mark feed refreshed for ${feed.feed_key}:`, error);
+      });
+      return result;
     })
   );
 

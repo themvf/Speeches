@@ -11,7 +11,7 @@ import re
 import io
 import html
 import os
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
@@ -493,7 +493,15 @@ def _save_custom_documents_local(payload):
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
+# Tracks whether the last GCS read of custom_documents.json raised an
+# exception (as opposed to the blob genuinely not existing yet). Blocks
+# _save_custom_documents from silently overwriting real remote data with a
+# stale/local-fallback snapshot after a transient read failure.
+_CUSTOM_DOCS_REMOTE_LOAD_ERRORED = False
+
+
 def _load_custom_documents_uncached():
+    global _CUSTOM_DOCS_REMOTE_LOAD_ERRORED
     storage = _get_gcs_storage()
     if storage is not None:
         try:
@@ -504,6 +512,7 @@ def _load_custom_documents_uncached():
                     return_changed=True,
                 )
                 _save_custom_documents_local(payload)
+                _CUSTOM_DOCS_REMOTE_LOAD_ERRORED = False
                 if changed:
                     try:
                         blob.upload_from_string(
@@ -516,6 +525,7 @@ def _load_custom_documents_uncached():
                 return payload
         except Exception as e:
             st.session_state["_custom_docs_error"] = f"GCS custom-doc load failed: {e}"
+            _CUSTOM_DOCS_REMOTE_LOAD_ERRORED = True
 
     return _load_custom_documents_local()
 
@@ -544,6 +554,12 @@ def _load_custom_documents_for_doc_ids(doc_ids):
 
 
 def _save_custom_documents(payload):
+    if _CUSTOM_DOCS_REMOTE_LOAD_ERRORED:
+        raise RuntimeError(
+            "Refusing to save custom documents: the last GCS read failed, so the in-memory "
+            "corpus may be stale or incomplete. Reload the page once GCS is reachable, then retry."
+        )
+
     payload = _normalize_custom_docs_payload(payload)
     payload["updated_at"] = _utc_now_iso()
     _save_custom_documents_local(payload)
@@ -1098,18 +1114,35 @@ def _custom_docs_as_speeches(payload):
     return docs
 
 
+_URL_MATCH_KEY_TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"}
+
+
 def _url_match_key(url):
     raw = str(url or "").strip()
     if not raw:
         return ""
     try:
         parsed = urlparse(raw)
-        scheme = (parsed.scheme or "https").lower()
+        # Scheme is normalized (not preserved) so http/https variants of the same
+        # URL match instead of producing distinct dedup keys.
         netloc = parsed.netloc.lower()
-        path = parsed.path.rstrip("/")
-        if not path:
-            path = "/"
-        return f"{scheme}://{netloc}{path}"
+        path = parsed.path.rstrip("/") or "/"
+        key = f"https://{netloc}{path}"
+        if parsed.query:
+            # Query string is significant for many sources (e.g. YouTube
+            # `watch?v=<id>`), so it is preserved rather than dropped wholesale
+            # (dropping it collapsed all such URLs onto one key). Known
+            # tracking params are stripped so re-fetches of the same article
+            # with different tracking tags still dedupe, and remaining pairs
+            # are sorted so param order doesn't affect the key.
+            pairs = sorted(
+                (k, v)
+                for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+                if k.lower() not in _URL_MATCH_KEY_TRACKING_PARAMS
+            )
+            if pairs:
+                key = f"{key}?{urlencode(pairs)}"
+        return key
     except Exception:
         return raw.rstrip("/")
 

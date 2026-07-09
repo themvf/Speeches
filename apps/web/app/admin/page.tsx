@@ -21,7 +21,7 @@ type OrgIndexStatus = {
 };
 
 /* ─── RSS Feed types ───────────────────────────────────────────────── */
-type RssFeed = { id: number; label: string; feed_url: string; feed_key: string; active: boolean; refresh_interval_minutes?: number; last_refresh_at?: string | null };
+type RssFeed = { id: number; label: string; feed_url: string; feed_key: string; active: boolean; refresh_interval_minutes?: number; last_refresh_at?: string | null; last_error?: string | null; consecutive_failures?: number };
 type XAccountFeed = RssFeed & { username: string };
 type TopicRule = { id: number; topic_key: string; label: string; keywords: string; active: boolean; sort_order: number };
 type YouTubeChannelConfig = {
@@ -855,6 +855,12 @@ function FeedManagerSection() {
                 <span className="block text-xs text-[color:var(--ink-faint)]">
                   Every {f.refresh_interval_minutes ?? 10} min{f.last_refresh_at ? ` | Last refresh ${new Date(f.last_refresh_at).toLocaleString()}` : ""}
                 </span>
+                {!!f.last_error && (
+                  <span className="block truncate text-xs text-[color:var(--danger)]" title={f.last_error}>
+                    {f.consecutive_failures ? `${f.consecutive_failures} failed refresh(es): ` : "Last refresh failed: "}
+                    {f.last_error}
+                  </span>
+                )}
               </span>
               <button
                 type="button"

@@ -64,6 +64,40 @@ def test_enrichment_entries_migrate_to_stable_document_id():
     assert state["entries"]["new-doc"]["model"] == "deepseek-v4-flash"
 
 
+def test_enrichment_candidates_skip_metadata_fallback_stub_by_extraction_mode():
+    doc = _doc("doc-stub-1")
+    doc["metadata"]["extraction_mode"] = "metadata_fallback"
+
+    candidates = pipeline._build_news_enrichment_candidates(
+        {"documents": [doc]}, source_kind="substack_public_article"
+    )
+
+    assert candidates == []
+
+
+def test_enrichment_candidates_skip_metadata_fallback_stub_by_text_marker():
+    doc = _doc("doc-stub-2")
+    doc["content"]["full_text"] = (
+        "Some Title\nSource: Example\nOrganization: Example\nDate: \nURL: https://example.com\n"
+        "Note: The source page was discovered successfully, but the article body extraction "
+        f"returned a short result. {pipeline.METADATA_FALLBACK_TEXT_MARKER}"
+    )
+
+    candidates = pipeline._build_news_enrichment_candidates(
+        {"documents": [doc]}, source_kind="substack_public_article"
+    )
+
+    assert candidates == []
+
+
+def test_enrichment_candidates_include_real_body_text():
+    candidates = pipeline._build_news_enrichment_candidates(
+        {"documents": [_doc("doc-real-1")]}, source_kind="substack_public_article"
+    )
+
+    assert [item["doc_id"] for item in candidates] == ["doc-real-1"]
+
+
 def test_news_enrichment_checkpoints_progress(monkeypatch):
     payload = {"documents": [_doc("doc-1"), _doc("doc-2"), _doc("doc-3")]}
     saved_doc_ids = []

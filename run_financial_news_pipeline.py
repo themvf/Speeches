@@ -16,7 +16,7 @@ from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 try:
     import tomllib
@@ -24,6 +24,7 @@ except Exception:  # pragma: no cover
     tomllib = None
 
 from gcs_storage import GCSStorage
+from google.api_core.exceptions import PreconditionFailed
 from newsapi_financial_scraper import NewsAPIFinancialScraper
 from comment_position import (
     COMMENT_POSITION_INSTRUCTION as SHARED_COMMENT_POSITION_INSTRUCTION,
@@ -53,6 +54,17 @@ ENRICHMENT_STATE_LOCAL_PATH = DATA_DIR / "document_enrichment_state.json"
 RULE_SUMMARIES_BLOB_NAME = "rule_summaries.json"
 RULE_SUMMARIES_LOCAL_PATH = DATA_DIR / "rule_summaries.json"
 ENRICHMENT_PIPELINE_VERSION = "v1"
+
+# Shared with run_connector_extraction_pipeline.py's _build_short_text_fallback,
+# which is the single source of every metadata-backed placeholder body across
+# connectors. Presence of this marker in full_text is the authoritative signal
+# that a record's body is a placeholder, not real extracted content -
+# metadata["extraction_mode"] is not reliably set to "metadata_fallback" for
+# every connector that can produce one of these stubs.
+METADATA_FALLBACK_TEXT_MARKER = (
+    "This metadata-backed record is retained so the item can appear in feed, search, watchlist, "
+    "and briefing workflows."
+)
 
 NEWSAPI_DEFAULT_QUERY = (
     '("securities fraud" OR "wire fraud" OR "market manipulation" OR "insider trading" OR '
@@ -162,16 +174,35 @@ def _org_key_from_label(label: str) -> str:
     return cleaned or "sec"
 
 
+_URL_MATCH_KEY_TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"}
+
+
 def _url_match_key(url: str) -> str:
     raw = str(url or "").strip()
     if not raw:
         return ""
     try:
         parsed = urlparse(raw)
-        scheme = (parsed.scheme or "https").lower()
+        # Scheme is normalized (not preserved) so http/https variants of the same
+        # URL match instead of producing distinct dedup keys.
         netloc = parsed.netloc.lower()
         path = parsed.path.rstrip("/") or "/"
-        return f"{scheme}://{netloc}{path}"
+        key = f"https://{netloc}{path}"
+        if parsed.query:
+            # Query string is significant for many sources (e.g. YouTube
+            # `watch?v=<id>`), so it is preserved rather than dropped wholesale
+            # (dropping it collapsed all such URLs onto one key). Known
+            # tracking params are stripped so re-fetches of the same article
+            # with different tracking tags still dedupe, and remaining pairs
+            # are sorted so param order doesn't affect the key.
+            pairs = sorted(
+                (k, v)
+                for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+                if k.lower() not in _URL_MATCH_KEY_TRACKING_PARAMS
+            )
+            if pairs:
+                key = f"{key}?{urlencode(pairs)}"
+        return key
     except Exception:
         return raw.rstrip("/")
 
@@ -393,6 +424,24 @@ def _get_gcs_storage(secrets_payload: Dict[str, Any]) -> Tuple[Optional[GCSStora
         return None, f"Failed to initialize GCS storage: {e}"
 
 
+# Tracks, per blob within this process, whether a remote GCS read attempt
+# raised an exception (as opposed to the blob genuinely not existing yet).
+# _save_json_store consults this so that a transient read failure can't be
+# silently followed by saving a stale/empty payload back over real remote
+# data when the caller required remote persistence.
+_REMOTE_LOAD_ERRORED_BLOBS: set[str] = set()
+
+# Tracks, per blob within this process, the GCS object generation observed at
+# the most recent successful load (0 meaning "confirmed not to exist yet").
+# _save_json_store uses this as an if_generation_match precondition so a
+# concurrent writer's changes can't be silently clobbered by an unrelated
+# read-modify-write cycle running at the same time (multiple scheduled
+# ingestion workflows and admin routes all read-modify-write these same
+# blobs). Updated after each successful save so repeated saves in one
+# process (e.g. enrichment checkpointing) chain off each other correctly.
+_BLOB_GENERATIONS: Dict[str, int] = {}
+
+
 def _load_json_store(
     storage: Optional[GCSStorage],
     blob_name: str,
@@ -408,9 +457,15 @@ def _load_json_store(
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(local_path, "w", encoding="utf-8") as f:
                     json.dump(payload, f, indent=2, ensure_ascii=False)
+                _REMOTE_LOAD_ERRORED_BLOBS.discard(blob_name)
+                _BLOB_GENERATIONS[blob_name] = blob.generation
                 return payload
+            _REMOTE_LOAD_ERRORED_BLOBS.discard(blob_name)
+            _BLOB_GENERATIONS[blob_name] = 0
         except Exception as e:
             _stderr(f"Remote load failed for {blob_name}: {e}")
+            _REMOTE_LOAD_ERRORED_BLOBS.add(blob_name)
+            _BLOB_GENERATIONS.pop(blob_name, None)
     if local_path.exists():
         try:
             with open(local_path, "r", encoding="utf-8") as f:
@@ -428,6 +483,13 @@ def _save_json_store(
     normalize_fn,
     require_remote: bool = False,
 ) -> None:
+    if require_remote and blob_name in _REMOTE_LOAD_ERRORED_BLOBS:
+        raise RuntimeError(
+            f"Refusing to save {blob_name}: the prior remote read for this blob failed, so this "
+            "payload may be based on stale/incomplete data. Saving it now could overwrite real "
+            "remote data with a partial or empty snapshot. Re-run once GCS is reachable."
+        )
+
     normalized = normalize_fn(payload)
     normalized["updated_at"] = _utc_now_iso()
     local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -439,10 +501,29 @@ def _save_json_store(
             raise RuntimeError(f"Remote persistence required for {blob_name}, but GCS is not configured.")
         return
     blob = storage.bucket.blob(blob_name)
-    blob.upload_from_string(
-        json.dumps(normalized, indent=2, ensure_ascii=False),
-        content_type="application/json",
-    )
+    expected_generation = _BLOB_GENERATIONS.get(blob_name)
+    try:
+        if expected_generation is not None:
+            blob.upload_from_string(
+                json.dumps(normalized, indent=2, ensure_ascii=False),
+                content_type="application/json",
+                if_generation_match=expected_generation,
+            )
+        else:
+            # No generation baseline was captured for this blob in this
+            # process (e.g. a save without a preceding load) - fall back to
+            # an unconditional upload rather than blocking a legitimate save.
+            blob.upload_from_string(
+                json.dumps(normalized, indent=2, ensure_ascii=False),
+                content_type="application/json",
+            )
+    except PreconditionFailed as e:
+        raise RuntimeError(
+            f"Refusing to save {blob_name}: another writer changed this blob since it was loaded "
+            "(generation mismatch), so saving now would silently overwrite that writer's changes. "
+            "Re-run to reload the latest data and retry."
+        ) from e
+    _BLOB_GENERATIONS[blob_name] = blob.generation
 
 
 def _empty_custom_docs_payload() -> Dict[str, Any]:
@@ -1955,6 +2036,13 @@ def _build_news_enrichment_candidates(
             continue
         full_text = str(content.get("full_text", "") or "").strip()
         if not full_text:
+            continue
+        if str(metadata.get("extraction_mode", "") or "").strip() == "metadata_fallback" or (
+            METADATA_FALLBACK_TEXT_MARKER in full_text
+        ):
+            # Placeholder body (real extraction returned too little text) -
+            # skip until a later crawl recovers real content, rather than
+            # spending an enrichment call summarizing the placeholder.
             continue
         docs.append(
             {

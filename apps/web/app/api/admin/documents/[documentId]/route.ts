@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { downloadGcsJson, uploadGcsJson } from "@/lib/server/gcs-loader";
+import { downloadGcsJsonSafe, uploadGcsJson } from "@/lib/server/gcs-loader";
 import { invalidateDocumentCaches } from "@/lib/server/data-store";
 import type { CustomDocumentsPayload } from "@/lib/server/types";
 
@@ -17,8 +17,15 @@ export async function DELETE(
   }
 
   for (const blob of BLOBS) {
-    const payload = await downloadGcsJson<CustomDocumentsPayload>(blob);
-    if (!payload?.documents) continue;
+    const read = await downloadGcsJsonSafe<CustomDocumentsPayload>(blob);
+    if (read.status === "error") {
+      return NextResponse.json(
+        { ok: false, error: `Failed to read ${blob} from GCS: ${read.error}` },
+        { status: 503 }
+      );
+    }
+    if (read.status === "not_found" || !read.data?.documents) continue;
+    const payload = read.data;
 
     const before = payload.documents.length;
     const filtered = payload.documents.filter(

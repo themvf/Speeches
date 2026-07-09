@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { downloadGcsJson, uploadGcsJson } from "@/lib/server/gcs-loader";
+import { downloadGcsJsonSafe, uploadGcsJson } from "@/lib/server/gcs-loader";
 import type { CustomDocumentsPayload } from "@/lib/server/types";
 
 export const dynamic = "force-dynamic";
@@ -81,10 +81,15 @@ export async function POST(req: Request): Promise<NextResponse> {
     },
   };
 
-  const existing = (await downloadGcsJson<CustomDocumentsPayload>(CUSTOM_DOCS_BLOB)) ?? {
-    updated_at: "",
-    documents: [],
-  };
+  const read = await downloadGcsJsonSafe<CustomDocumentsPayload>(CUSTOM_DOCS_BLOB);
+  if (read.status === "error") {
+    return NextResponse.json(
+      { ok: false, error: `Failed to read existing documents from GCS: ${read.error}` },
+      { status: 503 }
+    );
+  }
+  const existing: CustomDocumentsPayload =
+    read.status === "found" ? read.data : { updated_at: "", documents: [] };
 
   const isDuplicate = (existing.documents ?? []).some(
     (d) => String(d.metadata?.document_id ?? "").trim() === document_id

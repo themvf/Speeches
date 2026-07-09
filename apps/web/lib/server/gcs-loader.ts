@@ -120,6 +120,40 @@ export async function downloadGcsJson<T>(blobName: string): Promise<T | null> {
   }
 }
 
+/**
+ * Like downloadGcsJson, but distinguishes "blob doesn't exist yet" (safe to
+ * treat as empty) from "read failed" (client not configured, network error,
+ * malformed JSON, etc). Callers that read-modify-write a blob should use this
+ * so a transient read failure can't be silently treated as an empty corpus
+ * and then overwrite real remote data on save.
+ */
+export type GcsJsonReadResult<T> =
+  | { status: "found"; data: T }
+  | { status: "not_found" }
+  | { status: "error"; error: string };
+
+export async function downloadGcsJsonSafe<T>(blobName: string): Promise<GcsJsonReadResult<T>> {
+  const cfg = getDataSourceConfig();
+  const client = await getStorageClient();
+  if (!client || !cfg.gcsBucketName) {
+    return { status: "error", error: getLastStorageError() || "GCS storage is not configured." };
+  }
+
+  try {
+    const bucket = client.bucket(cfg.gcsBucketName);
+    const file = bucket.file(blobName);
+    const [exists] = await file.exists();
+    if (!exists) {
+      return { status: "not_found" };
+    }
+    const [text] = await file.download();
+    return { status: "found", data: JSON.parse(text.toString("utf-8")) as T };
+  } catch (err) {
+    console.error(`[gcs] downloadGcsJsonSafe failed for "${blobName}":`, err);
+    return { status: "error", error: String(err) };
+  }
+}
+
 export async function uploadGcsJson(blobName: string, payload: unknown): Promise<boolean> {
   const cfg = getDataSourceConfig();
   const client = await getStorageClient();

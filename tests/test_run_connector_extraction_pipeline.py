@@ -205,17 +205,28 @@ def test_summary_with_item_failures_should_fail_process():
     assert pipeline._has_item_failures({"failed": [{"title": "bad"}]}) is True
 
 
-def test_substack_partial_item_failures_are_nonfatal_when_records_processed():
+def test_partial_item_failures_are_nonfatal_below_failure_rate_threshold():
+    # 2/60 failed (~3%): a small number of item-level failures shouldn't fail
+    # an otherwise-mostly-successful run for any connector.
     summary = {"failed_count": 2, "failed": [{"title": "blocked"}], "processed_count": 58}
 
     assert pipeline._should_fail_for_item_failures("substack_public_article", summary) is False
+    assert pipeline._should_fail_for_item_failures("jdsupra_article", summary) is False
+
+
+def test_item_failures_are_fatal_above_failure_rate_threshold():
+    # 40/60 failed (~67%): majority failure should still fail the run even
+    # though some items were processed.
+    summary = {"failed_count": 40, "failed": [{"title": "blocked"}], "processed_count": 20}
+
     assert pipeline._should_fail_for_item_failures("jdsupra_article", summary) is True
 
 
-def test_substack_item_failures_are_fatal_when_no_records_processed():
+def test_item_failures_are_fatal_when_no_records_processed():
     summary = {"failed_count": 2, "failed": [{"title": "blocked"}], "processed_count": 0}
 
     assert pipeline._should_fail_for_item_failures("substack_public_article", summary) is True
+    assert pipeline._should_fail_for_item_failures("jdsupra_article", summary) is True
 
 
 def test_crs_status_treats_equivalent_date_formats_as_existing():

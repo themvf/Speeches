@@ -38,3 +38,31 @@ export function normalizeText(value: unknown): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+export type CronAuthResult =
+  | { ok: true }
+  | { ok: false; status: 401 | 503; error: string };
+
+/**
+ * Shared auth check for cron/maintenance-triggered refresh endpoints
+ * (CRON_SECRET or RSS_REENRICH_SECRET as a Bearer token). Fails closed: if
+ * neither secret is configured, the endpoint is treated as unavailable
+ * rather than open to unauthenticated callers.
+ */
+export function checkCronAuth(req: { headers: { get(name: string): string | null } }): CronAuthResult {
+  const secret = process.env.CRON_SECRET ?? "";
+  const maintenanceSecret = process.env.RSS_REENRICH_SECRET ?? "";
+  const acceptedTokens = [secret, maintenanceSecret].filter(Boolean).map((token) => `Bearer ${token}`);
+  if (acceptedTokens.length === 0) {
+    return {
+      ok: false,
+      status: 503,
+      error: "Refresh endpoint is not configured (CRON_SECRET/RSS_REENRICH_SECRET unset).",
+    };
+  }
+  const authHeader = req.headers.get("authorization") ?? "";
+  if (!acceptedTokens.includes(authHeader)) {
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
+  return { ok: true };
+}

@@ -80,6 +80,8 @@ export type RssFeed = {
   active_manually_set?: boolean;
   refresh_interval_minutes: number;
   last_refresh_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
   added_at: string;
 };
 
@@ -409,6 +411,8 @@ export async function ensureSchema(): Promise<void> {
   await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS refresh_interval_minutes INTEGER NOT NULL DEFAULT 10`;
   await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS last_refresh_at TIMESTAMPTZ`;
   await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS active_manually_set BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS last_error TEXT`;
+  await sql`ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS consecutive_failures INTEGER NOT NULL DEFAULT 0`;
   await sql`
     CREATE TABLE IF NOT EXISTS rss_topic_rules (
       id         SERIAL PRIMARY KEY,
@@ -624,9 +628,25 @@ export async function upsertFeedSource(
   return rows[0];
 }
 
-export async function markFeedRefreshed(feedKey: string): Promise<void> {
+export async function markFeedRefreshed(feedKey: string, error?: string | null): Promise<void> {
   const sql = getSql();
-  await sql`UPDATE rss_feeds SET last_refresh_at = now() WHERE feed_key = ${feedKey}`;
+  if (error) {
+    await sql`
+      UPDATE rss_feeds
+      SET last_refresh_at = now(),
+          last_error = ${error},
+          consecutive_failures = consecutive_failures + 1
+      WHERE feed_key = ${feedKey}
+    `;
+    return;
+  }
+  await sql`
+    UPDATE rss_feeds
+    SET last_refresh_at = now(),
+        last_error = NULL,
+        consecutive_failures = 0
+    WHERE feed_key = ${feedKey}
+  `;
 }
 
 export async function toggleFeed(id: number, active: boolean): Promise<void> {

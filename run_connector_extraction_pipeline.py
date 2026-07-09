@@ -578,7 +578,7 @@ def _build_short_text_fallback(
         parts.append(f"Extracted text snippet: {short_text}")
     parts.append(
         "Note: The source page was discovered successfully, but the article body extraction returned a short result. "
-        "This metadata-backed record is retained so the item can appear in feed, search, watchlist, and briefing workflows."
+        f"{core.METADATA_FALLBACK_TEXT_MARKER}"
     )
     return "\n".join(part for part in parts if part).strip()
 
@@ -2670,16 +2670,30 @@ def _has_item_failures(summary: Dict[str, Any]) -> bool:
     return count > 0 or (isinstance(failed_items, list) and len(failed_items) > 0)
 
 
+# Failure-rate threshold above which a run with partial success is still
+# reported as a failed workflow run. Below this, item-level failures are
+# surfaced as a warning instead of failing an otherwise-mostly-successful run
+# (e.g. 1 failure out of 30 items no longer turns the whole job red).
+_ITEM_FAILURE_RATE_THRESHOLD = 0.5
+
+
 def _should_fail_for_item_failures(connector: str, summary: Dict[str, Any]) -> bool:
     if not _has_item_failures(summary):
         return False
-    if connector in {"substack_public_article", *YOUTUBE_CONNECTORS}:
-        try:
-            processed_count = int(summary.get("processed_count", 0) or 0)
-        except (TypeError, ValueError):
-            processed_count = 0
-        return processed_count <= 0
-    return True
+    try:
+        processed_count = int(summary.get("processed_count", 0) or 0)
+    except (TypeError, ValueError):
+        processed_count = 0
+    if processed_count <= 0:
+        return True
+    try:
+        failed_count = int(summary.get("failed_count", 0) or 0)
+    except (TypeError, ValueError):
+        failed_count = 0
+    attempted = processed_count + failed_count
+    if attempted <= 0:
+        return True
+    return (failed_count / attempted) > _ITEM_FAILURE_RATE_THRESHOLD
 
 
 def _build_parser() -> argparse.ArgumentParser:

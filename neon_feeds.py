@@ -192,7 +192,10 @@ def add_feed(label: str, feed_url: str) -> Dict[str, Any]:
                 """
                 INSERT INTO rss_feeds (label, feed_url, feed_key)
                 VALUES (%s, %s, %s)
-                ON CONFLICT (feed_url) DO UPDATE SET label = EXCLUDED.label, active = true
+                ON CONFLICT (feed_key) DO UPDATE SET
+                    label = EXCLUDED.label,
+                    feed_url = EXCLUDED.feed_url,
+                    active = true
                 RETURNING *
                 """,
                 (label.strip(), feed_url.strip(), feed_key),

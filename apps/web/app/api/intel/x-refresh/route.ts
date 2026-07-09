@@ -1,17 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { refreshXTimelines } from "@/lib/server/x-timeline-ingestion";
 import { parseXTimelineAccounts } from "@/lib/server/x-syndication";
+import { checkCronAuth } from "@/lib/server/api-utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 55;
-
-function authorized(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET ?? "";
-  const maintenanceSecret = process.env.RSS_REENRICH_SECRET ?? "";
-  const acceptedTokens = [secret, maintenanceSecret].filter(Boolean).map((token) => `Bearer ${token}`);
-  if (acceptedTokens.length === 0) return true;
-  return acceptedTokens.includes(req.headers.get("authorization") ?? "");
-}
 
 function requestedAccounts(req: NextRequest): string[] {
   const params = req.nextUrl.searchParams;
@@ -29,8 +22,9 @@ function numberParam(req: NextRequest, name: string, fallback: number, max: numb
 }
 
 async function handleRefresh(req: NextRequest): Promise<NextResponse> {
-  if (!authorized(req)) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const auth = checkCronAuth(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
 
   try {
