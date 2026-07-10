@@ -45,6 +45,7 @@ jobs:
           - connector: prnewswire_article
           - connector: google_news_ponzi_investor_fraud_article
           - connector: google_news_senate_committee_article
+          - connector: google_news_fincen_article
           - connector: coindesk_article
           - connector: cointelegraph_article
           - connector: decrypt_article

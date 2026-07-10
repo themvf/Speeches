@@ -96,6 +96,7 @@ TRADE_MEDIA_CONNECTORS = {
     "prnewswire_article",
     "google_news_ponzi_investor_fraud_article",
     "google_news_senate_committee_article",
+    "google_news_fincen_article",
 }
 
 TRADE_ASSOCIATION_CONNECTORS = {

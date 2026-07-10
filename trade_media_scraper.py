@@ -236,37 +236,44 @@ TRADE_MEDIA_SOURCES: Dict[str, Dict[str, Any]] = {
         "default_search_query": "securities OR crypto OR fintech OR cybersecurity OR regulator OR fraud OR enforcement",
     },
     "google_news_ponzi_investor_fraud_article": {
+        # Cross-site topic aggregators: default_url IS news.google.com itself
+        # (there is no single "home site" to scrape RSS/listing pages from),
+        # so discover_documents() routes these straight to
+        # _discover_from_google_news_search(), which decodes each result to
+        # its real publisher URL. rss_candidates/article_path_keywords/
+        # required_url_substrings are deliberately omitted: they belong to
+        # the generic feed/listing discovery path these connectors never
+        # use, and required_url_substrings in particular would reject every
+        # decoded (real, non-news.google.com) URL if set. The recency window
+        # is expressed via "when:7d" inside default_search_query itself,
+        # since that's the query text _build_google_news_query sends.
         "label": "Google News: Ponzi & Investor Fraud",
         "organization": "Google News",
         "default_url": "https://news.google.com/",
         "tags_csv": "google-news,ponzi,investor-fraud,securities-fraud",
-        "rss_candidates": [
-            "https://news.google.com/rss/search?q=%22Ponzi%20scheme%22%20OR%20%22investment%20fraud%22%20OR%20%22investor%20fraud%22%20OR%20%22fraudulent%20securities%20offering%22%20OR%20%22misappropriated%20investor%20funds%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
-        ],
-        "minimum_path_segments": 2,
-        "article_path_keywords": ["articles", "read"],
-        "required_url_substrings": ["news.google.com/rss/articles", "news.google.com/articles", "news.google.com/read"],
-        "search_domain": "news.google.com",
-        "default_search_query": "Ponzi scheme OR investment fraud OR investor fraud OR fraudulent securities offering",
+        "default_search_query": (
+            '"Ponzi scheme" OR "investment fraud" OR "investor fraud" OR '
+            '"fraudulent securities offering" OR "misappropriated investor funds" when:7d'
+        ),
     },
     "google_news_senate_committee_article": {
         "label": "Google News: Senate Committees",
         "organization": "Google News",
         "default_url": "https://news.google.com/",
         "tags_csv": "google-news,congress,senate,committee",
-        "rss_candidates": [
-            "https://news.google.com/rss/search?q=%22Senate%20Banking%20Committee%22%20OR%20%22Senate%20Committee%20on%20Banking%2C%20Housing%2C%20and%20Urban%20Affairs%22%20OR%20site%3Abanking.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
-            "https://news.google.com/rss/search?q=%22Senate%20Finance%20Committee%22%20OR%20%22Senate%20Committee%20on%20Finance%22%20OR%20site%3Afinance.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
-            "https://news.google.com/rss/search?q=%22Senate%20Agriculture%20Committee%22%20OR%20%22Senate%20Committee%20on%20Agriculture%2C%20Nutrition%2C%20and%20Forestry%22%20OR%20site%3Aagriculture.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
-            "https://news.google.com/rss/search?q=%22Senate%20Judiciary%20Committee%22%20OR%20%22Senate%20Committee%20on%20the%20Judiciary%22%20OR%20site%3Ajudiciary.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
-            "https://news.google.com/rss/search?q=%22Senate%20Homeland%20Security%20and%20Governmental%20Affairs%20Committee%22%20OR%20%22Senate%20HSGAC%22%20OR%20site%3Ahsgac.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
-            "https://news.google.com/rss/search?q=%22Senate%20Commerce%20Committee%22%20OR%20%22Senate%20Committee%20on%20Commerce%2C%20Science%2C%20and%20Transportation%22%20OR%20site%3Acommerce.senate.gov%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
-        ],
-        "minimum_path_segments": 2,
-        "article_path_keywords": ["articles", "read"],
-        "required_url_substrings": ["news.google.com/rss/articles", "news.google.com/articles", "news.google.com/read"],
-        "search_domain": "news.google.com",
-        "default_search_query": "Senate Banking Committee OR Senate Finance Committee OR Senate Commerce Committee",
+        "default_search_query": (
+            '"Senate Banking Committee" OR "Senate Finance Committee" OR '
+            '"Senate Agriculture Committee" OR "Senate Judiciary Committee" OR '
+            '"Senate Homeland Security and Governmental Affairs Committee" OR '
+            '"Senate Commerce Committee" when:7d'
+        ),
+    },
+    "google_news_fincen_article": {
+        "label": "Google News: FinCEN",
+        "organization": "Google News",
+        "default_url": "https://news.google.com/",
+        "tags_csv": "google-news,fincen,aml,bsa,financial-crimes",
+        "default_search_query": '"FinCEN" OR "Financial Crimes Enforcement Network" when:7d',
     },
     "coindesk_article": {
         "label": "CoinDesk",
@@ -761,12 +768,28 @@ class TradeMediaScraper:
         except Exception:
             return ""
 
+    def _google_news_site_scope_domain(self, cfg: Dict[str, Any], source_url: str) -> str:
+        """Resolve the domain to scope a Google News search to, if any.
+
+        Falls back to the connector's own source_url host only when that
+        host is a real publisher site. For cross-site topic/keyword
+        aggregators (whose source_url IS news.google.com itself, since they
+        have no single "home site"), this must return empty rather than
+        "news.google.com" - scoping a search or filtering results to
+        news.google.com itself would reject every real, decoded article URL.
+        """
+        explicit = str(cfg.get("search_domain", "") or "").strip()
+        if explicit:
+            return explicit
+        host = _canonical_host(source_url)
+        return host if host and host != "news.google.com" else ""
+
     def _build_google_news_query(self, source_key: str, source_url: str, search_query: str = "") -> str:
         cfg = self._source_config(source_key)
-        domain = str(cfg.get("search_domain", "") or "").strip() or _canonical_host(source_url)
+        domain = self._google_news_site_scope_domain(cfg, source_url)
         base_query = _normalize_space(cfg.get("google_site_query", ""))
-        if not base_query:
-            base_query = f"site:{domain}" if domain else str(source_url or "").strip()
+        if not base_query and domain:
+            base_query = f"site:{domain}"
         extra_query = _normalize_space(search_query) or _normalize_space(cfg.get("default_search_query", ""))
         if extra_query:
             return f"{base_query} {extra_query}".strip()
@@ -792,7 +815,7 @@ class TradeMediaScraper:
         root = ET.fromstring(str(response.text or "").lstrip("\ufeff").strip())
 
         cfg = self._source_config(source_key)
-        search_domain = str(cfg.get("search_domain", "") or "").strip() or _canonical_host(source_url)
+        search_domain = self._google_news_site_scope_domain(cfg, source_url)
         out: List[Dict[str, str]] = []
         seen: set[str] = set()
         for node in root.iter():
@@ -1035,6 +1058,19 @@ class TradeMediaScraper:
         if not source_url:
             raise ValueError("A source URL is required.")
 
+        # Sources whose default_url IS Google News itself (cross-site
+        # topic/keyword aggregators with no single "home site" to scrape RSS
+        # or listing pages from) must go straight to the dedicated,
+        # decode-aware Google News search path below. Treating their Google
+        # News RSS search URL as a generic feed via _discover_from_feed
+        # silently returns zero items (Google's redirect links contain
+        # "/rss/articles/", which _looks_like_article_url's generic
+        # feed-link skip filter rejects), and the subsequent listing-scrape
+        # fallback then scrapes the unrelated https://news.google.com/
+        # homepage instead of the actual search results - producing
+        # garbled, off-topic documents instead of failing loudly.
+        is_google_news_primary = _canonical_host(source_url) == "news.google.com"
+
         merged: Dict[str, Dict[str, str]] = {}
         debug: Dict[str, Any] = {
             "source_key": source_key,
@@ -1051,71 +1087,72 @@ class TradeMediaScraper:
             "discovered_count": 0,
         }
 
-        feed_urls: List[str] = []
-        try:
-            listing_response = self._fetch(source_url, timeout=45)
-            listing_soup = BeautifulSoup(listing_response.text, "html.parser")
-            feed_urls.extend(self._extract_feed_urls_from_html(listing_soup, source_url))
-        except Exception:
-            pass
+        if not is_google_news_primary:
+            feed_urls: List[str] = []
+            try:
+                listing_response = self._fetch(source_url, timeout=45)
+                listing_soup = BeautifulSoup(listing_response.text, "html.parser")
+                feed_urls.extend(self._extract_feed_urls_from_html(listing_soup, source_url))
+            except Exception:
+                pass
 
-        for candidate in cfg.get("rss_candidates", []):
-            resolved = urljoin(source_url, str(candidate or "").strip())
-            if resolved:
-                feed_urls.append(resolved)
+            for candidate in cfg.get("rss_candidates", []):
+                resolved = urljoin(source_url, str(candidate or "").strip())
+                if resolved:
+                    feed_urls.append(resolved)
 
-        feed_urls = [u for idx, u in enumerate(feed_urls) if u and u not in feed_urls[:idx]]
-        excluded_feed_url_substrings = [
-            str(item or "").strip().lower()
-            for item in cfg.get("excluded_feed_url_substrings", [])
-            if str(item or "").strip()
-        ]
-        if excluded_feed_url_substrings:
-            feed_urls = [
-                url
-                for url in feed_urls
-                if not any(item in str(url or "").lower() for item in excluded_feed_url_substrings)
+            feed_urls = [u for idx, u in enumerate(feed_urls) if u and u not in feed_urls[:idx]]
+            excluded_feed_url_substrings = [
+                str(item or "").strip().lower()
+                for item in cfg.get("excluded_feed_url_substrings", [])
+                if str(item or "").strip()
             ]
-        debug["feed_urls_attempted"] = list(feed_urls)
+            if excluded_feed_url_substrings:
+                feed_urls = [
+                    url
+                    for url in feed_urls
+                    if not any(item in str(url or "").lower() for item in excluded_feed_url_substrings)
+                ]
+            debug["feed_urls_attempted"] = list(feed_urls)
 
-        if include_rss:
-            for feed_url in feed_urls:
-                try:
-                    feed_docs = self._discover_from_feed(
-                        feed_url=feed_url,
-                        source_key=source_key,
-                        source_label=source_label,
-                        source_url=source_url,
-                    )
-                    if feed_docs:
-                        debug["feed_urls_succeeded"].append(feed_url)
-                    for item in feed_docs:
-                        key = _url_key(item.get("url", ""))
-                        if not key:
-                            continue
-                        existing = merged.get(key, {})
-                        combined = dict(existing)
-                        combined.update({k: v for k, v in item.items() if str(v or "").strip()})
-                        merged[key] = combined
-                except Exception:
-                    continue
+            if include_rss:
+                for feed_url in feed_urls:
+                    try:
+                        feed_docs = self._discover_from_feed(
+                            feed_url=feed_url,
+                            source_key=source_key,
+                            source_label=source_label,
+                            source_url=source_url,
+                        )
+                        if feed_docs:
+                            debug["feed_urls_succeeded"].append(feed_url)
+                        for item in feed_docs:
+                            key = _url_key(item.get("url", ""))
+                            if not key:
+                                continue
+                            existing = merged.get(key, {})
+                            combined = dict(existing)
+                            combined.update({k: v for k, v in item.items() if str(v or "").strip()})
+                            merged[key] = combined
+                    except Exception:
+                        continue
 
-        if not merged:
-            debug["listing_used"] = True
-            listing_docs = self._discover_from_listing(
-                listing_url=source_url,
-                source_key=source_key,
-                source_label=source_label,
-                max_pages=max_pages,
-            )
-            for item in listing_docs:
-                key = _url_key(item.get("url", ""))
-                if not key:
-                    continue
-                existing = merged.get(key, {})
-                combined = dict(existing)
-                combined.update({k: v for k, v in item.items() if str(v or "").strip()})
-                merged[key] = combined
+            if not merged:
+                debug["listing_used"] = True
+                listing_docs = self._discover_from_listing(
+                    listing_url=source_url,
+                    source_key=source_key,
+                    source_label=source_label,
+                    max_pages=max_pages,
+                )
+                for item in listing_docs:
+                    key = _url_key(item.get("url", ""))
+                    if not key:
+                        continue
+                    existing = merged.get(key, {})
+                    combined = dict(existing)
+                    combined.update({k: v for k, v in item.items() if str(v or "").strip()})
+                    merged[key] = combined
 
         if not merged:
             google_query = self._build_google_news_query(source_key, source_url, search_query)

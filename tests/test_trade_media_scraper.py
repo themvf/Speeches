@@ -240,6 +240,106 @@ class TradeMediaScraperTests(unittest.TestCase):
         self.assertEqual(docs[0]["url"], "https://news.google.com/rss/articles/example-2")
         self.assertEqual(docs[0]["source_url"], "")
 
+    def test_build_google_news_query_does_not_site_scope_cross_site_topic_aggregators(self):
+        """Regression: connectors whose default_url IS news.google.com itself
+        (cross-site topic aggregators like google_news_fincen_article) have
+        no single target domain, so the query must not be scoped to
+        "site:news.google.com" - that would reject every real, decoded
+        result later in _discover_from_google_news_search."""
+        scraper = TradeMediaScraper(min_delay_seconds=0)
+
+        query = scraper._build_google_news_query(
+            "google_news_fincen_article",
+            "https://news.google.com/",
+            "",
+        )
+
+        self.assertEqual(query, '"FinCEN" OR "Financial Crimes Enforcement Network" when:7d')
+        self.assertNotIn("site:", query)
+
+    def test_google_news_search_domain_filter_is_skipped_for_cross_site_topic_aggregators(self):
+        """Regression: without this fix, search_domain fell back to
+        _canonical_host(source_url) == "news.google.com" for these
+        connectors, and _discover_from_google_news_search would then reject
+        every successfully-decoded (real publisher, non-news.google.com)
+        URL, silently returning zero results."""
+        scraper = TradeMediaScraper(min_delay_seconds=0)
+        rss_text = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>FinCEN Issues New Guidance - Clyde and Co</title>
+      <link>https://news.google.com/rss/articles/example-fincen</link>
+      <pubDate>Tue, 07 Apr 2026 18:41:44 GMT</pubDate>
+      <description><![CDATA[<a href="https://news.google.com/rss/articles/example-fincen">FinCEN Issues New Guidance</a><font color="#6f6f6f">Clyde and Co</font>]]></description>
+      <source>Clyde and Co</source>
+    </item>
+  </channel>
+</rss>
+"""
+        with patch.object(scraper, "_fetch", return_value=_FakeResponse(text=rss_text)):
+            with patch.object(
+                scraper,
+                "_decode_google_news_url",
+                return_value="https://www.clydeco.com/en/insights/2026/06/fincen-issues-new-guidance",
+            ):
+                docs = scraper._discover_from_google_news_search(
+                    source_key="google_news_fincen_article",
+                    source_label="Google News: FinCEN",
+                    source_url="https://news.google.com/",
+                    search_query="",
+                    max_results=10,
+                )
+
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["url"], "https://www.clydeco.com/en/insights/2026/06/fincen-issues-new-guidance")
+
+    def test_discover_documents_routes_google_news_primary_sources_directly(self):
+        """Regression: discover_documents() must not attempt _discover_from_feed
+        or a generic listing-scrape of https://news.google.com/ for
+        cross-site topic aggregators - that either silently returns zero
+        items (Google's redirect links contain "/rss/articles/", which the
+        generic feed-link skip filter in _looks_like_article_url rejects) or
+        falls through to scraping the unrelated Google News homepage,
+        producing garbled, off-topic documents instead of real search
+        results."""
+        scraper = TradeMediaScraper(min_delay_seconds=0)
+
+        with patch.object(
+            scraper,
+            "_discover_from_google_news_search",
+            return_value=[
+                {
+                    "url": "https://example-publisher.com/article",
+                    "title": "FinCEN Issues New Guidance",
+                    "date": "July 9, 2026",
+                    "source_name": "Example Publisher",
+                    "source_key": "google_news_fincen_article",
+                    "description": "",
+                    "source_format": "snippet",
+                    "discovery_source": "google_news_search",
+                }
+            ],
+        ) as mock_google_search, patch.object(
+            scraper, "_discover_from_feed"
+        ) as mock_feed, patch.object(
+            scraper, "_discover_from_listing"
+        ) as mock_listing:
+            docs = scraper.discover_documents(
+                source_key="google_news_fincen_article",
+                base_url="https://news.google.com/",
+                max_pages=1,
+                include_rss=True,
+            )
+
+        mock_feed.assert_not_called()
+        mock_listing.assert_not_called()
+        mock_google_search.assert_called_once()
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["url"], "https://example-publisher.com/article")
+        self.assertFalse(scraper.last_discovery_debug["listing_used"])
+        self.assertTrue(scraper.last_discovery_debug["google_news_used"])
+
     def test_extract_document_uses_snippet_when_access_challenge_detected(self):
         scraper = TradeMediaScraper(min_delay_seconds=0)
         blocked_html = """
