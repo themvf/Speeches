@@ -338,7 +338,25 @@ function normalizeAnalysisRow(row: Record<string, unknown> | null | undefined): 
   };
 }
 
+let _schemaEnsured: Promise<void> | null = null;
+
+// ensureSchema() runs ~24 DDL/migration statements and used to be called,
+// unmemoized, from nearly every exported function below - meaning a single
+// request (e.g. the 10-minute rss-refresh cron) could re-run the full check
+// 6-10+ times. Cache the in-flight/completed promise per process lifetime so
+// it only actually executes once; a failure clears the cache so the next
+// call retries instead of permanently wedging.
 export async function ensureSchema(): Promise<void> {
+  if (!_schemaEnsured) {
+    _schemaEnsured = ensureSchemaUncached().catch((err) => {
+      _schemaEnsured = null;
+      throw err;
+    });
+  }
+  return _schemaEnsured;
+}
+
+async function ensureSchemaUncached(): Promise<void> {
   const sql = getSql();
   await sql`
     CREATE TABLE IF NOT EXISTS rss_articles (
@@ -934,38 +952,52 @@ export async function saveRssArticleAnalysisFailure(article: StoredRssArticle, e
   `;
 }
 
-export async function deleteInvalidCouponArticles(): Promise<number> {
+// Cleanup queries below only need to re-examine articles inserted since the
+// last pass - once a row has survived a check it won't newly become a
+// coupon/gambling/non-English match on its own. Bounding to a recent window
+// (using the existing fetched_at index) turns what used to be a full-table
+// sequential scan on every call into a cheap index range scan, since
+// rss_articles has no retention cap and only grows.
+const RSS_CLEANUP_WINDOW_HOURS = 24 * 14;
+
+export async function deleteInvalidCouponArticles(windowHours = RSS_CLEANUP_WINDOW_HOURS): Promise<number> {
   await ensureSchema();
   const sql = getSql();
+  const cappedHours = Math.max(1, Math.min(24 * 365, windowHours));
   const rows = (await sql`
     DELETE FROM rss_articles
-    WHERE title ILIKE '%coupon%'
-       OR title ILIKE '%promo code%'
-       OR title ILIKE '%promo-code%'
-       OR title ILIKE '%discount code%'
-       OR title ILIKE '%discount coupon%'
-       OR url ILIKE '%coupon%'
-       OR url ILIKE '%promo-code%'
-       OR url ILIKE '%promo-codes%'
-       OR url ILIKE '%discount-code%'
-       OR url ILIKE '%discount-coupon%'
-       OR description ILIKE '%coupon%'
-       OR description ILIKE '%promo code%'
-       OR description ILIKE '%promo-code%'
-       OR description ILIKE '%discount code%'
-       OR description ILIKE '%discount coupon%'
+    WHERE fetched_at >= now() - (${cappedHours} * INTERVAL '1 hour')
+      AND (
+        title ILIKE '%coupon%'
+        OR title ILIKE '%promo code%'
+        OR title ILIKE '%promo-code%'
+        OR title ILIKE '%discount code%'
+        OR title ILIKE '%discount coupon%'
+        OR url ILIKE '%coupon%'
+        OR url ILIKE '%promo-code%'
+        OR url ILIKE '%promo-codes%'
+        OR url ILIKE '%discount-code%'
+        OR url ILIKE '%discount-coupon%'
+        OR description ILIKE '%coupon%'
+        OR description ILIKE '%promo code%'
+        OR description ILIKE '%promo-code%'
+        OR description ILIKE '%discount code%'
+        OR description ILIKE '%discount coupon%'
+      )
     RETURNING id
   `) as unknown as Array<{ id: number }>;
   return rows.length;
 }
 
-export async function deleteNonEnglishPrNewswireArticles(): Promise<number> {
+export async function deleteNonEnglishPrNewswireArticles(windowHours = RSS_CLEANUP_WINDOW_HOURS): Promise<number> {
   await ensureSchema();
   const sql = getSql();
+  const cappedHours = Math.max(1, Math.min(24 * 365, windowHours));
   const candidates = (await sql`
     SELECT id, title, description, author, feed_key
     FROM rss_articles
-    WHERE feed_key LIKE 'prnewswire_%'
+    WHERE fetched_at >= now() - (${cappedHours} * INTERVAL '1 hour')
+      AND feed_key LIKE 'prnewswire_%'
   `) as unknown as Array<{ id: number; title: string; description: string; author: string; feed_key: string }>;
   const ids = candidates
     .filter((article) => shouldEnglishOnlyFilterFeed(article.feed_key) && !isEnglishRssArticle(article))
@@ -980,19 +1012,26 @@ export async function deleteNonEnglishPrNewswireArticles(): Promise<number> {
   return rows.length;
 }
 
-export async function deleteBlockedRssArticles(topicRules: StoredRssTopicRule[]): Promise<number> {
+export async function deleteBlockedRssArticles(
+  topicRules: StoredRssTopicRule[],
+  windowHours = RSS_CLEANUP_WINDOW_HOURS
+): Promise<number> {
   const hasActiveTopicRules = topicRules.some((rule) => rule.active && String(rule.keywords || "").trim());
   if (!hasActiveTopicRules) return 0;
 
   await ensureSchema();
   const sql = getSql();
+  const cappedHours = Math.max(1, Math.min(24 * 365, windowHours));
   const candidates = (await sql`
     SELECT id, guid, title, url, description, author, published_at, feed_key
     FROM rss_articles
-    WHERE feed_key LIKE 'prnewswire_%'
-       OR feed_key LIKE 'google_news_%'
-       OR title ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
-       OR description ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
+    WHERE fetched_at >= now() - (${cappedHours} * INTERVAL '1 hour')
+      AND (
+        feed_key LIKE 'prnewswire_%'
+        OR feed_key LIKE 'google_news_%'
+        OR title ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
+        OR description ~* '(gambling|casino|slots?|sportsbook|wagering|betting|lottery|poker|blackjack|roulette|sweepstakes)'
+      )
   `) as unknown as Array<Pick<StoredRssArticle, "id" | "guid" | "feed_key" | "title" | "url" | "description" | "author" | "published_at">>;
 
   const ids = candidates
@@ -1016,26 +1055,104 @@ export async function deleteBlockedRssArticles(topicRules: StoredRssTopicRule[])
   return rows.length;
 }
 
+const DEFAULT_RSS_RETENTION_DAYS = 180;
+
+export type PruneResult = { deletedArticles: number; deletedMentions: number };
+
+// rss_articles has no cap and grows forever (144+ inserts/day from the
+// refresh cron alone). rss_article_analysis cascades on article delete via
+// its FK, but intelligence_mentions is keyed generically by
+// (source_type, source_id) with no FK, so it needs an explicit sweep.
+export async function pruneOldRssData(retentionDays = DEFAULT_RSS_RETENTION_DAYS): Promise<PruneResult> {
+  await ensureSchema();
+  const sql = getSql();
+  const cappedDays = Math.max(30, Math.min(1825, retentionDays));
+
+  const deletedArticleRows = (await sql`
+    DELETE FROM rss_articles
+    WHERE COALESCE(published_at, fetched_at) < now() - (${cappedDays} * INTERVAL '1 day')
+    RETURNING id
+  `) as unknown as Array<{ id: number }>;
+
+  let deletedMentions = 0;
+  if (deletedArticleRows.length > 0) {
+    const ids = deletedArticleRows.map((row) => String(row.id));
+    const mentionRows = (await sql`
+      DELETE FROM intelligence_mentions
+      WHERE source_type = 'rss_article'
+        AND source_id = ANY(${ids})
+      RETURNING id
+    `) as unknown as Array<{ id: number }>;
+    deletedMentions = mentionRows.length;
+  }
+
+  return { deletedArticles: deletedArticleRows.length, deletedMentions };
+}
+
+export type PreparedMentionBatch = {
+  types: MentionType[];
+  values: string[];
+  normalizedValues: string[];
+  confidences: number[];
+};
+
+// The unique constraint is (source_type, source_id, mention_type,
+// normalized_value), so within one save call the only possible collisions
+// are same-type mentions that normalize to the same value (e.g. differing
+// punctuation/casing). A single multi-row INSERT can't hit the same
+// ON CONFLICT target twice, so dedupe here - keeping the last occurrence,
+// matching what the old sequential per-row upsert loop would have left
+// behind (each iteration overwrote the previous one on a collision).
+export function prepareMentionBatch(
+  mentions: Array<{ type: MentionType; value: string; confidence?: number }>
+): PreparedMentionBatch {
+  const byKey = new Map<string, { type: MentionType; value: string; normalized: string; confidence: number }>();
+  for (const mention of mentions) {
+    const value = String(mention.value || "").trim();
+    const normalized = normalizeMention(value);
+    if (!value || !normalized) continue;
+    const key = `${mention.type} ${normalized}`;
+    byKey.set(key, { type: mention.type, value, normalized, confidence: mention.confidence ?? 1 });
+  }
+  const types: MentionType[] = [];
+  const values: string[] = [];
+  const normalizedValues: string[] = [];
+  const confidences: number[] = [];
+  for (const entry of byKey.values()) {
+    types.push(entry.type);
+    values.push(entry.value);
+    normalizedValues.push(entry.normalized);
+    confidences.push(entry.confidence);
+  }
+  return { types, values, normalizedValues, confidences };
+}
+
 export async function saveIntelligenceMentions(
   sourceType: string,
   sourceId: string,
   mentions: Array<{ type: MentionType; value: string; confidence?: number }>
 ): Promise<void> {
   const sql = getSql();
+  const batch = prepareMentionBatch(mentions);
+
   await sql`DELETE FROM intelligence_mentions WHERE source_type = ${sourceType} AND source_id = ${sourceId}`;
-  for (const mention of mentions) {
-    const value = String(mention.value || "").trim();
-    const normalized = normalizeMention(value);
-    if (!value || !normalized) continue;
-    await sql`
-      INSERT INTO intelligence_mentions (source_type, source_id, mention_type, value, normalized_value, confidence)
-      VALUES (${sourceType}, ${sourceId}, ${mention.type}, ${value}, ${normalized}, ${mention.confidence ?? 1})
-      ON CONFLICT (source_type, source_id, mention_type, normalized_value) DO UPDATE SET
-        value = EXCLUDED.value,
-        confidence = EXCLUDED.confidence,
-        generated_at = now()
-    `;
-  }
+
+  if (batch.types.length === 0) return;
+
+  await sql`
+    INSERT INTO intelligence_mentions (source_type, source_id, mention_type, value, normalized_value, confidence)
+    SELECT ${sourceType}, ${sourceId}, t, v, n, c
+    FROM unnest(
+      ${batch.types}::text[],
+      ${batch.values}::text[],
+      ${batch.normalizedValues}::text[],
+      ${batch.confidences}::double precision[]
+    ) AS mention(t, v, n, c)
+    ON CONFLICT (source_type, source_id, mention_type, normalized_value) DO UPDATE SET
+      value = EXCLUDED.value,
+      confidence = EXCLUDED.confidence,
+      generated_at = now()
+  `;
 }
 
 export async function getRecentArticles(opts: {

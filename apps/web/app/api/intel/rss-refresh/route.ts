@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRssFeed } from "@/lib/server/rss-fetcher";
-import { deleteBlockedRssArticles, deleteInvalidCouponArticles, deleteNonEnglishPrNewswireArticles, upsertRssArticles, ensureSchema, getFeeds, getTopicRules, markFeedRefreshed } from "@/lib/server/neon";
+import { deleteBlockedRssArticles, deleteInvalidCouponArticles, deleteNonEnglishPrNewswireArticles, pruneOldRssData, upsertRssArticles, ensureSchema, getFeeds, getTopicRules, markFeedRefreshed } from "@/lib/server/neon";
 import { filterRssArticlesForIngestion, rssFetchLimitForFeed, shouldKeywordFilterFeed } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
 import { FINRA_MEMBER_FIRM_NEWS_FEED_KEY, FINRA_MEMBER_FIRM_NEWS_LABEL, fetchFinraMemberFirmRssBatch } from "@/lib/server/finra-member-firm-rss";
@@ -175,6 +175,16 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     return 0;
   });
 
+  // This cron fires every 10 minutes, but pruning is a full-table sweep -
+  // only run it on one tick per day (03:00 UTC) instead of 144x/day.
+  const now = new Date();
+  const prune = now.getUTCHours() === 3 && now.getUTCMinutes() === 0
+    ? await pruneOldRssData(Number.parseInt(process.env.RSS_ARTICLE_RETENTION_DAYS || "", 10) || undefined).catch((error) => {
+        console.error("[intel/rss-refresh] retention prune failed:", error);
+        return { deletedArticles: 0, deletedMentions: 0 };
+      })
+    : { deletedArticles: 0, deletedMentions: 0 };
+
   const allFailed = feeds.length > 0 && failedCount > 0 && failedCount === feeds.length;
   const analysisLimitParam = searchParams.get("analysisLimit") || process.env.RSS_AUTO_ANALYSIS_LIMIT || "0";
   const analysisLimit = Math.max(0, Math.min(50, Number.parseInt(analysisLimitParam, 10) || 0));
@@ -191,6 +201,8 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
         deleted_coupon_articles: deletedCouponArticles,
         deleted_non_english_prnewswire_articles: deletedNonEnglishPrNewswireArticles,
         deleted_blocked_rss_articles: deletedBlockedRssArticleCount,
+        pruned_old_articles: prune.deletedArticles,
+        pruned_old_mentions: prune.deletedMentions,
         failed_count: failedCount,
         feeds,
         analysis_feed_keys: analysisFeedKeys,
