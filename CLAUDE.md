@@ -1,5 +1,50 @@
 # CLAUDE.md
 
+## Source Coverage Quick Wins - July 2026
+
+Seven quick wins were identified to improve source coverage/quality. Reddit and X were explicitly excluded (Reddit: user hasn't picked it up as a source yet; X: already deferred per the "Deferred X Account Monitoring" section below). Two items (#5, #6) are code changes implemented and tested in this session. The other four (#1, #3, #4, #7) are operational/runbook steps that need either a production trigger (external network calls + real GCS/Neon writes, which needs your go-ahead, not something to do unilaterally) or live credentials this sandboxed session doesn't have — they're specified precisely below so they're a checklist, not vague TODOs.
+
+### Verified live via WebFetch this session (do not re-guess these later)
+
+Government agency press-release/RSS URLs change structure often and a wrong guess just recreates the exact "silent failure" bug fixed earlier (see Process Pipeline Review below). Before adding any new gov-source connector, verify the URL live rather than trusting training-data memory. Verified in this session (all returned live, current — June/July 2026 — items):
+
+- **OCC**: RSS at `https://www.occ.gov/rss/occ_news.xml` (also has separate bulletins/speeches/testimony feeds at `/rss/occ_bulletins.xml`, `/rss/occ-speeches.xml`, `/rss/occ-congressional-testimony.xml` if wanted later).
+- **FDIC**: RSS at `https://public.govdelivery.com/topics/USFDIC_26/feed.rss`.
+- **CFPB**: RSS at `https://www.consumerfinance.gov/about-us/newsroom/feed/`.
+- **NYDFS**: no RSS feed exists. HTML listing at `https://www.dfs.ny.gov/reports_and_publications/press_releases`, individual releases at predictable paths like `/reports_and_publications/press_releases/pr20260701` — fits the existing `html_links` discovery mode.
+- **FinCEN**: **could not verify** — `fincen.gov` returned repeated timeouts/socket-hangs (5 attempts, different paths), which reads as active bot-blocking rather than a slow page (consistent with why this codebase already has `webshare_proxy.py` for exactly this class of site). No FinCEN connector was added directly; a Google News query connector (`google_news_fincen_enforcement_article`, see below) covers FinCEN enforcement news as a workaround that doesn't depend on scraping fincen.gov directly. If a direct FinCEN connector is wanted later, verify the URL from a proxied/residential-IP context, not a repeat of this session's approach.
+
+### 5. Add banking/consumer-finance regulator feeds — DONE (OCC, FDIC, CFPB, NYDFS)
+
+Prior coverage was SEC (5 feeds) + FINRA (5) + CFTC (5) with zero banking/AML-regulator coverage, despite AML being a first-class topic (`aml-news-ingest.yml`) and topic rule. Implemented by extending `securities_market_sources_scraper.py` (already hosts non-strictly-securities official sources like MSRB and PCAOB, so this reuses tested, working generic scraper machinery instead of a new near-duplicate file) with four new source configs and registering them in `SECURITIES_MARKET_CONNECTORS`:
+
+- `occ_news_release` (RSS)
+- `fdic_press_release` (RSS)
+- `cfpb_newsroom` (RSS)
+- `nydfs_press_release` (`html_links` mode, path filter `/reports_and_publications/press_releases/pr`)
+
+Wired into `connector-enrichment-6hour.yml`'s enrichment matrix alongside the existing securities-market connectors. Not added to a new extraction-schedule workflow in this pass — see whichever workflow currently runs `SECURITIES_MARKET_CONNECTORS` extraction and add these `--connector` values there too if a schedule is wanted (check `connector-gap-6hour.yml` first, since PCAOB/MSRB already run there).
+
+### 6. Google News query connector for FinCEN coverage — DONE
+
+One new connector, `google_news_fincen_enforcement_article`, added to `trade_media_scraper.py`'s `TRADE_MEDIA_SOURCES` (same pattern as the existing `google_news_ponzi_investor_fraud_article`/`google_news_senate_committee_article`) and `TRADE_MEDIA_CONNECTORS`. Query targets FinCEN enforcement actions, consent orders, and civil penalties — this is also the practical substitute for the direct FinCEN connector that couldn't be verified (see above).
+
+### 1. Backfill the 16 restored connectors — NOT EXECUTED, needs your go-ahead
+
+The connectors restored in the Process Pipeline Review fix (commit `52292f9`) were dead for ~2-3 days before the fix shipped. The regular schedule's `selection: new_or_updated` with modest `--limit`/`--max-pages` may not reach back through that gap on high-volume sources (PR Newswire, CoinDesk, The Hacker News). Runbook: trigger `workflow_dispatch` on `rss-full-ingestion-3hour.yml` and `cyber-sources-3hour.yml` with `extraction_limit: 50` and `max_pages: 4`. Not run in this session because it's a production action (real external fetches + real writes to the production GCS bucket), not a code change — needs explicit confirmation before triggering.
+
+### 3. Audit generic topic-rule keywords with the new backtest tool — NOT EXECUTED, needs live DB access
+
+Still-open item from the Process Pipeline Review: `DEFAULT_TOPIC_RULES` keywords like `"market"`, `"credit"`, `"economy"`, `"stock"` are broad enough to nearly always match, and they gate ingestion for keyword-filtered feeds. The backtest tool built in the previous session (`POST /api/admin/topic-rules/backtest`, live in the admin UI) makes this a live, empirical, ten-minute check — but it requires a live Neon `DATABASE_URL` connection this sandboxed session doesn't have. Runbook: open `/admin` → Topic Rules → expand each rule with a broad keyword → "Preview Matches" → drop or narrow any keyword with a disproportionate per-keyword hit count relative to the others in its rule.
+
+### 4. Add YouTube channels via the managed-channels admin — NOT EXECUTED, needs live admin access + channel refs
+
+Infrastructure already exists (config, scheduling, transcripts, enrichment) and takes new channels with zero code — see `scripts/run_youtube_channel_sources.py` and the admin YouTube-channels UI. Candidates worth adding: Senate Banking Committee, House Financial Services Committee, CFTC, and the Federal Reserve's channel (FOMC press conferences) — verify each channel's current handle/ID live before adding, same caveat as the RSS URLs above. Not done in this session: requires live admin login with real GCS/YouTube credentials, and the actual channel refs weren't confirmed live.
+
+### 7. Monitor the new per-feed failure tracking — NOT EXECUTED, inherently a future check
+
+`rss_feeds.last_error`/`consecutive_failures` (added in the Ingestion Pipeline Review fixes) needs a few days of real traffic to accumulate signal. Runbook: check the admin Feeds panel in ~1 week; prune or fix any feed with a persistent failure streak.
+
 ## Enhancement Scope: Storage, Health-Monitoring Blind Spot, Topic Backtesting - July 2026
 
 Three enhancements were proposed after the ingestion/process reviews below. Status: **items 2 and 3 fully implemented; item 1 implemented as a deliberately conservative Phase 1 only** (schema + non-blocking dual-write, no reader cutover, and the mirror is currently dormant in production since no workflow has `DATABASE_URL` configured yet) — see the caveats under item 1 before assuming more was done.
