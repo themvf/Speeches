@@ -1109,6 +1109,42 @@ def _normalize_enforcement_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# Source kinds that are always enforcement documents, so classification runs
+# even if the body text is thin.
+_ENFORCEMENT_SOURCE_KINDS = {
+    "sec_enforcement_litigation",
+    "sec_administrative_proceeding",
+    "sec_trading_suspension",
+    "finra_awc",
+    "doj_usao_press_release",
+}
+
+# Signals that a document is actually about an enforcement matter. Without at
+# least one of these (or an enforcement source_kind), enforcement fields stay
+# "unknown" — this prevents heuristic enrichment of arbitrary speeches/news
+# from misclassifying them (e.g. "in order to" -> action_type "order").
+_ENFORCEMENT_CONTEXT_TERMS = (
+    "enforcement", "investigation", "investigating", "charged", "charges",
+    "complaint", "settled", "settlement", "penalty", "penalties", "fraud",
+    "litigation", "cease-and-desist", "cease and desist", "disgorgement",
+    "injunction", "indictment", "indicted", "convicted", "guilty plea",
+    "sanction", "sanctions", "administrative proceeding", "litigation release",
+    "defendant", "defendants", "respondent", "respondents", "alleges", "alleged",
+)
+
+
+def _contains_word(needle: str, haystack: str) -> bool:
+    """Whole-word (boundary-aware) containment test on an already-lowercased haystack.
+
+    Avoids the substring false positives of plain `in` — e.g. "charges" must not
+    match "supercharges", and "order" must not match inside another word.
+    """
+    needle = str(needle or "").strip().lower()
+    if not needle:
+        return False
+    return re.search(rf"(?<![a-z0-9]){re.escape(needle)}(?![a-z0-9])", haystack) is not None
+
+
 def _infer_enforcement_metadata(
     title: str = "",
     text: str = "",
@@ -1122,36 +1158,42 @@ def _infer_enforcement_metadata(
     if not release_no_value:
         release_no_value = _extract_release_no(title, url=url) or _extract_release_no(text, url=url)
 
+    is_enforcement_context = (
+        str(source_kind or "").strip().lower() in _ENFORCEMENT_SOURCE_KINDS
+        or any(_contains_word(term, blob) for term in _ENFORCEMENT_CONTEXT_TERMS)
+    )
+
     action_type = "unknown"
-    if any(token in blob for token in ["filed a complaint", "charged", "charges", "complaint alleges"]):
-        action_type = "filing"
-    elif any(token in blob for token in ["settled", "settlement", "agreed to pay", "consented to"]):
-        action_type = "settlement"
-    elif any(token in blob for token in ["final judgment", "judgment entered"]):
-        action_type = "judgment"
-    elif any(token in blob for token in ["dismissed", "dismissal"]):
-        action_type = "dismissal"
-    elif any(token in blob for token in ["order instituting", "cease-and-desist order", "order"]):
-        action_type = "order"
-
     forum = "unknown"
-    if any(token in blob for token in ["u.s. district court", "district court", "federal court"]):
-        forum = "federal_court"
-    elif any(
-        token in blob
-        for token in ["administrative proceeding", "administrative law judge", "before the commission"]
-    ):
-        forum = "administrative"
-    elif "state court" in blob:
-        forum = "state_court"
-
     outcome_status = "unknown"
-    if any(token in blob for token in ["pending litigation", "alleges", "complaint"]):
-        outcome_status = "pending"
-    if any(token in blob for token in ["settled", "judgment entered", "resolved", "ordered to pay"]):
-        outcome_status = "resolved"
-    if any(token in blob for token in ["partial settlement", "partially resolved"]):
-        outcome_status = "partial"
+
+    if is_enforcement_context:
+        if "filed a complaint" in blob or "complaint alleges" in blob or _contains_word("charged", blob) or _contains_word("charges", blob):
+            action_type = "filing"
+        elif _contains_word("settled", blob) or _contains_word("settlement", blob) or "agreed to pay" in blob or "consented to" in blob:
+            action_type = "settlement"
+        elif "final judgment" in blob or "judgment entered" in blob:
+            action_type = "judgment"
+        elif _contains_word("dismissed", blob) or _contains_word("dismissal", blob):
+            action_type = "dismissal"
+        elif "order instituting" in blob or "cease-and-desist" in blob or "administrative proceeding" in blob:
+            # Deliberately not matching a bare "order" here: it appears in
+            # ordinary prose ("in order to") far too often to be a signal.
+            action_type = "order"
+
+        if "district court" in blob or "federal court" in blob:
+            forum = "federal_court"
+        elif "administrative proceeding" in blob or "administrative law judge" in blob or "before the commission" in blob:
+            forum = "administrative"
+        elif "state court" in blob:
+            forum = "state_court"
+
+        if "pending litigation" in blob or _contains_word("alleges", blob) or _contains_word("complaint", blob):
+            outcome_status = "pending"
+        if _contains_word("settled", blob) or "judgment entered" in blob or _contains_word("resolved", blob) or "ordered to pay" in blob:
+            outcome_status = "resolved"
+        if "partial settlement" in blob or "partially resolved" in blob:
+            outcome_status = "partial"
 
     violation_rules = [
         ("securities act", "Securities Act Violations"),
@@ -1165,13 +1207,18 @@ def _infer_enforcement_metadata(
         ("offering fraud", "Offering Fraud"),
         ("fcpa", "FCPA Violations"),
     ]
-    alleged_violations = []
-    seen = set()
-    for needle, label in violation_rules:
-        if needle in blob and label.lower() not in seen:
-            seen.add(label.lower())
-            alleged_violations.append(label)
-    parties = _infer_enforcement_parties(title=title, text=text)
+    # Violation and party inference only make sense for enforcement documents;
+    # on a general speech/news item they produce noise (e.g. a speech that
+    # merely mentions "the Securities Act" is not an enforcement action).
+    alleged_violations: List[str] = []
+    parties: Dict[str, Any] = {}
+    if is_enforcement_context:
+        seen = set()
+        for needle, label in violation_rules:
+            if needle in blob and label.lower() not in seen:
+                seen.add(label.lower())
+                alleged_violations.append(label)
+        parties = _infer_enforcement_parties(title=title, text=text)
 
     return _normalize_enforcement_metadata(
         {
@@ -1228,6 +1275,32 @@ def _is_comment_position_doc(doc: Optional[Dict[str, Any]]) -> bool:
 
 def _infer_comment_position(doc: Optional[Dict[str, Any]], text: str) -> Dict[str, Any]:
     return shared_infer_comment_position(doc, text)
+
+
+def _normalize_for_evidence_match(text: str) -> str:
+    normalized = (
+        str(text or "")
+        .replace("‘", "'")
+        .replace("’", "'")
+        .replace("“", '"')
+        .replace("”", '"')
+    )
+    return re.sub(r"\s+", " ", normalized).strip().lower()
+
+
+def _evidence_snippet_verified(snippet: str, doc_text_normalized: str) -> bool:
+    """True if an evidence snippet appears (near-verbatim) in the source text.
+
+    Whitespace, case, and smart-quote differences are normalized away. Very
+    short snippets are ignored (too likely to match incidentally to be
+    meaningful evidence)."""
+    snip = _normalize_for_evidence_match(snippet)
+    if len(snip) < 12 or not doc_text_normalized:
+        return False
+    if snip in doc_text_normalized:
+        return True
+    trimmed = snip.strip(" .,:;!?\"'—–-")
+    return len(trimmed) >= 12 and trimmed in doc_text_normalized
 
 
 def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1297,13 +1370,24 @@ def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[st
 
     evidence_spans = payload.get("evidence_spans", [])
     normalized_evidence = []
+    doc_text_for_match = _normalize_for_evidence_match(str((doc or {}).get("full_text", "") or ""))
     if isinstance(evidence_spans, list):
         for item in evidence_spans[:8]:
             if isinstance(item, dict):
                 claim = str(item.get("claim", "") or "").strip()
                 snippet = str(item.get("snippet", "") or "").strip()
                 if claim and snippet:
-                    normalized_evidence.append({"claim": claim, "snippet": snippet[:600]})
+                    # Enrichment asks for verbatim snippets; verify each actually
+                    # appears in the source so hallucinated "quotes" can be scored
+                    # down (see _compute_reward) instead of rewarded by count. When
+                    # no doc text is available to check against, leave verified
+                    # True so we don't penalize what we can't verify.
+                    verified = True
+                    if doc_text_for_match:
+                        verified = _evidence_snippet_verified(snippet, doc_text_for_match)
+                    normalized_evidence.append(
+                        {"claim": claim, "snippet": snippet[:600], "verified": verified}
+                    )
 
     try:
         confidence = float(payload.get("confidence", 0.0) or 0.0)
@@ -1541,9 +1625,27 @@ def _run_enrichment_agent(
     raise RuntimeError(f"Model did not return parseable JSON after 2 attempts. Last output: {preview}")
 
 
+def _evidence_quality_score(evidence_spans: Any) -> float:
+    """Score evidence coverage weighted by how many spans are verified.
+
+    Coverage rewards having up to 3 spans; the verified fraction discounts
+    hallucinated snippets so fabricated "quotes" no longer score like real
+    ones. Spans without a `verified` key (older records enriched before
+    verification existed) are treated as verified for backward compatibility.
+    """
+    spans = evidence_spans if isinstance(evidence_spans, list) else []
+    count = len(spans)
+    if count == 0:
+        return 0.0
+    verified = sum(1 for span in spans if not isinstance(span, dict) or span.get("verified", True))
+    coverage = min(1.0, count / 3.0)
+    verified_ratio = verified / count
+    return coverage * verified_ratio
+
+
 def _compute_reward(enrichment: Dict[str, Any], review_decision: str, status: str = "enriched") -> Dict[str, Any]:
     schema_validity = 1.0 if enrichment.get("tags") and enrichment.get("keywords") else 0.6
-    evidence_quality = min(1.0, len(enrichment.get("evidence_spans", [])) / 3.0)
+    evidence_quality = _evidence_quality_score(enrichment.get("evidence_spans", []))
     confidence = max(0.0, min(1.0, float(enrichment.get("confidence", 0.0) or 0.0)))
     review_map = {"accepted": 1.0, "edited": 0.8, "pending": 0.6, "rejected": 0.2}
     review_component = review_map.get(str(review_decision or "pending"), 0.6)

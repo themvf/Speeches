@@ -3501,6 +3501,31 @@ def _infer_comment_position(doc, text):
     return _shared_infer_comment_position(doc, text)
 
 
+def _normalize_for_evidence_match(text):
+    normalized = (
+        str(text or "")
+        .replace("‘", "'")
+        .replace("’", "'")
+        .replace("“", '"')
+        .replace("”", '"')
+    )
+    return re.sub(r"\s+", " ", normalized).strip().lower()
+
+
+def _evidence_snippet_verified(snippet, doc_text_normalized):
+    """True if an evidence snippet appears (near-verbatim) in the source text.
+
+    Kept in sync with the same helper in run_financial_news_pipeline.py so the
+    review UI's reward recompute matches the pipeline's."""
+    snip = _normalize_for_evidence_match(snippet)
+    if len(snip) < 12 or not doc_text_normalized:
+        return False
+    if snip in doc_text_normalized:
+        return True
+    trimmed = snip.strip(" .,:;!?\"'—–-")
+    return len(trimmed) >= 12 and trimmed in doc_text_normalized
+
+
 def _normalize_enrichment_payload(payload, doc=None):
     if not isinstance(payload, dict):
         payload = {}
@@ -3574,16 +3599,21 @@ def _normalize_enrichment_payload(payload, doc=None):
 
     evidence_spans = payload.get("evidence_spans", [])
     normalized_evidence = []
+    doc_text_for_match = _normalize_for_evidence_match(str((doc or {}).get("full_text", "") or ""))
     if isinstance(evidence_spans, list):
         for item in evidence_spans[:8]:
             if isinstance(item, dict):
                 claim = str(item.get("claim", "") or "").strip()
                 snippet = str(item.get("snippet", "") or "").strip()
                 if claim and snippet:
+                    verified = True
+                    if doc_text_for_match:
+                        verified = _evidence_snippet_verified(snippet, doc_text_for_match)
                     normalized_evidence.append(
                         {
                             "claim": claim,
                             "snippet": snippet[:600],
+                            "verified": verified,
                         }
                     )
 
@@ -3760,9 +3790,21 @@ def _run_enrichment_agent(client, doc, model_name):
     raise RuntimeError(f"Model did not return parseable JSON after 2 attempts. Last output: {preview}")
 
 
+def _evidence_quality_score(evidence_spans):
+    """Coverage weighted by verified fraction. Spans without a `verified` key
+    (older records) count as verified for backward compatibility. Kept in sync
+    with run_financial_news_pipeline.py."""
+    spans = evidence_spans if isinstance(evidence_spans, list) else []
+    count = len(spans)
+    if count == 0:
+        return 0.0
+    verified = sum(1 for span in spans if not isinstance(span, dict) or span.get("verified", True))
+    return min(1.0, count / 3.0) * (verified / count)
+
+
 def _compute_reward(enrichment, review_decision, status="enriched"):
     schema_validity = 1.0 if enrichment.get("tags") and enrichment.get("keywords") else 0.6
-    evidence_quality = min(1.0, len(enrichment.get("evidence_spans", [])) / 3.0)
+    evidence_quality = _evidence_quality_score(enrichment.get("evidence_spans", []))
     confidence = float(enrichment.get("confidence", 0.0) or 0.0)
     confidence = max(0.0, min(1.0, confidence))
 

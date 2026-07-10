@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Pattern, Tuple
 from urllib.parse import urlparse
 
 import run_financial_news_pipeline as core
@@ -315,6 +316,31 @@ def _substack_topic_search_term_limit() -> int:
         return 9
 
 
+@functools.lru_cache(maxsize=4096)
+def _topic_term_pattern(term: str) -> Optional[Pattern[str]]:
+    """Compile a word-boundary matcher for a topic keyword.
+
+    Mirrors the TS `keywordPattern` in apps/web/lib/intel-topic-matching.ts so
+    Python topic annotation and the web-side RSS topic matching agree. Plain
+    substring matching (the prior behavior) let short terms over-match — e.g.
+    "ai" hit "em[ai]l" and "sec" hit "[sec]ond". Multi-word terms are matched
+    with flexible separators (space, hyphen, en/em dash, underscore, slash).
+    """
+    normalized = _normalize_space(term).lower()
+    if not normalized:
+        return None
+    parts = [re.escape(part) for part in normalized.split() if part]
+    if not parts:
+        return None
+    source = r"[\s\-–—_/]+".join(parts)
+    return re.compile(rf"(?:^|[^a-z0-9]){source}(?=$|[^a-z0-9])", re.IGNORECASE)
+
+
+def _topic_term_matches(term: str, haystack: str) -> bool:
+    pattern = _topic_term_pattern(term)
+    return bool(pattern and pattern.search(haystack))
+
+
 def _annotate_topic_matches(entry: Dict[str, Any], rules: List[Dict[str, Any]]) -> None:
     if not rules:
         return
@@ -335,7 +361,7 @@ def _annotate_topic_matches(entry: Dict[str, Any], rules: List[Dict[str, Any]]) 
     matched_terms: List[str] = []
     for rule in rules:
         rule_terms = _topic_rule_terms(rule)
-        hits = [term for term in rule_terms if term and term in haystack]
+        hits = [term for term in rule_terms if term and _topic_term_matches(term, haystack)]
         if not hits:
             continue
         key = _normalize_space(rule.get("topic_key", ""))
