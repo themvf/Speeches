@@ -42,6 +42,7 @@ export type StoredRssArticleAnalysis = {
   topics: string[];
   analysis_text: string;
   fallback: boolean;
+  strengthened: boolean;
   error: string;
 };
 
@@ -332,6 +333,7 @@ function normalizeAnalysisRow(row: Record<string, unknown> | null | undefined): 
     topics: textArray(row.topics, 20),
     analysis_text: String(row.analysis_text || ""),
     fallback: Boolean(row.fallback),
+    strengthened: Boolean(row.strengthened),
     error: String(row.error || ""),
   };
 }
@@ -373,9 +375,11 @@ export async function ensureSchema(): Promise<void> {
       topics              TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
       analysis_text       TEXT NOT NULL DEFAULT '',
       fallback            BOOLEAN NOT NULL DEFAULT false,
+      strengthened        BOOLEAN NOT NULL DEFAULT false,
       error               TEXT NOT NULL DEFAULT ''
     )
   `;
+  await sql`ALTER TABLE rss_article_analysis ADD COLUMN IF NOT EXISTS strengthened BOOLEAN NOT NULL DEFAULT false`;
   await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_guid ON rss_article_analysis (guid)`;
   await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_status ON rss_article_analysis (status)`;
   await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_keywords ON rss_article_analysis USING GIN (keywords)`;
@@ -788,6 +792,9 @@ export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys
           AND ra.status = 'enriched'
           AND (
             ra.fallback = true
+            -- Padded (boilerplate-filled) analyses look complete by item count
+            -- but the model underdelivered; re-queue them.
+            OR ra.strengthened = true
             OR ra.model NOT ILIKE 'deepseek%'
             OR length(COALESCE(ra.thesis, '')) < 40
             OR jsonb_array_length(COALESCE(ra.why_it_matters, '[]'::jsonb)) < 2
@@ -838,12 +845,12 @@ export async function saveRssArticleAnalysis(article: StoredRssArticle, analysis
     INSERT INTO rss_article_analysis (
       article_id, guid, source_hash, status, model, generated_at, thesis,
       why_it_matters, risk_signals, follow_up_questions,
-      keywords, individuals, entities, topics, analysis_text, fallback, error
+      keywords, individuals, entities, topics, analysis_text, fallback, strengthened, error
     )
     VALUES (
       ${article.id}, ${article.guid}, ${sourceHash}, 'enriched', ${analysis.model}, ${analysis.generated_at},
       ${analysis.thesis}, ${whyJson}::jsonb, ${riskJson}::jsonb, ${followJson}::jsonb,
-      ${keywords}, ${individuals}, ${entities}, ${cleanedTopics}, ${analysisText}, ${analysis.fallback}, ''
+      ${keywords}, ${individuals}, ${entities}, ${cleanedTopics}, ${analysisText}, ${analysis.fallback}, ${analysis.strengthened}, ''
     )
     ON CONFLICT (article_id) DO UPDATE SET
       guid = EXCLUDED.guid,
@@ -861,6 +868,7 @@ export async function saveRssArticleAnalysis(article: StoredRssArticle, analysis
       topics = EXCLUDED.topics,
       analysis_text = EXCLUDED.analysis_text,
       fallback = EXCLUDED.fallback,
+      strengthened = EXCLUDED.strengthened,
       error = ''
     RETURNING *
   `) as unknown as Record<string, unknown>[];

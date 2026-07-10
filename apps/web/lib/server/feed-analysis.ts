@@ -29,6 +29,11 @@ export interface FeedAnalysis {
   model: string;
   generated_at: string;
   fallback: boolean;
+  // True when a non-sparse input had to be padded with boilerplate to reach
+  // the minimum list sizes, i.e. the model itself underdelivered on content it
+  // had. Used to re-queue the item for analysis: the count-based weakness check
+  // otherwise sees the padded lists as healthy and never regenerates them.
+  strengthened: boolean;
   analysis_version: number;
 }
 
@@ -119,6 +124,7 @@ export function shouldRefreshFeedAnalysisForDeepSeek(analysis: {
   analysis_version?: number;
   model?: string;
   fallback?: boolean;
+  strengthened?: boolean;
   thesis?: string;
   why_it_matters?: unknown;
   risk_signals?: unknown;
@@ -131,7 +137,12 @@ export function shouldRefreshFeedAnalysisForDeepSeek(analysis: {
     return true;
   }
   const model = normalizeText(analysis.model).toLowerCase();
-  return Boolean(analysis.fallback) || !model.startsWith("deepseek") || hasWeakFeedAnalysisFields(analysis);
+  return (
+    Boolean(analysis.fallback) ||
+    Boolean(analysis.strengthened) ||
+    !model.startsWith("deepseek") ||
+    hasWeakFeedAnalysisFields(analysis)
+  );
 }
 
 function stringList(value: unknown, maxItems: number, maxChars = 180): string[] {
@@ -180,6 +191,7 @@ function coerceAnalysis(raw: unknown, model: string, fallback: boolean): FeedAna
     model,
     generated_at: new Date().toISOString(),
     fallback,
+    strengthened: false,
     analysis_version: FEED_ANALYSIS_VERSION,
   };
 }
@@ -283,6 +295,7 @@ export function fallbackFeedAnalysis(input: FeedAnalysisInput, model = "heuristi
     model,
     generated_at: new Date().toISOString(),
     fallback: true,
+    strengthened: false,
     analysis_version: FEED_ANALYSIS_VERSION,
   };
 }
@@ -508,6 +521,15 @@ function ensureMinimumList(values: string[], fallback: string[], minItems: numbe
 function strengthenFeedAnalysis(input: FeedAnalysisInput, analysis: FeedAnalysis): FeedAnalysis {
   const fallback = fallbackFeedAnalysis(input, analysis.model);
   const sparse = isSparseFeedInput(input);
+  // Count the model's own output before any padding. On a non-sparse input,
+  // if the model itself produced fewer than the minimum in any bucket, the
+  // strengthened lists below are propped up by boilerplate — flag it so the
+  // retry logic re-queues it instead of treating the padded result as healthy.
+  const modelUnderdelivered =
+    analysisList(analysis.why_it_matters).length < 2 ||
+    analysisList(analysis.risk_signals).length < 2 ||
+    analysisList(analysis.follow_up_questions).length < 2;
+  const strengthened = !sparse && modelUnderdelivered;
   const names = sparse ? contextualEntities(input) : heuristicEntities(input);
   const why = pushUnique(sparse ? [] : [...analysis.why_it_matters], contextualWhyItMatters(input), 5);
   const risks = pushUnique(sparse ? [] : [...analysis.risk_signals], contextualRiskSignals(input), 5);
@@ -526,6 +548,7 @@ function strengthenFeedAnalysis(input: FeedAnalysisInput, analysis: FeedAnalysis
     keywords,
     individuals,
     entities,
+    strengthened,
     analysis_version: FEED_ANALYSIS_VERSION,
   };
 }
