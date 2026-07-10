@@ -72,6 +72,25 @@ TRADE_MEDIA_CONNECTORS = {
     "ft_portfolios_market_commentary",
     "liberty_street_economics_article",
     "wealth_of_common_sense_article",
+    # Crypto media
+    "coindesk_article",
+    "cointelegraph_article",
+    "decrypt_article",
+    "the_block_article",
+    # Cyber / threat-intel media
+    "krebs_on_security_article",
+    "the_hacker_news_article",
+    "welivesecurity_article",
+    "sophos_security_operations_article",
+    "flashpoint_blog_article",
+    "recorded_future_article",
+    "intel471_blog_article",
+    "securityweek_article",
+    "dark_reading_article",
+    # Wire service and Google News aggregators
+    "prnewswire_article",
+    "google_news_ponzi_investor_fraud_article",
+    "google_news_senate_committee_article",
 }
 
 TRADE_ASSOCIATION_CONNECTORS = {

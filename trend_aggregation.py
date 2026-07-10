@@ -252,6 +252,10 @@ SPARKLINE_DAYS = 30
 GROWTH_WINDOW_DAYS = 30
 GROWTH_BASELINE_DAYS = 60  # the 30 days before the growth window
 
+# Enrichment-entry statuses whose tags feed trend aggregation. "reviewed" is
+# a human-accepted "enriched" entry (same tags); both must count.
+TREND_COUNTED_STATUSES = {"enriched", "reviewed"}
+
 # Date parsing patterns (ordered by specificity)
 _DATE_PATTERNS: List[Tuple[str, str]] = [
     # ISO: 2025-06-30, 2025-06-30T12:00:00Z
@@ -513,7 +517,13 @@ def build_trends(
     enriched_count = 0
     for doc_id, entry in entries.items():
         status = entry.get("status", "")
-        if status != "enriched":
+        # "reviewed" is a human-accepted enrichment: it carries the same tags as
+        # when it was "enriched", so it must count here too. Excluding it (the
+        # prior behavior) meant approving a document in the review UI silently
+        # dropped it from every trend count, sparkline, and growth calculation.
+        # "fallback_enriched" is intentionally excluded: its heuristic tags are
+        # lower quality and would dilute the trend signal.
+        if status not in TREND_COUNTED_STATUSES:
             continue
 
         enrichment = entry.get("enrichment", {})
