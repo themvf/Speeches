@@ -54,6 +54,7 @@ jobs:
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '30' }}

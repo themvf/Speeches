@@ -37,6 +37,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       ENRICH_MODEL: deepseek-v4-pro
       RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}

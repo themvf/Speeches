@@ -19,6 +19,7 @@ jobs:
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
       CRS_PROXY_URL: ${{ secrets.CRS_PROXY_URL || secrets.RESIDENTIAL_PROXY_URL }}
 

@@ -28,6 +28,7 @@ jobs:
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       ENRICH_MODEL: deepseek-v4-pro
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '20' }}

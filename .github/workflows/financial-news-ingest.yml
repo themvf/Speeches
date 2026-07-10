@@ -59,6 +59,7 @@ jobs:
       NEWSAPI_API_KEY: ${{ secrets.NEWSAPI_API_KEY }}
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       INGEST_LIMIT: ${{ github.event.inputs.ingest_limit || '10' }}
       LOOKBACK_DAYS_OVERRIDE: ${{ github.event.inputs.lookback_days || '' }}
       SELECTION_MODE: ${{ github.event.inputs.selection || 'new_or_updated' }}
