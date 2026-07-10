@@ -1,5 +1,48 @@
 # CLAUDE.md
 
+## Next Steps Roadmap - Four Initiatives Scoped - July 2026
+
+Four initiatives were proposed after the DeepSeek/enrichment review below: two new features, one existing-feature improvement, and completing the already-started Neon migration (fixes the GCS egress cost driver identified in the Database Cost Audit section below). Status: **all four are specs only — none are implemented yet.** This section is meant to be buildable from directly, not a vague idea list. Item 4's first step needs an explicit credential go-ahead from you before any code runs in production; items 1-3 are pure code work with no such gate.
+
+### 1. Watchlists + alert digests — NOT STARTED
+
+Turn this from a pull product (you have to visit the dashboard) into a push product (it tells you when something you care about shows up).
+
+- **Schema**: new `watchlists` table (Neon) — `id, label, kind ('entity'|'keyword'|'topic'|'source_kind'), value, active, created_at`. New `watchlist_matches` table — `id, watchlist_id, source_type, source_id, matched_at` (dedup key on `watchlist_id + source_type + source_id`).
+- **Matching**: no new LLM calls needed. Entity/keyword watchlists match against the `intelligence_mentions` table (already populated per RSS article and per enriched document via `normalized_value`) via an indexed lookup, not a new classification step. Topic watchlists reuse `getMatchingTopics`/`rss_topic_rules`. Source-kind watchlists are a plain equality filter.
+- **Where matching runs**: hook into the existing `/api/intel/rss-refresh` and `run_financial_news_pipeline.py` enrichment loop right after each article/document is saved — a single indexed query per new item, not a batch scan.
+- **Surfacing**: an `/alerts` page (in-app inbox, badge count of unread matches) plus a new `watchlist-digest-daily.yml` workflow that queries unread matches and posts a summary — start with a GitHub issue post (same zero-credential pattern `daily-health-check.yml` already uses), leave email (Resend/SES) as an explicit later upgrade requiring a new secret.
+- **Admin UI**: a Watchlists panel in `apps/web/app/admin/page.tsx`, copying the existing feeds/topic-rules CRUD pattern.
+
+### 2. Stocks getting attention (ticker extraction + daily attention tracking) — NOT STARTED
+
+The first real slice of the architecture already scoped in the "Stock-Specific News Connectors" section below — a new lens over content already ingested, not a new source.
+
+- **Ticker/company resolution**: seed from SEC's public `company_tickers.json` (a free, static, no-auth JSON file mapping CIK/ticker/company name) as the alias source — do not attempt this via an LLM call per document; it's a lookup problem, not a generation problem.
+- **Extraction**: run the resolver against `entities` already produced by enrichment (`_normalize_enrichment_payload`'s `entities` list) plus raw title/description text for RSS articles — no new full-text LLM pass required.
+- **Schema**: new `daily_stock_attention` table — `date, ticker, mention_count, source_count, weighted_score, mood, top_source_ids` (per the schema already sketched in "Stock-Specific News Connectors" below); mentions themselves reuse the existing `intelligence_mentions` shape with `mention_type = 'ticker'`.
+- **Aggregation**: one new daily Python script/workflow (`aggregate_stock_attention.py` + `stock-attention-daily.yml`) reading the day's mentions, computing mention count/source diversity/freshness decay, no LLM calls — pure aggregation, matching `trend_aggregation.py`'s existing pattern.
+- **Surfacing**: new `/market/attention` (or a panel on the existing `/market` page, which already has price data — pairing "what moved" with "what's being talked about" is the useful combination) ranking tickers with drill-down to source articles. Label output "research context only, not investment advice" per the compliance defaults already documented below.
+- Depends on item 3 (entity normalization) for clean company-name-to-ticker matching — do item 3 first or expect noisier initial results.
+
+### 3. Entity normalization / alias map — NOT STARTED
+
+The most-cited open item across both the Ingestion and Process Pipeline reviews below: "SEC" / "Securities and Exchange Commission" / "the Commission" currently count as separate entities, fragmenting `intelligence_mentions`, undercounting trends, and (once item 2 exists) splitting ticker/company mention counts across name variants.
+
+- **Single shared config**: one alias map (regulators, agencies, common companies/tickers) consumed by **both** the TS path (`normalizeMention` in `apps/web/lib/server/neon.ts`, used by `saveIntelligenceMentions`) and the Python path (`_normalize_enrichment_payload`'s entity handling in `run_financial_news_pipeline.py`) — same shared-config motivation already flagged for the three drifting stopword lists in the Process Pipeline Review below. A single JSON/config file read by both, not two hand-maintained copies.
+- **Backfill**: a one-time script re-normalizing existing rows in `intelligence_mentions` (update `normalized_value` in place, re-run the `ON CONFLICT` upsert path to merge now-duplicate rows) — needed since this changes the meaning of already-stored data, not just future writes.
+- **Tests**: both TS and Python sides need unit tests asserting known alias pairs collapse to the same `normalized_value`.
+- This is a force multiplier, not a standalone feature: it directly improves watchlist match reliability (item 1), ticker/company attention accuracy (item 2), the existing knowledge graph page, and trend counts — worth doing before or alongside items 1-2 rather than after.
+
+### 4. Complete the Neon documents migration (fixes GCS egress costs) — NOT STARTED, step 1 needs your go-ahead
+
+Phase 1 (schema + non-blocking dual-write) is already done — see "Migrate the corpus from one GCS JSON blob to Neon" under the Enhancement Scope section below for what exists today. The remaining phases, unchanged from that write-up, restated here as the roadmap item:
+
+- **Phase 1.5 (decision, not code)**: wire `DATABASE_URL` into the ~15 extraction/ingest workflow YAML files that don't have it yet, so the dormant `documents` table mirror actually starts populating. This is a credential/security decision (granting live DB write access to more scheduled CI jobs) — needs your explicit sign-off before any workflow file is touched, same as flagged last session.
+- **Phase 2**: one-time backfill script (`sync_knowledge_index.py`-style) reading the full `custom_documents.json` blob and writing every existing document into the new `documents` table; verify row counts and spot-check content match before trusting it.
+- **Phase 3**: cut over readers one at a time, cheapest/lowest-risk first — `/api/metrics` (already has a bounded/partial-failure pattern) or enrichment-candidate selection (`_build_news_enrichment_candidates`, which would immediately benefit from an indexed "unenriched docs of kind X" query instead of a full-corpus scan) are the best starting points.
+- **Phase 4**: once all readers are cut over and stable for an observation period, stop writing `custom_documents.json` in the ~23 scheduled workflows entirely — this is what actually eliminates the GCS egress cost identified in the Database Cost Audit section below, since it removes the full-blob download/upload cycle from every one of those workflow runs. Keep the blob only as a periodic read-only export/backup if wanted.
+
 ## Enrichment/Analysis/DeepSeek Review - July 2026
 
 Use this note when debugging DeepSeek spend, stale/missing enrichment for a source kind, or why an article keeps getting re-analyzed. A review of the enrichment (`run_financial_news_pipeline.py`), RSS analysis (`apps/web/lib/server/feed-analysis.ts`), and sentiment (`run_sentiment_pipeline.py`) pipelines found the items below. Status: **all 7 items implemented and tested** (Python: 217 tests passing including 10 new; TS: `tsc`/`eslint`/`next build` all pass, plus a pglite smoke test for the new SQL).
