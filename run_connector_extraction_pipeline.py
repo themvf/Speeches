@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Pattern, Tuple
 from urllib.parse import urlparse
 
 import run_financial_news_pipeline as core
-from source_health import record_source_health
+from source_health import RecordingArgumentParser, record_source_health
 
 
 SEC_TM_FAQ_DEFAULT_URL = "https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions"
@@ -2742,7 +2742,7 @@ def _should_fail_for_item_failures(connector: str, summary: Dict[str, Any]) -> b
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Connector extraction pipeline")
+    parser = RecordingArgumentParser(description="Connector extraction pipeline")
     parser.add_argument("--connector", required=True, choices=sorted(SUPPORTED_CONNECTORS))
     parser.add_argument("--base-url", default="")
     parser.add_argument("--selection", choices=["new_or_updated", "all"], default="new_or_updated")

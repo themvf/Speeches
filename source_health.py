@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import argparse
 import base64
 import binascii
 import json
 import os
 import re
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -183,6 +185,10 @@ def categorize_error(sample_error: str, summary: Dict[str, Any]) -> str:
     ]).lower()
     if not text and to_int(summary.get("discovered_count", 0)) == 0:
         return "no_discovery"
+    if normalize_space(summary.get("command", "")) == "argparse_error":
+        if "invalid choice" in text:
+            return "invalid_choice"
+        return "cli_usage_error"
     if "403" in text or "forbidden" in text:
         return "blocked_403"
     if "429" in text or "rate limit" in text or "too many requests" in text:
@@ -298,6 +304,56 @@ def record_source_health(summary: Dict[str, Any], storage: Optional[GCSStorage] 
         save_source_health(payload, storage)
     except Exception as exc:
         print(f"Source health logging failed: {exc}", flush=True)
+
+
+def _extract_cli_flag_value(flag: str) -> str:
+    """Best-effort extraction of a CLI flag's value directly from sys.argv.
+
+    Used when argparse itself is about to fail (e.g. an unsupported
+    --connector choice), before any parsed `args` object exists, so the
+    attempted value can still be logged for diagnostics."""
+    argv = sys.argv[1:]
+    for i, token in enumerate(argv):
+        if token == flag and i + 1 < len(argv):
+            return argv[i + 1]
+        if token.startswith(f"{flag}="):
+            return token.split("=", 1)[1]
+    return ""
+
+
+class RecordingArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser whose error() also logs a source-health failure entry
+    before exiting.
+
+    Plain argparse.ArgumentParser.error() prints a usage message and exits
+    (SystemExit) before a script's own try/except around its real work ever
+    runs - which is exactly where record_source_health() is normally called.
+    That meant a CLI usage error (e.g. a --connector value dropped from
+    SUPPORTED_CONNECTORS by an unrelated change elsewhere) was completely
+    invisible to the failing/stale/quiet source-health dashboard and its
+    daily GitHub issue: every scheduled run of a broken connector "failed"
+    but left no trace anywhere health monitoring could see. This subclass
+    logs the failure first, then defers to the normal argparse behavior
+    (same usage message, same exit code) so CLI behavior is unchanged for
+    callers - only its visibility to monitoring changes. Subparsers created
+    via add_subparsers() inherit this class automatically.
+    """
+
+    def error(self, message: str) -> None:
+        try:
+            record_source_health(
+                {
+                    "ok": False,
+                    "command": "argparse_error",
+                    "connector": _extract_cli_flag_value("--connector"),
+                    "source_kind": _extract_cli_flag_value("--source-kind"),
+                    "error": message,
+                    "ran_at": utc_now_iso(),
+                }
+            )
+        except Exception as exc:
+            print(f"Source health logging (argparse error) failed: {exc}", flush=True)
+        super().error(message)
 
 
 def build_source_health_report(payload: Dict[str, Any], lookback_hours: int = 25) -> Dict[str, Any]:

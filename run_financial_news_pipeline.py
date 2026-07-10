@@ -33,7 +33,7 @@ from comment_position import (
     is_comment_position_document as shared_is_comment_position_document,
 )
 from rule_summaries import build_rule_summaries_payload
-from source_health import record_source_health
+from source_health import RecordingArgumentParser, record_source_health
 
 try:
     from openai import OpenAI
@@ -2348,7 +2348,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Financial news ingest and enrichment pipeline")
+    parser = RecordingArgumentParser(description="Financial news ingest and enrichment pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     ingest = subparsers.add_parser("ingest", help="Discover and ingest financial news articles")
