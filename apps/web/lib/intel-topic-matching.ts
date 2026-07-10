@@ -24,7 +24,7 @@ export interface TopicMatch {
   score: number;
 }
 
-interface TopicKeywordMatcher {
+export interface TopicKeywordMatcher {
   keyword: string;
   pattern: RegExp | null;
   specificity: number;
@@ -129,4 +129,22 @@ export function getTopicMatches(article: TopicArticleInput, rules: TopicRuleView
 
 export function getMatchingTopics(article: TopicArticleInput, rules: TopicRuleView[]): TopicRuleView[] {
   return getTopicMatches(article, rules).map((match) => match.rule);
+}
+
+/**
+ * Compile a raw keyword list into matchers once, so callers scanning many
+ * articles (e.g. the topic-rule backtest tool) don't recompile the same
+ * regex per article. Reuses the exact same word-boundary matching as
+ * getTopicMatches/getMatchingTopics, so a backtest preview reflects real
+ * ingestion-time behavior.
+ */
+export function compileKeywords(keywords: string[]): TopicKeywordMatcher[] {
+  return keywords.map(compileKeywordMatcher);
+}
+
+/** Keywords (from precompiled matchers) that match a given article. */
+export function matchingKeywordsForArticle(matchers: TopicKeywordMatcher[], article: TopicArticleInput): string[] {
+  const title = normalizeMatchText(article.title);
+  const description = normalizeMatchText(article.description ?? "");
+  return matchers.filter((matcher) => keywordMatcherScore(matcher, title, description) > 0).map((matcher) => matcher.keyword);
 }

@@ -828,6 +828,43 @@ export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys
   return [...direct, ...stale].slice(0, cappedLimit);
 }
 
+export type BacktestArticle = {
+  id: number;
+  title: string;
+  description: string;
+  url: string;
+  feed_key: string;
+  published_at: string | null;
+};
+
+/**
+ * Recent articles for the admin topic-rule backtest tool - a live preview of
+ * how a candidate keyword set would have matched real ingested articles,
+ * distinct from the static suggested-keyword content in
+ * topic-rule-recommendations.ts.
+ */
+export async function getRecentRssArticlesForBacktest(days = 30, limit = 1500): Promise<BacktestArticle[]> {
+  await ensureSchema();
+  const sql = getSql();
+  const cappedDays = Math.max(1, Math.min(180, days));
+  const cappedLimit = Math.max(1, Math.min(3000, limit));
+  const rows = (await sql`
+    SELECT id, title, description, url, feed_key, published_at
+    FROM rss_articles
+    WHERE COALESCE(published_at, fetched_at) >= now() - (${cappedDays} * INTERVAL '1 day')
+    ORDER BY COALESCE(published_at, fetched_at) DESC
+    LIMIT ${cappedLimit}
+  `) as unknown as BacktestArticle[];
+  return rows.map((row) => ({
+    id: Number(row.id),
+    title: String(row.title || ""),
+    description: String(row.description || ""),
+    url: String(row.url || ""),
+    feed_key: String(row.feed_key || ""),
+    published_at: row.published_at ? String(row.published_at) : null,
+  }));
+}
+
 export async function saveRssArticleAnalysis(article: StoredRssArticle, analysis: FeedAnalysis, topics: string[]): Promise<StoredRssArticleAnalysis> {
   await ensureSchema();
   const sql = getSql();

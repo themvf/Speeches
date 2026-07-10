@@ -1590,6 +1590,106 @@ function TopicRulesReviewPanel({
   );
 }
 
+type TopicBacktestResult = {
+  window_days: number;
+  articles_scanned: number;
+  matched_count: number;
+  keyword_counts: Record<string, number>;
+  samples: Array<{ id: number; title: string; url: string; feed_key: string; matched_keywords: string[] }>;
+};
+
+/**
+ * Live empirical preview of a candidate keyword set against recently stored
+ * rss_articles, using the same word-boundary matcher as ingestion-time topic
+ * annotation. Distinct from the static suggested-keyword content sourced from
+ * TOPIC_RULE_RECOMMENDATION_BY_KEY elsewhere on this page.
+ */
+function TopicBacktestPanel({ keywords }: { keywords: string }) {
+  const [result, setResult] = useState<TopicBacktestResult | null>(null);
+  const [running, setRunning] = useState(false);
+  const [backtestError, setBacktestError] = useState<string | null>(null);
+
+  async function runBacktest() {
+    setRunning(true);
+    setBacktestError(null);
+    try {
+      const res = await fetch("/api/admin/topic-rules/backtest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords }),
+      });
+      const payload = await res.json();
+      if (payload.ok) {
+        setResult(payload.data);
+      } else {
+        setBacktestError(String(payload.error || "Backtest failed"));
+      }
+    } catch {
+      setBacktestError("Network error running backtest");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const sortedKeywordCounts = result
+    ? Object.entries(result.keyword_counts).sort((a, b) => b[1] - a[1])
+    : [];
+
+  return (
+    <div className="mt-3 rounded-lg border border-[color:var(--line)] px-3 py-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
+          Backtest Against Recent Articles
+        </p>
+        <button
+          type="button"
+          onClick={runBacktest}
+          disabled={running || !keywords.trim()}
+          className="rounded-lg border border-[color:var(--line)] px-3 py-1 text-xs font-semibold text-[color:var(--ink)] hover:border-[color:var(--accent)] disabled:opacity-40"
+        >
+          {running ? "Running…" : "Preview Matches"}
+        </button>
+      </div>
+      {backtestError ? <p className="mt-2 text-xs text-[color:var(--danger)]">{backtestError}</p> : null}
+      {result ? (
+        <div className="mt-2 grid gap-2">
+          <p className="text-xs text-[color:var(--ink-soft)]">
+            Matched <span className="font-semibold text-[color:var(--ink)]">{fmtNumber(result.matched_count)}</span> of{" "}
+            {fmtNumber(result.articles_scanned)} articles from the last {result.window_days} days.
+          </p>
+          {sortedKeywordCounts.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {sortedKeywordCounts.map(([keyword, count]) => (
+                <span
+                  key={keyword}
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-mono ${
+                    count === 0
+                      ? "border-[color:rgba(255,199,95,0.35)] text-[color:var(--warn)]"
+                      : "border-[color:var(--line)] text-[color:var(--ink-faint)]"
+                  }`}
+                  title={count === 0 ? "This keyword matched nothing in the window" : undefined}
+                >
+                  {keyword}: {count}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {result.samples.length > 0 ? (
+            <div className="grid gap-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Sample Matches</p>
+              {result.samples.slice(0, 8).map((sample) => (
+                <p key={sample.id} className="truncate text-xs text-[color:var(--ink-soft)]">
+                  <span className="font-mono text-[color:var(--ink-faint)]">[{sample.matched_keywords.join(", ")}]</span> {sample.title}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TopicRulesSection() {
   const [rules, setRules] = useState<TopicRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1751,6 +1851,7 @@ function TopicRulesSection() {
                       />
                     </div>
                   </div>
+                  <TopicBacktestPanel keywords={getValue(rule, "keywords") as string} />
                   <div className="mt-3 flex items-center gap-4">
                     <label className="flex cursor-pointer items-center gap-2">
                       <input
@@ -1794,6 +1895,7 @@ function TopicRulesSection() {
             </button>
           </div>
           {addError && <p className="mt-1 text-xs text-[color:var(--danger)]">{addError}</p>}
+          <TopicBacktestPanel keywords={newRule.keywords} />
         </div>
       </div>
     </section>
