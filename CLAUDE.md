@@ -2,23 +2,25 @@
 
 ## Enhancement Scope: Storage, Health-Monitoring Blind Spot, Topic Backtesting - July 2026
 
-Three enhancements were proposed after the ingestion/process reviews below. Status: **items 2 and 3 implemented**; item 1 is a deliberately conservative Phase 1 only (schema + non-blocking dual-write, no reader cutover) — see caveat under item 1 before assuming more was done.
+Three enhancements were proposed after the ingestion/process reviews below. Status: **items 2 and 3 fully implemented; item 1 implemented as a deliberately conservative Phase 1 only** (schema + non-blocking dual-write, no reader cutover, and the mirror is currently dormant in production since no workflow has `DATABASE_URL` configured yet) — see the caveats under item 1 before assuming more was done.
 
 ### 1. Migrate the corpus from one GCS JSON blob to Neon (plumbing) — PHASE 1 ONLY
 
 The full case for this is already documented in the Ingestion Pipeline Review section below: almost every serious bug found across both reviews (silent wipes, lost-update races, O(N) upsert scans, 240-minute workflow timeouts) traces back to `custom_documents.json` being one JSON blob that ~15 workflows read-modify-write in full. `rss_articles` already proves the alternative works (per-row upserts, no contention).
 
-**What was actually done in this session (Phase 1 of an incremental migration):**
-- Added a `documents` table to Neon (`ensureSchema()` in `neon.ts`), mirroring `custom_documents.json`'s metadata/content shape, with indexes on `source_kind` and `document_id`.
-- Added a best-effort, non-blocking mirror-write from the Python side (`_upsert_custom_document_record` in `run_financial_news_pipeline.py`) that writes the same record into Neon after every successful blob save. Failure to mirror-write is logged and swallowed — it must never block or fail the primary (blob) write path.
-- **No reader was cut over.** The blob remains the sole source of truth for every existing reader (metrics, search, enrichment candidates, Streamlit admin, trend aggregation). This table is currently write-only from the pipeline's perspective; nothing reads from it yet.
+**DONE — what was actually implemented (Phase 1 of an incremental migration):**
+- A `documents` table (schema lives in `neon_feeds.py`'s `_ensure_documents_schema()`, called lazily on first write — **not** in `apps/web/lib/server/neon.ts`'s `ensureSchema()`, since the only writer so far is the Python side). Typed columns for the commonly-filtered fields (`document_id` PK, `title`, `speaker`, `organization`, `doc_type`, `source_kind`, `url`, `published_date`, `word_count`, `full_text`) plus a `metadata JSONB` column (GIN-indexed) for everything else, mirroring the hybrid typed-columns-plus-JSONB pattern already used by `rss_article_analysis`.
+- `neon_feeds.mirror_document(record)` does the actual upsert (`ON CONFLICT (document_id) DO UPDATE`).
+- A best-effort, non-blocking call site in `_upsert_custom_document_record` (`run_financial_news_pipeline.py`, the single choke point both pipeline scripts funnel through) and in `app.py`'s duplicate copy of the same function. **Cheaply skips entirely (no log noise) when `DATABASE_URL` isn't set** — confirmed only 1 of the ~15 extraction/ingest workflows currently sets it, so this is a true no-op almost everywhere today. Only logs (and never raises) if `DATABASE_URL` *is* set but the write still fails. Verified with mocked psycopg2 (`tests/test_neon_document_mirror.py`, 6 tests) that the primary in-memory upsert's return value and corpus state are byte-for-byte identical whether the mirror is skipped, succeeds, or throws.
+- **No reader was cut over, and the mirror is currently dormant in production** (see above — no workflow has `DATABASE_URL`). The blob remains the sole source of truth everywhere. This table is write-only and, right now, mostly not even being written to.
 
-**Why scoped this conservatively:** a full migration needs a backfill of the existing corpus, a verification pass comparing dual-written data against the blob, and then a careful one-reader-at-a-time cutover with production validation at each step — none of which is safe to do blind, without live GCS/Neon credentials to verify against, in one sitting. Doing so would risk exactly the kind of silent data-loss bug this whole review series has been fixing.
+**Deliberately NOT done, and left as a decision for you (not a technical gap):** wiring `DATABASE_URL` into the ~15 extraction/ingest workflow YAML files so the mirror actually starts populating in production. That's a credential/security decision (granting live DB write access to more scheduled CI jobs) that shouldn't be made unilaterally. Once you decide to do that, the mirror will start populating with no further code changes needed.
 
 **Remaining phases (not started):**
+- Phase 1.5: decide on and wire `DATABASE_URL` into the relevant workflows (see above) so the mirror actually starts running.
 - Phase 2: one-time backfill script (`sync_knowledge_index.py`-style) reading the full blob and writing every document into the new Neon table; verify row counts and spot-check content match.
 - Phase 3: cut over readers one at a time, cheapest/lowest-risk first — likely `/api/metrics` (already has a bounded/partial-failure pattern per the smoke-fix section below) or enrichment-candidate selection (`_build_news_enrichment_candidates`), which would immediately benefit from an indexed "unenriched docs of kind X" query instead of a full-corpus scan.
-- Phase 4: once all readers are cut over and stable for a observation period, stop writing `custom_documents.json` entirely and keep it only as a periodic read-only export/backup.
+- Phase 4: once all readers are cut over and stable for an observation period, stop writing `custom_documents.json` entirely and keep it only as a periodic read-only export/backup.
 
 ### 2. Close the "invisible failure" blind spot in source health monitoring — DONE
 

@@ -1147,6 +1147,22 @@ def _url_match_key(url):
         return raw.rstrip("/")
 
 
+def _mirror_document_to_neon_best_effort(record):
+    """Phase 1 of migrating off custom_documents.json (see CLAUDE.md): mirror
+    this record into Neon's new `documents` table. Must never raise or block
+    the caller - failures (including "not configured at all") are swallowed;
+    only logs when DATABASE_URL *is* set but the write still failed. Kept in
+    sync with the same helper in run_financial_news_pipeline.py."""
+    if not os.getenv("DATABASE_URL", "").strip():
+        return
+    try:
+        import neon_feeds
+
+        neon_feeds.mirror_document(record)
+    except Exception as exc:
+        print(f"Neon document mirror-write failed (non-blocking, Phase 1): {exc}", flush=True)
+
+
 def _upsert_custom_document_record(custom_payload, record):
     docs_list = custom_payload.get("documents", [])
     record_meta = record.get("metadata", {})
@@ -1169,6 +1185,7 @@ def _upsert_custom_document_record(custom_payload, record):
         docs_list.append(record)
 
     custom_payload["documents"] = docs_list
+    _mirror_document_to_neon_best_effort(record)
     return replaced
 
 

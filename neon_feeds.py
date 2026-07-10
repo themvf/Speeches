@@ -1,6 +1,7 @@
 """
-Neon (Postgres) helpers for managing rss_feeds.
-Requires DATABASE_URL env var (Neon connection string).
+Neon (Postgres) helpers for managing rss_feeds, topic rules, and (Phase 1 of
+an incremental migration off custom_documents.json) a write-only mirror of
+ingested documents. Requires DATABASE_URL env var (Neon connection string).
 """
 from __future__ import annotations
 
@@ -264,4 +265,105 @@ def delete_topic_rule(rule_id: int) -> None:
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM rss_topic_rules WHERE id = %s", (rule_id,))
+            conn.commit()
+
+
+# ─── Document mirror (Phase 1 of migrating off custom_documents.json) ──────
+#
+# custom_documents.json is one JSON blob that ~15 scheduled workflows plus
+# the web admin routes each download in full, mutate, and re-upload - the
+# root cause behind several data-loss and contention bugs already fixed
+# elsewhere in this codebase (see CLAUDE.md's Ingestion Pipeline Review).
+# rss_articles already proves the alternative (per-row Neon storage) works.
+#
+# This is Phase 1 only: an additive `documents` table plus a best-effort,
+# non-blocking mirror-write called from
+# run_financial_news_pipeline.py's _upsert_custom_document_record. No reader
+# has been cut over - the blob remains the sole source of truth for every
+# existing reader. See CLAUDE.md for the remaining phases (backfill, then a
+# one-reader-at-a-time cutover) before treating this table as authoritative.
+
+_DOCUMENTS_SCHEMA_ENSURED = False
+
+
+def _ensure_documents_schema() -> None:
+    global _DOCUMENTS_SCHEMA_ENSURED
+    if _DOCUMENTS_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS documents (
+                  document_id    TEXT PRIMARY KEY,
+                  title          TEXT NOT NULL DEFAULT '',
+                  speaker        TEXT NOT NULL DEFAULT '',
+                  organization   TEXT NOT NULL DEFAULT '',
+                  doc_type       TEXT NOT NULL DEFAULT '',
+                  source_kind    TEXT NOT NULL DEFAULT '',
+                  url            TEXT NOT NULL DEFAULT '',
+                  published_date TEXT NOT NULL DEFAULT '',
+                  word_count     INTEGER NOT NULL DEFAULT 0,
+                  full_text      TEXT NOT NULL DEFAULT '',
+                  metadata       JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS documents_source_kind ON documents (source_kind)")
+            cur.execute("CREATE INDEX IF NOT EXISTS documents_updated_at ON documents (updated_at DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS documents_metadata_gin ON documents USING GIN (metadata)")
+            conn.commit()
+    _DOCUMENTS_SCHEMA_ENSURED = True
+
+
+def mirror_document(record: Dict[str, Any]) -> None:
+    """Best-effort upsert of one custom_documents.json-shaped record into the
+    Neon `documents` table. Callers must treat this as fire-and-forget: any
+    exception here (missing DATABASE_URL, connectivity, schema) should be
+    caught by the caller and never block or fail the primary blob write."""
+    metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+    content = record.get("content", {}) if isinstance(record.get("content", {}), dict) else {}
+    document_id = str(metadata.get("document_id", "") or "").strip()
+    if not document_id:
+        return
+
+    _ensure_documents_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO documents (
+                  document_id, title, speaker, organization, doc_type,
+                  source_kind, url, published_date, word_count, full_text,
+                  metadata, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                ON CONFLICT (document_id) DO UPDATE SET
+                  title = EXCLUDED.title,
+                  speaker = EXCLUDED.speaker,
+                  organization = EXCLUDED.organization,
+                  doc_type = EXCLUDED.doc_type,
+                  source_kind = EXCLUDED.source_kind,
+                  url = EXCLUDED.url,
+                  published_date = EXCLUDED.published_date,
+                  word_count = EXCLUDED.word_count,
+                  full_text = EXCLUDED.full_text,
+                  metadata = EXCLUDED.metadata,
+                  updated_at = now()
+                """,
+                (
+                    document_id,
+                    str(metadata.get("title", "") or ""),
+                    str(metadata.get("speaker", "") or ""),
+                    str(metadata.get("organization", "") or ""),
+                    str(metadata.get("doc_type", "") or ""),
+                    str(metadata.get("source_kind", "") or ""),
+                    str(metadata.get("url", "") or ""),
+                    str(metadata.get("published_date", "") or metadata.get("date", "") or ""),
+                    int(metadata.get("word_count", 0) or 0),
+                    str(content.get("full_text", "") or ""),
+                    psycopg2.extras.Json(metadata),
+                ),
+            )
             conn.commit()

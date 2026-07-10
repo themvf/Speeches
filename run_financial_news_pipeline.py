@@ -862,6 +862,24 @@ def _find_existing_custom_document_id(custom_payload: Dict[str, Any], record: Di
     return ""
 
 
+def _mirror_document_to_neon_best_effort(record: Dict[str, Any]) -> None:
+    """Phase 1 of migrating off custom_documents.json (see CLAUDE.md): mirror
+    this record into Neon's new `documents` table. Must never raise or block
+    the caller - failures (including "not configured at all", the expected
+    case for most callers today since DATABASE_URL isn't yet wired into most
+    scheduled workflows) are swallowed. Only logs when DATABASE_URL *is* set
+    but the write still failed, since that's the only case worth surfacing.
+    """
+    if not os.getenv("DATABASE_URL", "").strip():
+        return
+    try:
+        import neon_feeds
+
+        neon_feeds.mirror_document(record)
+    except Exception as exc:
+        _stderr(f"Neon document mirror-write failed (non-blocking, Phase 1): {exc}")
+
+
 def _upsert_custom_document_record(custom_payload: Dict[str, Any], record: Dict[str, Any]) -> bool:
     docs_list = custom_payload.get("documents", [])
     if not isinstance(docs_list, list):
@@ -888,6 +906,7 @@ def _upsert_custom_document_record(custom_payload: Dict[str, Any], record: Dict[
     if not replaced:
         docs_list.append(record)
     custom_payload["documents"] = docs_list
+    _mirror_document_to_neon_best_effort(record)
     return replaced
 
 
