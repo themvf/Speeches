@@ -85,6 +85,39 @@ SECURITIES_MARKET_SOURCES: Dict[str, Dict[str, Any]] = {
         "doc_type": "Press Release",
         "tags_csv": "msrb,municipal-securities,market-transparency",
     },
+    "occ_news_release": {
+        "label": "OCC News Releases",
+        "organization": "OCC",
+        "default_url": "https://www.occ.gov/rss/occ_news.xml",
+        "discovery": "rss",
+        "doc_type": "Press Release",
+        "tags_csv": "occ,banking-regulation,bank-supervision",
+    },
+    "fdic_press_release": {
+        "label": "FDIC Press Releases",
+        "organization": "FDIC",
+        "default_url": "https://public.govdelivery.com/topics/USFDIC_26/feed.rss",
+        "discovery": "rss",
+        "doc_type": "Press Release",
+        "tags_csv": "fdic,banking-regulation,deposit-insurance",
+    },
+    "cfpb_newsroom": {
+        "label": "CFPB Newsroom",
+        "organization": "CFPB",
+        "default_url": "https://www.consumerfinance.gov/about-us/newsroom/feed/",
+        "discovery": "rss",
+        "doc_type": "Press Release",
+        "tags_csv": "cfpb,consumer-finance,banking-regulation",
+    },
+    "nydfs_press_release": {
+        "label": "NYDFS Press Releases",
+        "organization": "NYDFS",
+        "default_url": "https://www.dfs.ny.gov/reports_and_publications/press_releases",
+        "discovery": "html_links",
+        "path_contains": "/reports_and_publications/press_releases/pr",
+        "doc_type": "Press Release",
+        "tags_csv": "nydfs,banking-regulation,state-regulator,aml",
+    },
 }
 
 
@@ -411,6 +444,25 @@ class SecuritiesMarketSourcesScraper:
             return container_text[:180].strip()
         return _title_from_url(url)
 
+    def _select_richest_body(self, soup: BeautifulSoup) -> Tag:
+        """Pick the body-content candidate with the most text, not just the
+        first one present. A plain `or`-chain over selectors picks whichever
+        element is *present* first regardless of how much content it holds -
+        on some sites an early selector like <article> matches a near-empty
+        wrapper while the real content lives in a later selector like
+        div.field--name-body, silently truncating every extraction to a
+        handful of words. This mirrors the old fallback order as a tie-break
+        but always keeps the richest candidate."""
+        candidates: List[Tag] = []
+        for selector in ("article", "main", "div.field--name-body"):
+            node = soup.select_one(selector)
+            if node is not None:
+                candidates.append(node)
+        if soup.body is not None:
+            candidates.append(soup.body)
+        candidates.append(soup)
+        return max(candidates, key=lambda node: len(node.get_text(" ", strip=True)))
+
     def _entry(
         self,
         source_key: str,
@@ -494,13 +546,7 @@ class SecuritiesMarketSourcesScraper:
                 title = fallback_title or page_title
             else:
                 title = page_title or fallback_title
-            body = (
-                soup.select_one("article")
-                or soup.select_one("main")
-                or soup.select_one("div.field--name-body")
-                or soup.body
-                or soup
-            )
+            body = self._select_richest_body(soup)
             text = _clean_multiline(body.get_text("\n"))
             date_text = str(entry.get("date", "") or "").strip() or _extract_first_date(text)
             extraction_mode = "html"

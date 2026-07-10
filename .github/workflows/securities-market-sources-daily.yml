@@ -52,6 +52,18 @@ jobs:
           - connector: msrb_press_release
             extraction_limit: "25"
             max_pages: "1"
+          - connector: occ_news_release
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: fdic_press_release
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: cfpb_newsroom
+            extraction_limit: "25"
+            max_pages: "1"
+          - connector: nydfs_press_release
+            extraction_limit: "25"
+            max_pages: "1"
           - connector: sifma_news_item
             extraction_limit: "25"
             max_pages: "3"

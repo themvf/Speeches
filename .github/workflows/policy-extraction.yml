@@ -30,6 +30,10 @@ on:
           - sec_pcaob_rulemaking
           - pcaob_update
           - msrb_press_release
+          - occ_news_release
+          - fdic_press_release
+          - cfpb_newsroom
+          - nydfs_press_release
           - congress_crs_product
           - senate_committee_site
           - sifma_news_item

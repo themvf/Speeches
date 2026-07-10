@@ -59,6 +59,10 @@ SECURITIES_MARKET_CONNECTORS = {
     "sec_pcaob_rulemaking",
     "pcaob_update",
     "msrb_press_release",
+    "occ_news_release",
+    "fdic_press_release",
+    "cfpb_newsroom",
+    "nydfs_press_release",
 }
 
 TRADE_MEDIA_CONNECTORS = {

@@ -146,6 +146,93 @@ def test_extract_document_prefers_listing_date_over_future_body_date(monkeypatch
     assert result["data"]["date"] == "June 25, 2026"
 
 
+def test_occ_fdic_cfpb_rss_sources_discover_and_are_registered():
+    from securities_market_sources_scraper import SECURITIES_MARKET_SOURCES
+
+    for key in ("occ_news_release", "fdic_press_release", "cfpb_newsroom"):
+        cfg = SECURITIES_MARKET_SOURCES[key]
+        assert cfg["discovery"] == "rss"
+        assert cfg["default_url"].startswith("https://")
+
+
+def test_nydfs_html_link_discovery_filters_by_path_and_skips_listing_page(monkeypatch):
+    html = """
+    <div class="views-row">
+      <a href="/reports_and_publications/press_releases/pr20260701">Governor Hochul Issues New Guidance</a>
+      <p>July 1, 2026</p>
+    </div>
+    <div class="views-row">
+      <a href="/reports_and_publications/press_releases">VIEW ALL PRESS RELEASES</a>
+    </div>
+    <a href="/reports_and_publications/press_releases/pr20260609">Stablecoin Framework Proposed Regulation</a>
+    """
+    scraper = SecuritiesMarketSourcesScraper(min_delay_seconds=0)
+    monkeypatch.setattr(scraper, "_fetch", lambda _url, timeout=45: _FakeResponse(text=html, url=_url))
+
+    docs = scraper.discover_documents(
+        "nydfs_press_release", base_url="https://www.dfs.ny.gov/reports_and_publications/press_releases"
+    )
+
+    urls = [d["url"] for d in docs]
+    assert "https://www.dfs.ny.gov/reports_and_publications/press_releases/pr20260701" in urls
+    assert "https://www.dfs.ny.gov/reports_and_publications/press_releases/pr20260609" in urls
+    # The "view all" link back to the listing page itself must not be treated as a document.
+    assert "https://www.dfs.ny.gov/reports_and_publications/press_releases" not in urls
+
+
+def test_extract_document_prefers_richest_body_over_first_matching_selector(monkeypatch):
+    """Regression test: a plain `or`-chain over selectors picks whichever is
+    *present* first, even if it holds almost no text. Some sites (e.g. NYDFS)
+    have a near-empty <article> wrapper while the real content lives in a
+    later selector like div.field--name-body - this must not truncate every
+    extraction from that site to a few words."""
+    html = """
+    <html><body>
+      <article>Back To Newsroom Governor Announces New Policy</article>
+      <main>
+        <article>Back To Newsroom Governor Announces New Policy</article>
+        <div class="field--name-body">
+          <p>Governor Announces New Policy</p>
+          <p>The department today announced a sweeping new policy affecting thousands of regulated entities
+          across the state, following months of stakeholder engagement and public comment on the proposal.</p>
+          <p>Officials said the change reflects lessons learned from recent examinations and is intended to
+          strengthen consumer protections while preserving a competitive marketplace for financial services.</p>
+        </div>
+      </main>
+    </body></html>
+    """
+    scraper = SecuritiesMarketSourcesScraper(min_delay_seconds=0)
+    monkeypatch.setattr(scraper, "_fetch", lambda _url, timeout=90: _FakeResponse(text=html, url=_url))
+
+    result = scraper.extract_document({"url": "https://www.dfs.ny.gov/example", "title": "Fallback"})
+
+    assert result["success"] is True
+    assert "sweeping new policy" in result["data"]["full_text"]
+    assert result["data"]["word_count"] > 30
+
+
+def test_extract_document_still_prefers_article_when_it_has_the_real_content(monkeypatch):
+    """No-regression check: when <article> genuinely holds the richest
+    content (the common case for most existing sources), it must still win."""
+    html = """
+    <html><body>
+      <article>
+        <h1>MSRB Rule Filing</h1>
+        <p>The MSRB advanced municipal securities market transparency initiatives this quarter,
+        publishing updated guidance for dealers and municipal advisors on recordkeeping obligations.</p>
+      </article>
+      <div class="field--name-body">short</div>
+    </body></html>
+    """
+    scraper = SecuritiesMarketSourcesScraper(min_delay_seconds=0)
+    monkeypatch.setattr(scraper, "_fetch", lambda _url, timeout=90: _FakeResponse(text=html, url=_url))
+
+    result = scraper.extract_document({"url": "https://www.msrb.org/example", "title": "Fallback"})
+
+    assert result["success"] is True
+    assert "municipal advisors" in result["data"]["full_text"]
+
+
 def test_extract_document_uses_metadata_fallback_when_detail_fetch_fails(monkeypatch):
     scraper = SecuritiesMarketSourcesScraper(min_delay_seconds=0)
 

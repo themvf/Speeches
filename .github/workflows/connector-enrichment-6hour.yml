@@ -42,6 +42,10 @@ jobs:
           - source_kind: sec_pcaob_rulemaking
           - source_kind: pcaob_update
           - source_kind: msrb_press_release
+          - source_kind: occ_news_release
+          - source_kind: fdic_press_release
+          - source_kind: cfpb_newsroom
+          - source_kind: nydfs_press_release
           - source_kind: sifma_news_item
           - source_kind: congress_crs_product
           - source_kind: federal_reserve_speech_testimony
