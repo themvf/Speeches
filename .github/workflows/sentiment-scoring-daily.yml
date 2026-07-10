@@ -1,0 +1,92 @@
+name: Sentiment Scoring (Daily)
+
+on:
+  schedule:
+    # 21:30 UTC — after the 18:00 connector enrichment window, before the
+    # 00:00 one, to reduce contention on document_enrichment_state.json.
+    # (A generation-match conflict is a clean skip-and-retry, not corruption.)
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+    inputs:
+      score_limit:
+        description: "Max documents to score per source"
+        required: false
+        default: "50"
+      provider:
+        description: "Model provider"
+        required: false
+        default: "deepseek"
+      model:
+        description: "Model id (blank = provider default)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentiment-scoring-daily
+  cancel-in-progress: false
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      # Serialized: every leg writes the shared enrichment-state blob, and the
+      # generation-match guard would otherwise fail overlapping writers.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - source_kind: newsapi_article
+          - source_kind: bloomberg_public_article
+          - source_kind: wsj_dow_jones
+          - source_kind: substack_public_article
+
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SCORE_LIMIT: ${{ github.event.inputs.score_limit || '50' }}
+      SCORE_PROVIDER: ${{ github.event.inputs.provider || 'deepseek' }}
+      SCORE_MODEL: ${{ github.event.inputs.model || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Score ${{ matrix.source_kind }}
+        run: |
+          set -euo pipefail
+          args=(score \
+            --require-remote-persistence \
+            --mode only_missing \
+            --source-kind "${{ matrix.source_kind }}" \
+            --provider "${SCORE_PROVIDER}" \
+            --limit "${SCORE_LIMIT}" \
+            --summary-path "sentiment_${{ matrix.source_kind }}.json")
+          if [ -n "${SCORE_MODEL}" ]; then
+            args+=(--model "${SCORE_MODEL}")
+          fi
+          python run_sentiment_pipeline.py "${args[@]}"
+
+      - name: Upload Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentiment-${{ matrix.source_kind }}-${{ github.run_id }}
+          path: sentiment_${{ matrix.source_kind }}.json
+          if-no-files-found: ignore

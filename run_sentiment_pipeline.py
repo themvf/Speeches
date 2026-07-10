@@ -7,6 +7,11 @@ Workflow: extraction -> enrichment -> sentiment (this script)
 Reads full text from custom_documents.json, scores the author's editorial
 tone using an LLM, and writes results back into document_enrichment_state.json
 under a top-level 'sentiment' key per entry — leaving enrichment untouched.
+
+Storage, model-client, and provider-fallback plumbing are delegated to
+run_financial_news_pipeline (core) so this script inherits the same hardened
+GCS read-failure guard and generation-match write protection instead of
+maintaining its own copy.
 """
 
 from __future__ import annotations
@@ -14,35 +19,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
-import sys
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
-try:
-    import tomllib
-except Exception:
-    tomllib = None
+import run_financial_news_pipeline as core
 
-from gcs_storage import GCSStorage
-
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
-
-
-ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
-STREAMLIT_SECRETS_PATH = ROOT / ".streamlit" / "secrets.toml"
-
-CUSTOM_DOCS_BLOB_NAME = "custom_documents.json"
-CUSTOM_DOCS_LOCAL_PATH = DATA_DIR / "custom_documents.json"
-ENRICHMENT_STATE_BLOB_NAME = "document_enrichment_state.json"
-ENRICHMENT_STATE_LOCAL_PATH = DATA_DIR / "document_enrichment_state.json"
 
 SENTIMENT_LABELS = {"positive", "negative", "neutral"}
+
+# Sentiment statuses that count as "already done" for --mode only_missing.
+# Anything else (fallback_scored from a provider outage, failed, or missing)
+# is retried so a transient outage doesn't permanently pin a doc to neutral.
+_COMPLETED_SENTIMENT_STATUSES = {"scored", "reviewed"}
 
 SENTIMENT_SYSTEM_PROMPT = """\
 You are a tone-scoring agent for financial and regulatory news.
@@ -63,143 +50,8 @@ Return ONLY valid JSON with no markdown or commentary:
 """
 
 
-def _stderr(message: str) -> None:
-    print(str(message), file=sys.stderr)
-
-
 def _utc_now_iso() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _normalize_space(text: str) -> str:
-    return re.sub(r"\s+", " ", str(text or "")).strip()
-
-
-def _coerce_int(value: Any, default: int = 0, min_value: int = 0) -> int:
-    try:
-        num = int(value)
-    except Exception:
-        num = int(default)
-    return max(int(min_value), num)
-
-
-def _sanitize_api_key(value: Any) -> str:
-    key = str(value or "").strip()
-    if not key:
-        return ""
-    if len(key) >= 2 and key[0] == key[-1] and key[0] in {"'", '"'}:
-        key = key[1:-1].strip()
-    if key.lower().startswith("bearer "):
-        key = key[7:].strip()
-    return key
-
-
-def _load_streamlit_secrets() -> Dict[str, Any]:
-    if tomllib is None or not STREAMLIT_SECRETS_PATH.exists():
-        return {}
-    try:
-        with open(STREAMLIT_SECRETS_PATH, "rb") as f:
-            payload = tomllib.load(f)
-        return payload if isinstance(payload, dict) else {}
-    except Exception:
-        return {}
-
-
-def _nested_get(payload: Dict[str, Any], *keys: str) -> Any:
-    current: Any = payload
-    for key in keys:
-        if not isinstance(current, dict):
-            return None
-        current = current.get(key)
-    return current
-
-
-def _get_openai_api_key(secrets_payload: Dict[str, Any]) -> str:
-    return _sanitize_api_key(
-        os.getenv("OPENAI_API_KEY", "")
-        or _nested_get(secrets_payload, "openai", "api_key")
-        or ""
-    )
-
-
-def _get_gcs_storage(secrets_payload: Dict[str, Any]) -> Tuple[Optional[GCSStorage], str]:
-    bucket_name = str(
-        os.getenv("GCS_BUCKET_NAME", "")
-        or _nested_get(secrets_payload, "gcs", "bucket_name")
-        or ""
-    ).strip()
-
-    credentials_info = None
-    credentials_path = str(
-        os.getenv("GCS_CREDENTIALS_PATH", "")
-        or os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-        or ""
-    ).strip()
-
-    if credentials_path:
-        try:
-            with open(credentials_path, "r", encoding="utf-8") as f:
-                credentials_info = json.load(f)
-        except Exception as e:
-            return None, f"Failed to read GCS credentials file: {e}"
-    else:
-        secret_gcs = _nested_get(secrets_payload, "gcs")
-        if isinstance(secret_gcs, dict) and bucket_name:
-            credentials_info = {k: v for k, v in secret_gcs.items() if k != "bucket_name"}
-
-    if not bucket_name or not isinstance(credentials_info, dict) or not credentials_info:
-        return None, "GCS bucket/credentials not configured"
-
-    try:
-        return GCSStorage(bucket_name, credentials_info), ""
-    except Exception as e:
-        return None, f"Failed to initialize GCS storage: {e}"
-
-
-def _load_json_blob(
-    storage: Optional[GCSStorage],
-    blob_name: str,
-    local_path: Path,
-    default: Any = None,
-) -> Any:
-    if storage is not None:
-        try:
-            blob = storage.bucket.blob(blob_name)
-            if blob.exists():
-                payload = json.loads(blob.download_as_text(encoding="utf-8"))
-                local_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(local_path, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, indent=2, ensure_ascii=False)
-                return payload
-        except Exception as e:
-            _stderr(f"Remote load failed for {blob_name}: {e}")
-    if local_path.exists():
-        try:
-            with open(local_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return default if default is not None else {}
-
-
-def _save_json_blob(
-    storage: Optional[GCSStorage],
-    blob_name: str,
-    local_path: Path,
-    payload: Any,
-    require_remote: bool = False,
-) -> None:
-    local_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(local_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-    if storage is None:
-        if require_remote:
-            raise RuntimeError(f"Remote persistence required for {blob_name}, but GCS is not configured.")
-        return
-    storage.bucket.blob(blob_name).upload_from_string(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        content_type="application/json",
-    )
+    return core._utc_now_iso()
 
 
 def _normalize_sentiment(raw: Any) -> Dict[str, Any]:
@@ -248,34 +100,7 @@ def _heuristic_sentiment(text: str) -> Dict[str, Any]:
     return {"score": score, "label": label, "rationale": "Heuristic fallback based on editorial word patterns."}
 
 
-def _extract_first_json(text: str) -> Dict[str, Any]:
-    raw = str(text or "").strip()
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-    if raw.startswith("```"):
-        raw = raw.strip("`").replace("json", "", 1).strip()
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-    start, end = raw.find("{"), raw.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            parsed = json.loads(raw[start: end + 1])
-            if isinstance(parsed, dict):
-                return parsed
-        except Exception:
-            pass
-    return {}
-
-
-def _score_with_llm(client: Any, model: str, title: str, text: str) -> Dict[str, Any]:
+def _score_with_model(client: Any, provider: str, model_name: str, title: str, text: str) -> Dict[str, Any]:
     if len(text) > 60000:
         text = text[:40000] + "\n\n[...TRUNCATED...]\n\n" + text[-10000:]
 
@@ -285,20 +110,18 @@ def _score_with_llm(client: Any, model: str, title: str, text: str) -> Dict[str,
         instruction = SENTIMENT_SYSTEM_PROMPT
         if attempt > 1:
             instruction += " Respond with raw JSON only. No markdown, no code fences."
-        response = client.responses.create(model=model, instructions=instruction, input=prompt)
-        raw_text = getattr(response, "output_text", None) or ""
-        if not raw_text and hasattr(response, "model_dump"):
-            for item in (response.model_dump() or {}).get("output", []):
-                if item.get("type") == "message":
-                    for c in item.get("content", []):
-                        if c.get("type") in ("output_text", "text") and c.get("text"):
-                            raw_text = c["text"]
-                            break
-        parsed = _extract_first_json(raw_text)
+        raw_text = core._create_enrichment_completion(
+            client=client,
+            provider=provider,
+            model_name=model_name,
+            instruction=instruction,
+            prompt=prompt,
+        )
+        parsed = core._extract_first_json_object(raw_text)
         if parsed:
             return _normalize_sentiment(parsed)
 
-    raise RuntimeError("LLM did not return parseable JSON after 2 attempts.")
+    raise RuntimeError("Model did not return parseable JSON after 2 attempts.")
 
 
 def _build_candidates(
@@ -331,45 +154,29 @@ def _build_candidates(
     return candidates
 
 
-def _candidate_models() -> List[str]:
+def _needs_scoring(entry: Any) -> bool:
+    """True if a doc still needs (re)scoring under --mode only_missing."""
+    if not isinstance(entry, dict):
+        return True
+    sentiment = entry.get("sentiment")
+    if not isinstance(sentiment, dict):
+        return True
+    status = str(sentiment.get("status", "") or "").strip().lower()
+    return status not in _COMPLETED_SENTIMENT_STATUSES
+
+
+def _openai_fallback_models() -> List[str]:
     return ["gpt-4.1-mini", "gpt-4o-mini", "gpt-4.1", "gpt-4o"]
 
 
-def _get_openai_client(secrets_payload: Dict[str, Any]) -> Optional[Any]:
-    api_key = _get_openai_api_key(secrets_payload)
-    if not api_key or OpenAI is None:
-        return None
-    try:
-        return OpenAI(api_key=api_key)
-    except Exception as e:
-        _stderr(f"Failed to initialize OpenAI client: {e}")
-        return None
-
-
-def _is_model_access_error(exc: Exception) -> bool:
-    msg = str(exc).lower()
-    return "model_not_found" in msg or "does not have access to model" in msg
-
-
-def _write_summary(path: str, payload: Dict[str, Any]) -> None:
-    if not path:
-        return
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-
-
 def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
-    secrets_payload = _load_streamlit_secrets()
-    storage, gcs_status = _get_gcs_storage(secrets_payload)
+    secrets_payload = core._load_streamlit_secrets()
+    storage, gcs_status = core._get_gcs_storage(secrets_payload)
     if args.require_remote_persistence and storage is None:
         raise RuntimeError(gcs_status)
 
-    custom_payload = _load_json_blob(storage, CUSTOM_DOCS_BLOB_NAME, CUSTOM_DOCS_LOCAL_PATH, {"documents": []})
-    enrichment_state = _load_json_blob(storage, ENRICHMENT_STATE_BLOB_NAME, ENRICHMENT_STATE_LOCAL_PATH, {"entries": {}})
-    if not isinstance(enrichment_state, dict):
-        enrichment_state = {"entries": {}}
+    custom_payload = core._load_custom_documents(storage)
+    enrichment_state = core._load_enrichment_state(storage)
     entries = enrichment_state.setdefault("entries", {})
 
     doc_ids: List[str] = [str(d).strip() for d in (args.doc_id or []) if str(d).strip()]
@@ -381,17 +188,21 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
     )
 
     if not doc_ids and args.mode == "only_missing":
-        candidates = [
-            c for c in candidates
-            if not isinstance(entries.get(c["doc_id"], {}).get("sentiment"), dict)
-        ]
+        candidates = [c for c in candidates if _needs_scoring(entries.get(c["doc_id"]))]
 
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
     targets = candidates[:limit] if limit > 0 else []
 
-    client = None if args.heuristic_only else _get_openai_client(secrets_payload)
-    preferred_model = args.model or _candidate_models()[0]
-    accessible_models = _candidate_models()
+    provider = str(args.provider or "deepseek").strip().lower()
+    if provider not in {"openai", "deepseek"}:
+        provider = "deepseek"
+    client = None if args.heuristic_only else core._get_model_client(secrets_payload, provider)
+    if provider == "deepseek":
+        accessible_models = core._candidate_deepseek_models()
+        preferred_model = args.model or accessible_models[0]
+    else:
+        accessible_models = _openai_fallback_models()
+        preferred_model = args.model or accessible_models[0]
 
     scored_count = 0
     fallback_count = 0
@@ -406,18 +217,18 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
 
         try:
             if client is None:
-                raise RuntimeError("OpenAI client unavailable.")
+                raise RuntimeError(f"{provider.title()} client unavailable.")
             ordered = [preferred_model] + [m for m in accessible_models if m != preferred_model]
             sentiment = None
             last_error = None
             for model_name in ordered:
                 try:
-                    sentiment = _score_with_llm(client, model_name, candidate["title"], candidate["full_text"])
+                    sentiment = _score_with_model(client, provider, model_name, candidate["title"], candidate["full_text"])
                     model_used = model_name
                     break
                 except Exception as e:
                     last_error = e
-                    if not _is_model_access_error(e):
+                    if not core._is_model_access_error(e):
                         raise
             if sentiment is None:
                 raise last_error or RuntimeError("No model available.")
@@ -433,6 +244,7 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
         sentiment_entry = {
             **sentiment,
             "model": model_used or "heuristic",
+            "provider": provider,
             "status": status,
             "error": error_msg,
             "updated_at": _utc_now_iso(),
@@ -448,10 +260,8 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
     enrichment_state["entries"] = entries
     if not args.dry_run and targets:
         enrichment_state["updated_at"] = _utc_now_iso()
-        _save_json_blob(
+        core._save_enrichment_state(
             storage,
-            ENRICHMENT_STATE_BLOB_NAME,
-            ENRICHMENT_STATE_LOCAL_PATH,
             enrichment_state,
             require_remote=args.require_remote_persistence,
         )
@@ -459,6 +269,7 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
     summary = {
         "mode": "score",
         "ran_at": _utc_now_iso(),
+        "provider": provider,
         "source_kind": args.source_kind,
         "mode_selection": args.mode,
         "candidate_count": len(candidates),
@@ -475,6 +286,10 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
     return summary
 
 
+def _write_summary(path: str, payload: Dict[str, Any]) -> None:
+    core._write_summary(path, payload)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Sentiment/tone scoring pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -483,11 +298,13 @@ def _build_parser() -> argparse.ArgumentParser:
     score.add_argument("--source-kind", default="newsapi_article",
                        help="Filter to this source_kind (default: newsapi_article). Pass '' to score all.")
     score.add_argument("--mode", choices=["only_missing", "all"], default="only_missing",
-                       help="only_missing: skip already-scored docs (default). all: rescore everything.")
+                       help="only_missing: score docs that are unscored or previously fell back/failed. all: rescore everything.")
     score.add_argument("--doc-id", action="append", default=[],
                        help="Score specific doc IDs. Repeatable.")
+    score.add_argument("--provider", choices=["openai", "deepseek"], default=os.getenv("SENTIMENT_PROVIDER", "deepseek"),
+                       help="Model provider (default: deepseek).")
     score.add_argument("--model", default="",
-                       help="Preferred OpenAI model (default: gpt-4.1-mini).")
+                       help="Preferred model id (defaults to the provider's first candidate).")
     score.add_argument("--heuristic-only", action="store_true",
                        help="Skip LLM; use keyword heuristic only.")
     score.add_argument("--limit", type=int, default=None,
