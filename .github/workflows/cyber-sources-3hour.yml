@@ -61,7 +61,9 @@ jobs:
       MAX_PAGES: ${{ github.event.inputs.max_pages || '2' }}
       SELECTION: ${{ github.event.inputs.selection || 'new_or_updated' }}
       ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '20' }}
-      ENRICH_MODEL: deepseek-v4-pro
+      # v4-flash (~3x cheaper than v4-pro) is a reasonable quality tradeoff for
+      # security-media wire content - see CLAUDE.md's DeepSeek review.
+      ENRICH_MODEL: deepseek-v4-flash
 
     steps:
       - name: Checkout

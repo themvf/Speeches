@@ -7,6 +7,12 @@ import type { RssArticle } from "@/lib/server/rss-fetcher";
 import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
 import { TOPIC_RULE_RECOMMENDATIONS, formatTopicRuleKeywords } from "@/lib/topic-rule-recommendations";
 
+// Cap on re-queuing a "strengthened" (model under-delivered, padded with
+// boilerplate) analysis for re-analysis, so a chronically-weak article isn't
+// re-billed on every refresh with no forward progress. Exported so
+// feed-analysis.ts's pure-JS mirror of this gate can't drift from the SQL.
+export const MAX_STRENGTHEN_ATTEMPTS = 3;
+
 export type StoredRssArticle = {
   id: number;
   guid: string;
@@ -43,6 +49,7 @@ export type StoredRssArticleAnalysis = {
   analysis_text: string;
   fallback: boolean;
   strengthened: boolean;
+  strengthen_attempts: number;
   error: string;
 };
 
@@ -334,6 +341,7 @@ function normalizeAnalysisRow(row: Record<string, unknown> | null | undefined): 
     analysis_text: String(row.analysis_text || ""),
     fallback: Boolean(row.fallback),
     strengthened: Boolean(row.strengthened),
+    strengthen_attempts: Number(row.strengthen_attempts || 0),
     error: String(row.error || ""),
   };
 }
@@ -394,10 +402,12 @@ async function ensureSchemaUncached(): Promise<void> {
       analysis_text       TEXT NOT NULL DEFAULT '',
       fallback            BOOLEAN NOT NULL DEFAULT false,
       strengthened        BOOLEAN NOT NULL DEFAULT false,
+      strengthen_attempts INTEGER NOT NULL DEFAULT 0,
       error               TEXT NOT NULL DEFAULT ''
     )
   `;
   await sql`ALTER TABLE rss_article_analysis ADD COLUMN IF NOT EXISTS strengthened BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE rss_article_analysis ADD COLUMN IF NOT EXISTS strengthen_attempts INTEGER NOT NULL DEFAULT 0`;
   await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_guid ON rss_article_analysis (guid)`;
   await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_status ON rss_article_analysis (status)`;
   await sql`CREATE INDEX IF NOT EXISTS rss_article_analysis_keywords ON rss_article_analysis USING GIN (keywords)`;
@@ -811,8 +821,9 @@ export async function getRssArticlesNeedingAnalysis(limit = 10, opts: { feedKeys
           AND (
             ra.fallback = true
             -- Padded (boilerplate-filled) analyses look complete by item count
-            -- but the model underdelivered; re-queue them.
-            OR ra.strengthened = true
+            -- but the model underdelivered; re-queue them, capped so a
+            -- chronically-underperforming article isn't re-billed forever.
+            OR (ra.strengthened = true AND ra.strengthen_attempts < ${MAX_STRENGTHEN_ATTEMPTS})
             OR ra.model NOT ILIKE 'deepseek%'
             OR length(COALESCE(ra.thesis, '')) < 40
             OR jsonb_array_length(COALESCE(ra.why_it_matters, '[]'::jsonb)) < 2
@@ -900,12 +911,13 @@ export async function saveRssArticleAnalysis(article: StoredRssArticle, analysis
     INSERT INTO rss_article_analysis (
       article_id, guid, source_hash, status, model, generated_at, thesis,
       why_it_matters, risk_signals, follow_up_questions,
-      keywords, individuals, entities, topics, analysis_text, fallback, strengthened, error
+      keywords, individuals, entities, topics, analysis_text, fallback, strengthened, strengthen_attempts, error
     )
     VALUES (
       ${article.id}, ${article.guid}, ${sourceHash}, 'enriched', ${analysis.model}, ${analysis.generated_at},
       ${analysis.thesis}, ${whyJson}::jsonb, ${riskJson}::jsonb, ${followJson}::jsonb,
-      ${keywords}, ${individuals}, ${entities}, ${cleanedTopics}, ${analysisText}, ${analysis.fallback}, ${analysis.strengthened}, ''
+      ${keywords}, ${individuals}, ${entities}, ${cleanedTopics}, ${analysisText}, ${analysis.fallback}, ${analysis.strengthened},
+      CASE WHEN ${analysis.strengthened} THEN 1 ELSE 0 END, ''
     )
     ON CONFLICT (article_id) DO UPDATE SET
       guid = EXCLUDED.guid,
@@ -924,6 +936,9 @@ export async function saveRssArticleAnalysis(article: StoredRssArticle, analysis
       analysis_text = EXCLUDED.analysis_text,
       fallback = EXCLUDED.fallback,
       strengthened = EXCLUDED.strengthened,
+      -- Increments only while the model keeps under-delivering on the same
+      -- article; a clean (non-strengthened) save resets the counter.
+      strengthen_attempts = CASE WHEN EXCLUDED.strengthened THEN rss_article_analysis.strengthen_attempts + 1 ELSE 0 END,
       error = ''
     RETURNING *
   `) as unknown as Record<string, unknown>[];
@@ -1111,7 +1126,7 @@ export function prepareMentionBatch(
     const value = String(mention.value || "").trim();
     const normalized = normalizeMention(value);
     if (!value || !normalized) continue;
-    const key = `${mention.type} ${normalized}`;
+    const key = `${mention.type} ${normalized}`;
     byKey.set(key, { type: mention.type, value, normalized, confidence: mention.confidence ?? 1 });
   }
   const types: MentionType[] = [];

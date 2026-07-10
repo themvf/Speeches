@@ -39,7 +39,10 @@ TRENDS_BLOB = "trends_daily.json"
 TRENDS_LOCAL_PATH = DATA_DIR / "trends_daily.json"
 
 CHAT_MODEL = os.getenv("TREND_MODEL", "deepseek-v4-flash").strip() or "deepseek-v4-flash"
-CHAT_MODEL_FALLBACKS = ["deepseek-chat"]
+# deepseek-chat is deprecated 2026-07-24; deepseek-v4-pro is a genuinely
+# distinct fallback model (not just flash's non-thinking mode) in case flash
+# has an access/outage issue.
+CHAT_MODEL_FALLBACKS = ["deepseek-v4-pro"]
 DEFAULT_MIN_MENTIONS = 5
 
 # Fixed taxonomy of top-level regulatory/financial trend categories.

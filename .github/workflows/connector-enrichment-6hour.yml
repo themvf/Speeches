@@ -1,6 +1,10 @@
 name: Connector Enrichment (6 Hour)
 
 on:
+  schedule:
+    # Offset from connector-gap-6hour.yml's "0 */6 * * *" to avoid runner
+    # contention; this job serializes 49 source-kind legs (max-parallel: 1).
+    - cron: "30 */6 * * *"
   workflow_dispatch:
     inputs:
       enrich_limit:

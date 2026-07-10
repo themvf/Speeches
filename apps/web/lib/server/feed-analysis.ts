@@ -1,5 +1,6 @@
 import { normalizeText } from "@/lib/server/api-utils";
 import { getOpenAiConfig } from "@/lib/server/env";
+import { MAX_STRENGTHEN_ATTEMPTS } from "@/lib/server/neon";
 
 export const FEED_ANALYSIS_VERSION = 2;
 
@@ -51,11 +52,13 @@ interface OpenAiPayload {
   output_text?: string;
   output?: OpenAiOutput[];
   error?: { message?: string };
+  usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
 }
 
 interface ChatCompletionPayload {
   choices?: Array<{ message?: { content?: string } }>;
   error?: { message?: string };
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
 interface FeedAnalysisProviderConfig {
@@ -69,6 +72,19 @@ function readEnv(name: string, fallback = ""): string {
   return String(process.env[name] ?? fallback).trim();
 }
 
+const PROVIDER_FETCH_TIMEOUT_MS = 25_000;
+
+// A hung DeepSeek/OpenAI call used to be able to ride out this route's
+// entire request budget (55-60s). Aborting after a fixed timeout makes it
+// fail the same way any other network error already does (an uncaught
+// fetch rejection) - callers already handle that as a "failed" analysis,
+// so this doesn't change error-handling semantics, just bounds the wait.
+function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROVIDER_FETCH_TIMEOUT_MS);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 function getFeedAnalysisConfig(modelOverride = ""): FeedAnalysisProviderConfig {
   const explicitProvider = readEnv("FEED_ANALYSIS_PROVIDER").toLowerCase();
   const deepseekApiKey = readEnv("DEEPSEEK_API") || readEnv("DEEPSEEK_API_KEY");
@@ -77,7 +93,10 @@ function getFeedAnalysisConfig(modelOverride = ""): FeedAnalysisProviderConfig {
     readEnv("FEED_ANALYSIS_MODEL") ||
     readEnv("DEEPSEEK_MODEL") ||
     readEnv("DEEPSEEK_CHAT_MODEL") ||
-    "deepseek-v4-pro";
+    // RSS feed analysis works from title+description (not full documents),
+    // a simpler task than full-document enrichment - v4-flash (~3x cheaper
+    // than v4-pro) is a reasonable quality tradeoff here.
+    "deepseek-v4-flash";
 
   if (explicitProvider === "openai") {
     const openai = getOpenAiConfig();
@@ -125,6 +144,7 @@ export function shouldRefreshFeedAnalysisForDeepSeek(analysis: {
   model?: string;
   fallback?: boolean;
   strengthened?: boolean;
+  strengthen_attempts?: number;
   thesis?: string;
   why_it_matters?: unknown;
   risk_signals?: unknown;
@@ -137,9 +157,15 @@ export function shouldRefreshFeedAnalysisForDeepSeek(analysis: {
     return true;
   }
   const model = normalizeText(analysis.model).toLowerCase();
+  // Capped so a chronically-underperforming article isn't re-queued (and
+  // re-billed) forever - mirrors the SQL gate in neon.ts's
+  // getRssArticlesNeedingAnalysis, which is what actually drives automatic
+  // re-selection; this function only gates the two manual/on-demand paths.
+  const strengthenedAndUncapped =
+    Boolean(analysis.strengthened) && (analysis.strengthen_attempts ?? 0) < MAX_STRENGTHEN_ATTEMPTS;
   return (
     Boolean(analysis.fallback) ||
-    Boolean(analysis.strengthened) ||
+    strengthenedAndUncapped ||
     !model.startsWith("deepseek") ||
     hasWeakFeedAnalysisFields(analysis)
   );
@@ -596,7 +622,7 @@ export async function generateFeedAnalysis(input: FeedAnalysisInput, modelOverri
   ].join("\n");
 
   if (cfg.provider === "deepseek") {
-    const response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    const response = await fetchWithTimeout(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -623,6 +649,12 @@ export async function generateFeedAnalysis(input: FeedAnalysisInput, modelOverri
     if (!response.ok || !json) {
       return fallbackFeedAnalysis(input, model);
     }
+    console.info("[feed-analysis] deepseek usage", {
+      model,
+      promptTokens: json.usage?.prompt_tokens ?? null,
+      completionTokens: json.usage?.completion_tokens ?? null,
+      totalTokens: json.usage?.total_tokens ?? null,
+    });
 
     try {
       const parsed = JSON.parse(cleanJsonText(extractChatCompletionText(json))) as unknown;
@@ -633,7 +665,7 @@ export async function generateFeedAnalysis(input: FeedAnalysisInput, modelOverri
     }
   }
 
-  const response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/responses`, {
+  const response = await fetchWithTimeout(`${cfg.baseUrl.replace(/\/$/, "")}/responses`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -678,6 +710,12 @@ export async function generateFeedAnalysis(input: FeedAnalysisInput, modelOverri
   if (!response.ok || !json) {
     return fallbackFeedAnalysis(input, model);
   }
+  console.info("[feed-analysis] openai usage", {
+    model,
+    promptTokens: json.usage?.input_tokens ?? null,
+    completionTokens: json.usage?.output_tokens ?? null,
+    totalTokens: json.usage?.total_tokens ?? null,
+  });
 
   try {
     const parsed = JSON.parse(cleanJsonText(extractResponseText(json))) as unknown;

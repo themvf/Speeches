@@ -19,12 +19,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import run_financial_news_pipeline as core
 
-
-SENTIMENT_LABELS = {"positive", "negative", "neutral"}
 
 # Sentiment statuses that count as "already done" for --mode only_missing.
 # Anything else (fallback_scored from a provider outage, failed, or missing)
@@ -55,20 +53,9 @@ def _utc_now_iso() -> str:
 
 
 def _normalize_sentiment(raw: Any) -> Dict[str, Any]:
-    if not isinstance(raw, dict):
-        raw = {}
-    try:
-        score = float(raw.get("score", 0.0) or 0.0)
-    except Exception:
-        score = 0.0
-    score = max(-1.0, min(1.0, score))
-
-    label = str(raw.get("label", "neutral") or "neutral").strip().lower()
-    if label not in SENTIMENT_LABELS:
-        label = "neutral"
-
-    rationale = str(raw.get("rationale", "") or "").strip()[:300]
-    return {"score": round(score, 4), "label": label, "rationale": rationale}
+    # Delegates to core so this standalone scorer and the sentiment fields
+    # now produced inline by enrichment can never drift on validation rules.
+    return core._normalize_sentiment_fields(raw)
 
 
 def _heuristic_sentiment(text: str) -> Dict[str, Any]:
@@ -100,26 +87,31 @@ def _heuristic_sentiment(text: str) -> Dict[str, Any]:
     return {"score": score, "label": label, "rationale": "Heuristic fallback based on editorial word patterns."}
 
 
-def _score_with_model(client: Any, provider: str, model_name: str, title: str, text: str) -> Dict[str, Any]:
+def _score_with_model(
+    client: Any, provider: str, model_name: str, title: str, text: str
+) -> Tuple[Dict[str, Any], Dict[str, int]]:
     if len(text) > 60000:
         text = text[:40000] + "\n\n[...TRUNCATED...]\n\n" + text[-10000:]
 
     prompt = f"Title: {title}\n\nArticle:\n{text}"
 
+    usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     for attempt in range(1, 3):
         instruction = SENTIMENT_SYSTEM_PROMPT
         if attempt > 1:
             instruction += " Respond with raw JSON only. No markdown, no code fences."
-        raw_text = core._create_enrichment_completion(
+        raw_text, usage = core._create_enrichment_completion(
             client=client,
             provider=provider,
             model_name=model_name,
             instruction=instruction,
             prompt=prompt,
         )
+        for key in usage_total:
+            usage_total[key] += usage.get(key, 0)
         parsed = core._extract_first_json_object(raw_text)
         if parsed:
-            return _normalize_sentiment(parsed)
+            return _normalize_sentiment(parsed), usage_total
 
     raise RuntimeError("Model did not return parseable JSON after 2 attempts.")
 
@@ -208,6 +200,7 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
     fallback_count = 0
     failed: List[Dict[str, Any]] = []
     used_models: List[str] = []
+    usage_totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     for candidate in targets:
         doc_id = candidate["doc_id"]
@@ -223,8 +216,10 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
             last_error = None
             for model_name in ordered:
                 try:
-                    sentiment = _score_with_model(client, provider, model_name, candidate["title"], candidate["full_text"])
+                    sentiment, usage = _score_with_model(client, provider, model_name, candidate["title"], candidate["full_text"])
                     model_used = model_name
+                    for key in usage_totals:
+                        usage_totals[key] += usage.get(key, 0)
                     break
                 except Exception as e:
                     last_error = e
@@ -277,6 +272,7 @@ def _run_score(args: argparse.Namespace) -> Dict[str, Any]:
         "scored_count": scored_count,
         "fallback_scored_count": fallback_count,
         "used_models": used_models,
+        "tokens": usage_totals,
         "failed_count": len(failed),
         "failed": failed[:25],
         "dry_run": bool(args.dry_run),

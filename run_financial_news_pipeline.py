@@ -54,6 +54,10 @@ ENRICHMENT_STATE_LOCAL_PATH = DATA_DIR / "document_enrichment_state.json"
 RULE_SUMMARIES_BLOB_NAME = "rule_summaries.json"
 RULE_SUMMARIES_LOCAL_PATH = DATA_DIR / "rule_summaries.json"
 ENRICHMENT_PIPELINE_VERSION = "v1"
+# Cap on retries for docs stuck at fallback_enriched/failed under
+# --mode only_missing_or_failed, so a persistently-broken doc stops being
+# re-billed on every scheduled leg run once it hits this many attempts.
+MAX_ENRICHMENT_ATTEMPTS = 3
 
 # Shared with run_connector_extraction_pipeline.py's _build_short_text_fallback,
 # which is the single source of every metadata-backed placeholder body across
@@ -1322,6 +1326,32 @@ def _evidence_snippet_verified(snippet: str, doc_text_normalized: str) -> bool:
     return len(trimmed) >= 12 and trimmed in doc_text_normalized
 
 
+_SENTIMENT_LABELS = {"positive", "negative", "neutral"}
+
+
+def _normalize_sentiment_fields(raw: Any) -> Dict[str, Any]:
+    """Normalize a {score,label,rationale} sentiment payload.
+
+    Shared by enrichment (which now asks the model for sentiment in the same
+    call) and run_sentiment_pipeline.py's standalone scorer, so the two never
+    drift on validation rules.
+    """
+    if not isinstance(raw, dict):
+        raw = {}
+    try:
+        score = float(raw.get("score", 0.0) or 0.0)
+    except Exception:
+        score = 0.0
+    score = max(-1.0, min(1.0, score))
+
+    label = str(raw.get("label", "neutral") or "neutral").strip().lower()
+    if label not in _SENTIMENT_LABELS:
+        label = "neutral"
+
+    rationale = str(raw.get("rationale", "") or "").strip()[:300]
+    return {"score": round(score, 4), "label": label, "rationale": rationale}
+
+
 def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         payload = {}
@@ -1423,6 +1453,7 @@ def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[st
     enforcement = _normalize_enforcement_metadata(enforcement_raw)
 
     summary = str(payload.get("summary", "") or "").strip()[:1200]
+    sentiment = _normalize_sentiment_fields(payload.get("sentiment", {}))
     return {
         "summary": summary,
         "tags": tags,
@@ -1437,6 +1468,7 @@ def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[st
         "evidence_spans": normalized_evidence,
         "enforcement": enforcement,
         "confidence": confidence,
+        "sentiment": sentiment,
     }
 
 
@@ -1521,6 +1553,9 @@ def _heuristic_enrichment(doc: Dict[str, Any]) -> Dict[str, Any]:
             "evidence_spans": evidence,
             "enforcement": enforcement,
             "confidence": 0.35,
+            # Conservative default (no LLM tone scoring performed) - matches
+            # run_sentiment_pipeline.py's own heuristic-fallback convention.
+            "sentiment": {"score": 0.0, "label": "neutral", "rationale": ""},
         },
         doc=doc,
     )
@@ -1558,13 +1593,41 @@ def _extract_chat_completion_text(response: Any) -> str:
     return "No chat completion text returned."
 
 
+def _extract_usage(response: Any) -> Dict[str, int]:
+    """Normalize token usage across the chat-completions and responses APIs."""
+    usage = getattr(response, "usage", None)
+    if usage is not None and hasattr(usage, "model_dump"):
+        usage = usage.model_dump()
+    elif usage is not None and hasattr(usage, "dict"):
+        usage = usage.dict()
+
+    def _int(*keys: str) -> int:
+        for key in keys:
+            value = usage.get(key) if isinstance(usage, dict) else getattr(usage, key, None)
+            if value is not None:
+                try:
+                    return int(value)
+                except Exception:
+                    continue
+        return 0
+
+    prompt_tokens = _int("prompt_tokens", "input_tokens")
+    completion_tokens = _int("completion_tokens", "output_tokens")
+    total_tokens = _int("total_tokens") or (prompt_tokens + completion_tokens)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
 def _create_enrichment_completion(
     client: Any,
     provider: str,
     model_name: str,
     instruction: str,
     prompt: str,
-) -> str:
+) -> Tuple[str, Dict[str, int]]:
     if str(provider or "").strip().lower() == "deepseek":
         response = client.chat.completions.create(
             model=model_name,
@@ -1575,10 +1638,10 @@ def _create_enrichment_completion(
             temperature=0.2,
             response_format={"type": "json_object"},
         )
-        return _extract_chat_completion_text(response)
+        return _extract_chat_completion_text(response), _extract_usage(response)
 
     response = client.responses.create(model=model_name, instructions=instruction, input=prompt)
-    return _extract_response_text(response)
+    return _extract_response_text(response), _extract_usage(response)
 
 
 def _run_enrichment_agent(
@@ -1586,13 +1649,13 @@ def _run_enrichment_agent(
     doc: Dict[str, Any],
     model_name: str,
     provider: str = "deepseek",
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], Dict[str, int]]:
     text = str(doc.get("full_text", "") or "").strip()
     if len(text) > 90000:
         text = text[:45000] + "\n\n[...TRUNCATED FOR ENRICHMENT...]\n\n" + text[-30000:]
     instruction = (
         "You are a senior enrichment agent for a financial-regulatory intelligence website. Return ONLY valid JSON with keys: "
-        "summary, tags, keywords, entities, stance, comment_position, evidence_spans, enforcement, confidence. "
+        "summary, tags, keywords, entities, stance, comment_position, evidence_spans, enforcement, confidence, sentiment. "
         "summary must be 3-4 dense sentences for financial-regulatory users. Focus on the substantive policy, market, legal, "
         "supervision, compliance, investor-protection, market-structure, capital-markets, financial-stability, or enforcement points. "
         "For speeches, testimony, hearings, roundtables, videos, and transcripts, identify policy posture, rulemaking direction, "
@@ -1606,12 +1669,18 @@ def _run_enrichment_agent(
         "comment_position must be {label,confidence,rationale} where label in "
         "[supportive,opposed,mixed,neutral,unclear,not_applicable]. "
         f"{SHARED_COMMENT_POSITION_INSTRUCTION}"
-        "evidence_spans must include verbatim snippets from the document supporting the most important policy, market, legal, "
+        "evidence_spans must include 2-4 verbatim snippets from the document supporting the most important policy, market, legal, "
         "supervisory, compliance, or enforcement claims. "
         "enforcement must be {release_no,action_type,forum,alleged_violations,outcome_status} where "
         "action_type in [filing,settlement,judgment,dismissal,order,other,unknown], "
         "forum in [federal_court,administrative,state_court,unknown], and outcome_status in [pending,resolved,partial,unknown]. "
-        "For non-enforcement documents, set enforcement fields to unknown/empty."
+        "For non-enforcement documents, set enforcement fields to unknown/empty. "
+        "sentiment must be {score,label,rationale} scoring the AUTHOR'S editorial tone and framing, not the severity of the "
+        "underlying subject matter: score is a float from -1.0 (negative) to 1.0 (positive), label is one of "
+        "[positive,negative,neutral], and rationale is one concise sentence. Institutional releases (SEC, DOJ, CFTC, Fed, FINRA) "
+        "and wire-service factual reporting are neutral by default unless the author uses charged, alarming, or celebratory "
+        "language - an enforcement action described in plain institutional language is neutral tone even though the subject "
+        "matter (fraud, charges) is serious."
     )
     prompt = (
         f"Organization: {doc.get('organization', '')}\n"
@@ -1625,21 +1694,24 @@ def _run_enrichment_agent(
     )
 
     last_raw = ""
+    usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     for attempt in range(1, 3):
         current_instruction = instruction
         if attempt > 1:
             current_instruction += " Respond with raw JSON only. No markdown, no commentary, no code fences."
-        raw_text = _create_enrichment_completion(
+        raw_text, usage = _create_enrichment_completion(
             client=client,
             provider=provider,
             model_name=model_name,
             instruction=current_instruction,
             prompt=prompt,
         )
+        for key in usage_total:
+            usage_total[key] += usage.get(key, 0)
         last_raw = raw_text
         parsed = _extract_first_json_object(raw_text)
         if parsed:
-            return _normalize_enrichment_payload(parsed, doc=doc)
+            return _normalize_enrichment_payload(parsed, doc=doc), usage_total
     preview = (last_raw or "").replace("\n", " ").strip()[:300]
     raise RuntimeError(f"Model did not return parseable JSON after 2 attempts. Last output: {preview}")
 
@@ -1694,7 +1766,10 @@ def _candidate_chat_models() -> List[str]:
 
 
 def _candidate_deepseek_models() -> List[str]:
-    return ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat"]
+    # deepseek-chat is deprecated 2026-07-24 and maps to deepseek-v4-flash's
+    # non-thinking mode, which is already listed below - nothing is lost by
+    # dropping it.
+    return ["deepseek-v4-pro", "deepseek-v4-flash"]
 
 
 def _list_project_models(client: Any) -> List[str]:
@@ -2221,6 +2296,12 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             status = str(existing.get("status", "") or "")
             if status in {"enriched", "reviewed"}:
                 continue
+            attempt_count = _coerce_int(existing.get("attempt_count", 0), default=0, min_value=0)
+            # A doc stuck at fallback_enriched/failed gets retried on every leg
+            # run forever otherwise; cap it so persistent failures show up in
+            # the admin review UI instead of silently re-spending indefinitely.
+            if status in {"fallback_enriched", "failed"} and attempt_count >= MAX_ENRICHMENT_ATTEMPTS:
+                continue
             filtered.append(candidate)
         candidates = filtered
 
@@ -2262,6 +2343,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
     fallback_count = 0
     used_models: List[str] = []
     checkpoint_every = max(0, int(getattr(args, "checkpoint_every", 0) or 0))
+    usage_totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     for index, candidate in enumerate(targets, start=1):
         doc_id = candidate["doc_id"]
@@ -2269,6 +2351,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         review = existing.get("review", {}) if isinstance(existing.get("review", {}), dict) else {}
         decision = str(review.get("decision", "pending") or "pending")
         notes = str(review.get("notes", "") or "")
+        existing_attempt_count = _coerce_int(existing.get("attempt_count", 0), default=0, min_value=0)
         status = "enriched"
         error_msg = ""
         model_used = ""
@@ -2280,8 +2363,10 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             enrichment = None
             for model_name in ordered_models:
                 try:
-                    enrichment = _run_enrichment_agent(client, candidate, model_name, provider=provider)
+                    enrichment, usage = _run_enrichment_agent(client, candidate, model_name, provider=provider)
                     model_used = model_name
+                    for key in usage_totals:
+                        usage_totals[key] += usage.get(key, 0)
                     break
                 except Exception as e:
                     last_error = e
@@ -2298,6 +2383,29 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             error_msg = str(e)
             fallback_count += 1
 
+        # A clean success clears the counter; if the doc is later reprocessed
+        # (schema bump, --mode all, targeted re-run) it starts fresh instead
+        # of carrying forward a stale failure streak from long ago.
+        attempt_count = 0 if status == "enriched" else existing_attempt_count + 1
+
+        # DeepSeek is asked for sentiment in the same call as the rest of
+        # enrichment now (see CLAUDE.md), so mirror it into the same shape
+        # run_sentiment_pipeline.py's standalone scorer already writes here.
+        # That script's only_missing mode already skips status in
+        # {"scored","reviewed"}, so this alone stops it from re-scoring
+        # (and re-billing) documents enrichment already covered.
+        sentiment_fields = enrichment.get("sentiment")
+        if not isinstance(sentiment_fields, dict):
+            sentiment_fields = {"score": 0.0, "label": "neutral", "rationale": ""}
+        sentiment_entry = {
+            **sentiment_fields,
+            "model": model_used or preferred_model,
+            "provider": provider,
+            "status": "scored" if status == "enriched" else "fallback_scored",
+            "error": error_msg,
+            "updated_at": _utc_now_iso(),
+        }
+
         reward = _compute_reward(enrichment, decision, status=status)
         entries[doc_id] = {
             "doc_id": doc_id,
@@ -2313,10 +2421,12 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             "error": error_msg,
             "model": model_used or preferred_model,
             "pipeline_version": ENRICHMENT_PIPELINE_VERSION,
+            "attempt_count": attempt_count,
             "updated_at": _utc_now_iso(),
             "review": {"decision": decision, "notes": notes},
             "reward": reward,
             "enrichment": enrichment,
+            "sentiment": sentiment_entry,
         }
         if not args.dry_run and checkpoint_every and index % checkpoint_every == 0:
             enrichment_state["entries"] = entries
@@ -2351,6 +2461,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         "enriched_count": enriched_count,
         "fallback_enriched_count": fallback_count,
         "used_models": used_models,
+        "tokens": usage_totals,
         "selected_preview": [
             {
                 "doc_id": str(item.get("doc_id", "") or ""),
