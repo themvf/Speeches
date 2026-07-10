@@ -1,5 +1,37 @@
 # CLAUDE.md
 
+## Enhancement Scope: Storage, Health-Monitoring Blind Spot, Topic Backtesting - July 2026
+
+Three enhancements were proposed after the ingestion/process reviews below. Status: **items 2 and 3 implemented**; item 1 is a deliberately conservative Phase 1 only (schema + non-blocking dual-write, no reader cutover) — see caveat under item 1 before assuming more was done.
+
+### 1. Migrate the corpus from one GCS JSON blob to Neon (plumbing) — PHASE 1 ONLY
+
+The full case for this is already documented in the Ingestion Pipeline Review section below: almost every serious bug found across both reviews (silent wipes, lost-update races, O(N) upsert scans, 240-minute workflow timeouts) traces back to `custom_documents.json` being one JSON blob that ~15 workflows read-modify-write in full. `rss_articles` already proves the alternative works (per-row upserts, no contention).
+
+**What was actually done in this session (Phase 1 of an incremental migration):**
+- Added a `documents` table to Neon (`ensureSchema()` in `neon.ts`), mirroring `custom_documents.json`'s metadata/content shape, with indexes on `source_kind` and `document_id`.
+- Added a best-effort, non-blocking mirror-write from the Python side (`_upsert_custom_document_record` in `run_financial_news_pipeline.py`) that writes the same record into Neon after every successful blob save. Failure to mirror-write is logged and swallowed — it must never block or fail the primary (blob) write path.
+- **No reader was cut over.** The blob remains the sole source of truth for every existing reader (metrics, search, enrichment candidates, Streamlit admin, trend aggregation). This table is currently write-only from the pipeline's perspective; nothing reads from it yet.
+
+**Why scoped this conservatively:** a full migration needs a backfill of the existing corpus, a verification pass comparing dual-written data against the blob, and then a careful one-reader-at-a-time cutover with production validation at each step — none of which is safe to do blind, without live GCS/Neon credentials to verify against, in one sitting. Doing so would risk exactly the kind of silent data-loss bug this whole review series has been fixing.
+
+**Remaining phases (not started):**
+- Phase 2: one-time backfill script (`sync_knowledge_index.py`-style) reading the full blob and writing every document into the new Neon table; verify row counts and spot-check content match.
+- Phase 3: cut over readers one at a time, cheapest/lowest-risk first — likely `/api/metrics` (already has a bounded/partial-failure pattern per the smoke-fix section below) or enrichment-candidate selection (`_build_news_enrichment_candidates`), which would immediately benefit from an indexed "unenriched docs of kind X" query instead of a full-corpus scan.
+- Phase 4: once all readers are cut over and stable for a observation period, stop writing `custom_documents.json` entirely and keep it only as a periodic read-only export/backup.
+
+### 2. Close the "invisible failure" blind spot in source health monitoring — DONE
+
+**Important correction to the original pitch:** the "ops dashboard with alerting" enhancement was pitched as if it didn't exist. It substantially already does — `source_health.py`'s `build_source_health_report` already computes `failing_sources` (status/consecutive-failure based), `stale_sources` (>36h since last run), and `quiet_sources` (zero discovered/processed), all rendered in `apps/web/app/admin/page.tsx`'s `SourceHealthSection` and auto-posted as a GitHub issue by `daily-health-check.yml` with a DeepSeek review. Do not rebuild any of this.
+
+The actual, narrow, verified gap: **argparse validation failures never reach `record_source_health()`.** Confirmed empirically — `python run_connector_extraction_pipeline.py --connector totally_fake_connector` exits 2 via argparse before the script's own try/except (which is what calls `record_source_health`) ever runs, so it produces zero entries in `source_health_log.json`. This is exactly the blind spot that let the July 7 merge regression (16 dropped connectors, see Process Pipeline Review below) run silently for days despite this otherwise-comprehensive monitoring system.
+
+**Fix**: `source_health.py` gained `RecordingArgumentParser`, an `argparse.ArgumentParser` subclass whose `error()` override logs a `source_key`-bearing failure entry (extracting the attempted `--connector`/`--source-kind` value from `sys.argv` for diagnostics) before deferring to normal argparse error/exit behavior, so it fails exactly the same way to the caller — the only change is that the failure is now visible in `failing_sources`. Wired into `_build_parser()` in both `run_connector_extraction_pipeline.py` and `run_financial_news_pipeline.py` (subparsers inherit the class automatically). Added an `invalid choice` branch to `categorize_error`. The logging call is wrapped so it can never itself raise and mask the real argparse error.
+
+### 3. Topic rule keyword backtest/preview tool — DONE
+
+Distinct from the existing static `apps/web/lib/topic-rule-recommendations.ts` (hand-curated suggested keywords, no live data). This is empirical: a new admin API route runs a candidate keyword set against recently stored `rss_articles` using the same word-boundary matcher as `intel-topic-matching.ts`, and returns total match count, per-keyword hit counts, and sample matched titles. Wired into the topic-rule editor in `apps/web/app/admin/page.tsx` as a live preview so editing keywords shows real impact before saving, instead of finding out days later that a keyword over- or under-matches. This is also the tool to use for the still-open item from the Process Pipeline Review below (auditing generic `DEFAULT_TOPIC_RULES` keywords like `"market"`/`"credit"` that gate keyword-filtered RSS ingestion).
+
 ## Process Pipeline Review (Enrichment/Analysis/Topics/Trends) - July 2026
 
 Use this note when debugging missing corpus content, wrong trend counts, stale sentiment, or bad topic/keyword matches. Findings below are from a review of the *processing intelligence* (enrichment, sentiment, RSS analysis, topic matching, trend aggregation) as opposed to the ingestion plumbing (see the Ingestion Pipeline Review section below). Status: **all critical and high-value findings below have been implemented and are covered by tests** (`tests/test_workflow_connectors_valid.py`, `test_trend_aggregation.py`, `test_connector_topic_keywords.py`, `test_enforcement_inference.py`, `test_evidence_verification.py`, `test_sentiment_pipeline.py`). The "good to have" items remain open. Re-verify against current code/git history before assuming anything below is still true, since this note isn't auto-updated.
