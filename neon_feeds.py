@@ -317,53 +317,125 @@ def _ensure_documents_schema() -> None:
     _DOCUMENTS_SCHEMA_ENSURED = True
 
 
+_DOCUMENTS_UPSERT_COLUMNS = (
+    "document_id, title, speaker, organization, doc_type, "
+    "source_kind, url, published_date, word_count, full_text, "
+    "metadata, updated_at"
+)
+
+_DOCUMENTS_UPSERT_CONFLICT_CLAUSE = """
+    ON CONFLICT (document_id) DO UPDATE SET
+      title = EXCLUDED.title,
+      speaker = EXCLUDED.speaker,
+      organization = EXCLUDED.organization,
+      doc_type = EXCLUDED.doc_type,
+      source_kind = EXCLUDED.source_kind,
+      url = EXCLUDED.url,
+      published_date = EXCLUDED.published_date,
+      word_count = EXCLUDED.word_count,
+      full_text = EXCLUDED.full_text,
+      metadata = EXCLUDED.metadata,
+      updated_at = now()
+"""
+
+
+def _document_record_to_row(record: Dict[str, Any]) -> Optional[tuple]:
+    """Extract one (document_id, ...) row tuple from a custom_documents.json-
+    shaped record, or None if it has no document_id. Shared by the per-record
+    mirror() write path and the bulk backfill path so the two never drift on
+    column mapping."""
+    metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+    content = record.get("content", {}) if isinstance(record.get("content", {}), dict) else {}
+    document_id = str(metadata.get("document_id", "") or "").strip()
+    if not document_id:
+        return None
+    return (
+        document_id,
+        str(metadata.get("title", "") or ""),
+        str(metadata.get("speaker", "") or ""),
+        str(metadata.get("organization", "") or ""),
+        str(metadata.get("doc_type", "") or ""),
+        str(metadata.get("source_kind", "") or ""),
+        str(metadata.get("url", "") or ""),
+        str(metadata.get("published_date", "") or metadata.get("date", "") or ""),
+        int(metadata.get("word_count", 0) or 0),
+        str(content.get("full_text", "") or ""),
+        psycopg2.extras.Json(metadata),
+    )
+
+
 def mirror_document(record: Dict[str, Any]) -> None:
     """Best-effort upsert of one custom_documents.json-shaped record into the
     Neon `documents` table. Callers must treat this as fire-and-forget: any
     exception here (missing DATABASE_URL, connectivity, schema) should be
     caught by the caller and never block or fail the primary blob write."""
-    metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
-    content = record.get("content", {}) if isinstance(record.get("content", {}), dict) else {}
-    document_id = str(metadata.get("document_id", "") or "").strip()
-    if not document_id:
+    row = _document_record_to_row(record)
+    if row is None:
         return
 
     _ensure_documents_schema()
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
-                INSERT INTO documents (
-                  document_id, title, speaker, organization, doc_type,
-                  source_kind, url, published_date, word_count, full_text,
-                  metadata, updated_at
-                )
+                f"""
+                INSERT INTO documents ({_DOCUMENTS_UPSERT_COLUMNS})
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
-                ON CONFLICT (document_id) DO UPDATE SET
-                  title = EXCLUDED.title,
-                  speaker = EXCLUDED.speaker,
-                  organization = EXCLUDED.organization,
-                  doc_type = EXCLUDED.doc_type,
-                  source_kind = EXCLUDED.source_kind,
-                  url = EXCLUDED.url,
-                  published_date = EXCLUDED.published_date,
-                  word_count = EXCLUDED.word_count,
-                  full_text = EXCLUDED.full_text,
-                  metadata = EXCLUDED.metadata,
-                  updated_at = now()
+                {_DOCUMENTS_UPSERT_CONFLICT_CLAUSE}
                 """,
-                (
-                    document_id,
-                    str(metadata.get("title", "") or ""),
-                    str(metadata.get("speaker", "") or ""),
-                    str(metadata.get("organization", "") or ""),
-                    str(metadata.get("doc_type", "") or ""),
-                    str(metadata.get("source_kind", "") or ""),
-                    str(metadata.get("url", "") or ""),
-                    str(metadata.get("published_date", "") or metadata.get("date", "") or ""),
-                    int(metadata.get("word_count", 0) or 0),
-                    str(content.get("full_text", "") or ""),
-                    psycopg2.extras.Json(metadata),
-                ),
+                row,
             )
             conn.commit()
+
+
+def mirror_documents_batch(records: List[Dict[str, Any]]) -> int:
+    """Upsert many custom_documents.json-shaped records into `documents` in
+    one connection using a single multi-row statement, instead of opening a
+    new connection per document like mirror_document() does. Intended for the
+    one-time Phase 2 backfill (see CLAUDE.md) where mirror_document()'s
+    per-call connection overhead would make backfilling tens of thousands of
+    documents impractically slow.
+
+    Unlike mirror_document(), this is NOT fire-and-forget - callers (the
+    backfill script) should treat exceptions here as real failures worth
+    surfacing, since there's no primary write path to silently fall back to.
+    """
+    rows = [row for row in (_document_record_to_row(record) for record in records) if row is not None]
+    if not rows:
+        return 0
+
+    _ensure_documents_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                f"""
+                INSERT INTO documents ({_DOCUMENTS_UPSERT_COLUMNS})
+                VALUES %s
+                {_DOCUMENTS_UPSERT_CONFLICT_CLAUSE}
+                """,
+                rows,
+                template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())",
+            )
+            conn.commit()
+    return len(rows)
+
+
+def count_documents() -> int:
+    """Row count of the Neon `documents` table - used by the backfill script
+    to verify the mirror actually matches the source corpus size."""
+    _ensure_documents_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS count FROM documents")
+            row = cur.fetchone()
+            return int(row["count"]) if row else 0
+
+
+def get_document(document_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch one row from the Neon `documents` table by id - used by the
+    backfill script's spot-check verification."""
+    _ensure_documents_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM documents WHERE document_id = %s", (document_id,))
+            return cur.fetchone()
