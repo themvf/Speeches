@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  MarketAttentionData,
   MarketBondsData,
   MarketCommoditiesData,
   MarketCryptoData,
@@ -13,15 +14,17 @@ import type {
 import { OverviewTab } from "./market/overview-tab";
 import { SectorsTab } from "./market/sectors-tab";
 import { MoversTab } from "./market/movers-tab";
+import { AttentionTab } from "./market/attention-tab";
 import { CryptoTab } from "./market/crypto-tab";
 import { ExchangesTab } from "./market/exchanges-tab";
 
-type TabId = "overview" | "sectors" | "movers" | "crypto" | "exchanges";
+type TabId = "overview" | "sectors" | "movers" | "attention" | "crypto" | "exchanges";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview",  label: "Overview" },
   { id: "sectors",   label: "Sectors" },
   { id: "movers",    label: "Movers" },
+  { id: "attention", label: "Attention" },
   { id: "crypto",    label: "Crypto" },
   { id: "exchanges", label: "Exchanges" },
 ];
@@ -76,6 +79,7 @@ export function MarketDashboard() {
 
   const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors",   300_000);
   const movers    = useTabData<MarketMoversData>   ("movers",    tab, "/api/market/movers",    120_000);
+  const attention = useTabData<MarketAttentionData>("attention", tab, "/api/market/attention", 300_000);
   const crypto    = useTabData<MarketCryptoData>   ("crypto",    tab, "/api/market/crypto",    120_000);
   const exchanges = useTabData<MarketExchangesData>("exchanges", tab, "/api/market/exchanges",  60_000);
 
@@ -102,6 +106,7 @@ export function MarketDashboard() {
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "movers"    && <MoversTab    {...movers} />}
+      {tab === "attention" && <AttentionTab {...attention} />}
       {tab === "crypto"    && <CryptoTab    {...crypto} />}
       {tab === "exchanges" && <ExchangesTab {...exchanges} />}
     </div>

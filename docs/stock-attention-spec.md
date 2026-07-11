@@ -1,6 +1,8 @@
 # Stock Attention Tracker — Spec (v2)
 
-Status: **design spec, not yet implemented**. Reddit API credentials (`REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_USER_AGENT`) are set up and verified working (`using_praw: true` against a live `policy-extraction.yml` test run, 2026-07-11). This doc supersedes the informal sketch in CLAUDE.md's roadmap item 2 and reconciles it with the `StockSignal` schema already proposed in [MARKET.md](../MARKET.md)'s "Deferred: Stock Social Signals" section.
+Status: **phases 1-4 implemented (2026-07-11); Phase 5 validation pending the first production runs** — see CLAUDE.md roadmap item 2 for the implementation record. Reddit API credentials (`REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_USER_AGENT`) are set up and verified working (`using_praw: true` against a live `policy-extraction.yml` test run, 2026-07-11). This doc supersedes the informal sketch in CLAUDE.md's roadmap item 2 and reconciles it with the `StockSignal` schema already proposed in [MARKET.md](../MARKET.md)'s "Deferred: Stock Social Signals" section.
+
+One deviation from this spec as written: `daily_stock_attention` gained a `company` column (populated from `ticker_config.json` titles at aggregation time) so the leaderboard can show company names like the reference sites do — added before anything was deployed, so no migration concerns.
 
 **v2 (2026-07-11), revised after design review.** Material changes from v1, each catching a real defect:
 

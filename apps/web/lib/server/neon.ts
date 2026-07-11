@@ -1306,3 +1306,65 @@ export async function getAllMirroredDocumentMetadata(): Promise<NeonMirroredDocu
   const rows = (await sql`SELECT document_id, metadata FROM documents`) as unknown as NeonMirroredDocumentRow[];
   return rows;
 }
+
+// ─── Stock attention (docs/stock-attention-spec.md) ─────────────────────────
+// Both tables below are Python-owned (created lazily by neon_feeds.py, like
+// `documents` above) - deliberately no ensureSchema() here. If they don't
+// exist yet (sweep never ran), queries fail naturally and the API route
+// returns an empty payload with a warning.
+
+export type DailyStockAttentionRow = {
+  attention_date: string;
+  ticker: string;
+  company: string;
+  mention_count: number;
+  source_count: number;
+  subreddit_count: number;
+  weighted_score: number;
+  mood: string;
+  top_source_ids: string; // JSON array of reddit_attention_items.source_id
+  generated_at: string;
+};
+
+export type RedditAttentionItemRow = {
+  source_id: string;
+  kind: string;
+  subreddit: string;
+  author: string;
+  title: string;
+  permalink: string;
+  created_utc: string;
+  score: number;
+  mood: string;
+};
+
+export async function getLatestStockAttentionDate(): Promise<string | null> {
+  const sql = getSql();
+  const rows = (await sql`SELECT MAX(attention_date)::text AS latest FROM daily_stock_attention`) as unknown as { latest: string | null }[];
+  return rows[0]?.latest ?? null;
+}
+
+export async function getDailyStockAttention(date: string, limit = 50): Promise<DailyStockAttentionRow[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT attention_date::text AS attention_date, ticker, company, mention_count, source_count,
+           subreddit_count, weighted_score::float AS weighted_score, mood, top_source_ids, generated_at::text AS generated_at
+    FROM daily_stock_attention
+    WHERE attention_date = ${date}::date
+    ORDER BY weighted_score DESC, ticker ASC
+    LIMIT ${limit}
+  `) as unknown as DailyStockAttentionRow[];
+  return rows;
+}
+
+export async function getRedditAttentionItems(sourceIds: string[]): Promise<RedditAttentionItemRow[]> {
+  if (sourceIds.length === 0) return [];
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT source_id, kind, subreddit, author, title, permalink,
+           created_utc::text AS created_utc, score, mood
+    FROM reddit_attention_items
+    WHERE source_id = ANY(${sourceIds})
+  `) as unknown as RedditAttentionItemRow[];
+  return rows;
+}

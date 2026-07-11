@@ -493,6 +493,38 @@ export interface MarketMoversData {
   generatedAt: string;
 }
 
+// Stock attention tracker (docs/stock-attention-spec.md §7)
+export interface AttentionSource {
+  title: string;
+  permalink: string;
+  subreddit: string;
+  author: string;
+  kind: string;
+  mood: string;
+}
+
+export interface AttentionRow {
+  rank: number;
+  ticker: string;
+  company: string;
+  mentionCount: number;
+  prevMentionCount: number | null;   // prior day's count; null = no prior row
+  sourceCount: number;
+  subredditCount: number;
+  weightedScore: number;
+  mood: string;
+  price: number | null;              // live quote pairing; null = no quote
+  pricePct: number | null;
+  topSources: AttentionSource[];
+}
+
+export interface MarketAttentionData {
+  date: string | null;               // UTC day the rollup covers; null = nothing aggregated yet
+  rows: AttentionRow[];
+  warning?: string;
+  generatedAt: string;
+}
+
 export interface CryptoCoin {
   rank: number;
   id: string;

@@ -463,3 +463,189 @@ def get_document(document_id: str) -> Optional[Dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM documents WHERE document_id = %s", (document_id,))
             return cur.fetchone()
+
+
+# ─── Reddit attention sweep storage (docs/stock-attention-spec.md §3) ───────
+
+_REDDIT_ATTENTION_SCHEMA_ENSURED = False
+
+
+def _ensure_reddit_attention_schema() -> None:
+    """Creates the tables the Reddit attention sweep writes. Python-owned,
+    like `documents` above - deliberately NOT in neon.ts's ensureSchema(),
+    since the only writer is reddit_attention_sweep.py.
+
+    intelligence_mentions is normally created by the web app's ensureSchema()
+    (neon.ts); the CREATE here is a byte-for-byte copy of that DDL so a fresh
+    database can't leave the sweep racing the web app's first request. Kept
+    in lockstep with neon.ts - if you change one, change the other.
+    """
+    global _REDDIT_ATTENTION_SCHEMA_ENSURED
+    if _REDDIT_ATTENTION_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reddit_attention_items (
+                  source_id   TEXT PRIMARY KEY,
+                  kind        TEXT NOT NULL,
+                  subreddit   TEXT NOT NULL,
+                  author      TEXT NOT NULL,
+                  title       TEXT NOT NULL DEFAULT '',
+                  permalink   TEXT NOT NULL,
+                  created_utc TIMESTAMPTZ NOT NULL,
+                  score       INTEGER NOT NULL DEFAULT 0,
+                  mood        TEXT NOT NULL DEFAULT 'neutral',
+                  swept_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS reddit_attention_items_created ON reddit_attention_items (created_utc)"
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS intelligence_mentions (
+                  id               BIGSERIAL PRIMARY KEY,
+                  source_type      TEXT NOT NULL,
+                  source_id        TEXT NOT NULL,
+                  mention_type     TEXT NOT NULL,
+                  value            TEXT NOT NULL,
+                  normalized_value TEXT NOT NULL,
+                  confidence       DOUBLE PRECISION NOT NULL DEFAULT 1,
+                  generated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  UNIQUE (source_type, source_id, mention_type, normalized_value)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS intelligence_mentions_lookup ON intelligence_mentions (mention_type, normalized_value)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS intelligence_mentions_source ON intelligence_mentions (source_type, source_id)"
+            )
+            conn.commit()
+    _REDDIT_ATTENTION_SCHEMA_ENSURED = True
+
+
+_STOCK_ATTENTION_SCHEMA_ENSURED = False
+
+
+def _ensure_stock_attention_schema() -> None:
+    """daily_stock_attention rollup table (spec §3.3). Python-owned like the
+    tables above; the web tier only reads it (and falls back naturally if it
+    doesn't exist yet, same pattern as getAllMirroredDocumentMetadata)."""
+    global _STOCK_ATTENTION_SCHEMA_ENSURED
+    if _STOCK_ATTENTION_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS daily_stock_attention (
+                  id              SERIAL PRIMARY KEY,
+                  attention_date  DATE NOT NULL,
+                  ticker          TEXT NOT NULL,
+                  company         TEXT NOT NULL DEFAULT '',
+                  mention_count   INTEGER NOT NULL DEFAULT 0,
+                  source_count    INTEGER NOT NULL DEFAULT 0,
+                  subreddit_count INTEGER NOT NULL DEFAULT 0,
+                  weighted_score  NUMERIC NOT NULL DEFAULT 0,
+                  mood            TEXT NOT NULL DEFAULT 'neutral',
+                  top_source_ids  TEXT NOT NULL DEFAULT '[]',
+                  generated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  UNIQUE (attention_date, ticker)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS daily_stock_attention_date_score ON daily_stock_attention (attention_date, weighted_score DESC)"
+            )
+            conn.commit()
+    _STOCK_ATTENTION_SCHEMA_ENSURED = True
+
+
+def upsert_reddit_attention_items(items: List[Dict[str, Any]]) -> int:
+    """Batch-upsert item metadata rows. Identity fields never change for a
+    given source_id; only score (votes keep moving) and swept_at update on
+    conflict."""
+    rows = []
+    for item in items:
+        source_id = _strip_nul_bytes(str(item.get("source_id", "") or "").strip())
+        if not source_id:
+            continue
+        rows.append((
+            source_id,
+            str(item.get("kind", "") or ""),
+            _strip_nul_bytes(str(item.get("subreddit", "") or "")),
+            _strip_nul_bytes(str(item.get("author", "") or "")),
+            _strip_nul_bytes(str(item.get("title", "") or "")),
+            _strip_nul_bytes(str(item.get("permalink", "") or "")),
+            item.get("created_utc"),
+            int(item.get("score", 0) or 0),
+            str(item.get("mood", "neutral") or "neutral"),
+        ))
+    if not rows:
+        return 0
+
+    _ensure_reddit_attention_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO reddit_attention_items
+                  (source_id, kind, subreddit, author, title, permalink, created_utc, score, mood)
+                VALUES %s
+                ON CONFLICT (source_id) DO UPDATE SET
+                  score = EXCLUDED.score,
+                  swept_at = now()
+                """,
+                rows,
+            )
+            conn.commit()
+    return len(rows)
+
+
+def insert_ticker_mentions(mentions: List[Dict[str, Any]]) -> int:
+    """Batch-insert ticker mention rows into intelligence_mentions.
+
+    ON CONFLICT DO NOTHING (not DO UPDATE): re-sweeping the same post must
+    be a no-op, and unlike the web app's saveIntelligenceMentions (which
+    rewrites a source's full mention set per analysis run), the sweep only
+    ever discovers additively.
+    """
+    rows = []
+    for mention in mentions:
+        source_id = _strip_nul_bytes(str(mention.get("source_id", "") or "").strip())
+        value = _strip_nul_bytes(str(mention.get("value", "") or "").strip())
+        normalized = _strip_nul_bytes(str(mention.get("normalized_value", "") or "").strip())
+        if not source_id or not value or not normalized:
+            continue
+        rows.append((
+            str(mention.get("source_type", "") or ""),
+            source_id,
+            str(mention.get("mention_type", "ticker") or "ticker"),
+            value,
+            normalized,
+            float(mention.get("confidence", 1.0) or 1.0),
+        ))
+    if not rows:
+        return 0
+
+    _ensure_reddit_attention_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO intelligence_mentions
+                  (source_type, source_id, mention_type, value, normalized_value, confidence)
+                VALUES %s
+                ON CONFLICT (source_type, source_id, mention_type, normalized_value) DO NOTHING
+                """,
+                rows,
+            )
+            conn.commit()
+    return len(rows)
