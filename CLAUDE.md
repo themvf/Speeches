@@ -39,16 +39,17 @@ Turn this from a pull product (you have to visit the dashboard) into a push prod
 - **Surfacing**: an `/alerts` page (in-app inbox, badge count of unread matches) plus a new `watchlist-digest-daily.yml` workflow that queries unread matches and posts a summary — start with a GitHub issue post (same zero-credential pattern `daily-health-check.yml` already uses), leave email (Resend/SES) as an explicit later upgrade requiring a new secret.
 - **Admin UI**: a Watchlists panel in `apps/web/app/admin/page.tsx`, copying the existing feeds/topic-rules CRUD pattern.
 
-### 2. Stocks getting attention (ticker extraction + daily attention tracking) — NOT STARTED
+### 2. Stocks getting attention (ticker extraction + daily attention tracking) — SPEC WRITTEN, NOT IMPLEMENTED
 
-The first real slice of the architecture already scoped in the "Stock-Specific News Connectors" section below — a new lens over content already ingested, not a new source.
+Full spec: [docs/stock-attention-spec.md](docs/stock-attention-spec.md) (2026-07-11) — architecture diagrams, exact schema, sweep cadence, scoring formula, UI wireframe, and a phased implementation timeline. Read that file before starting implementation; this bullet is now a summary, not the source of truth.
 
-- **Ticker/company resolution**: seed from SEC's public `company_tickers.json` (a free, static, no-auth JSON file mapping CIK/ticker/company name) as the alias source — do not attempt this via an LLM call per document; it's a lookup problem, not a generation problem.
-- **Extraction**: run the resolver against `entities` already produced by enrichment (`_normalize_enrichment_payload`'s `entities` list) plus raw title/description text for RSS articles — no new full-text LLM pass required.
-- **Schema**: new `daily_stock_attention` table — `date, ticker, mention_count, source_count, weighted_score, mood, top_source_ids` (per the schema already sketched in "Stock-Specific News Connectors" below); mentions themselves reuse the existing `intelligence_mentions` shape with `mention_type = 'ticker'`.
+Originally scoped as ticker resolution against *already-ingested* content only (enrichment entities + RSS text). The full spec adds a **live Reddit sweep** (r/wallstreetbets, r/stocks, r/investing via PRAW — credentials registered and verified working 2026-07-11) as the primary attention signal, directly modeled on ApeWisdom/YoloStocks/StonkWhisper's Wire (all reviewed live). The original enrichment-entity approach is still valid and complementary, not replaced.
+
+- **Ticker/company resolution**: seed from SEC's public `company_tickers.json` (free, static, no-auth — but fetch with `curl_cffi`; sec.gov TLS-fingerprints generic clients) into a **separate Python-only `ticker_config.json`** — deliberately NOT into `entity-aliases.json`, which is webpack-inlined into every Vercel server bundle and has no TS-side ticker consumer (spec v2 §5.3 reversed v1 on this). Three-tier resolution with an auto-generated ambiguous-symbol list; do not attempt this via an LLM call per document — it's a lookup problem.
+- **Schema**: new `daily_stock_attention` rollup table and a new Python-owned `reddit_attention_items` metadata table (author/subreddit/created_utc/permalink — needed for dedup, correct day bucketing, and the drill-down UI); mentions reuse the existing `intelligence_mentions` shape with `mention_type = 'ticker'` and **zero changes to that shared table** (spec v2 §3).
 - **Aggregation**: one new daily Python script/workflow (`aggregate_stock_attention.py` + `stock-attention-daily.yml`) reading the day's mentions, computing mention count/source diversity/freshness decay, no LLM calls — pure aggregation, matching `trend_aggregation.py`'s existing pattern.
-- **Surfacing**: new `/market/attention` (or a panel on the existing `/market` page, which already has price data — pairing "what moved" with "what's being talked about" is the useful combination) ranking tickers with drill-down to source articles. Label output "research context only, not investment advice" per the compliance defaults already documented below.
-- Depends on item 3 (entity normalization) for clean company-name-to-ticker matching — do item 3 first or expect noisier initial results.
+- **Surfacing**: an "Attention" tab on the existing `/market` page (which already has price data — pairing "what moved" with "what's being talked about" is the useful combination) ranking tickers with drill-down to source threads. Label output "research context only, not investment advice" per the compliance defaults already documented below.
+- Depends on item 3 (entity normalization) for clean company-name-to-ticker matching — do item 3 first or expect noisier initial results. Item 3 is already done.
 
 ### 3. Entity normalization / alias map — IMPLEMENTED (backfill written but not yet run against production)
 
