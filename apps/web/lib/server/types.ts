@@ -507,20 +507,61 @@ export interface AttentionRow {
   rank: number;
   ticker: string;
   company: string;
-  mentionCount: number;
-  prevMentionCount: number | null;   // prior day's count; null = no prior row
+  mentionCount: number;              // total (reddit + news) - see enhancement item 1
+  redditCount: number;
+  newsCount: number;
+  prevMentionCount: number | null;   // prior day's total; null = no prior row
   sourceCount: number;
   subredditCount: number;
   weightedScore: number;
   mood: string;
-  price: number | null;              // live quote pairing; null = no quote
+  price: number | null;              // request-time live quote; null = no quote
   pricePct: number | null;
+  // Stored market context from the rollup (item 2) - distinct from the
+  // request-time price/pricePct pairing above, which reflects "right now"
+  // vs. this row's "as of the rollup". Both are shown; they can differ.
+  storedPriceClose: number | null;
+  storedPricePct: number | null;
+  volume: number | null;
+  volumeVs20d: number | null;        // ratio, e.g. 2.5 = 2.5x the 20-day average
+  divergence: string;                // '' | 'attention_spike_no_price_move' | 'price_move_no_attention'
+  sparkline: number[];               // last N days' total_mention_count, oldest first
   topSources: AttentionSource[];
 }
 
 export interface MarketAttentionData {
   date: string | null;               // UTC day the rollup covers; null = nothing aggregated yet
   rows: AttentionRow[];
+  warning?: string;
+  generatedAt: string;
+}
+
+export interface AttentionHistoryPoint {
+  date: string;
+  mentionCount: number;
+  redditCount: number;
+  newsCount: number;
+  priceClose: number | null;
+  pricePct: number | null;
+}
+
+export interface MarketAttentionHistoryData {
+  ticker: string;
+  company: string;
+  points: AttentionHistoryPoint[];
+  warning?: string;
+}
+
+export interface IntradayAttentionRow {
+  rank: number;
+  ticker: string;
+  decayedMentionCount: number; // freshness-weighted, unique-author count
+  rawMentionCount: number;     // unique authors, no decay
+}
+
+export interface MarketAttentionIntradayData {
+  hoursBack: number;
+  rows: IntradayAttentionRow[];
   warning?: string;
   generatedAt: string;
 }

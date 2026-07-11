@@ -562,6 +562,18 @@ def _ensure_stock_attention_schema() -> None:
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS daily_stock_attention_date_score ON daily_stock_attention (attention_date, weighted_score DESC)"
             )
+            # Enhancement items 1-2 (docs/stock-attention-enhancements-spec.md):
+            # per-channel counts and market context. Additive, idempotent -
+            # ADD COLUMN IF NOT EXISTS is safe to re-run against the table
+            # created above by an already-deployed v1.
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS reddit_count INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS news_count INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS total_mention_count INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS price_close NUMERIC")
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS price_pct NUMERIC")
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS volume BIGINT")
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS volume_vs_20d NUMERIC")
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS divergence TEXT NOT NULL DEFAULT ''")
             conn.commit()
     _STOCK_ATTENTION_SCHEMA_ENSURED = True
 

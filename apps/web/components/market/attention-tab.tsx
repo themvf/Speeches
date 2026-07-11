@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import type { AttentionRow, MarketAttentionData } from "@/lib/server/types";
+import { useEffect, useState } from "react";
+import type {
+  AttentionHistoryPoint,
+  AttentionRow,
+  IntradayAttentionRow,
+  MarketAttentionData,
+  MarketAttentionHistoryData,
+  MarketAttentionIntradayData,
+} from "@/lib/server/types";
 
 interface Props {
   data: MarketAttentionData | null;
@@ -14,6 +21,11 @@ const MOOD_STYLES: Record<string, { label: string; color: string; symbol: string
   bearish: { label: "Bearish", color: "#f87171", symbol: "▼" },
   mixed:   { label: "Mixed",   color: "#fbbf24", symbol: "◆" },
   neutral: { label: "Neutral", color: "var(--ink-faint)", symbol: "◆" },
+};
+
+const DIVERGENCE_STYLES: Record<string, { label: string; color: string }> = {
+  attention_spike_no_price_move: { label: "Chatter w/o price move", color: "#fbbf24" },
+  price_move_no_attention: { label: "Price move w/o chatter", color: "#a78bfa" },
 };
 
 function MoodChip({ mood, deemphasized = false }: { mood: string; deemphasized?: boolean }) {
@@ -31,6 +43,18 @@ function MoodChip({ mood, deemphasized = false }: { mood: string; deemphasized?:
   );
 }
 
+function DivergenceBadge({ divergence }: { divergence: string }) {
+  const style = DIVERGENCE_STYLES[divergence];
+  if (!style) return null;
+  return (
+    <span
+      title={`${style.label} (provisional heuristic — see docs/stock-attention-enhancements-spec.md item 2)`}
+      className="ml-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full align-middle"
+      style={{ backgroundColor: style.color }}
+    />
+  );
+}
+
 function MentionDelta({ current, prev }: { current: number; prev: number | null }) {
   if (prev == null || prev === 0) {
     return <span className="text-xs text-[color:var(--ink-faint)]">new</span>;
@@ -45,35 +69,155 @@ function MentionDelta({ current, prev }: { current: number; prev: number | null 
   );
 }
 
-function SourcesDrawer({ row }: { row: AttentionRow }) {
-  if (row.topSources.length === 0) {
-    return <p className="px-4 py-3 text-xs text-[color:var(--ink-faint)]">No source threads stored for this ticker.</p>;
+// Minimal hand-rolled sparkline - no chart lib, matches repo convention
+// (see MoversTab's proportional bars). Renders total_mention_count over
+// the trailing window (item 3a).
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  if (values.length < 2) {
+    return <span className="text-[10px] text-[color:var(--ink-faint)]">—</span>;
   }
+  const width = 64;
+  const height = 20;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const points = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * width;
+      const y = height - ((v - min) / range) * height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
   return (
-    <ul className="space-y-1.5 px-4 py-3">
-      {row.topSources.map((source, i) => (
-        <li key={i} className="flex items-baseline gap-2 text-xs">
-          <span className="shrink-0 rounded bg-[rgba(79,213,255,0.08)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--ink-faint)]">
-            r/{source.subreddit}
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="inline-block overflow-visible">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" opacity="0.85" />
+    </svg>
+  );
+}
+
+function HistoryChart({ points }: { points: AttentionHistoryPoint[] }) {
+  if (points.length === 0) {
+    return <p className="text-xs text-[color:var(--ink-faint)]">No stored history yet.</p>;
+  }
+  const width = 280;
+  const height = 60;
+  const maxMentions = Math.max(...points.map((p) => p.mentionCount), 1);
+  const barWidth = width / points.length;
+  return (
+    <div className="space-y-2">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="block">
+        {points.map((p, i) => {
+          const barHeight = (p.mentionCount / maxMentions) * height;
+          return (
+            <rect
+              key={p.date}
+              x={i * barWidth + 1}
+              y={height - barHeight}
+              width={Math.max(1, barWidth - 2)}
+              height={barHeight}
+              fill="rgba(79,213,255,0.55)"
+            />
+          );
+        })}
+      </svg>
+      <div className="flex justify-between text-[9px] text-[color:var(--ink-faint)]">
+        <span>{points[0]?.date}</span>
+        <span>{points[points.length - 1]?.date}</span>
+      </div>
+    </div>
+  );
+}
+
+function TickerHistory({ ticker }: { ticker: string }) {
+  const [history, setHistory] = useState<MarketAttentionHistoryData | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/market/attention/history?ticker=${encodeURIComponent(ticker)}&days=30`)
+      .then((r) => r.json())
+      .then((env) => {
+        if (!cancelled && env.ok && env.data) setHistory(env.data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
+
+  if (loading) return <p className="text-xs text-[color:var(--ink-faint)]">Loading 30-day history…</p>;
+  if (!history || history.warning) {
+    return <p className="text-xs text-[color:var(--ink-faint)]">{history?.warning ?? "History unavailable."}</p>;
+  }
+  return <HistoryChart points={history.points} />;
+}
+
+function SourcesDrawer({ row }: { row: AttentionRow }) {
+  return (
+    <div className="space-y-3 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[color:var(--ink-faint)]">
+        <span>Reddit: {row.redditCount}</span>
+        <span>News: {row.newsCount}</span>
+        {row.volumeVs20d != null && <span>Volume: {row.volumeVs20d.toFixed(1)}x 20d avg</span>}
+        {row.storedPricePct != null && (
+          <span>
+            As-of rollup: {row.storedPricePct >= 0 ? "+" : ""}
+            {row.storedPricePct.toFixed(2)}%
           </span>
-          <a
-            href={source.permalink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="truncate text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline"
-          >
-            {source.title || source.permalink}
-          </a>
-          <span className="shrink-0 text-[10px] text-[color:var(--ink-faint)]">u/{source.author}</span>
-          <MoodChip mood={source.mood} deemphasized />
-        </li>
-      ))}
-    </ul>
+        )}
+        {row.divergence && DIVERGENCE_STYLES[row.divergence] && (
+          <span style={{ color: DIVERGENCE_STYLES[row.divergence]!.color }}>
+            {DIVERGENCE_STYLES[row.divergence]!.label}
+          </span>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+          30-Day Trend
+        </p>
+        <TickerHistory ticker={row.ticker} />
+      </div>
+
+      {row.topSources.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+            Source Threads
+          </p>
+          <ul className="space-y-1.5">
+            {row.topSources.map((source, i) => (
+              <li key={i} className="flex items-baseline gap-2 text-xs">
+                <span className="shrink-0 rounded bg-[rgba(79,213,255,0.08)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--ink-faint)]">
+                  r/{source.subreddit}
+                </span>
+                <a
+                  href={source.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline"
+                >
+                  {source.title || source.permalink}
+                </a>
+                <span className="shrink-0 text-[10px] text-[color:var(--ink-faint)]">u/{source.author}</span>
+                <MoodChip mood={source.mood} deemphasized />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
 function AttentionTableRow({ row, expanded, onToggle }: { row: AttentionRow; expanded: boolean; onToggle: () => void }) {
   const priceColor = (row.pricePct ?? 0) >= 0 ? "#41d39d" : "#f87171";
+  const sparklineColor = row.sparkline.length > 1 && row.sparkline[row.sparkline.length - 1]! >= row.sparkline[0]!
+    ? "#41d39d"
+    : "#f87171";
   return (
     <>
       <tr
@@ -83,14 +227,15 @@ function AttentionTableRow({ row, expanded, onToggle }: { row: AttentionRow; exp
         <td className="w-8 py-2.5 pl-4 pr-2 text-xs tabular-nums text-[color:var(--ink-faint)]">{row.rank}</td>
         <td className="w-16 px-2 py-2.5">
           <span className="text-xs font-bold text-[color:var(--accent)]">{row.ticker}</span>
+          <DivergenceBadge divergence={row.divergence} />
         </td>
         <td className="max-w-[160px] truncate px-2 py-2.5 text-xs text-[color:var(--ink-faint)]">{row.company}</td>
         <td className="px-2 py-2.5 text-right text-xs tabular-nums text-[color:var(--ink)]">{row.mentionCount}</td>
         <td className="px-2 py-2.5 text-right">
           <MentionDelta current={row.mentionCount} prev={row.prevMentionCount} />
         </td>
-        <td className="hidden px-2 py-2.5 text-right text-xs tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
-          {row.sourceCount}
+        <td className="hidden px-2 py-2.5 text-right md:table-cell">
+          <Sparkline values={row.sparkline} color={sparklineColor} />
         </td>
         <td className="hidden px-2 py-2.5 text-right text-xs tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
           {row.subredditCount}
@@ -111,7 +256,7 @@ function AttentionTableRow({ row, expanded, onToggle }: { row: AttentionRow; exp
       </tr>
       {expanded && (
         <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.5)] last:border-0">
-          <td colSpan={9}>
+          <td colSpan={8}>
             <SourcesDrawer row={row} />
           </td>
         </tr>
@@ -120,8 +265,71 @@ function AttentionTableRow({ row, expanded, onToggle }: { row: AttentionRow; exp
   );
 }
 
+function IntradayBoard() {
+  const [data, setData] = useState<MarketAttentionIntradayData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch("/api/market/attention/intraday?hours=24")
+      .then((r) => r.json())
+      .then((env) => {
+        if (!cancelled && env.ok && env.data) setData(env.data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading && !data) {
+    return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">Loading intraday board…</p>;
+  }
+  if (!data || data.rows.length === 0) {
+    return (
+      <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">
+        {data?.warning ?? "No intraday data available."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+            <th className="py-2 pl-4 pr-2 text-left font-semibold">#</th>
+            <th className="px-2 py-2 text-left font-semibold">Ticker</th>
+            <th className="px-2 py-2 text-right font-semibold">Freshness-Weighted</th>
+            <th className="py-2 pl-2 pr-4 text-right font-semibold">Raw Mentions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.rows.map((row: IntradayAttentionRow) => (
+            <tr key={row.ticker} className="border-b border-[color:var(--line)] last:border-0">
+              <td className="py-2 pl-4 pr-2 text-xs tabular-nums text-[color:var(--ink-faint)]">{row.rank}</td>
+              <td className="px-2 py-2 text-xs font-bold text-[color:var(--accent)]">{row.ticker}</td>
+              <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink)]">
+                {row.decayedMentionCount.toFixed(1)}
+              </td>
+              <td className="py-2 pl-2 pr-4 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">
+                {row.rawMentionCount}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function AttentionTab({ data, loading, error }: Props) {
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
+  const [view, setView] = useState<"daily" | "intraday">("daily");
 
   if (loading && !data) {
     return (
@@ -143,67 +351,94 @@ export function AttentionTab({ data, loading, error }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-            Stocks Getting Attention · Reddit
+            Stocks Getting Attention · Reddit + News
           </p>
           <p className="mt-0.5 text-[10px] text-[color:var(--ink-faint)]">
             Research context only — not investment advice.
           </p>
         </div>
-        {data.date && (
-          <span className="text-xs text-[color:var(--ink-faint)]">
-            {data.date} <span className="opacity-70">(UTC day)</span>
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          <div className="flex overflow-hidden rounded-lg border border-[color:var(--line)]">
+            <button
+              type="button"
+              onClick={() => setView("daily")}
+              className={`px-3 py-1 text-xs font-medium ${view === "daily" ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
+            >
+              Daily
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("intraday")}
+              className={`px-3 py-1 text-xs font-medium ${view === "intraday" ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
+            >
+              Hot Right Now
+            </button>
+          </div>
+          {view === "daily" && data.date && (
+            <span className="text-xs text-[color:var(--ink-faint)]">
+              {data.date} <span className="opacity-70">(UTC day)</span>
+            </span>
+          )}
+        </div>
       </div>
 
-      {data.warning && (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
-          {data.warning}
-        </div>
-      )}
+      {view === "intraday" ? (
+        <IntradayBoard />
+      ) : (
+        <>
+          {data.warning && (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+              {data.warning}
+            </div>
+          )}
 
-      {data.rows.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                <th className="py-2 pl-4 pr-2 text-left font-semibold">#</th>
-                <th className="px-2 py-2 text-left font-semibold">Ticker</th>
-                <th className="px-2 py-2 text-left font-semibold">Company</th>
-                <th className="px-2 py-2 text-right font-semibold">Mentions</th>
-                <th className="px-2 py-2 text-right font-semibold">Δ 24h</th>
-                <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">Threads</th>
-                <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">Subs</th>
-                <th className="px-2 py-2 text-right font-semibold">Mood</th>
-                <th className="py-2 pl-2 pr-4 text-right font-semibold">Price Δ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.rows.map((row) => (
-                <AttentionTableRow
-                  key={row.ticker}
-                  row={row}
-                  expanded={expandedTicker === row.ticker}
-                  onToggle={() => setExpandedTicker(expandedTicker === row.ticker ? null : row.ticker)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+          {data.rows.length > 0 && (
+            <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                    <th className="py-2 pl-4 pr-2 text-left font-semibold">#</th>
+                    <th className="px-2 py-2 text-left font-semibold">Ticker</th>
+                    <th className="px-2 py-2 text-left font-semibold">Company</th>
+                    <th className="px-2 py-2 text-right font-semibold">Mentions</th>
+                    <th className="px-2 py-2 text-right font-semibold">Δ 24h</th>
+                    <th className="hidden px-2 py-2 text-right font-semibold md:table-cell">14d Trend</th>
+                    <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">Subs</th>
+                    <th className="px-2 py-2 text-right font-semibold">Mood</th>
+                    <th className="py-2 pl-2 pr-4 text-right font-semibold">Price Δ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((row) => (
+                    <AttentionTableRow
+                      key={row.ticker}
+                      row={row}
+                      expanded={expandedTicker === row.ticker}
+                      onToggle={() => setExpandedTicker(expandedTicker === row.ticker ? null : row.ticker)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-      {data.rows.length === 0 && !data.warning && (
-        <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">
-          No attention data for this day.
-        </p>
-      )}
+          {data.rows.length === 0 && !data.warning && (
+            <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">
+              No attention data for this day.
+            </p>
+          )}
 
-      <p className="text-[10px] text-[color:var(--ink-faint)]">
-        Mentions are deduplicated per author per day across swept subreddits. Click a row for source threads.
-      </p>
+          <p className="text-[10px] text-[color:var(--ink-faint)]">
+            Mentions are deduplicated per author per day across swept subreddits and counted per article for news
+            coverage. Click a row for source threads, trend, and channel breakdown. The colored dot next to a ticker
+            flags a provisional divergence signal (chatter without a price move, or a price move without much
+            chatter).
+          </p>
+        </>
+      )}
     </div>
   );
 }

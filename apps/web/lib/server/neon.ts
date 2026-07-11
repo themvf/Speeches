@@ -1318,11 +1318,19 @@ export type DailyStockAttentionRow = {
   ticker: string;
   company: string;
   mention_count: number;
+  reddit_count: number;
+  news_count: number;
+  total_mention_count: number;
   source_count: number;
   subreddit_count: number;
   weighted_score: number;
   mood: string;
   top_source_ids: string; // JSON array of reddit_attention_items.source_id
+  price_close: number | null;
+  price_pct: number | null;
+  volume: number | null;
+  volume_vs_20d: number | null;
+  divergence: string;
   generated_at: string;
 };
 
@@ -1347,13 +1355,79 @@ export async function getLatestStockAttentionDate(): Promise<string | null> {
 export async function getDailyStockAttention(date: string, limit = 50): Promise<DailyStockAttentionRow[]> {
   const sql = getSql();
   const rows = (await sql`
-    SELECT attention_date::text AS attention_date, ticker, company, mention_count, source_count,
-           subreddit_count, weighted_score::float AS weighted_score, mood, top_source_ids, generated_at::text AS generated_at
+    SELECT attention_date::text AS attention_date, ticker, company, mention_count, reddit_count, news_count,
+           total_mention_count, source_count, subreddit_count, weighted_score::float AS weighted_score, mood,
+           top_source_ids, price_close::float AS price_close, price_pct::float AS price_pct,
+           volume, volume_vs_20d::float AS volume_vs_20d, divergence, generated_at::text AS generated_at
     FROM daily_stock_attention
     WHERE attention_date = ${date}::date
-    ORDER BY weighted_score DESC, ticker ASC
+    ORDER BY weighted_score DESC, total_mention_count DESC, ticker ASC
     LIMIT ${limit}
   `) as unknown as DailyStockAttentionRow[];
+  return rows;
+}
+
+// Item 3: per-ticker history for the detail drawer/chart. Reads
+// daily_stock_attention directly (persists indefinitely, per spec §6.3) -
+// no separate history table needed.
+export async function getStockAttentionHistory(ticker: string, days = 30): Promise<DailyStockAttentionRow[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT attention_date::text AS attention_date, ticker, company, mention_count, reddit_count, news_count,
+           total_mention_count, source_count, subreddit_count, weighted_score::float AS weighted_score, mood,
+           top_source_ids, price_close::float AS price_close, price_pct::float AS price_pct,
+           volume, volume_vs_20d::float AS volume_vs_20d, divergence, generated_at::text AS generated_at
+    FROM daily_stock_attention
+    WHERE ticker = ${ticker}
+      AND attention_date >= CURRENT_DATE - (${days} * INTERVAL '1 day')
+    ORDER BY attention_date ASC
+  `) as unknown as DailyStockAttentionRow[];
+  return rows;
+}
+
+export type StockAttentionSparklinePoint = { attention_date: string; total_mention_count: number };
+
+// Item 3: batched sparkline history for every ticker on the current
+// leaderboard in one query, instead of one round trip per row.
+export async function getStockAttentionSparklines(
+  tickers: string[],
+  days = 14
+): Promise<Map<string, StockAttentionSparklinePoint[]>> {
+  const map = new Map<string, StockAttentionSparklinePoint[]>();
+  if (tickers.length === 0) return map;
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT ticker, attention_date::text AS attention_date, total_mention_count
+    FROM daily_stock_attention
+    WHERE ticker = ANY(${tickers})
+      AND attention_date >= CURRENT_DATE - (${days} * INTERVAL '1 day')
+    ORDER BY ticker ASC, attention_date ASC
+  `) as unknown as { ticker: string; attention_date: string; total_mention_count: number }[];
+  for (const row of rows) {
+    const list = map.get(row.ticker) ?? [];
+    list.push({ attention_date: row.attention_date, total_mention_count: row.total_mention_count });
+    map.set(row.ticker, list);
+  }
+  return map;
+}
+
+export type IntradayMentionRow = { ticker: string; author: string; created_utc: string };
+
+// Item 3c: raw rows for the "hot right now" intraday view. Deliberately
+// unaggregated - the API route computes per-author dedup + freshness
+// decay at request time (not stored; this is the freshness-decay math
+// the daily rollup's §6.2 explicitly keeps out of the persisted rollup).
+export async function getIntradayTickerMentions(hoursBack = 24): Promise<IntradayMentionRow[]> {
+  const sql = getSql();
+  const cappedHours = Math.max(1, Math.min(72, hoursBack));
+  const rows = (await sql`
+    SELECT m.value AS ticker, i.author, i.created_utc::text AS created_utc
+    FROM intelligence_mentions m
+    JOIN reddit_attention_items i ON i.source_id = m.source_id
+    WHERE m.mention_type = 'ticker'
+      AND m.source_type IN ('reddit_post', 'reddit_comment')
+      AND i.created_utc >= now() - (${cappedHours} * INTERVAL '1 hour')
+  `) as unknown as IntradayMentionRow[];
   return rows;
 }
 
