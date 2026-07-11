@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
-  deleteBlockedRssArticles,
   getRecapSettings,
   getTopicRules,
   getRecentArticles,
@@ -18,11 +17,13 @@ export const maxDuration = 60;
 
 const MAX_ITEMS_PER_TOPIC = 20;
 const MIN_RECAP_SUMMARY_CHARS = 320;
-const MODEL_REQUEST_TIMEOUT_MS = 35_000;
-const MAX_MODEL_ATTEMPTS = 1;
+// One request now generates exactly one topic (see GenerateRecapBody), so up
+// to MAX_MODEL_ATTEMPTS calls must fit inside the maxDuration=60s route
+// budget alongside the DB reads/matching. 22s * 2 = 44s leaves headroom.
+const MODEL_REQUEST_TIMEOUT_MS = 22_000;
+const MAX_MODEL_ATTEMPTS = 2;
 const MAX_RECAP_OUTPUT_TOKENS = 1600;
-const DEFAULT_TOPIC_BATCH_SIZE = 1;
-const MAX_TOPIC_BATCH_SIZE = 2;
+const RECENT_ARTICLES_LIMIT = 400;
 const OFFICIAL_FEED_PREFIXES = [
   "sec_",
   "finra_",
@@ -90,10 +91,15 @@ type RecapItem = {
   tone_label?: "positive" | "neutral" | "negative" | null;
 };
 
+// One topic per request, keyed by topic_key rather than a positional index —
+// a positional cursor recomputed against `selectedRules` on every request
+// silently skips or double-generates topics if settings/active rules change
+// mid-run. Keying by topic_key also makes a single request idempotent and
+// safely retryable, and lets the client fan requests out however it likes
+// instead of being locked into one fixed batch size.
 type GenerateRecapBody = {
   date?: string;
-  cursor?: number;
-  batchSize?: number;
+  topicKey?: string;
 };
 
 function normalizeRecapKey(value: string): string {
@@ -199,9 +205,9 @@ async function generateTopicSummary(
   topicLabel: string,
   items: RecapItem[],
   cfg: RecapProviderConfig
-): Promise<string> {
-  const itemList = items
-    .slice(0, MAX_ITEMS_PER_TOPIC)
+): Promise<{ summary: string; fallback: boolean }> {
+  const promptItems = items.slice(0, MAX_ITEMS_PER_TOPIC);
+  const itemList = promptItems
     .map((item) => {
       const prefix = item.source_type === "document"
         ? `[Regulatory Document${item.speaker ? ` — ${item.speaker}` : ""}]`
@@ -210,7 +216,11 @@ async function generateTopicSummary(
     })
     .join("\n");
 
-  const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${items.length} sources about "${topicLabel}" from the past 24 hours. Sources are labeled [News] or [Regulatory Document]. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Prioritize regulatory documents over news when relevant. Be direct and analytical. Synthesize — do not quote or list sources individually.\n\nSources:\n${itemList}`;
+  // promptItems.length (not items.length) so the count the model is told to
+  // summarize always matches what it's actually shown — with >20 matches
+  // the list is capped at MAX_ITEMS_PER_TOPIC but the prompt used to still
+  // quote the uncapped total.
+  const prompt = `You are a regulatory intelligence analyst.\n\nSummarize the following ${promptItems.length} sources about "${topicLabel}" from the past 24 hours. Sources are labeled [News] or [Regulatory Document]. Use exactly this format:\n\n**Executive Summary:** [2–3 sentence overview of the most important developments.]\n\n**Key Points:**\n- [First key point]\n- [Second key point]\n- [Third key point]\n- [Add 1–2 more if warranted]\n\nEach bullet must be on its own line starting with "- ". Prioritize regulatory documents over news when relevant. Be direct and analytical. Synthesize — do not quote or list sources individually.\n\nSources:\n${itemList}`;
 
   const fullPrompt = `${prompt}\n\nAdditional requirements: The Executive Summary must be 3 complete sentences and 90-150 words total. The response must include at least three complete Key Points. Do not return sentence fragments or stop after a partial phrase.`;
 
@@ -295,7 +305,7 @@ async function generateTopicSummary(
       }
 
       try {
-        return validateSummary(content);
+        return { summary: validateSummary(content), fallback: false };
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
       }
@@ -311,35 +321,36 @@ async function generateTopicSummary(
     }
   }
 
-  return buildSourceFallbackSummary(
-    topicLabel,
-    items,
-    lastError?.message ?? `${providerLabel(cfg.provider)} did not return a usable recap.`
-  );
+  return {
+    summary: buildSourceFallbackSummary(
+      topicLabel,
+      items,
+      lastError?.message ?? `${providerLabel(cfg.provider)} did not return a usable recap.`
+    ),
+    fallback: true,
+  };
 }
 
-function matchItemsToTopics(
+// Scores items against a single rule (the one requested topic) rather than
+// building a match map for every selected rule — each request only needs
+// one topic's matches, so matching the rest is wasted work.
+function matchItemsToTopic(
   items: RecapItem[],
-  rules: TopicRuleView[],
+  rule: TopicRuleView,
   minScore: number
-): Map<string, RecapItem[]> {
-  const map = new Map<string, RecapItem[]>();
-  for (const rule of rules) map.set(rule.topic_key, []);
-
+): RecapItem[] {
+  const matched: RecapItem[] = [];
   for (const item of items) {
-    // Use matchText (enrichment tags/keywords) if provided, otherwise fall back to description
     const matchInput = {
       title: item.title,
       description: item.matchText ?? item.description,
     };
-    const matches = getTopicMatches(matchInput, rules);
-    for (const { rule, score } of matches) {
-      if (score >= minScore) {
-        map.get(rule.topic_key)?.push(item);
-      }
+    const [best] = getTopicMatches(matchInput, [rule]);
+    if (best && best.score >= minScore) {
+      matched.push(item);
     }
   }
-  return map;
+  return matched;
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -362,11 +373,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const body = await req.json().catch(() => ({})) as GenerateRecapBody;
     const todayIso = new Date().toISOString().split("T")[0] as string;
     const recapDate = body.date ?? todayIso;
-    const cursor = Number.isFinite(body.cursor) ? Math.max(0, Math.floor(Number(body.cursor))) : 0;
-    const batchSize = Number.isFinite(body.batchSize)
-      ? Math.min(MAX_TOPIC_BATCH_SIZE, Math.max(1, Math.floor(Number(body.batchSize))))
-      : DEFAULT_TOPIC_BATCH_SIZE;
-    console.info("[recap/generate] start", { recapDate, cursor, batchSize });
+    const topicKey = String(body.topicKey || "").trim();
+    if (!topicKey) {
+      return NextResponse.json({ ok: false, error: "topicKey is required." }, { status: 400 });
+    }
+    console.info("[recap/generate] start", { recapDate, topicKey });
 
     let since: Date;
     let until: Date | undefined;
@@ -381,57 +392,43 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const [selectedTopicKeys, rawRules, articles] = await Promise.all([
       getRecapSettings(),
       getTopicRules(true),
-      getRecentArticles({ limit: 400, since, until }),
+      getRecentArticles({ limit: RECENT_ARTICLES_LIMIT, since, until }),
     ]);
     console.info("[recap/generate] loaded inputs", {
       recapDate,
+      topicKey,
       selectedTopics: selectedTopicKeys.length,
       rules: rawRules.length,
       articles: articles.length,
       elapsedMs: Date.now() - requestStartedAt,
     });
 
-    if (selectedTopicKeys.length === 0) {
-      return NextResponse.json({ ok: false, error: "No topics selected. Save topic settings first." }, { status: 400 });
+    if (!selectedTopicKeys.includes(topicKey)) {
+      return NextResponse.json(
+        { ok: false, error: "This topic is not in the saved recap settings. Save recap settings again, then generate." },
+        { status: 400 }
+      );
     }
 
     const rules = normalizeTopicRules(rawRules);
-    const selectedRules = rules.filter((r) => selectedTopicKeys.includes(r.topic_key));
-    if (selectedRules.length === 0) {
+    const rule = rules.find((r) => r.topic_key === topicKey);
+    if (!rule) {
       return NextResponse.json(
         {
           ok: false,
           error: rawRules.length === 0
             ? "No active recap topic rules are available. Reload the page and save recap topics again."
-            : "The saved recap topics no longer match active topic rules. Save recap settings again, then generate the recap.",
+            : "The saved recap topic no longer matches an active topic rule. Save recap settings again, then generate the recap.",
         },
         { status: 400 }
       );
     }
-    const batchRules = selectedRules.slice(cursor, cursor + batchSize);
-    const nextCursor = Math.min(selectedRules.length, cursor + batchRules.length);
-    const done = nextCursor >= selectedRules.length;
 
-    if (batchRules.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        data: {
-          date: recapDate,
-          topics: [],
-          skipped: [],
-          failed: [],
-          cursor,
-          nextCursor: selectedRules.length,
-          remaining: 0,
-          done: true,
-        },
-      });
+    const warnings: string[] = [];
+    if (articles.length >= RECENT_ARTICLES_LIMIT) {
+      warnings.push(`Recent-articles window hit the ${RECENT_ARTICLES_LIMIT}-article fetch limit; the recap may be missing older matches from a high-volume window.`);
     }
 
-    await deleteBlockedRssArticles(rawRules).catch((error) => {
-      console.error("[recap/generate] RSS policy cleanup failed:", error);
-      return 0;
-    });
     const articlesForRecap = articles.filter((article) => isAllowedRssArticleForIngestion(article.feed_key, {
       guid: article.guid,
       title: article.title,
@@ -451,82 +448,92 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       tone_label: a.tone_label,
     }));
 
-    const articleMap = matchItemsToTopics(articleItems, selectedRules, MIN_ARTICLE_SCORE);
+    const matchedItems = matchItemsToTopic(articleItems, rule, MIN_ARTICLE_SCORE);
+    const topicItems = filterTopicItems(rule, matchedItems);
 
-    const results: { topic_key: string; topic_label: string; article_count: number; summary: string }[] = [];
-    const skipped: { topic_key: string; topic_label: string }[] = [];
-    const failed: { topic_key: string; topic_label: string; error: string }[] = [];
+    console.info("[recap/generate] topic start", {
+      topicKey: rule.topic_key,
+      topicLabel: rule.label,
+      matchedItems: topicItems.length,
+      elapsedMs: Date.now() - requestStartedAt,
+    });
 
-    for (const rule of batchRules) {
-      try {
-        console.info("[recap/generate] topic start", {
+    if (topicItems.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        data: {
+          date: recapDate,
           topicKey: rule.topic_key,
           topicLabel: rule.label,
-          elapsedMs: Date.now() - requestStartedAt,
-        });
-        const topicItems = filterTopicItems(rule, articleMap.get(rule.topic_key) ?? []);
-
-        if (topicItems.length === 0) {
-          skipped.push({ topic_key: rule.topic_key, topic_label: rule.label });
-          continue;
-        }
-
-        const summary = await generateTopicSummary(rule.label, topicItems, cfg);
-
-        const positive_count = topicItems.filter((i) => i.tone_label === "positive").length;
-        const negative_count = topicItems.filter((i) => i.tone_label === "negative").length;
-        const neutral_count = topicItems.filter((i) => i.tone_label === "neutral").length;
-
-        const sources: RecapSource[] = topicItems.slice(0, MAX_ITEMS_PER_TOPIC).map((i) => ({
-          title: i.title,
-          url: i.url,
-          source_type: i.source_type,
-          source_kind: i.source_kind,
-          speaker: i.speaker,
-        }));
-
-        await saveRecapRows([{
-          recap_date: recapDate,
-          topic_key: rule.topic_key,
-          topic_label: rule.label,
-          summary,
-          article_count: topicItems.length,
-          positive_count,
-          negative_count,
-          neutral_count,
-          sources,
-        }]);
-
-        results.push({ topic_key: rule.topic_key, topic_label: rule.label, article_count: topicItems.length, summary });
-        console.info("[recap/generate] topic saved", {
-          topicKey: rule.topic_key,
-          items: topicItems.length,
-          elapsedMs: Date.now() - requestStartedAt,
-        });
-      } catch (error) {
-        failed.push({
-          topic_key: rule.topic_key,
-          topic_label: rule.label,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        console.error("[recap/generate] topic failed:", error);
-      }
+          status: "skipped",
+          warnings,
+        },
+      });
     }
 
-    return NextResponse.json({
-      ok: true,
-      data: {
-        date: recapDate,
-        topics: results,
-        skipped,
-        failed,
-        cursor,
-        nextCursor,
-        remaining: Math.max(0, selectedRules.length - nextCursor),
-        done,
+    try {
+      const { summary, fallback } = await generateTopicSummary(rule.label, topicItems, cfg);
+
+      const positive_count = topicItems.filter((i) => i.tone_label === "positive").length;
+      const negative_count = topicItems.filter((i) => i.tone_label === "negative").length;
+      const neutral_count = topicItems.filter((i) => i.tone_label === "neutral").length;
+
+      const sources: RecapSource[] = topicItems.slice(0, MAX_ITEMS_PER_TOPIC).map((i) => ({
+        title: i.title,
+        url: i.url,
+        source_type: i.source_type,
+        source_kind: i.source_kind,
+        speaker: i.speaker,
+      }));
+
+      await saveRecapRows([{
+        recap_date: recapDate,
+        topic_key: rule.topic_key,
+        topic_label: rule.label,
+        summary,
+        article_count: topicItems.length,
+        positive_count,
+        negative_count,
+        neutral_count,
+        sources,
+        fallback,
+      }]);
+
+      console.info("[recap/generate] topic saved", {
+        topicKey: rule.topic_key,
+        items: topicItems.length,
+        fallback,
         elapsedMs: Date.now() - requestStartedAt,
-      },
-    });
+      });
+
+      return NextResponse.json({
+        ok: true,
+        data: {
+          date: recapDate,
+          topicKey: rule.topic_key,
+          topicLabel: rule.label,
+          status: "generated",
+          articleCount: topicItems.length,
+          fallback,
+          warnings,
+          elapsedMs: Date.now() - requestStartedAt,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[recap/generate] topic failed:", error);
+      return NextResponse.json({
+        ok: true,
+        data: {
+          date: recapDate,
+          topicKey: rule.topic_key,
+          topicLabel: rule.label,
+          status: "failed",
+          error: message,
+          warnings,
+        },
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[recap/generate]", message);

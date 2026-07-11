@@ -3,6 +3,10 @@
 import { useState } from "react";
 import type { DailyRecapRow, RecapSource, StoredRssTopicRule } from "@/lib/server/neon";
 
+const MAX_RETRIES_PER_TOPIC = 3;
+const RETRY_BASE_DELAY_MS = 1500;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   return text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/).map((part, j) => {
     if (part.startsWith("**") && part.endsWith("**"))
@@ -136,6 +140,14 @@ function RecapCard({ row }: { row: DailyRecapRow }) {
             {row.topic_label}
           </span>
           <span className="text-xs text-[color:var(--ink-faint)]">{row.article_count} articles</span>
+          {row.fallback && (
+            <span
+              title="The model call failed or timed out; this is a templated source list, not an AI-generated summary."
+              className="rounded-full border border-[#ffb84d]/40 bg-[#ffb84d]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#ffb84d]"
+            >
+              Fallback
+            </span>
+          )}
         </div>
         <span className="shrink-0 text-[10px] text-[color:var(--ink-faint)]">generated {generatedAt}</span>
       </div>
@@ -224,70 +236,95 @@ export function RecapDashboard({
   };
 
   const generate = async () => {
+    const topicKeys = [...selectedKeys];
+    if (topicKeys.length === 0) {
+      setGenerateError("No topics selected. Save topic settings first.");
+      return;
+    }
+
     setGenerating(true);
     setGenerateProgress("Starting recap generation...");
     setGenerateError(null);
     setSkippedTopics([]);
     try {
-      let cursor = 0;
-      let done = false;
       const allSkipped: { topic_key: string; topic_label: string }[] = [];
       const allFailed: { topic_key: string; topic_label: string; error: string }[] = [];
+      const allWarnings = new Set<string>();
       let generatedCount = 0;
 
-      while (!done) {
-        const res = await fetch("/api/intel/recap/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ date: viewDate, cursor, batchSize: 1 }),
-        });
-        let json: {
-          ok: boolean;
-          error?: string;
-          data?: {
-            topics?: { topic_key: string; topic_label: string; article_count: number; summary: string }[];
-            skipped?: { topic_key: string; topic_label: string }[];
-            failed?: { topic_key: string; topic_label: string; error: string }[];
-            nextCursor?: number;
-            remaining?: number;
-            done?: boolean;
+      // One request per topic, keyed by topic_key (not a positional cursor
+      // recomputed server-side each call — see generate/route.ts). A 429
+      // from the shared rate limiter retries the same topic with backoff
+      // instead of aborting the whole run and losing every topic after it.
+      for (let i = 0; i < topicKeys.length; i += 1) {
+        const topicKey = topicKeys[i];
+        const fallbackLabel = initialTopicRules.find((r) => r.topic_key === topicKey)?.label ?? topicKey;
+        setGenerateProgress(`Generating recap topics... ${i + 1}/${topicKeys.length} (${fallbackLabel})`);
+
+        let attempt = 0;
+        let settled = false;
+        while (!settled) {
+          attempt += 1;
+          let res: Response;
+          try {
+            res = await fetch("/api/intel/recap/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ date: viewDate, topicKey }),
+            });
+          } catch (err) {
+            allFailed.push({ topic_key: topicKey, topic_label: fallbackLabel, error: err instanceof Error ? err.message : "Network error" });
+            break;
+          }
+
+          if (res.status === 429 && attempt < MAX_RETRIES_PER_TOPIC) {
+            await sleep(RETRY_BASE_DELAY_MS * attempt);
+            continue;
+          }
+
+          let json: {
+            ok: boolean;
+            error?: string;
+            data?: {
+              topicKey?: string;
+              topicLabel?: string;
+              status?: "generated" | "skipped" | "failed";
+              error?: string;
+              warnings?: string[];
+            };
           };
-        };
-        try {
-          json = (await res.json()) as { ok: boolean; error?: string };
-        } catch {
-          setGenerateError(`Server error ${res.status}: ${res.statusText || "non-JSON response"}`);
-          return;
-        }
-        if (!json.ok) {
-          setGenerateError(json.error ?? `Generation failed (HTTP ${res.status}).`);
-          return;
-        }
+          try {
+            json = (await res.json()) as typeof json;
+          } catch {
+            allFailed.push({ topic_key: topicKey, topic_label: fallbackLabel, error: `Server error ${res.status}: ${res.statusText || "non-JSON response"}` });
+            break;
+          }
 
-        generatedCount += json.data?.topics?.length ?? 0;
-        allSkipped.push(...(json.data?.skipped ?? []));
-        allFailed.push(...(json.data?.failed ?? []));
+          if (!json.ok) {
+            allFailed.push({ topic_key: topicKey, topic_label: fallbackLabel, error: json.error ?? `Generation failed (HTTP ${res.status}).` });
+            break;
+          }
 
-        done = Boolean(json.data?.done);
-        if (!done && typeof json.data?.nextCursor !== "number") {
-          setGenerateError("The recap request did not return a continuation cursor. Reload the page and retry.");
-          return;
+          const label = json.data?.topicLabel ?? fallbackLabel;
+          for (const warning of json.data?.warnings ?? []) allWarnings.add(warning);
+          if (json.data?.status === "generated") generatedCount += 1;
+          else if (json.data?.status === "skipped") allSkipped.push({ topic_key: topicKey, topic_label: label });
+          else if (json.data?.status === "failed") allFailed.push({ topic_key: topicKey, topic_label: label, error: json.data.error ?? "Unknown error" });
+          settled = true;
         }
-        cursor = json.data?.nextCursor ?? cursor + 1;
-        setGenerateProgress((json.data?.remaining ?? 0) > 0
-          ? `Generating recap topics... ${json.data?.remaining} remaining`
-          : "Reloading generated recap..."
-        );
       }
 
-      const uniqueSkipped = Array.from(new Map(allSkipped.map((topic) => [topic.topic_key, topic])).values());
-      setSkippedTopics(uniqueSkipped);
+      setSkippedTopics(Array.from(new Map(allSkipped.map((topic) => [topic.topic_key, topic])).values()));
+      const messages: string[] = [];
       if (allFailed.length > 0) {
-        setGenerateError(`Some topics failed: ${allFailed.map((item) => `${item.topic_label}: ${item.error}`).join("; ")}`);
+        messages.push(`Some topics failed: ${allFailed.map((item) => `${item.topic_label}: ${item.error}`).join("; ")}`);
       }
-      if (generatedCount === 0 && uniqueSkipped.length === 0 && allFailed.length === 0) {
-        setGenerateError("The recap request completed, but no topic rows were generated. Save recap settings again, then retry.");
+      messages.push(...allWarnings);
+      if (generatedCount === 0 && allSkipped.length === 0 && allFailed.length === 0) {
+        messages.push("The recap request completed, but no topic rows were generated. Save recap settings again, then retry.");
       }
+      if (messages.length > 0) setGenerateError(messages.join(" "));
+
       const recapRes = await fetch(`/api/intel/recap?date=${viewDate}`);
       if (!recapRes.ok) {
         setGenerateError(`Failed to reload recap (HTTP ${recapRes.status})`);

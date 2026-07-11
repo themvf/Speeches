@@ -77,6 +77,11 @@ export type DailyRecapRow = {
   negative_count: number;
   neutral_count: number;
   sources: RecapSource[];
+  // True when the model call failed/timed out/returned an invalid response
+  // and the row holds the templated buildSourceFallbackSummary() text
+  // instead of a real LLM summary. Surfaced in the UI so a degraded recap
+  // never looks indistinguishable from a real one.
+  fallback: boolean;
   generated_at: string;
 };
 
@@ -474,11 +479,13 @@ async function ensureSchemaUncached(): Promise<void> {
       negative_count INTEGER NOT NULL DEFAULT 0,
       neutral_count  INTEGER NOT NULL DEFAULT 0,
       sources        TEXT NOT NULL DEFAULT '[]',
+      fallback       BOOLEAN NOT NULL DEFAULT false,
       generated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (recap_date, topic_key)
     )
   `;
   await sql`ALTER TABLE daily_recaps ADD COLUMN IF NOT EXISTS sources TEXT NOT NULL DEFAULT '[]'`;
+  await sql`ALTER TABLE daily_recaps ADD COLUMN IF NOT EXISTS fallback BOOLEAN NOT NULL DEFAULT false`;
   await seedDefaultFeeds(sql);
   await applyFeedSourceMigrations(sql);
   await seedDefaultTopicRules(sql);
@@ -1264,8 +1271,8 @@ export async function saveRecapRows(rows: Omit<DailyRecapRow, "id" | "generated_
   for (const row of rows) {
     const sourcesJson = JSON.stringify(row.sources ?? []);
     await sql`
-      INSERT INTO daily_recaps (recap_date, topic_key, topic_label, summary, article_count, positive_count, negative_count, neutral_count, sources)
-      VALUES (${row.recap_date}, ${row.topic_key}, ${row.topic_label}, ${row.summary}, ${row.article_count}, ${row.positive_count}, ${row.negative_count}, ${row.neutral_count}, ${sourcesJson})
+      INSERT INTO daily_recaps (recap_date, topic_key, topic_label, summary, article_count, positive_count, negative_count, neutral_count, sources, fallback)
+      VALUES (${row.recap_date}, ${row.topic_key}, ${row.topic_label}, ${row.summary}, ${row.article_count}, ${row.positive_count}, ${row.negative_count}, ${row.neutral_count}, ${sourcesJson}, ${row.fallback})
       ON CONFLICT (recap_date, topic_key) DO UPDATE
       SET summary        = EXCLUDED.summary,
           topic_label    = EXCLUDED.topic_label,
@@ -1274,6 +1281,7 @@ export async function saveRecapRows(rows: Omit<DailyRecapRow, "id" | "generated_
           negative_count = EXCLUDED.negative_count,
           neutral_count  = EXCLUDED.neutral_count,
           sources        = EXCLUDED.sources,
+          fallback       = EXCLUDED.fallback,
           generated_at   = now()
     `;
   }
