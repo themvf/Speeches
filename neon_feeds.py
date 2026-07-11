@@ -339,6 +339,30 @@ _DOCUMENTS_UPSERT_CONFLICT_CLAUSE = """
 """
 
 
+def _strip_nul_bytes(value: str) -> str:
+    """Postgres text/JSONB columns reject embedded NUL (0x00) bytes outright
+    (a libpq/wire-protocol limitation, not specific to this schema or a bug
+    in our SQL) - some scraped/extracted documents contain one, usually a
+    PDF or encoding-extraction artifact. Discovered in production: a single
+    NUL byte anywhere in a 200-row execute_values batch fails the whole
+    batch, not just that row. Stripping is safe - NUL isn't a meaningful
+    printable character in any of these fields."""
+    return value.replace("\x00", "") if isinstance(value, str) else value
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    """Recursively strip NUL bytes from a metadata dict before it goes into
+    a JSONB column - the raw scraper metadata can carry a NUL in any nested
+    string field, not just the ones broken out into their own columns."""
+    if isinstance(value, str):
+        return _strip_nul_bytes(value)
+    if isinstance(value, dict):
+        return {key: _sanitize_for_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    return value
+
+
 def _document_record_to_row(record: Dict[str, Any]) -> Optional[tuple]:
     """Extract one (document_id, ...) row tuple from a custom_documents.json-
     shaped record, or None if it has no document_id. Shared by the per-record
@@ -346,21 +370,21 @@ def _document_record_to_row(record: Dict[str, Any]) -> Optional[tuple]:
     column mapping."""
     metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
     content = record.get("content", {}) if isinstance(record.get("content", {}), dict) else {}
-    document_id = str(metadata.get("document_id", "") or "").strip()
+    document_id = _strip_nul_bytes(str(metadata.get("document_id", "") or "").strip())
     if not document_id:
         return None
     return (
         document_id,
-        str(metadata.get("title", "") or ""),
-        str(metadata.get("speaker", "") or ""),
-        str(metadata.get("organization", "") or ""),
-        str(metadata.get("doc_type", "") or ""),
-        str(metadata.get("source_kind", "") or ""),
-        str(metadata.get("url", "") or ""),
-        str(metadata.get("published_date", "") or metadata.get("date", "") or ""),
+        _strip_nul_bytes(str(metadata.get("title", "") or "")),
+        _strip_nul_bytes(str(metadata.get("speaker", "") or "")),
+        _strip_nul_bytes(str(metadata.get("organization", "") or "")),
+        _strip_nul_bytes(str(metadata.get("doc_type", "") or "")),
+        _strip_nul_bytes(str(metadata.get("source_kind", "") or "")),
+        _strip_nul_bytes(str(metadata.get("url", "") or "")),
+        _strip_nul_bytes(str(metadata.get("published_date", "") or metadata.get("date", "") or "")),
         int(metadata.get("word_count", 0) or 0),
-        str(content.get("full_text", "") or ""),
-        psycopg2.extras.Json(metadata),
+        _strip_nul_bytes(str(content.get("full_text", "") or "")),
+        psycopg2.extras.Json(_sanitize_for_json(metadata)),
     )
 
 

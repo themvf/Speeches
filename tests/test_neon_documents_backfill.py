@@ -81,6 +81,60 @@ def test_mirror_document_and_batch_use_the_same_column_mapping(monkeypatch):
     assert single_row[9] == "Body text"
 
 
+def test_document_record_to_row_strips_embedded_nul_bytes():
+    """Regression test for a production failure: a full-corpus backfill hit
+    'A string literal cannot contain NUL (0x00) characters' from Postgres on
+    one 200-row batch, because a single document somewhere in it had a
+    literal NUL byte (a known PDF/HTML-extraction artifact) in its text -
+    and Postgres rejects the whole multi-row batch when even one row is bad,
+    not just that row. NUL bytes must be stripped before they ever reach a
+    SQL statement, in every text field and inside the JSONB metadata too."""
+    record = {
+        "metadata": {
+            "document_id": "doc-with-nul",
+            "title": "Bad\x00 Title",
+            "speaker": "Jane\x00 Doe",
+            "organization": "SEC\x00",
+            "doc_type": "Speech",
+            "source_kind": "sec_speech",
+            "url": "https://example.com/doc",
+            "published_date": "July 9, 2026",
+            "word_count": 3,
+            "nested": {"note": "has a \x00 nul byte too"},
+        },
+        "content": {"full_text": "Some remarks with an embedded \x00 byte."},
+    }
+
+    row = neon_feeds._document_record_to_row(record)
+
+    assert row is not None
+    assert "\x00" not in row[0]  # document_id
+    assert "\x00" not in row[1]  # title
+    assert "\x00" not in row[2]  # speaker
+    assert "\x00" not in row[3]  # organization
+    assert "\x00" not in row[9]  # full_text
+    sanitized_metadata = row[-1].adapted
+    assert "\x00" not in sanitized_metadata["title"]
+    assert "\x00" not in sanitized_metadata["nested"]["note"]
+
+
+def test_mirror_documents_batch_succeeds_with_a_nul_byte_in_one_record(monkeypatch):
+    """End-to-end (mocked) proof that a batch containing a NUL-byte document
+    no longer fails the whole batch."""
+    monkeypatch.setattr(neon_feeds, "_DOCUMENTS_SCHEMA_ENSURED", True)
+    conn, cursor = _mock_conn()
+    records = [_doc("clean-doc"), _doc("dirty-doc", full_text="text with \x00 nul")]
+
+    with patch.object(neon_feeds, "_get_conn", return_value=conn):
+        with patch("psycopg2.extras.execute_values") as mock_execute_values:
+            result = neon_feeds.mirror_documents_batch(records)
+
+    assert result == 2
+    rows = mock_execute_values.call_args[0][2]
+    dirty_row = next(r for r in rows if r[0] == "dirty-doc")
+    assert "\x00" not in dirty_row[9]
+
+
 # ─── neon_feeds.count_documents / get_document ──────────────────────────────
 
 def test_count_documents_returns_int(monkeypatch):
