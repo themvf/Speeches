@@ -5,6 +5,7 @@ import path from "node:path";
 import { getDataSourceConfig } from "@/lib/server/env";
 import { downloadGcsJson, uploadGcsJson } from "@/lib/server/gcs-loader";
 import {
+  type CustomDocumentMetadata,
   type CustomDocumentRecord,
   type CustomDocumentsPayload,
   type DocumentListItem,
@@ -16,6 +17,7 @@ import {
   type TrendItem,
   type TrendsPayload
 } from "@/lib/server/types";
+import { getAllMirroredDocumentMetadata } from "@/lib/server/neon";
 
 const SEC_SPEECHES_GCS_BLOB = "all_speeches.json";
 const SEC_SPEECHES_LOCAL_FILE = "all_speeches_final.json";
@@ -894,6 +896,55 @@ export async function loadCorpusDocuments(): Promise<CustomDocumentRecord[]> {
   }
 
   return [...dedup.values()];
+}
+
+export type CorpusDocumentsLoadResult = {
+  documents: CustomDocumentRecord[];
+  source: "neon" | "gcs_fallback";
+  warning?: string;
+};
+
+// Phase 3 reader cutover (see CLAUDE.md) for callers that only need document
+// metadata, not full_text (e.g. /api/metrics's org/source-kind/newsapi
+// aggregates) - reads the Neon `documents` mirror instead of downloading and
+// parsing the full custom_documents.json blob. SEC speeches are NOT part of
+// that mirror (they live only in all_speeches.json, a separate blob the
+// Python pipeline has never written into custom_documents.json), so those
+// are still merged in from GCS exactly as loadCorpusDocuments() already
+// does - only the customPayload half of that merge is replaced.
+//
+// Falls back to the full GCS-based loadCorpusDocuments() on ANY failure
+// (missing table, connection issue, etc.) rather than degrading silently -
+// the caller gets a `source`/`warning` field instead of failing outright,
+// consistent with this route's existing partial-failure pattern.
+export async function loadCorpusDocumentsFromNeon(): Promise<CorpusDocumentsLoadResult> {
+  try {
+    const [secPayload, neonRows] = await Promise.all([loadSecSpeeches(), getAllMirroredDocumentMetadata()]);
+
+    const dedup = new Map<string, CustomDocumentRecord>();
+    for (const doc of secPayload.documents || []) {
+      const id = normalizeString(doc.metadata?.document_id);
+      if (id) {
+        dedup.set(id, doc);
+      }
+    }
+    for (const row of neonRows) {
+      const id = normalizeString(row.document_id);
+      if (!id) continue;
+      const metadata = (row.metadata && typeof row.metadata === "object" ? row.metadata : {}) as unknown as CustomDocumentMetadata;
+      dedup.set(id, {
+        metadata: { ...metadata, document_id: id },
+        content: { full_text: "", paragraphs: [], sentences: [] }
+      });
+    }
+
+    return { documents: [...dedup.values()], source: "neon" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[data-store] loadCorpusDocumentsFromNeon failed, falling back to GCS:", error);
+    const documents = await loadCorpusDocuments();
+    return { documents, source: "gcs_fallback", warning: `Neon corpus read failed, used GCS fallback: ${message}` };
+  }
 }
 
 export function buildDocumentListItems(

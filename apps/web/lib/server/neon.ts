@@ -1267,3 +1267,23 @@ export async function saveRecapRows(rows: Omit<DailyRecapRow, "id" | "generated_
     `;
   }
 }
+
+export type NeonMirroredDocumentRow = {
+  document_id: string;
+  metadata: Record<string, unknown>;
+};
+
+// Phase 3 of migrating off custom_documents.json (see CLAUDE.md): a
+// read-only query against the `documents` mirror table (Phase 1/2), for
+// readers that only need metadata, not full_text - deliberately omits
+// full_text from the SELECT since it's the bulk of each row's size and
+// unused by e.g. /api/metrics, unlike downloading the full GCS blob which
+// has no way to omit it. No ensureSchema() call here: the `documents` table
+// is created lazily by the Python-side mirror (neon_feeds.py), not by this
+// file's ensureSchema(); if it doesn't exist yet, the query below fails
+// naturally and callers are expected to fall back to the GCS blob.
+export async function getAllMirroredDocumentMetadata(): Promise<NeonMirroredDocumentRow[]> {
+  const sql = getSql();
+  const rows = (await sql`SELECT document_id, metadata FROM documents`) as unknown as NeonMirroredDocumentRow[];
+  return rows;
+}

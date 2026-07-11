@@ -1,15 +1,15 @@
 import {
   buildDocumentListItems,
-  loadCorpusDocuments,
+  loadCorpusDocumentsFromNeon,
   loadCustomDocuments,
   loadEnrichmentState,
   loadNewsConnectorSettings,
-  selectNewsFeedDocuments
+  selectNewsFeedDocuments,
+  type CorpusDocumentsLoadResult
 } from "@/lib/server/data-store";
 import { getApiRuntimeInfo } from "@/lib/server/env";
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
 import type {
-  CustomDocumentRecord,
   CustomDocumentsPayload,
   EnrichmentStatePayload,
   NewsConnectorSettingsPayload
@@ -84,18 +84,21 @@ export async function GET() {
 
   try {
     const [corpusResult, customResult, enrichmentResult, settingsResult] = await Promise.all([
-      loadWithBudget<CustomDocumentRecord[]>("corpus documents", loadCorpusDocuments(), () => []),
+      loadWithBudget<CorpusDocumentsLoadResult>(
+        "corpus documents",
+        loadCorpusDocumentsFromNeon(),
+        () => ({ documents: [], source: "gcs_fallback" as const })
+      ),
       loadWithBudget<CustomDocumentsPayload>("custom documents", loadCustomDocuments(), emptyCustomDocuments),
       loadWithBudget<EnrichmentStatePayload>("enrichment state", loadEnrichmentState(), emptyEnrichmentState),
       loadWithBudget<NewsConnectorSettingsPayload>("news connector settings", loadNewsConnectorSettings(), emptyNewsConnectorSettings)
     ]);
 
-    const warnings = [corpusResult.warning, customResult.warning, enrichmentResult.warning, settingsResult.warning].filter(Boolean);
-    const corpus = corpusResult.data;
+    const warnings = [corpusResult.warning, corpusResult.data.warning, customResult.warning, enrichmentResult.warning, settingsResult.warning].filter(Boolean);
     const custom = customResult.data;
     const enrichment = enrichmentResult.data;
     const settings = settingsResult.data;
-    const documents = corpus || [];
+    const documents = corpusResult.data.documents || [];
     const orgSet = new Set<string>();
     const sourceCounts = new Map<string, number>();
 
@@ -224,6 +227,7 @@ export async function GET() {
         }
       },
       by_source_kind: sortByCount,
+      corpus_source: corpusResult.data.source,
       runtime: getApiRuntimeInfo(),
       warnings
     };
