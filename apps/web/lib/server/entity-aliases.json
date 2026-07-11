@@ -1,0 +1,279 @@
+{
+  "notes": [
+    "Single shared entity alias map (see CLAUDE.md 'Entity normalization / alias map').",
+    "Consumed by BOTH the TS path (apps/web/lib/server/entity-aliases.ts, used by neon.ts's prepareMentionBatch) and the Python path (entity_aliases.py, used by _normalize_enrichment_payload in run_financial_news_pipeline.py and app.py) - edit this file, never fork per-language copies.",
+    "Matching happens in normalized space (lowercased, punctuation collapsed to spaces - see normalizeMentionValue / normalize_mention_value), so aliases here can be written in natural casing/punctuation.",
+    "'the Commission' maps to SEC per the CLAUDE.md spec; in rare CFTC-context documents this will mis-attribute, an accepted tradeoff since this corpus is overwhelmingly SEC-centric.",
+    "Keep canonical labels short and display-ready - they replace the stored mention value when an alias is collapsed."
+  ],
+  "entities": [
+    {
+      "canonical": "SEC",
+      "aliases": [
+        "Securities and Exchange Commission",
+        "U.S. Securities and Exchange Commission",
+        "US Securities and Exchange Commission",
+        "United States Securities and Exchange Commission",
+        "Securities & Exchange Commission",
+        "S.E.C.",
+        "the Commission"
+      ]
+    },
+    {
+      "canonical": "CFTC",
+      "aliases": [
+        "Commodity Futures Trading Commission",
+        "U.S. Commodity Futures Trading Commission",
+        "US Commodity Futures Trading Commission"
+      ]
+    },
+    {
+      "canonical": "FINRA",
+      "aliases": [
+        "Financial Industry Regulatory Authority"
+      ]
+    },
+    {
+      "canonical": "FDIC",
+      "aliases": [
+        "Federal Deposit Insurance Corporation"
+      ]
+    },
+    {
+      "canonical": "OCC",
+      "aliases": [
+        "Office of the Comptroller of the Currency",
+        "Comptroller of the Currency"
+      ]
+    },
+    {
+      "canonical": "CFPB",
+      "aliases": [
+        "Consumer Financial Protection Bureau",
+        "Bureau of Consumer Financial Protection"
+      ]
+    },
+    {
+      "canonical": "FinCEN",
+      "aliases": [
+        "Financial Crimes Enforcement Network"
+      ]
+    },
+    {
+      "canonical": "Federal Reserve",
+      "aliases": [
+        "the Fed",
+        "Federal Reserve Board",
+        "Federal Reserve System",
+        "Board of Governors of the Federal Reserve System",
+        "US Federal Reserve",
+        "U.S. Federal Reserve"
+      ]
+    },
+    {
+      "canonical": "DOJ",
+      "aliases": [
+        "Department of Justice",
+        "U.S. Department of Justice",
+        "US Department of Justice",
+        "Justice Department"
+      ]
+    },
+    {
+      "canonical": "NYDFS",
+      "aliases": [
+        "New York Department of Financial Services",
+        "New York State Department of Financial Services"
+      ]
+    },
+    {
+      "canonical": "MSRB",
+      "aliases": [
+        "Municipal Securities Rulemaking Board"
+      ]
+    },
+    {
+      "canonical": "PCAOB",
+      "aliases": [
+        "Public Company Accounting Oversight Board"
+      ]
+    },
+    {
+      "canonical": "U.S. Treasury",
+      "aliases": [
+        "Treasury",
+        "Treasury Department",
+        "Department of the Treasury",
+        "U.S. Department of the Treasury",
+        "US Department of the Treasury",
+        "United States Treasury"
+      ]
+    },
+    {
+      "canonical": "IRS",
+      "aliases": [
+        "Internal Revenue Service"
+      ]
+    },
+    {
+      "canonical": "FTC",
+      "aliases": [
+        "Federal Trade Commission"
+      ]
+    },
+    {
+      "canonical": "OFAC",
+      "aliases": [
+        "Office of Foreign Assets Control"
+      ]
+    },
+    {
+      "canonical": "FSOC",
+      "aliases": [
+        "Financial Stability Oversight Council"
+      ]
+    },
+    {
+      "canonical": "NCUA",
+      "aliases": [
+        "National Credit Union Administration"
+      ]
+    },
+    {
+      "canonical": "CISA",
+      "aliases": [
+        "Cybersecurity and Infrastructure Security Agency"
+      ]
+    },
+    {
+      "canonical": "FBI",
+      "aliases": [
+        "Federal Bureau of Investigation"
+      ]
+    },
+    {
+      "canonical": "GAO",
+      "aliases": [
+        "Government Accountability Office"
+      ]
+    },
+    {
+      "canonical": "CRS",
+      "aliases": [
+        "Congressional Research Service"
+      ]
+    },
+    {
+      "canonical": "ESMA",
+      "aliases": [
+        "European Securities and Markets Authority"
+      ]
+    },
+    {
+      "canonical": "FCA",
+      "aliases": [
+        "Financial Conduct Authority"
+      ]
+    },
+    {
+      "canonical": "ECB",
+      "aliases": [
+        "European Central Bank"
+      ]
+    },
+    {
+      "canonical": "JPMorgan Chase",
+      "aliases": [
+        "JPMorgan",
+        "J.P. Morgan",
+        "JP Morgan",
+        "JPMorgan Chase & Co."
+      ]
+    },
+    {
+      "canonical": "Goldman Sachs",
+      "aliases": [
+        "Goldman Sachs Group",
+        "The Goldman Sachs Group"
+      ]
+    },
+    {
+      "canonical": "Morgan Stanley",
+      "aliases": []
+    },
+    {
+      "canonical": "Bank of America",
+      "aliases": [
+        "BofA",
+        "Bank of America Corp",
+        "Bank of America Corporation"
+      ]
+    },
+    {
+      "canonical": "Wells Fargo",
+      "aliases": [
+        "Wells Fargo & Co",
+        "Wells Fargo & Company"
+      ]
+    },
+    {
+      "canonical": "Citigroup",
+      "aliases": [
+        "Citi",
+        "Citibank"
+      ]
+    },
+    {
+      "canonical": "BlackRock",
+      "aliases": [
+        "BlackRock Inc"
+      ]
+    },
+    {
+      "canonical": "Coinbase",
+      "aliases": [
+        "Coinbase Global"
+      ]
+    },
+    {
+      "canonical": "Binance",
+      "aliases": [
+        "Binance Holdings"
+      ]
+    },
+    {
+      "canonical": "Microsoft",
+      "aliases": [
+        "Microsoft Corporation",
+        "Microsoft Corp"
+      ]
+    },
+    {
+      "canonical": "Apple",
+      "aliases": [
+        "Apple Inc"
+      ]
+    },
+    {
+      "canonical": "Alphabet",
+      "aliases": [
+        "Google",
+        "Alphabet Inc"
+      ]
+    },
+    {
+      "canonical": "Meta",
+      "aliases": [
+        "Meta Platforms",
+        "Facebook"
+      ]
+    },
+    {
+      "canonical": "Amazon",
+      "aliases": [
+        "Amazon.com",
+        "Amazon.com Inc"
+      ]
+    }
+  ]
+}

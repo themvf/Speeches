@@ -6,6 +6,7 @@ import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/r
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
 import { TOPIC_RULE_RECOMMENDATIONS, formatTopicRuleKeywords } from "@/lib/topic-rule-recommendations";
+import { canonicalEntityLabel, normalizeMentionValue } from "@/lib/server/entity-aliases";
 
 // Cap on re-queuing a "strengthened" (model under-delivered, padded with
 // boilerplate) analysis for re-analysis, so a chronically-weak article isn't
@@ -272,13 +273,11 @@ function textArray(value: unknown, maxItems = 30): string[] {
   return out;
 }
 
+// The normalized_value normalization moved to entity-aliases.ts (as
+// normalizeMentionValue) so the alias map and the Python port share one
+// definition; this wrapper keeps existing call sites readable.
 function normalizeMention(value: string): string {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/['"“”‘’]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeMentionValue(value);
 }
 
 export function rssArticleSourceHash(article: Pick<StoredRssArticle, "title" | "description" | "url" | "published_at" | "feed_key">): string {
@@ -1123,7 +1122,19 @@ export function prepareMentionBatch(
 ): PreparedMentionBatch {
   const byKey = new Map<string, { type: MentionType; value: string; normalized: string; confidence: number }>();
   for (const mention of mentions) {
-    const value = String(mention.value || "").trim();
+    let value = String(mention.value || "").trim();
+    // Entity mentions resolve through the shared alias map (see CLAUDE.md
+    // "Entity normalization / alias map") so "SEC" / "Securities and
+    // Exchange Commission" / "the Commission" collapse to one
+    // normalized_value instead of fragmenting watchlist matches and trend
+    // counts. Canonicalizing the label first (then normalizing the result)
+    // is the one path that guarantees value and normalized_value agree.
+    // Other mention types (keyword/topic/individual) are left untouched:
+    // topics come from fixed rule sets and keywords are free-form phrases,
+    // so aliasing them would rewrite meaning, not merge duplicates.
+    if (mention.type === "entity") {
+      value = canonicalEntityLabel(value);
+    }
     const normalized = normalizeMention(value);
     if (!value || !normalized) continue;
     const key = `${mention.type} ${normalized}`;

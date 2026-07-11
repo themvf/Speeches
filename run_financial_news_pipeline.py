@@ -23,6 +23,7 @@ try:
 except Exception:  # pragma: no cover
     tomllib = None
 
+import entity_aliases
 from gcs_storage import GCSStorage
 from google.api_core.exceptions import PreconditionFailed
 from newsapi_financial_scraper import NewsAPIFinancialScraper
@@ -1368,15 +1369,32 @@ def _normalize_enrichment_payload(payload: Dict[str, Any], doc: Optional[Dict[st
     entities = payload.get("entities", [])
     normalized_entities = []
     if isinstance(entities, list):
+        # Resolve each name through the shared alias map (see CLAUDE.md
+        # "Entity normalization / alias map") and merge entries that collapse
+        # to the same canonical entity ("SEC" + "the Commission" becomes one
+        # entry with mentions summed) so trends/knowledge-graph counts stop
+        # fragmenting across name variants.
+        merged_entities: Dict[str, Dict[str, Any]] = {}
         for item in entities[:30]:
             if isinstance(item, dict):
-                name = str(item.get("name", "") or "").strip()
+                name = entity_aliases.canonical_entity_label(item.get("name", ""))
                 etype = str(item.get("type", "") or "").strip().upper()
                 mentions = _coerce_int(item.get("mentions", 1), default=1, min_value=1)
-                if name:
-                    normalized_entities.append(
-                        {"name": name, "type": etype or "OTHER", "mentions": max(1, mentions)}
-                    )
+                if not name:
+                    continue
+                key = entity_aliases.normalize_mention_value(name)
+                existing = merged_entities.get(key)
+                if existing is None:
+                    merged_entities[key] = {
+                        "name": name,
+                        "type": etype or "OTHER",
+                        "mentions": max(1, mentions),
+                    }
+                else:
+                    existing["mentions"] += max(1, mentions)
+                    if existing["type"] == "OTHER" and etype:
+                        existing["type"] = etype
+        normalized_entities = list(merged_entities.values())
 
     stance = payload.get("stance", {})
     if not isinstance(stance, dict):

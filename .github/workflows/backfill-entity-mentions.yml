@@ -1,0 +1,57 @@
+name: Backfill Entity Mention Aliases (One-Time)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report affected row counts only; no Neon writes (default true - a deliberate first run should flip this to false)"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backfill-entity-mentions
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Re-normalize intelligence_mentions entity rows
+        run: |
+          set -euo pipefail
+          args=(--summary-path backfill_entity_mentions_summary.json)
+          if [ "${DRY_RUN}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python backfill_entity_mentions.py "${args[@]}"
+
+      - name: Upload Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-entity-mentions-summary-${{ github.run_id }}
+          path: backfill_entity_mentions_summary.json
+          if-no-files-found: ignore

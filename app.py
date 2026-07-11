@@ -17,6 +17,7 @@ import pandas as pd
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import entity_aliases
 from analysis_pipeline import SpeechAnalysisPipeline
 from comment_position import (
     COMMENT_POSITION_INSTRUCTION as _SHARED_COMMENT_POSITION_INSTRUCTION,
@@ -3560,19 +3561,31 @@ def _normalize_enrichment_payload(payload, doc=None):
     entities = payload.get("entities", [])
     normalized_entities = []
     if isinstance(entities, list):
+        # Kept in lockstep with run_financial_news_pipeline.py's
+        # _normalize_enrichment_payload: resolve names through the shared
+        # alias map and merge entries that collapse to the same canonical
+        # entity (see CLAUDE.md "Entity normalization / alias map").
+        merged_entities = {}
         for item in entities[:30]:
             if isinstance(item, dict):
-                name = str(item.get("name", "") or "").strip()
+                name = entity_aliases.canonical_entity_label(item.get("name", ""))
                 etype = str(item.get("type", "") or "").strip().upper()
                 mentions = _coerce_int(item.get("mentions", 1), default=1, min_value=1)
-                if name:
-                    normalized_entities.append(
-                        {
-                            "name": name,
-                            "type": etype or "OTHER",
-                            "mentions": max(1, mentions),
-                        }
-                    )
+                if not name:
+                    continue
+                key = entity_aliases.normalize_mention_value(name)
+                existing = merged_entities.get(key)
+                if existing is None:
+                    merged_entities[key] = {
+                        "name": name,
+                        "type": etype or "OTHER",
+                        "mentions": max(1, mentions),
+                    }
+                else:
+                    existing["mentions"] += max(1, mentions)
+                    if existing["type"] == "OTHER" and etype:
+                        existing["type"] = etype
+        normalized_entities = list(merged_entities.values())
 
     stance = payload.get("stance", {})
     if not isinstance(stance, dict):

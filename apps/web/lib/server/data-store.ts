@@ -45,6 +45,19 @@ function normalizeWordCount(value: unknown): number {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+// Enrichment entities are stored as {name, type, mentions} objects (see
+// _normalize_enrichment_payload in run_financial_news_pipeline.py), not
+// strings - running them through normalizeString() produced the literal
+// label "[object Object]" for every entity, which collapsed all entity
+// nodes in the knowledge graph into one garbage node. Extract the name;
+// plain-string entries (older metadata shapes) pass through unchanged.
+function entityLabel(item: unknown): string {
+  if (item && typeof item === "object" && !Array.isArray(item)) {
+    return normalizeString((item as Record<string, unknown>).name);
+  }
+  return normalizeString(item);
+}
+
 function splitCsv(value: string): string[] {
   return String(value || "")
     .split(",")
@@ -297,7 +310,7 @@ function normalizeCustomDocument(record: unknown): CustomDocumentRecord | null {
       ? metadataRaw.alleged_violations.map((item) => normalizeString(item)).filter(Boolean)
       : splitCsv(normalizeString(metadataRaw.alleged_violations)),
     entities: Array.isArray(metadataRaw.entities)
-      ? metadataRaw.entities.map((item) => normalizeString(item)).filter(Boolean)
+      ? metadataRaw.entities.map((item) => entityLabel(item)).filter(Boolean)
       : splitCsv(normalizeString(metadataRaw.entities)),
     respondents: Array.isArray(metadataRaw.respondents)
       ? metadataRaw.respondents.map((item) => normalizeString(item)).filter(Boolean)
@@ -463,7 +476,7 @@ function normalizeEnrichmentEntry(docId: string, value: unknown): EnrichmentEntr
         ? enrichmentRaw.keywords.map((item) => normalizeString(item)).filter(Boolean)
         : [],
       entities: Array.isArray(enrichmentRaw.entities)
-        ? enrichmentRaw.entities.map((item) => normalizeString(item)).filter(Boolean)
+        ? enrichmentRaw.entities.map((item) => entityLabel(item)).filter(Boolean)
         : [],
       stance: enrichmentRaw.stance && typeof enrichmentRaw.stance === "object" ? enrichmentRaw.stance : {},
       comment_position:
