@@ -213,3 +213,55 @@ def test_verify_flags_missing_document_in_neon():
 
     assert result["row_count_matches"] is False
     assert result["sample_mismatches"] == [{"doc_id": "only-doc", "issue": "missing_in_neon"}]
+
+
+def test_verify_never_raises_when_neon_is_unreachable():
+    """Regression test: a real production run (DATABASE_URL missing) showed
+    _verify() propagating an uncaught RuntimeError from count_documents(),
+    which wiped out the whole run's batch-upload summary and left only a
+    bare top-level error. count_documents() failures must degrade to a
+    self-contained "error" key instead."""
+    docs = [_doc("d1")]
+    with patch.object(neon_feeds, "count_documents", side_effect=RuntimeError("DATABASE_URL is not set.")):
+        result = backfill._verify(docs, sample_size=1)
+
+    assert "error" in result
+    assert "DATABASE_URL is not set" in result["error"]
+
+
+def test_verify_reports_per_doc_read_failure_without_aborting_the_sample():
+    docs = [_doc("d1", full_text="abc"), _doc("d2", full_text="xyz")]
+
+    def flaky_get_document(doc_id):
+        if doc_id == "d1":
+            raise RuntimeError("connection reset")
+        return {"full_text": "xyz"}
+
+    with patch.object(neon_feeds, "count_documents", return_value=2):
+        with patch.object(neon_feeds, "get_document", side_effect=flaky_get_document):
+            result = backfill._verify(docs, sample_size=2)
+
+    assert "error" not in result
+    assert result["sample_checked"] == 1  # only d2 succeeded
+    issues = {m["doc_id"]: m["issue"] for m in result["sample_mismatches"]}
+    assert issues.get("d1") == "verify_read_failed"
+
+
+def test_run_marks_not_ok_when_verification_errors_even_if_all_batches_succeeded(monkeypatch):
+    """The bug found in production: batches can all succeed while the
+    subsequent verify step fails (e.g. transient Neon blip) - the run must
+    not self-report ok=True in that case, and must still surface the
+    detailed batch summary rather than a bare top-level exception."""
+    docs = [_doc("d1"), _doc("d2")]
+    monkeypatch.setattr(backfill.core, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(backfill.core, "_get_gcs_storage", lambda secrets: (object(), "ok"))
+    monkeypatch.setattr(backfill.core, "_load_custom_documents", lambda storage: {"documents": docs})
+
+    with patch.object(neon_feeds, "mirror_documents_batch", side_effect=lambda batch: len(batch)):
+        with patch.object(neon_feeds, "count_documents", side_effect=RuntimeError("DATABASE_URL is not set.")):
+            summary = backfill._run(_args(batch_size=2, verify_sample=1))
+
+    assert summary["upserted_total"] == 2
+    assert summary["failed_batch_count"] == 0
+    assert "error" in summary["verification"]
+    assert summary["ok"] is False

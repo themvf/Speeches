@@ -52,8 +52,18 @@ def _verify(corpus_docs: List[Dict[str, Any]], sample_size: int) -> Dict[str, An
     against the source corpus. Not exhaustive (a full content diff of tens of
     thousands of documents isn't worth the Neon read cost here) - this is a
     fast, cheap sanity check, not a substitute for a manual spot-check before
-    trusting the table as authoritative."""
-    neon_count = neon_feeds.count_documents()
+    trusting the table as authoritative.
+
+    Deliberately never raises: a verification-step failure (e.g. Neon
+    unreachable) must not blow away the batch-upload summary that already
+    ran successfully - it should show up as a self-contained "error" key in
+    the returned dict instead, exactly like a failed batch does.
+    """
+    try:
+        neon_count = neon_feeds.count_documents()
+    except Exception as exc:
+        return {"error": f"could not read Neon documents table: {exc}"}
+
     corpus_ids = {
         str((doc.get("metadata") or {}).get("document_id", "") or "").strip()
         for doc in corpus_docs
@@ -72,7 +82,11 @@ def _verify(corpus_docs: List[Dict[str, Any]], sample_size: int) -> Dict[str, An
         if not corpus_doc:
             continue
         corpus_text = str((corpus_doc.get("content") or {}).get("full_text", "") or "")
-        neon_row = neon_feeds.get_document(doc_id)
+        try:
+            neon_row = neon_feeds.get_document(doc_id)
+        except Exception as exc:
+            mismatches.append({"doc_id": doc_id, "issue": "verify_read_failed", "error": str(exc)})
+            continue
         checked += 1
         if neon_row is None:
             mismatches.append({"doc_id": doc_id, "issue": "missing_in_neon"})
@@ -132,7 +146,7 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
     verification = _verify(corpus_docs, args.verify_sample) if args.verify_sample > 0 else {}
 
     summary = {
-        "ok": len(failed_batches) == 0,
+        "ok": len(failed_batches) == 0 and "error" not in verification,
         "ran_at": _utc_now_iso(),
         "dry_run": False,
         "corpus_document_count": len(corpus_docs),
