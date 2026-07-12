@@ -54,7 +54,12 @@ SOURCE_KEY = "reddit_attention_sweep"
 
 # Item 5: per-sweep budget for PRAW account-age lookups (1 API call each) -
 # opportunistic enrichment of reddit_author_stats, never a required step.
+# Split between the visible leaderboard (top-by-items_total authors still
+# missing an age) and a reserve for fresh/current-sweep authors that the
+# young-account manipulation flag needs but that never rank high enough to
+# be reached by the board pass alone.
 ACCOUNT_INFO_LOOKUPS_PER_SWEEP = 25
+ACCOUNT_INFO_RECENT_RESERVE = 8
 
 # Same lightweight keyword-heuristic pattern as RSS tone (inferToneLabel /
 # _heuristic_enrichment) - deliberately not a fourth sentiment system and
@@ -235,12 +240,16 @@ def _enrich_author_account_info(reddit: Any, authors: List[str], summary: Dict[s
     account age we don't know yet. Every failure is per-author and
     non-fatal - a suspended/deleted account just stays unknown."""
     try:
-        missing = neon_feeds.get_authors_missing_account_info(authors)
+        targets = neon_feeds.get_authors_needing_account_info(
+            authors,
+            board_budget=ACCOUNT_INFO_LOOKUPS_PER_SWEEP - ACCOUNT_INFO_RECENT_RESERVE,
+            recent_budget=ACCOUNT_INFO_RECENT_RESERVE,
+        )
     except Exception as exc:
-        summary["author_info_error"] = f"missing-author query failed: {exc}"
+        summary["author_info_error"] = f"author-selection query failed: {exc}"
         return
     rows: List[Dict[str, Any]] = []
-    for name in missing[:ACCOUNT_INFO_LOOKUPS_PER_SWEEP]:
+    for name in targets[:ACCOUNT_INFO_LOOKUPS_PER_SWEEP]:
         try:
             redditor = reddit.redditor(name)
             created = getattr(redditor, "created_utc", None)

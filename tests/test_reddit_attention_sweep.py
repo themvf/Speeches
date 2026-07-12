@@ -321,7 +321,7 @@ def test_account_info_enrichment_respects_budget_cap():
         with patch.object(sweep, "_build_reddit", return_value=reddit):
             with patch.object(sweep.neon_feeds, "upsert_reddit_attention_items", return_value=1):
                 with patch.object(sweep.neon_feeds, "insert_ticker_mentions", return_value=1):
-                    with patch.object(sweep.neon_feeds, "get_authors_missing_account_info", return_value=missing):
+                    with patch.object(sweep.neon_feeds, "get_authors_needing_account_info", return_value=missing):
                         with patch.object(sweep.neon_feeds, "upsert_author_account_info", return_value=25) as mock_upsert:
                             summary = sweep._run(_args(dry_run=False))
 
@@ -332,13 +332,63 @@ def test_account_info_enrichment_respects_budget_cap():
     assert summary["author_info_enriched"] == 25
 
 
+def test_get_authors_needing_account_info_prioritizes_board_then_recent(monkeypatch):
+    monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
+    cursor = MagicMock()
+    # First execute → board query (top-by-items_total missing); second →
+    # which recent authors already have account info.
+    cursor.fetchall.side_effect = [
+        [{"author": "topA"}, {"author": "topB"}],  # board authors
+        [{"author": "known_recent"}],               # recent already enriched
+    ]
+    conn = MagicMock()
+    conn.__enter__.return_value = conn
+    conn.cursor.return_value.__enter__.return_value = cursor
+
+    with patch.object(neon_feeds, "_get_conn", return_value=conn):
+        result = neon_feeds.get_authors_needing_account_info(
+            ["known_recent", "fresh1", "fresh2", "topA"],  # topA already in board; known_recent skipped
+            board_budget=17,
+            recent_budget=8,
+        )
+
+    # board authors first, then fresh recent authors (dedup topA, skip known_recent)
+    assert result[:2] == ["topA", "topB"]
+    assert "fresh1" in result and "fresh2" in result
+    assert "known_recent" not in result
+    assert result.count("topA") == 1
+    board_limit = cursor.execute.call_args_list[0].args[1]
+    assert board_limit == (17,)  # board budget passed through to the LIMIT
+
+
+def test_get_authors_needing_account_info_respects_recent_reserve(monkeypatch):
+    monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
+    cursor = MagicMock()
+    cursor.fetchall.side_effect = [
+        [{"author": f"b{i}"} for i in range(17)],  # board fills its budget
+        [],                                          # no recent known
+    ]
+    conn = MagicMock()
+    conn.__enter__.return_value = conn
+    conn.cursor.return_value.__enter__.return_value = cursor
+
+    with patch.object(neon_feeds, "_get_conn", return_value=conn):
+        result = neon_feeds.get_authors_needing_account_info(
+            [f"fresh{i}" for i in range(20)], board_budget=17, recent_budget=8
+        )
+
+    # 17 board + at most 8 recent = 25 total, recent reserve honored
+    assert len(result) == 25
+    assert len([a for a in result if a.startswith("fresh")]) == 8
+
+
 def test_account_info_enrichment_failure_is_nonfatal():
     post = _submission("p1", "yolo $TSLA calls")
     with patch.object(sweep.neon_feeds, "get_attention_sweep_config", return_value=None):
         with patch.object(sweep, "_build_reddit", return_value=_reddit_with([post], [])):
             with patch.object(sweep.neon_feeds, "upsert_reddit_attention_items", return_value=1):
                 with patch.object(sweep.neon_feeds, "insert_ticker_mentions", return_value=1):
-                    with patch.object(sweep.neon_feeds, "get_authors_missing_account_info", side_effect=RuntimeError("db down")):
+                    with patch.object(sweep.neon_feeds, "get_authors_needing_account_info", side_effect=RuntimeError("db down")):
                         summary = sweep._run(_args(dry_run=False))
     assert summary["ok"] is True
     assert "db down" in summary["author_info_error"]

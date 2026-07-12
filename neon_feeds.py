@@ -777,21 +777,57 @@ def upsert_author_account_info(rows: List[Dict[str, Any]]) -> int:
     return len(prepared)
 
 
-def get_authors_missing_account_info(authors: List[str]) -> List[str]:
-    """Subset of `authors` with no account_created on record - the sweep's
-    per-run PRAW lookup budget is spent on these."""
-    candidates = [a for a in {str(a or "").strip() for a in authors} if a and a != "[deleted]"]
-    if not candidates:
-        return []
+def get_authors_needing_account_info(
+    recent_authors: List[str], board_budget: int, recent_budget: int
+) -> List[str]:
+    """Chooses which authors the sweep spends its capped PRAW account-info
+    lookups on, split so both consumers of account age get coverage:
+
+    - `board_budget` goes to the top-by-items_total authors still missing
+      account_created. These ARE the visible Authors-leaderboard rows, which
+      an alphabetical/current-sweep-only selection left permanently blank
+      (the board ranks by 90-day item count, so its top rows are rarely the
+      authors active in any one sweep).
+    - `recent_budget` goes to authors active in the current sweep still
+      missing it. Fresh/young accounts never accumulate a high items_total,
+      so the board pass alone would never reach them - but they're exactly
+      what item 6's young_account_concentration flag needs ages for.
+
+    Board authors first, de-duplicated, so a caller iterating the result
+    naturally fills the leaderboard before the young-account reserve.
+    """
     _ensure_stock_attention_schema()
+    recent = [a for a in {str(a or "").strip() for a in recent_authors} if a and a != "[deleted]"]
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT author FROM reddit_author_stats WHERE author = ANY(%s) AND account_created IS NOT NULL",
-                (candidates,),
+                """
+                SELECT author FROM reddit_author_stats
+                WHERE account_created IS NULL AND author <> '[deleted]'
+                ORDER BY items_total DESC, author ASC
+                LIMIT %s
+                """,
+                (max(0, board_budget),),
             )
-            known = {row["author"] for row in cur.fetchall()}
-    return sorted(a for a in candidates if a not in known)
+            board = [row["author"] for row in cur.fetchall()]
+            known: set = set()
+            if recent:
+                cur.execute(
+                    "SELECT author FROM reddit_author_stats WHERE author = ANY(%s) AND account_created IS NOT NULL",
+                    (recent,),
+                )
+                known = {row["author"] for row in cur.fetchall()}
+    selected = list(board)
+    seen = set(board)
+    recent_added = 0
+    for author in recent:
+        if recent_added >= recent_budget:
+            break
+        if author not in seen and author not in known:
+            selected.append(author)
+            seen.add(author)
+            recent_added += 1
+    return selected
 
 
 def upsert_reddit_attention_items(items: List[Dict[str, Any]]) -> int:
