@@ -568,6 +568,48 @@ export interface MarketAttentionIntradayData {
   generatedAt: string;
 }
 
+// Activity + Authors views (see CLAUDE.md plan, 2026-07-12)
+export interface AttentionActivityItem {
+  sourceId: string;
+  kind: string;              // 'post' | 'comment'
+  subreddit: string;
+  author: string;
+  title: string;
+  permalink: string;
+  createdUtc: string;
+  score: number;
+  mood: string;
+  tickers: string[];
+}
+
+export interface MarketAttentionActivityData {
+  hoursBack: number;
+  items: AttentionActivityItem[];
+  warning?: string;
+  generatedAt: string;
+}
+
+export interface AttentionAuthorRow {
+  rank: number;
+  author: string;
+  itemsTotal: number;
+  tickersDistinct: number;
+  subredditsDistinct: number;
+  topTicker: string;
+  topTickerShare: number;    // 0-1
+  accountCreated: string | null;
+  linkKarma: number | null;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  discounted: boolean;       // currently trips the item-5 credibility discount
+}
+
+export interface MarketAttentionAuthorsData {
+  rows: AttentionAuthorRow[];
+  warning?: string;
+  generatedAt: string;
+}
+
 export interface CryptoCoin {
   rank: number;
   id: string;

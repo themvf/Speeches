@@ -191,6 +191,7 @@ def compute_author_stats(
         author = str(row["author"])
         counts = ticker_counts.get(author, {})
         total = sum(counts.values())
+        top_ticker = max(counts.items(), key=lambda pair: (pair[1], pair[0]))[0] if counts else ""
         stats.append({
             "author": author,
             "first_seen": row.get("first_seen"),
@@ -199,6 +200,7 @@ def compute_author_stats(
             "tickers_distinct": len(counts),
             "subreddits_distinct": int(row.get("subreddits_distinct", 0) or 0),
             "top_ticker_share": (max(counts.values()) / total) if total else 0.0,
+            "top_ticker": top_ticker,
         })
     return stats
 

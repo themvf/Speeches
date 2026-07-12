@@ -600,6 +600,9 @@ def _ensure_stock_attention_schema() -> None:
                 )
                 """
             )
+            # Activity/Authors views: which ticker a concentrated account is
+            # concentrated on (the Authors leaderboard's most useful cell).
+            cur.execute("ALTER TABLE reddit_author_stats ADD COLUMN IF NOT EXISTS top_ticker TEXT NOT NULL DEFAULT ''")
             # Item 6: review queue for tickers newly entering the top of the
             # board - populated by the rollup, worked through the admin UI.
             cur.execute(
@@ -714,6 +717,7 @@ def upsert_author_stats_batch(rows: List[Dict[str, Any]]) -> int:
             int(row.get("tickers_distinct", 0) or 0),
             int(row.get("subreddits_distinct", 0) or 0),
             float(row.get("top_ticker_share", 0.0) or 0.0),
+            _strip_nul_bytes(str(row.get("top_ticker", "") or "")),
         ))
     if not prepared:
         return 0
@@ -725,7 +729,7 @@ def upsert_author_stats_batch(rows: List[Dict[str, Any]]) -> int:
                 cur,
                 """
                 INSERT INTO reddit_author_stats
-                  (author, first_seen, last_seen, items_total, tickers_distinct, subreddits_distinct, top_ticker_share)
+                  (author, first_seen, last_seen, items_total, tickers_distinct, subreddits_distinct, top_ticker_share, top_ticker)
                 VALUES %s
                 ON CONFLICT (author) DO UPDATE SET
                   first_seen = EXCLUDED.first_seen,
@@ -734,6 +738,7 @@ def upsert_author_stats_batch(rows: List[Dict[str, Any]]) -> int:
                   tickers_distinct = EXCLUDED.tickers_distinct,
                   subreddits_distinct = EXCLUDED.subreddits_distinct,
                   top_ticker_share = EXCLUDED.top_ticker_share,
+                  top_ticker = EXCLUDED.top_ticker,
                   refreshed_at = now()
                 """,
                 prepared,

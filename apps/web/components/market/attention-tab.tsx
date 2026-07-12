@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
+  AttentionActivityItem,
+  AttentionAuthorRow,
   AttentionHistoryPoint,
   AttentionRow,
   IntradayAttentionRow,
+  MarketAttentionActivityData,
+  MarketAttentionAuthorsData,
   MarketAttentionData,
   MarketAttentionHistoryData,
   MarketAttentionIntradayData,
@@ -293,6 +297,246 @@ function AttentionTableRow({ row, expanded, onToggle }: { row: AttentionRow; exp
   );
 }
 
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function accountAge(iso: string | null): string {
+  if (!iso) return "—";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days < 60) return `${days}d`;
+  if (days < 730) return `${Math.floor(days / 30)}mo`;
+  return `${Math.floor(days / 365)}y`;
+}
+
+function ActivityBoard() {
+  const [data, setData] = useState<MarketAttentionActivityData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tickerFilter, setTickerFilter] = useState("");
+  const [subredditFilter, setSubredditFilter] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch("/api/market/attention/activity?hours=24")
+      .then((r) => r.json())
+      .then((env) => {
+        if (!cancelled && env.ok && env.data) setData(env.data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const subreddits = useMemo(
+    () => [...new Set((data?.items ?? []).map((item) => item.subreddit))].sort(),
+    [data]
+  );
+  const filtered = useMemo(() => {
+    const ticker = tickerFilter.trim().toUpperCase();
+    return (data?.items ?? []).filter((item) =>
+      (!ticker || item.tickers.some((symbol) => symbol.includes(ticker)))
+      && (!subredditFilter || item.subreddit === subredditFilter)
+    );
+  }, [data, tickerFilter, subredditFilter]);
+
+  if (loading && !data) {
+    return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">Loading activity…</p>;
+  }
+  if (!data || (data.items.length === 0 && data.warning)) {
+    return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">{data?.warning ?? "No activity data."}</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={tickerFilter}
+          onChange={(e) => setTickerFilter(e.target.value)}
+          placeholder="Filter by ticker…"
+          className="w-40 rounded-lg border border-[color:var(--line)] bg-transparent px-2 py-1 text-xs text-[color:var(--ink)]"
+        />
+        <select
+          value={subredditFilter}
+          onChange={(e) => setSubredditFilter(e.target.value)}
+          className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-2 py-1 text-xs text-[color:var(--ink-soft)]"
+        >
+          <option value="">All subreddits</option>
+          {subreddits.map((name) => (
+            <option key={name} value={name}>r/{name}</option>
+          ))}
+        </select>
+        <span className="text-[10px] text-[color:var(--ink-faint)]">
+          {filtered.length} of {data.items.length} items · past {data.hoursBack}h
+        </span>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
+        <ul className="divide-y divide-[color:var(--line)]">
+          {filtered.map((item: AttentionActivityItem) => (
+            <li key={item.sourceId} className="flex items-baseline gap-2 px-3 py-2 text-xs">
+              <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-[color:var(--ink-faint)]">
+                {timeAgo(item.createdUtc)}
+              </span>
+              <span className="shrink-0 rounded bg-[rgba(79,213,255,0.08)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--ink-faint)]">
+                r/{item.subreddit}
+              </span>
+              <span className="flex shrink-0 gap-1">
+                {item.tickers.slice(0, 4).map((symbol) => (
+                  <button
+                    key={symbol}
+                    type="button"
+                    onClick={() => setTickerFilter(symbol)}
+                    className="font-bold text-[color:var(--accent)] hover:underline"
+                    title={`Filter to ${symbol}`}
+                  >
+                    {symbol}
+                  </button>
+                ))}
+                {item.tickers.length > 4 && (
+                  <span className="text-[10px] text-[color:var(--ink-faint)]">+{item.tickers.length - 4}</span>
+                )}
+              </span>
+              <a
+                href={item.permalink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-w-0 flex-1 truncate text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline"
+                title={item.title}
+              >
+                {item.title || item.permalink}
+              </a>
+              <span className="shrink-0 text-[10px] text-[color:var(--ink-faint)]">u/{item.author}</span>
+              <span className="hidden shrink-0 sm:inline">
+                <MoodChip mood={item.mood} deemphasized />
+              </span>
+            </li>
+          ))}
+          {filtered.length === 0 && (
+            <li className="px-3 py-6 text-center text-xs text-[color:var(--ink-faint)]">No items match the filter.</li>
+          )}
+        </ul>
+      </div>
+      <p className="text-[10px] text-[color:var(--ink-faint)]">
+        Every swept post/comment that resolved to at least one ticker, newest first. Comments link to the thread; the
+        listed title is the parent submission&apos;s.
+      </p>
+    </div>
+  );
+}
+
+function AuthorsBoard() {
+  const [data, setData] = useState<MarketAttentionAuthorsData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch("/api/market/attention/authors")
+      .then((r) => r.json())
+      .then((env) => {
+        if (!cancelled && env.ok && env.data) setData(env.data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading && !data) {
+    return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">Loading author stats…</p>;
+  }
+  if (!data || data.rows.length === 0) {
+    return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">{data?.warning ?? "No author stats yet."}</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+              <th className="py-2 pl-4 pr-2 text-left font-semibold">#</th>
+              <th className="px-2 py-2 text-left font-semibold">Author</th>
+              <th className="px-2 py-2 text-right font-semibold">Items</th>
+              <th className="px-2 py-2 text-right font-semibold">Tickers</th>
+              <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">Subs</th>
+              <th className="px-2 py-2 text-left font-semibold">Top Ticker</th>
+              <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">Account Age</th>
+              <th className="hidden py-2 pl-2 pr-4 text-right font-semibold md:table-cell">Karma</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((row: AttentionAuthorRow) => (
+              <tr key={row.author} className="border-b border-[color:var(--line)] last:border-0">
+                <td className="w-8 py-2 pl-4 pr-2 text-xs tabular-nums text-[color:var(--ink-faint)]">{row.rank}</td>
+                <td className="px-2 py-2 text-xs">
+                  <a
+                    href={`https://www.reddit.com/user/${encodeURIComponent(row.author)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline"
+                  >
+                    u/{row.author}
+                  </a>
+                  {row.discounted && (
+                    <span
+                      className="ml-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-1 py-0.5 text-[9px] text-amber-300"
+                      title="Currently discounted to 0.25 weight in the leaderboard scoring: repeat activity concentrated on one or two tickers"
+                    >
+                      discounted
+                    </span>
+                  )}
+                </td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink)]">{row.itemsTotal}</td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">{row.tickersDistinct}</td>
+                <td className="hidden px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
+                  {row.subredditsDistinct}
+                </td>
+                <td className="px-2 py-2 text-xs">
+                  {row.topTicker ? (
+                    <>
+                      <span className="font-bold text-[color:var(--accent)]">{row.topTicker}</span>{" "}
+                      <span className="text-[10px] text-[color:var(--ink-faint)]">
+                        {(row.topTickerShare * 100).toFixed(0)}%
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[color:var(--ink-faint)]">—</span>
+                  )}
+                </td>
+                <td className="hidden px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
+                  {accountAge(row.accountCreated)}
+                </td>
+                <td className="hidden py-2 pl-2 pr-4 text-right text-xs tabular-nums text-[color:var(--ink-faint)] md:table-cell">
+                  {row.linkKarma ?? "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[10px] text-[color:var(--ink-faint)]">
+        Aggregated from public Reddit activity in the swept subreddits over the retention window (90 days). Account
+        age/karma appear as they&apos;re looked up (a small budget per sweep). These stats feed the credibility
+        weighting on the Daily board.
+      </p>
+    </div>
+  );
+}
+
 function IntradayBoard() {
   const [data, setData] = useState<MarketAttentionIntradayData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -355,9 +599,18 @@ function IntradayBoard() {
   );
 }
 
+type AttentionView = "daily" | "intraday" | "activity" | "authors";
+
+const VIEW_LABELS: { id: AttentionView; label: string }[] = [
+  { id: "daily", label: "Daily" },
+  { id: "intraday", label: "Hot Right Now" },
+  { id: "activity", label: "Activity" },
+  { id: "authors", label: "Authors" },
+];
+
 export function AttentionTab({ data, loading, error }: Props) {
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
-  const [view, setView] = useState<"daily" | "intraday">("daily");
+  const [view, setView] = useState<AttentionView>("daily");
 
   if (loading && !data) {
     return (
@@ -390,20 +643,16 @@ export function AttentionTab({ data, loading, error }: Props) {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex overflow-hidden rounded-lg border border-[color:var(--line)]">
-            <button
-              type="button"
-              onClick={() => setView("daily")}
-              className={`px-3 py-1 text-xs font-medium ${view === "daily" ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
-            >
-              Daily
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("intraday")}
-              className={`px-3 py-1 text-xs font-medium ${view === "intraday" ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
-            >
-              Hot Right Now
-            </button>
+            {VIEW_LABELS.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setView(id)}
+                className={`whitespace-nowrap px-3 py-1 text-xs font-medium ${view === id ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           {view === "daily" && data.date && (
             <span className="text-xs text-[color:var(--ink-faint)]">
@@ -413,9 +662,10 @@ export function AttentionTab({ data, loading, error }: Props) {
         </div>
       </div>
 
-      {view === "intraday" ? (
-        <IntradayBoard />
-      ) : (
+      {view === "intraday" && <IntradayBoard />}
+      {view === "activity" && <ActivityBoard />}
+      {view === "authors" && <AuthorsBoard />}
+      {view === "daily" && (
         <>
           {data.warning && (
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">

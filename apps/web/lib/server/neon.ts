@@ -1471,6 +1471,89 @@ export async function resolveAttentionReviewItem(id: number, status: "legit" | "
   return rows[0] ?? null;
 }
 
+// ─── Attention Activity + Authors views (see CLAUDE.md plan, 2026-07-12) ───
+
+export type AttentionActivityRow = {
+  source_id: string;
+  kind: string;
+  subreddit: string;
+  author: string;
+  title: string;
+  permalink: string;
+  created_utc: string;
+  score: number;
+  mood: string;
+  tickers: string[];
+};
+
+export async function getRecentAttentionActivity(hoursBack = 24, limit = 150): Promise<AttentionActivityRow[]> {
+  const sql = getSql();
+  const cappedHours = Math.max(1, Math.min(72, hoursBack));
+  const cappedLimit = Math.max(1, Math.min(300, limit));
+  const rows = (await sql`
+    SELECT i.source_id, i.kind, i.subreddit, i.author, i.title, i.permalink,
+           i.created_utc::text AS created_utc, i.score, i.mood,
+           ARRAY(
+             SELECT m.value FROM intelligence_mentions m
+             WHERE m.source_type IN ('reddit_post', 'reddit_comment')
+               AND m.source_id = i.source_id
+               AND m.mention_type = 'ticker'
+             ORDER BY m.value
+           ) AS tickers
+    FROM reddit_attention_items i
+    WHERE i.created_utc >= now() - (${cappedHours} * INTERVAL '1 hour')
+    ORDER BY i.created_utc DESC
+    LIMIT ${cappedLimit}
+  `) as unknown as AttentionActivityRow[];
+  return rows;
+}
+
+export type RedditAuthorStatsRow = {
+  author: string;
+  first_seen: string | null;
+  last_seen: string | null;
+  items_total: number;
+  tickers_distinct: number;
+  subreddits_distinct: number;
+  top_ticker_share: number;
+  top_ticker: string;
+  account_created: string | null;
+  link_karma: number | null;
+};
+
+export async function getRedditAuthorStats(limit = 50): Promise<RedditAuthorStatsRow[]> {
+  const sql = getSql();
+  const cappedLimit = Math.max(1, Math.min(200, limit));
+  try {
+    return (await sql`
+      SELECT author, first_seen::text AS first_seen, last_seen::text AS last_seen,
+             items_total, tickers_distinct, subreddits_distinct,
+             top_ticker_share::float AS top_ticker_share, top_ticker,
+             account_created::text AS account_created, link_karma
+      FROM reddit_author_stats
+      WHERE items_total > 0
+      ORDER BY items_total DESC, author ASC
+      LIMIT ${cappedLimit}
+    `) as unknown as RedditAuthorStatsRow[];
+  } catch (err) {
+    // Old-schema tolerance (deploy-order rule in CLAUDE.md): top_ticker is
+    // added by the Python rollup's ALTER, which may not have run yet when
+    // this reader deploys. Retry without the column for that one cycle.
+    if (!String(err).includes("top_ticker")) throw err;
+    const rows = (await sql`
+      SELECT author, first_seen::text AS first_seen, last_seen::text AS last_seen,
+             items_total, tickers_distinct, subreddits_distinct,
+             top_ticker_share::float AS top_ticker_share,
+             account_created::text AS account_created, link_karma
+      FROM reddit_author_stats
+      WHERE items_total > 0
+      ORDER BY items_total DESC, author ASC
+      LIMIT ${cappedLimit}
+    `) as unknown as Omit<RedditAuthorStatsRow, "top_ticker">[];
+    return rows.map((row) => ({ ...row, top_ticker: "" }));
+  }
+}
+
 export type StockAttentionSparklinePoint = { attention_date: string; total_mention_count: number };
 
 // Item 3: batched sparkline history for every ticker on the current

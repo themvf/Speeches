@@ -372,7 +372,9 @@ def test_compute_author_stats_and_weights():
     by_author = {s["author"]: s for s in stats}
     assert by_author["pumper"]["top_ticker_share"] == 11 / 12
     assert by_author["pumper"]["tickers_distinct"] == 2
+    assert by_author["pumper"]["top_ticker"] == "XYZ"
     assert by_author["casual"]["top_ticker_share"] == 1.0
+    assert by_author["casual"]["top_ticker"] == "GME"
 
     weights = agg.build_author_weights(stats, {"low_diversity_share": 0.8, "low_diversity_max_tickers": 2, "min_items": 5, "discount": 0.25})
     assert weights == {"pumper": 0.25}  # casual (1 item) NOT discounted despite share 1.0
