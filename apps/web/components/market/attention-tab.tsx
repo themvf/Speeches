@@ -38,6 +38,25 @@ const QUALITY_FLAG_LABELS: Record<string, string> = {
   single_thread_concentration: "Single-thread driven",
 };
 
+// Posts and comments both flow through the sweep; comments display their
+// parent submission's title, so without this chip three commenters on one
+// thread look like three identical posts.
+function KindChip({ kind }: { kind: string }) {
+  const isPost = kind === "post";
+  return (
+    <span
+      className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] ${
+        isPost
+          ? "border border-[rgba(79,213,255,0.35)] bg-[rgba(79,213,255,0.1)] text-[color:var(--accent)]"
+          : "border border-[color:var(--line)] text-[color:var(--ink-faint)]"
+      }`}
+      title={isPost ? "Original submission by this author" : "Comment by this author - the title shown is the parent post's"}
+    >
+      {isPost ? "post" : "↳ comment"}
+    </span>
+  );
+}
+
 function MoodChip({ mood, deemphasized = false }: { mood: string; deemphasized?: boolean }) {
   const style = MOOD_STYLES[mood] ?? MOOD_STYLES.neutral;
   return (
@@ -390,6 +409,7 @@ function ActivityBoard() {
               <span className="shrink-0 rounded bg-[rgba(79,213,255,0.08)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--ink-faint)]">
                 r/{item.subreddit}
               </span>
+              <KindChip kind={item.kind} />
               <span className="flex shrink-0 gap-1">
                 {item.tickers.slice(0, 4).map((symbol) => (
                   <button
@@ -427,8 +447,9 @@ function ActivityBoard() {
         </ul>
       </div>
       <p className="text-[10px] text-[color:var(--ink-faint)]">
-        Every swept post/comment that resolved to at least one ticker, newest first. Comments link to the thread; the
-        listed title is the parent submission&apos;s.
+        Every swept post/comment that resolved to at least one ticker, newest first. The <span className="rounded border border-[color:var(--line)] px-1 text-[9px] uppercase text-[color:var(--ink-faint)]">↳ comment</span> chip
+        marks a reply — the title shown is its parent submission&apos;s, and the author is the commenter, not the
+        original poster.
       </p>
     </div>
   );
