@@ -525,6 +525,8 @@ export interface AttentionRow {
   volume: number | null;
   volumeVs20d: number | null;        // ratio, e.g. 2.5 = 2.5x the 20-day average
   divergence: string;                // '' | 'attention_spike_no_price_move' | 'price_move_no_attention'
+  weightedMentionCount: number;      // credibility/subreddit-weighted (items 4-5); ranks the board
+  qualityFlags: string[];            // item 6 manipulation-pattern annotations
   sparkline: number[];               // last N days' total_mention_count, oldest first
   topSources: AttentionSource[];
 }

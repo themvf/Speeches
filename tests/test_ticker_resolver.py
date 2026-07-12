@@ -6,6 +6,10 @@ import json
 import ticker_resolver
 from ticker_resolver import TICKER_CONFIG_PATH, resolve_tickers, ticker_title
 
+# defensive: earlier test runs must never leak overrides into this module's
+# baseline expectations
+ticker_resolver.clear_runtime_overrides()
+
 
 # ─── committed config integrity ─────────────────────────────────────────────
 
@@ -116,3 +120,30 @@ def test_multiple_tickers_in_one_text():
 def test_ticker_title_lookup():
     assert "NVIDIA" in ticker_title("NVDA").upper()
     assert ticker_title("ZZZZQ") == ""
+
+
+# ─── runtime overrides (enhancement item 4) ─────────────────────────────────
+
+def test_force_ambiguous_override_gates_bare_symbol():
+    try:
+        ticker_resolver.set_runtime_overrides(force_ambiguous=["NVDA"])
+        assert resolve_tickers("NVDA earnings tomorrow") == {}
+        # cashtags always count regardless of gating
+        assert resolve_tickers("$NVDA earnings") == {"NVDA": 1.0}
+    finally:
+        ticker_resolver.clear_runtime_overrides()
+
+
+def test_force_unambiguous_override_allows_bare_symbol():
+    try:
+        ticker_resolver.set_runtime_overrides(force_unambiguous=["ALL"])
+        assert resolve_tickers("ALL is undervalued") == {"ALL": 1.0}
+    finally:
+        ticker_resolver.clear_runtime_overrides()
+
+
+def test_clear_runtime_overrides_restores_defaults():
+    ticker_resolver.set_runtime_overrides(force_ambiguous=["NVDA"], force_unambiguous=["ALL"])
+    ticker_resolver.clear_runtime_overrides()
+    assert resolve_tickers("NVDA earnings") == {"NVDA": 1.0}
+    assert resolve_tickers("ALL my money") == {}

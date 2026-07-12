@@ -235,4 +235,145 @@ def test_writers_are_noops_for_empty_input():
     with patch.object(neon_feeds, "_get_conn") as mock_conn:
         assert neon_feeds.upsert_reddit_attention_items([]) == 0
         assert neon_feeds.insert_ticker_mentions([]) == 0
+        assert neon_feeds.upsert_author_stats_batch([]) == 0
+        assert neon_feeds.upsert_author_account_info([]) == 0
         mock_conn.assert_not_called()
+
+
+# ─── item 4: admin-managed sweep config ─────────────────────────────────────
+
+def _config(**overrides):
+    base = {
+        "subreddits": [
+            {"name": "wallstreetbets", "tier": 1, "weight": 1.0, "active": True},
+            {"name": "pennystocks", "tier": 2, "weight": 0.7, "active": True},
+            {"name": "dividends", "tier": 2, "weight": 0.9, "active": False},
+        ],
+        "bot_blocklist": ["customspambot"],
+        "symbol_overrides": {"force_ambiguous": [], "force_unambiguous": []},
+        "author_weighting": {},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_sweep_uses_config_subreddits_and_skips_inactive():
+    post = _submission("p1", "NVDA calls")
+    with patch.object(sweep.neon_feeds, "get_attention_sweep_config", return_value=_config()):
+        with patch.object(sweep, "_build_reddit", return_value=_reddit_with([post], [])):
+            summary = sweep._run(_args(subreddits=""))
+    assert summary["config_source"] == "db"
+    assert summary["subreddits"] == ["wallstreetbets", "pennystocks"]  # dividends inactive
+
+
+def test_sweep_explicit_subreddits_override_config():
+    post = _submission("p1", "NVDA calls")
+    with patch.object(sweep.neon_feeds, "get_attention_sweep_config", return_value=_config()):
+        with patch.object(sweep, "_build_reddit", return_value=_reddit_with([post], [])):
+            summary = sweep._run(_args(subreddits="stocks"))
+    assert summary["subreddits"] == ["stocks"]
+
+
+def test_sweep_falls_back_to_tier_defaults_when_config_unavailable():
+    post = _submission("p1", "NVDA calls")
+    with patch.object(sweep.neon_feeds, "get_attention_sweep_config", return_value=None):
+        with patch.object(sweep, "_build_reddit", return_value=_reddit_with([post], [])):
+            summary = sweep._run(_args(subreddits=""))
+    assert summary["config_source"] == "defaults"
+    assert summary["subreddits"] == sweep.TIER1_SUBREDDITS
+
+
+def test_sweep_config_bot_blocklist_extends_defaults():
+    bot_post = _submission("p1", "NVDA to the moon", author="CustomSpamBot")
+    with patch.object(sweep.neon_feeds, "get_attention_sweep_config", return_value=_config()):
+        with patch.object(sweep, "_build_reddit", return_value=_reddit_with([bot_post], [])):
+            summary = sweep._run(_args(subreddits=""))
+    assert summary["items_with_tickers"] == 0
+
+
+def test_sweep_applies_symbol_overrides_to_resolver():
+    import ticker_resolver
+    # ALL is normally gated; the admin force-unambiguous override allows it.
+    post = _submission("p1", "ALL is undervalued here")
+    config = _config(symbol_overrides={"force_ambiguous": [], "force_unambiguous": ["ALL"]})
+    try:
+        with patch.object(sweep.neon_feeds, "get_attention_sweep_config", return_value=config):
+            with patch.object(sweep, "_build_reddit", return_value=_reddit_with([post], [])):
+                # explicit subreddit isolates the assertion to the override
+                # (config subreddit list is exercised by the tests above)
+                summary = sweep._run(_args(subreddits="stocks"))
+        assert summary["items_with_tickers"] == 1
+        assert summary["unique_tickers"] == 1
+    finally:
+        ticker_resolver.clear_runtime_overrides()
+
+
+# ─── item 5: account-info enrichment ────────────────────────────────────────
+
+def test_account_info_enrichment_respects_budget_cap():
+    post = _submission("p1", "yolo $TSLA calls")
+    reddit = _reddit_with([post], [])
+    missing = [f"user{i}" for i in range(40)]
+    redditor = SimpleNamespace(created_utc=1600000000.0, link_karma=42)
+    reddit.redditor.return_value = redditor
+
+    with patch.object(sweep.neon_feeds, "get_attention_sweep_config", return_value=None):
+        with patch.object(sweep, "_build_reddit", return_value=reddit):
+            with patch.object(sweep.neon_feeds, "upsert_reddit_attention_items", return_value=1):
+                with patch.object(sweep.neon_feeds, "insert_ticker_mentions", return_value=1):
+                    with patch.object(sweep.neon_feeds, "get_authors_missing_account_info", return_value=missing):
+                        with patch.object(sweep.neon_feeds, "upsert_author_account_info", return_value=25) as mock_upsert:
+                            summary = sweep._run(_args(dry_run=False))
+
+    assert reddit.redditor.call_count == sweep.ACCOUNT_INFO_LOOKUPS_PER_SWEEP
+    rows = mock_upsert.call_args[0][0]
+    assert len(rows) == sweep.ACCOUNT_INFO_LOOKUPS_PER_SWEEP
+    assert rows[0]["link_karma"] == 42
+    assert summary["author_info_enriched"] == 25
+
+
+def test_account_info_enrichment_failure_is_nonfatal():
+    post = _submission("p1", "yolo $TSLA calls")
+    with patch.object(sweep.neon_feeds, "get_attention_sweep_config", return_value=None):
+        with patch.object(sweep, "_build_reddit", return_value=_reddit_with([post], [])):
+            with patch.object(sweep.neon_feeds, "upsert_reddit_attention_items", return_value=1):
+                with patch.object(sweep.neon_feeds, "insert_ticker_mentions", return_value=1):
+                    with patch.object(sweep.neon_feeds, "get_authors_missing_account_info", side_effect=RuntimeError("db down")):
+                        summary = sweep._run(_args(dry_run=False))
+    assert summary["ok"] is True
+    assert "db down" in summary["author_info_error"]
+
+
+# ─── neon_feeds config + author writers (mocked psycopg2) ───────────────────
+
+def test_get_attention_sweep_config_fail_soft():
+    with patch.object(neon_feeds, "_get_conn", side_effect=RuntimeError("DATABASE_URL is not set")):
+        assert neon_feeds.get_attention_sweep_config() is None
+
+
+def test_upsert_author_stats_preserves_account_columns(monkeypatch):
+    monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
+    conn, cursor = _mock_conn()
+    rows = [{"author": "u1", "items_total": 3, "tickers_distinct": 2, "subreddits_distinct": 1, "top_ticker_share": 0.5}]
+    with patch.object(neon_feeds, "_get_conn", return_value=conn):
+        with patch("psycopg2.extras.execute_values") as mock_ev:
+            written = neon_feeds.upsert_author_stats_batch(rows)
+    assert written == 1
+    sql = " ".join(mock_ev.call_args[0][1].split())
+    assert "ON CONFLICT (author) DO UPDATE" in sql
+    # the daily recompute must never clobber the sweep-owned columns
+    assert "account_created = EXCLUDED" not in sql
+    assert "link_karma = EXCLUDED" not in sql
+
+
+def test_upsert_author_account_info_touches_only_account_columns(monkeypatch):
+    monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
+    conn, cursor = _mock_conn()
+    rows = [{"author": "u1", "account_created": datetime.now(UTC), "link_karma": 10}]
+    with patch.object(neon_feeds, "_get_conn", return_value=conn):
+        with patch("psycopg2.extras.execute_values") as mock_ev:
+            written = neon_feeds.upsert_author_account_info(rows)
+    assert written == 1
+    sql = " ".join(mock_ev.call_args[0][1].split())
+    assert "account_created = EXCLUDED.account_created" in sql
+    assert "items_total" not in sql

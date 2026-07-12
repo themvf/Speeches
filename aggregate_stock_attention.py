@@ -52,15 +52,30 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import neon_feeds
 import ticker_resolver
 import yahoo_market_data
 
 DEFAULT_RETENTION_DAYS = 90
+
+# Item 6 quality-flag thresholds - code constants (documented, unit-tested),
+# deliberately not admin config: these define what the flags MEAN, and a
+# silently-moved threshold would make historical flags incomparable.
+CREW_OVERLAP_THRESHOLD = 0.6      # today-vs-yesterday author overlap coefficient
+CREW_MIN_AUTHORS = 3
+YOUNG_ACCOUNT_DAYS = 30
+YOUNG_SHARE_THRESHOLD = 0.5
+YOUNG_MIN_KNOWN = 3               # need this many known-age authors before judging
+SINGLE_THREAD_SHARE = 0.8
+SINGLE_THREAD_MIN_ROWS = 5
+REVIEW_QUEUE_TOP_N = 50
+
+_THREAD_KEY_RE = re.compile(r"/comments/([a-z0-9]+)/", re.IGNORECASE)
 
 # Item 2 divergence heuristic thresholds (spec: "simple, documented v1
 # heuristic pending item 10's proper z-score work"). Ranks are 1-indexed
@@ -70,13 +85,44 @@ SMALL_PRICE_MOVE_PCT = 1.5
 LARGE_PRICE_MOVE_PCT = 5.0
 
 FETCH_DAY_ROWS_SQL = """
-    SELECT m.value AS ticker, m.source_id, i.author, i.subreddit, i.score, i.mood
+    SELECT m.value AS ticker, m.source_id, i.author, i.subreddit, i.score, i.mood, i.permalink
     FROM intelligence_mentions m
     JOIN reddit_attention_items i ON i.source_id = m.source_id
     WHERE m.mention_type = 'ticker'
       AND m.source_type IN ('reddit_post', 'reddit_comment')
       AND i.created_utc >= %(day_start)s
       AND i.created_utc < %(day_end)s
+"""
+
+# Item 5: per-author aggregates over the full retained items window (90d).
+FETCH_AUTHOR_ITEM_STATS_SQL = """
+    SELECT author, MIN(created_utc) AS first_seen, MAX(created_utc) AS last_seen,
+           COUNT(*) AS items_total, COUNT(DISTINCT subreddit) AS subreddits_distinct
+    FROM reddit_attention_items
+    GROUP BY author
+"""
+
+FETCH_AUTHOR_TICKER_COUNTS_SQL = """
+    SELECT i.author, m.value AS ticker, COUNT(*) AS cnt
+    FROM intelligence_mentions m
+    JOIN reddit_attention_items i ON i.source_id = m.source_id
+    WHERE m.mention_type = 'ticker'
+      AND m.source_type IN ('reddit_post', 'reddit_comment')
+    GROUP BY i.author, m.value
+"""
+
+FETCH_KNOWN_ACCOUNT_AGES_SQL = """
+    SELECT author, account_created FROM reddit_author_stats WHERE account_created IS NOT NULL
+"""
+
+FETCH_SEEN_TICKERS_SQL = """
+    SELECT DISTINCT ticker FROM daily_stock_attention WHERE attention_date < %(day)s
+"""
+
+INSERT_REVIEW_QUEUE_SQL = """
+    INSERT INTO attention_review_queue (review_date, ticker, sample_source_ids)
+    VALUES %s
+    ON CONFLICT (review_date, ticker) DO NOTHING
 """
 
 FETCH_NEWS_ROWS_SQL = """
@@ -92,7 +138,8 @@ INSERT_DAY_SQL = """
     INSERT INTO daily_stock_attention
       (attention_date, ticker, company, mention_count, source_count, subreddit_count,
        weighted_score, mood, top_source_ids, reddit_count, news_count, total_mention_count,
-       price_close, price_pct, volume, volume_vs_20d, divergence)
+       price_close, price_pct, volume, volume_vs_20d, divergence,
+       weighted_mention_count, quality_flags)
     VALUES %s
 """
 
@@ -126,7 +173,98 @@ def day_bounds(day: date) -> Tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
-def compute_weighted_score(mention_count: int, subreddit_count: int, source_count: int) -> float:
+def compute_author_stats(
+    item_stat_rows: List[Dict[str, Any]],
+    author_ticker_rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Item 5, pure: merges per-author item aggregates with per-author
+    ticker-concentration figures. top_ticker_share = share of the author's
+    ticker-mentions going to their single most-mentioned ticker (1.0 = a
+    one-ticker account)."""
+    ticker_counts: Dict[str, Dict[str, int]] = {}
+    for row in author_ticker_rows:
+        author = str(row["author"])
+        ticker_counts.setdefault(author, {})[str(row["ticker"])] = int(row["cnt"])
+
+    stats: List[Dict[str, Any]] = []
+    for row in item_stat_rows:
+        author = str(row["author"])
+        counts = ticker_counts.get(author, {})
+        total = sum(counts.values())
+        stats.append({
+            "author": author,
+            "first_seen": row.get("first_seen"),
+            "last_seen": row.get("last_seen"),
+            "items_total": int(row.get("items_total", 0) or 0),
+            "tickers_distinct": len(counts),
+            "subreddits_distinct": int(row.get("subreddits_distinct", 0) or 0),
+            "top_ticker_share": (max(counts.values()) / total) if total else 0.0,
+        })
+    return stats
+
+
+def build_author_weights(stats: List[Dict[str, Any]], params: Dict[str, Any] | None = None) -> Dict[str, float]:
+    """Item 5, pure: discount low-diversity, high-concentration accounts.
+    min_items keeps casual one-off posters (1 item, share 1.0 by
+    construction) at full weight - the discount targets the *repeat*
+    single-ticker pattern, not everyone who mentioned one stock once."""
+    params = params or {}
+    share_threshold = float(params.get("low_diversity_share", 0.8))
+    max_tickers = int(params.get("low_diversity_max_tickers", 2))
+    min_items = int(params.get("min_items", 5))
+    discount = float(params.get("discount", 0.25))
+    weights: Dict[str, float] = {}
+    for stat in stats:
+        if (
+            stat["items_total"] >= min_items
+            and stat["tickers_distinct"] <= max_tickers
+            and stat["top_ticker_share"] > share_threshold
+        ):
+            weights[stat["author"]] = discount
+    return weights  # absent = 1.0
+
+
+def thread_key(permalink: str) -> str:
+    """Reddit thread identity from a permalink - comments on the same
+    submission share the /comments/<id>/ segment."""
+    match = _THREAD_KEY_RE.search(str(permalink or ""))
+    return match.group(1).lower() if match else str(permalink or "")
+
+
+def compute_quality_flags(
+    ticker_rows: List[Dict[str, Any]],
+    yesterday_authors: Set[str],
+    account_ages: Dict[str, datetime],
+    now: datetime,
+) -> List[str]:
+    """Item 6, pure: manipulation-pattern flags for one ticker's day rows.
+    Flags annotate, never suppress - the row still ranks normally."""
+    flags: List[str] = []
+    authors = {str(row["author"]) for row in ticker_rows}
+
+    if len(authors) >= CREW_MIN_AUTHORS and len(yesterday_authors) >= CREW_MIN_AUTHORS:
+        overlap = len(authors & yesterday_authors) / min(len(authors), len(yesterday_authors))
+        if overlap >= CREW_OVERLAP_THRESHOLD:
+            flags.append("same_author_crew")
+
+    known_ages = [(now - account_ages[a]).days for a in authors if a in account_ages]
+    if len(known_ages) >= YOUNG_MIN_KNOWN:
+        young_share = sum(1 for age_days in known_ages if age_days < YOUNG_ACCOUNT_DAYS) / len(known_ages)
+        if young_share >= YOUNG_SHARE_THRESHOLD:
+            flags.append("young_account_concentration")
+
+    if len(ticker_rows) >= SINGLE_THREAD_MIN_ROWS:
+        thread_counts: Dict[str, int] = {}
+        for row in ticker_rows:
+            key = thread_key(row.get("permalink", ""))
+            thread_counts[key] = thread_counts.get(key, 0) + 1
+        if max(thread_counts.values()) / len(ticker_rows) >= SINGLE_THREAD_SHARE:
+            flags.append("single_thread_concentration")
+
+    return flags
+
+
+def compute_weighted_score(mention_count: float, subreddit_count: int, source_count: int) -> float:
     """Spec §6.2: deduped humans talking is the base signal; spread across
     communities amplifies most (harder to fake than volume inside one
     board); spread across threads amplifies mildly. No freshness decay in a
@@ -143,10 +281,23 @@ def compute_weighted_score(mention_count: int, subreddit_count: int, source_coun
     )
 
 
-def aggregate_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def aggregate_rows(
+    rows: List[Dict[str, Any]],
+    author_weights: Dict[str, float] | None = None,
+    subreddit_weights: Dict[str, float] | None = None,
+) -> List[Dict[str, Any]]:
     """Pure aggregation of (ticker, source_id, author, subreddit, score,
     mood) fetch rows into per-ticker rollups. Each input row is one
-    item+ticker pair (the mentions unique constraint guarantees that)."""
+    item+ticker pair (the mentions unique constraint guarantees that).
+
+    weighted_mention_count (items 4+5) = per deduped author, that author's
+    credibility weight x the max weight among the subreddits they mentioned
+    the ticker in. Both weight maps default to all-1.0, in which case it
+    equals mention_count exactly. Raw counts are always stored unweighted.
+    """
+    author_weights = author_weights or {}
+    subreddit_weights = subreddit_weights or {}
+
     by_ticker: Dict[str, Dict[str, Any]] = {}
     for row in rows:
         ticker = str(row["ticker"])
@@ -156,10 +307,13 @@ def aggregate_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "subreddits": set(),
             "moods": {"bullish": 0, "bearish": 0, "neutral": 0},
             "scored_sources": [],
+            "author_subreddits": {},
         })
-        agg["authors"].add(str(row["author"]))
+        author = str(row["author"])
+        agg["authors"].add(author)
         agg["sources"].add(str(row["source_id"]))
         agg["subreddits"].add(str(row["subreddit"]))
+        agg["author_subreddits"].setdefault(author, set()).add(str(row["subreddit"]))
         mood = str(row.get("mood", "neutral") or "neutral")
         if mood in agg["moods"]:
             agg["moods"][mood] += 1
@@ -185,6 +339,14 @@ def aggregate_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         reddit_count = len(agg["authors"])
         source_count = len(agg["sources"])
         subreddit_count = len(agg["subreddits"])
+        weighted_mentions = round(
+            sum(
+                author_weights.get(author, 1.0)
+                * max(subreddit_weights.get(sub, 1.0) for sub in subs)
+                for author, subs in agg["author_subreddits"].items()
+            ),
+            4,
+        )
         out.append({
             "ticker": ticker,
             "company": ticker_resolver.ticker_title(ticker),
@@ -192,11 +354,13 @@ def aggregate_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "reddit_count": reddit_count,          # explicit alias - see module docstring on item 1
             "news_count": 0,
             "total_mention_count": reddit_count,
+            "weighted_mention_count": weighted_mentions,
             "source_count": source_count,
             "subreddit_count": subreddit_count,
-            "weighted_score": compute_weighted_score(reddit_count, subreddit_count, source_count),
+            "weighted_score": compute_weighted_score(weighted_mentions, subreddit_count, source_count),
             "mood": mood,
             "top_source_ids": json.dumps(top_sources),
+            "quality_flags": "[]",
         })
     out.sort(key=lambda row: (-row["weighted_score"], row["ticker"]))
     return out
@@ -237,11 +401,13 @@ def merge_news_counts(rollups: List[Dict[str, Any]], news_counts: Dict[str, int]
                 "reddit_count": 0,
                 "news_count": count,
                 "total_mention_count": count,
+                "weighted_mention_count": 0.0,
                 "source_count": 0,
                 "subreddit_count": 0,
                 "weighted_score": 0.0,
                 "mood": "neutral",
                 "top_source_ids": "[]",
+                "quality_flags": "[]",
             }
     merged = list(by_ticker.values())
     merged.sort(key=lambda row: (-row["weighted_score"], -row["total_mention_count"], row["ticker"]))
@@ -294,20 +460,44 @@ def _run(
     import psycopg2.extras
 
     day_start, day_end = day_bounds(target_day)
+    prev_start, prev_end = day_bounds(target_day - timedelta(days=1))
     summary: Dict[str, Any] = {
         "ok": True,
         "date": target_day.isoformat(),
         "dry_run": dry_run,
+        "config_source": "defaults",
         "mention_rows_seen": 0,
         "news_articles_scanned": 0,
         "news_only_tickers": 0,
         "market_context_fetched": 0,
         "market_context_failed": 0,
+        "author_stats_computed": 0,
+        "authors_discounted": 0,
+        "flagged_tickers": 0,
+        "review_queue_added": 0,
         "tickers": 0,
         "rows_written": 0,
         "retention": {"skipped": True},
         "ran_at": _utc_now_iso(),
     }
+
+    # Item 4: admin-managed config - subreddit weights for scoring, symbol
+    # overrides for the news-channel resolver pass, author-weight params.
+    config = neon_feeds.get_attention_sweep_config()
+    if config:
+        summary["config_source"] = "db"
+    subreddit_weights: Dict[str, float] = {}
+    for entry in (config or {}).get("subreddits", []):
+        if isinstance(entry, dict) and str(entry.get("name", "") or "").strip():
+            try:
+                subreddit_weights[str(entry["name"]).strip()] = float(entry.get("weight", 1.0) or 1.0)
+            except (TypeError, ValueError):
+                continue
+    overrides = (config or {}).get("symbol_overrides") or {}
+    ticker_resolver.set_runtime_overrides(
+        force_ambiguous=overrides.get("force_ambiguous") or [],
+        force_unambiguous=overrides.get("force_unambiguous") or [],
+    )
 
     neon_feeds._ensure_stock_attention_schema()
     with neon_feeds._get_conn() as conn:
@@ -315,7 +505,21 @@ def _run(
             cur.execute(FETCH_DAY_ROWS_SQL, {"day_start": day_start, "day_end": day_end})
             reddit_rows = [dict(row) for row in cur.fetchall()]
             summary["mention_rows_seen"] = len(reddit_rows)
-            rollups = aggregate_rows(reddit_rows)
+
+            # Item 5: recompute per-author stats over the full retained
+            # window, derive credibility weights, persist the stats (write
+            # gated on dry_run; the in-memory weights apply either way so a
+            # dry run previews the weighted board faithfully).
+            cur.execute(FETCH_AUTHOR_ITEM_STATS_SQL)
+            item_stat_rows = [dict(row) for row in cur.fetchall()]
+            cur.execute(FETCH_AUTHOR_TICKER_COUNTS_SQL)
+            author_ticker_rows = [dict(row) for row in cur.fetchall()]
+            author_stats = compute_author_stats(item_stat_rows, author_ticker_rows)
+            author_weights = build_author_weights(author_stats, (config or {}).get("author_weighting"))
+            summary["author_stats_computed"] = len(author_stats)
+            summary["authors_discounted"] = len(author_weights)
+
+            rollups = aggregate_rows(reddit_rows, author_weights=author_weights, subreddit_weights=subreddit_weights)
             reddit_ticker_count = len(rollups)
 
             if not skip_news:
@@ -334,15 +538,51 @@ def _run(
                 summary["market_context_failed"] = len(rollups) - len(market_by_ticker)
                 rollups = merge_market_context(rollups, market_by_ticker)
 
+            # Item 6: quality flags per ticker - needs today's raw rows
+            # grouped by ticker, yesterday's author sets (same query, prior
+            # day bounds), and known account ages.
+            cur.execute(FETCH_DAY_ROWS_SQL, {"day_start": prev_start, "day_end": prev_end})
+            yesterday_authors_by_ticker: Dict[str, Set[str]] = {}
+            for row in cur.fetchall():
+                yesterday_authors_by_ticker.setdefault(str(row["ticker"]), set()).add(str(row["author"]))
+            cur.execute(FETCH_KNOWN_ACCOUNT_AGES_SQL)
+            account_ages = {str(row["author"]): row["account_created"] for row in cur.fetchall()}
+
+            today_rows_by_ticker: Dict[str, List[Dict[str, Any]]] = {}
+            for row in reddit_rows:
+                today_rows_by_ticker.setdefault(str(row["ticker"]), []).append(row)
+            now = datetime.now(UTC)
+            for rollup in rollups:
+                ticker_rows = today_rows_by_ticker.get(rollup["ticker"], [])
+                if ticker_rows:
+                    flags = compute_quality_flags(
+                        ticker_rows,
+                        yesterday_authors_by_ticker.get(rollup["ticker"], set()),
+                        account_ages,
+                        now,
+                    )
+                    rollup["quality_flags"] = json.dumps(flags)
+            summary["flagged_tickers"] = sum(1 for r in rollups if r.get("quality_flags", "[]") != "[]")
+
+            # Item 6: review queue - tickers entering the top of the board
+            # that have never appeared in any prior day's rollup.
+            cur.execute(FETCH_SEEN_TICKERS_SQL, {"day": target_day})
+            seen_tickers = {str(row["ticker"]) for row in cur.fetchall()}
+            newcomers = [
+                r for r in rollups[:REVIEW_QUEUE_TOP_N] if r["ticker"] not in seen_tickers
+            ]
+
             summary["top_tickers"] = [
                 {
                     "ticker": r["ticker"],
                     "mentions": r["total_mention_count"],
+                    "weighted": r.get("weighted_mention_count", 0),
                     "reddit": r["reddit_count"],
                     "news": r["news_count"],
                     "score": r["weighted_score"],
                     "price_pct": r.get("price_pct"),
                     "divergence": r.get("divergence", ""),
+                    "flags": json.loads(r.get("quality_flags", "[]") or "[]"),
                 }
                 for r in rollups[:15]
             ]
@@ -375,11 +615,25 @@ def _run(
                                 r.get("volume"),
                                 r.get("volume_vs_20d"),
                                 r.get("divergence", ""),
+                                r.get("weighted_mention_count", 0.0),
+                                r.get("quality_flags", "[]"),
                             )
                             for r in rollups
                         ],
                     )
                 summary["rows_written"] = len(rollups)
+
+                if newcomers:
+                    psycopg2.extras.execute_values(
+                        cur,
+                        INSERT_REVIEW_QUEUE_SQL,
+                        [(target_day, r["ticker"], r["top_source_ids"]) for r in newcomers],
+                    )
+                    summary["review_queue_added"] = len(newcomers)
+
+                # Persist the item-5 author stats (uses its own connection
+                # via neon_feeds; account_created/link_karma untouched).
+                neon_feeds.upsert_author_stats_batch(author_stats)
 
                 cutoff = datetime.now(UTC) - timedelta(days=retention_days)
                 cur.execute(RETENTION_DELETE_MENTIONS_VIA_ITEMS_SQL, {"cutoff": cutoff})

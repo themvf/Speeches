@@ -28,6 +28,12 @@ const DIVERGENCE_STYLES: Record<string, { label: string; color: string }> = {
   price_move_no_attention: { label: "Price move w/o chatter", color: "#a78bfa" },
 };
 
+const QUALITY_FLAG_LABELS: Record<string, string> = {
+  same_author_crew: "Same accounts as yesterday",
+  young_account_concentration: "Mostly young accounts",
+  single_thread_concentration: "Single-thread driven",
+};
+
 function MoodChip({ mood, deemphasized = false }: { mood: string; deemphasized?: boolean }) {
   const style = MOOD_STYLES[mood] ?? MOOD_STYLES.neutral;
   return (
@@ -162,6 +168,11 @@ function SourcesDrawer({ row }: { row: AttentionRow }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[color:var(--ink-faint)]">
         <span>Reddit: {row.redditCount}</span>
         <span>News: {row.newsCount}</span>
+        {row.weightedMentionCount !== row.redditCount && (
+          <span title="Credibility-weighted mention count: repeat single-ticker accounts and lower-trust subreddits count less">
+            Weighted: {row.weightedMentionCount.toFixed(1)}
+          </span>
+        )}
         {row.volumeVs20d != null && <span>Volume: {row.volumeVs20d.toFixed(1)}x 20d avg</span>}
         {row.storedPricePct != null && (
           <span>
@@ -174,6 +185,15 @@ function SourcesDrawer({ row }: { row: AttentionRow }) {
             {DIVERGENCE_STYLES[row.divergence]!.label}
           </span>
         )}
+        {row.qualityFlags.map((flag) => (
+          <span
+            key={flag}
+            className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-amber-300"
+            title="Data-quality annotation (see stock-attention enhancement spec item 6) - the row still ranks normally"
+          >
+            ⚠ {QUALITY_FLAG_LABELS[flag] ?? flag}
+          </span>
+        ))}
       </div>
 
       <div>
@@ -228,6 +248,14 @@ function AttentionTableRow({ row, expanded, onToggle }: { row: AttentionRow; exp
         <td className="w-16 px-2 py-2.5">
           <span className="text-xs font-bold text-[color:var(--accent)]">{row.ticker}</span>
           <DivergenceBadge divergence={row.divergence} />
+          {row.qualityFlags.length > 0 && (
+            <span
+              className="ml-1 align-middle text-[10px] text-amber-400"
+              title={row.qualityFlags.map((flag) => QUALITY_FLAG_LABELS[flag] ?? flag).join("; ")}
+            >
+              ⚠
+            </span>
+          )}
         </td>
         <td className="max-w-[160px] truncate px-2 py-2.5 text-xs text-[color:var(--ink-faint)]">{row.company}</td>
         <td className="px-2 py-2.5 text-right text-xs tabular-nums text-[color:var(--ink)]">{row.mentionCount}</td>

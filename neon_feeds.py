@@ -574,8 +574,219 @@ def _ensure_stock_attention_schema() -> None:
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS volume BIGINT")
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS volume_vs_20d NUMERIC")
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS divergence TEXT NOT NULL DEFAULT ''")
+            # Enhancement items 5-6: credibility-weighted counts and
+            # data-quality flags (JSON array as TEXT, matching the
+            # top_source_ids convention so the TS reader parses both the
+            # same way).
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS weighted_mention_count NUMERIC NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS quality_flags TEXT NOT NULL DEFAULT '[]'")
+            # Item 5: per-author history rollup, recomputed daily from the
+            # raw items window by aggregate_stock_attention.py. account_created/
+            # link_karma are filled opportunistically by the sweep (capped
+            # PRAW lookups) and must survive the daily recompute.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reddit_author_stats (
+                  author              TEXT PRIMARY KEY,
+                  first_seen          TIMESTAMPTZ,
+                  last_seen           TIMESTAMPTZ,
+                  items_total         INTEGER NOT NULL DEFAULT 0,
+                  tickers_distinct    INTEGER NOT NULL DEFAULT 0,
+                  subreddits_distinct INTEGER NOT NULL DEFAULT 0,
+                  top_ticker_share    NUMERIC NOT NULL DEFAULT 0,
+                  account_created     TIMESTAMPTZ,
+                  link_karma          INTEGER,
+                  refreshed_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            # Item 6: review queue for tickers newly entering the top of the
+            # board - populated by the rollup, worked through the admin UI.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attention_review_queue (
+                  id                SERIAL PRIMARY KEY,
+                  review_date       DATE NOT NULL,
+                  ticker            TEXT NOT NULL,
+                  status            TEXT NOT NULL DEFAULT 'pending',
+                  sample_source_ids TEXT NOT NULL DEFAULT '[]',
+                  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  reviewed_at       TIMESTAMPTZ,
+                  UNIQUE (review_date, ticker)
+                )
+                """
+            )
             conn.commit()
     _STOCK_ATTENTION_SCHEMA_ENSURED = True
+
+
+# ─── Attention sweep config (enhancement item 4) ────────────────────────────
+
+# Written by the admin UI (TS side, apps/web/lib/server/neon.ts has the same
+# CREATE - kept in lockstep) and read fail-soft by the sweep/rollup. A
+# missing/unreachable config never blocks ingestion: callers fall back to
+# their in-code defaults.
+_ATTENTION_CONFIG_SCHEMA_ENSURED = False
+
+DEFAULT_ATTENTION_SWEEP_CONFIG: Dict[str, Any] = {
+    "subreddits": [
+        {"name": "wallstreetbets", "tier": 1, "weight": 1.0, "active": True},
+        {"name": "stocks", "tier": 1, "weight": 1.0, "active": True},
+        {"name": "investing", "tier": 1, "weight": 1.0, "active": True},
+        {"name": "StockMarket", "tier": 1, "weight": 1.0, "active": True},
+        {"name": "options", "tier": 1, "weight": 1.0, "active": True},
+        {"name": "Daytrading", "tier": 1, "weight": 1.0, "active": True},
+        # Tier 2 ships active at sub-1.0 weight, per enhancement spec item 4
+        # ("enable together with item 6's defenses, weighted < 1.0").
+        {"name": "pennystocks", "tier": 2, "weight": 0.7, "active": True},
+        {"name": "Shortsqueeze", "tier": 2, "weight": 0.7, "active": True},
+        {"name": "SqueezePlays", "tier": 2, "weight": 0.7, "active": True},
+        {"name": "smallstreetbets", "tier": 2, "weight": 0.7, "active": True},
+        {"name": "ValueInvesting", "tier": 2, "weight": 0.9, "active": True},
+        {"name": "dividends", "tier": 2, "weight": 0.9, "active": True},
+    ],
+    "bot_blocklist": ["automoderator", "visualmod", "wsbvotebot", "flairhelperbot"],
+    "symbol_overrides": {"force_ambiguous": [], "force_unambiguous": []},
+    "author_weighting": {"low_diversity_share": 0.8, "low_diversity_max_tickers": 2, "discount": 0.25},
+}
+
+
+def _ensure_attention_config_schema() -> None:
+    global _ATTENTION_CONFIG_SCHEMA_ENSURED
+    if _ATTENTION_CONFIG_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attention_sweep_config (
+                  id         SERIAL PRIMARY KEY,
+                  config     JSONB NOT NULL,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute("SELECT COUNT(*) AS n FROM attention_sweep_config")
+            row = cur.fetchone()
+            if int(row["n"] if row else 0) == 0:
+                cur.execute(
+                    "INSERT INTO attention_sweep_config (config) VALUES (%s)",
+                    (psycopg2.extras.Json(DEFAULT_ATTENTION_SWEEP_CONFIG),),
+                )
+            conn.commit()
+    _ATTENTION_CONFIG_SCHEMA_ENSURED = True
+
+
+def get_attention_sweep_config() -> Optional[Dict[str, Any]]:
+    """Latest saved sweep config, or None on any failure (missing table,
+    connectivity, malformed row) - callers must treat None as 'use in-code
+    defaults', never as an error."""
+    try:
+        _ensure_attention_config_schema()
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT config FROM attention_sweep_config ORDER BY id DESC LIMIT 1")
+                row = cur.fetchone()
+                config = row["config"] if row else None
+                return config if isinstance(config, dict) else None
+    except Exception as exc:
+        print(f"[neon_feeds] attention sweep config unavailable, using defaults: {exc}", flush=True)
+        return None
+
+
+# ─── Author stats writers (enhancement item 5) ──────────────────────────────
+
+def upsert_author_stats_batch(rows: List[Dict[str, Any]]) -> int:
+    """Daily recompute of per-author aggregates from the raw items window.
+    account_created/link_karma are NOT touched here - those are owned by the
+    sweep's opportunistic PRAW enrichment (upsert_author_account_info) and
+    must survive this recompute."""
+    prepared = []
+    for row in rows:
+        author = _strip_nul_bytes(str(row.get("author", "") or "").strip())
+        if not author:
+            continue
+        prepared.append((
+            author,
+            row.get("first_seen"),
+            row.get("last_seen"),
+            int(row.get("items_total", 0) or 0),
+            int(row.get("tickers_distinct", 0) or 0),
+            int(row.get("subreddits_distinct", 0) or 0),
+            float(row.get("top_ticker_share", 0.0) or 0.0),
+        ))
+    if not prepared:
+        return 0
+
+    _ensure_stock_attention_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO reddit_author_stats
+                  (author, first_seen, last_seen, items_total, tickers_distinct, subreddits_distinct, top_ticker_share)
+                VALUES %s
+                ON CONFLICT (author) DO UPDATE SET
+                  first_seen = EXCLUDED.first_seen,
+                  last_seen = EXCLUDED.last_seen,
+                  items_total = EXCLUDED.items_total,
+                  tickers_distinct = EXCLUDED.tickers_distinct,
+                  subreddits_distinct = EXCLUDED.subreddits_distinct,
+                  top_ticker_share = EXCLUDED.top_ticker_share,
+                  refreshed_at = now()
+                """,
+                prepared,
+            )
+            conn.commit()
+    return len(prepared)
+
+
+def upsert_author_account_info(rows: List[Dict[str, Any]]) -> int:
+    """Sweep-side PRAW enrichment: account age/karma for authors we haven't
+    looked up yet. Leaves the computed-stats columns alone."""
+    prepared = []
+    for row in rows:
+        author = _strip_nul_bytes(str(row.get("author", "") or "").strip())
+        if not author:
+            continue
+        prepared.append((author, row.get("account_created"), row.get("link_karma")))
+    if not prepared:
+        return 0
+
+    _ensure_stock_attention_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO reddit_author_stats (author, account_created, link_karma)
+                VALUES %s
+                ON CONFLICT (author) DO UPDATE SET
+                  account_created = EXCLUDED.account_created,
+                  link_karma = EXCLUDED.link_karma
+                """,
+                prepared,
+            )
+            conn.commit()
+    return len(prepared)
+
+
+def get_authors_missing_account_info(authors: List[str]) -> List[str]:
+    """Subset of `authors` with no account_created on record - the sweep's
+    per-run PRAW lookup budget is spent on these."""
+    candidates = [a for a in {str(a or "").strip() for a in authors} if a and a != "[deleted]"]
+    if not candidates:
+        return []
+    _ensure_stock_attention_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT author FROM reddit_author_stats WHERE author = ANY(%s) AND account_created IS NOT NULL",
+                (candidates,),
+            )
+            known = {row["author"] for row in cur.fetchall()}
+    return sorted(a for a in candidates if a not in known)
 
 
 def upsert_reddit_attention_items(items: List[Dict[str, Any]]) -> int:

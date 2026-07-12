@@ -37,6 +37,23 @@ _BARE_SYMBOL_RE = re.compile(r"(?<![A-Za-z0-9$])([A-Z]{1,5})(?![A-Za-z0-9])")
 _config_cache: dict | None = None
 _name_patterns_cache: List[Tuple[Pattern[str], str]] | None = None
 
+# Admin-managed runtime overrides (enhancement item 4): symbols force-gated
+# as ambiguous (found to false-positive in review) or force-allowed as
+# unambiguous, layered over the committed config without regenerating it.
+# Set once per process by the sweep/rollup after loading the sweep config.
+_force_ambiguous: set = set()
+_force_unambiguous: set = set()
+
+
+def set_runtime_overrides(force_ambiguous: List[str] | None = None, force_unambiguous: List[str] | None = None) -> None:
+    global _force_ambiguous, _force_unambiguous
+    _force_ambiguous = {str(s or "").strip().upper() for s in (force_ambiguous or []) if str(s or "").strip()}
+    _force_unambiguous = {str(s or "").strip().upper() for s in (force_unambiguous or []) if str(s or "").strip()}
+
+
+def clear_runtime_overrides() -> None:
+    set_runtime_overrides([], [])
+
 
 def _load_config() -> dict:
     global _config_cache
@@ -77,7 +94,7 @@ def resolve_tickers(text: str) -> Dict[str, float]:
     wins."""
     cfg = _load_config()
     universe: set = cfg["universe"]
-    ambiguous: set = cfg["ambiguous"]
+    ambiguous: set = (cfg["ambiguous"] | _force_ambiguous) - _force_unambiguous
     raw = str(text or "")
     if not raw.strip():
         return {}

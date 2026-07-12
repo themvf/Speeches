@@ -1331,6 +1331,8 @@ export type DailyStockAttentionRow = {
   volume: number | null;
   volume_vs_20d: number | null;
   divergence: string;
+  weighted_mention_count: number;
+  quality_flags: string; // JSON array, same convention as top_source_ids
   generated_at: string;
 };
 
@@ -1358,7 +1360,9 @@ export async function getDailyStockAttention(date: string, limit = 50): Promise<
     SELECT attention_date::text AS attention_date, ticker, company, mention_count, reddit_count, news_count,
            total_mention_count, source_count, subreddit_count, weighted_score::float AS weighted_score, mood,
            top_source_ids, price_close::float AS price_close, price_pct::float AS price_pct,
-           volume, volume_vs_20d::float AS volume_vs_20d, divergence, generated_at::text AS generated_at
+           volume, volume_vs_20d::float AS volume_vs_20d, divergence,
+           weighted_mention_count::float AS weighted_mention_count, quality_flags,
+           generated_at::text AS generated_at
     FROM daily_stock_attention
     WHERE attention_date = ${date}::date
     ORDER BY weighted_score DESC, total_mention_count DESC, ticker ASC
@@ -1376,13 +1380,95 @@ export async function getStockAttentionHistory(ticker: string, days = 30): Promi
     SELECT attention_date::text AS attention_date, ticker, company, mention_count, reddit_count, news_count,
            total_mention_count, source_count, subreddit_count, weighted_score::float AS weighted_score, mood,
            top_source_ids, price_close::float AS price_close, price_pct::float AS price_pct,
-           volume, volume_vs_20d::float AS volume_vs_20d, divergence, generated_at::text AS generated_at
+           volume, volume_vs_20d::float AS volume_vs_20d, divergence,
+           weighted_mention_count::float AS weighted_mention_count, quality_flags,
+           generated_at::text AS generated_at
     FROM daily_stock_attention
     WHERE ticker = ${ticker}
       AND attention_date >= CURRENT_DATE - (${days} * INTERVAL '1 day')
     ORDER BY attention_date ASC
   `) as unknown as DailyStockAttentionRow[];
   return rows;
+}
+
+// ─── Attention sweep config + review queue (enhancement items 4/6) ─────────
+// The config is WRITTEN by the admin UI (this side) and read fail-soft by
+// the Python sweep/rollup - the reverse ownership of the other attention
+// tables, so the CREATE lives here too (kept in lockstep with
+// neon_feeds.py's _ensure_attention_config_schema; if you change one,
+// change the other). The review queue is written by the Python rollup and
+// worked through the admin UI here.
+
+export type AttentionSweepSubreddit = { name: string; tier: number; weight: number; active: boolean };
+export type AttentionSweepConfig = {
+  subreddits: AttentionSweepSubreddit[];
+  bot_blocklist: string[];
+  symbol_overrides: { force_ambiguous: string[]; force_unambiguous: string[] };
+  author_weighting: { low_diversity_share: number; low_diversity_max_tickers: number; discount: number; min_items?: number };
+};
+
+async function ensureAttentionConfigSchema(sql: ReturnType<typeof neon>): Promise<void> {
+  await sql`
+    CREATE TABLE IF NOT EXISTS attention_sweep_config (
+      id         SERIAL PRIMARY KEY,
+      config     JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+}
+
+export async function getAttentionSweepConfig(): Promise<AttentionSweepConfig | null> {
+  const sql = getSql();
+  await ensureAttentionConfigSchema(sql);
+  const rows = (await sql`SELECT config FROM attention_sweep_config ORDER BY id DESC LIMIT 1`) as unknown as { config: AttentionSweepConfig }[];
+  return rows[0]?.config ?? null;
+}
+
+export async function saveAttentionSweepConfig(config: AttentionSweepConfig): Promise<void> {
+  const sql = getSql();
+  await ensureAttentionConfigSchema(sql);
+  const json = JSON.stringify(config);
+  const existing = (await sql`SELECT id FROM attention_sweep_config ORDER BY id DESC LIMIT 1`) as unknown as { id: number }[];
+  if (existing.length > 0) {
+    await sql`UPDATE attention_sweep_config SET config = ${json}::jsonb, updated_at = now() WHERE id = ${existing[0].id}`;
+  } else {
+    await sql`INSERT INTO attention_sweep_config (config) VALUES (${json}::jsonb)`;
+  }
+}
+
+export type AttentionReviewRow = {
+  id: number;
+  review_date: string;
+  ticker: string;
+  status: string;
+  sample_source_ids: string;
+  created_at: string;
+  reviewed_at: string | null;
+};
+
+export async function getAttentionReviewQueue(status = "pending", limit = 100): Promise<AttentionReviewRow[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT id, review_date::text AS review_date, ticker, status, sample_source_ids,
+           created_at::text AS created_at, reviewed_at::text AS reviewed_at
+    FROM attention_review_queue
+    WHERE status = ${status}
+    ORDER BY review_date DESC, ticker ASC
+    LIMIT ${limit}
+  `) as unknown as AttentionReviewRow[];
+  return rows;
+}
+
+export async function resolveAttentionReviewItem(id: number, status: "legit" | "false_positive"): Promise<AttentionReviewRow | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    UPDATE attention_review_queue
+    SET status = ${status}, reviewed_at = now()
+    WHERE id = ${id}
+    RETURNING id, review_date::text AS review_date, ticker, status, sample_source_ids,
+              created_at::text AS created_at, reviewed_at::text AS reviewed_at
+  `) as unknown as AttentionReviewRow[];
+  return rows[0] ?? null;
 }
 
 export type StockAttentionSparklinePoint = { attention_date: string; total_mention_count: number };

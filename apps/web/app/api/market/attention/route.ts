@@ -18,13 +18,17 @@ const MAX_ROWS = 50;
 const QUOTE_PAIR_LIMIT = 25; // live-quote pairing only for the top of the board; below that the columns render as —
 const SPARKLINE_DAYS = 14;
 
-function parseTopSourceIds(row: DailyStockAttentionRow): string[] {
+function parseJsonStringArray(raw: string): string[] {
   try {
-    const parsed = JSON.parse(row.top_source_ids || "[]");
-    return Array.isArray(parsed) ? parsed.map((id) => String(id)) : [];
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed.map((entry) => String(entry)) : [];
   } catch {
     return [];
   }
+}
+
+function parseTopSourceIds(row: DailyStockAttentionRow): string[] {
+  return parseJsonStringArray(row.top_source_ids);
 }
 
 export async function GET(req: NextRequest) {
@@ -114,6 +118,8 @@ export async function GET(req: NextRequest) {
           volume: row.volume,
           volumeVs20d: row.volume_vs_20d,
           divergence: row.divergence,
+          weightedMentionCount: row.weighted_mention_count,
+          qualityFlags: parseJsonStringArray(row.quality_flags),
           sparkline: (sparklines.get(row.ticker) ?? []).map((point) => point.total_mention_count),
           topSources,
         };

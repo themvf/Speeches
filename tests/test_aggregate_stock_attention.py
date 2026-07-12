@@ -3,7 +3,7 @@
 tested directly; DB interaction uses mocked psycopg2 per repo pattern."""
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -11,9 +11,10 @@ import aggregate_stock_attention as agg
 import neon_feeds
 
 
-def _row(ticker, source_id, author, subreddit="wallstreetbets", score=0, mood="neutral"):
+def _row(ticker, source_id, author, subreddit="wallstreetbets", score=0, mood="neutral", permalink=""):
     return {"ticker": ticker, "source_id": source_id, "author": author,
-            "subreddit": subreddit, "score": score, "mood": mood}
+            "subreddit": subreddit, "score": score, "mood": mood,
+            "permalink": permalink or f"https://www.reddit.com/r/{subreddit}/comments/{source_id.split('_')[-1]}/slug/"}
 
 
 # ─── pure aggregation ───────────────────────────────────────────────────────
@@ -91,22 +92,70 @@ def test_day_bounds_are_utc_midnights():
 
 # ─── _run against mocked DB ─────────────────────────────────────────────────
 
-def _mock_conn(fetch_rows):
+def _mock_conn(day_rows, *, prev_day_rows=None, news_rows=None, author_item_stats=None,
+               author_ticker_counts=None, account_age_rows=None, seen_tickers=None):
+    """Query-aware fake cursor: fetchall() answers based on the last SQL
+    executed, since _run now issues several distinct SELECTs."""
     cursor = MagicMock()
-    cursor.fetchall.return_value = fetch_rows
-    cursor.rowcount = 0
+    state = {"sql": "", "params": None}
+
+    def _execute(sql, params=None):
+        state["sql"] = " ".join(str(sql).split())
+        state["params"] = params
+        cursor.rowcount = 0
+
+    def _fetchall():
+        sql = state["sql"]
+        if "MIN(created_utc) AS first_seen" in sql:
+            return list(author_item_stats or [])
+        if "GROUP BY i.author, m.value" in sql:
+            return list(author_ticker_counts or [])
+        if "account_created IS NOT NULL" in sql:
+            return list(account_age_rows or [])
+        if "SELECT DISTINCT ticker FROM daily_stock_attention" in sql:
+            return [{"ticker": t} for t in (seen_tickers or [])]
+        if "FROM rss_articles" in sql:
+            return list(news_rows or [])
+        # day-rows query, disambiguated today-vs-yesterday by day_start
+        params = state["params"] or {}
+        if params.get("day_start") and params["day_start"] < datetime(2026, 7, 10, tzinfo=UTC):
+            return list(prev_day_rows or [])
+        return list(day_rows or [])
+
+    cursor.execute.side_effect = _execute
+    cursor.fetchall.side_effect = _fetchall
     conn = MagicMock()
     conn.__enter__.return_value = conn
     conn.cursor.return_value.__enter__.return_value = cursor
     return conn, cursor
 
 
+def _ev_rows(mock_ev, sql_fragment):
+    """Rows passed to the execute_values call whose SQL contains
+    sql_fragment (there are several execute_values writers in _run now)."""
+    for call in mock_ev.call_args_list:
+        if sql_fragment in " ".join(str(call.args[1]).split()):
+            return call.args[2]
+    raise AssertionError(f"no execute_values call matching {sql_fragment!r}")
+
+
+def _run_patched(conn, **kwargs):
+    """Runs agg._run with the config loader and author-stats writer patched
+    out (both open their own connections)."""
+    with patch.object(agg.neon_feeds, "get_attention_sweep_config", return_value=kwargs.pop("config", None)):
+        with patch.object(agg.neon_feeds, "upsert_author_stats_batch", return_value=0) as mock_stats:
+            with patch.object(neon_feeds, "_get_conn", return_value=conn):
+                with patch("psycopg2.extras.execute_values") as mock_ev:
+                    summary = agg._run(**kwargs)
+    return summary, mock_ev, mock_stats
+
+
 def test_run_replaces_date_wholesale_and_prunes(monkeypatch):
     monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
     conn, cursor = _mock_conn([_row("GME", "t3_a", "u1")])
-    with patch.object(neon_feeds, "_get_conn", return_value=conn):
-        with patch("psycopg2.extras.execute_values") as mock_ev:
-            summary = agg._run(date(2026, 7, 10), dry_run=False, retention_days=90, skip_news=True, skip_market=True)
+    summary, mock_ev, _ = _run_patched(
+        conn, target_day=date(2026, 7, 10), dry_run=False, retention_days=90, skip_news=True, skip_market=True
+    )
 
     assert summary["ok"] is True
     assert summary["tickers"] == 1
@@ -126,14 +175,15 @@ def test_run_replaces_date_wholesale_and_prunes(monkeypatch):
 def test_dry_run_writes_nothing_and_rolls_back(monkeypatch):
     monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
     conn, cursor = _mock_conn([_row("GME", "t3_a", "u1")])
-    with patch.object(neon_feeds, "_get_conn", return_value=conn):
-        with patch("psycopg2.extras.execute_values") as mock_ev:
-            summary = agg._run(date(2026, 7, 10), dry_run=True, retention_days=90, skip_news=True, skip_market=True)
+    summary, mock_ev, mock_stats = _run_patched(
+        conn, target_day=date(2026, 7, 10), dry_run=True, retention_days=90, skip_news=True, skip_market=True
+    )
 
     assert summary["tickers"] == 1
     assert summary["rows_written"] == 0
     assert summary["retention"] == {"skipped": True}
     assert not mock_ev.called
+    assert not mock_stats.called
     executed_sql = " ".join(str(call.args[0]) for call in cursor.execute.call_args_list)
     assert "DELETE" not in executed_sql
     conn.rollback.assert_called_once()
@@ -251,19 +301,18 @@ def test_merge_market_context_missing_ticker_gets_nulls():
 
 def test_run_integrates_news_counts(monkeypatch):
     monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
-    conn, cursor = _mock_conn([])
-    cursor.fetchall.side_effect = [
+    conn, cursor = _mock_conn(
         [_row("NVDA", "t3_a", "u1")],
-        [{"id": 1, "title": "MSFT news today", "description": ""}],
-    ]
-    with patch.object(neon_feeds, "_get_conn", return_value=conn):
-        with patch("psycopg2.extras.execute_values") as mock_ev:
-            summary = agg._run(date(2026, 7, 10), dry_run=False, retention_days=90, skip_market=True)
+        news_rows=[{"id": 1, "title": "MSFT news today", "description": ""}],
+    )
+    summary, mock_ev, _ = _run_patched(
+        conn, target_day=date(2026, 7, 10), dry_run=False, retention_days=90, skip_market=True
+    )
 
     assert summary["news_articles_scanned"] == 1
     assert summary["news_only_tickers"] == 1  # MSFT added, NVDA already present
     assert summary["tickers"] == 2
-    rows_written = mock_ev.call_args[0][2]
+    rows_written = _ev_rows(mock_ev, "INSERT INTO daily_stock_attention")
     by_ticker = {row[1]: row for row in rows_written}
     assert by_ticker["MSFT"][9] == 0    # reddit_count
     assert by_ticker["MSFT"][10] == 1   # news_count
@@ -273,19 +322,18 @@ def test_run_integrates_news_counts(monkeypatch):
 def test_run_integrates_market_context(monkeypatch):
     monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
     conn, cursor = _mock_conn([_row("NVDA", "t3_a", "u1")])
-    with patch.object(neon_feeds, "_get_conn", return_value=conn):
-        with patch("psycopg2.extras.execute_values") as mock_ev:
-            with patch.object(
-                agg.yahoo_market_data, "fetch_market_context_batch",
-                return_value={"NVDA": {"price_close": 120.0, "price_pct": 2.0, "volume": 500, "volume_vs_20d": 1.5}},
-            ) as mock_fetch:
-                summary = agg._run(date(2026, 7, 10), dry_run=False, retention_days=90, skip_news=True)
+    with patch.object(
+        agg.yahoo_market_data, "fetch_market_context_batch",
+        return_value={"NVDA": {"price_close": 120.0, "price_pct": 2.0, "volume": 500, "volume_vs_20d": 1.5}},
+    ) as mock_fetch:
+        summary, mock_ev, _ = _run_patched(
+            conn, target_day=date(2026, 7, 10), dry_run=False, retention_days=90, skip_news=True
+        )
 
     mock_fetch.assert_called_once_with(["NVDA"])
     assert summary["market_context_fetched"] == 1
     assert summary["market_context_failed"] == 0
-    rows_written = mock_ev.call_args[0][2]
-    row = rows_written[0]
+    row = _ev_rows(mock_ev, "INSERT INTO daily_stock_attention")[0]
     assert row[12] == 120.0  # price_close
     assert row[13] == 2.0    # price_pct
 
@@ -293,12 +341,112 @@ def test_run_integrates_market_context(monkeypatch):
 def test_run_market_fetch_failure_leaves_nulls_not_crash(monkeypatch):
     monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
     conn, cursor = _mock_conn([_row("NVDA", "t3_a", "u1")])
-    with patch.object(neon_feeds, "_get_conn", return_value=conn):
-        with patch("psycopg2.extras.execute_values") as mock_ev:
-            with patch.object(agg.yahoo_market_data, "fetch_market_context_batch", return_value={}):
-                summary = agg._run(date(2026, 7, 10), dry_run=False, retention_days=90, skip_news=True)
+    with patch.object(agg.yahoo_market_data, "fetch_market_context_batch", return_value={}):
+        summary, mock_ev, _ = _run_patched(
+            conn, target_day=date(2026, 7, 10), dry_run=False, retention_days=90, skip_news=True
+        )
 
     assert summary["ok"] is True
     assert summary["market_context_failed"] == 1
-    row = mock_ev.call_args[0][2][0]
+    row = _ev_rows(mock_ev, "INSERT INTO daily_stock_attention")[0]
     assert row[12] is None  # price_close
+
+
+# ─── items 4-6: config weights, author stats, quality flags, review queue ──
+
+def test_compute_author_stats_and_weights():
+    item_stats = [
+        {"author": "pumper", "first_seen": None, "last_seen": None, "items_total": 12, "subreddits_distinct": 1},
+        {"author": "normal", "first_seen": None, "last_seen": None, "items_total": 8, "subreddits_distinct": 3},
+        {"author": "casual", "first_seen": None, "last_seen": None, "items_total": 1, "subreddits_distinct": 1},
+    ]
+    ticker_counts = [
+        {"author": "pumper", "ticker": "XYZ", "cnt": 11},
+        {"author": "pumper", "ticker": "ABC", "cnt": 1},
+        {"author": "normal", "ticker": "NVDA", "cnt": 3},
+        {"author": "normal", "ticker": "MSFT", "cnt": 3},
+        {"author": "normal", "ticker": "GME", "cnt": 2},
+        {"author": "casual", "ticker": "GME", "cnt": 1},
+    ]
+    stats = agg.compute_author_stats(item_stats, ticker_counts)
+    by_author = {s["author"]: s for s in stats}
+    assert by_author["pumper"]["top_ticker_share"] == 11 / 12
+    assert by_author["pumper"]["tickers_distinct"] == 2
+    assert by_author["casual"]["top_ticker_share"] == 1.0
+
+    weights = agg.build_author_weights(stats, {"low_diversity_share": 0.8, "low_diversity_max_tickers": 2, "min_items": 5, "discount": 0.25})
+    assert weights == {"pumper": 0.25}  # casual (1 item) NOT discounted despite share 1.0
+
+
+def test_aggregate_rows_applies_author_and_subreddit_weights():
+    rows = [
+        _row("XYZ", "t3_a", "pumper", subreddit="pennystocks"),
+        _row("XYZ", "t3_b", "human", subreddit="stocks"),
+    ]
+    result = agg.aggregate_rows(rows, author_weights={"pumper": 0.25}, subreddit_weights={"pennystocks": 0.7})[0]
+    assert result["mention_count"] == 2                      # raw count unchanged
+    assert result["weighted_mention_count"] == 0.25 * 0.7 + 1.0
+    assert result["weighted_score"] == agg.compute_weighted_score(result["weighted_mention_count"], 2, 2)
+
+
+def test_quality_flag_same_author_crew():
+    today = [_row("XYZ", f"t3_{i}", f"crew{i % 3}") for i in range(6)]
+    flags = agg.compute_quality_flags(today, {"crew0", "crew1", "crew2"}, {}, datetime.now(UTC))
+    assert "same_author_crew" in flags
+    # disjoint author sets: no flag
+    flags = agg.compute_quality_flags(today, {"other1", "other2", "other3"}, {}, datetime.now(UTC))
+    assert "same_author_crew" not in flags
+
+
+def test_quality_flag_young_account_concentration():
+    now = datetime(2026, 7, 10, tzinfo=UTC)
+    today = [_row("XYZ", f"t3_{i}", f"u{i}") for i in range(4)]
+    ages = {
+        "u0": now - timedelta(days=5),
+        "u1": now - timedelta(days=10),
+        "u2": now - timedelta(days=400),
+    }
+    flags = agg.compute_quality_flags(today, set(), ages, now)
+    assert "young_account_concentration" in flags
+    # mostly old accounts: no flag
+    ages_old = {"u0": now - timedelta(days=500), "u1": now - timedelta(days=400), "u2": now - timedelta(days=300)}
+    assert "young_account_concentration" not in agg.compute_quality_flags(today, set(), ages_old, now)
+
+
+def test_quality_flag_single_thread_concentration():
+    same_thread = [_row("XYZ", f"t1_c{i}", f"u{i}", permalink="https://www.reddit.com/r/stocks/comments/postxyz/slug/") for i in range(5)]
+    flags = agg.compute_quality_flags(same_thread, set(), {}, datetime.now(UTC))
+    assert "single_thread_concentration" in flags
+    spread = [_row("XYZ", f"t3_p{i}", f"u{i}", permalink=f"https://www.reddit.com/r/stocks/comments/post{i}/slug/") for i in range(5)]
+    assert "single_thread_concentration" not in agg.compute_quality_flags(spread, set(), {}, datetime.now(UTC))
+
+
+def test_run_populates_review_queue_for_new_tickers_only(monkeypatch):
+    monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
+    conn, cursor = _mock_conn(
+        [_row("NVDA", "t3_a", "u1"), _row("NEWCO", "t3_b", "u2")],
+        seen_tickers=["NVDA"],
+    )
+    summary, mock_ev, _ = _run_patched(
+        conn, target_day=date(2026, 7, 10), dry_run=False, retention_days=90, skip_news=True, skip_market=True
+    )
+    assert summary["review_queue_added"] == 1
+    queue_rows = _ev_rows(mock_ev, "INSERT INTO attention_review_queue")
+    assert queue_rows[0][1] == "NEWCO"
+
+
+def test_run_uses_config_subreddit_weights(monkeypatch):
+    monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
+    config = {
+        "subreddits": [{"name": "pennystocks", "tier": 2, "weight": 0.5, "active": True}],
+        "author_weighting": {},
+        "symbol_overrides": {},
+    }
+    conn, cursor = _mock_conn([_row("XYZ", "t3_a", "u1", subreddit="pennystocks")])
+    summary, mock_ev, _ = _run_patched(
+        conn, config=config, target_day=date(2026, 7, 10), dry_run=False, retention_days=90,
+        skip_news=True, skip_market=True
+    )
+    assert summary["config_source"] == "db"
+    row = _ev_rows(mock_ev, "INSERT INTO daily_stock_attention")[0]
+    assert row[17] == 0.5  # weighted_mention_count discounted by subreddit weight

@@ -3020,6 +3020,255 @@ function ManualDocumentUploadSection() {
 }
 
 /* ─── Divider ──────────────────────────────────────────────────────── */
+/* ─── Stock attention sweep config + review queue (enhancement items 4/6) ── */
+
+type SweepSubreddit = { name: string; tier: number; weight: number; active: boolean };
+type SweepConfig = {
+  subreddits: SweepSubreddit[];
+  bot_blocklist: string[];
+  symbol_overrides: { force_ambiguous: string[]; force_unambiguous: string[] };
+  author_weighting: { low_diversity_share: number; low_diversity_max_tickers: number; discount: number; min_items?: number };
+};
+type ReviewQueueRow = {
+  id: number;
+  review_date: string;
+  ticker: string;
+  samples: { title: string; permalink: string; subreddit: string }[];
+};
+
+function AttentionSweepSection() {
+  const [config, setConfig] = useState<SweepConfig | null>(null);
+  const [queue, setQueue] = useState<ReviewQueueRow[]>([]);
+  const [queueWarning, setQueueWarning] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newSubreddit, setNewSubreddit] = useState("");
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/admin/attention-config").then((r) => r.json()),
+      fetch("/api/admin/attention-review").then((r) => r.json()),
+    ])
+      .then(([cfg, review]) => {
+        if (cfg.ok) setConfig(cfg.data.config); else setError(cfg.error);
+        if (review.ok) {
+          setQueue(review.data.queue ?? []);
+          if (review.data.warning) setQueueWarning(review.data.warning);
+        }
+      })
+      .catch(() => setError("Network error"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function updateSubreddit(index: number, patch: Partial<SweepSubreddit>) {
+    setConfig((prev) => prev ? {
+      ...prev,
+      subreddits: prev.subreddits.map((sub, i) => (i === index ? { ...sub, ...patch } : sub)),
+    } : prev);
+    setSaved(false);
+  }
+
+  function setCsvField(apply: (config: SweepConfig, values: string[]) => SweepConfig) {
+    return (raw: string) => {
+      const values = raw.split(",").map((value) => value.trim()).filter(Boolean);
+      setConfig((prev) => (prev ? apply(prev, values) : prev));
+      setSaved(false);
+    };
+  }
+
+  async function handleSave() {
+    if (!config) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/attention-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config }),
+      });
+      const d = await res.json();
+      if (d.ok) { setConfig(d.data.config); setSaved(true); }
+      else setError(d.error ?? "Save failed");
+    } catch { setError("Network error"); }
+    finally { setSaving(false); }
+  }
+
+  async function handleReview(id: number, action: "legit" | "false_positive") {
+    try {
+      const res = await fetch("/api/admin/attention-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action }),
+      });
+      const d = await res.json();
+      if (!d.ok) { setError(d.error ?? "Review action failed"); return; }
+      setQueue((prev) => prev.filter((row) => row.id !== id));
+      if (d.data.configUpdated) {
+        // false positive force-gated the symbol; reflect it locally
+        const ticker = String(d.data.row?.ticker ?? "").toUpperCase();
+        setConfig((prev) => prev && ticker && !prev.symbol_overrides.force_ambiguous.includes(ticker)
+          ? { ...prev, symbol_overrides: { ...prev.symbol_overrides, force_ambiguous: [...prev.symbol_overrides.force_ambiguous, ticker].sort() } }
+          : prev);
+      }
+    } catch { setError("Network error"); }
+  }
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Stock Attention Sweep</h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">
+        Subreddits, weights, bot blocklist, and ticker gating for the Reddit attention tracker. Changes apply on the next hourly sweep / daily rollup — no deploy needed.
+      </p>
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        {loading && <p className="text-xs text-[color:var(--ink-faint)]">Loading…</p>}
+        {error && <p className="mb-2 text-xs text-[color:var(--danger)]">{error}</p>}
+        {config && (
+          <div className="space-y-4">
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Subreddits</p>
+              <ul className="space-y-1.5">
+                {config.subreddits.map((sub, i) => (
+                  <li key={sub.name} className="flex items-center gap-3 text-xs">
+                    <label className="flex w-44 cursor-pointer items-center gap-2">
+                      <input type="checkbox" checked={sub.active} onChange={() => updateSubreddit(i, { active: !sub.active })} />
+                      <span className={sub.active ? "text-[color:var(--ink)]" : "text-[color:var(--ink-faint)] line-through"}>r/{sub.name}</span>
+                    </label>
+                    <span className="w-12 text-[10px] text-[color:var(--ink-faint)]">Tier {sub.tier}</span>
+                    <label className="flex items-center gap-1 text-[10px] text-[color:var(--ink-faint)]">
+                      weight
+                      <input
+                        type="number" step="0.1" min="0" max="2" value={sub.weight}
+                        onChange={(e) => updateSubreddit(i, { weight: Number(e.target.value) })}
+                        className="w-16 rounded border border-[color:var(--line)] bg-transparent px-1.5 py-0.5 text-xs text-[color:var(--ink)]"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => { setConfig((prev) => prev ? { ...prev, subreddits: prev.subreddits.filter((_, j) => j !== i) } : prev); setSaved(false); }}
+                      className="text-[10px] text-[color:var(--ink-faint)] hover:text-[color:var(--danger)]"
+                    >
+                      remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  value={newSubreddit}
+                  onChange={(e) => setNewSubreddit(e.target.value)}
+                  placeholder="add subreddit (without r/)"
+                  className="w-56 rounded border border-[color:var(--line)] bg-transparent px-2 py-1 text-xs text-[color:var(--ink)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = newSubreddit.trim().replace(/^r\//i, "");
+                    if (!name || config.subreddits.some((sub) => sub.name.toLowerCase() === name.toLowerCase())) return;
+                    setConfig({ ...config, subreddits: [...config.subreddits, { name, tier: 2, weight: 0.7, active: true }] });
+                    setNewSubreddit("");
+                    setSaved(false);
+                  }}
+                  className="rounded border border-[color:var(--line)] px-2 py-1 text-xs text-[color:var(--ink-soft)] hover:bg-[rgba(79,213,255,0.08)]"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block text-[10px] text-[color:var(--ink-faint)]">
+                Bot blocklist (comma-separated)
+                <input
+                  value={config.bot_blocklist.join(", ")}
+                  onChange={(e) => setCsvField((cfg, values) => ({ ...cfg, bot_blocklist: values.map((v) => v.toLowerCase()) }))(e.target.value)}
+                  className="mt-1 w-full rounded border border-[color:var(--line)] bg-transparent px-2 py-1 text-xs text-[color:var(--ink)]"
+                />
+              </label>
+              <label className="block text-[10px] text-[color:var(--ink-faint)]">
+                Force-gate tickers (require $, comma-separated)
+                <input
+                  value={config.symbol_overrides.force_ambiguous.join(", ")}
+                  onChange={(e) => setCsvField((cfg, values) => ({ ...cfg, symbol_overrides: { ...cfg.symbol_overrides, force_ambiguous: values.map((v) => v.toUpperCase()) } }))(e.target.value)}
+                  className="mt-1 w-full rounded border border-[color:var(--line)] bg-transparent px-2 py-1 text-xs text-[color:var(--ink)]"
+                />
+              </label>
+              <label className="block text-[10px] text-[color:var(--ink-faint)]">
+                Force-allow tickers (bare counts, comma-separated)
+                <input
+                  value={config.symbol_overrides.force_unambiguous.join(", ")}
+                  onChange={(e) => setCsvField((cfg, values) => ({ ...cfg, symbol_overrides: { ...cfg.symbol_overrides, force_unambiguous: values.map((v) => v.toUpperCase()) } }))(e.target.value)}
+                  className="mt-1 w-full rounded border border-[color:var(--line)] bg-transparent px-2 py-1 text-xs text-[color:var(--ink)]"
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded border border-[color:var(--line)] px-3 py-1.5 text-xs font-medium text-[color:var(--ink)] hover:bg-[rgba(79,213,255,0.08)] disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save Sweep Config"}
+              </button>
+              {saved && <span className="text-xs text-[#41d39d]">Saved</span>}
+            </div>
+
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                Review Queue — new tickers entering the board
+              </p>
+              {queueWarning && <p className="text-[10px] text-amber-300">{queueWarning}</p>}
+              {queue.length === 0 && !queueWarning && (
+                <p className="text-xs text-[color:var(--ink-faint)]">No pending reviews.</p>
+              )}
+              <ul className="space-y-2">
+                {queue.map((row) => (
+                  <li key={row.id} className="rounded border border-[color:var(--line)] px-3 py-2 text-xs">
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-[color:var(--accent)]">{row.ticker}</span>
+                      <span className="text-[10px] text-[color:var(--ink-faint)]">{row.review_date}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleReview(row.id, "legit")}
+                        className="rounded border border-[#41d39d]/40 px-2 py-0.5 text-[10px] text-[#41d39d] hover:bg-[#41d39d]/10"
+                      >
+                        Legit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReview(row.id, "false_positive")}
+                        className="rounded border border-[color:var(--danger)]/40 px-2 py-0.5 text-[10px] text-[color:var(--danger)] hover:bg-red-500/10"
+                        title="Marks false positive AND force-gates the symbol (requires $ to count) in the sweep config"
+                      >
+                        False positive → gate
+                      </button>
+                    </div>
+                    {row.samples.length > 0 && (
+                      <ul className="mt-1 space-y-0.5">
+                        {row.samples.map((sample, i) => (
+                          <li key={i} className="truncate text-[10px] text-[color:var(--ink-faint)]">
+                            r/{sample.subreddit} ·{" "}
+                            <a href={sample.permalink} target="_blank" rel="noopener noreferrer" className="hover:text-[color:var(--accent)] hover:underline">
+                              {sample.title || sample.permalink}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function SectionDivider({ label }: { label: string }) {
   return (
     <div className="mb-8 flex items-center gap-3">
@@ -3260,6 +3509,7 @@ export default function AdminPage() {
       <XAccountManagerSection />
       <FeedManagerSection />
       <TopicRulesSection />
+      <AttentionSweepSection />
 
       {/* ── Enrichment Pipeline ────────────────────────────────────── */}
       <SectionDivider label="Enrichment Pipeline" />
