@@ -1520,10 +1520,40 @@ export type AttentionActivityRow = {
   tickers: string[];
 };
 
-export async function getRecentAttentionActivity(hoursBack = 24, limit = 150): Promise<AttentionActivityRow[]> {
+export type AttentionActivityFilters = {
+  author?: string;
+  ticker?: string;
+  subreddit?: string;
+  kind?: "post" | "comment";
+};
+
+// SEC-2 follow-up (2026-07-13): a single sweep can produce 1000+ tickered
+// items/hour, so the LIMIT below can cover as little as the last hour or
+// two of the *entire* firehose. Filtering used to happen client-side over
+// that already-truncated list, so a real, recent item from a specific
+// author/ticker/subreddit could be silently excluded just because enough
+// OTHER items were more recent - not because it fell outside the time
+// window. Filters are now applied in SQL, before the LIMIT, so the cap
+// only ever trims the (already-filtered) result the user asked for.
+// NULL-guarded predicates (`${x}::text IS NULL OR col = ${x}`) keep this
+// one static query text regardless of which filters are set, matching
+// this file's convention of not composing dynamic SQL fragments (the
+// @neondatabase/serverless tagged-template client doesn't support that -
+// see getRecentArticles for the alternative branch-per-combination style
+// used where the filter combinations are few).
+export async function getRecentAttentionActivity(
+  hoursBack = 24,
+  limit = 150,
+  filters: AttentionActivityFilters = {}
+): Promise<AttentionActivityRow[]> {
   const sql = getSql();
   const cappedHours = Math.max(1, Math.min(72, hoursBack));
   const cappedLimit = Math.max(1, Math.min(300, limit));
+  const author = filters.author?.trim() || null;
+  const subreddit = filters.subreddit?.trim() || null;
+  const kind = filters.kind ?? null;
+  const tickerLike = filters.ticker?.trim() ? `%${filters.ticker.trim().toUpperCase()}%` : null;
+
   const rows = (await sql`
     SELECT i.source_id, i.kind, i.subreddit, i.author, i.title, i.permalink,
            i.created_utc::text AS created_utc, i.score, i.mood,
@@ -1536,10 +1566,36 @@ export async function getRecentAttentionActivity(hoursBack = 24, limit = 150): P
            ) AS tickers
     FROM reddit_attention_items i
     WHERE i.created_utc >= now() - (${cappedHours} * INTERVAL '1 hour')
+      AND (${author}::text IS NULL OR i.author = ${author})
+      AND (${subreddit}::text IS NULL OR i.subreddit = ${subreddit})
+      AND (${kind}::text IS NULL OR i.kind = ${kind})
+      AND (
+        ${tickerLike}::text IS NULL OR EXISTS (
+          SELECT 1 FROM intelligence_mentions m2
+          WHERE m2.source_type IN ('reddit_post', 'reddit_comment')
+            AND m2.source_id = i.source_id
+            AND m2.mention_type = 'ticker'
+            AND m2.value ILIKE ${tickerLike}
+        )
+      )
     ORDER BY i.created_utc DESC
     LIMIT ${cappedLimit}
   `) as unknown as AttentionActivityRow[];
   return rows;
+}
+
+// Dropdown population must stay independent of whatever filter is
+// currently applied (SEC-7) - deriving it from the (now filterable) items
+// result would make the subreddit list shrink whenever an author/ticker
+// filter is active, which is not the intended UX.
+export async function getDistinctAttentionSubreddits(hoursBack = 24): Promise<string[]> {
+  const sql = getSql();
+  const cappedHours = Math.max(1, Math.min(72, hoursBack));
+  const rows = (await sql`
+    SELECT DISTINCT subreddit FROM reddit_attention_items
+    WHERE created_utc >= now() - (${cappedHours} * INTERVAL '1 hour')
+  `) as unknown as { subreddit: string }[];
+  return rows.map((row) => row.subreddit);
 }
 
 export type RedditAuthorStatsRow = {

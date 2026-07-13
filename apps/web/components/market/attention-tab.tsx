@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   AttentionActivityItem,
   AttentionAuthorRow,
@@ -360,6 +360,18 @@ function accountAge(iso: string | null): string {
 
 // SEC-5: sub-view polling cadence while the view stays open.
 const SUBVIEW_POLL_MS = 120_000;
+// Debounce for the free-text ticker/author filters so typing doesn't fire
+// a request per keystroke.
+const FILTER_DEBOUNCE_MS = 300;
+
+function useDebounced<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 function ActivityBoard({
   authorFilter,
@@ -374,10 +386,24 @@ function ActivityBoard({
   const [subredditFilter, setSubredditFilter] = useState("");
   const [kindFilter, setKindFilter] = useState<"all" | "post" | "comment">("all");
 
+  // SEC-2 follow-up: filtering moved server-side (see neon.ts's
+  // getRecentAttentionActivity comment) - a single sweep can produce far
+  // more than the 150-row cap in a day, so filtering client-side over an
+  // already-truncated list could show "0 items" for a real, recent post
+  // just because enough other items were more recent. Text inputs are
+  // debounced; discrete controls (subreddit/kind) refetch immediately.
+  const debouncedTicker = useDebounced(tickerFilter.trim().toUpperCase(), FILTER_DEBOUNCE_MS);
+  const debouncedAuthor = useDebounced(authorFilter.trim(), FILTER_DEBOUNCE_MS);
+
   useEffect(() => {
     let cancelled = false;
+    const params = new URLSearchParams({ hours: "24" });
+    if (debouncedTicker) params.set("ticker", debouncedTicker);
+    if (debouncedAuthor) params.set("author", debouncedAuthor);
+    if (subredditFilter) params.set("subreddit", subredditFilter);
+    if (kindFilter !== "all") params.set("kind", kindFilter);
     const load = () => {
-      fetch("/api/market/attention/activity?hours=24")
+      fetch(`/api/market/attention/activity?${params.toString()}`)
         .then((r) => r.json())
         .then((env) => {
           if (!cancelled && env.ok && env.data) setData(env.data);
@@ -389,31 +415,20 @@ function ActivityBoard({
     };
     load();
     // SEC-5: silent refresh while the view is open (loading spinner only
-    // covers the initial fetch).
+    // covers the initial fetch), re-applying whatever filters are active.
     const timer = setInterval(load, SUBVIEW_POLL_MS);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [debouncedTicker, debouncedAuthor, subredditFilter, kindFilter]);
 
-  // SEC-7: configured subreddits come from the API (union with observed),
-  // so a newly added / quiet subreddit is selectable immediately. Fallback
-  // derivation covers payloads from before the field existed.
-  const subreddits = useMemo(
-    () => data?.subreddits ?? [...new Set((data?.items ?? []).map((item) => item.subreddit))].sort(),
-    [data]
-  );
-  const filtered = useMemo(() => {
-    const ticker = tickerFilter.trim().toUpperCase();
-    const author = authorFilter.trim().toLowerCase();
-    return (data?.items ?? []).filter((item) =>
-      (!ticker || item.tickers.some((symbol) => symbol.includes(ticker)))
-      && (!subredditFilter || item.subreddit === subredditFilter)
-      && (!author || item.author.toLowerCase() === author)
-      && (kindFilter === "all" || item.kind === kindFilter)
-    );
-  }, [data, tickerFilter, subredditFilter, authorFilter, kindFilter]);
+  // SEC-7: configured subreddits come from the API (union of admin config
+  // + everything observed in the window, independent of the current
+  // filter - see the route), so the list never shrinks while filtering.
+  const subreddits = data?.subreddits ?? [];
+  // Filtering already happened server-side; items are the result.
+  const filtered = data?.items ?? [];
 
   if (loading && !data) {
     return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">Loading activity…</p>;
@@ -469,7 +484,7 @@ function ActivityBoard({
           </button>
         )}
         <span className="text-[10px] text-[color:var(--ink-faint)]">
-          {filtered.length} of {data.items.length} items · past {data.hoursBack}h
+          {filtered.length} items · past {data.hoursBack}h
         </span>
       </div>
 
