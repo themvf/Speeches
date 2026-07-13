@@ -580,6 +580,10 @@ def _ensure_stock_attention_schema() -> None:
             # same way).
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS weighted_mention_count NUMERIC NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS quality_flags TEXT NOT NULL DEFAULT '[]'")
+            # SEC-4: rss_articles ids behind the news_count, so the drawer
+            # can link the actual articles (JSON array as TEXT, same
+            # convention as top_source_ids).
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS top_news_ids TEXT NOT NULL DEFAULT '[]'")
             # Item 5: per-author history rollup, recomputed daily from the
             # raw items window by aggregate_stock_attention.py. account_created/
             # link_karma are filled opportunistically by the sweep (capped

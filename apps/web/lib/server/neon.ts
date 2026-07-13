@@ -1333,6 +1333,7 @@ export type DailyStockAttentionRow = {
   divergence: string;
   weighted_mention_count: number;
   quality_flags: string; // JSON array, same convention as top_source_ids
+  top_news_ids: string;  // JSON array of rss_articles ids (SEC-4)
   generated_at: string;
 };
 
@@ -1356,18 +1357,51 @@ export async function getLatestStockAttentionDate(): Promise<string | null> {
 
 export async function getDailyStockAttention(date: string, limit = 50): Promise<DailyStockAttentionRow[]> {
   const sql = getSql();
+  try {
+    return (await sql`
+      SELECT attention_date::text AS attention_date, ticker, company, mention_count, reddit_count, news_count,
+             total_mention_count, source_count, subreddit_count, weighted_score::float AS weighted_score, mood,
+             top_source_ids, price_close::float AS price_close, price_pct::float AS price_pct,
+             volume, volume_vs_20d::float AS volume_vs_20d, divergence,
+             weighted_mention_count::float AS weighted_mention_count, quality_flags, top_news_ids,
+             generated_at::text AS generated_at
+      FROM daily_stock_attention
+      WHERE attention_date = ${date}::date
+      ORDER BY weighted_score DESC, total_mention_count DESC, ticker ASC
+      LIMIT ${limit}
+    `) as unknown as DailyStockAttentionRow[];
+  } catch (err) {
+    // Old-schema tolerance (deploy-order rule in CLAUDE.md): top_news_ids
+    // is added by the Python rollup's ALTER; until that runs post-deploy,
+    // retry without the column so the board renders instead of erroring.
+    if (!String(err).includes("top_news_ids")) throw err;
+    const rows = (await sql`
+      SELECT attention_date::text AS attention_date, ticker, company, mention_count, reddit_count, news_count,
+             total_mention_count, source_count, subreddit_count, weighted_score::float AS weighted_score, mood,
+             top_source_ids, price_close::float AS price_close, price_pct::float AS price_pct,
+             volume, volume_vs_20d::float AS volume_vs_20d, divergence,
+             weighted_mention_count::float AS weighted_mention_count, quality_flags,
+             generated_at::text AS generated_at
+      FROM daily_stock_attention
+      WHERE attention_date = ${date}::date
+      ORDER BY weighted_score DESC, total_mention_count DESC, ticker ASC
+      LIMIT ${limit}
+    `) as unknown as Omit<DailyStockAttentionRow, "top_news_ids">[];
+    return rows.map((row) => ({ ...row, top_news_ids: "[]" }));
+  }
+}
+
+export type RssArticleRef = { id: number; title: string; url: string };
+
+// SEC-4: resolve the drawer's top_news_ids to linkable articles. Articles
+// older than the RSS retention window may be pruned - callers must treat
+// missing ids as normal.
+export async function getRssArticlesByIds(ids: number[]): Promise<RssArticleRef[]> {
+  if (ids.length === 0) return [];
+  const sql = getSql();
   const rows = (await sql`
-    SELECT attention_date::text AS attention_date, ticker, company, mention_count, reddit_count, news_count,
-           total_mention_count, source_count, subreddit_count, weighted_score::float AS weighted_score, mood,
-           top_source_ids, price_close::float AS price_close, price_pct::float AS price_pct,
-           volume, volume_vs_20d::float AS volume_vs_20d, divergence,
-           weighted_mention_count::float AS weighted_mention_count, quality_flags,
-           generated_at::text AS generated_at
-    FROM daily_stock_attention
-    WHERE attention_date = ${date}::date
-    ORDER BY weighted_score DESC, total_mention_count DESC, ticker ASC
-    LIMIT ${limit}
-  `) as unknown as DailyStockAttentionRow[];
+    SELECT id, title, url FROM rss_articles WHERE id = ANY(${ids})
+  `) as unknown as RssArticleRef[];
   return rows;
 }
 

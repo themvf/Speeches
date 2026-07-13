@@ -5,9 +5,11 @@ import {
   getDailyStockAttention,
   getLatestStockAttentionDate,
   getRedditAttentionItems,
+  getRssArticlesByIds,
   getStockAttentionSparklines,
   type DailyStockAttentionRow,
   type RedditAttentionItemRow,
+  type RssArticleRef,
 } from "@/lib/server/neon";
 import { fetchYahooQuote } from "@/lib/server/yahoo";
 
@@ -68,12 +70,17 @@ export async function GET(req: NextRequest) {
 
     const allSourceIds = rows.flatMap((row) => parseTopSourceIds(row));
     const tickers = rows.map((row) => row.ticker);
+    const allNewsIds = [...new Set(
+      rows.flatMap((row) => parseJsonStringArray(row.top_news_ids).map((id) => Number(id)).filter(Number.isFinite))
+    )];
 
-    const [items, sparklines] = await Promise.all([
+    const [items, sparklines, newsArticles] = await Promise.all([
       getRedditAttentionItems([...new Set(allSourceIds)]),
       getStockAttentionSparklines(tickers, SPARKLINE_DAYS),
+      getRssArticlesByIds(allNewsIds),
     ]);
     const itemsById = new Map<string, RedditAttentionItemRow>(items.map((item) => [item.source_id, item]));
+    const newsById = new Map<number, RssArticleRef>(newsArticles.map((article) => [article.id, article]));
 
     const quoteTickers = rows.slice(0, QUOTE_PAIR_LIMIT).map((row) => row.ticker);
     const quotes = await Promise.allSettled(quoteTickers.map((ticker) => fetchYahooQuote(ticker, 300)));
@@ -122,6 +129,10 @@ export async function GET(req: NextRequest) {
           qualityFlags: parseJsonStringArray(row.quality_flags),
           sparkline: (sparklines.get(row.ticker) ?? []).map((point) => point.total_mention_count),
           topSources,
+          topNews: parseJsonStringArray(row.top_news_ids)
+            .map((id) => newsById.get(Number(id)))
+            .filter((article): article is RssArticleRef => Boolean(article))
+            .map((article) => ({ title: article.title, url: article.url })),
         };
       }),
       generatedAt: new Date().toISOString(),

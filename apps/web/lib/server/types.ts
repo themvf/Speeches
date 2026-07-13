@@ -529,6 +529,7 @@ export interface AttentionRow {
   qualityFlags: string[];            // item 6 manipulation-pattern annotations
   sparkline: number[];               // last N days' total_mention_count, oldest first
   topSources: AttentionSource[];
+  topNews: { title: string; url: string }[]; // SEC-4: articles behind the news count
 }
 
 export interface MarketAttentionData {
@@ -585,6 +586,10 @@ export interface AttentionActivityItem {
 export interface MarketAttentionActivityData {
   hoursBack: number;
   items: AttentionActivityItem[];
+  // SEC-7: union of admin-configured active subreddits and subreddits
+  // observed in items, so newly added / quiet subreddits appear in the
+  // filter dropdown before they have swept activity.
+  subreddits: string[];
   warning?: string;
   generatedAt: string;
 }

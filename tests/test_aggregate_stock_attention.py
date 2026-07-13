@@ -248,6 +248,34 @@ def test_merge_news_counts_appends_news_only_ticker():
     assert json.loads(msft["top_source_ids"]) == []
 
 
+def test_compute_news_ticker_mentions_returns_article_ids():
+    articles = [
+        {"id": 11, "title": "NVDA earnings beat", "description": ""},
+        {"id": 22, "title": "Chipmakers rally", "description": "NVDA and AMD both up"},
+    ]
+    ids = agg.compute_news_ticker_mentions(articles)
+    assert ids == {"NVDA": [11, 22], "AMD": [22]}
+
+
+def test_merge_news_counts_stores_top_news_ids():
+    reddit_rollups = agg.aggregate_rows([_row("NVDA", "t3_a", "u1")])
+    merged = agg.merge_news_counts(
+        reddit_rollups, {"NVDA": 2, "MSFT": 1},
+        news_article_ids={"NVDA": [11, 22], "MSFT": [33]},
+    )
+    by_ticker = {row["ticker"]: row for row in merged}
+    assert json.loads(by_ticker["NVDA"]["top_news_ids"]) == [11, 22]
+    assert json.loads(by_ticker["MSFT"]["top_news_ids"]) == [33]  # news-only row
+
+
+def test_merge_news_counts_caps_top_news_ids_at_ten():
+    reddit_rollups = agg.aggregate_rows([_row("NVDA", "t3_a", "u1")])
+    merged = agg.merge_news_counts(
+        reddit_rollups, {"NVDA": 15}, news_article_ids={"NVDA": list(range(15))}
+    )
+    assert len(json.loads(merged[0]["top_news_ids"])) == 10
+
+
 def test_merge_news_counts_with_empty_news_is_noop():
     reddit_rollups = agg.aggregate_rows([_row("NVDA", "t3_a", "u1")])
     merged = agg.merge_news_counts(reddit_rollups, {})

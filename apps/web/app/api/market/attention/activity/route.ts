@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { createRequestId, ok } from "@/lib/server/api-utils";
 import type { AttentionActivityItem, MarketAttentionActivityData } from "@/lib/server/types";
-import { getRecentAttentionActivity } from "@/lib/server/neon";
+import { getAttentionSweepConfig, getRecentAttentionActivity } from "@/lib/server/neon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +15,16 @@ export async function GET(req: NextRequest) {
   const hoursBack = Number.isFinite(rawHours) ? Math.min(MAX_HOURS_BACK, Math.max(1, rawHours)) : DEFAULT_HOURS_BACK;
 
   try {
-    const rows = await getRecentAttentionActivity(hoursBack);
+    // SEC-7: the filter dropdown must include admin-configured subreddits
+    // even before they have swept items - config read is fail-soft so a
+    // missing config table can't take down the feed.
+    const [rows, config] = await Promise.all([
+      getRecentAttentionActivity(hoursBack),
+      getAttentionSweepConfig().catch(() => null),
+    ]);
+    const configured = (config?.subreddits ?? [])
+      .filter((sub) => sub.active)
+      .map((sub) => sub.name);
     const items: AttentionActivityItem[] = rows.map((row) => ({
       sourceId: row.source_id,
       kind: row.kind,
@@ -31,6 +40,9 @@ export async function GET(req: NextRequest) {
     const data: MarketAttentionActivityData = {
       hoursBack,
       items,
+      subreddits: [...new Set([...configured, ...items.map((item) => item.subreddit)])].sort((a, b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase())
+      ),
       generatedAt: new Date().toISOString(),
       ...(items.length === 0 ? { warning: "No swept Reddit activity in this window yet." } : {}),
     };
@@ -40,6 +52,7 @@ export async function GET(req: NextRequest) {
     const data: MarketAttentionActivityData = {
       hoursBack,
       items: [],
+      subreddits: [],
       warning: `Activity feed unavailable: ${err instanceof Error ? err.message : "unknown error"}`,
       generatedAt: new Date().toISOString(),
     };

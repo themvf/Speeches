@@ -139,7 +139,7 @@ INSERT_DAY_SQL = """
       (attention_date, ticker, company, mention_count, source_count, subreddit_count,
        weighted_score, mood, top_source_ids, reddit_count, news_count, total_mention_count,
        price_close, price_pct, volume, volume_vs_20d, divergence,
-       weighted_mention_count, quality_flags)
+       weighted_mention_count, quality_flags, top_news_ids)
     VALUES %s
 """
 
@@ -363,38 +363,56 @@ def aggregate_rows(
             "mood": mood,
             "top_source_ids": json.dumps(top_sources),
             "quality_flags": "[]",
+            "top_news_ids": "[]",
         })
     out.sort(key=lambda row: (-row["weighted_score"], row["ticker"]))
     return out
 
 
-def compute_news_ticker_counts(articles: List[Dict[str, Any]]) -> Dict[str, int]:
-    """Pure: distinct-article count per ticker resolved from article
-    title+description text. One article can produce multiple tickers; a
-    ticker mentioned twice in one article's title+description still counts
-    once (distinct article id), matching "count of news items", not "count
-    of mentions"."""
-    counts: Dict[str, int] = {}
+def compute_news_ticker_mentions(articles: List[Dict[str, Any]]) -> Dict[str, List[Any]]:
+    """Pure: per-ticker list of contributing rss_articles ids (SEC-4). One
+    article can produce multiple tickers; a ticker mentioned twice in one
+    article's title+description still contributes that article once."""
+    by_ticker: Dict[str, List[Any]] = {}
     for article in articles:
         text = f"{article.get('title', '') or ''} {article.get('description', '') or ''}"
         for symbol in ticker_resolver.resolve_tickers(text):
-            counts[symbol] = counts.get(symbol, 0) + 1
-    return counts
+            by_ticker.setdefault(symbol, []).append(article.get("id"))
+    return by_ticker
 
 
-def merge_news_counts(rollups: List[Dict[str, Any]], news_counts: Dict[str, int]) -> List[Dict[str, Any]]:
+def compute_news_ticker_counts(articles: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Pure: distinct-article count per ticker resolved from article
+    title+description text — the count the leaderboard displays."""
+    return {ticker: len(ids) for ticker, ids in compute_news_ticker_mentions(articles).items()}
+
+
+def merge_news_counts(
+    rollups: List[Dict[str, Any]],
+    news_counts: Dict[str, int],
+    news_article_ids: Dict[str, List[Any]] | None = None,
+) -> List[Dict[str, Any]]:
     """Merges news_counts into existing Reddit rollups and appends
     news-only rows (a ticker with zero Reddit mentions but real news
     coverage still ranks - item 1's stated requirement). News-only rows
     carry zeroed Reddit-specific fields and a weighted_score of 0 (the
     score formula is Reddit-only by design; a news-only ticker still shows
-    up, just not ranked by a score that isn't measuring it)."""
+    up, just not ranked by a score that isn't measuring it). SEC-4:
+    news_article_ids stores up to 10 contributing rss_articles ids per
+    ticker so the drawer can link the actual articles."""
+    news_article_ids = news_article_ids or {}
+
+    def _top_news(ticker: str) -> str:
+        ids = [i for i in news_article_ids.get(ticker, []) if i is not None][:10]
+        return json.dumps(ids)
+
     by_ticker = {row["ticker"]: row for row in rollups}
     for ticker, count in news_counts.items():
         if ticker in by_ticker:
             row = by_ticker[ticker]
             row["news_count"] = count
             row["total_mention_count"] = row["reddit_count"] + count
+            row["top_news_ids"] = _top_news(ticker)
         else:
             by_ticker[ticker] = {
                 "ticker": ticker,
@@ -410,6 +428,7 @@ def merge_news_counts(rollups: List[Dict[str, Any]], news_counts: Dict[str, int]
                 "mood": "neutral",
                 "top_source_ids": "[]",
                 "quality_flags": "[]",
+                "top_news_ids": _top_news(ticker),
             }
     merged = list(by_ticker.values())
     merged.sort(key=lambda row: (-row["weighted_score"], -row["total_mention_count"], row["ticker"]))
@@ -528,8 +547,9 @@ def _run(
                 cur.execute(FETCH_NEWS_ROWS_SQL, {"day_start": day_start, "day_end": day_end})
                 articles = [dict(row) for row in cur.fetchall()]
                 summary["news_articles_scanned"] = len(articles)
-                news_counts = compute_news_ticker_counts(articles)
-                rollups = merge_news_counts(rollups, news_counts)
+                news_ids = compute_news_ticker_mentions(articles)
+                news_counts = {ticker: len(ids) for ticker, ids in news_ids.items()}
+                rollups = merge_news_counts(rollups, news_counts, news_ids)
                 summary["news_only_tickers"] = len(rollups) - reddit_ticker_count
 
             summary["tickers"] = len(rollups)
@@ -619,6 +639,7 @@ def _run(
                                 r.get("divergence", ""),
                                 r.get("weighted_mention_count", 0.0),
                                 r.get("quality_flags", "[]"),
+                                r.get("top_news_ids", "[]"),
                             )
                             for r in rollups
                         ],

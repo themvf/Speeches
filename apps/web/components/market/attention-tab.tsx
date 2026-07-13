@@ -226,6 +226,31 @@ function SourcesDrawer({ row }: { row: AttentionRow }) {
         <TickerHistory ticker={row.ticker} />
       </div>
 
+      {row.topNews.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+            News Articles
+          </p>
+          <ul className="space-y-1.5">
+            {row.topNews.map((article, i) => (
+              <li key={i} className="flex items-baseline gap-2 text-xs">
+                <span className="shrink-0 rounded bg-[rgba(79,213,255,0.08)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--ink-faint)]">
+                  news
+                </span>
+                <a
+                  href={article.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline"
+                >
+                  {article.title || article.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {row.topSources.length > 0 && (
         <div>
           <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
@@ -333,40 +358,62 @@ function accountAge(iso: string | null): string {
   return `${Math.floor(days / 365)}y`;
 }
 
-function ActivityBoard() {
+// SEC-5: sub-view polling cadence while the view stays open.
+const SUBVIEW_POLL_MS = 120_000;
+
+function ActivityBoard({
+  authorFilter,
+  onAuthorFilterChange,
+}: {
+  authorFilter: string;
+  onAuthorFilterChange: (author: string) => void;
+}) {
   const [data, setData] = useState<MarketAttentionActivityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tickerFilter, setTickerFilter] = useState("");
   const [subredditFilter, setSubredditFilter] = useState("");
+  const [kindFilter, setKindFilter] = useState<"all" | "post" | "comment">("all");
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    fetch("/api/market/attention/activity?hours=24")
-      .then((r) => r.json())
-      .then((env) => {
-        if (!cancelled && env.ok && env.data) setData(env.data);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const load = () => {
+      fetch("/api/market/attention/activity?hours=24")
+        .then((r) => r.json())
+        .then((env) => {
+          if (!cancelled && env.ok && env.data) setData(env.data);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+    load();
+    // SEC-5: silent refresh while the view is open (loading spinner only
+    // covers the initial fetch).
+    const timer = setInterval(load, SUBVIEW_POLL_MS);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, []);
 
+  // SEC-7: configured subreddits come from the API (union with observed),
+  // so a newly added / quiet subreddit is selectable immediately. Fallback
+  // derivation covers payloads from before the field existed.
   const subreddits = useMemo(
-    () => [...new Set((data?.items ?? []).map((item) => item.subreddit))].sort(),
+    () => data?.subreddits ?? [...new Set((data?.items ?? []).map((item) => item.subreddit))].sort(),
     [data]
   );
   const filtered = useMemo(() => {
     const ticker = tickerFilter.trim().toUpperCase();
+    const author = authorFilter.trim().toLowerCase();
     return (data?.items ?? []).filter((item) =>
       (!ticker || item.tickers.some((symbol) => symbol.includes(ticker)))
       && (!subredditFilter || item.subreddit === subredditFilter)
+      && (!author || item.author.toLowerCase() === author)
+      && (kindFilter === "all" || item.kind === kindFilter)
     );
-  }, [data, tickerFilter, subredditFilter]);
+  }, [data, tickerFilter, subredditFilter, authorFilter, kindFilter]);
 
   if (loading && !data) {
     return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">Loading activity…</p>;
@@ -382,7 +429,13 @@ function ActivityBoard() {
           value={tickerFilter}
           onChange={(e) => setTickerFilter(e.target.value)}
           placeholder="Filter by ticker…"
-          className="w-40 rounded-lg border border-[color:var(--line)] bg-transparent px-2 py-1 text-xs text-[color:var(--ink)]"
+          className="w-36 rounded-lg border border-[color:var(--line)] bg-transparent px-2 py-1 text-xs text-[color:var(--ink)]"
+        />
+        <input
+          value={authorFilter}
+          onChange={(e) => onAuthorFilterChange(e.target.value)}
+          placeholder="Filter by author…"
+          className="w-36 rounded-lg border border-[color:var(--line)] bg-transparent px-2 py-1 text-xs text-[color:var(--ink)]"
         />
         <select
           value={subredditFilter}
@@ -394,6 +447,27 @@ function ActivityBoard() {
             <option key={name} value={name}>r/{name}</option>
           ))}
         </select>
+        <div className="flex overflow-hidden rounded-lg border border-[color:var(--line)]">
+          {(["all", "post", "comment"] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => setKindFilter(kind)}
+              className={`px-2 py-1 text-[10px] font-medium capitalize ${kindFilter === kind ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
+            >
+              {kind === "all" ? "All" : `${kind}s`}
+            </button>
+          ))}
+        </div>
+        {(tickerFilter || authorFilter || subredditFilter || kindFilter !== "all") && (
+          <button
+            type="button"
+            onClick={() => { setTickerFilter(""); onAuthorFilterChange(""); setSubredditFilter(""); setKindFilter("all"); }}
+            className="text-[10px] text-[color:var(--ink-faint)] underline hover:text-[color:var(--accent)]"
+          >
+            clear filters
+          </button>
+        )}
         <span className="text-[10px] text-[color:var(--ink-faint)]">
           {filtered.length} of {data.items.length} items · past {data.hoursBack}h
         </span>
@@ -435,7 +509,14 @@ function ActivityBoard() {
               >
                 {item.title || item.permalink}
               </a>
-              <span className="shrink-0 text-[10px] text-[color:var(--ink-faint)]">u/{item.author}</span>
+              <button
+                type="button"
+                onClick={() => onAuthorFilterChange(item.author)}
+                className="shrink-0 text-[10px] text-[color:var(--ink-faint)] hover:text-[color:var(--accent)] hover:underline"
+                title={`Filter to u/${item.author}`}
+              >
+                u/{item.author}
+              </button>
               <span className="hidden shrink-0 sm:inline">
                 <MoodChip mood={item.mood} deemphasized />
               </span>
@@ -455,7 +536,7 @@ function ActivityBoard() {
   );
 }
 
-function AuthorsBoard() {
+function AuthorsBoard({ onSelectAuthor }: { onSelectAuthor: (author: string) => void }) {
   const [data, setData] = useState<MarketAttentionAuthorsData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -504,13 +585,22 @@ function AuthorsBoard() {
               <tr key={row.author} className="border-b border-[color:var(--line)] last:border-0">
                 <td className="w-8 py-2 pl-4 pr-2 text-xs tabular-nums text-[color:var(--ink-faint)]">{row.rank}</td>
                 <td className="px-2 py-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => onSelectAuthor(row.author)}
+                    className="text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline"
+                    title={`Show u/${row.author}'s posts/comments in the Activity view`}
+                  >
+                    u/{row.author}
+                  </button>
                   <a
                     href={`https://www.reddit.com/user/${encodeURIComponent(row.author)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline"
+                    className="ml-1 text-[10px] text-[color:var(--ink-faint)] hover:text-[color:var(--accent)]"
+                    title="Reddit profile"
                   >
-                    u/{row.author}
+                    ↗
                   </a>
                   {row.discounted && (
                     <span
@@ -564,18 +654,23 @@ function IntradayBoard() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    fetch("/api/market/attention/intraday?hours=24")
-      .then((r) => r.json())
-      .then((env) => {
-        if (!cancelled && env.ok && env.data) setData(env.data);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const load = () => {
+      fetch("/api/market/attention/intraday?hours=24")
+        .then((r) => r.json())
+        .then((env) => {
+          if (!cancelled && env.ok && env.data) setData(env.data);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+    load();
+    // SEC-5: the "right now" board refreshes itself while open.
+    const timer = setInterval(load, SUBVIEW_POLL_MS);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, []);
 
@@ -632,6 +727,35 @@ const VIEW_LABELS: { id: AttentionView; label: string }[] = [
 export function AttentionTab({ data, loading, error }: Props) {
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
   const [view, setView] = useState<AttentionView>("daily");
+  // SEC-2: author filter lives here so the Authors board can drive the
+  // Activity view.
+  const [activityAuthor, setActivityAuthor] = useState("");
+  // SEC-1: past-day override for the Daily board. null = latest (the
+  // polled prop data); a date string switches to a one-off fetch.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [dateData, setDateData] = useState<MarketAttentionData | null>(null);
+  const [dateLoading, setDateLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedDate) {
+      setDateData(null);
+      return;
+    }
+    let cancelled = false;
+    setDateLoading(true);
+    fetch(`/api/market/attention?date=${encodeURIComponent(selectedDate)}`)
+      .then((r) => r.json())
+      .then((env) => {
+        if (!cancelled && env.ok && env.data) setDateData(env.data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setDateLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate]);
 
   if (loading && !data) {
     return (
@@ -650,6 +774,10 @@ export function AttentionTab({ data, loading, error }: Props) {
   }
 
   if (!data) return null;
+
+  // The Daily board renders the selected past day when one is chosen,
+  // otherwise the live (polled) latest-day payload.
+  const board = selectedDate ? dateData : data;
 
   return (
     <div className="space-y-4">
@@ -676,25 +804,59 @@ export function AttentionTab({ data, loading, error }: Props) {
             ))}
           </div>
           {view === "daily" && data.date && (
-            <span className="text-xs text-[color:var(--ink-faint)]">
-              {data.date} <span className="opacity-70">(UTC day)</span>
+            <span className="flex items-center gap-1 text-xs text-[color:var(--ink-faint)]">
+              <input
+                type="date"
+                value={selectedDate ?? data.date}
+                max={data.date}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // Picking the latest day returns to live/polled mode.
+                  setSelectedDate(value && value !== data.date ? value : null);
+                }}
+                className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-2 py-0.5 text-xs text-[color:var(--ink-soft)] [color-scheme:dark]"
+              />
+              <span className="opacity-70">(UTC day)</span>
+              {selectedDate && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(null)}
+                  className="underline hover:text-[color:var(--accent)]"
+                >
+                  latest
+                </button>
+              )}
             </span>
           )}
         </div>
       </div>
 
       {view === "intraday" && <IntradayBoard />}
-      {view === "activity" && <ActivityBoard />}
-      {view === "authors" && <AuthorsBoard />}
-      {view === "daily" && (
+      {view === "activity" && (
+        <ActivityBoard authorFilter={activityAuthor} onAuthorFilterChange={setActivityAuthor} />
+      )}
+      {view === "authors" && (
+        <AuthorsBoard
+          onSelectAuthor={(author) => {
+            setActivityAuthor(author);
+            setView("activity");
+          }}
+        />
+      )}
+      {view === "daily" && (dateLoading || !board) && (
+        <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">
+          {dateLoading ? "Loading selected day…" : "No data for the selected day."}
+        </p>
+      )}
+      {view === "daily" && !dateLoading && board && (
         <>
-          {data.warning && (
+          {board.warning && (
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
-              {data.warning}
+              {board.warning}
             </div>
           )}
 
-          {data.rows.length > 0 && (
+          {board.rows.length > 0 && (
             <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
               <table className="w-full">
                 <thead>
@@ -711,7 +873,7 @@ export function AttentionTab({ data, loading, error }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.rows.map((row) => (
+                  {board.rows.map((row) => (
                     <AttentionTableRow
                       key={row.ticker}
                       row={row}
@@ -724,7 +886,7 @@ export function AttentionTab({ data, loading, error }: Props) {
             </div>
           )}
 
-          {data.rows.length === 0 && !data.warning && (
+          {board.rows.length === 0 && !board.warning && (
             <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">
               No attention data for this day.
             </p>
