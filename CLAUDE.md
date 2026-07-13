@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Work Tracking: JIRA (adopted 2026-07-13)
+
+All work on this project is tracked in JIRA project **SEC** (https://dfsvegas.atlassian.net, team-managed, no Priority field — put "Suggested priority" in descriptions). Create a ticket for new work, transition In Progress when starting, Done with a verification comment (commit hash) when finished. API access: Basic auth, email `joshbandes@gmail.com` + token at `~/.jira_token` (never print it); issue-type ids and a reusable `jira_util.py` helper pattern are recorded in the auto-memory `jira-workflow.md`. Status as of 2026-07-13: SEC-1..5 and SEC-7 Done (commit `21fffbc` — Daily-board date navigation, Authors→Activity author cross-link, post/comment filter, news drill-down via a new additive `top_news_ids` rollup column with an old-schema-tolerant reader, 120s sub-view polling, and the SEC-7 dropdown fix where the Activity subreddit list now unions admin-configured subreddits with observed ones). SEC-6 (Phase 5 false-positive review) is In Progress: automated pass found a clean top-50 (flags working — TTD/SOFI correctly annotated single_thread_concentration); remaining items need the user's admin login (review queue decisions, live admin-panel check).
+
 ## Recap Architecture Review - July 2026
 
 Use this note when debugging recap generation failures, stale/duplicated topic rows, or recap-related rate-limit errors. A review of the Daily Recap stack (`apps/web/app/api/intel/recap/{generate,settings}/route.ts`, `apps/web/app/api/intel/recap/route.ts`, `apps/web/app/recap/page.tsx`, `apps/web/components/recap-dashboard.tsx`, and the `daily_recaps`/`recap_settings` tables in `neon.ts`) found the items below. Status: **items 2-4 and the small correctness fixes are implemented; items 1 and 5 are deliberately deferred as separate feature work.**
