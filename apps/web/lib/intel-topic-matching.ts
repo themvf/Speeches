@@ -132,6 +132,27 @@ export function getMatchingTopics(article: TopicArticleInput, rules: TopicRuleVi
 }
 
 /**
+ * Fail-closed feed mapping. Only current deterministic matches against the
+ * active taxonomy qualify an article; free-form model output or stale stored
+ * labels cannot make an otherwise unmapped item feed-eligible.
+ */
+export function filterTopicMappedArticles<T extends TopicArticleInput>(
+  articles: T[],
+  rules: TopicRuleView[]
+): Array<T & { topics: string[] }> {
+  if (rules.length === 0) return [];
+
+  const mapped: Array<T & { topics: string[] }> = [];
+  for (const article of articles) {
+    const topics = getMatchingTopics(article, rules).map((rule) => rule.label);
+    if (topics.length > 0) {
+      mapped.push({ ...article, topics });
+    }
+  }
+  return mapped;
+}
+
+/**
  * Compile a raw keyword list into matchers once, so callers scanning many
  * articles (e.g. the topic-rule backtest tool) don't recompile the same
  * regex per article. Reuses the exact same word-boundary matching as

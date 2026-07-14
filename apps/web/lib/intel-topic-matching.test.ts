@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   compileKeywords,
+  filterTopicMappedArticles,
   getMatchingTopics,
   getTopicMatches,
   matchingKeywordsForArticle,
@@ -65,4 +66,31 @@ test("compileKeywords + matchingKeywordsForArticle agrees with getTopicMatches f
 
   assert.equal(topicMatches.length > 0, keywordMatches.length > 0);
   assert.deepEqual(getMatchingTopics(article, rules).map((r) => r.topic_key), ["AI_TECH"]);
+});
+
+test("feed topic gate keeps current matches and rejects unmapped or model-only articles", () => {
+  const rules = normalizeTopicRules([
+    { topic_key: "CREDIT_MARKETS", label: "Credit Markets", keywords: "treasury yield, bond market", active: true, sort_order: 10 },
+    { topic_key: "ECONOMIC_GROWTH", label: "Economic Growth", keywords: "fiscal policy, inflation", active: true, sort_order: 20 },
+    { topic_key: "RETIRED", label: "Retired", keywords: "currencies", active: false, sort_order: 30 },
+  ]);
+  const articles = [
+    { id: 1, title: "Treasury yield falls after inflation report", description: "" },
+    { id: 2, title: "Policy briefing", description: "The fiscal-policy outlook changed." },
+    { id: 3, title: "Asian currencies consolidate", description: "Risk-off sentiment", topics: ["Credit Markets"] },
+    { id: 4, title: "Second-quarter update", description: "", analysis: { topics: ["Economic Growth"] } },
+  ];
+
+  const mapped = filterTopicMappedArticles(articles, rules);
+
+  assert.deepEqual(mapped.map((article) => article.id), [1, 2]);
+  assert.deepEqual(mapped[0].topics, ["Credit Markets", "Economic Growth"]);
+  assert.deepEqual(mapped[1].topics, ["Economic Growth"]);
+});
+
+test("feed topic gate fails closed when no active taxonomy is available", () => {
+  assert.deepEqual(
+    filterTopicMappedArticles([{ title: "SEC rulemaking", description: "" }], []),
+    []
+  );
 });

@@ -1,4 +1,4 @@
-import { getMatchingTopics, normalizeTopicRules } from "@/lib/intel-topic-matching";
+import { filterTopicMappedArticles, normalizeTopicRules } from "@/lib/intel-topic-matching";
 import { normalizeText } from "@/lib/server/api-utils";
 import { generateFeedAnalysis, type FeedAnalysisInput } from "@/lib/server/feed-analysis";
 import { rssFeedLabel } from "@/lib/server/rss-fetcher";
@@ -41,16 +41,18 @@ export async function analyzeMissingRssArticles(limit = 5, opts: { feedKeys?: st
     return 0;
   });
 
-  const selected = await getRssArticlesNeedingAnalysis(Math.max(1, Math.min(50, limit)), {
+  const requestedLimit = Math.max(1, Math.min(50, limit));
+  const candidates = await getRssArticlesNeedingAnalysis(Math.min(100, requestedLimit * 4), {
     feedKeys: opts.feedKeys,
   });
+  const rules = normalizeTopicRules(topicRules);
+  const selected = filterTopicMappedArticles(candidates, rules).slice(0, requestedLimit);
   if (selected.length === 0) {
     return { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };
   }
 
-  const rules = normalizeTopicRules(topicRules);
   const results = await Promise.all(selected.map(async (article) => {
-    const topics = getMatchingTopics(article, rules).map((topic) => topic.label);
+    const topics = article.topics;
     try {
       const generated = await generateFeedAnalysis(inputForArticle(article, topics));
       await saveRssArticleAnalysis(article, generated, topics);

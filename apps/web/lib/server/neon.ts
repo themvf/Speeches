@@ -26,6 +26,7 @@ export type StoredRssArticle = {
   published_at: string | null;
   tone_label: "positive" | "neutral" | "negative" | null;
   fetched_at: string;
+  topics?: string[];
   analysis?: StoredRssArticleAnalysis | null;
   matched_finra_firms?: string[];
 };

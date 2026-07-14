@@ -7,6 +7,7 @@ import {
   selectNewsFeedDocuments,
 } from "@/lib/server/data-store";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
+import { filterTopicMappedArticles, normalizeTopicRules } from "@/lib/intel-topic-matching";
 import {
   ensureSchema,
   getFeeds,
@@ -87,6 +88,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     let articles: StoredRssArticle[] = [];
     let topicRules: StoredRssTopicRule[] = [];
+    let unmappedFilteredCount = 0;
 
     if (!documentsOnly && process.env.DATABASE_URL) {
       await ensureSchema();
@@ -139,10 +141,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    articles = articles.filter((article) => (
+    const activeTopicRules = normalizeTopicRules(topicRules);
+    const policyEligibleArticles = articles.filter((article) => (
       !isInvalidCouponArticle(article) &&
       passesRssPolicy(article, topicRules)
     ));
+    articles = filterTopicMappedArticles(policyEligibleArticles, activeTopicRules);
+    unmappedFilteredCount = policyEligibleArticles.length - articles.length;
     let documents: ReturnType<typeof selectNewsFeedDocuments> = [];
     if (includeDocuments) {
       const [corpusDocs, enrichment] = await Promise.all([
@@ -162,6 +167,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         data: {
           articles: compactFeedArticles(articles),
           topicRules,
+          unmappedFilteredCount,
           ...(includeDocuments ? { documents } : {}),
           generatedAt: new Date().toISOString(),
         },

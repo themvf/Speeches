@@ -2086,13 +2086,18 @@ export function IntelBetaDashboard({
 
     for (const article of feedItems) {
       const directMatches = getMatchingTopics(article, visibleTopicRules);
-      const matches = mergeTopicMatches(
-        directMatches,
-        assignedTopicMatches(article, visibleTopicRules),
-        fallbackDocumentTopicMatches(article, visibleTopicRules)
-      );
+      // RSS eligibility is based only on the current deterministic taxonomy.
+      // Stored/model topics may enrich documents, but cannot make an
+      // otherwise-unmapped RSS article visible.
+      const matches = article.item_type === "document"
+        ? mergeTopicMatches(
+          directMatches,
+          assignedTopicMatches(article, visibleTopicRules),
+          fallbackDocumentTopicMatches(article, visibleTopicRules)
+        )
+        : directMatches;
       topicMatchesByArticleId.set(article.id, matches);
-      if (matches.length === 0 && article.item_type !== "document") {
+      if (matches.length === 0) {
         continue;
       }
       matchedArticles.push(article);
@@ -2107,7 +2112,7 @@ export function IntelBetaDashboard({
   const sourceIndex = useMemo(() => {
     const sourceMatchesByArticleId = new Map<number, Set<SourceFilter>>();
     const counts = new Map<SourceFilter, number>();
-    for (const article of feedItems) {
+    for (const article of matchedArticles) {
       const matches = new Set<SourceFilter>();
       for (const source of SOURCE_FILTERS) {
         if (matchesSourceFilter(article, source.key)) {
@@ -2118,7 +2123,7 @@ export function IntelBetaDashboard({
       sourceMatchesByArticleId.set(article.id, matches);
     }
     return { sourceCounts: counts, sourceMatchesByArticleId };
-  }, [feedItems]);
+  }, [matchedArticles]);
   const sourceCounts = sourceIndex.sourceCounts;
   const selectedRule = selectedTopic === "ALL"
     ? null
@@ -2263,7 +2268,9 @@ export function IntelBetaDashboard({
 
   const filtered = useMemo(
     () => {
-      const topicScopedItems = selectedRule ? matchedArticles : feedItems;
+      // "All Topics" means the union of mapped topics, not every raw item.
+      // The API is the primary gate; this remains as client-side defense.
+      const topicScopedItems = matchedArticles;
       return topicScopedItems.filter(
         (article) =>
           matchesTopic(article, selectedRule, topicIndex.topicMatchesByArticleId) &&
@@ -2490,7 +2497,7 @@ export function IntelBetaDashboard({
                     fontSize: 13,
                   }}
                 >
-                  <option value="ALL">All Topics ({feedItems.length})</option>
+                  <option value="ALL">All Topics ({matchedArticles.length})</option>
                   {visibleTopicRules.map((rule) => (
                     <option key={rule.topic_key} value={rule.topic_key}>
                       {rule.label} ({topicIndex.topicCounts.get(rule.topic_key) ?? 0})
@@ -2516,7 +2523,7 @@ export function IntelBetaDashboard({
                     fontSize: 13,
                   }}
                 >
-                  <option value="ALL">All Sources ({feedItems.length})</option>
+                  <option value="ALL">All Sources ({matchedArticles.length})</option>
                   {SOURCE_FILTERS.map((source) => (
                     <option key={source.key} value={source.key}>
                       {source.label} ({sourceCounts.get(source.key) ?? 0})
@@ -2553,7 +2560,7 @@ export function IntelBetaDashboard({
                   label="All Topics"
                   active={selectedTopic === "ALL"}
                   onClick={() => setSelectedTopic("ALL")}
-                  count={feedItems.length}
+                  count={matchedArticles.length}
                 />
                 {visibleTopicRules.map((rule) => (
                   <TopicButton
@@ -2573,7 +2580,7 @@ export function IntelBetaDashboard({
                   label="All Sources"
                   active={selectedSource === "ALL"}
                   onClick={() => selectSourceFilter("ALL")}
-                  count={feedItems.length}
+                  count={matchedArticles.length}
                 />
                 {SOURCE_FILTERS.map((source) => (
                   <TopicButton
@@ -2625,7 +2632,7 @@ export function IntelBetaDashboard({
                 fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
               }}
             >
-              News Feed / {selectedRule ? selectedRule.label : "All"} / {selectedSourceLabel} / {filtered.length} matched ({feedItems.length} total)
+              News Feed / {selectedRule ? selectedRule.label : "All"} / {selectedSourceLabel} / {filtered.length} matched ({matchedArticles.length} total)
             </div>
 
             <div style={{ display: "flex", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 10 : 14, flexWrap: "wrap" }}>
