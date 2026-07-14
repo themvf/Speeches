@@ -16,6 +16,8 @@ concurrency:
 
 jobs:
   health-check:
+    # SEC-20: this check reads monolithic snapshots; manual runs remain available.
+    if: github.event_name != 'schedule' || vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

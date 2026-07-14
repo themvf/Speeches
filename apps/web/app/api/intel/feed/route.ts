@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRssFeed } from "@/lib/server/rss-fetcher";
 import {
-  buildDocumentListItems,
-  loadCorpusDocuments,
-  loadEnrichmentState,
-  selectNewsFeedDocuments,
+  loadNewsFeedDocumentsFromNeon,
 } from "@/lib/server/data-store";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
 import { filterTopicMappedArticles, normalizeTopicRules } from "@/lib/intel-topic-matching";
@@ -148,17 +145,20 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     ));
     articles = filterTopicMappedArticles(policyEligibleArticles, activeTopicRules);
     unmappedFilteredCount = policyEligibleArticles.length - articles.length;
-    let documents: ReturnType<typeof selectNewsFeedDocuments> = [];
+    let documents: Awaited<ReturnType<typeof loadNewsFeedDocumentsFromNeon>>["documents"] = [];
+    let documentSource: "neon" | "unavailable" | undefined;
+    let documentMetadataOnly: boolean | undefined;
+    let documentWarning: string | undefined;
     if (includeDocuments) {
-      const [corpusDocs, enrichment] = await Promise.all([
-        loadCorpusDocuments(),
-        loadEnrichmentState(),
-      ]);
-      documents = selectNewsFeedDocuments(buildDocumentListItems(corpusDocs, enrichment), {
+      const result = await loadNewsFeedDocumentsFromNeon({
         limit: 250,
         pinnedSourceKindLimit: 25,
-      })
+      });
+      documents = result.documents
         .filter((doc) => !isInvalidCouponDocument(doc));
+      documentSource = result.source;
+      documentMetadataOnly = result.metadata_only;
+      documentWarning = result.warning;
     }
 
     return NextResponse.json(
@@ -169,6 +169,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           topicRules,
           unmappedFilteredCount,
           ...(includeDocuments ? { documents } : {}),
+          ...(includeDocuments ? {
+            documentSource,
+            documentMetadataOnly,
+            ...(documentWarning ? { documentWarning } : {}),
+          } : {}),
           generatedAt: new Date().toISOString(),
         },
       },

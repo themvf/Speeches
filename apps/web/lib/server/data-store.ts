@@ -17,7 +17,8 @@ import {
   type TrendItem,
   type TrendsPayload
 } from "@/lib/server/types";
-import { getAllMirroredDocumentMetadata } from "@/lib/server/neon";
+import { loadMetadataOnlyFeed, metadataRowsToCorpusDocuments } from "@/lib/server/document-metadata-feed";
+import { getAllMirroredDocumentMetadata, getMirroredDocumentFeedMetadata } from "@/lib/server/neon";
 
 const SEC_SPEECHES_GCS_BLOB = "all_speeches.json";
 const SEC_SPEECHES_LOCAL_FILE = "all_speeches_final.json";
@@ -917,6 +918,13 @@ export type CorpusDocumentsLoadResult = {
   warning?: string;
 };
 
+export type NewsFeedDocumentsLoadResult = {
+  documents: DocumentListItem[];
+  source: "neon" | "unavailable";
+  metadata_only: true;
+  warning?: string;
+};
+
 // Phase 3 reader cutover (see CLAUDE.md) for callers that only need document
 // metadata, not full_text (e.g. /api/metrics's org/source-kind/newsapi
 // aggregates) - reads the Neon `documents` mirror instead of downloading and
@@ -958,6 +966,98 @@ export async function loadCorpusDocumentsFromNeon(): Promise<CorpusDocumentsLoad
     const documents = await loadCorpusDocuments();
     return { documents, source: "gcs_fallback", warning: `Neon corpus read failed, used GCS fallback: ${message}` };
   }
+}
+
+export const DEFAULT_NEWS_FEED_PINNED_SOURCE_KINDS = [
+  "sec_speech",
+  "bloomberg_apify_article",
+  "bloomberg_public_article",
+  "substack_public_article",
+  "newsapi_article",
+  "sifma_news_item",
+  "ici_news_item",
+  "isda_news_item",
+  "mfa_news_item",
+  "fia_news_item",
+  "aba_news_item",
+  "bpi_news_item",
+  "icba_news_item",
+  "lsta_news_item",
+  "federal_reserve_speech_testimony",
+  "treasury_featured_story",
+  "treasury_press_release",
+  "treasury_statement_remark",
+  "cftc_press_release",
+  "cftc_public_statement_remark",
+  "sec_tm_faq",
+  "sec_press_release_rss",
+  "sec_federal_register",
+  "sec_pcaob_rulemaking",
+  "pcaob_update",
+  "msrb_press_release",
+  "finra_regulatory_notice",
+  "finra_awc",
+  "jdsupra_article",
+  "investmentnews_article",
+  "citywire_article",
+  "therecord_media_article",
+  "wired_article",
+  "tripwire_article",
+  "akamai_blog_article",
+  "ritholtz_article",
+  "ft_portfolios_market_commentary",
+  "liberty_street_economics_article",
+  "wealth_of_common_sense_article",
+  "congress_crs_product",
+  "wsj_dow_jones",
+  "wsj_rss_article",
+  "sec_youtube_video",
+  "youtube_video",
+  "reddit_post",
+  "sec_enforcement_litigation",
+  "sec_administrative_proceeding",
+  "sec_trading_suspension"
+];
+
+/**
+ * Cost-contained news-feed reader. The successful path reads a bounded Neon
+ * metadata projection and intentionally does not touch all_speeches.json,
+ * custom_documents.json, or document_enrichment_state.json. Full GCS data is
+ * never used as an automatic fallback, and document detail remains unchanged.
+ */
+export async function loadNewsFeedDocumentsFromNeon(
+  options: { limit?: number; pinnedSourceKinds?: string[]; pinnedSourceKindLimit?: number; maxDateMs?: number } = {}
+): Promise<NewsFeedDocumentsLoadResult> {
+  const pinnedSourceKinds = options.pinnedSourceKinds ?? DEFAULT_NEWS_FEED_PINNED_SOURCE_KINDS;
+  const listOptions = {
+    ...options,
+    pinnedSourceKinds,
+  };
+
+  const result = await loadMetadataOnlyFeed(
+    () => getMirroredDocumentFeedMetadata({
+      limit: options.limit,
+      pinnedSourceKinds,
+      pinnedSourceKindLimit: options.pinnedSourceKindLimit,
+    }),
+    (rows) => {
+      const corpusDocs = metadataRowsToCorpusDocuments(rows);
+      return selectNewsFeedDocuments(
+        buildDocumentListItems(corpusDocs, {
+          version: 1,
+          pipeline_version: "",
+          updated_at: "",
+          entries: {},
+        }),
+        listOptions
+      );
+    }
+  );
+
+  if (result.warning) {
+    console.error(`[data-store] ${result.warning}`);
+  }
+  return result;
 }
 
 export function buildDocumentListItems(
@@ -1002,7 +1102,7 @@ export function buildDocumentListItems(
       topics,
       ingest_status: "existing",
       enrichment_status: normalizeString(enrich?.status || "not_enriched") || "not_enriched",
-      enrichment_summary: normalizeString(enrich?.enrichment?.summary),
+      enrichment_summary: normalizeString(enrich?.enrichment?.summary || m.summary),
       enrichment_model: normalizeString(enrich?.model),
       enrichment_confidence:
         typeof enrich?.enrichment?.confidence === "number" ? enrich.enrichment.confidence : 0,
@@ -1026,56 +1126,7 @@ export function selectNewsFeedDocuments(
       : Math.max(0, options.pinnedSourceKindLimit);
   const latestVisibleDateMs = options.maxDateMs ?? endOfTodayMs();
   const pinnedSourceKinds = new Set(
-    options.pinnedSourceKinds ?? [
-      "sec_speech",
-      "bloomberg_apify_article",
-      "bloomberg_public_article",
-      "substack_public_article",
-      "newsapi_article",
-      "sifma_news_item",
-      "ici_news_item",
-      "isda_news_item",
-      "mfa_news_item",
-      "fia_news_item",
-      "aba_news_item",
-      "bpi_news_item",
-      "icba_news_item",
-      "lsta_news_item",
-      "federal_reserve_speech_testimony",
-      "treasury_featured_story",
-      "treasury_press_release",
-      "treasury_statement_remark",
-      "cftc_press_release",
-      "cftc_public_statement_remark",
-      "sec_tm_faq",
-      "sec_press_release_rss",
-      "sec_federal_register",
-      "sec_pcaob_rulemaking",
-      "pcaob_update",
-      "msrb_press_release",
-      "finra_regulatory_notice",
-      "finra_awc",
-      "jdsupra_article",
-      "investmentnews_article",
-      "citywire_article",
-      "therecord_media_article",
-      "wired_article",
-      "tripwire_article",
-      "akamai_blog_article",
-      "ritholtz_article",
-      "ft_portfolios_market_commentary",
-      "liberty_street_economics_article",
-      "wealth_of_common_sense_article",
-      "congress_crs_product",
-      "wsj_dow_jones",
-      "wsj_rss_article",
-      "sec_youtube_video",
-      "youtube_video",
-      "reddit_post",
-      "sec_enforcement_litigation",
-      "sec_administrative_proceeding",
-      "sec_trading_suspension"
-    ]
+    options.pinnedSourceKinds ?? DEFAULT_NEWS_FEED_PINNED_SOURCE_KINDS
   );
   const dated = items
     .map((item) => ({ item, dateMs: parseComparableDate(item.published_at || item.date) }))

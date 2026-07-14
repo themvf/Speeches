@@ -1328,6 +1328,12 @@ export type NeonMirroredDocumentRow = {
   metadata: Record<string, unknown>;
 };
 
+export type MirroredDocumentFeedOptions = {
+  limit?: number;
+  pinnedSourceKinds?: string[];
+  pinnedSourceKindLimit?: number;
+};
+
 // Phase 3 of migrating off custom_documents.json (see CLAUDE.md): a
 // read-only query against the `documents` mirror table (Phase 1/2), for
 // readers that only need metadata, not full_text - deliberately omits
@@ -1340,6 +1346,90 @@ export type NeonMirroredDocumentRow = {
 export async function getAllMirroredDocumentMetadata(): Promise<NeonMirroredDocumentRow[]> {
   const sql = getSql();
   const rows = (await sql`SELECT document_id, metadata FROM documents`) as unknown as NeonMirroredDocumentRow[];
+  return rows;
+}
+
+// Feed/list projection for the Neon reader cutover. This deliberately returns
+// metadata only and bounds the result in SQL: the newest global records plus
+// the newest records for each pinned source. It never selects full_text.
+export async function getMirroredDocumentFeedMetadata(
+  options: MirroredDocumentFeedOptions = {}
+): Promise<NeonMirroredDocumentRow[]> {
+  const sql = getSql();
+  const limit = Math.max(0, Math.min(options.limit ?? 250, 1000));
+  const pinnedSourceKinds = (options.pinnedSourceKinds ?? [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const pinnedSourceKindLimit = Math.max(0, Math.min(options.pinnedSourceKindLimit ?? 25, 100));
+
+  const rows = (await sql`
+    WITH raw_candidates AS (
+      SELECT
+        document_id,
+        metadata,
+        source_kind,
+        updated_at,
+        trim(regexp_replace(
+          COALESCE(
+            NULLIF(metadata->>'published_at', ''),
+            NULLIF(metadata->>'published_date', ''),
+            NULLIF(metadata->>'date', ''),
+            NULLIF(published_date, ''),
+            ''
+          ),
+          '[[:space:]]+',
+          ' ',
+          'g'
+        )) AS raw_published
+      FROM documents
+    ),
+    dated_candidates AS (
+      SELECT
+        document_id,
+        metadata,
+        source_kind,
+        updated_at,
+        CASE
+          WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+            THEN substring(raw_published FROM 1 FOR 10)::date
+          WHEN raw_published ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+            THEN to_date(replace(raw_published, '.', ''), 'Month DD, YYYY')
+          WHEN raw_published ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+            THEN to_date(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'Mon DD, YYYY'
+            )
+          ELSE NULL
+        END AS published_on
+      FROM raw_candidates
+    ),
+    ranked_candidates AS (
+      SELECT
+        document_id,
+        metadata,
+        source_kind,
+        published_on,
+        row_number() OVER (
+          ORDER BY published_on DESC, updated_at DESC, document_id
+        ) AS global_rank,
+        row_number() OVER (
+          PARTITION BY source_kind
+          ORDER BY published_on DESC, updated_at DESC, document_id
+        ) AS source_rank
+      FROM dated_candidates
+      WHERE published_on IS NOT NULL
+        AND published_on <= CURRENT_DATE
+    )
+    SELECT document_id, metadata
+    FROM ranked_candidates
+    WHERE global_rank <= ${limit}
+       OR (
+         source_kind = ANY(${pinnedSourceKinds})
+         AND source_rank <= ${pinnedSourceKindLimit}
+       )
+    ORDER BY published_on DESC, document_id
+  `) as unknown as NeonMirroredDocumentRow[];
+
   return rows;
 }
 

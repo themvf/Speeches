@@ -27,7 +27,12 @@ permissions:
 
 jobs:
   sync:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # SEC-20: do not turn a skipped scheduled producer into another full snapshot read.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event != 'schedule' ||
+      vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 120
 

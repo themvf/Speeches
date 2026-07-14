@@ -31,6 +31,8 @@ concurrency:
 
 jobs:
   substack-public:
+    # SEC-20: keep manual recovery available while scheduled snapshot reads are paused.
+    if: github.event_name != 'schedule' || vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
