@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 GATE = "vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'"
 NEON_PILOT_GATE = "vars.ENABLE_NEON_PILOT_SCHEDULES == 'true'"
+NEON_SUBSTACK_GATE = "vars.ENABLE_NEON_SUBSTACK_SCHEDULES == 'true'"
 
 SCHEDULED_SNAPSHOT_WORKFLOWS = {
     "agency-official-sites-3hour.yml",
@@ -37,16 +38,19 @@ NEON_PILOT_WORKFLOWS = {
         "bloomberg_public_article",
         "Run Bloomberg Bounded Enrichment Catch-up",
         "always()",
+        NEON_PILOT_GATE,
     ),
     "substack-public-2hour.yml": (
         "substack_public_article",
         "Run Substack Bounded Enrichment Catch-up",
         "always()",
+        NEON_SUBSTACK_GATE,
     ),
     "financial-news-daily.yml": (
         "newsapi_article",
         "Run Financial News Bounded Enrichment Catch-up",
         "always() && steps.timegate.outputs.run_now == 'true'",
+        NEON_PILOT_GATE,
     ),
 }
 
@@ -78,12 +82,12 @@ def test_neon_only_schedules_remain_enabled() -> None:
 
 
 def test_neon_pilots_use_a_dedicated_gate_and_bounded_row_persistence() -> None:
-    for filename, (source_kind, catchup_step, catchup_condition) in NEON_PILOT_WORKFLOWS.items():
+    for filename, (source_kind, catchup_step, catchup_condition, schedule_gate) in NEON_PILOT_WORKFLOWS.items():
         workflow = _workflow(filename)
         assert "schedule:" in workflow, filename
         assert "workflow_dispatch:" in workflow, filename
         assert "github.event_name != 'schedule'" in workflow, filename
-        assert NEON_PILOT_GATE in workflow, filename
+        assert schedule_gate in workflow, filename
         assert "ENABLE_GCS_SNAPSHOT_SCHEDULES" not in workflow, filename
         assert "group: sec20-neon-corpus-writers" in workflow, filename
         assert 'NEON_BACKFILL_VERIFIED: "true"' in workflow, filename

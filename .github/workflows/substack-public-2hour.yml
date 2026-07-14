@@ -31,8 +31,10 @@ concurrency:
 
 jobs:
   substack-public:
-    # SEC-20: only verified Neon pilots may run on schedule; manual recovery stays available.
-    if: github.event_name != 'schedule' || vars.ENABLE_NEON_PILOT_SCHEDULES == 'true'
+    # SEC-20: Substack also depends on paid relevance classification. Keep its
+    # schedule independent so the verified Bloomberg/NewsAPI pilots can run
+    # while DeepSeek is unavailable; manual recovery stays available.
+    if: github.event_name != 'schedule' || vars.ENABLE_NEON_SUBSTACK_SCHEDULES == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
