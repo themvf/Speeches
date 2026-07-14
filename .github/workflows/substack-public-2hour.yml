@@ -1,8 +1,8 @@
-name: Substack Public Sources Every 2 Hours
+name: Substack Public Sources Hourly
 
 on:
   schedule:
-    - cron: "17 */2 * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       keywords:
@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: substack-public-3hour
+  group: substack-public-hourly
   cancel-in-progress: false
 
 jobs:
@@ -94,6 +94,7 @@ jobs:
           PY
 
       - name: Run Substack Enrichment
+        if: steps.extraction_summary.outputs.changed_count != '0'
         run: |
           set -euo pipefail
           python run_financial_news_pipeline.py enrich \
@@ -109,7 +110,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: substack-public-3hour-${{ github.run_id }}
+          name: substack-public-hourly-${{ github.run_id }}
           path: |
             substack_public_extraction_summary.json
             substack_public_enrich_summary.json

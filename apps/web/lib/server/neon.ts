@@ -99,6 +99,12 @@ export type RssFeed = {
   added_at: string;
 };
 
+export type RssUpsertStats = {
+  inserted: number;
+  updated: number;
+  unchanged: number;
+};
+
 let _sql: ReturnType<typeof neon> | null = null;
 
 const DEFAULT_TOPIC_RULES = TOPIC_RULE_RECOMMENDATIONS.map((rule) => ({
@@ -510,22 +516,24 @@ async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
     `) as unknown as Array<{ id: number }>;
 
     if (keyRows.length > 0) {
+      // Existing intervals are admin-owned. Code defaults initialize new
+      // feeds but must not silently undo a cadence chosen in the UI.
       if (conflictingUrlRows.length > 0) {
         await sql`
           UPDATE rss_feeds
           SET
-            label = ${label},
-            refresh_interval_minutes = ${intervalMinutes}
+            label = ${label}
           WHERE feed_key = ${key}
+            AND label IS DISTINCT FROM ${label}
         `;
       } else {
         await sql`
           UPDATE rss_feeds
           SET
             label = ${label},
-            feed_url = ${feedUrl},
-            refresh_interval_minutes = ${intervalMinutes}
+            feed_url = ${feedUrl}
           WHERE feed_key = ${key}
+            AND (label, feed_url) IS DISTINCT FROM (${label}, ${feedUrl})
         `;
       }
       continue;
@@ -535,8 +543,8 @@ async function seedDefaultFeeds(sql: ReturnType<typeof neon>): Promise<void> {
       INSERT INTO rss_feeds (label, feed_url, feed_key, refresh_interval_minutes)
       VALUES (${label}, ${feedUrl}, ${key}, ${intervalMinutes})
       ON CONFLICT (feed_url) DO UPDATE SET
-        label = EXCLUDED.label,
-        refresh_interval_minutes = EXCLUDED.refresh_interval_minutes
+        label = EXCLUDED.label
+      WHERE rss_feeds.label IS DISTINCT FROM EXCLUDED.label
     `;
   }
 }
@@ -751,10 +759,10 @@ export async function deleteTopicRule(id: number): Promise<void> {
   await sql`DELETE FROM rss_topic_rules WHERE id = ${id}`;
 }
 
-export async function upsertRssArticles(articles: RssArticle[], feedKey: string): Promise<number> {
-  if (articles.length === 0) return 0;
+export async function upsertRssArticles(articles: RssArticle[], feedKey: string): Promise<RssUpsertStats> {
+  const stats: RssUpsertStats = { inserted: 0, updated: 0, unchanged: 0 };
+  if (articles.length === 0) return stats;
   const sql = getSql();
-  let inserted = 0;
   for (const a of articles) {
     const toneLabel = inferToneLabel(a.title, a.description ?? "", feedKey);
     const result = (await sql`
@@ -781,11 +789,38 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
             WHEN rss_articles.tone_label = 'neutral' AND EXCLUDED.tone_label <> 'neutral' THEN EXCLUDED.tone_label
             ELSE rss_articles.tone_label
           END
+      WHERE (
+        rss_articles.title,
+        rss_articles.url,
+        rss_articles.description,
+        rss_articles.author,
+        rss_articles.published_at,
+        rss_articles.feed_key,
+        rss_articles.tone_label
+      ) IS DISTINCT FROM (
+        EXCLUDED.title,
+        EXCLUDED.url,
+        EXCLUDED.description,
+        EXCLUDED.author,
+        COALESCE(EXCLUDED.published_at, rss_articles.published_at),
+        EXCLUDED.feed_key,
+        CASE
+          WHEN rss_articles.tone_label IS NULL THEN EXCLUDED.tone_label
+          WHEN rss_articles.tone_label = 'neutral' AND EXCLUDED.tone_label <> 'neutral' THEN EXCLUDED.tone_label
+          ELSE rss_articles.tone_label
+        END
+      )
       RETURNING id, (xmax = 0) AS inserted
     `) as unknown as { id: number; inserted: boolean }[];
-    if (result[0]?.inserted) inserted++;
+    if (result.length === 0) {
+      stats.unchanged++;
+    } else if (result[0]?.inserted) {
+      stats.inserted++;
+    } else {
+      stats.updated++;
+    }
   }
-  return inserted;
+  return stats;
 }
 
 export async function getRssArticleById(articleId: number): Promise<StoredRssArticle | null> {
@@ -1076,15 +1111,15 @@ export async function deleteBlockedRssArticles(
   return rows.length;
 }
 
-const DEFAULT_RSS_RETENTION_DAYS = 180;
-
 export type PruneResult = { deletedArticles: number; deletedMentions: number };
 
-// rss_articles has no cap and grows forever (144+ inserts/day from the
-// refresh cron alone). rss_article_analysis cascades on article delete via
-// its FK, but intelligence_mentions is keyed generically by
-// (source_type, source_id) with no FK, so it needs an explicit sweep.
-export async function pruneOldRssData(retentionDays = DEFAULT_RSS_RETENTION_DAYS): Promise<PruneResult> {
+// Historical deletion is destructive and deliberately opt-in. Analysis rows
+// cascade through their FK, while generic intelligence_mentions need an
+// explicit sweep because they have no FK to rss_articles.
+export async function pruneOldRssData(retentionDays: number): Promise<PruneResult> {
+  if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+    return { deletedArticles: 0, deletedMentions: 0 };
+  }
   await ensureSchema();
   const sql = getSql();
   const cappedDays = Math.max(30, Math.min(1825, retentionDays));

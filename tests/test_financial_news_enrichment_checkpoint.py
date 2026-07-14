@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 import run_financial_news_pipeline as pipeline
 
 
@@ -135,3 +137,53 @@ def test_news_enrichment_checkpoints_progress(monkeypatch):
     assert summary["processed_count"] == 3
     assert summary["fallback_enriched_count"] == 3
     assert saved_doc_ids == [("doc-1", "doc-2"), ("doc-1", "doc-2", "doc-3")]
+
+
+@pytest.mark.parametrize("target_kind", ["summary", "doc_id"])
+def test_explicit_empty_enrichment_target_never_expands_to_all_documents(monkeypatch, tmp_path, target_kind):
+    payload = {"documents": [_doc("doc-1"), _doc("doc-2")]}
+    saved_states = []
+
+    monkeypatch.setattr(pipeline, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(pipeline, "_get_gcs_storage", lambda secrets: (None, "local"))
+    monkeypatch.setattr(pipeline, "_load_custom_documents", lambda storage: payload)
+    monkeypatch.setattr(pipeline, "_load_enrichment_state", lambda storage: {"entries": {}})
+    monkeypatch.setattr(
+        pipeline,
+        "_save_enrichment_state",
+        lambda storage, state, require_remote=False: saved_states.append(state),
+    )
+    monkeypatch.setattr(pipeline, "_write_summary", lambda *args, **kwargs: None)
+
+    summary_path = ""
+    doc_ids = []
+    if target_kind == "summary":
+        path = tmp_path / "empty-extraction-summary.json"
+        path.write_text('{"processed_doc_ids": []}', encoding="utf-8")
+        summary_path = str(path)
+    else:
+        doc_ids = [""]
+
+    summary = pipeline._run_news_enrichment(
+        SimpleNamespace(
+            require_remote_persistence=False,
+            source_kind="substack_public_article",
+            doc_ids_from_summary=summary_path,
+            doc_id=doc_ids,
+            mode="all",
+            order="stored",
+            limit=None,
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            heuristic_only=True,
+            dry_run=False,
+            checkpoint_every=0,
+            summary_path="",
+        )
+    )
+
+    assert summary["requested_doc_ids"] == []
+    assert summary["candidate_count"] == 0
+    assert summary["selected_count"] == 0
+    assert summary["processed_count"] == 0
+    assert saved_states == []

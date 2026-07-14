@@ -26,12 +26,16 @@ export type XTimelineRefreshFeedResult = {
   matched: number;
   filtered: number;
   inserted: number;
+  updated: number;
+  unchanged: number;
   provider?: string;
   error?: string;
 };
 
 export type XTimelineRefreshResult = {
   inserted: number;
+  updated: number;
+  unchanged: number;
   feeds: XTimelineRefreshFeedResult[];
   analysis_feed_keys: string[];
   analysis: {
@@ -73,6 +77,8 @@ export async function refreshXTimelines(opts: {
   const results = accounts.length ? await fetchXTimelineBatch(accounts, { limit }) : [];
 
   let totalInserted = 0;
+  let totalUpdated = 0;
+  let totalUnchanged = 0;
   const feedKeys: string[] = [];
   const feeds: XTimelineRefreshFeedResult[] = [];
 
@@ -82,18 +88,20 @@ export async function refreshXTimelines(opts: {
     feedKeys.push(feedKey);
     await upsertFeedSource(feedKey, label, xTimelineFeedUrl(result.username), refreshIntervalMinutes);
     const filtered = filterRssArticlesForIngestion(feedKey, result.articles, topicRules);
-    const inserted = filtered.articles.length > 0 ? await upsertRssArticles(filtered.articles, feedKey) : 0;
-    await markFeedRefreshed(feedKey).catch((error) => {
+    const upsert = await upsertRssArticles(filtered.articles, feedKey);
+    await markFeedRefreshed(feedKey, result.error ? String(result.error) : undefined).catch((error) => {
       console.error(`[x-timeline-ingestion] failed to mark ${feedKey} refreshed:`, error);
     });
-    totalInserted += inserted;
+    totalInserted += upsert.inserted;
+    totalUpdated += upsert.updated;
+    totalUnchanged += upsert.unchanged;
     feeds.push({
       feedKey,
       label,
       fetched: result.fetched,
       matched: filtered.matched,
       filtered: filtered.filtered,
-      inserted,
+      ...upsert,
       provider: result.provider,
       error: result.error,
     });
@@ -105,6 +113,8 @@ export async function refreshXTimelines(opts: {
 
   return {
     inserted: totalInserted,
+    updated: totalUpdated,
+    unchanged: totalUnchanged,
     feeds,
     analysis_feed_keys: feedKeys,
     analysis,

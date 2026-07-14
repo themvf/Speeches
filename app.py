@@ -53,6 +53,8 @@ st.set_page_config(
 
 CUSTOM_DOCS_BLOB_NAME = "custom_documents.json"
 CUSTOM_DOCS_LOCAL_PATH = Path("data/custom_documents.json")
+CUSTOM_DOCS_GENERATION_FIELD = "_gcs_generation"
+PENDING_NEON_MIRROR_FIELD = "_pending_neon_mirror_records"
 CUSTOM_DOCS_RAW_DIR = Path("data/raw_documents")
 FINRA_TOPIC_MAP_BLOB_NAME = "finra_topic_map.json"
 FINRA_TOPIC_MAP_LOCAL_PATH = Path("data/finra_topic_map.json")
@@ -508,22 +510,17 @@ def _load_custom_documents_uncached():
         try:
             blob = storage.bucket.blob(CUSTOM_DOCS_BLOB_NAME)
             if blob.exists():
-                payload, changed = _normalize_custom_docs_payload(
-                    json.loads(blob.download_as_text(encoding="utf-8")),
-                    return_changed=True,
+                payload = _normalize_custom_docs_payload(
+                    json.loads(blob.download_as_text(encoding="utf-8"))
                 )
                 _save_custom_documents_local(payload)
                 _CUSTOM_DOCS_REMOTE_LOAD_ERRORED = False
-                if changed:
-                    try:
-                        blob.upload_from_string(
-                            json.dumps(payload, indent=2, ensure_ascii=False),
-                            content_type="application/json",
-                        )
-                    except Exception:
-                        # Best-effort compaction; reads should still succeed if rewrite fails.
-                        pass
+                payload[CUSTOM_DOCS_GENERATION_FIELD] = int(blob.generation or 0)
                 return payload
+            payload = _load_custom_documents_local()
+            payload[CUSTOM_DOCS_GENERATION_FIELD] = 0
+            _CUSTOM_DOCS_REMOTE_LOAD_ERRORED = False
+            return payload
         except Exception as e:
             st.session_state["_custom_docs_error"] = f"GCS custom-doc load failed: {e}"
             _CUSTOM_DOCS_REMOTE_LOAD_ERRORED = True
@@ -561,23 +558,57 @@ def _save_custom_documents(payload):
             "corpus may be stale or incomplete. Reload the page once GCS is reachable, then retry."
         )
 
-    payload = _normalize_custom_docs_payload(payload)
+    source_payload = payload if isinstance(payload, dict) else {}
+    expected_generation = source_payload.get(CUSTOM_DOCS_GENERATION_FIELD)
+    pending_mirrors = [
+        record
+        for record in source_payload.get(PENDING_NEON_MIRROR_FIELD, [])
+        if isinstance(record, dict)
+    ]
+    payload = _normalize_custom_docs_payload(source_payload)
     payload["updated_at"] = _utc_now_iso()
-    _save_custom_documents_local(payload)
-    _load_custom_documents.clear()
-    _load_custom_documents_catalog.clear()
 
     storage = _get_gcs_storage()
     if storage is None:
+        _save_custom_documents_local(payload)
+        _load_custom_documents.clear()
+        _load_custom_documents_catalog.clear()
+        for record in pending_mirrors:
+            _mirror_document_to_neon_best_effort(record)
+        source_payload[PENDING_NEON_MIRROR_FIELD] = []
         return
+    if expected_generation is None:
+        raise RuntimeError(
+            "Refusing to save custom documents without a GCS generation baseline. "
+            "Reload the page and retry."
+        )
     try:
         blob = storage.bucket.blob(CUSTOM_DOCS_BLOB_NAME)
         blob.upload_from_string(
             json.dumps(payload, indent=2, ensure_ascii=False),
             content_type="application/json",
+            if_generation_match=int(expected_generation),
         )
+        source_payload[CUSTOM_DOCS_GENERATION_FIELD] = int(blob.generation or 0)
+        _save_custom_documents_local(payload)
+        _load_custom_documents.clear()
+        _load_custom_documents_catalog.clear()
+        for record in pending_mirrors:
+            _mirror_document_to_neon_best_effort(record)
+        source_payload[PENDING_NEON_MIRROR_FIELD] = []
     except Exception as e:
-        st.session_state["_custom_docs_error"] = f"GCS custom-doc save failed: {e}"
+        is_conflict = getattr(e, "code", None) == 412
+        if is_conflict:
+            message = "Custom documents changed concurrently. Reload the page and retry."
+            st.session_state["_custom_docs_error"] = message
+            _load_custom_documents.clear()
+            _load_custom_documents_catalog.clear()
+            raise RuntimeError(message) from e
+        message = f"GCS custom-doc save failed: {e}"
+        st.session_state["_custom_docs_error"] = message
+        _load_custom_documents.clear()
+        _load_custom_documents_catalog.clear()
+        raise RuntimeError(message) from e
 
 
 def _coerce_string_list(values, limit=None):
@@ -1150,8 +1181,8 @@ def _url_match_key(url):
 
 def _mirror_document_to_neon_best_effort(record):
     """Phase 1 of migrating off custom_documents.json (see CLAUDE.md): mirror
-    this record into Neon's new `documents` table. Must never raise or block
-    the caller - failures (including "not configured at all") are swallowed;
+    a committed record into Neon's new `documents` table. Must never raise or
+    block the caller - failures (including "not configured at all") are swallowed;
     only logs when DATABASE_URL *is* set but the write still failed. Kept in
     sync with the same helper in run_financial_news_pipeline.py."""
     if not os.getenv("DATABASE_URL", "").strip():
@@ -1186,7 +1217,9 @@ def _upsert_custom_document_record(custom_payload, record):
         docs_list.append(record)
 
     custom_payload["documents"] = docs_list
-    _mirror_document_to_neon_best_effort(record)
+    pending_mirrors = custom_payload.setdefault(PENDING_NEON_MIRROR_FIELD, [])
+    if isinstance(pending_mirrors, list):
+        pending_mirrors.append(record)
     return replaced
 
 
@@ -15087,7 +15120,11 @@ elif page == "Policy Delta Briefings":
         default=default_source_orgs,
         help="Choose which organizations are eligible as the new/target document.",
     )
-    source_org_keys = [org_label_to_key[l] for l in selected_source_org_labels if l in org_label_to_key]
+    source_org_keys = [
+        org_label_to_key[label]
+        for label in selected_source_org_labels
+        if label in org_label_to_key
+    ]
     default_compare_orgs = selected_source_org_labels or org_labels
     selected_compare_org_labels = st.multiselect(
         "Comparison Organizations",
@@ -15095,7 +15132,11 @@ elif page == "Policy Delta Briefings":
         default=default_compare_orgs,
         help="Choose which organizations are searched for prior-position comparison.",
     )
-    compare_org_keys = [org_label_to_key[l] for l in selected_compare_org_labels if l in org_label_to_key]
+    compare_org_keys = [
+        org_label_to_key[label]
+        for label in selected_compare_org_labels
+        if label in org_label_to_key
+    ]
 
     selected_source_kinds = []
     selected_compare_source_kinds = []

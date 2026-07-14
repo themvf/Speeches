@@ -65,12 +65,14 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
         matched: number;
         filtered: number;
         inserted: number;
+        updated: number;
+        unchanged: number;
         error?: string;
       };
       try {
         const rawArticles = await fetchRssFeed(feed.feed_url, rssFetchLimitForFeed(feed.feed_key));
         const filtered = filterRssArticlesForIngestion(feed.feed_key, rawArticles, ingestionTopicRules);
-        const inserted = await upsertRssArticles(filtered.articles, feed.feed_key);
+        const upsert = await upsertRssArticles(filtered.articles, feed.feed_key);
         result = {
           feedKey: feed.feed_key,
           label: feed.label,
@@ -78,7 +80,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
           fetched: filtered.fetched,
           matched: filtered.matched,
           filtered: filtered.filtered,
-          inserted,
+          ...upsert,
         };
       } catch (err) {
         errorMessage = String(err);
@@ -90,6 +92,8 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
           matched: 0,
           filtered: 0,
           inserted: 0,
+          updated: 0,
+          unchanged: 0,
           error: errorMessage,
         };
       }
@@ -111,6 +115,8 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     matched: number;
     filtered: number;
     inserted: number;
+    updated: number;
+    unchanged: number;
     error?: string;
     firmCount?: number;
     batchSize?: number;
@@ -118,11 +124,15 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     firmFeedFailures?: number;
   }> = [];
   let totalInserted = 0;
+  let totalUpdated = 0;
+  let totalUnchanged = 0;
   let failedCount = 0;
 
   for (const result of feedResults) {
     feeds.push(result);
     totalInserted += result.inserted;
+    totalUpdated += result.updated;
+    totalUnchanged += result.unchanged;
     if (result.error) {
       failedCount++;
     }
@@ -132,8 +142,10 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
     try {
       const firmBatch = await fetchFinraMemberFirmRssBatch();
       const firmFiltered = filterRssArticlesForIngestion(FINRA_MEMBER_FIRM_NEWS_FEED_KEY, firmBatch.articles, topicRules);
-      const inserted = await upsertRssArticles(firmFiltered.articles, FINRA_MEMBER_FIRM_NEWS_FEED_KEY);
-      totalInserted += inserted;
+      const upsert = await upsertRssArticles(firmFiltered.articles, FINRA_MEMBER_FIRM_NEWS_FEED_KEY);
+      totalInserted += upsert.inserted;
+      totalUpdated += upsert.updated;
+      totalUnchanged += upsert.unchanged;
       feeds.push({
         feedKey: FINRA_MEMBER_FIRM_NEWS_FEED_KEY,
         label: FINRA_MEMBER_FIRM_NEWS_LABEL,
@@ -141,7 +153,7 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
         fetched: firmBatch.fetched,
         matched: firmFiltered.matched,
         filtered: firmBatch.filtered + firmFiltered.filtered,
-        inserted,
+        ...upsert,
         firmCount: firmBatch.firmCount,
         batchSize: firmBatch.batchSize,
         offset: firmBatch.offset,
@@ -157,29 +169,45 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
         matched: 0,
         filtered: 0,
         inserted: 0,
+        updated: 0,
+        unchanged: 0,
         error: String(error),
       });
     }
   }
 
-  const deletedCouponArticles = await deleteInvalidCouponArticles().catch((error) => {
-    console.error("[intel/rss-refresh] coupon cleanup failed:", error);
-    return 0;
-  });
-  const deletedNonEnglishPrNewswireArticles = await deleteNonEnglishPrNewswireArticles().catch((error) => {
-    console.error("[intel/rss-refresh] PR Newswire language cleanup failed:", error);
-    return 0;
-  });
-  const deletedBlockedRssArticleCount = await deleteBlockedRssArticles(topicRules).catch((error) => {
-    console.error("[intel/rss-refresh] RSS policy cleanup failed:", error);
-    return 0;
-  });
-
-  // This cron fires every 10 minutes, but pruning is a full-table sweep -
-  // only run it on one tick per day (03:00 UTC) instead of 144x/day.
   const now = new Date();
-  const prune = now.getUTCHours() === 3 && now.getUTCMinutes() === 0
-    ? await pruneOldRssData(Number.parseInt(process.env.RSS_ARTICLE_RETENTION_DAYS || "", 10) || undefined).catch((error) => {
+  const maintenanceTick = now.getUTCHours() === 3 && now.getUTCMinutes() === 0;
+  const changedCount = totalInserted + totalUpdated;
+  let deletedCouponArticles = 0;
+  let deletedNonEnglishPrNewswireArticles = 0;
+  let deletedBlockedRssArticleCount = 0;
+  // Quality cleanup only needs to run after a changed write. The daily pass
+  // remains as a backstop for policy-rule changes affecting older rows.
+  if (changedCount > 0 || maintenanceTick) {
+    [deletedCouponArticles, deletedNonEnglishPrNewswireArticles, deletedBlockedRssArticleCount] = await Promise.all([
+      deleteInvalidCouponArticles().catch((error) => {
+        console.error("[intel/rss-refresh] coupon cleanup failed:", error);
+        return 0;
+      }),
+      deleteNonEnglishPrNewswireArticles().catch((error) => {
+        console.error("[intel/rss-refresh] PR Newswire language cleanup failed:", error);
+        return 0;
+      }),
+      deleteBlockedRssArticles(topicRules).catch((error) => {
+        console.error("[intel/rss-refresh] RSS policy cleanup failed:", error);
+        return 0;
+      }),
+    ]);
+  }
+
+  // Historical pruning is destructive, so it is disabled unless a positive
+  // RSS_ARTICLE_RETENTION_DAYS value is explicitly configured. When enabled,
+  // run the full-table sweep on only one cron tick per day (03:00 UTC).
+  const retentionDays = Number.parseInt(process.env.RSS_ARTICLE_RETENTION_DAYS || "", 10);
+  const retentionEnabled = Number.isFinite(retentionDays) && retentionDays > 0;
+  const prune = retentionEnabled && maintenanceTick
+    ? await pruneOldRssData(retentionDays).catch((error) => {
         console.error("[intel/rss-refresh] retention prune failed:", error);
         return { deletedArticles: 0, deletedMentions: 0 };
       })
@@ -189,7 +217,8 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
   const analysisLimitParam = searchParams.get("analysisLimit") || process.env.RSS_AUTO_ANALYSIS_LIMIT || "0";
   const analysisLimit = Math.max(0, Math.min(50, Number.parseInt(analysisLimitParam, 10) || 0));
   const analysisFeedKeys = parseAnalysisFeedKeys(searchParams);
-  const analysis = analysisLimit > 0
+  const explicitAnalysisRequest = searchParams.has("analysisLimit");
+  const analysis = analysisLimit > 0 && (changedCount > 0 || explicitAnalysisRequest)
     ? await analyzeMissingRssArticles(analysisLimit, { feedKeys: analysisFeedKeys })
     : { selected_count: 0, saved_count: 0, failed_count: 0, failed: [] };
 
@@ -198,6 +227,8 @@ async function handleRefresh(req: NextRequest): Promise<NextResponse> {
       ok: !allFailed,
       data: {
         inserted: totalInserted,
+        updated: totalUpdated,
+        unchanged: totalUnchanged,
         deleted_coupon_articles: deletedCouponArticles,
         deleted_non_english_prnewswire_articles: deletedNonEnglishPrNewswireArticles,
         deleted_blocked_rss_articles: deletedBlockedRssArticleCount,

@@ -158,7 +158,10 @@ def check_gcs_connectivity(bucket_name: str, credentials_info: dict) -> dict[str
 # ─── Check: RSS feeds ─────────────────────────────────────────────────────────
 
 def check_rss_feeds(app_url: str, cron_secret: str) -> dict[str, Any]:
-    url = f"{app_url.rstrip('/')}/api/intel/rss-refresh"
+    # Vercel owns the 10-minute FINRA member-firm rotation. The health check
+    # should inspect the normal refresh result without paying for a duplicate
+    # firm batch in the same time slot.
+    url = f"{app_url.rstrip('/')}/api/intel/rss-refresh?finraFirmFeeds=0"
     try:
         resp = requests.post(
             url,

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import run_connector_extraction_pipeline as pipeline
 
 
@@ -466,3 +468,52 @@ def test_sec_federal_register_status_updates_generic_existing_title():
     }
 
     assert pipeline._status_for_entry("sec_federal_register", entry, existing, set()) == "update_available"
+
+
+def test_connector_extraction_summary_includes_processed_doc_ids(monkeypatch):
+    monkeypatch.setattr(pipeline.core, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(pipeline.core, "_get_gcs_storage", lambda secrets: (None, "local"))
+    monkeypatch.setattr(pipeline.core, "_load_custom_documents", lambda storage: {"documents": []})
+    monkeypatch.setattr(pipeline, "_load_existing_speech_url_keys", lambda storage: set())
+    monkeypatch.setattr(
+        pipeline,
+        "_discover_connector",
+        lambda **kwargs: (
+            object(),
+            [{"url": "https://example.com/new-item", "title": "New item", "date": "July 13, 2026"}],
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_extract_record",
+        lambda *args, **kwargs: {
+            "metadata": {
+                "document_id": "doc-new-1",
+                "url": "https://example.com/new-item",
+                "source_kind": "sec_speech",
+            },
+            "content": {"full_text": "New document body."},
+        },
+    )
+    monkeypatch.setattr(pipeline.core, "_write_summary", lambda *args, **kwargs: None)
+
+    summary = pipeline._run_connector_extraction(
+        SimpleNamespace(
+            connector="sec_speech",
+            require_remote_persistence=False,
+            base_url="https://example.com/listing",
+            max_pages=1,
+            include_pdfs=False,
+            include_rss=False,
+            keywords="",
+            exclude_terms="",
+            selection="new_or_updated",
+            limit=25,
+            dry_run=True,
+            summary_path="",
+        )
+    )
+
+    assert summary["processed_count"] == 1
+    assert summary["processed_doc_ids"] == ["doc-new-1"]

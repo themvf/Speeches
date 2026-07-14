@@ -128,8 +128,8 @@ export async function downloadGcsJson<T>(blobName: string): Promise<T | null> {
  * and then overwrite real remote data on save.
  */
 export type GcsJsonReadResult<T> =
-  | { status: "found"; data: T }
-  | { status: "not_found" }
+  | { status: "found"; data: T; generation: number }
+  | { status: "not_found"; generation: 0 }
   | { status: "error"; error: string };
 
 export async function downloadGcsJsonSafe<T>(blobName: string): Promise<GcsJsonReadResult<T>> {
@@ -142,15 +142,77 @@ export async function downloadGcsJsonSafe<T>(blobName: string): Promise<GcsJsonR
   try {
     const bucket = client.bucket(cfg.gcsBucketName);
     const file = bucket.file(blobName);
-    const [exists] = await file.exists();
-    if (!exists) {
-      return { status: "not_found" };
+    // Read a stable object snapshot. A generation change between metadata and
+    // content reads is retried so callers never pair stale JSON with a newer
+    // generation and then overwrite the newer object.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const [before] = await file.getMetadata();
+        const beforeGeneration = Number(before.generation ?? 0);
+        const [text] = await file.download();
+        const [after] = await file.getMetadata();
+        const afterGeneration = Number(after.generation ?? 0);
+        if (beforeGeneration !== afterGeneration) {
+          continue;
+        }
+        return {
+          status: "found",
+          data: JSON.parse(text.toString("utf-8")) as T,
+          generation: afterGeneration,
+        };
+      } catch (err) {
+        if ((err as { code?: number })?.code === 404) {
+          return { status: "not_found", generation: 0 };
+        }
+        throw err;
+      }
     }
-    const [text] = await file.download();
-    return { status: "found", data: JSON.parse(text.toString("utf-8")) as T };
+    return { status: "error", error: `Concurrent changes prevented a stable read of ${blobName}.` };
   } catch (err) {
     console.error(`[gcs] downloadGcsJsonSafe failed for "${blobName}":`, err);
     return { status: "error", error: String(err) };
+  }
+}
+
+export type GcsConditionalWriteResult = "ok" | "conflict" | "error";
+
+/**
+ * Save only if the blob still has the generation returned by
+ * downloadGcsJsonSafe. Generation 0 means create-only when the blob was
+ * confirmed absent. This keeps read/modify/write callers from clobbering a
+ * concurrent ingestion or admin update.
+ */
+export async function uploadGcsJsonWithPrecondition(
+  blobName: string,
+  payload: unknown,
+  expectedGeneration: number
+): Promise<GcsConditionalWriteResult> {
+  const cfg = getDataSourceConfig();
+  const client = await getStorageClient();
+  if (!client || !cfg.gcsBucketName) {
+    return "error";
+  }
+
+  try {
+    const bucket = client.bucket(cfg.gcsBucketName);
+    const file = bucket.file(blobName);
+    await file.save(JSON.stringify(payload, null, 2), {
+      resumable: false,
+      contentType: "application/json; charset=utf-8",
+      metadata: {
+        cacheControl: "no-cache"
+      },
+      preconditionOpts: {
+        ifGenerationMatch: expectedGeneration
+      }
+    });
+    return "ok";
+  } catch (err) {
+    if ((err as { code?: number })?.code === 412) {
+      return "conflict";
+    }
+    console.error(`[gcs] conditional upload failed for "${blobName}":`, err);
+    return "error";
   }
 }
 

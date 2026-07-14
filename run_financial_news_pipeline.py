@@ -48,6 +48,7 @@ STREAMLIT_SECRETS_PATH = ROOT / ".streamlit" / "secrets.toml"
 
 CUSTOM_DOCS_BLOB_NAME = "custom_documents.json"
 CUSTOM_DOCS_LOCAL_PATH = DATA_DIR / "custom_documents.json"
+PENDING_NEON_MIRROR_FIELD = "_pending_neon_mirror_records"
 NEWS_CONNECTOR_SETTINGS_BLOB_NAME = "news_connector_settings.json"
 NEWS_CONNECTOR_SETTINGS_LOCAL_PATH = DATA_DIR / "news_connector_settings.json"
 ENRICHMENT_STATE_BLOB_NAME = "document_enrichment_state.json"
@@ -559,6 +560,11 @@ def _save_custom_documents(
     payload: Dict[str, Any],
     require_remote: bool = False,
 ) -> None:
+    pending_mirrors = [
+        record
+        for record in payload.get(PENDING_NEON_MIRROR_FIELD, [])
+        if isinstance(record, dict)
+    ]
     _save_json_store(
         storage=storage,
         blob_name=CUSTOM_DOCS_BLOB_NAME,
@@ -567,6 +573,12 @@ def _save_custom_documents(
         normalize_fn=_normalize_custom_docs_payload,
         require_remote=require_remote,
     )
+    # GCS/local JSON remains authoritative. Mirror only records whose
+    # authoritative save completed, so a rejected generation precondition
+    # cannot leave Neon ahead of the document store.
+    for record in pending_mirrors:
+        _mirror_document_to_neon_best_effort(record)
+    payload[PENDING_NEON_MIRROR_FIELD] = []
 
 
 def _empty_news_connector_settings() -> Dict[str, Any]:
@@ -911,7 +923,9 @@ def _upsert_custom_document_record(custom_payload: Dict[str, Any], record: Dict[
     if not replaced:
         docs_list.append(record)
     custom_payload["documents"] = docs_list
-    _mirror_document_to_neon_best_effort(record)
+    pending_mirrors = custom_payload.setdefault(PENDING_NEON_MIRROR_FIELD, [])
+    if isinstance(pending_mirrors, list):
+        pending_mirrors.append(record)
     return replaced
 
 
@@ -2289,11 +2303,15 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
     enrichment_state = _load_enrichment_state(storage)
     entries = enrichment_state.setdefault("entries", {})
 
+    doc_ids_from_summary = str(getattr(args, "doc_ids_from_summary", "") or "").strip()
+    explicit_doc_ids = list(getattr(args, "doc_id", []) or [])
+    targeted_doc_ids_requested = bool(doc_ids_from_summary) or bool(explicit_doc_ids)
+
     doc_ids: List[str] = []
-    if args.doc_ids_from_summary:
-        doc_ids.extend(_load_doc_ids_from_summary(args.doc_ids_from_summary))
-    if args.doc_id:
-        doc_ids.extend([str(item).strip() for item in args.doc_id if str(item).strip()])
+    if doc_ids_from_summary:
+        doc_ids.extend(_load_doc_ids_from_summary(doc_ids_from_summary))
+    if explicit_doc_ids:
+        doc_ids.extend([str(item).strip() for item in explicit_doc_ids if str(item).strip()])
     dedup_doc_ids = []
     seen_ids = set()
     for item in doc_ids:
@@ -2301,11 +2319,17 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             seen_ids.add(item)
             dedup_doc_ids.append(item)
 
-    candidates = _build_news_enrichment_candidates(
-        custom_payload=custom_payload,
-        source_kind=args.source_kind,
-        doc_ids=dedup_doc_ids or None,
-    )
+    if targeted_doc_ids_requested and not dedup_doc_ids:
+        # An explicitly supplied summary/--doc-id is a targeting boundary.
+        # If it resolves to no IDs, doing no work is safer than silently
+        # widening --mode all to every document for the source kind.
+        candidates = []
+    else:
+        candidates = _build_news_enrichment_candidates(
+            custom_payload=custom_payload,
+            source_kind=args.source_kind,
+            doc_ids=dedup_doc_ids or None,
+        )
 
     if not dedup_doc_ids and args.mode == "only_missing_or_failed":
         filtered = []

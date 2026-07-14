@@ -2692,6 +2692,7 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "candidate_count": len(candidates),
         "selected_count": len(selected),
         "processed_count": len(processed_doc_ids),
+        "processed_doc_ids": processed_doc_ids,
         "saved_new": saved_new,
         "saved_updates": saved_updates,
         "invalid_wired_records_removed": invalid_wired_records_removed,

@@ -34,7 +34,10 @@ const DEFAULT_BATCH_SIZE = 16;
 const MAX_BATCH_SIZE = 32;
 const RSS_ITEMS_PER_FIRM = 5;
 const RSS_FETCH_TIMEOUT_MS = 4_500;
-const BATCH_SLOT_MS = 30 * 60_000;
+// The Vercel dispatcher runs every 10 minutes. Rotate on the same cadence so
+// each already-paid invocation checks a fresh firm batch instead of repeating
+// one batch three times during a 30-minute window.
+const BATCH_SLOT_MS = 10 * 60_000;
 const CONCURRENCY = 8;
 
 function configuredBatchSize(): number {

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { downloadGcsJsonSafe, uploadGcsJson } from "@/lib/server/gcs-loader";
+import {
+  downloadGcsJsonSafe,
+  uploadGcsJsonWithPrecondition,
+} from "@/lib/server/gcs-loader";
 import { invalidateDocumentCaches } from "@/lib/server/data-store";
 import type { CustomDocumentsPayload } from "@/lib/server/types";
 
@@ -40,8 +43,14 @@ export async function DELETE(
       updated_at: new Date().toISOString(),
     };
 
-    const saved = await uploadGcsJson(blob, updated);
-    if (!saved) {
+    const saved = await uploadGcsJsonWithPrecondition(blob, updated, read.generation);
+    if (saved === "conflict") {
+      return NextResponse.json(
+        { ok: false, error: "Documents changed concurrently. Reload and retry." },
+        { status: 409 }
+      );
+    }
+    if (saved === "error") {
       return NextResponse.json({ ok: false, error: "Failed to write to GCS" }, { status: 500 });
     }
 

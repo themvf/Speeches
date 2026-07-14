@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { downloadGcsJsonSafe, uploadGcsJson } from "@/lib/server/gcs-loader";
+import {
+  downloadGcsJsonSafe,
+  uploadGcsJsonWithPrecondition,
+} from "@/lib/server/gcs-loader";
 import type { CustomDocumentsPayload } from "@/lib/server/types";
 
 export const dynamic = "force-dynamic";
@@ -107,8 +110,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     updated_at: now,
   };
 
-  const saved = await uploadGcsJson(CUSTOM_DOCS_BLOB, updated);
-  if (!saved) {
+  const saved = await uploadGcsJsonWithPrecondition(CUSTOM_DOCS_BLOB, updated, read.generation);
+  if (saved === "conflict") {
+    return NextResponse.json(
+      { ok: false, error: "Documents changed concurrently. Reload and retry." },
+      { status: 409 }
+    );
+  }
+  if (saved === "error") {
     return NextResponse.json({ ok: false, error: "Failed to write to GCS" }, { status: 500 });
   }
 

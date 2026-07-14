@@ -34,9 +34,6 @@ jobs:
           - connector: sec_enforcement_litigation
             extraction_limit: "25"
             max_pages: "5"
-          - connector: sec_speech
-            extraction_limit: "25"
-            max_pages: "5"
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}

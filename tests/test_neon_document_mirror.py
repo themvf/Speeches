@@ -9,6 +9,7 @@ fakes rather than live infrastructure (see test_json_store_concurrency.py).
 from unittest.mock import MagicMock, patch
 
 import neon_feeds
+import pytest
 import run_financial_news_pipeline as core
 
 
@@ -97,13 +98,45 @@ def test_upsert_custom_document_record_unaffected_by_mirror_outcome(monkeypatch)
     assert len(payload["documents"]) == 1
     assert payload["documents"][0]["metadata"]["title"] == "Updated"
 
-    # Now with DATABASE_URL set but the mirror write raising - same result.
-    # (A distinct URL is used so this is genuinely a new document, not a
-    # URL-match-key replace of x1.)
+    # Upserts only queue mirrors; a rejected authoritative save must never
+    # write Neon ahead of GCS.
     monkeypatch.setenv("DATABASE_URL", "postgres://fake")
-    with patch("neon_feeds.mirror_document", side_effect=RuntimeError("boom")):
+    with patch("neon_feeds.mirror_document") as mock_mirror:
         replaced_third = core._upsert_custom_document_record(
             payload, _doc_record(doc_id="x2", url="https://example.com/other-doc")
         )
+        mock_mirror.assert_not_called()
     assert replaced_third is False
     assert len(payload["documents"]) == 2
+
+
+def test_pipeline_mirrors_only_after_authoritative_save(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres://fake")
+    payload = {"documents": []}
+    record = _doc_record(doc_id="committed")
+    core._upsert_custom_document_record(payload, record)
+
+    with (
+        patch.object(core, "_save_json_store") as mock_save,
+        patch.object(core, "_mirror_document_to_neon_best_effort") as mock_mirror,
+    ):
+        core._save_custom_documents(None, payload)
+
+    mock_save.assert_called_once()
+    mock_mirror.assert_called_once_with(record)
+    assert payload[core.PENDING_NEON_MIRROR_FIELD] == []
+
+
+def test_pipeline_does_not_mirror_when_authoritative_save_fails(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres://fake")
+    payload = {"documents": []}
+    core._upsert_custom_document_record(payload, _doc_record(doc_id="rejected"))
+
+    with (
+        patch.object(core, "_save_json_store", side_effect=RuntimeError("generation mismatch")),
+        patch.object(core, "_mirror_document_to_neon_best_effort") as mock_mirror,
+    ):
+        with pytest.raises(RuntimeError, match="generation mismatch"):
+            core._save_custom_documents(None, payload)
+
+    mock_mirror.assert_not_called()

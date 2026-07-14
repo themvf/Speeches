@@ -92,3 +92,30 @@ def test_guard_actually_found_references():
     connectors, source_kinds = _collect_references()
     assert len(connectors) >= 20, f"Expected many connector references, found {len(connectors)}"
     assert len(source_kinds) >= 20, f"Expected many source_kind references, found {len(source_kinds)}"
+
+
+def _workflow_text(filename: str) -> str:
+    with open(os.path.join(WORKFLOWS_DIR, filename), "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
+def test_high_frequency_enrichment_steps_are_gated_on_extraction_changes():
+    workflows = {
+        "bloomberg-public-hourly.yml": "Run Bloomberg Enrichment",
+        "substack-public-2hour.yml": "Run Substack Enrichment",
+    }
+    for filename, step_name in workflows.items():
+        text = _workflow_text(filename)
+        pattern = (
+            rf"- name: {re.escape(step_name)}\r?\n"
+            r"\s+if: steps\.extraction_summary\.outputs\.changed_count != '0'"
+        )
+        assert re.search(pattern, text), f"{filename} must gate {step_name} on changed_count"
+
+
+def test_substack_public_workflow_runs_hourly():
+    text = _workflow_text("substack-public-2hour.yml")
+
+    assert re.search(r'^\s*- cron: "17 \* \* \* \*"\s*$', text, flags=re.MULTILINE)
+    assert "name: Substack Public Sources Hourly" in text
+    assert "group: substack-public-hourly" in text

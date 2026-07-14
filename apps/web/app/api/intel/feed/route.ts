@@ -8,9 +8,6 @@ import {
 } from "@/lib/server/data-store";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
 import {
-  deleteBlockedRssArticles,
-  deleteInvalidCouponArticles,
-  deleteNonEnglishPrNewswireArticles,
   ensureSchema,
   getFeeds,
   getRecentArticles,
@@ -93,21 +90,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (!documentsOnly && process.env.DATABASE_URL) {
       await ensureSchema();
-      await deleteInvalidCouponArticles().catch((error) => {
-        console.error("[intel/feed] coupon cleanup failed:", error);
-        return 0;
-      });
       topicRules = await getTopicRules(true);
-      await Promise.all([
-        deleteNonEnglishPrNewswireArticles().catch((error) => {
-          console.error("[intel/feed] PR Newswire language cleanup failed:", error);
-          return 0;
-        }),
-        deleteBlockedRssArticles(topicRules).catch((error) => {
-          console.error("[intel/feed] RSS policy cleanup failed:", error);
-          return 0;
-        }),
-      ]);
 
       articles = await getRecentArticles({ limit, feedKey, since });
 
@@ -123,15 +106,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         const refreshTopicRules = activeFeeds.some((feed) => shouldKeywordFilterFeed(feed.feed_key))
           ? topicRules
           : [];
-        let insertedCount = 0;
+        let changedCount = 0;
         const refreshResults = await Promise.allSettled(
           activeFeeds.map(async (feed) => {
+            let errorMessage: string | undefined;
             try {
               const feedArticles = await fetchRssFeed(feed.feed_url, rssFetchLimitForFeed(feed.feed_key));
               const filteredArticles = filterRssArticlesForIngestion(feed.feed_key, feedArticles, refreshTopicRules);
               return upsertRssArticles(filteredArticles.articles, feed.feed_key);
+            } catch (error) {
+              errorMessage = String(error);
+              throw error;
             } finally {
-              await markFeedRefreshed(feed.feed_key).catch((error) => {
+              await markFeedRefreshed(feed.feed_key, errorMessage).catch((error) => {
                 console.error(`[intel/feed] failed to mark feed refreshed for ${feed.feed_key}:`, error);
               });
             }
@@ -141,17 +128,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           if (result.status === "rejected") {
             console.error("[intel/feed] feed refresh failed:", result.reason);
           } else {
-            insertedCount += result.value;
+            changedCount += result.value.inserted + result.value.updated;
           }
         }
         const analysisLimit = Math.max(0, Math.min(10, Number.parseInt(process.env.RSS_AUTO_ANALYSIS_LIMIT || "0", 10) || 0));
-        if (insertedCount > 0 && analysisLimit > 0) {
+        if (changedCount > 0 && analysisLimit > 0) {
           await analyzeMissingRssArticles(analysisLimit);
         }
-        await deleteBlockedRssArticles(topicRules).catch((error) => {
-          console.error("[intel/feed] post-refresh RSS policy cleanup failed:", error);
-          return 0;
-        });
         articles = await getRecentArticles({ limit, feedKey, since });
       }
     }

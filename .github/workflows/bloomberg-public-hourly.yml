@@ -79,6 +79,7 @@ jobs:
           PY
 
       - name: Run Bloomberg Enrichment
+        if: steps.extraction_summary.outputs.changed_count != '0'
         run: |
           set -euo pipefail
           python run_financial_news_pipeline.py enrich \

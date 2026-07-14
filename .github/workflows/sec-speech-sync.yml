@@ -2,8 +2,8 @@ name: SEC Speech Sync (Scheduled)
 
 on:
   schedule:
-    # 03:00, 11:00, 19:00 UTC → 10 PM, 6 AM, 2 PM EST
-    - cron: "0 3,11,19 * * *"
+    # One deep scan every 6 hours; this is the sole scheduled SEC speech owner.
+    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       extraction_limit:
