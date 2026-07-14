@@ -63,6 +63,9 @@ import yahoo_market_data
 
 DEFAULT_RETENTION_DAYS = 90
 
+# Authors leaderboard: how many of an account's tickers/subreddits to name.
+TOP_N_AUTHOR_FACETS = 3
+
 # Item 6 quality-flag thresholds - code constants (documented, unit-tested),
 # deliberately not admin config: these define what the flags MEAN, and a
 # silently-moved threshold would make historical flags incomparable.
@@ -109,6 +112,14 @@ FETCH_AUTHOR_TICKER_COUNTS_SQL = """
     WHERE m.mention_type = 'ticker'
       AND m.source_type IN ('reddit_post', 'reddit_comment')
     GROUP BY i.author, m.value
+"""
+
+# Authors view: per-author-per-subreddit item counts, so the leaderboard can
+# name an account's top few subreddits instead of just counting distinct subs.
+FETCH_AUTHOR_SUBREDDIT_COUNTS_SQL = """
+    SELECT author, subreddit, COUNT(*) AS cnt
+    FROM reddit_attention_items
+    GROUP BY author, subreddit
 """
 
 FETCH_KNOWN_ACCOUNT_AGES_SQL = """
@@ -173,25 +184,42 @@ def day_bounds(day: date) -> Tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
+def _top_n(counts: Dict[str, int], key_name: str, n: int = TOP_N_AUTHOR_FACETS) -> List[Dict[str, Any]]:
+    """Top-n (label, count) pairs, ranked by count desc then label asc so
+    ties are deterministic. Keyed by `key_name` for the JSON the UI reads."""
+    ranked = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))[:n]
+    return [{key_name: label, "count": count} for label, count in ranked]
+
+
 def compute_author_stats(
     item_stat_rows: List[Dict[str, Any]],
     author_ticker_rows: List[Dict[str, Any]],
+    author_subreddit_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Item 5, pure: merges per-author item aggregates with per-author
     ticker-concentration figures. top_ticker_share = share of the author's
     ticker-mentions going to their single most-mentioned ticker (1.0 = a
-    one-ticker account)."""
+    one-ticker account). top_tickers / top_subreddits carry the account's
+    three most-mentioned tickers and most-active subreddits (JSON strings)
+    for the Authors leaderboard; top_ticker stays as top_tickers[0] for the
+    discount logic and back-compat."""
     ticker_counts: Dict[str, Dict[str, int]] = {}
     for row in author_ticker_rows:
         author = str(row["author"])
         ticker_counts.setdefault(author, {})[str(row["ticker"])] = int(row["cnt"])
+
+    subreddit_counts: Dict[str, Dict[str, int]] = {}
+    for row in author_subreddit_rows or []:
+        author = str(row["author"])
+        subreddit_counts.setdefault(author, {})[str(row["subreddit"])] = int(row["cnt"])
 
     stats: List[Dict[str, Any]] = []
     for row in item_stat_rows:
         author = str(row["author"])
         counts = ticker_counts.get(author, {})
         total = sum(counts.values())
-        top_ticker = max(counts.items(), key=lambda pair: (pair[1], pair[0]))[0] if counts else ""
+        top_tickers = _top_n(counts, "ticker")
+        top_subreddits = _top_n(subreddit_counts.get(author, {}), "subreddit")
         stats.append({
             "author": author,
             "first_seen": row.get("first_seen"),
@@ -200,7 +228,9 @@ def compute_author_stats(
             "tickers_distinct": len(counts),
             "subreddits_distinct": int(row.get("subreddits_distinct", 0) or 0),
             "top_ticker_share": (max(counts.values()) / total) if total else 0.0,
-            "top_ticker": top_ticker,
+            "top_ticker": top_tickers[0]["ticker"] if top_tickers else "",
+            "top_tickers": json.dumps(top_tickers),
+            "top_subreddits": json.dumps(top_subreddits),
         })
     return stats
 
@@ -535,7 +565,9 @@ def _run(
             item_stat_rows = [dict(row) for row in cur.fetchall()]
             cur.execute(FETCH_AUTHOR_TICKER_COUNTS_SQL)
             author_ticker_rows = [dict(row) for row in cur.fetchall()]
-            author_stats = compute_author_stats(item_stat_rows, author_ticker_rows)
+            cur.execute(FETCH_AUTHOR_SUBREDDIT_COUNTS_SQL)
+            author_subreddit_rows = [dict(row) for row in cur.fetchall()]
+            author_stats = compute_author_stats(item_stat_rows, author_ticker_rows, author_subreddit_rows)
             author_weights = build_author_weights(author_stats, (config or {}).get("author_weighting"))
             summary["author_stats_computed"] = len(author_stats)
             summary["authors_discounted"] = len(author_weights)

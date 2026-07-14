@@ -587,10 +587,10 @@ function AuthorsBoard({ onSelectAuthor }: { onSelectAuthor: (author: string) => 
             <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
               <th className="py-2 pl-4 pr-2 text-left font-semibold">#</th>
               <th className="px-2 py-2 text-left font-semibold">Author</th>
-              <th className="px-2 py-2 text-right font-semibold">Items</th>
+              <th className="px-2 py-2 text-right font-semibold" title="Swept posts + comments that resolved to a ticker, over the 90-day window">Items</th>
               <th className="px-2 py-2 text-right font-semibold">Tickers</th>
-              <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">Subs</th>
-              <th className="px-2 py-2 text-left font-semibold">Top Ticker</th>
+              <th className="px-2 py-2 text-left font-semibold">Top Tickers</th>
+              <th className="hidden px-2 py-2 text-left font-semibold sm:table-cell">Top Subs</th>
               <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">Account Age</th>
               <th className="hidden py-2 pl-2 pr-4 text-right font-semibold md:table-cell">Karma</th>
             </tr>
@@ -628,19 +628,35 @@ function AuthorsBoard({ onSelectAuthor }: { onSelectAuthor: (author: string) => 
                 </td>
                 <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink)]">{row.itemsTotal}</td>
                 <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">{row.tickersDistinct}</td>
-                <td className="hidden px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
-                  {row.subredditsDistinct}
-                </td>
                 <td className="px-2 py-2 text-xs">
-                  {row.topTicker ? (
-                    <>
-                      <span className="font-bold text-[color:var(--accent)]">{row.topTicker}</span>{" "}
-                      <span className="text-[10px] text-[color:var(--ink-faint)]">
-                        {(row.topTickerShare * 100).toFixed(0)}%
-                      </span>
-                    </>
+                  {row.topTickers.length > 0 ? (
+                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      {row.topTickers.map((entry, idx) => (
+                        <span key={entry.ticker} className="whitespace-nowrap">
+                          <span className={`font-semibold ${idx === 0 ? "text-[color:var(--accent)]" : "text-[color:var(--ink-soft)]"}`}>
+                            {entry.ticker}
+                          </span>{" "}
+                          <span className="text-[10px] tabular-nums text-[color:var(--ink-faint)]">{entry.count}</span>
+                        </span>
+                      ))}
+                    </span>
+                  ) : row.topTicker ? (
+                    <span className="font-semibold text-[color:var(--accent)]">{row.topTicker}</span>
                   ) : (
                     <span className="text-[color:var(--ink-faint)]">—</span>
+                  )}
+                </td>
+                <td className="hidden px-2 py-2 text-xs sm:table-cell">
+                  {row.topSubreddits.length > 0 ? (
+                    <span className="flex flex-wrap gap-x-2 gap-y-0.5 text-[color:var(--ink-soft)]">
+                      {row.topSubreddits.map((entry) => (
+                        <span key={entry.subreddit} className="whitespace-nowrap" title={`${entry.count} items`}>
+                          r/{entry.subreddit}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-[color:var(--ink-faint)]">{row.subredditsDistinct} subs</span>
                   )}
                 </td>
                 <td className="hidden px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
@@ -655,9 +671,12 @@ function AuthorsBoard({ onSelectAuthor }: { onSelectAuthor: (author: string) => 
         </table>
       </div>
       <p className="text-[10px] text-[color:var(--ink-faint)]">
-        Aggregated from public Reddit activity in the swept subreddits over the retention window (90 days). Account
-        age/karma appear as they&apos;re looked up (a small budget per sweep). These stats feed the credibility
-        weighting on the Daily board.
+        <span className="text-[color:var(--ink-soft)]">Items</span> is the account&apos;s swept posts + comments
+        (that resolved to at least one ticker) over the retention window (90 days); <span className="text-[color:var(--ink-soft)]">Top Tickers</span> /
+        <span className="text-[color:var(--ink-soft)]"> Top Subs</span> are its three most-mentioned tickers and
+        most-active subreddits, with per-item counts. Aggregated from public Reddit activity. Account age/karma
+        appear as they&apos;re looked up (a small budget per sweep). These stats feed the credibility weighting on
+        the Daily board.
       </p>
     </div>
   );
@@ -746,31 +765,39 @@ export function AttentionTab({ data, loading, error }: Props) {
   // Activity view.
   const [activityAuthor, setActivityAuthor] = useState("");
   // SEC-1: past-day override for the Daily board. null = latest (the
-  // polled prop data); a date string switches to a one-off fetch.
+  // polled prop data); a date string switches to a one-off fetch. The
+  // subreddit filter (empty = all/blended) shares that one-off fetch path,
+  // since a single-subreddit board is recomputed server-side and can't come
+  // from the polled blended payload.
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [dateData, setDateData] = useState<MarketAttentionData | null>(null);
-  const [dateLoading, setDateLoading] = useState(false);
+  const [selectedSubreddit, setSelectedSubreddit] = useState<string>("");
+  const [overrideData, setOverrideData] = useState<MarketAttentionData | null>(null);
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const hasOverride = Boolean(selectedDate || selectedSubreddit);
 
   useEffect(() => {
-    if (!selectedDate) {
-      setDateData(null);
+    if (!hasOverride) {
+      setOverrideData(null);
       return;
     }
     let cancelled = false;
-    setDateLoading(true);
-    fetch(`/api/market/attention?date=${encodeURIComponent(selectedDate)}`)
+    setOverrideLoading(true);
+    const params = new URLSearchParams();
+    if (selectedDate) params.set("date", selectedDate);
+    if (selectedSubreddit) params.set("subreddit", selectedSubreddit);
+    fetch(`/api/market/attention?${params.toString()}`)
       .then((r) => r.json())
       .then((env) => {
-        if (!cancelled && env.ok && env.data) setDateData(env.data);
+        if (!cancelled && env.ok && env.data) setOverrideData(env.data);
       })
       .catch(() => {})
       .finally(() => {
-        if (!cancelled) setDateLoading(false);
+        if (!cancelled) setOverrideLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedDate]);
+  }, [selectedDate, selectedSubreddit, hasOverride]);
 
   if (loading && !data) {
     return (
@@ -790,9 +817,14 @@ export function AttentionTab({ data, loading, error }: Props) {
 
   if (!data) return null;
 
-  // The Daily board renders the selected past day when one is chosen,
-  // otherwise the live (polled) latest-day payload.
-  const board = selectedDate ? dateData : data;
+  // The Daily board renders the one-off override payload when a past day or a
+  // subreddit filter is active, otherwise the live (polled) latest-day
+  // payload. The subreddit dropdown is populated from whichever board is
+  // showing, falling back to the polled day's full list so it never empties
+  // while a filter is applied.
+  const board = hasOverride ? overrideData : data;
+  const boardLoading = hasOverride && overrideLoading;
+  const subredditOptions = board?.subreddits ?? data.subreddits ?? [];
 
   return (
     <div className="space-y-4">
@@ -819,7 +851,18 @@ export function AttentionTab({ data, loading, error }: Props) {
             ))}
           </div>
           {view === "daily" && data.date && (
-            <span className="flex items-center gap-1 text-xs text-[color:var(--ink-faint)]">
+            <span className="flex flex-wrap items-center gap-1 text-xs text-[color:var(--ink-faint)]">
+              <select
+                value={selectedSubreddit}
+                onChange={(e) => setSelectedSubreddit(e.target.value)}
+                title="Show only mentions from one subreddit (recomputed from raw posts/comments)"
+                className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-2 py-0.5 text-xs text-[color:var(--ink-soft)]"
+              >
+                <option value="">All subreddits</option>
+                {subredditOptions.map((name) => (
+                  <option key={name} value={name}>r/{name}</option>
+                ))}
+              </select>
               <input
                 type="date"
                 value={selectedDate ?? data.date}
@@ -832,10 +875,10 @@ export function AttentionTab({ data, loading, error }: Props) {
                 className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.95)] px-2 py-0.5 text-xs text-[color:var(--ink-soft)] [color-scheme:dark]"
               />
               <span className="opacity-70">(UTC day)</span>
-              {selectedDate && (
+              {(selectedDate || selectedSubreddit) && (
                 <button
                   type="button"
-                  onClick={() => setSelectedDate(null)}
+                  onClick={() => { setSelectedDate(null); setSelectedSubreddit(""); }}
                   className="underline hover:text-[color:var(--accent)]"
                 >
                   latest
@@ -858,16 +901,24 @@ export function AttentionTab({ data, loading, error }: Props) {
           }}
         />
       )}
-      {view === "daily" && (dateLoading || !board) && (
+      {view === "daily" && (boardLoading || !board) && (
         <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">
-          {dateLoading ? "Loading selected day…" : "No data for the selected day."}
+          {boardLoading ? "Loading selected day…" : "No data for the selected day."}
         </p>
       )}
-      {view === "daily" && !dateLoading && board && (
+      {view === "daily" && !boardLoading && board && (
         <>
           {board.warning && (
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
               {board.warning}
+            </div>
+          )}
+
+          {board.subredditFilter && (
+            <div className="rounded-xl border border-[rgba(79,213,255,0.25)] bg-[rgba(79,213,255,0.06)] p-3 text-xs text-[color:var(--ink-soft)]">
+              Showing <span className="font-semibold text-[color:var(--accent)]">r/{board.subredditFilter}</span> only,
+              ranked by distinct authors. Blended-board columns (Δ 24h, 14d trend, price divergence, credibility
+              weighting) don&apos;t apply to a single subreddit and are hidden or blank here.
             </div>
           )}
 

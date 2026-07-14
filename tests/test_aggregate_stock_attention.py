@@ -93,7 +93,8 @@ def test_day_bounds_are_utc_midnights():
 # ─── _run against mocked DB ─────────────────────────────────────────────────
 
 def _mock_conn(day_rows, *, prev_day_rows=None, news_rows=None, author_item_stats=None,
-               author_ticker_counts=None, account_age_rows=None, seen_tickers=None):
+               author_ticker_counts=None, author_subreddit_counts=None, account_age_rows=None,
+               seen_tickers=None):
     """Query-aware fake cursor: fetchall() answers based on the last SQL
     executed, since _run now issues several distinct SELECTs."""
     cursor = MagicMock()
@@ -110,6 +111,8 @@ def _mock_conn(day_rows, *, prev_day_rows=None, news_rows=None, author_item_stat
             return list(author_item_stats or [])
         if "GROUP BY i.author, m.value" in sql:
             return list(author_ticker_counts or [])
+        if "GROUP BY author, subreddit" in sql:
+            return list(author_subreddit_counts or [])
         if "account_created IS NOT NULL" in sql:
             return list(account_age_rows or [])
         if "SELECT DISTINCT ticker FROM daily_stock_attention" in sql:
@@ -396,13 +399,42 @@ def test_compute_author_stats_and_weights():
         {"author": "normal", "ticker": "GME", "cnt": 2},
         {"author": "casual", "ticker": "GME", "cnt": 1},
     ]
-    stats = agg.compute_author_stats(item_stats, ticker_counts)
+    subreddit_counts = [
+        {"author": "normal", "subreddit": "stocks", "cnt": 5},
+        {"author": "normal", "subreddit": "investing", "cnt": 2},
+        {"author": "normal", "subreddit": "wallstreetbets", "cnt": 1},
+        {"author": "normal", "subreddit": "options", "cnt": 1},  # 4th - must not appear
+        {"author": "pumper", "subreddit": "pennystocks", "cnt": 12},
+    ]
+    stats = agg.compute_author_stats(item_stats, ticker_counts, subreddit_counts)
     by_author = {s["author"]: s for s in stats}
     assert by_author["pumper"]["top_ticker_share"] == 11 / 12
     assert by_author["pumper"]["tickers_distinct"] == 2
     assert by_author["pumper"]["top_ticker"] == "XYZ"
     assert by_author["casual"]["top_ticker_share"] == 1.0
     assert by_author["casual"]["top_ticker"] == "GME"
+
+    # top_tickers: top-3 by count desc, ticker asc; top_ticker == top_tickers[0].
+    assert json.loads(by_author["pumper"]["top_tickers"]) == [
+        {"ticker": "XYZ", "count": 11},
+        {"ticker": "ABC", "count": 1},
+    ]
+    normal_top_tickers = json.loads(by_author["normal"]["top_tickers"])
+    assert len(normal_top_tickers) == 3  # capped at 3 even though normal has 3 here
+    assert normal_top_tickers[0] == {"ticker": "MSFT", "count": 3}  # tie broken ticker-asc (MSFT < NVDA)
+    assert normal_top_tickers[1] == {"ticker": "NVDA", "count": 3}
+
+    # top_subreddits: top-3 by count desc, name asc; capped at 3. The two
+    # count-1 subs ("options", "wallstreetbets") tie-break name-ascending, so
+    # "options" takes the third slot and "wallstreetbets" is dropped.
+    normal_top_subs = json.loads(by_author["normal"]["top_subreddits"])
+    assert normal_top_subs == [
+        {"subreddit": "stocks", "count": 5},
+        {"subreddit": "investing", "count": 2},
+        {"subreddit": "options", "count": 1},
+    ]
+    # Author with no subreddit-count rows gets an empty list, not an error.
+    assert json.loads(by_author["casual"]["top_subreddits"]) == []
 
     weights = agg.build_author_weights(stats, {"low_diversity_share": 0.8, "low_diversity_max_tickers": 2, "min_items": 5, "discount": 0.25})
     assert weights == {"pumper": 0.25}  # casual (1 item) NOT discounted despite share 1.0

@@ -536,6 +536,12 @@ export interface AttentionRow {
 export interface MarketAttentionData {
   date: string | null;               // UTC day the rollup covers; null = nothing aggregated yet
   rows: AttentionRow[];
+  // Daily-view subreddit filter: subreddits present that day (dropdown), and
+  // the one currently applied (null = blended, all subreddits). When a filter
+  // is applied the board is recomputed from raw items for that subreddit, so
+  // rollup-only columns (14d trend, divergence, weighted, Δ24h) are blank.
+  subreddits?: string[];
+  subredditFilter?: string | null;
   warning?: string;
   generatedAt: string;
 }
@@ -627,14 +633,26 @@ export interface MarketAttentionActivityData {
   generatedAt: string;
 }
 
+export interface AttentionTickerCount {
+  ticker: string;
+  count: number;
+}
+
+export interface AttentionSubredditCount {
+  subreddit: string;
+  count: number;
+}
+
 export interface AttentionAuthorRow {
   rank: number;
   author: string;
-  itemsTotal: number;
+  itemsTotal: number;        // swept posts + comments (that resolved to a ticker) over the window
   tickersDistinct: number;
   subredditsDistinct: number;
   topTicker: string;
   topTickerShare: number;    // 0-1
+  topTickers: AttentionTickerCount[];     // top 3 by mention count
+  topSubreddits: AttentionSubredditCount[]; // top 3 by item count
   accountCreated: string | null;
   linkKarma: number | null;
   firstSeen: string | null;

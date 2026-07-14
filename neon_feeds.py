@@ -1197,6 +1197,11 @@ def _ensure_stock_attention_schema() -> None:
             # Activity/Authors views: which ticker a concentrated account is
             # concentrated on (the Authors leaderboard's most useful cell).
             cur.execute("ALTER TABLE reddit_author_stats ADD COLUMN IF NOT EXISTS top_ticker TEXT NOT NULL DEFAULT ''")
+            # Authors leaderboard: the account's top-3 tickers and top-3
+            # subreddits as JSON arrays ([{"ticker","count"}] / [{"subreddit",
+            # "count"}]), so the board can name them instead of only counting.
+            cur.execute("ALTER TABLE reddit_author_stats ADD COLUMN IF NOT EXISTS top_tickers TEXT NOT NULL DEFAULT '[]'")
+            cur.execute("ALTER TABLE reddit_author_stats ADD COLUMN IF NOT EXISTS top_subreddits TEXT NOT NULL DEFAULT '[]'")
             # Item 6: review queue for tickers newly entering the top of the
             # board - populated by the rollup, worked through the admin UI.
             cur.execute(
@@ -1312,6 +1317,8 @@ def upsert_author_stats_batch(rows: List[Dict[str, Any]]) -> int:
             int(row.get("subreddits_distinct", 0) or 0),
             float(row.get("top_ticker_share", 0.0) or 0.0),
             _strip_nul_bytes(str(row.get("top_ticker", "") or "")),
+            _strip_nul_bytes(str(row.get("top_tickers", "[]") or "[]")),
+            _strip_nul_bytes(str(row.get("top_subreddits", "[]") or "[]")),
         ))
     if not prepared:
         return 0
@@ -1323,7 +1330,7 @@ def upsert_author_stats_batch(rows: List[Dict[str, Any]]) -> int:
                 cur,
                 """
                 INSERT INTO reddit_author_stats
-                  (author, first_seen, last_seen, items_total, tickers_distinct, subreddits_distinct, top_ticker_share, top_ticker)
+                  (author, first_seen, last_seen, items_total, tickers_distinct, subreddits_distinct, top_ticker_share, top_ticker, top_tickers, top_subreddits)
                 VALUES %s
                 ON CONFLICT (author) DO UPDATE SET
                   first_seen = EXCLUDED.first_seen,
@@ -1333,6 +1340,8 @@ def upsert_author_stats_batch(rows: List[Dict[str, Any]]) -> int:
                   subreddits_distinct = EXCLUDED.subreddits_distinct,
                   top_ticker_share = EXCLUDED.top_ticker_share,
                   top_ticker = EXCLUDED.top_ticker,
+                  top_tickers = EXCLUDED.top_tickers,
+                  top_subreddits = EXCLUDED.top_subreddits,
                   refreshed_at = now()
                 """,
                 prepared,

@@ -2,7 +2,9 @@ import { type NextRequest } from "next/server";
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
 import type { AttentionRow, AttentionSource, MarketAttentionData } from "@/lib/server/types";
 import {
+  getDailyAttentionForSubreddit,
   getDailyStockAttention,
+  getDistinctAttentionSubredditsForDay,
   getLatestStockAttentionDate,
   getRedditAttentionItems,
   getRssArticlesByIds,
@@ -33,9 +35,30 @@ function parseTopSourceIds(row: DailyStockAttentionRow): string[] {
   return parseJsonStringArray(row.top_source_ids);
 }
 
+function moodFromCounts(bullish: number, bearish: number): string {
+  if (bullish > 0 && bearish > 0 && bullish === bearish) return "mixed";
+  if (bullish > bearish) return "bullish";
+  if (bearish > bullish) return "bearish";
+  return "neutral";
+}
+
+// Pair live Yahoo quotes for the top N tickers of a board, same policy as the
+// unfiltered path (below that limit, price columns render as —).
+async function pairQuotes(tickers: string[]): Promise<Map<string, { price: number | null; pct: number | null } | null>> {
+  const quoteTickers = tickers.slice(0, QUOTE_PAIR_LIMIT);
+  const quotes = await Promise.allSettled(quoteTickers.map((ticker) => fetchYahooQuote(ticker, 300)));
+  return new Map(
+    quoteTickers.map((ticker, i) => {
+      const settled = quotes[i];
+      return [ticker, settled.status === "fulfilled" ? settled.value : null] as const;
+    })
+  );
+}
+
 export async function GET(req: NextRequest) {
   const requestId = createRequestId();
   const rawDate = req.nextUrl.searchParams.get("date") ?? "";
+  const subredditFilter = (req.nextUrl.searchParams.get("subreddit") ?? "").trim();
   if (rawDate && !/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
     return fail("Invalid date format - use YYYY-MM-DD", "BAD_DATE", 400, requestId);
   }
@@ -50,12 +73,80 @@ export async function GET(req: NextRequest) {
       const empty: MarketAttentionData = {
         date: null,
         rows: [],
+        subreddits: [],
+        subredditFilter: null,
         warning: "No attention data aggregated yet - the daily rollup has not produced any days.",
         generatedAt: new Date().toISOString(),
       };
       return ok(empty, requestId);
     }
 
+    // The Daily-view subreddit dropdown is populated regardless of whether a
+    // filter is applied.
+    const subreddits = await getDistinctAttentionSubredditsForDay(date);
+
+    // ── Single-subreddit view: recompute the day's board from raw items ──
+    if (subredditFilter) {
+      const [filtered, dayRollup] = await Promise.all([
+        getDailyAttentionForSubreddit(date, subredditFilter, MAX_ROWS),
+        // Only for company names - the filtered aggregation doesn't carry them.
+        getDailyStockAttention(date, 500),
+      ]);
+      const companyByTicker = new Map(dayRollup.map((row) => [row.ticker, row.company]));
+      const allSourceIds = filtered.flatMap((row) => row.top_source_ids);
+      const items = await getRedditAttentionItems([...new Set(allSourceIds)]);
+      const itemsById = new Map<string, RedditAttentionItemRow>(items.map((item) => [item.source_id, item]));
+      const quoteByTicker = await pairQuotes(filtered.map((row) => row.ticker));
+
+      const data: MarketAttentionData = {
+        date,
+        subreddits,
+        subredditFilter,
+        rows: filtered.map((row, i): AttentionRow => {
+          const quote = quoteByTicker.get(row.ticker) ?? null;
+          const topSources: AttentionSource[] = row.top_source_ids
+            .map((id) => itemsById.get(id))
+            .filter((item): item is RedditAttentionItemRow => Boolean(item))
+            .map((item) => ({
+              title: item.title,
+              permalink: item.permalink,
+              subreddit: item.subreddit,
+              author: item.author,
+              kind: item.kind,
+              mood: item.mood,
+            }));
+          return {
+            rank: i + 1,
+            ticker: row.ticker,
+            company: companyByTicker.get(row.ticker) ?? "",
+            mentionCount: row.mention_count,
+            redditCount: row.mention_count,
+            newsCount: 0,
+            prevMentionCount: null, // no per-subreddit prior-day rollup to compare against
+            sourceCount: row.source_count,
+            subredditCount: 1,
+            weightedScore: row.mention_count,
+            mood: moodFromCounts(row.bullish, row.bearish),
+            price: quote?.price ?? null,
+            pricePct: quote?.pct ?? null,
+            storedPriceClose: null,
+            storedPricePct: null,
+            volume: null,
+            volumeVs20d: null,
+            divergence: "",
+            weightedMentionCount: row.mention_count,
+            qualityFlags: [],
+            sparkline: [], // 14d trend is a blended-rollup signal; not meaningful for one subreddit
+            topSources,
+            topNews: [],
+          };
+        }),
+        generatedAt: new Date().toISOString(),
+      };
+      return ok(data, requestId);
+    }
+
+    // ── Default blended view: the pre-aggregated rollup ──
     const prevDate = new Date(date + "T00:00:00Z");
     prevDate.setUTCDate(prevDate.getUTCDate() - 1);
     const prevDateIso = prevDate.toISOString().split("T")[0] as string;
@@ -82,17 +173,12 @@ export async function GET(req: NextRequest) {
     const itemsById = new Map<string, RedditAttentionItemRow>(items.map((item) => [item.source_id, item]));
     const newsById = new Map<number, RssArticleRef>(newsArticles.map((article) => [article.id, article]));
 
-    const quoteTickers = rows.slice(0, QUOTE_PAIR_LIMIT).map((row) => row.ticker);
-    const quotes = await Promise.allSettled(quoteTickers.map((ticker) => fetchYahooQuote(ticker, 300)));
-    const quoteByTicker = new Map(
-      quoteTickers.map((ticker, i) => {
-        const settled = quotes[i];
-        return [ticker, settled.status === "fulfilled" ? settled.value : null] as const;
-      })
-    );
+    const quoteByTicker = await pairQuotes(tickers);
 
     const data: MarketAttentionData = {
       date,
+      subreddits,
+      subredditFilter: null,
       rows: rows.map((row, i): AttentionRow => {
         const quote = quoteByTicker.get(row.ticker) ?? null;
         const topSources: AttentionSource[] = parseTopSourceIds(row)
@@ -143,6 +229,8 @@ export async function GET(req: NextRequest) {
     const empty: MarketAttentionData = {
       date: null,
       rows: [],
+      subreddits: [],
+      subredditFilter: null,
       warning: `Attention data unavailable: ${err instanceof Error ? err.message : "unknown error"}`,
       generatedAt: new Date().toISOString(),
     };

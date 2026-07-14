@@ -2789,6 +2789,68 @@ export async function getDailyStockAttention(date: string, limit = 50): Promise<
   }
 }
 
+// Daily-board subreddit filter: the distinct subreddits present in a given
+// UTC day, to populate the Daily view's dropdown. Day-scoped (not a trailing
+// window like getDistinctAttentionSubreddits) so it matches the day actually
+// being viewed.
+export async function getDistinctAttentionSubredditsForDay(date: string): Promise<string[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT DISTINCT subreddit FROM reddit_attention_items
+    WHERE created_utc >= ${date}::date
+      AND created_utc < (${date}::date + INTERVAL '1 day')
+    ORDER BY subreddit ASC
+  `) as unknown as { subreddit: string }[];
+  return rows.map((row) => row.subreddit);
+}
+
+export type SubredditFilteredAttentionRow = {
+  ticker: string;
+  mention_count: number; // distinct authors within the subreddit that day
+  source_count: number;  // distinct sources
+  bullish: number;
+  bearish: number;
+  top_source_ids: string[];
+};
+
+// The pre-aggregated daily_stock_attention rollup blends every subreddit
+// together, so a single-subreddit view can't come from it. This recomputes
+// the day's per-ticker board from the raw items+mentions tables scoped to one
+// subreddit, ranked by the same distinct-author "real mentions" count the
+// rollup uses. Rollup-only signals (14d sparkline, divergence, weighted
+// score, quality flags, prev-day delta) don't apply to a subset and are left
+// empty by the caller.
+export async function getDailyAttentionForSubreddit(
+  date: string,
+  subreddit: string,
+  limit = 50
+): Promise<SubredditFilteredAttentionRow[]> {
+  const sql = getSql();
+  const cappedLimit = Math.max(1, Math.min(200, limit));
+  const rows = (await sql`
+    SELECT m.value AS ticker,
+           COUNT(DISTINCT i.author)::int AS mention_count,
+           COUNT(DISTINCT i.source_id)::int AS source_count,
+           COUNT(*) FILTER (WHERE i.mood = 'bullish')::int AS bullish,
+           COUNT(*) FILTER (WHERE i.mood = 'bearish')::int AS bearish,
+           (ARRAY_AGG(DISTINCT i.source_id))[1:10] AS top_source_ids
+    FROM intelligence_mentions m
+    JOIN reddit_attention_items i ON i.source_id = m.source_id
+    WHERE m.mention_type = 'ticker'
+      AND m.source_type IN ('reddit_post', 'reddit_comment')
+      AND i.subreddit = ${subreddit}
+      AND i.created_utc >= ${date}::date
+      AND i.created_utc < (${date}::date + INTERVAL '1 day')
+    GROUP BY m.value
+    ORDER BY COUNT(DISTINCT i.author) DESC, m.value ASC
+    LIMIT ${cappedLimit}
+  `) as unknown as SubredditFilteredAttentionRow[];
+  return rows.map((row) => ({
+    ...row,
+    top_source_ids: Array.isArray(row.top_source_ids) ? row.top_source_ids : [],
+  }));
+}
+
 export type RssArticleRef = { id: number; title: string; url: string };
 
 // SEC-4: resolve the drawer's top_news_ids to linkable articles. Articles
@@ -3005,6 +3067,8 @@ export type RedditAuthorStatsRow = {
   subreddits_distinct: number;
   top_ticker_share: number;
   top_ticker: string;
+  top_tickers: string;    // JSON: [{ ticker, count }] (top 3)
+  top_subreddits: string; // JSON: [{ subreddit, count }] (top 3)
   account_created: string | null;
   link_karma: number | null;
 };
@@ -3017,6 +3081,7 @@ export async function getRedditAuthorStats(limit = 50): Promise<RedditAuthorStat
       SELECT author, first_seen::text AS first_seen, last_seen::text AS last_seen,
              items_total, tickers_distinct, subreddits_distinct,
              top_ticker_share::float AS top_ticker_share, top_ticker,
+             top_tickers, top_subreddits,
              account_created::text AS account_created, link_karma
       FROM reddit_author_stats
       WHERE items_total > 0
@@ -3024,10 +3089,11 @@ export async function getRedditAuthorStats(limit = 50): Promise<RedditAuthorStat
       LIMIT ${cappedLimit}
     `) as unknown as RedditAuthorStatsRow[];
   } catch (err) {
-    // Old-schema tolerance (deploy-order rule in CLAUDE.md): top_ticker is
-    // added by the Python rollup's ALTER, which may not have run yet when
-    // this reader deploys. Retry without the column for that one cycle.
-    if (!String(err).includes("top_ticker")) throw err;
+    // Old-schema tolerance (deploy-order rule in CLAUDE.md): top_ticker /
+    // top_tickers / top_subreddits are added by the Python rollup's ALTERs,
+    // which may not have run yet when this reader deploys. Retry with only
+    // the guaranteed base columns for that one cycle.
+    if (!/top_ticker|top_tickers|top_subreddits/.test(String(err))) throw err;
     const rows = (await sql`
       SELECT author, first_seen::text AS first_seen, last_seen::text AS last_seen,
              items_total, tickers_distinct, subreddits_distinct,
@@ -3037,8 +3103,8 @@ export async function getRedditAuthorStats(limit = 50): Promise<RedditAuthorStat
       WHERE items_total > 0
       ORDER BY items_total DESC, author ASC
       LIMIT ${cappedLimit}
-    `) as unknown as Omit<RedditAuthorStatsRow, "top_ticker">[];
-    return rows.map((row) => ({ ...row, top_ticker: "" }));
+    `) as unknown as Omit<RedditAuthorStatsRow, "top_ticker" | "top_tickers" | "top_subreddits">[];
+    return rows.map((row) => ({ ...row, top_ticker: "", top_tickers: "[]", top_subreddits: "[]" }));
   }
 }
 
