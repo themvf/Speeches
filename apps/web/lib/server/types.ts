@@ -570,6 +570,38 @@ export interface MarketAttentionIntradayData {
   generatedAt: string;
 }
 
+// CBOE KPI tracker (JIRA epic SEC-8). This tab ships on the SEC-17 pilot's
+// static XBRL snapshot (kpi-pilot-data.json), not a live pipeline yet -
+// SEC-9/SEC-10 build the real Neon-backed ingestion. isLive stays false
+// until that lands; the API contract is designed to not need to change
+// when it does.
+export interface KpiSeriesPoint {
+  periodEnd: string;
+  value: number;
+  derived: boolean; // fiscal Q4 derived as FY minus 9M, not a direct filing fact
+}
+
+export interface CompanyKpi {
+  kpiKey: string;
+  label: string;
+  unit: "usd" | "usd_per_share" | "percent" | "count";
+  series: KpiSeriesPoint[];
+}
+
+export interface CompanyKpis {
+  ticker: string;
+  name: string;
+  kpis: CompanyKpi[];
+}
+
+export interface MarketKpiData {
+  isLive: false;
+  snapshotDate: string;
+  source: string;
+  companies: CompanyKpis[];
+  warning?: string;
+}
+
 // Activity + Authors views (see CLAUDE.md plan, 2026-07-12)
 export interface AttentionActivityItem {
   sourceId: string;

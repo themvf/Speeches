@@ -7,6 +7,7 @@ import type {
   MarketCommoditiesData,
   MarketCryptoData,
   MarketExchangesData,
+  MarketKpiData,
   MarketMoversData,
   MarketOverviewData,
   MarketSectorsData,
@@ -17,14 +18,16 @@ import { MoversTab } from "./market/movers-tab";
 import { AttentionTab } from "./market/attention-tab";
 import { CryptoTab } from "./market/crypto-tab";
 import { ExchangesTab } from "./market/exchanges-tab";
+import { CboeTab } from "./market/cboe-tab";
 
-type TabId = "overview" | "sectors" | "movers" | "attention" | "crypto" | "exchanges";
+type TabId = "overview" | "sectors" | "movers" | "attention" | "cboe" | "crypto" | "exchanges";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview",  label: "Overview" },
   { id: "sectors",   label: "Sectors" },
   { id: "movers",    label: "Movers" },
   { id: "attention", label: "Attention" },
+  { id: "cboe",      label: "CBOE" },
   { id: "crypto",    label: "Crypto" },
   { id: "exchanges", label: "Exchanges" },
 ];
@@ -80,6 +83,9 @@ export function MarketDashboard() {
   const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors",   300_000);
   const movers    = useTabData<MarketMoversData>   ("movers",    tab, "/api/market/movers",    120_000);
   const attention = useTabData<MarketAttentionData>("attention", tab, "/api/market/attention", 300_000);
+  // Static snapshot (SEC-17/19) - long poll interval since the route never
+  // changes until the SEC-9/SEC-10 live pipeline replaces it.
+  const cboe      = useTabData<MarketKpiData>      ("cboe",      tab, "/api/market/kpis",      3_600_000);
   const crypto    = useTabData<MarketCryptoData>   ("crypto",    tab, "/api/market/crypto",    120_000);
   const exchanges = useTabData<MarketExchangesData>("exchanges", tab, "/api/market/exchanges",  60_000);
 
@@ -107,6 +113,7 @@ export function MarketDashboard() {
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "movers"    && <MoversTab    {...movers} />}
       {tab === "attention" && <AttentionTab {...attention} />}
+      {tab === "cboe"      && <CboeTab      {...cboe} />}
       {tab === "crypto"    && <CryptoTab    {...crypto} />}
       {tab === "exchanges" && <ExchangesTab {...exchanges} />}
     </div>
