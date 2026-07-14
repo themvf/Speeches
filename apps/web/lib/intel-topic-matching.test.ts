@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   compileKeywords,
   filterTopicMappedArticles,
+  filterCanonicalTopicMappedDocuments,
   getMatchingTopics,
   getTopicMatches,
   matchingKeywordsForArticle,
@@ -93,4 +94,23 @@ test("feed topic gate fails closed when no active taxonomy is available", () => 
     filterTopicMappedArticles([{ title: "SEC rulemaking", description: "" }], []),
     []
   );
+});
+
+test("document feed gate accepts only deterministic or active canonical assignments", () => {
+  const rules = normalizeTopicRules([
+    { topic_key: "CREDIT_MARKETS", label: "Credit Markets", keywords: "treasury yield", active: true, sort_order: 10 },
+    { topic_key: "AI_TECH", label: "AI & Tech", keywords: "artificial intelligence", active: true, sort_order: 20 },
+  ]);
+  const documents = [
+    { title: "Treasury yield rises", description: "", topics: [] },
+    { title: "Quarterly letter", description: "", topics: ["AI_TECH"] },
+    { title: "Company picnic", description: "", topics: ["Lifestyle"] },
+  ];
+
+  const mapped = filterCanonicalTopicMappedDocuments(documents, rules);
+
+  assert.deepEqual(mapped.map((item) => item.title), ["Treasury yield rises", "Quarterly letter"]);
+  assert.deepEqual(mapped[0].topics, ["Credit Markets"]);
+  assert.deepEqual(mapped[1].topics, ["AI & Tech"]);
+  assert.deepEqual(filterCanonicalTopicMappedDocuments(documents, []), []);
 });

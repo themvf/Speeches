@@ -18,19 +18,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: bloomberg-public-hourly
+  group: sec20-neon-corpus-writers
   cancel-in-progress: false
 
 jobs:
   bloomberg-public:
-    # SEC-20: keep manual recovery available while scheduled snapshot reads are paused.
-    if: github.event_name != 'schedule' || vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'
+    # SEC-20: only verified Neon pilots may run on schedule; manual recovery stays available.
+    if: github.event_name != 'schedule' || vars.ENABLE_NEON_PILOT_SCHEDULES == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEON_BACKFILL_VERIFIED: "true"
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       ENRICH_MODEL: deepseek-v4-pro
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '20' }}
@@ -56,6 +57,7 @@ jobs:
           set -euo pipefail
           python run_connector_extraction_pipeline.py \
             --connector bloomberg_public_latest \
+            --persistence-mode neon_authoritative \
             --selection new_or_updated \
             --limit "${EXTRACTION_LIMIT}" \
             --max-pages "${MAX_PAGES}" \
@@ -86,12 +88,27 @@ jobs:
           set -euo pipefail
           python run_financial_news_pipeline.py enrich \
             --require-remote-persistence \
+            --persistence-mode neon_authoritative \
             --source-kind bloomberg_public_article \
             --mode all \
             --doc-ids-from-summary bloomberg_public_extraction_summary.json \
             --provider deepseek \
             --model "${ENRICH_MODEL}" \
             --summary-path bloomberg_public_enrich_summary.json
+
+      - name: Run Bloomberg Bounded Enrichment Catch-up
+        if: always()
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --persistence-mode neon_authoritative \
+            --source-kind bloomberg_public_article \
+            --mode only_missing_or_failed \
+            --limit 10 \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --summary-path bloomberg_public_enrich_catchup_summary.json
 
       - name: Upload Bloomberg Summaries
         if: always()
@@ -101,4 +118,5 @@ jobs:
           path: |
             bloomberg_public_extraction_summary.json
             bloomberg_public_enrich_summary.json
+            bloomberg_public_enrich_catchup_summary.json
           if-no-files-found: ignore

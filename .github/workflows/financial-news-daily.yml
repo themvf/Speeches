@@ -20,13 +20,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: daily-financial-news
+  group: sec20-neon-corpus-writers
   cancel-in-progress: false
 
 jobs:
   financial-news:
-    # SEC-20: keep manual recovery available while scheduled snapshot reads are paused.
-    if: github.event_name != 'schedule' || vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'
+    # SEC-20: only verified Neon pilots may run on schedule; manual recovery stays available.
+    if: github.event_name != 'schedule' || vars.ENABLE_NEON_PILOT_SCHEDULES == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -34,6 +34,7 @@ jobs:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEON_BACKFILL_VERIFIED: "true"
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       ENRICH_MODEL: deepseek-v4-pro
       INGEST_LIMIT: ${{ github.event.inputs.ingest_limit || '' }}
@@ -78,7 +79,7 @@ jobs:
         if: steps.timegate.outputs.run_now == 'true'
         run: |
           set -euo pipefail
-          args=(ingest --require-remote-persistence --summary-path financial_news_ingest_summary.json)
+          args=(ingest --require-remote-persistence --persistence-mode neon_authoritative --summary-path financial_news_ingest_summary.json)
           if [ -n "${INGEST_LIMIT}" ]; then
             args+=(--limit "${INGEST_LIMIT}")
           fi
@@ -108,17 +109,32 @@ jobs:
           PY
 
       - name: Run Financial News Enrichment
-        if: steps.timegate.outputs.run_now == 'true'
+        if: steps.timegate.outputs.run_now == 'true' && steps.ingest_summary.outputs.processed_count != '0'
         run: |
           set -euo pipefail
           python run_financial_news_pipeline.py enrich \
             --require-remote-persistence \
+            --persistence-mode neon_authoritative \
             --source-kind newsapi_article \
             --mode all \
             --doc-ids-from-summary financial_news_ingest_summary.json \
             --provider deepseek \
             --model "${ENRICH_MODEL}" \
             --summary-path financial_news_enrich_summary.json
+
+      - name: Run Financial News Bounded Enrichment Catch-up
+        if: always() && steps.timegate.outputs.run_now == 'true'
+        run: |
+          set -euo pipefail
+          python run_financial_news_pipeline.py enrich \
+            --require-remote-persistence \
+            --persistence-mode neon_authoritative \
+            --source-kind newsapi_article \
+            --mode only_missing_or_failed \
+            --limit 10 \
+            --provider deepseek \
+            --model "${ENRICH_MODEL}" \
+            --summary-path financial_news_enrich_catchup_summary.json
 
       - name: Upload Summaries
         if: always() && steps.timegate.outputs.run_now == 'true'
@@ -128,4 +144,5 @@ jobs:
           path: |
             financial_news_ingest_summary.json
             financial_news_enrich_summary.json
+            financial_news_enrich_catchup_summary.json
           if-no-files-found: ignore

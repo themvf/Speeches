@@ -166,8 +166,15 @@ def test_enrichment_catchup_query_is_source_scoped_bounded_and_stale_aware(monke
     assert "documents.source_kind = ANY(%s)" in sql
     assert "documents.updated_at > enrichment.updated_at" in sql
     assert "attempt_count" in sql
+    assert "position(%s in documents.full_text) = 0" in sql
+    assert "WHEN enrichment.document_id IS NULL THEN 0" in sql
+    assert "documents.updated_at DESC" in sql
     assert "LIMIT %s" in sql
-    assert params == (["substack_public_article"], 10)
+    assert params == (
+        ["substack_public_article"],
+        neon_feeds.METADATA_FALLBACK_TEXT_MARKER,
+        10,
+    )
 
 
 def test_get_documents_returns_legacy_records_in_one_query(monkeypatch):

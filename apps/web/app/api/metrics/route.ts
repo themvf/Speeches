@@ -1,45 +1,23 @@
 import {
-  buildDocumentListItems,
-  loadCorpusDocumentsFromNeon,
-  loadCustomDocuments,
-  loadEnrichmentState,
   loadNewsConnectorSettings,
-  selectNewsFeedDocuments,
-  type CorpusDocumentsLoadResult
+  loadNewsFeedDocumentsFromNeon,
 } from "@/lib/server/data-store";
 import { getApiRuntimeInfo } from "@/lib/server/env";
+import {
+  getMirroredDocumentMetricsSnapshot,
+  type NeonDocumentMetricsSnapshot,
+} from "@/lib/server/neon";
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
-import type {
-  CustomDocumentsPayload,
-  EnrichmentStatePayload,
-  NewsConnectorSettingsPayload
-} from "@/lib/server/types";
+import type { NewsConnectorSettingsPayload } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 
 const METRICS_LOAD_TIMEOUT_MS = 6_000;
 
-function toMs(value: string): number {
-  const ms = Date.parse(String(value || ""));
-  return Number.isFinite(ms) ? ms : 0;
-}
-
-function metadataText(metadata: Record<string, unknown>, key: string): string {
-  return String(metadata[key] || "").trim();
-}
-
 type LoadResult<T> = {
   data: T;
   warning?: string;
 };
-
-function emptyCustomDocuments(): CustomDocumentsPayload {
-  return { updated_at: "", documents: [] };
-}
-
-function emptyEnrichmentState(): EnrichmentStatePayload {
-  return { version: 1, pipeline_version: "v1", updated_at: "", entries: {} };
-}
 
 function emptyNewsConnectorSettings(): NewsConnectorSettingsPayload {
   return {
@@ -58,6 +36,27 @@ function emptyNewsConnectorSettings(): NewsConnectorSettingsPayload {
   };
 }
 
+function emptyDocumentMetrics(): NeonDocumentMetricsSnapshot {
+  return {
+    documents: 0,
+    organizations: 0,
+    enriched: 0,
+    pendingReview: 0,
+    lastRunAt: "",
+    processedCount: 0,
+    sourceCounts: [],
+    newsApi: {
+      total: 0,
+      recent24h: 0,
+      recent7d: 0,
+      recent30d: 0,
+      newest: null,
+      bySource: [],
+    },
+    enrichmentAvailable: false,
+  };
+}
+
 function loadWithBudget<T>(
   label: string,
   promise: Promise<T>,
@@ -66,10 +65,13 @@ function loadWithBudget<T>(
 ): Promise<LoadResult<T>> {
   const guarded = promise
     .then((data) => ({ data }))
-    .catch((error) => ({
-      data: fallback(),
-      warning: `${label} failed: ${error instanceof Error ? error.message : "Unknown error"}`
-    }));
+    .catch((error) => {
+      console.error(`[metrics] ${label} failed`, error);
+      return {
+        data: fallback(),
+        warning: `${label} is temporarily unavailable`,
+      };
+    });
 
   return Promise.race([
     guarded,
@@ -83,141 +85,58 @@ export async function GET() {
   const requestId = createRequestId();
 
   try {
-    const [corpusResult, customResult, enrichmentResult, settingsResult] = await Promise.all([
-      loadWithBudget<CorpusDocumentsLoadResult>(
-        "corpus documents",
-        loadCorpusDocumentsFromNeon(),
-        () => ({ documents: [], source: "gcs_fallback" as const })
+    const [metricsResult, feedResult, settingsResult] = await Promise.all([
+      loadWithBudget("document metrics", getMirroredDocumentMetricsSnapshot(), emptyDocumentMetrics),
+      loadWithBudget(
+        "feed document projection",
+        loadNewsFeedDocumentsFromNeon({ limit: 250, pinnedSourceKindLimit: 25 }),
+        () => ({ documents: [], source: "unavailable" as const, metadata_only: true as const })
       ),
-      loadWithBudget<CustomDocumentsPayload>("custom documents", loadCustomDocuments(), emptyCustomDocuments),
-      loadWithBudget<EnrichmentStatePayload>("enrichment state", loadEnrichmentState(), emptyEnrichmentState),
-      loadWithBudget<NewsConnectorSettingsPayload>("news connector settings", loadNewsConnectorSettings(), emptyNewsConnectorSettings)
+      // This settings blob is small; the expensive corpus and enrichment
+      // snapshots are deliberately absent from this route.
+      loadWithBudget("news connector settings", loadNewsConnectorSettings(), emptyNewsConnectorSettings),
     ]);
 
-    const warnings = [corpusResult.warning, corpusResult.data.warning, customResult.warning, enrichmentResult.warning, settingsResult.warning].filter(Boolean);
-    const custom = customResult.data;
-    const enrichment = enrichmentResult.data;
-    const settings = settingsResult.data;
-    const documents = corpusResult.data.documents || [];
-    const orgSet = new Set<string>();
-    const sourceCounts = new Map<string, number>();
-
-    for (const doc of documents) {
-      const metadata = doc.metadata || {};
-      const org = String(metadata.organization || "unknown").trim() || "unknown";
-      const kind = String(metadata.source_kind || "unknown").trim() || "unknown";
-      orgSet.add(org);
-      sourceCounts.set(kind, (sourceCounts.get(kind) || 0) + 1);
-    }
-
-    const entries = enrichment.entries || {};
-    let enrichedCount = 0;
-    let pendingReviewCount = 0;
-
-    for (const entry of Object.values(entries)) {
-      const status = String(entry.status || "").toLowerCase();
-      const decision = String(entry.review?.decision || "pending").toLowerCase();
-
-      if (["enriched", "fallback_enriched", "reviewed"].includes(status)) {
-        enrichedCount += 1;
-      }
-      if (["enriched", "fallback_enriched"].includes(status) && !["accepted", "edited", "rejected"].includes(decision)) {
-        pendingReviewCount += 1;
-      }
-    }
-
-    const nowMs = Date.now();
-    const recentWindowMs = 24 * 60 * 60 * 1000;
-    const sevenDaysMs = 7 * recentWindowMs;
-    const thirtyDaysMs = 30 * recentWindowMs;
-    const processedCount = documents.filter((doc) => {
-      const m = doc.metadata || {};
-      const isNews = String(m.source_kind || "") === "newsapi_article";
-      if (!isNews) {
-        return false;
-      }
-      const updatedAt = toMs(String(m.last_reviewed_or_updated || m.updated_date || ""));
-      return updatedAt > 0 && nowMs - updatedAt <= recentWindowMs;
-    }).length;
-
-    const documentItems = buildDocumentListItems(documents, enrichment);
-    const feedDocuments = selectNewsFeedDocuments(documentItems);
+    const metrics = metricsResult.data;
+    const feedDocuments = feedResult.data.documents || [];
     const feedSourceCounts = new Map<string, number>();
     for (const item of feedDocuments) {
       const kind = String(item.source_kind || "unknown").trim() || "unknown";
       feedSourceCounts.set(kind, (feedSourceCounts.get(kind) || 0) + 1);
     }
 
-    const newsApiDocs = documents
-      .filter((doc) => String(doc.metadata?.source_kind || "") === "newsapi_article")
-      .map((doc) => {
-        const metadata = (doc.metadata || {}) as unknown as Record<string, unknown>;
-        const publishedAt =
-          metadataText(metadata, "published_at") ||
-          metadataText(metadata, "published_date") ||
-          metadataText(metadata, "date");
-        const publishedMs = toMs(publishedAt);
-        return {
-          title: metadataText(metadata, "title"),
-          url: metadataText(metadata, "url"),
-          source_name: metadataText(metadata, "source_name") || metadataText(metadata, "speaker") || metadataText(metadata, "organization"),
-          published_at: publishedAt,
-          published_ms: publishedMs,
-          extraction_mode: metadataText(metadata, "newsapi_extraction_mode")
-        };
-      })
-      .sort((a, b) => b.published_ms - a.published_ms);
-
-    const newsApiSourceCounts = new Map<string, number>();
-    for (const doc of newsApiDocs) {
-      const source = doc.source_name || "Unknown";
-      newsApiSourceCounts.set(source, (newsApiSourceCounts.get(source) || 0) + 1);
-    }
-
-    const newestNewsApi = newsApiDocs[0] || null;
-    const newsApiRecent24h = newsApiDocs.filter((doc) => doc.published_ms > 0 && nowMs - doc.published_ms <= recentWindowMs).length;
-    const newsApiRecent7d = newsApiDocs.filter((doc) => doc.published_ms > 0 && nowMs - doc.published_ms <= sevenDaysMs).length;
-    const newsApiRecent30d = newsApiDocs.filter((doc) => doc.published_ms > 0 && nowMs - doc.published_ms <= thirtyDaysMs).length;
-
-    const sortByCount = [...sourceCounts.entries()]
-      .map(([source_kind, count]) => ({ source_kind, count }))
-      .sort((a, b) => b.count - a.count);
+    const lastRunAt = [metrics.lastRunAt, settingsResult.data.updated_at]
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || "";
+    const warnings = [
+      metricsResult.warning,
+      feedResult.warning,
+      feedResult.data.warning,
+      settingsResult.warning,
+      ...(!metrics.enrichmentAvailable ? ["document enrichment projection is unavailable"] : []),
+    ].filter(Boolean);
 
     const payload = {
       totals: {
-        documents: documents.length,
-        organizations: orgSet.size,
-        enriched: enrichedCount,
-        pending_review: pendingReviewCount
+        documents: metrics.documents,
+        organizations: metrics.organizations,
+        enriched: metrics.enriched,
+        pending_review: metrics.pendingReview
       },
       recent_ingest: {
-        last_run_at:
-          [custom.updated_at, enrichment.updated_at, settings.updated_at]
-            .map((item) => ({ value: item, ms: toMs(item) }))
-            .sort((a, b) => b.ms - a.ms)[0]?.value || "",
-        processed_count: processedCount,
+        last_run_at: lastRunAt,
+        processed_count: metrics.processedCount,
         failed_count: 0
       },
       connector_audit: {
         newsapi: {
-          total: newsApiDocs.length,
+          total: metrics.newsApi.total,
           in_feed: feedSourceCounts.get("newsapi_article") || 0,
-          recent_24h: newsApiRecent24h,
-          recent_7d: newsApiRecent7d,
-          recent_30d: newsApiRecent30d,
-          newest: newestNewsApi
-            ? {
-                title: newestNewsApi.title,
-                url: newestNewsApi.url,
-                source_name: newestNewsApi.source_name,
-                published_at: newestNewsApi.published_at,
-                extraction_mode: newestNewsApi.extraction_mode
-              }
-            : null,
-          by_source: [...newsApiSourceCounts.entries()]
-            .map(([source_name, count]) => ({ source_name, count }))
-            .sort((a, b) => b.count - a.count || a.source_name.localeCompare(b.source_name))
-            .slice(0, 12)
+          recent_24h: metrics.newsApi.recent24h,
+          recent_7d: metrics.newsApi.recent7d,
+          recent_30d: metrics.newsApi.recent30d,
+          newest: metrics.newsApi.newest,
+          by_source: metrics.newsApi.bySource,
         },
         feed_documents: {
           total: feedDocuments.length,
@@ -226,16 +145,17 @@ export async function GET() {
             .sort((a, b) => b.count - a.count || a.source_kind.localeCompare(b.source_kind))
         }
       },
-      by_source_kind: sortByCount,
-      corpus_source: corpusResult.data.source,
+      by_source_kind: metrics.sourceCounts,
+      corpus_source: metricsResult.warning ? "unavailable" : "neon",
       runtime: getApiRuntimeInfo(),
       warnings
     };
 
     return ok(payload, requestId);
   } catch (error) {
+    console.error("[metrics] failed to build payload", { requestId, error });
     return fail(
-      `Failed to build metrics payload: ${error instanceof Error ? error.message : "Unknown error"}`,
+      "Failed to build metrics payload.",
       "METRICS_BUILD_FAILED",
       500,
       requestId

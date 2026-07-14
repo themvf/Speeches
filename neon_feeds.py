@@ -14,6 +14,14 @@ import psycopg2
 import psycopg2.extras
 import streamlit as st
 
+# Keep this byte-for-byte aligned with run_financial_news_pipeline.py; the
+# row-level catch-up query must reject the same placeholder bodies as the
+# enrichment candidate builder.
+METADATA_FALLBACK_TEXT_MARKER = (
+    "This metadata-backed record is retained so the item can appear in feed, search, watchlist, "
+    "and briefing workflows."
+)
+
 DEFAULT_TOPIC_RULES = [
     {
         "topic_key": "SECURITIES_REGULATION",
@@ -940,6 +948,7 @@ def get_document_ids_needing_enrichment(
                 WHERE documents.source_kind = ANY(%s)
                   AND documents.full_text <> ''
                   AND COALESCE(documents.metadata->>'extraction_mode', '') <> 'metadata_fallback'
+                  AND position(%s in documents.full_text) = 0
                   AND (
                     enrichment.document_id IS NULL
                     OR documents.updated_at > enrichment.updated_at
@@ -953,10 +962,17 @@ def get_document_ids_needing_enrichment(
                       END < 3
                     )
                   )
-                ORDER BY documents.updated_at ASC, documents.document_id
+                ORDER BY
+                  CASE
+                    WHEN enrichment.document_id IS NULL THEN 0
+                    WHEN documents.updated_at > enrichment.updated_at THEN 1
+                    ELSE 2
+                  END,
+                  documents.updated_at DESC,
+                  documents.document_id
                 LIMIT %s
                 """,
-                (clean_source_kinds, bounded_limit),
+                (clean_source_kinds, METADATA_FALLBACK_TEXT_MARKER, bounded_limit),
             )
             return [
                 str(row.get("document_id", "") or "").strip()

@@ -11,16 +11,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 GATE = "vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'"
+NEON_PILOT_GATE = "vars.ENABLE_NEON_PILOT_SCHEDULES == 'true'"
 
 SCHEDULED_SNAPSHOT_WORKFLOWS = {
     "agency-official-sites-3hour.yml",
-    "bloomberg-public-hourly.yml",
     "connector-enrichment-6hour.yml",
     "connector-gap-6hour.yml",
     "crs-daily.yml",
     "cyber-sources-3hour.yml",
     "daily-health-check.yml",
-    "financial-news-daily.yml",
     "intelligence-evidence.yml",
     "policy-extraction-scheduled.yml",
     "rss-full-ingestion-3hour.yml",
@@ -30,8 +29,25 @@ SCHEDULED_SNAPSHOT_WORKFLOWS = {
     "securities-market-sources-daily.yml",
     "senate-committee-sites-3hour.yml",
     "sentiment-scoring-daily.yml",
-    "substack-public-2hour.yml",
     "trends-daily.yml",
+}
+
+NEON_PILOT_WORKFLOWS = {
+    "bloomberg-public-hourly.yml": (
+        "bloomberg_public_article",
+        "Run Bloomberg Bounded Enrichment Catch-up",
+        "always()",
+    ),
+    "substack-public-2hour.yml": (
+        "substack_public_article",
+        "Run Substack Bounded Enrichment Catch-up",
+        "always()",
+    ),
+    "financial-news-daily.yml": (
+        "newsapi_article",
+        "Run Financial News Bounded Enrichment Catch-up",
+        "always() && steps.timegate.outputs.run_now == 'true'",
+    ),
 }
 
 
@@ -59,3 +75,22 @@ def test_knowledge_sync_does_not_follow_a_gated_scheduled_producer() -> None:
 def test_neon_only_schedules_remain_enabled() -> None:
     for filename in ("reddit-attention-sweep-hourly.yml", "stock-attention-daily.yml"):
         assert GATE not in _workflow(filename), filename
+
+
+def test_neon_pilots_use_a_dedicated_gate_and_bounded_row_persistence() -> None:
+    for filename, (source_kind, catchup_step, catchup_condition) in NEON_PILOT_WORKFLOWS.items():
+        workflow = _workflow(filename)
+        assert "schedule:" in workflow, filename
+        assert "workflow_dispatch:" in workflow, filename
+        assert "github.event_name != 'schedule'" in workflow, filename
+        assert NEON_PILOT_GATE in workflow, filename
+        assert "ENABLE_GCS_SNAPSHOT_SCHEDULES" not in workflow, filename
+        assert "group: sec20-neon-corpus-writers" in workflow, filename
+        assert 'NEON_BACKFILL_VERIFIED: "true"' in workflow, filename
+        assert workflow.count("--persistence-mode neon_authoritative") >= 3, filename
+        assert f"--source-kind {source_kind}" in workflow, filename
+        assert "--doc-ids-from-summary" in workflow, filename
+        assert "--mode only_missing_or_failed" in workflow, filename
+        assert "--limit 10" in workflow, filename
+        catchup_header = f"- name: {catchup_step}\n        if: {catchup_condition}"
+        assert catchup_header in workflow, filename

@@ -1326,6 +1326,7 @@ export async function saveRecapRows(rows: Omit<DailyRecapRow, "id" | "generated_
 export type NeonMirroredDocumentRow = {
   document_id: string;
   metadata: Record<string, unknown>;
+  enrichment_entry?: Record<string, unknown> | null;
 };
 
 export type MirroredDocumentFeedOptions = {
@@ -1333,6 +1334,92 @@ export type MirroredDocumentFeedOptions = {
   pinnedSourceKinds?: string[];
   pinnedSourceKindLimit?: number;
 };
+
+export type MirroredDocumentListOptions = {
+  q?: string;
+  organization?: string;
+  sourceKind?: string;
+  topic?: string;
+  keyword?: string;
+  tag?: string;
+  status?: string;
+  fromDate?: Date | null;
+  toDate?: Date | null;
+  documentIds?: string[];
+  /** Distinguishes an explicit empty `doc_ids` filter from no filter. */
+  hasDocumentIdsFilter?: boolean;
+  sort?: "date_desc" | "date_asc" | "updated_desc";
+  page?: number;
+  pageSize?: number;
+};
+
+export type NeonMirroredDocumentListPage = {
+  rows: NeonMirroredDocumentRow[];
+  total: number;
+};
+
+export type NeonMirroredDocumentDetailRow = NeonMirroredDocumentRow & {
+  full_text: string;
+};
+
+export type NeonDocumentFacetData = {
+  sources: string[];
+  organizations: string[];
+  statuses: string[];
+  topicCounts: Array<{ value: string; count: number }>;
+  keywords: string[];
+};
+
+export type NeonDocumentMetricsSnapshot = {
+  documents: number;
+  organizations: number;
+  enriched: number;
+  pendingReview: number;
+  lastRunAt: string;
+  processedCount: number;
+  sourceCounts: Array<{ source_kind: string; count: number }>;
+  newsApi: {
+    total: number;
+    recent24h: number;
+    recent7d: number;
+    recent30d: number;
+    newest: {
+      title: string;
+      url: string;
+      source_name: string;
+      published_at: string;
+      extraction_mode: string;
+    } | null;
+    bySource: Array<{ source_name: string; count: number }>;
+  };
+  enrichmentAvailable: boolean;
+};
+
+const DOCUMENT_FACETS_TTL_MS = 5 * 60_000;
+let documentFacetsCache: { expiresAt: number; data: NeonDocumentFacetData } | null = null;
+let documentFacetsInFlight: Promise<NeonDocumentFacetData> | null = null;
+let documentEnrichmentsTableCache: { checkedAt: number; available: boolean } | null = null;
+
+async function hasDocumentEnrichmentsTable(): Promise<boolean> {
+  const now = Date.now();
+  if (documentEnrichmentsTableCache && now - documentEnrichmentsTableCache.checkedAt < 60_000) {
+    return documentEnrichmentsTableCache.available;
+  }
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT to_regclass('public.document_enrichments') IS NOT NULL AS available
+  `) as unknown as Array<{ available: boolean }>;
+  const available = Boolean(rows[0]?.available);
+  documentEnrichmentsTableCache = { checkedAt: now, available };
+  if (!available) {
+    console.warn("[neon] document_enrichments is not available; using bounded documents-only projection");
+  }
+  return available;
+}
+
+export async function isDocumentEnrichmentProjectionAvailable(): Promise<boolean> {
+  return hasDocumentEnrichmentsTable();
+}
 
 // Phase 3 of migrating off custom_documents.json (see CLAUDE.md): a
 // read-only query against the `documents` mirror table (Phase 1/2), for
@@ -1349,11 +1436,14 @@ export async function getAllMirroredDocumentMetadata(): Promise<NeonMirroredDocu
   return rows;
 }
 
-// Feed/list projection for the Neon reader cutover. This deliberately returns
-// metadata only and bounds the result in SQL: the newest global records plus
-// the newest records for each pinned source. It never selects full_text.
-export async function getMirroredDocumentFeedMetadata(
-  options: MirroredDocumentFeedOptions = {}
+function isMissingDocumentEnrichmentsError(error: unknown): boolean {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const message = String(record.message || error || "").toLowerCase();
+  return String(record.code || "") === "42P01" && message.includes("document_enrichments");
+}
+
+async function getMirroredDocumentFeedMetadataWithoutEnrichment(
+  options: MirroredDocumentFeedOptions
 ): Promise<NeonMirroredDocumentRow[]> {
   const sql = getSql();
   const limit = Math.max(0, Math.min(options.limit ?? 250, 1000));
@@ -1361,8 +1451,7 @@ export async function getMirroredDocumentFeedMetadata(
     .map((value) => String(value || "").trim())
     .filter(Boolean);
   const pinnedSourceKindLimit = Math.max(0, Math.min(options.pinnedSourceKindLimit ?? 25, 100));
-
-  const rows = (await sql`
+  return (await sql`
     WITH raw_candidates AS (
       SELECT
         document_id,
@@ -1389,12 +1478,19 @@ export async function getMirroredDocumentFeedMetadata(
         metadata,
         source_kind,
         updated_at,
+        raw_published,
         CASE
           WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+            AND pg_input_is_valid(substring(raw_published FROM 1 FOR 10), 'date')
             THEN substring(raw_published FROM 1 FOR 10)::date
           WHEN raw_published ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(replace(raw_published, '.', ''), 'date')
             THEN to_date(replace(raw_published, '.', ''), 'Month DD, YYYY')
           WHEN raw_published ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'date'
+            )
             THEN to_date(
               regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
               'Mon DD, YYYY'
@@ -1403,22 +1499,34 @@ export async function getMirroredDocumentFeedMetadata(
         END AS published_on
       FROM raw_candidates
     ),
+    sortable_candidates AS (
+      SELECT
+        *,
+        CASE
+          WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})?$'
+            AND pg_input_is_valid(raw_published, 'timestamp with time zone')
+            THEN raw_published::timestamptz
+          ELSE published_on::timestamp AT TIME ZONE 'UTC'
+        END AS published_sort
+      FROM dated_candidates
+    ),
     ranked_candidates AS (
       SELECT
         document_id,
         metadata,
         source_kind,
         published_on,
+        published_sort,
         row_number() OVER (
-          ORDER BY published_on DESC, updated_at DESC, document_id
+          ORDER BY published_sort DESC, updated_at DESC, document_id
         ) AS global_rank,
         row_number() OVER (
           PARTITION BY source_kind
-          ORDER BY published_on DESC, updated_at DESC, document_id
+          ORDER BY published_sort DESC, updated_at DESC, document_id
         ) AS source_rank
-      FROM dated_candidates
-      WHERE published_on IS NOT NULL
-        AND published_on <= CURRENT_DATE
+      FROM sortable_candidates
+      WHERE published_sort IS NOT NULL
+        AND published_sort <= now()
     )
     SELECT document_id, metadata
     FROM ranked_candidates
@@ -1427,10 +1535,1174 @@ export async function getMirroredDocumentFeedMetadata(
          source_kind = ANY(${pinnedSourceKinds})
          AND source_rank <= ${pinnedSourceKindLimit}
        )
-    ORDER BY published_on DESC, document_id
+    ORDER BY published_sort DESC, document_id
   `) as unknown as NeonMirroredDocumentRow[];
+}
 
-  return rows;
+// Feed/list projection for the Neon reader cutover. This deliberately returns
+// metadata only and bounds the result in SQL: the newest global records plus
+// the newest records for each pinned source. It never selects full_text.
+export async function getMirroredDocumentFeedMetadata(
+  options: MirroredDocumentFeedOptions = {}
+): Promise<NeonMirroredDocumentRow[]> {
+  if (!(await hasDocumentEnrichmentsTable())) {
+    return getMirroredDocumentFeedMetadataWithoutEnrichment(options);
+  }
+  const sql = getSql();
+  const limit = Math.max(0, Math.min(options.limit ?? 250, 1000));
+  const pinnedSourceKinds = (options.pinnedSourceKinds ?? [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const pinnedSourceKindLimit = Math.max(0, Math.min(options.pinnedSourceKindLimit ?? 25, 100));
+
+  try {
+    const rows = (await sql`
+    WITH raw_candidates AS (
+      SELECT
+        document_id,
+        metadata,
+        source_kind,
+        updated_at,
+        trim(regexp_replace(
+          COALESCE(
+            NULLIF(metadata->>'published_at', ''),
+            NULLIF(metadata->>'published_date', ''),
+            NULLIF(metadata->>'date', ''),
+            NULLIF(published_date, ''),
+            ''
+          ),
+          '[[:space:]]+',
+          ' ',
+          'g'
+        )) AS raw_published
+      FROM documents
+    ),
+    dated_candidates AS (
+      SELECT
+        document_id,
+        metadata,
+        source_kind,
+        updated_at,
+        raw_published,
+        CASE
+          WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+            AND pg_input_is_valid(substring(raw_published FROM 1 FOR 10), 'date')
+            THEN substring(raw_published FROM 1 FOR 10)::date
+          WHEN raw_published ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(replace(raw_published, '.', ''), 'date')
+            THEN to_date(replace(raw_published, '.', ''), 'Month DD, YYYY')
+          WHEN raw_published ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'date'
+            )
+            THEN to_date(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'Mon DD, YYYY'
+            )
+          ELSE NULL
+        END AS published_on
+      FROM raw_candidates
+    ),
+    sortable_candidates AS (
+      SELECT
+        *,
+        CASE
+          WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})?$'
+            AND pg_input_is_valid(raw_published, 'timestamp with time zone')
+            THEN raw_published::timestamptz
+          ELSE published_on::timestamp AT TIME ZONE 'UTC'
+        END AS published_sort
+      FROM dated_candidates
+    ),
+    ranked_candidates AS (
+      SELECT
+        document_id,
+        metadata,
+        source_kind,
+        published_on,
+        published_sort,
+        row_number() OVER (
+          ORDER BY published_sort DESC, updated_at DESC, document_id
+        ) AS global_rank,
+        row_number() OVER (
+          PARTITION BY source_kind
+          ORDER BY published_sort DESC, updated_at DESC, document_id
+        ) AS source_rank
+      FROM sortable_candidates
+      WHERE published_sort IS NOT NULL
+        AND published_sort <= now()
+    )
+    , selected_candidates AS (
+      SELECT document_id, metadata, published_on, published_sort
+      FROM ranked_candidates
+      WHERE global_rank <= ${limit}
+         OR (
+           source_kind = ANY(${pinnedSourceKinds})
+           AND source_rank <= ${pinnedSourceKindLimit}
+         )
+    )
+    SELECT
+      selected.document_id,
+      selected.metadata,
+      CASE
+        WHEN enrichment.entry IS NULL THEN NULL
+        ELSE jsonb_strip_nulls(jsonb_build_object(
+          'status', enrichment.entry->'status',
+          'model', enrichment.entry->'model',
+          'pipeline_version', enrichment.entry->'pipeline_version',
+          'updated_at', enrichment.entry->'updated_at',
+          'review', jsonb_strip_nulls(jsonb_build_object(
+            'decision', enrichment.entry #> '{review,decision}'
+          )),
+          'enrichment', jsonb_strip_nulls(jsonb_build_object(
+            'summary', enrichment.entry #> '{enrichment,summary}',
+            'tags', enrichment.entry #> '{enrichment,tags}',
+            'keywords', enrichment.entry #> '{enrichment,keywords}',
+            'confidence', enrichment.entry #> '{enrichment,confidence}'
+          )),
+          'sentiment', jsonb_strip_nulls(jsonb_build_object(
+            'label', enrichment.entry #> '{sentiment,label}',
+            'score', enrichment.entry #> '{sentiment,score}'
+          ))
+        ))
+      END AS enrichment_entry
+    FROM selected_candidates selected
+    LEFT JOIN document_enrichments enrichment
+      ON enrichment.document_id = selected.document_id
+    ORDER BY selected.published_sort DESC, selected.document_id
+    `) as unknown as NeonMirroredDocumentRow[];
+
+    return rows;
+  } catch (error) {
+    if (!isMissingDocumentEnrichmentsError(error)) throw error;
+    documentEnrichmentsTableCache = { checkedAt: Date.now(), available: false };
+    console.warn("[neon] document_enrichments disappeared during feed read; using bounded documents-only projection");
+    return getMirroredDocumentFeedMetadataWithoutEnrichment(options);
+  }
+}
+
+async function getMirroredDocumentListPageWithoutEnrichment(
+  options: MirroredDocumentListOptions
+): Promise<NeonMirroredDocumentListPage> {
+  const sql = getSql();
+  const q = String(options.q || "").trim().toLowerCase();
+  const organization = String(options.organization || "").trim();
+  const sourceKind = String(options.sourceKind || "").trim();
+  const topic = String(options.topic || "").trim().toLowerCase();
+  const keyword = String(options.keyword || "").trim().toLowerCase();
+  const tag = String(options.tag || "").trim().toLowerCase();
+  const status = String(options.status || "").trim();
+  const fromDate = options.fromDate && Number.isFinite(options.fromDate.getTime())
+    ? options.fromDate.toISOString().slice(0, 10)
+    : null;
+  const toDate = options.toDate && Number.isFinite(options.toDate.getTime())
+    ? options.toDate.toISOString().slice(0, 10)
+    : null;
+  const documentIds = (options.documentIds ?? [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .slice(0, 100);
+  const hasDocumentIds = options.hasDocumentIdsFilter ?? documentIds.length > 0;
+  const sort = options.sort ?? "date_desc";
+  const page = Math.max(1, Math.min(options.page ?? 1, 99_999));
+  const pageSize = Math.max(1, Math.min(options.pageSize ?? 25, 100));
+  const offset = (page - 1) * pageSize;
+
+  const rows = (await sql`
+    WITH raw_documents AS (
+      SELECT
+        documents.document_id,
+        documents.metadata,
+        documents.full_text,
+        documents.source_kind,
+        documents.organization,
+        documents.doc_type,
+        documents.speaker,
+        documents.title,
+        documents.url,
+        documents.updated_at AS row_updated_at,
+        semantic_update.semantic_updated_at,
+        trim(regexp_replace(
+          COALESCE(
+            NULLIF(documents.metadata->>'published_at', ''),
+            NULLIF(documents.metadata->>'published_date', ''),
+            NULLIF(documents.metadata->>'date', ''),
+            NULLIF(documents.published_date, ''),
+            ''
+          ),
+          '[[:space:]]+',
+          ' ',
+          'g'
+        )) AS raw_published
+      FROM documents
+      LEFT JOIN LATERAL (
+        SELECT parsed.semantic_updated_at
+        FROM (VALUES
+          (1, NULLIF(btrim(documents.metadata->>'last_reviewed_or_updated'), '')),
+          (2, NULLIF(btrim(documents.metadata->>'updated_date'), '')),
+          (3, NULLIF(btrim(documents.metadata->>'extraction_date'), ''))
+        ) AS candidate(priority, raw_updated)
+        CROSS JOIN LATERAL (
+          SELECT CASE
+            WHEN candidate.raw_updated ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})$'
+              AND pg_input_is_valid(candidate.raw_updated, 'timestamp with time zone')
+              THEN candidate.raw_updated::timestamptz
+            WHEN candidate.raw_updated ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?$'
+              AND pg_input_is_valid(candidate.raw_updated, 'timestamp without time zone')
+              THEN candidate.raw_updated::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+              AND pg_input_is_valid(candidate.raw_updated, 'date')
+              THEN candidate.raw_updated::date::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(replace(candidate.raw_updated, '.', ''), 'date')
+              THEN to_date(replace(candidate.raw_updated, '.', ''), 'Month DD, YYYY')::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(
+                regexp_replace(replace(candidate.raw_updated, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'date'
+              )
+              THEN to_date(
+                regexp_replace(replace(candidate.raw_updated, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'Mon DD, YYYY'
+              )::timestamp AT TIME ZONE 'UTC'
+            ELSE NULL
+          END AS semantic_updated_at
+        ) parsed
+        WHERE parsed.semantic_updated_at IS NOT NULL
+        ORDER BY candidate.priority
+        LIMIT 1
+      ) semantic_update ON TRUE
+    ),
+    projected AS (
+      SELECT
+        *,
+        CASE
+          WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+            AND pg_input_is_valid(substring(raw_published FROM 1 FOR 10), 'date')
+            THEN substring(raw_published FROM 1 FOR 10)::date
+          WHEN raw_published ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(replace(raw_published, '.', ''), 'date')
+            THEN to_date(replace(raw_published, '.', ''), 'Month DD, YYYY')
+          WHEN raw_published ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'date'
+            )
+            THEN to_date(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'Mon DD, YYYY'
+            )
+          ELSE NULL
+        END AS published_on,
+        CASE
+          WHEN lower(COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC'))
+            IN ('financial news', 'financials news') THEN 'News'
+          ELSE COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC')
+        END AS organization_label,
+        lower(regexp_replace(replace(replace(COALESCE(metadata->>'tags', ''), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS topic_text,
+        lower(regexp_replace(replace(replace(COALESCE(metadata->>'keywords', ''), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS keyword_text,
+        lower(concat_ws(
+          ' ',
+          title,
+          organization,
+          source_kind,
+          doc_type,
+          speaker,
+          url,
+          metadata::text,
+          full_text
+        )) AS search_text
+      FROM raw_documents
+    ),
+    sortable AS (
+      SELECT
+        *,
+        CASE
+          WHEN raw_published ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})?$'
+            AND pg_input_is_valid(raw_published, 'timestamp with time zone')
+            THEN raw_published::timestamptz
+          ELSE published_on::timestamp AT TIME ZONE 'UTC'
+        END AS published_sort
+      FROM projected
+    ),
+    filtered AS (
+      SELECT *, count(*) OVER () AS total_count
+      FROM sortable
+      WHERE (${hasDocumentIds} = false OR document_id = ANY(${documentIds}::text[]))
+        AND (${organization} = '' OR organization_label = ${organization})
+        AND (${sourceKind} = '' OR source_kind = ${sourceKind})
+        AND (${status} = '' OR ${status} = 'not_enriched')
+        AND (${topic} = '' OR position(${topic} in topic_text) > 0)
+        AND (${keyword} = '' OR position(${keyword} in keyword_text) > 0)
+        AND (${tag} = '' OR position(${tag} in topic_text) > 0)
+        AND (${fromDate}::date IS NULL OR published_on IS NULL OR published_on >= ${fromDate}::date)
+        AND (${toDate}::date IS NULL OR published_on IS NULL OR published_on <= ${toDate}::date)
+        AND (${q} = '' OR ${hasDocumentIds} = true OR position(${q} in search_text) > 0)
+    )
+    SELECT document_id, metadata, NULL::jsonb AS enrichment_entry, total_count
+    FROM filtered
+    ORDER BY
+      CASE WHEN ${sort} = 'date_asc' THEN published_sort END ASC NULLS LAST,
+      CASE WHEN ${sort} = 'updated_desc' THEN semantic_updated_at END DESC NULLS LAST,
+      CASE WHEN ${sort} = 'updated_desc' THEN row_updated_at END DESC NULLS LAST,
+      CASE WHEN ${sort} NOT IN ('date_asc', 'updated_desc') THEN published_sort END DESC NULLS LAST,
+      document_id ASC
+    OFFSET ${offset}
+    LIMIT ${pageSize}
+  `) as unknown as Array<NeonMirroredDocumentRow & { total_count: number | string }>;
+
+  return {
+    rows,
+    total: rows.length > 0 ? Number(rows[0].total_count || 0) : 0,
+  };
+}
+
+/**
+ * Row-scoped document list projection. Filtering, sorting and pagination all
+ * happen before rows leave Neon, so opening or paging the document browser
+ * cannot download either monolithic GCS snapshot (or the entire Neon corpus).
+ */
+export async function getMirroredDocumentListPage(
+  options: MirroredDocumentListOptions = {}
+): Promise<NeonMirroredDocumentListPage> {
+  if (!(await hasDocumentEnrichmentsTable())) {
+    return getMirroredDocumentListPageWithoutEnrichment(options);
+  }
+  const sql = getSql();
+  const q = String(options.q || "").trim().toLowerCase();
+  const organization = String(options.organization || "").trim();
+  const sourceKind = String(options.sourceKind || "").trim();
+  const topic = String(options.topic || "").trim().toLowerCase();
+  const keyword = String(options.keyword || "").trim().toLowerCase();
+  const tag = String(options.tag || "").trim().toLowerCase();
+  const status = String(options.status || "").trim();
+  const fromDate = options.fromDate && Number.isFinite(options.fromDate.getTime())
+    ? options.fromDate.toISOString().slice(0, 10)
+    : null;
+  const toDate = options.toDate && Number.isFinite(options.toDate.getTime())
+    ? options.toDate.toISOString().slice(0, 10)
+    : null;
+  const documentIds = (options.documentIds ?? [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .slice(0, 100);
+  const hasDocumentIds = options.hasDocumentIdsFilter ?? documentIds.length > 0;
+  const sort = options.sort ?? "date_desc";
+  const page = Math.max(1, Math.min(options.page ?? 1, 99_999));
+  const pageSize = Math.max(1, Math.min(options.pageSize ?? 25, 100));
+  const offset = (page - 1) * pageSize;
+
+  let rows: Array<NeonMirroredDocumentRow & { total_count: number | string }>;
+  try {
+    rows = (await sql`
+    WITH raw_documents AS (
+      SELECT
+        documents.document_id,
+        documents.metadata,
+        documents.full_text,
+        documents.source_kind,
+        documents.organization,
+        documents.doc_type,
+        documents.speaker,
+        documents.title,
+        documents.url,
+        documents.updated_at AS document_updated_at,
+        enrichment.entry AS enrichment_entry,
+        enrichment.updated_at AS enrichment_updated_at,
+        semantic_update.semantic_updated_at,
+        trim(regexp_replace(
+          COALESCE(
+            NULLIF(documents.metadata->>'published_at', ''),
+            NULLIF(documents.metadata->>'published_date', ''),
+            NULLIF(documents.metadata->>'date', ''),
+            NULLIF(documents.published_date, ''),
+            ''
+          ),
+          '[[:space:]]+',
+          ' ',
+          'g'
+        )) AS raw_published
+      FROM documents
+      LEFT JOIN document_enrichments enrichment
+        ON enrichment.document_id = documents.document_id
+      LEFT JOIN LATERAL (
+        SELECT parsed.semantic_updated_at
+        FROM (VALUES
+          (1, NULLIF(btrim(documents.metadata->>'last_reviewed_or_updated'), '')),
+          (2, NULLIF(btrim(documents.metadata->>'updated_date'), '')),
+          (3, NULLIF(btrim(documents.metadata->>'extraction_date'), '')),
+          (4, NULLIF(btrim(enrichment.entry->>'updated_at'), ''))
+        ) AS candidate(priority, raw_updated)
+        CROSS JOIN LATERAL (
+          SELECT CASE
+            WHEN candidate.raw_updated ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})$'
+              AND pg_input_is_valid(candidate.raw_updated, 'timestamp with time zone')
+              THEN candidate.raw_updated::timestamptz
+            WHEN candidate.raw_updated ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?$'
+              AND pg_input_is_valid(candidate.raw_updated, 'timestamp without time zone')
+              THEN candidate.raw_updated::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+              AND pg_input_is_valid(candidate.raw_updated, 'date')
+              THEN candidate.raw_updated::date::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(replace(candidate.raw_updated, '.', ''), 'date')
+              THEN to_date(replace(candidate.raw_updated, '.', ''), 'Month DD, YYYY')::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(
+                regexp_replace(replace(candidate.raw_updated, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'date'
+              )
+              THEN to_date(
+                regexp_replace(replace(candidate.raw_updated, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'Mon DD, YYYY'
+              )::timestamp AT TIME ZONE 'UTC'
+            ELSE NULL
+          END AS semantic_updated_at
+        ) parsed
+        WHERE parsed.semantic_updated_at IS NOT NULL
+        ORDER BY candidate.priority
+        LIMIT 1
+      ) semantic_update ON TRUE
+    ),
+    projected AS (
+      SELECT
+        *,
+        CASE
+          WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+            AND pg_input_is_valid(substring(raw_published FROM 1 FOR 10), 'date')
+            THEN substring(raw_published FROM 1 FOR 10)::date
+          WHEN raw_published ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(replace(raw_published, '.', ''), 'date')
+            THEN to_date(replace(raw_published, '.', ''), 'Month DD, YYYY')
+          WHEN raw_published ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'date'
+            )
+            THEN to_date(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'Mon DD, YYYY'
+            )
+          ELSE NULL
+        END AS published_on,
+        CASE
+          WHEN lower(COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC'))
+            IN ('financial news', 'financials news') THEN 'News'
+          ELSE COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC')
+        END AS organization_label,
+        COALESCE(NULLIF(enrichment_entry->>'status', ''), 'not_enriched') AS enrichment_status,
+        lower(regexp_replace(replace(replace(concat_ws(
+          ' ',
+          COALESCE(metadata->>'tags', ''),
+          COALESCE(enrichment_entry #>> '{enrichment,tags}', '')
+        ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS topic_text,
+        lower(regexp_replace(replace(replace(concat_ws(
+          ' ',
+          COALESCE(metadata->>'keywords', ''),
+          COALESCE(enrichment_entry #>> '{enrichment,keywords}', '')
+        ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS keyword_text,
+        lower(concat_ws(
+          ' ',
+          title,
+          organization,
+          source_kind,
+          doc_type,
+          speaker,
+          url,
+          metadata::text,
+          enrichment_entry::text,
+          full_text
+        )) AS search_text,
+        GREATEST(document_updated_at, COALESCE(enrichment_updated_at, document_updated_at)) AS row_updated_at
+      FROM raw_documents
+    ),
+    sortable AS (
+      SELECT
+        *,
+        CASE
+          WHEN raw_published ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})?$'
+            AND pg_input_is_valid(raw_published, 'timestamp with time zone')
+            THEN raw_published::timestamptz
+          ELSE published_on::timestamp AT TIME ZONE 'UTC'
+        END AS published_sort
+      FROM projected
+    ),
+    filtered AS (
+      SELECT *, count(*) OVER () AS total_count
+      FROM sortable
+      WHERE (${hasDocumentIds} = false OR document_id = ANY(${documentIds}::text[]))
+        AND (${organization} = '' OR organization_label = ${organization})
+        AND (${sourceKind} = '' OR source_kind = ${sourceKind})
+        AND (${status} = '' OR enrichment_status = ${status})
+        AND (${topic} = '' OR position(${topic} in topic_text) > 0)
+        AND (${keyword} = '' OR position(${keyword} in keyword_text) > 0)
+        AND (${tag} = '' OR position(${tag} in topic_text) > 0)
+        AND (${fromDate}::date IS NULL OR published_on IS NULL OR published_on >= ${fromDate}::date)
+        AND (${toDate}::date IS NULL OR published_on IS NULL OR published_on <= ${toDate}::date)
+        AND (${q} = '' OR ${hasDocumentIds} = true OR position(${q} in search_text) > 0)
+    )
+    SELECT
+      document_id,
+      metadata,
+      CASE
+        WHEN enrichment_entry IS NULL THEN NULL
+        ELSE jsonb_strip_nulls(jsonb_build_object(
+          'status', enrichment_entry->'status',
+          'model', enrichment_entry->'model',
+          'pipeline_version', enrichment_entry->'pipeline_version',
+          'updated_at', enrichment_entry->'updated_at',
+          'review', jsonb_strip_nulls(jsonb_build_object(
+            'decision', enrichment_entry #> '{review,decision}'
+          )),
+          'enrichment', jsonb_strip_nulls(jsonb_build_object(
+            'summary', enrichment_entry #> '{enrichment,summary}',
+            'tags', enrichment_entry #> '{enrichment,tags}',
+            'keywords', enrichment_entry #> '{enrichment,keywords}',
+            'confidence', enrichment_entry #> '{enrichment,confidence}'
+          )),
+          'sentiment', jsonb_strip_nulls(jsonb_build_object(
+            'label', enrichment_entry #> '{sentiment,label}',
+            'score', enrichment_entry #> '{sentiment,score}'
+          ))
+        ))
+      END AS enrichment_entry,
+      total_count
+    FROM filtered
+    ORDER BY
+      CASE WHEN ${sort} = 'date_asc' THEN published_sort END ASC NULLS LAST,
+      CASE WHEN ${sort} = 'updated_desc' THEN semantic_updated_at END DESC NULLS LAST,
+      CASE WHEN ${sort} = 'updated_desc' THEN row_updated_at END DESC NULLS LAST,
+      CASE WHEN ${sort} NOT IN ('date_asc', 'updated_desc') THEN published_sort END DESC NULLS LAST,
+      document_id ASC
+    OFFSET ${offset}
+    LIMIT ${pageSize}
+    `) as unknown as Array<NeonMirroredDocumentRow & { total_count: number | string }>;
+  } catch (error) {
+    if (!isMissingDocumentEnrichmentsError(error)) throw error;
+    documentEnrichmentsTableCache = { checkedAt: Date.now(), available: false };
+    console.warn("[neon] document_enrichments disappeared during list read; using bounded documents-only projection");
+    return getMirroredDocumentListPageWithoutEnrichment(options);
+  }
+
+  return {
+    rows,
+    total: rows.length > 0 ? Number(rows[0].total_count || 0) : 0,
+  };
+}
+
+/** Fetch exactly one document row and its enrichment; never scans GCS. */
+export async function getMirroredDocumentDetail(
+  documentId: string
+): Promise<NeonMirroredDocumentDetailRow | null> {
+  const sql = getSql();
+  const loadWithoutEnrichment = async (): Promise<NeonMirroredDocumentDetailRow | null> => {
+    const rows = (await sql`
+      SELECT document_id, metadata, full_text, NULL::jsonb AS enrichment_entry
+      FROM documents
+      WHERE document_id = ${documentId}
+      LIMIT 1
+    `) as unknown as NeonMirroredDocumentDetailRow[];
+    return rows[0] ?? null;
+  };
+  if (!(await hasDocumentEnrichmentsTable())) {
+    return loadWithoutEnrichment();
+  }
+  try {
+    const rows = (await sql`
+      SELECT
+        documents.document_id,
+        documents.metadata,
+        documents.full_text,
+        enrichment.entry AS enrichment_entry
+      FROM documents
+      LEFT JOIN document_enrichments enrichment
+        ON enrichment.document_id = documents.document_id
+      WHERE documents.document_id = ${documentId}
+      LIMIT 1
+    `) as unknown as NeonMirroredDocumentDetailRow[];
+    return rows[0] ?? null;
+  } catch (error) {
+    if (!isMissingDocumentEnrichmentsError(error)) throw error;
+    documentEnrichmentsTableCache = { checkedAt: Date.now(), available: false };
+    console.warn("[neon] document_enrichments disappeared during detail read; using single-row document projection");
+    return loadWithoutEnrichment();
+  }
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+type RawNeonDocumentFacetRow = {
+  sources: unknown;
+  organizations: unknown;
+  statuses: unknown;
+  topic_counts: unknown;
+  keywords: unknown;
+};
+
+function normalizeDocumentFacetRow(row: RawNeonDocumentFacetRow | undefined): NeonDocumentFacetData {
+  const topicCounts = Array.isArray(row?.topic_counts)
+    ? row.topic_counts.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const value = String((item as Record<string, unknown>).value || "").trim();
+        if (!value) return [];
+        return [{ value, count: Number((item as Record<string, unknown>).count || 0) }];
+      })
+    : [];
+  return {
+    sources: stringArray(row?.sources),
+    organizations: stringArray(row?.organizations),
+    statuses: stringArray(row?.statuses),
+    topicCounts,
+    keywords: stringArray(row?.keywords),
+  };
+}
+
+async function getMirroredDocumentFacetsWithoutEnrichment(): Promise<NeonDocumentFacetData> {
+  const sql = getSql();
+  const rows = (await sql`
+    WITH base AS MATERIALIZED (
+      SELECT
+        documents.document_id,
+        documents.source_kind,
+        CASE
+          WHEN lower(COALESCE(NULLIF(documents.metadata->>'organization', ''), NULLIF(documents.organization, ''), 'SEC'))
+            IN ('financial news', 'financials news') THEN 'News'
+          ELSE COALESCE(NULLIF(documents.metadata->>'organization', ''), NULLIF(documents.organization, ''), 'SEC')
+        END AS organization_label,
+        documents.metadata
+      FROM documents
+    ),
+    metadata_tags AS (
+      SELECT document_id, btrim(value) AS value
+      FROM base
+      CROSS JOIN LATERAL jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(metadata->'tags') = 'array' THEN metadata->'tags' ELSE '[]'::jsonb END
+      ) AS array_tag(value)
+      UNION ALL
+      SELECT document_id, btrim(value) AS value
+      FROM base
+      CROSS JOIN LATERAL regexp_split_to_table(
+        CASE WHEN jsonb_typeof(metadata->'tags') = 'string' THEN metadata->>'tags' ELSE '' END,
+        '\\s*,\\s*'
+      ) AS string_tag(value)
+    ),
+    canonical_topic_values AS (
+      SELECT
+        document_id,
+        lower(btrim(regexp_replace(replace(replace(value, '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g'))) AS value
+      FROM metadata_tags
+    ),
+    topic_counts AS (
+      SELECT value, count(DISTINCT document_id)::integer AS count
+      FROM canonical_topic_values
+      WHERE value <> ''
+      GROUP BY value
+    ),
+    metadata_keywords AS (
+      SELECT btrim(value) AS value
+      FROM base
+      CROSS JOIN LATERAL jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(metadata->'keywords') = 'array' THEN metadata->'keywords' ELSE '[]'::jsonb END
+      ) AS array_keyword(value)
+      UNION
+      SELECT btrim(value) AS value
+      FROM base
+      CROSS JOIN LATERAL regexp_split_to_table(
+        CASE WHEN jsonb_typeof(metadata->'keywords') = 'string' THEN metadata->>'keywords' ELSE '' END,
+        '\\s*,\\s*'
+      ) AS string_keyword(value)
+    )
+    SELECT
+      COALESCE((
+        SELECT jsonb_agg(source_kind ORDER BY source_kind)
+        FROM (SELECT DISTINCT source_kind FROM base WHERE source_kind <> '') source_values
+      ), '[]'::jsonb) AS sources,
+      COALESCE((
+        SELECT jsonb_agg(organization_label ORDER BY organization_label)
+        FROM (SELECT DISTINCT organization_label FROM base WHERE organization_label <> '') organization_values
+      ), '[]'::jsonb) AS organizations,
+      jsonb_build_array('not_enriched') AS statuses,
+      COALESCE((
+        SELECT jsonb_agg(jsonb_build_object('value', value, 'count', count) ORDER BY value)
+        FROM topic_counts
+      ), '[]'::jsonb) AS topic_counts,
+      COALESCE((
+        SELECT jsonb_agg(value ORDER BY value)
+        FROM (SELECT DISTINCT value FROM metadata_keywords WHERE value <> '') distinct_keywords
+      ), '[]'::jsonb) AS keywords
+  `) as unknown as RawNeonDocumentFacetRow[];
+  return normalizeDocumentFacetRow(rows[0]);
+}
+
+/**
+ * Corpus-wide facets are reduced inside Postgres and cached briefly. This
+ * keeps the existing filter menus without transferring every document row
+ * on each page/filter change.
+ */
+export async function getMirroredDocumentFacets(): Promise<NeonDocumentFacetData> {
+  const now = Date.now();
+  if (documentFacetsCache && documentFacetsCache.expiresAt > now) {
+    return documentFacetsCache.data;
+  }
+  if (documentFacetsInFlight) {
+    return documentFacetsInFlight;
+  }
+  if (!(await hasDocumentEnrichmentsTable())) {
+    const data = await getMirroredDocumentFacetsWithoutEnrichment();
+    documentFacetsCache = { expiresAt: Date.now() + DOCUMENT_FACETS_TTL_MS, data };
+    return data;
+  }
+
+  documentFacetsInFlight = (async () => {
+    try {
+      const sql = getSql();
+      const rows = (await sql`
+      WITH base AS MATERIALIZED (
+        SELECT
+          documents.document_id,
+          documents.source_kind,
+          CASE
+            WHEN lower(COALESCE(NULLIF(documents.metadata->>'organization', ''), NULLIF(documents.organization, ''), 'SEC'))
+              IN ('financial news', 'financials news') THEN 'News'
+            ELSE COALESCE(NULLIF(documents.metadata->>'organization', ''), NULLIF(documents.organization, ''), 'SEC')
+          END AS organization_label,
+          documents.metadata,
+          COALESCE(enrichment.entry, '{}'::jsonb) AS enrichment_entry
+        FROM documents
+        LEFT JOIN document_enrichments enrichment
+          ON enrichment.document_id = documents.document_id
+      ),
+      metadata_tags AS (
+        SELECT document_id, btrim(value) AS value
+        FROM base
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE WHEN jsonb_typeof(metadata->'tags') = 'array' THEN metadata->'tags' ELSE '[]'::jsonb END
+        ) AS array_tag(value)
+        UNION ALL
+        SELECT document_id, btrim(value) AS value
+        FROM base
+        CROSS JOIN LATERAL regexp_split_to_table(
+          CASE WHEN jsonb_typeof(metadata->'tags') = 'string' THEN metadata->>'tags' ELSE '' END,
+          '\\s*,\\s*'
+        ) AS string_tag(value)
+      ),
+      enrichment_tags AS (
+        SELECT document_id, btrim(value) AS value
+        FROM base
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE
+            WHEN jsonb_typeof(enrichment_entry #> '{enrichment,tags}') = 'array'
+              THEN enrichment_entry #> '{enrichment,tags}'
+            ELSE '[]'::jsonb
+          END
+        ) AS enrichment_tag(value)
+      ),
+      topic_values AS (
+        SELECT document_id, value FROM metadata_tags WHERE value <> ''
+        UNION ALL
+        SELECT document_id, value FROM enrichment_tags WHERE value <> ''
+      ),
+      canonical_topic_values AS (
+        SELECT
+          document_id,
+          lower(btrim(regexp_replace(replace(replace(value, '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g'))) AS value
+        FROM topic_values
+      ),
+      topic_counts AS (
+        SELECT value, count(DISTINCT document_id)::integer AS count
+        FROM canonical_topic_values
+        WHERE value <> ''
+        GROUP BY value
+      ),
+      metadata_keywords AS (
+        SELECT btrim(value) AS value
+        FROM base
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE WHEN jsonb_typeof(metadata->'keywords') = 'array' THEN metadata->'keywords' ELSE '[]'::jsonb END
+        ) AS array_keyword(value)
+        UNION ALL
+        SELECT btrim(value) AS value
+        FROM base
+        CROSS JOIN LATERAL regexp_split_to_table(
+          CASE WHEN jsonb_typeof(metadata->'keywords') = 'string' THEN metadata->>'keywords' ELSE '' END,
+          '\\s*,\\s*'
+        ) AS string_keyword(value)
+      ),
+      enrichment_keywords AS (
+        SELECT btrim(value) AS value
+        FROM base
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE
+            WHEN jsonb_typeof(enrichment_entry #> '{enrichment,keywords}') = 'array'
+              THEN enrichment_entry #> '{enrichment,keywords}'
+            ELSE '[]'::jsonb
+          END
+        ) AS enrichment_keyword(value)
+      ),
+      keyword_values AS (
+        SELECT value FROM metadata_keywords WHERE value <> ''
+        UNION
+        SELECT value FROM enrichment_keywords WHERE value <> ''
+      )
+      SELECT
+        COALESCE((
+          SELECT jsonb_agg(source_kind ORDER BY source_kind)
+          FROM (SELECT DISTINCT source_kind FROM base WHERE source_kind <> '') source_values
+        ), '[]'::jsonb) AS sources,
+        COALESCE((
+          SELECT jsonb_agg(organization_label ORDER BY organization_label)
+          FROM (SELECT DISTINCT organization_label FROM base WHERE organization_label <> '') organization_values
+        ), '[]'::jsonb) AS organizations,
+        COALESCE((
+          SELECT jsonb_agg(status ORDER BY status)
+          FROM (
+            SELECT DISTINCT COALESCE(NULLIF(enrichment_entry->>'status', ''), 'not_enriched') AS status
+            FROM base
+          ) status_values
+        ), '[]'::jsonb) AS statuses,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('value', value, 'count', count) ORDER BY value)
+          FROM topic_counts
+        ), '[]'::jsonb) AS topic_counts,
+        COALESCE((
+          SELECT jsonb_agg(value ORDER BY value)
+          FROM (SELECT DISTINCT value FROM keyword_values) distinct_keywords
+        ), '[]'::jsonb) AS keywords
+      `) as unknown as RawNeonDocumentFacetRow[];
+      const data = normalizeDocumentFacetRow(rows[0]);
+      documentFacetsCache = { expiresAt: Date.now() + DOCUMENT_FACETS_TTL_MS, data };
+      return data;
+    } catch (error) {
+      if (!isMissingDocumentEnrichmentsError(error)) throw error;
+      documentEnrichmentsTableCache = { checkedAt: Date.now(), available: false };
+      console.warn("[neon] document_enrichments disappeared during facet read; using metadata-only facets");
+      const data = await getMirroredDocumentFacetsWithoutEnrichment();
+      documentFacetsCache = { expiresAt: Date.now() + DOCUMENT_FACETS_TTL_MS, data };
+      return data;
+    }
+  })().finally(() => {
+    documentFacetsInFlight = null;
+  });
+
+  return documentFacetsInFlight;
+}
+
+function countRows(value: unknown, key: string): Array<Record<string, string | number>> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    const label = String(row[key] || "").trim();
+    if (!label) return [];
+    return [{ [key]: label, count: Number(row.count || 0) }];
+  });
+}
+
+/** Aggregate-only metrics reader; its result size is independent of corpus size. */
+export async function getMirroredDocumentMetricsSnapshot(): Promise<NeonDocumentMetricsSnapshot> {
+  const sql = getSql();
+  const documentRows = (await sql`
+    WITH raw_documents AS MATERIALIZED (
+      SELECT
+        documents.source_kind,
+        documents.organization,
+        documents.metadata,
+        documents.updated_at AS document_updated_at,
+        semantic_update.semantic_updated_at,
+        CASE
+          WHEN lower(COALESCE(NULLIF(documents.metadata->>'organization', ''), NULLIF(documents.organization, ''), 'SEC'))
+            IN ('financial news', 'financials news') THEN 'News'
+          ELSE COALESCE(NULLIF(documents.metadata->>'organization', ''), NULLIF(documents.organization, ''), 'SEC')
+        END AS organization_label,
+        trim(regexp_replace(
+          COALESCE(
+            NULLIF(documents.metadata->>'published_at', ''),
+            NULLIF(documents.metadata->>'published_date', ''),
+            NULLIF(documents.metadata->>'date', ''),
+            NULLIF(documents.published_date, ''),
+            ''
+          ),
+          '[[:space:]]+',
+          ' ',
+          'g'
+        )) AS raw_published
+      FROM documents
+      LEFT JOIN LATERAL (
+        SELECT parsed.semantic_updated_at
+        FROM (VALUES
+          (1, NULLIF(btrim(documents.metadata->>'last_reviewed_or_updated'), '')),
+          (2, NULLIF(btrim(documents.metadata->>'updated_date'), '')),
+          (3, NULLIF(btrim(documents.metadata->>'extraction_date'), ''))
+        ) AS candidate(priority, raw_updated)
+        CROSS JOIN LATERAL (
+          SELECT CASE
+            WHEN candidate.raw_updated ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})$'
+              AND pg_input_is_valid(candidate.raw_updated, 'timestamp with time zone')
+              THEN candidate.raw_updated::timestamptz
+            WHEN candidate.raw_updated ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?$'
+              AND pg_input_is_valid(candidate.raw_updated, 'timestamp without time zone')
+              THEN candidate.raw_updated::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+              AND pg_input_is_valid(candidate.raw_updated, 'date')
+              THEN candidate.raw_updated::date::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(replace(candidate.raw_updated, '.', ''), 'date')
+              THEN to_date(replace(candidate.raw_updated, '.', ''), 'Month DD, YYYY')::timestamp AT TIME ZONE 'UTC'
+            WHEN candidate.raw_updated ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(
+                regexp_replace(replace(candidate.raw_updated, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'date'
+              )
+              THEN to_date(
+                regexp_replace(replace(candidate.raw_updated, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'Mon DD, YYYY'
+              )::timestamp AT TIME ZONE 'UTC'
+            ELSE NULL
+          END AS semantic_updated_at
+        ) parsed
+        WHERE parsed.semantic_updated_at IS NOT NULL
+        ORDER BY candidate.priority
+        LIMIT 1
+      ) semantic_update ON documents.source_kind = 'newsapi_article'
+    ),
+    dated_documents AS MATERIALIZED (
+      SELECT
+        *,
+        CASE
+          WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+            AND pg_input_is_valid(substring(raw_published FROM 1 FOR 10), 'date')
+            THEN substring(raw_published FROM 1 FOR 10)::date
+          WHEN raw_published ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(replace(raw_published, '.', ''), 'date')
+            THEN to_date(replace(raw_published, '.', ''), 'Month DD, YYYY')
+          WHEN raw_published ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+            AND pg_input_is_valid(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'date'
+            )
+            THEN to_date(
+              regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+              'Mon DD, YYYY'
+            )
+          ELSE NULL
+        END AS published_on
+      FROM raw_documents
+    ),
+    sortable_documents AS MATERIALIZED (
+      SELECT
+        *,
+        CASE
+          WHEN raw_published ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})?$'
+            AND pg_input_is_valid(raw_published, 'timestamp with time zone')
+            THEN raw_published::timestamptz
+          ELSE published_on::timestamp AT TIME ZONE 'UTC'
+        END AS published_sort
+      FROM dated_documents
+    )
+    SELECT
+      count(*)::integer AS documents,
+      count(DISTINCT organization_label)::integer AS organizations,
+      COALESCE(max(document_updated_at)::text, '') AS documents_updated_at,
+      count(*) FILTER (
+        WHERE source_kind = 'newsapi_article'
+          AND semantic_updated_at >= now() - INTERVAL '24 hours'
+      )::integer AS processed_count,
+      count(*) FILTER (WHERE source_kind = 'newsapi_article')::integer AS newsapi_total,
+      count(*) FILTER (
+        WHERE source_kind = 'newsapi_article' AND published_on >= CURRENT_DATE - 1
+      )::integer AS newsapi_recent_24h,
+      count(*) FILTER (
+        WHERE source_kind = 'newsapi_article' AND published_on >= CURRENT_DATE - 7
+      )::integer AS newsapi_recent_7d,
+      count(*) FILTER (
+        WHERE source_kind = 'newsapi_article' AND published_on >= CURRENT_DATE - 30
+      )::integer AS newsapi_recent_30d,
+      COALESCE((
+        SELECT jsonb_agg(jsonb_build_object('source_kind', source_kind, 'count', count) ORDER BY count DESC, source_kind)
+        FROM (
+          SELECT source_kind, count(*)::integer AS count
+          FROM sortable_documents
+          GROUP BY source_kind
+        ) source_count_rows
+      ), '[]'::jsonb) AS source_counts,
+      COALESCE((
+        SELECT jsonb_agg(jsonb_build_object('source_name', source_name, 'count', count) ORDER BY count DESC, source_name)
+        FROM (
+          SELECT
+            COALESCE(
+              NULLIF(metadata->>'source_name', ''),
+              NULLIF(metadata->>'speaker', ''),
+              NULLIF(metadata->>'organization', ''),
+              'Unknown'
+            ) AS source_name,
+            count(*)::integer AS count
+          FROM sortable_documents
+          WHERE source_kind = 'newsapi_article'
+          GROUP BY 1
+          ORDER BY count DESC, source_name
+          LIMIT 12
+        ) newsapi_source_rows
+      ), '[]'::jsonb) AS newsapi_by_source,
+      (
+        SELECT jsonb_build_object(
+          'title', COALESCE(metadata->>'title', ''),
+          'url', COALESCE(metadata->>'url', ''),
+          'source_name', COALESCE(
+            NULLIF(metadata->>'source_name', ''),
+            NULLIF(metadata->>'speaker', ''),
+            NULLIF(metadata->>'organization', ''),
+            'Unknown'
+          ),
+          'published_at', raw_published,
+          'extraction_mode', COALESCE(metadata->>'newsapi_extraction_mode', '')
+        )
+        FROM sortable_documents
+        WHERE source_kind = 'newsapi_article'
+        ORDER BY published_sort DESC NULLS LAST, document_updated_at DESC
+        LIMIT 1
+      ) AS newsapi_newest
+    FROM sortable_documents
+  `) as unknown as Array<{
+    documents: number | string;
+    organizations: number | string;
+    documents_updated_at: string;
+    processed_count: number | string;
+    newsapi_total: number | string;
+    newsapi_recent_24h: number | string;
+    newsapi_recent_7d: number | string;
+    newsapi_recent_30d: number | string;
+    source_counts: unknown;
+    newsapi_by_source: unknown;
+    newsapi_newest: unknown;
+  }>;
+  const documentRow = documentRows[0];
+
+  let enriched = 0;
+  let pendingReview = 0;
+  let processedCount = Number(documentRow?.processed_count || 0);
+  let enrichmentUpdatedAt = "";
+  let enrichmentAvailable = await hasDocumentEnrichmentsTable();
+  if (enrichmentAvailable) {
+    try {
+      const enrichmentRows = (await sql`
+        WITH newsapi_semantic_updates AS MATERIALIZED (
+          SELECT semantic_update.semantic_updated_at
+          FROM documents
+          LEFT JOIN document_enrichments enrichment
+            ON enrichment.document_id = documents.document_id
+          LEFT JOIN LATERAL (
+            SELECT parsed.semantic_updated_at
+            FROM (VALUES
+              (1, NULLIF(btrim(documents.metadata->>'last_reviewed_or_updated'), '')),
+              (2, NULLIF(btrim(documents.metadata->>'updated_date'), '')),
+              (3, NULLIF(btrim(documents.metadata->>'extraction_date'), '')),
+              (4, NULLIF(btrim(enrichment.entry->>'updated_at'), ''))
+            ) AS candidate(priority, raw_updated)
+            CROSS JOIN LATERAL (
+              SELECT CASE
+                WHEN candidate.raw_updated ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})$'
+                  AND pg_input_is_valid(candidate.raw_updated, 'timestamp with time zone')
+                  THEN candidate.raw_updated::timestamptz
+                WHEN candidate.raw_updated ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?$'
+                  AND pg_input_is_valid(candidate.raw_updated, 'timestamp without time zone')
+                  THEN candidate.raw_updated::timestamp AT TIME ZONE 'UTC'
+                WHEN candidate.raw_updated ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                  AND pg_input_is_valid(candidate.raw_updated, 'date')
+                  THEN candidate.raw_updated::date::timestamp AT TIME ZONE 'UTC'
+                WHEN candidate.raw_updated ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+                  AND pg_input_is_valid(replace(candidate.raw_updated, '.', ''), 'date')
+                  THEN to_date(replace(candidate.raw_updated, '.', ''), 'Month DD, YYYY')::timestamp AT TIME ZONE 'UTC'
+                WHEN candidate.raw_updated ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+                  AND pg_input_is_valid(
+                    regexp_replace(replace(candidate.raw_updated, '.', ''), '^Sept ', 'Sep ', 'i'),
+                    'date'
+                  )
+                  THEN to_date(
+                    regexp_replace(replace(candidate.raw_updated, '.', ''), '^Sept ', 'Sep ', 'i'),
+                    'Mon DD, YYYY'
+                  )::timestamp AT TIME ZONE 'UTC'
+                ELSE NULL
+              END AS semantic_updated_at
+            ) parsed
+            WHERE parsed.semantic_updated_at IS NOT NULL
+            ORDER BY candidate.priority
+            LIMIT 1
+          ) semantic_update ON TRUE
+          WHERE documents.source_kind = 'newsapi_article'
+        )
+        SELECT
+          count(*) FILTER (
+            WHERE lower(COALESCE(entry->>'status', '')) IN ('enriched', 'fallback_enriched', 'reviewed')
+          )::integer AS enriched,
+          count(*) FILTER (
+            WHERE lower(COALESCE(entry->>'status', '')) IN ('enriched', 'fallback_enriched')
+              AND lower(COALESCE(entry #>> '{review,decision}', 'pending')) NOT IN ('accepted', 'edited', 'rejected')
+          )::integer AS pending_review,
+          (
+            SELECT count(*)::integer
+            FROM newsapi_semantic_updates
+            WHERE semantic_updated_at >= now() - INTERVAL '24 hours'
+          ) AS processed_count,
+          COALESCE(max(updated_at)::text, '') AS enrichment_updated_at
+        FROM document_enrichments
+      `) as unknown as Array<{
+        enriched: number | string;
+        pending_review: number | string;
+        processed_count: number | string;
+        enrichment_updated_at: string;
+      }>;
+      enriched = Number(enrichmentRows[0]?.enriched || 0);
+      pendingReview = Number(enrichmentRows[0]?.pending_review || 0);
+      processedCount = Number(enrichmentRows[0]?.processed_count || 0);
+      enrichmentUpdatedAt = String(enrichmentRows[0]?.enrichment_updated_at || "");
+    } catch (error) {
+      if (!isMissingDocumentEnrichmentsError(error)) throw error;
+      documentEnrichmentsTableCache = { checkedAt: Date.now(), available: false };
+      enrichmentAvailable = false;
+      console.warn("[neon] document_enrichments disappeared during metrics read; enrichment totals are unavailable");
+    }
+  }
+
+  const newestRaw = documentRow?.newsapi_newest;
+  const newest = newestRaw && typeof newestRaw === "object" && !Array.isArray(newestRaw)
+    ? newestRaw as Record<string, unknown>
+    : null;
+  const lastRunAt = [String(documentRow?.documents_updated_at || ""), enrichmentUpdatedAt]
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || "";
+  const sourceCounts = countRows(documentRow?.source_counts, "source_kind")
+    .map((row) => ({ source_kind: String(row.source_kind), count: Number(row.count || 0) }));
+  const bySource = countRows(documentRow?.newsapi_by_source, "source_name")
+    .map((row) => ({ source_name: String(row.source_name), count: Number(row.count || 0) }));
+
+  return {
+    documents: Number(documentRow?.documents || 0),
+    organizations: Number(documentRow?.organizations || 0),
+    enriched,
+    pendingReview,
+    lastRunAt,
+    processedCount,
+    sourceCounts,
+    newsApi: {
+      total: Number(documentRow?.newsapi_total || 0),
+      recent24h: Number(documentRow?.newsapi_recent_24h || 0),
+      recent7d: Number(documentRow?.newsapi_recent_7d || 0),
+      recent30d: Number(documentRow?.newsapi_recent_30d || 0),
+      newest: newest ? {
+        title: String(newest.title || ""),
+        url: String(newest.url || ""),
+        source_name: String(newest.source_name || ""),
+        published_at: String(newest.published_at || ""),
+        extraction_mode: String(newest.extraction_mode || ""),
+      } : null,
+      bySource,
+    },
+    enrichmentAvailable,
+  };
 }
 
 // ─── Stock attention (docs/stock-attention-spec.md) ─────────────────────────

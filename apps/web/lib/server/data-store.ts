@@ -17,8 +17,19 @@ import {
   type TrendItem,
   type TrendsPayload
 } from "@/lib/server/types";
-import { loadMetadataOnlyFeed, metadataRowsToCorpusDocuments } from "@/lib/server/document-metadata-feed";
-import { getAllMirroredDocumentMetadata, getMirroredDocumentFeedMetadata } from "@/lib/server/neon";
+import {
+  loadMetadataOnlyFeed,
+  projectionRowsToCorpusAndEnrichment,
+} from "@/lib/server/document-metadata-feed";
+import {
+  getAllMirroredDocumentMetadata,
+  getMirroredDocumentFacets,
+  getMirroredDocumentFeedMetadata,
+  getMirroredDocumentListPage,
+  isDocumentEnrichmentProjectionAvailable,
+  type MirroredDocumentListOptions,
+  type NeonDocumentFacetData,
+} from "@/lib/server/neon";
 
 const SEC_SPEECHES_GCS_BLOB = "all_speeches.json";
 const SEC_SPEECHES_LOCAL_FILE = "all_speeches_final.json";
@@ -914,7 +925,7 @@ export async function loadCorpusDocuments(): Promise<CustomDocumentRecord[]> {
 
 export type CorpusDocumentsLoadResult = {
   documents: CustomDocumentRecord[];
-  source: "neon" | "gcs_fallback";
+  source: "neon" | "unavailable";
   warning?: string;
 };
 
@@ -925,46 +936,34 @@ export type NewsFeedDocumentsLoadResult = {
   warning?: string;
 };
 
-// Phase 3 reader cutover (see CLAUDE.md) for callers that only need document
-// metadata, not full_text (e.g. /api/metrics's org/source-kind/newsapi
-// aggregates) - reads the Neon `documents` mirror instead of downloading and
-// parsing the full custom_documents.json blob. SEC speeches are NOT part of
-// that mirror (they live only in all_speeches.json, a separate blob the
-// Python pipeline has never written into custom_documents.json), so those
-// are still merged in from GCS exactly as loadCorpusDocuments() already
-// does - only the customPayload half of that merge is replaced.
-//
-// Falls back to the full GCS-based loadCorpusDocuments() on ANY failure
-// (missing table, connection issue, etc.) rather than degrading silently -
-// the caller gets a `source`/`warning` field instead of failing outright,
-// consistent with this route's existing partial-failure pattern.
+export type NeonDocumentListLoadResult = {
+  items: DocumentListItem[];
+  total: number;
+  facets: DocumentsFacets;
+  warnings: string[];
+};
+
+// Metadata-only compatibility reader. It intentionally fails closed instead
+// of turning a Neon outage into a full GCS download. New interactive readers
+// should prefer the bounded page/detail functions below.
 export async function loadCorpusDocumentsFromNeon(): Promise<CorpusDocumentsLoadResult> {
   try {
-    const [secPayload, neonRows] = await Promise.all([loadSecSpeeches(), getAllMirroredDocumentMetadata()]);
-
-    const dedup = new Map<string, CustomDocumentRecord>();
-    for (const doc of secPayload.documents || []) {
-      const id = normalizeString(doc.metadata?.document_id);
-      if (id) {
-        dedup.set(id, doc);
-      }
-    }
+    const neonRows = await getAllMirroredDocumentMetadata();
+    const documents: CustomDocumentRecord[] = [];
     for (const row of neonRows) {
       const id = normalizeString(row.document_id);
       if (!id) continue;
       const metadata = (row.metadata && typeof row.metadata === "object" ? row.metadata : {}) as unknown as CustomDocumentMetadata;
-      dedup.set(id, {
+      documents.push({
         metadata: { ...metadata, document_id: id },
         content: { full_text: "", paragraphs: [], sentences: [] }
       });
     }
 
-    return { documents: [...dedup.values()], source: "neon" };
+    return { documents, source: "neon" };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("[data-store] loadCorpusDocumentsFromNeon failed, falling back to GCS:", error);
-    const documents = await loadCorpusDocuments();
-    return { documents, source: "gcs_fallback", warning: `Neon corpus read failed, used GCS fallback: ${message}` };
+    console.error("[data-store] loadCorpusDocumentsFromNeon failed closed:", error);
+    return { documents: [], source: "unavailable", warning: "Neon corpus read failed; GCS fallback is disabled" };
   }
 }
 
@@ -1041,23 +1040,78 @@ export async function loadNewsFeedDocumentsFromNeon(
       pinnedSourceKindLimit: options.pinnedSourceKindLimit,
     }),
     (rows) => {
-      const corpusDocs = metadataRowsToCorpusDocuments(rows);
+      const { documents: corpusDocs, enrichment } = projectionRowsToCorpusAndEnrichment(rows);
       return selectNewsFeedDocuments(
-        buildDocumentListItems(corpusDocs, {
-          version: 1,
-          pipeline_version: "",
-          updated_at: "",
-          entries: {},
-        }),
+        buildDocumentListItems(corpusDocs, enrichment),
         listOptions
       );
     }
   );
 
+  if (result.source === "neon" && !(await isDocumentEnrichmentProjectionAvailable())) {
+    result.warning = "Neon enrichment projection is not available yet; using metadata-only document cards";
+  }
+
   if (result.warning) {
     console.error(`[data-store] ${result.warning}`);
   }
   return result;
+}
+
+export function buildDocumentsFacetsFromNeon(data: NeonDocumentFacetData): DocumentsFacets {
+  const topicCounts = new Map<string, { label: string; count: number }>();
+  for (const raw of data.topicCounts) {
+    const key = canonicalFacetToken(raw.value);
+    const label = formatFacetLabel(raw.value);
+    if (!key || !label) continue;
+    const current = topicCounts.get(key);
+    if (current) {
+      current.count += Math.max(0, Number(raw.count || 0));
+    } else {
+      topicCounts.set(key, { label, count: Math.max(0, Number(raw.count || 0)) });
+    }
+  }
+
+  const topics = [...topicCounts.values()]
+    .map((entry) => entry.label)
+    .sort((a, b) => a.localeCompare(b));
+  const keyTopics = [...topicCounts.values()]
+    .sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label))
+    .slice(0, 10)
+    .map((entry) => entry.label);
+
+  return {
+    sources: dedupList(data.sources),
+    organizations: dedupList(data.organizations),
+    topics,
+    key_topics: keyTopics,
+    keywords: dedupList(data.keywords),
+    statuses: dedupList(data.statuses),
+  };
+}
+
+/** Bounded, GCS-free projection used by the interactive document browser. */
+export async function loadDocumentListPageFromNeon(
+  options: MirroredDocumentListOptions
+): Promise<NeonDocumentListLoadResult> {
+  const [page, facetData, enrichmentAvailable] = await Promise.all([
+    getMirroredDocumentListPage(options),
+    getMirroredDocumentFacets(),
+    isDocumentEnrichmentProjectionAvailable(),
+  ]);
+  // A window count is attached to returned rows. If the requested offset is
+  // beyond the last page there is no row to carry it, so make one bounded
+  // first-page probe to preserve the real total in the API response.
+  const total = page.rows.length === 0 && (options.page ?? 1) > 1
+    ? (await getMirroredDocumentListPage({ ...options, page: 1, pageSize: 1 })).total
+    : page.total;
+  const { documents, enrichment } = projectionRowsToCorpusAndEnrichment(page.rows);
+  return {
+    items: buildDocumentListItems(documents, enrichment),
+    total,
+    facets: buildDocumentsFacetsFromNeon(facetData),
+    warnings: enrichmentAvailable ? [] : ["enrichment_state_unavailable"],
+  };
 }
 
 export function buildDocumentListItems(
@@ -1108,7 +1162,10 @@ export function buildDocumentListItems(
         typeof enrich?.enrichment?.confidence === "number" ? enrich.enrichment.confidence : 0,
       review_decision: reviewDecision,
       updated_at:
-        normalizeString(m.last_reviewed_or_updated) || normalizeString(m.updated_date) || normalizeString(enrich?.updated_at),
+        normalizeString(m.last_reviewed_or_updated) ||
+        normalizeString(m.updated_date) ||
+        normalizeString(m.extraction_date) ||
+        normalizeString(enrich?.updated_at),
       sentiment_label: (enrich?.sentiment?.label as "positive" | "negative" | "neutral") || "",
       sentiment_score: typeof enrich?.sentiment?.score === "number" ? enrich.sentiment.score : 0,
     };

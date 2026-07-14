@@ -153,6 +153,45 @@ export function filterTopicMappedArticles<T extends TopicArticleInput>(
 }
 
 /**
+ * Document feed gate. Deterministic title/summary matches qualify, as do
+ * model/stored assignments only when they exactly name a currently active
+ * canonical topic. Free-form or retired labels remain fail-closed.
+ */
+export function filterCanonicalTopicMappedDocuments<
+  T extends TopicArticleInput & { topics?: string[] }
+>(documents: T[], rules: TopicRuleView[]): Array<T & { topics: string[] }> {
+  if (rules.length === 0) return [];
+
+  const identity = (value: string) => normalizeMatchText(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const rulesByIdentity = new Map<string, TopicRuleView>();
+  for (const rule of rules) {
+    rulesByIdentity.set(identity(rule.topic_key), rule);
+    rulesByIdentity.set(identity(rule.label), rule);
+  }
+
+  const mapped: Array<T & { topics: string[] }> = [];
+  for (const document of documents) {
+    const matches = new Map<string, TopicRuleView>();
+    for (const rule of getMatchingTopics(document, rules)) {
+      matches.set(rule.topic_key, rule);
+    }
+    for (const label of document.topics || []) {
+      const rule = rulesByIdentity.get(identity(String(label || "")));
+      if (rule) matches.set(rule.topic_key, rule);
+    }
+    if (matches.size > 0) {
+      const topics = [...matches.values()]
+        .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label))
+        .map((rule) => rule.label);
+      mapped.push({ ...document, topics });
+    }
+  }
+  return mapped;
+}
+
+/**
  * Compile a raw keyword list into matchers once, so callers scanning many
  * articles (e.g. the topic-rule backtest tool) don't recompile the same
  * regex per article. Reuses the exact same word-boundary matching as

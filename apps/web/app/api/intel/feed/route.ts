@@ -4,7 +4,11 @@ import {
   loadNewsFeedDocumentsFromNeon,
 } from "@/lib/server/data-store";
 import { compactFeedArticles } from "@/lib/server/feed-payload";
-import { filterTopicMappedArticles, normalizeTopicRules } from "@/lib/intel-topic-matching";
+import {
+  filterCanonicalTopicMappedDocuments,
+  filterTopicMappedArticles,
+  normalizeTopicRules,
+} from "@/lib/intel-topic-matching";
 import {
   ensureSchema,
   getFeeds,
@@ -87,10 +91,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     let topicRules: StoredRssTopicRule[] = [];
     let unmappedFilteredCount = 0;
 
-    if (!documentsOnly && process.env.DATABASE_URL) {
+    if (process.env.DATABASE_URL) {
       await ensureSchema();
       topicRules = await getTopicRules(true);
+    }
 
+    if (!documentsOnly && process.env.DATABASE_URL) {
       articles = await getRecentArticles({ limit, feedKey, since });
 
       const latestFetchedAt = articles.reduce((max, a) => {
@@ -154,8 +160,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         limit: 250,
         pinnedSourceKindLimit: 25,
       });
-      documents = result.documents
-        .filter((doc) => !isInvalidCouponDocument(doc));
+      const policyEligibleDocuments = result.documents
+        .filter((doc) => !isInvalidCouponDocument(doc))
+        .map((doc) => ({ ...doc, description: doc.enrichment_summary || "" }));
+      documents = filterCanonicalTopicMappedDocuments(
+        policyEligibleDocuments,
+        activeTopicRules,
+      );
+      unmappedFilteredCount += policyEligibleDocuments.length - documents.length;
       documentSource = result.source;
       documentMetadataOnly = result.metadata_only;
       documentWarning = result.warning;
@@ -186,8 +198,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     );
   } catch (err) {
+    console.error("[intel/feed] request failed", err);
     return NextResponse.json(
-      { ok: false, error: String(err) },
+      { ok: false, error: "The intelligence feed is temporarily unavailable." },
       { status: 500 }
     );
   }

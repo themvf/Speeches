@@ -1,13 +1,8 @@
 import {
-  buildDocumentListItems,
-  buildDocumentsFacets,
-  loadCorpusDocuments,
-  loadEnrichmentState,
-  parseComparableDate
+  loadDocumentListPageFromNeon,
 } from "@/lib/server/data-store";
-import { buildFullTextById, filterDocumentListItems, normalizeFacetToken } from "@/lib/server/document-query";
+import { normalizeFacetToken } from "@/lib/server/document-query";
 import { createRequestId, fail, normalizeText, ok, parseDate, toInt } from "@/lib/server/api-utils";
-import type { EnrichmentStatePayload } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 
@@ -29,76 +24,49 @@ export async function GET(request: Request) {
     const pageSize = toInt(url.searchParams.get("page_size"), 25, 1, 100);
     const fromDate = parseDate(url.searchParams.get("date_from"));
     const toDate = parseDate(url.searchParams.get("date_to"));
+    const hasDocumentIdsFilter = url.searchParams.has("doc_ids");
     const docIdsParam = normalizeText(url.searchParams.get("doc_ids"));
-    const allowedDocIds = docIdsParam
-      ? new Set(docIdsParam.split(",").slice(0, 100).map((s) => s.trim()).filter(Boolean))
-      : null;
+    const documentIds = docIdsParam
+      ? docIdsParam.split(",").slice(0, 100).map((s) => s.trim()).filter(Boolean)
+      : [];
 
-    let corpusDocs;
+    let result;
     try {
-      corpusDocs = await loadCorpusDocuments();
+      result = await loadDocumentListPageFromNeon({
+        q: hasDocumentIdsFilter ? "" : q,
+        organization: org,
+        sourceKind,
+        topic,
+        keyword,
+        tag,
+        status,
+        fromDate,
+        toDate,
+        documentIds,
+        hasDocumentIdsFilter,
+        sort: ["date_asc", "updated_desc"].includes(sort)
+          ? sort as "date_asc" | "updated_desc"
+          : "date_desc",
+        page,
+        pageSize,
+      });
     } catch (error) {
-      console.error("Failed to load document corpus", { requestId, error });
+      console.error("Failed to load Neon document projection", { requestId, error });
       return fail(
-        `Document corpus is unavailable: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "Document corpus is temporarily unavailable.",
         "DOCUMENT_CORPUS_UNAVAILABLE",
         503,
         requestId
       );
     }
 
-    let enrichment: EnrichmentStatePayload = {
-      version: 1,
-      pipeline_version: "",
-      updated_at: "",
-      entries: {}
-    };
-    let enrichmentUnavailable = false;
-    try {
-      enrichment = await loadEnrichmentState();
-    } catch (error) {
-      enrichmentUnavailable = true;
-      console.error("Failed to load document enrichment state", { requestId, error });
-    }
-    const items = buildDocumentListItems(corpusDocs, enrichment);
-    const facets = buildDocumentsFacets(items);
-    const fullTextById = buildFullTextById(corpusDocs);
-
-    let filtered = filterDocumentListItems(items, fullTextById, {
-      q: allowedDocIds ? "" : q,
-      org,
-      sourceKind,
-      topic,
-      keyword,
-      tag,
-      status,
-      fromDate,
-      toDate
-    });
-
-    if (allowedDocIds) {
-      filtered = filtered.filter((item) => allowedDocIds.has(item.document_id));
-    }
-
-    const sorters: Record<string, (a: (typeof filtered)[number], b: (typeof filtered)[number]) => number> = {
-      date_desc: (a, b) => parseComparableDate(b.published_at || b.date) - parseComparableDate(a.published_at || a.date),
-      date_asc: (a, b) => parseComparableDate(a.published_at || a.date) - parseComparableDate(b.published_at || b.date),
-      updated_desc: (a, b) => parseComparableDate(b.updated_at) - parseComparableDate(a.updated_at)
-    };
-
-    filtered = filtered.sort(sorters[sort] || sorters.date_desc);
-
-    const total = filtered.length;
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-
     const payload = {
-      items: filtered.slice(start, end),
+      items: result.items,
       page,
       page_size: pageSize,
-      total,
-      facets,
-      warnings: enrichmentUnavailable ? ["enrichment_state_unavailable"] : []
+      total: result.total,
+      facets: result.facets,
+      warnings: result.warnings
     };
 
     return ok(payload, requestId);

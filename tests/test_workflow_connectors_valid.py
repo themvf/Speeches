@@ -118,4 +118,4 @@ def test_substack_public_workflow_runs_hourly():
 
     assert re.search(r'^\s*- cron: "17 \* \* \* \*"\s*$', text, flags=re.MULTILINE)
     assert "name: Substack Public Sources Hourly" in text
-    assert "group: substack-public-hourly" in text
+    assert "group: sec20-neon-corpus-writers" in text

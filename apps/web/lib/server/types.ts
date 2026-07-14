@@ -35,6 +35,7 @@ export interface CustomDocumentMetadata {
   published_at?: string;
   published_date: string;
   updated_date: string;
+  extraction_date?: string;
   last_reviewed_or_updated: string;
   notice_type?: string;
   notice_number?: string;

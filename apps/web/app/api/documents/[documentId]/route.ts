@@ -1,5 +1,6 @@
-import { loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-store";
+import { fullTextToDocumentContent, projectionRowsToEnrichmentState } from "@/lib/server/document-metadata-feed";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
+import { getMirroredDocumentDetail } from "@/lib/server/neon";
 
 export const runtime = "nodejs";
 
@@ -16,26 +17,23 @@ export async function GET(
       return fail("Document ID is required.", "DOCUMENT_ID_REQUIRED", 400, requestId);
     }
 
-    const [corpus, enrichmentState] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
-
-    const doc = corpus.find((item) => String(item.metadata?.document_id || "").trim() === docId);
-    if (!doc) {
+    const row = await getMirroredDocumentDetail(docId);
+    if (!row) {
       return fail("Document not found.", "DOCUMENT_NOT_FOUND", 404, requestId);
     }
 
+    const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const enrichmentState = projectionRowsToEnrichmentState([row]);
     const enrichEntry = enrichmentState.entries?.[docId];
+    const content = fullTextToDocumentContent(row.full_text);
 
     const payload = {
       metadata: {
-        ...(doc.metadata || {}),
+        ...metadata,
         document_id: docId,
-        published_at: String(doc.metadata?.published_date || doc.metadata?.date || "")
+        published_at: String(metadata.published_at || metadata.published_date || metadata.date || "")
       },
-      content: {
-        full_text: String(doc.content?.full_text || ""),
-        paragraphs: Array.isArray(doc.content?.paragraphs) ? doc.content?.paragraphs : [],
-        sentences: Array.isArray(doc.content?.sentences) ? doc.content?.sentences : []
-      },
+      content,
       enrichment: {
         status: String(enrichEntry?.status || "not_enriched"),
         model: String(enrichEntry?.model || ""),
@@ -73,8 +71,9 @@ export async function GET(
 
     return ok(payload, requestId);
   } catch (error) {
+    console.error("Failed to load Neon document detail", { requestId, error });
     return fail(
-      `Failed to load document detail: ${error instanceof Error ? error.message : "Unknown error"}`,
+      "Failed to load document detail.",
       "DOCUMENT_DETAIL_FAILED",
       500,
       requestId

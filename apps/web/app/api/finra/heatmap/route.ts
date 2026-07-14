@@ -1,8 +1,12 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
-import { loadCorpusDocuments } from "@/lib/server/data-store";
+import {
+  ENFORCEMENT_HEATMAP_CACHE_CONTROL,
+  loadEnforcementHeatmapDocuments,
+} from "@/lib/server/enforcement-heatmap-corpus";
 
 export const runtime = "nodejs";
-export const revalidate = 300;
+// Keep this literal so Next can statically analyze the route segment config.
+export const revalidate = 3600;
 
 /* ─── Rule label lookup ──────────────────────────────────────────────────── */
 const RULE_LABELS: Record<string, string> = {
@@ -63,10 +67,7 @@ export async function GET() {
   const requestId = createRequestId();
 
   try {
-    const corpus = await loadCorpusDocuments();
-    const awcDocs = corpus.filter(
-      (doc) => String(doc.metadata?.source_kind ?? "") === "finra_awc"
-    );
+    const awcDocs = await loadEnforcementHeatmapDocuments(["finra_awc"]);
 
     // 18-month window ending this month
     const now = new Date();
@@ -159,7 +160,9 @@ export async function GET() {
       max_cell_value: maxCellValue,
     };
 
-    return ok(payload, requestId);
+    const response = ok(payload, requestId);
+    response.headers.set("Cache-Control", ENFORCEMENT_HEATMAP_CACHE_CONTROL);
+    return response;
   } catch (err) {
     console.error("[finra/heatmap]", err);
     return fail(
