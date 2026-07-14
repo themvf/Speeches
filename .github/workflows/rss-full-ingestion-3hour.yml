@@ -21,10 +21,6 @@ on:
         options:
           - new_or_updated
           - all
-      enrich_limit:
-        description: "Max documents to enrich per RSS-backed source"
-        required: false
-        default: "25"
 
 permissions:
   contents: read
@@ -62,7 +58,6 @@ jobs:
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '30' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '2' }}
       SELECTION: ${{ github.event.inputs.selection || 'new_or_updated' }}
-      ENRICH_LIMIT: ${{ github.event.inputs.enrich_limit || '25' }}
       # v4-flash (~3x cheaper than v4-pro) is a reasonable quality tradeoff for
       # PR Newswire/Google-News-aggregator/crypto-media content - see
       # CLAUDE.md's DeepSeek review.
@@ -102,10 +97,10 @@ jobs:
           python run_financial_news_pipeline.py \
             enrich \
             --require-remote-persistence \
-            --mode only_missing_or_failed \
+            --mode all \
             --order recent \
             --source-kind "${{ matrix.connector }}" \
-            --limit "${ENRICH_LIMIT}" \
+            --doc-ids-from-summary "rss_full_source_${{ matrix.connector }}.json" \
             --provider deepseek \
             --model "${ENRICH_MODEL}" \
             --checkpoint-every 5 \

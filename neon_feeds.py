@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 import psycopg2
@@ -284,6 +284,7 @@ def delete_topic_rule(rule_id: int) -> None:
 # one-reader-at-a-time cutover) before treating this table as authoritative.
 
 _DOCUMENTS_SCHEMA_ENSURED = False
+NEON_FULL_BACKFILL_CHECKPOINT = "legacy_gcs_documents_enrichments_v1"
 
 
 def _ensure_documents_schema() -> None:
@@ -311,6 +312,7 @@ def _ensure_documents_schema() -> None:
                 """
             )
             cur.execute("CREATE INDEX IF NOT EXISTS documents_source_kind ON documents (source_kind)")
+            cur.execute("CREATE INDEX IF NOT EXISTS documents_url ON documents (url)")
             cur.execute("CREATE INDEX IF NOT EXISTS documents_updated_at ON documents (updated_at DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS documents_metadata_gin ON documents USING GIN (metadata)")
             conn.commit()
@@ -336,6 +338,29 @@ _DOCUMENTS_UPSERT_CONFLICT_CLAUSE = """
       full_text = EXCLUDED.full_text,
       metadata = EXCLUDED.metadata,
       updated_at = now()
+    WHERE (
+      documents.title,
+      documents.speaker,
+      documents.organization,
+      documents.doc_type,
+      documents.source_kind,
+      documents.url,
+      documents.published_date,
+      documents.word_count,
+      documents.full_text,
+      documents.metadata
+    ) IS DISTINCT FROM (
+      EXCLUDED.title,
+      EXCLUDED.speaker,
+      EXCLUDED.organization,
+      EXCLUDED.doc_type,
+      EXCLUDED.source_kind,
+      EXCLUDED.url,
+      EXCLUDED.published_date,
+      EXCLUDED.word_count,
+      EXCLUDED.full_text,
+      EXCLUDED.metadata
+    )
 """
 
 
@@ -463,6 +488,555 @@ def get_document(document_id: str) -> Optional[Dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM documents WHERE document_id = %s", (document_id,))
             return cur.fetchone()
+
+
+def get_existing_document_ids(document_ids: List[str]) -> Set[str]:
+    """Return the exact subset of requested IDs present in ``documents``."""
+    clean_document_ids = list(
+        dict.fromkeys(
+            clean_id
+            for clean_id in (
+                _strip_nul_bytes(str(document_id or "").strip())
+                for document_id in (document_ids or [])
+            )
+            if clean_id
+        )
+    )
+    if not clean_document_ids:
+        return set()
+    _ensure_documents_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT document_id FROM documents WHERE document_id = ANY(%s)",
+                (clean_document_ids,),
+            )
+            return {
+                str(row.get("document_id", "") or "").strip()
+                for row in cur.fetchall()
+                if str(row.get("document_id", "") or "").strip()
+            }
+
+
+# ─── Document enrichment mirror ─────────────────────────────────────────
+#
+# document_enrichment_state.json stores every enrichment result in one large
+# `entries` object.  This additive table mirrors that object one document at a
+# time so ingestion jobs can read and update only the documents they are
+# processing.  The complete legacy entry is retained in JSONB: no fields are
+# discarded, and the blob can remain the rollback source of truth during the
+# incremental cutover.
+
+_ENRICHMENTS_SCHEMA_ENSURED = False
+
+
+def _database_url_is_configured() -> bool:
+    """Return False only for the expected optional-Neon configuration case.
+
+    Enrichment mirroring is additive, so local runs and older deployments that
+    intentionally have no DATABASE_URL must continue to work.  Connectivity
+    and SQL errors are deliberately not swallowed here; callers should still
+    see real database failures instead of silently losing a requested write.
+    """
+    try:
+        get_database_url()
+        return True
+    except RuntimeError:
+        return False
+
+
+def _document_row_to_record(row: Dict[str, Any], include_full_text: bool = True) -> Dict[str, Any]:
+    """Rebuild the legacy record shape from one `documents` table row.
+
+    `metadata` is stored losslessly in the mirror.  The explicit columns are
+    backfilled only when an older metadata payload omitted them.  The legacy
+    content object only has a dedicated `full_text` column in this additive
+    schema, so bounded readers intentionally expose just that field.
+    """
+    raw_metadata = row.get("metadata")
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    column_to_metadata = {
+        "document_id": "document_id",
+        "title": "title",
+        "speaker": "speaker",
+        "organization": "organization",
+        "doc_type": "doc_type",
+        "source_kind": "source_kind",
+        "url": "url",
+        "published_date": "published_date",
+        "word_count": "word_count",
+    }
+    for column, metadata_key in column_to_metadata.items():
+        value = row.get(column)
+        if metadata_key not in metadata and value not in (None, ""):
+            metadata[metadata_key] = value
+    # Some legacy readers use `date`, while the relational column is named
+    # `published_date`; preserve both aliases when reconstructing a record.
+    if "date" not in metadata and row.get("published_date") not in (None, ""):
+        metadata["date"] = row.get("published_date")
+    content: Dict[str, Any] = {}
+    if include_full_text:
+        content["full_text"] = str(row.get("full_text", "") or "")
+    return {"metadata": metadata, "content": content}
+
+
+def get_documents(document_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Fetch explicit document IDs as legacy-shaped records in one query."""
+    clean_document_ids = list(
+        dict.fromkeys(
+            clean_id
+            for clean_id in (
+                _strip_nul_bytes(str(document_id or "").strip())
+                for document_id in (document_ids or [])
+            )
+            if clean_id
+        )
+    )
+    if not clean_document_ids or not _database_url_is_configured():
+        return {}
+    _ensure_documents_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM documents WHERE document_id = ANY(%s)",
+                (clean_document_ids,),
+            )
+            result: Dict[str, Dict[str, Any]] = {}
+            for row in cur.fetchall():
+                document_id = str(row.get("document_id", "") or "")
+                if document_id:
+                    result[document_id] = _document_row_to_record(row)
+            return result
+
+
+def get_documents_by_urls(
+    urls: List[str],
+    include_full_text: bool = False,
+) -> Dict[str, Dict[str, Any]]:
+    """Fetch exact URLs, metadata-only by default, with the newest row kept."""
+    clean_urls = list(
+        dict.fromkeys(
+            clean_url
+            for clean_url in (
+                _strip_nul_bytes(str(url or "").strip()) for url in (urls or [])
+            )
+            if clean_url
+        )
+    )
+    if not clean_urls or not _database_url_is_configured():
+        return {}
+    selected_columns = (
+        "document_id, title, speaker, organization, doc_type, source_kind, "
+        "url, published_date, word_count, metadata, updated_at"
+    )
+    if include_full_text:
+        selected_columns += ", full_text"
+    _ensure_documents_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT {selected_columns}
+                FROM documents
+                WHERE url = ANY(%s)
+                ORDER BY updated_at DESC
+                """.format(selected_columns=selected_columns),
+                (clean_urls,),
+            )
+            result: Dict[str, Dict[str, Any]] = {}
+            for row in cur.fetchall():
+                url = str(row.get("url", "") or "")
+                if url and url not in result:
+                    result[url] = _document_row_to_record(
+                        row, include_full_text=include_full_text
+                    )
+            return result
+
+
+def get_document_records_by_source_kinds(
+    source_kinds: List[str],
+    include_full_text: bool = False,
+) -> List[Dict[str, Any]]:
+    """Fetch records for explicit source kinds, omitting document text by default.
+
+    Discovery/classification only needs metadata, and selecting `full_text`
+    accidentally would recreate much of the blob egress inside Neon.  Callers
+    must opt in when they are about to extract/enrich a bounded changed set.
+    """
+    clean_source_kinds = list(
+        dict.fromkeys(
+            clean_kind
+            for clean_kind in (
+                _strip_nul_bytes(str(source_kind or "").strip())
+                for source_kind in (source_kinds or [])
+            )
+            if clean_kind
+        )
+    )
+    if not clean_source_kinds or not _database_url_is_configured():
+        return []
+    selected_columns = (
+        "document_id, title, speaker, organization, doc_type, source_kind, "
+        "url, published_date, word_count, metadata"
+    )
+    if include_full_text:
+        selected_columns += ", full_text"
+    _ensure_documents_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT {selected_columns}
+                FROM documents
+                WHERE source_kind = ANY(%s)
+                """,
+                (clean_source_kinds,),
+            )
+            return [
+                _document_row_to_record(row, include_full_text=include_full_text)
+                for row in cur.fetchall()
+            ]
+
+
+def _ensure_enrichments_schema() -> None:
+    global _ENRICHMENTS_SCHEMA_ENSURED
+    if _ENRICHMENTS_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS document_enrichments (
+                  document_id     TEXT PRIMARY KEY,
+                  status          TEXT NOT NULL DEFAULT '',
+                  pipeline_version TEXT NOT NULL DEFAULT '',
+                  entry_updated_at TEXT NOT NULL DEFAULT '',
+                  entry           JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS document_enrichments_status "
+                "ON document_enrichments (status)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS document_enrichments_updated_at "
+                "ON document_enrichments (updated_at DESC)"
+            )
+            conn.commit()
+    _ENRICHMENTS_SCHEMA_ENSURED = True
+
+
+def _enrichment_entry_to_row(document_id: str, entry: Any) -> Optional[tuple]:
+    """Map one legacy `entries[document_id]` value to a Neon row."""
+    clean_document_id = _strip_nul_bytes(str(document_id or "").strip())
+    if not clean_document_id or not isinstance(entry, dict):
+        return None
+    clean_entry = _sanitize_for_json(entry)
+    return (
+        clean_document_id,
+        _strip_nul_bytes(str(clean_entry.get("status", "") or "")),
+        _strip_nul_bytes(str(clean_entry.get("pipeline_version", "") or "")),
+        _strip_nul_bytes(str(clean_entry.get("updated_at", "") or "")),
+        psycopg2.extras.Json(clean_entry),
+    )
+
+
+_ENRICHMENTS_UPSERT_CONFLICT_CLAUSE = """
+    ON CONFLICT (document_id) DO UPDATE SET
+      status = EXCLUDED.status,
+      pipeline_version = EXCLUDED.pipeline_version,
+      entry_updated_at = EXCLUDED.entry_updated_at,
+      entry = EXCLUDED.entry,
+      updated_at = now()
+    WHERE (
+      document_enrichments.status,
+      document_enrichments.pipeline_version,
+      document_enrichments.entry_updated_at,
+      document_enrichments.entry
+    ) IS DISTINCT FROM (
+      EXCLUDED.status,
+      EXCLUDED.pipeline_version,
+      EXCLUDED.entry_updated_at,
+      EXCLUDED.entry
+    )
+"""
+
+
+def upsert_enrichment_entries(entries: Dict[str, Dict[str, Any]]) -> int:
+    """Additively upsert legacy enrichment entries in one database round trip.
+
+    Identical rows are ignored by Postgres, including their `updated_at`, so a
+    retry or checkpoint does not create avoidable writes.  The return value is
+    the number of valid rows submitted (not the number Postgres found changed).
+    Missing DATABASE_URL is an intentional no-op and returns zero.
+    """
+    if not isinstance(entries, dict) or not entries:
+        return 0
+    rows = [
+        row
+        for row in (
+            _enrichment_entry_to_row(document_id, entry)
+            for document_id, entry in entries.items()
+        )
+        if row is not None
+    ]
+    if not rows or not _database_url_is_configured():
+        return 0
+
+    _ensure_enrichments_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO document_enrichments (
+                  document_id, status, pipeline_version, entry_updated_at,
+                  entry, updated_at
+                )
+                VALUES %s
+                """
+                + _ENRICHMENTS_UPSERT_CONFLICT_CLAUSE,
+                rows,
+                template="(%s, %s, %s, %s, %s, now())",
+            )
+            conn.commit()
+    return len(rows)
+
+
+def get_enrichment_entry(document_id: str) -> Optional[Dict[str, Any]]:
+    """Read one legacy-shaped enrichment entry, or None when unavailable."""
+    clean_document_id = _strip_nul_bytes(str(document_id or "").strip())
+    if not clean_document_id or not _database_url_is_configured():
+        return None
+    _ensure_enrichments_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT entry FROM document_enrichments WHERE document_id = %s",
+                (clean_document_id,),
+            )
+            row = cur.fetchone()
+            entry = row.get("entry") if row else None
+            return dict(entry) if isinstance(entry, dict) else None
+
+
+def get_enrichment_entries(document_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Read a bounded set of legacy-shaped entries keyed by document id.
+
+    Requiring explicit IDs prevents this helper from recreating the full-state
+    download pattern it replaces.  Invalid/duplicate IDs are removed before
+    querying.  Missing DATABASE_URL and an empty ID list both return `{}`.
+    """
+    clean_document_ids = list(
+        dict.fromkeys(
+            clean_id
+            for clean_id in (
+                _strip_nul_bytes(str(document_id or "").strip())
+                for document_id in (document_ids or [])
+            )
+            if clean_id
+        )
+    )
+    if not clean_document_ids or not _database_url_is_configured():
+        return {}
+    _ensure_enrichments_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT document_id, entry
+                FROM document_enrichments
+                WHERE document_id = ANY(%s)
+                """,
+                (clean_document_ids,),
+            )
+            result: Dict[str, Dict[str, Any]] = {}
+            for row in cur.fetchall():
+                document_id = str(row.get("document_id", "") or "")
+                entry = row.get("entry")
+                if document_id and isinstance(entry, dict):
+                    result[document_id] = dict(entry)
+            return result
+
+
+def count_enrichment_entries() -> int:
+    """Return the mirror row count for backfill/coverage verification.
+
+    Unlike optional ingestion reads, verification must surface a missing or
+    unreachable database so it cannot report a misleading successful count.
+    """
+    _ensure_enrichments_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS count FROM document_enrichments")
+            row = cur.fetchone()
+            return int(row["count"]) if row else 0
+
+
+def get_existing_enrichment_ids(document_ids: List[str]) -> Set[str]:
+    """Return the exact subset of requested IDs present in enrichments."""
+    clean_document_ids = list(
+        dict.fromkeys(
+            clean_id
+            for clean_id in (
+                _strip_nul_bytes(str(document_id or "").strip())
+                for document_id in (document_ids or [])
+            )
+            if clean_id
+        )
+    )
+    if not clean_document_ids:
+        return set()
+    _ensure_enrichments_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT document_id FROM document_enrichments WHERE document_id = ANY(%s)",
+                (clean_document_ids,),
+            )
+            return {
+                str(row.get("document_id", "") or "").strip()
+                for row in cur.fetchall()
+                if str(row.get("document_id", "") or "").strip()
+            }
+
+
+def get_document_ids_needing_enrichment(
+    source_kinds: List[str],
+    limit: int = 10,
+) -> List[str]:
+    """Return a bounded pilot catch-up queue without scanning blob state.
+
+    A document is eligible when enrichment is missing, retryable, or older
+    than the document row. The latter recovers a document commit followed by
+    a failed targeted enrichment write. Persistent fallbacks stop at the same
+    three-attempt cap enforced by the pipeline.
+    """
+    clean_source_kinds = list(
+        dict.fromkeys(
+            clean_kind
+            for clean_kind in (
+                _strip_nul_bytes(str(source_kind or "").strip())
+                for source_kind in (source_kinds or [])
+            )
+            if clean_kind
+        )
+    )
+    bounded_limit = max(0, min(int(limit), 100))
+    if not clean_source_kinds or bounded_limit <= 0:
+        return []
+    _ensure_documents_schema()
+    _ensure_enrichments_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT documents.document_id
+                FROM documents
+                LEFT JOIN document_enrichments enrichment
+                  ON enrichment.document_id = documents.document_id
+                WHERE documents.source_kind = ANY(%s)
+                  AND documents.full_text <> ''
+                  AND COALESCE(documents.metadata->>'extraction_mode', '') <> 'metadata_fallback'
+                  AND (
+                    enrichment.document_id IS NULL
+                    OR documents.updated_at > enrichment.updated_at
+                    OR (
+                      lower(COALESCE(enrichment.entry->>'status', ''))
+                        NOT IN ('enriched', 'reviewed')
+                      AND CASE
+                        WHEN COALESCE(enrichment.entry->>'attempt_count', '') ~ '^[0-9]+$'
+                          THEN (enrichment.entry->>'attempt_count')::integer
+                        ELSE 0
+                      END < 3
+                    )
+                  )
+                ORDER BY documents.updated_at ASC, documents.document_id
+                LIMIT %s
+                """,
+                (clean_source_kinds, bounded_limit),
+            )
+            return [
+                str(row.get("document_id", "") or "").strip()
+                for row in cur.fetchall()
+                if str(row.get("document_id", "") or "").strip()
+            ]
+
+
+_MIGRATION_CHECKPOINT_SCHEMA_ENSURED = False
+
+
+def _ensure_migration_checkpoint_schema() -> None:
+    global _MIGRATION_CHECKPOINT_SCHEMA_ENSURED
+    if _MIGRATION_CHECKPOINT_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS persistence_migration_checkpoints (
+                  checkpoint_key TEXT PRIMARY KEY,
+                  status         TEXT NOT NULL,
+                  details        JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  verified_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            conn.commit()
+    _MIGRATION_CHECKPOINT_SCHEMA_ENSURED = True
+
+
+def set_migration_checkpoint(
+    checkpoint_key: str,
+    status: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    clean_key = _strip_nul_bytes(str(checkpoint_key or "").strip())
+    clean_status = _strip_nul_bytes(str(status or "").strip())
+    if not clean_key or not clean_status:
+        raise ValueError("checkpoint_key and status are required")
+    _ensure_migration_checkpoint_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO persistence_migration_checkpoints (
+                  checkpoint_key, status, details, verified_at
+                )
+                VALUES (%s, %s, %s, now())
+                ON CONFLICT (checkpoint_key) DO UPDATE SET
+                  status = EXCLUDED.status,
+                  details = EXCLUDED.details,
+                  verified_at = now()
+                """,
+                (
+                    clean_key,
+                    clean_status,
+                    psycopg2.extras.Json(_sanitize_for_json(details or {})),
+                ),
+            )
+            conn.commit()
+
+
+def get_migration_checkpoint(checkpoint_key: str) -> Optional[Dict[str, Any]]:
+    clean_key = _strip_nul_bytes(str(checkpoint_key or "").strip())
+    if not clean_key:
+        return None
+    _ensure_migration_checkpoint_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT checkpoint_key, status, details, verified_at
+                FROM persistence_migration_checkpoints
+                WHERE checkpoint_key = %s
+                """,
+                (clean_key,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
 
 
 # ─── Reddit attention sweep storage (docs/stock-attention-spec.md §3) ───────

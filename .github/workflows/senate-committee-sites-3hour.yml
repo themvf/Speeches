@@ -34,7 +34,6 @@ jobs:
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       EXTRACTION_LIMIT: ${{ github.event.inputs.extraction_limit || '40' }}
       MAX_PAGES: ${{ github.event.inputs.max_pages || '3' }}
-      ENRICH_LIMIT: "25"
       ENRICH_MODEL: "deepseek-v4-pro"
 
     steps:
@@ -71,10 +70,10 @@ jobs:
           python run_financial_news_pipeline.py \
             enrich \
             --require-remote-persistence \
-            --mode only_missing_or_failed \
+            --mode all \
             --order recent \
             --source-kind senate_committee_site \
-            --limit "${ENRICH_LIMIT}" \
+            --doc-ids-from-summary senate_committee_sites_summary.json \
             --provider deepseek \
             --model "${ENRICH_MODEL}" \
             --checkpoint-every 5 \

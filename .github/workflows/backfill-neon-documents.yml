@@ -20,12 +20,27 @@ on:
         description: "Spot-check this many random documents after backfilling (0 to skip)"
         required: false
         default: "25"
+      include_enrichment:
+        description: "Also mirror document enrichment state into row-level Neon storage"
+        required: false
+        type: boolean
+        default: true
+      include_speeches:
+        description: "Also normalize and mirror legacy all_speeches.json records"
+        required: false
+        type: boolean
+        default: true
+      force:
+        description: "Allow overwriting an existing verified backfill (only during a full writer freeze)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: backfill-neon-documents
+  group: sec20-neon-corpus-writers
   cancel-in-progress: false
 
 jobs:
@@ -36,10 +51,13 @@ jobs:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
-      LIMIT: ${{ github.event.inputs.limit || '0' }}
-      BATCH_SIZE: ${{ github.event.inputs.batch_size || '200' }}
-      VERIFY_SAMPLE: ${{ github.event.inputs.verify_sample || '25' }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      LIMIT: ${{ inputs.limit }}
+      BATCH_SIZE: ${{ inputs.batch_size }}
+      VERIFY_SAMPLE: ${{ inputs.verify_sample }}
+      INCLUDE_ENRICHMENT: ${{ inputs.include_enrichment }}
+      INCLUDE_SPEECHES: ${{ inputs.include_speeches }}
+      FORCE: ${{ inputs.force }}
 
     steps:
       - name: Checkout
@@ -56,12 +74,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Backfill custom_documents.json into Neon
+      - name: Backfill document and enrichment snapshots into Neon
         run: |
           set -euo pipefail
           args=(--batch-size "${BATCH_SIZE}" --limit "${LIMIT}" --verify-sample "${VERIFY_SAMPLE}" --summary-path backfill_neon_documents_summary.json)
           if [ "${DRY_RUN}" = "true" ]; then
             args+=(--dry-run)
+          fi
+          if [ "${INCLUDE_ENRICHMENT}" = "true" ]; then
+            args+=(--include-enrichment)
+          fi
+          if [ "${INCLUDE_SPEECHES}" = "true" ]; then
+            args+=(--include-speeches)
+          fi
+          if [ "${FORCE}" = "true" ]; then
+            args+=(--force)
           fi
           python backfill_neon_documents.py "${args[@]}"
 

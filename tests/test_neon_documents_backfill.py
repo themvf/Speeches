@@ -62,6 +62,7 @@ def test_mirror_documents_batch_upserts_all_valid_records(monkeypatch):
     assert passed_cursor is cursor
     assert "INSERT INTO documents" in sql
     assert "ON CONFLICT (document_id) DO UPDATE" in sql
+    assert "IS DISTINCT FROM" in sql
     assert [row[0] for row in rows] == ["d1", "d2", "d3"]
     conn.commit.assert_called_once()
 
@@ -163,7 +164,7 @@ def test_get_document_returns_row_or_none(monkeypatch):
 # ─── backfill_neon_documents.py ─────────────────────────────────────────────
 
 def _args(**overrides):
-    base = dict(dry_run=False, limit=0, batch_size=2, verify_sample=0, summary_path="")
+    base = dict(dry_run=False, force=True, limit=0, batch_size=2, verify_sample=0, summary_path="")
     base.update(overrides)
     return SimpleNamespace(**base)
 
@@ -172,6 +173,80 @@ def test_batched_splits_into_expected_chunk_sizes():
     assert backfill._batched([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]
     assert backfill._batched([], 2) == []
     assert backfill._batched([1], 10) == [[1]]
+
+
+def test_legacy_speech_normalization_matches_stable_corpus_identity():
+    speech = {
+        "metadata": {
+            "url": "https://www.sec.gov/newsroom/speeches-statements/example",
+            "title": "Market structure remarks",
+            "speaker": "Commissioner Example",
+            "date": "July 14, 2026",
+            "extraction_date": "2026-07-14T12:00:00Z",
+        },
+        "content": {"full_text": "Prepared remarks about market structure."},
+        "validation": {"completeness_score": 100},
+    }
+
+    normalized = backfill._normalize_legacy_speech(speech)
+    stable = "sec|https://www.sec.gov/newsroom/speeches-statements/example|Market structure remarks|Commissioner Example|July 14, 2026"
+
+    assert normalized["metadata"]["document_id"] == __import__("hashlib").sha256(
+        stable.encode("utf-8")
+    ).hexdigest()[:24]
+    assert normalized["metadata"]["source_kind"] == "sec_speech"
+    assert normalized["metadata"]["organization"] == "SEC"
+    assert normalized["validation"] == {"completeness_score": 100}
+
+
+def test_combined_corpus_includes_legacy_speeches_but_custom_wins(monkeypatch):
+    speech = {
+        "metadata": {
+            "document_id": "same-id",
+            "url": "https://example.com/speech",
+            "title": "Legacy",
+        },
+        "content": {"full_text": "Legacy text"},
+    }
+    custom = _doc("same-id", full_text="Custom text", title="Custom")
+
+    class Storage:
+        def load_speeches(self):
+            return {"speeches": [speech]}
+
+    monkeypatch.setattr(
+        backfill.core,
+        "_load_custom_documents",
+        lambda storage: {"documents": [custom]},
+    )
+
+    combined = backfill._corpus_documents(Storage(), include_speeches=True)
+
+    assert len(combined) == 1
+    assert combined[0]["metadata"]["title"] == "Custom"
+    assert combined[0]["content"]["full_text"] == "Custom text"
+
+
+def test_custom_document_without_id_gets_same_trimmed_stable_identity_as_web():
+    record = {
+        "metadata": {
+            "organization": " SEC ",
+            "url": " https://example.com/document ",
+            "title": " Example title ",
+            "speaker": " Jane Doe ",
+            "date": " July 14, 2026 ",
+        },
+        "content": {"full_text": " Body text. "},
+        "legacy_field": "preserved",
+    }
+    expected_seed = "sec|https://example.com/document|Example title|Jane Doe|July 14, 2026"
+
+    normalized = backfill._ensure_custom_document_identity(record)
+
+    assert normalized["metadata"]["document_id"] == __import__("hashlib").sha256(
+        expected_seed.encode("utf-8")
+    ).hexdigest()[:24]
+    assert normalized["legacy_field"] == "preserved"
 
 
 def test_dry_run_reports_counts_without_writing(monkeypatch):
@@ -238,6 +313,21 @@ def test_run_raises_when_gcs_storage_unavailable(monkeypatch):
         assert "credentials missing" in str(exc)
 
 
+def test_non_dry_rerun_refuses_existing_verified_checkpoint(monkeypatch):
+    monkeypatch.setattr(
+        neon_feeds,
+        "get_migration_checkpoint",
+        lambda key: {"status": "verified"},
+    )
+
+    try:
+        backfill._run(_args(force=False))
+    except RuntimeError as exc:
+        assert "verified full backfill already exists" in str(exc)
+    else:  # pragma: no cover - guard assertion
+        raise AssertionError("stale backfill rerun was accepted")
+
+
 def test_verify_flags_row_count_and_sample_mismatches(monkeypatch):
     docs = [_doc("d1", full_text="12345"), _doc("d2", full_text="abcdefghij")]
 
@@ -247,8 +337,9 @@ def test_verify_flags_row_count_and_sample_mismatches(monkeypatch):
         return {"full_text": "short"}  # mismatched length for d2
 
     with patch.object(neon_feeds, "count_documents", return_value=2):
-        with patch.object(neon_feeds, "get_document", side_effect=fake_get_document):
-            result = backfill._verify(docs, sample_size=2)
+        with patch.object(neon_feeds, "get_existing_document_ids", return_value={"d1", "d2"}):
+            with patch.object(neon_feeds, "get_document", side_effect=fake_get_document):
+                result = backfill._verify(docs, sample_size=2)
 
     assert result["corpus_document_count"] == 2
     assert result["neon_row_count"] == 2
@@ -262,8 +353,9 @@ def test_verify_flags_missing_document_in_neon():
     docs = [_doc("only-doc")]
 
     with patch.object(neon_feeds, "count_documents", return_value=0):
-        with patch.object(neon_feeds, "get_document", return_value=None):
-            result = backfill._verify(docs, sample_size=1)
+        with patch.object(neon_feeds, "get_existing_document_ids", return_value=set()):
+            with patch.object(neon_feeds, "get_document", return_value=None):
+                result = backfill._verify(docs, sample_size=1)
 
     assert result["row_count_matches"] is False
     assert result["sample_mismatches"] == [{"doc_id": "only-doc", "issue": "missing_in_neon"}]
@@ -292,8 +384,9 @@ def test_verify_reports_per_doc_read_failure_without_aborting_the_sample():
         return {"full_text": "xyz"}
 
     with patch.object(neon_feeds, "count_documents", return_value=2):
-        with patch.object(neon_feeds, "get_document", side_effect=flaky_get_document):
-            result = backfill._verify(docs, sample_size=2)
+        with patch.object(neon_feeds, "get_existing_document_ids", return_value={"d1", "d2"}):
+            with patch.object(neon_feeds, "get_document", side_effect=flaky_get_document):
+                result = backfill._verify(docs, sample_size=2)
 
     assert "error" not in result
     assert result["sample_checked"] == 1  # only d2 succeeded
@@ -319,3 +412,140 @@ def test_run_marks_not_ok_when_verification_errors_even_if_all_batches_succeeded
     assert summary["failed_batch_count"] == 0
     assert "error" in summary["verification"]
     assert summary["ok"] is False
+
+
+def test_run_marks_not_ok_when_verification_finds_mismatch(monkeypatch):
+    docs = [_doc("d1")]
+    monkeypatch.setattr(backfill.core, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(backfill.core, "_get_gcs_storage", lambda secrets: (object(), "ok"))
+    monkeypatch.setattr(backfill.core, "_load_custom_documents", lambda storage: {"documents": docs})
+
+    mismatch = {
+        "corpus_document_count": 1,
+        "neon_row_count": 1,
+        "row_count_matches": True,
+        "sample_checked": 1,
+        "sample_mismatches": [{"doc_id": "d1", "issue": "full_text_length_mismatch"}],
+    }
+    with patch.object(neon_feeds, "mirror_documents_batch", return_value=1):
+        with patch.object(backfill, "_verify", return_value=mismatch):
+            summary = backfill._run(_args(verify_sample=1))
+
+    assert summary["verification"] == mismatch
+    assert summary["ok"] is False
+
+
+def test_limited_backfill_limits_enrichment_rows_and_verifies_only_targets(monkeypatch):
+    docs = [_doc("d1"), _doc("d2"), _doc("d3")]
+    entries = {document["metadata"]["document_id"]: {"status": "enriched"} for document in docs}
+    monkeypatch.setattr(backfill.core, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(backfill.core, "_get_gcs_storage", lambda secrets: (object(), "ok"))
+    monkeypatch.setattr(backfill.core, "_load_custom_documents", lambda storage: {"documents": docs})
+    monkeypatch.setattr(backfill.core, "_load_enrichment_state", lambda storage: {"entries": entries})
+
+    with patch.object(neon_feeds, "mirror_documents_batch", return_value=1):
+        with patch.object(neon_feeds, "upsert_enrichment_entries", return_value=1) as upsert:
+            with patch.object(backfill, "_verify", return_value={}) as verify:
+                summary = backfill._run(
+                    _args(limit=1, include_enrichment=True, verify_sample=1)
+                )
+
+    upsert.assert_called_once_with({"d1": {"status": "enriched"}})
+    verify.assert_called_once_with([docs[0]], 1)
+    assert summary["corpus_enrichment_count"] == 1
+
+
+def test_full_verified_backfill_records_database_activation_checkpoint(monkeypatch):
+    docs = [_doc("d1")]
+    entries = {"d1": {"status": "enriched"}}
+    verification = {
+        "row_count_matches": True,
+        "coverage_matches": True,
+        "sample_mismatches": [],
+    }
+    checkpoint = MagicMock()
+    monkeypatch.setattr(backfill.core, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(backfill.core, "_get_gcs_storage", lambda secrets: (object(), "ok"))
+    monkeypatch.setattr(backfill, "_corpus_documents", lambda storage, include_speeches: docs)
+    monkeypatch.setattr(backfill, "_corpus_enrichment_entries", lambda storage: entries)
+    monkeypatch.setattr(neon_feeds, "mirror_documents_batch", lambda batch: len(batch))
+    monkeypatch.setattr(neon_feeds, "upsert_enrichment_entries", lambda batch: len(batch))
+    monkeypatch.setattr(backfill, "_verify", lambda documents, sample_size: verification)
+    monkeypatch.setattr(backfill, "_verify_enrichments", lambda values, sample_size: verification)
+    monkeypatch.setattr(neon_feeds, "set_migration_checkpoint", checkpoint)
+
+    summary = backfill._run(
+        _args(
+            include_speeches=True,
+            include_enrichment=True,
+            verify_sample=1,
+        )
+    )
+
+    checkpoint.assert_called_once()
+    assert summary["ok"] is True
+    assert summary["activation_checkpoint"]["recorded"] is True
+
+
+def test_enrichment_backfill_is_opt_in_and_batched(monkeypatch):
+    docs = [_doc("d1"), _doc("d2")]
+    entries = {
+        "d1": {"status": "enriched", "enrichment": {"summary": "One"}},
+        "d2": {"status": "reviewed", "enrichment": {"summary": "Two"}},
+        "d3": {"status": "failed", "error": "retry"},
+    }
+    monkeypatch.setattr(backfill.core, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(backfill.core, "_get_gcs_storage", lambda secrets: (object(), "ok"))
+    monkeypatch.setattr(backfill.core, "_load_custom_documents", lambda storage: {"documents": docs})
+    monkeypatch.setattr(backfill.core, "_load_enrichment_state", lambda storage: {"entries": entries})
+
+    with patch.object(neon_feeds, "mirror_documents_batch", side_effect=lambda batch: len(batch)):
+        with patch.object(
+            neon_feeds,
+            "upsert_enrichment_entries",
+            side_effect=lambda batch: len(batch),
+        ) as upsert:
+            summary = backfill._run(
+                _args(include_enrichment=True, batch_size=2, verify_sample=0)
+            )
+
+    assert upsert.call_count == 2
+    assert summary["enrichment_upserted_total"] == 3
+    assert summary["failed_enrichment_batch_count"] == 0
+    assert summary["ok"] is True
+
+
+def test_enrichment_dry_run_reports_plan_without_writing(monkeypatch):
+    monkeypatch.setattr(backfill.core, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(backfill.core, "_get_gcs_storage", lambda secrets: (object(), "ok"))
+    monkeypatch.setattr(backfill.core, "_load_custom_documents", lambda storage: {"documents": [_doc("d1")]})
+    monkeypatch.setattr(
+        backfill.core,
+        "_load_enrichment_state",
+        lambda storage: {"entries": {"d1": {"status": "enriched"}}},
+    )
+
+    with patch.object(neon_feeds, "upsert_enrichment_entries") as upsert:
+        summary = backfill._run(_args(dry_run=True, include_enrichment=True))
+
+    upsert.assert_not_called()
+    assert summary["planned_enrichment_backfill_count"] == 1
+
+
+def test_verify_enrichments_compares_complete_legacy_entries():
+    entries = {
+        "d1": {"status": "enriched", "enrichment": {"summary": "One"}},
+        "d2": {"status": "reviewed", "sentiment": {"label": "neutral"}},
+    }
+    mirrored = {"d1": entries["d1"], "d2": {"status": "reviewed"}}
+
+    with patch.object(neon_feeds, "count_enrichment_entries", return_value=2):
+        with patch.object(neon_feeds, "get_existing_enrichment_ids", return_value={"d1", "d2"}):
+            with patch.object(neon_feeds, "get_enrichment_entries", return_value=mirrored):
+                result = backfill._verify_enrichments(entries, sample_size=2)
+
+    assert result["row_count_matches"] is True
+    assert result["sample_checked"] == 2
+    assert result["sample_mismatches"] == [
+        {"doc_id": "d2", "issue": "entry_mismatch_or_missing"}
+    ]

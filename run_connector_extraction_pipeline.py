@@ -51,6 +51,12 @@ BLOOMBERG_CONNECTORS = {
     "bloomberg_latest_apify",
 }
 
+NEON_AUTHORITATIVE_CONNECTORS = {
+    "bloomberg_public_article",
+    "bloomberg_public_latest",
+    "substack_public_article",
+}
+
 SECURITIES_MARKET_CONNECTORS = {
     "sec_press_release_rss",
     "sec_administrative_proceeding",
@@ -2496,19 +2502,34 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     if args.connector not in SUPPORTED_CONNECTORS:
         raise RuntimeError(f"Unsupported connector '{args.connector}'.")
 
+    persistence_mode = core._persistence_mode(args)
+    neon_authoritative = persistence_mode == "neon_authoritative"
+    if neon_authoritative and args.connector not in NEON_AUTHORITATIVE_CONNECTORS:
+        raise RuntimeError(
+            f"neon_authoritative persistence is not enabled for connector '{args.connector}'."
+        )
     secrets_payload = core._load_streamlit_secrets()
-    storage, gcs_status = core._get_gcs_storage(secrets_payload)
-    if args.require_remote_persistence and storage is None:
-        raise RuntimeError(gcs_status)
+    if neon_authoritative:
+        core._require_neon_authoritative_ready()
+        storage, gcs_status = None, ""
+    else:
+        storage, gcs_status = core._get_gcs_storage(secrets_payload)
+        if args.require_remote_persistence and storage is None:
+            raise RuntimeError(gcs_status)
 
     base_url = str(args.base_url or "").strip() or _default_base_url(args.connector)
     if not base_url and args.connector not in BLOOMBERG_CONNECTORS:
         raise RuntimeError(f"No base URL configured for connector '{args.connector}'.")
 
-    custom_payload = core._load_custom_documents(storage)
-    existing_custom = _build_existing_custom_map(custom_payload)
-    existing_custom_records = _build_existing_custom_record_map(custom_payload)
-    existing_speech_keys = _load_existing_speech_url_keys(storage)
+    # Discovery can usually prove that nothing changed from Neon's bounded
+    # metadata rows.  Keep the monolithic GCS stores lazy and load them only
+    # when Neon coverage is incomplete or this run will actually extract.
+    custom_payload: Optional[Dict[str, Any]] = None
+    existing_custom: Dict[str, Dict[str, Any]] = {}
+    existing_custom_records: Dict[str, Dict[str, Any]] = {}
+    existing_speech_keys: set[str] = set()
+    existing_lookup = "neon"
+    gcs_snapshot_loaded = False
     topic_rules = _load_current_topic_rules() if args.connector == "substack_public_article" else []
     connector_settings: Optional[Dict[str, Any]] = None
     if args.connector == "reddit_post":
@@ -2547,27 +2568,8 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         raise RuntimeError(f"Substack discovery failed: {errors}")
     exclude_terms = _parse_filter_terms(getattr(args, "exclude_terms", ""))
     excluded: List[Dict[str, Any]] = []
-    filtered_discovered: List[Dict[str, Any]] = []
-    if args.connector == "substack_public_article":
-        provider = str(getattr(args, "relevance_provider", "") or "deepseek").strip().lower()
-        if provider not in {"deepseek", "openai"}:
-            provider = "deepseek"
-        model = str(
-            getattr(args, "relevance_model", "")
-            or ("deepseek-v4-flash" if provider == "deepseek" else "gpt-5-mini")
-        ).strip()
-        client = core._get_model_client(secrets_payload, provider)
-        filtered_discovered, excluded = scraper.filter_institutional_finance(
-            discovered,
-            client=client,
-            model=model,
-            provider=provider,
-        )
-        discovery_debug["relevance_provider"] = provider
-        discovery_debug["relevance_model"] = model
-        discovery_debug["relevance_included_count"] = len(filtered_discovered)
-        discovery_debug["relevance_excluded_count"] = len(excluded)
-    elif args.connector == "doj_usao_press_release" and exclude_terms:
+    prefiltered_discovered: List[Dict[str, Any]] = []
+    if args.connector == "doj_usao_press_release" and exclude_terms:
         for entry in discovered:
             matched_terms = _match_filter_terms(
                 [
@@ -2583,17 +2585,90 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
                 skipped_entry["exclude_matches"] = matched_terms
                 excluded.append(skipped_entry)
             else:
-                filtered_discovered.append(entry)
+                prefiltered_discovered.append(entry)
     else:
-        filtered_discovered = list(discovered)
+        prefiltered_discovered = list(discovered)
 
-    status_counts = {"new": 0, "update_available": 0, "existing": 0, "existing_in_speeches": 0}
-    for entry in filtered_discovered:
-        key = core._url_match_key(entry.get("url", ""))
-        existing_meta = existing_custom.get(key)
-        status = _status_for_entry(args.connector, entry, existing_meta, existing_speech_keys)
-        entry["ingest_status"] = status
-        status_counts[status] = int(status_counts.get(status, 0)) + 1
+    neon_source_kinds = [args.connector]
+    if args.connector in BLOOMBERG_CONNECTORS:
+        neon_source_kinds.append("bloomberg_public_article")
+    if args.connector == "sec_rule_comment":
+        neon_source_kinds.append("sec_rule_release")
+    neon_payload = core._load_complete_neon_documents_for_urls(
+        [entry.get("url", "") for entry in prefiltered_discovered],
+        source_kinds=neon_source_kinds,
+        require_complete=not neon_authoritative,
+    )
+    if neon_payload is None:
+        if neon_authoritative:
+            raise RuntimeError("Required Neon discovery metadata lookup failed.")
+        custom_payload = core._load_custom_documents(storage)
+        lookup_payload = custom_payload
+        existing_speech_keys = _load_existing_speech_url_keys(storage)
+        existing_lookup = "gcs"
+        gcs_snapshot_loaded = True
+    else:
+        lookup_payload = neon_payload
+        if neon_authoritative:
+            existing_lookup = "neon_authoritative"
+    existing_custom = _build_existing_custom_map(lookup_payload)
+    existing_custom_records = _build_existing_custom_record_map(lookup_payload)
+
+    def classify_entries(entries: List[Dict[str, Any]]) -> Dict[str, int]:
+        counts = {"new": 0, "update_available": 0, "existing": 0, "existing_in_speeches": 0}
+        for item in entries:
+            key = core._url_match_key(item.get("url", ""))
+            status = _status_for_entry(
+                args.connector,
+                item,
+                existing_custom.get(key),
+                existing_speech_keys,
+            )
+            item["ingest_status"] = status
+            counts[status] = int(counts.get(status, 0)) + 1
+        return counts
+
+    classify_entries(prefiltered_discovered)
+
+    filtered_discovered: List[Dict[str, Any]] = []
+    if args.connector == "substack_public_article":
+        provider = str(getattr(args, "relevance_provider", "") or "deepseek").strip().lower()
+        if provider not in {"deepseek", "openai"}:
+            provider = "deepseek"
+        model = str(
+            getattr(args, "relevance_model", "")
+            or ("deepseek-v4-flash" if provider == "deepseek" else "gpt-5-mini")
+        ).strip()
+        client = core._get_model_client(secrets_payload, provider)
+        relevance_inputs = (
+            list(prefiltered_discovered)
+            if args.selection == "all"
+            else [
+                entry
+                for entry in prefiltered_discovered
+                if entry.get("ingest_status") in {"new", "update_available"}
+            ]
+        )
+        relevance_included, relevance_excluded = scraper.filter_institutional_finance(
+            relevance_inputs,
+            client=client,
+            model=model,
+            provider=provider,
+        )
+        relevance_input_ids = {id(entry) for entry in relevance_inputs}
+        filtered_discovered = [
+            entry for entry in prefiltered_discovered if id(entry) not in relevance_input_ids
+        ] + relevance_included
+        excluded.extend(relevance_excluded)
+        discovery_debug["relevance_provider"] = provider
+        discovery_debug["relevance_model"] = model
+        discovery_debug["relevance_checked_count"] = len(relevance_inputs)
+        discovery_debug["relevance_included_count"] = len(relevance_included)
+        discovery_debug["relevance_excluded_count"] = len(relevance_excluded)
+    else:
+        filtered_discovered = list(prefiltered_discovered)
+
+    status_counts = classify_entries(filtered_discovered)
 
     if args.selection == "all":
         candidates = list(filtered_discovered)
@@ -2605,11 +2680,41 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
     selected = candidates[:limit] if limit > 0 else []
 
+    if selected and custom_payload is None and not neon_authoritative:
+        # A detected change (or a manual --selection all run) crosses the
+        # mutation boundary.  Reload authoritative state and reclassify before
+        # extraction so a stale mirror can never create an incorrect write.
+        custom_payload = core._load_custom_documents(storage)
+        existing_custom = _build_existing_custom_map(custom_payload)
+        existing_custom_records = _build_existing_custom_record_map(custom_payload)
+        existing_speech_keys = _load_existing_speech_url_keys(storage)
+        existing_lookup = "neon_then_gcs"
+        gcs_snapshot_loaded = True
+        status_counts = classify_entries(filtered_discovered)
+        if args.selection == "all":
+            candidates = list(filtered_discovered)
+        else:
+            candidates = [
+                entry
+                for entry in filtered_discovered
+                if entry.get("ingest_status") in {"new", "update_available"}
+            ]
+        limit = len(candidates) if args.limit is None else max(0, int(args.limit))
+        selected = candidates[:limit] if limit > 0 else []
+
+    # No-change Neon runs intentionally carry no mutable corpus payload.
+    # Cleanup and save helpers therefore see an empty working set and cannot
+    # accidentally replace the authoritative blob with the bounded lookup.
+    if custom_payload is None:
+        custom_payload = core._empty_custom_docs_payload()
+        existing_custom_records = {}
+
     saved_new = 0
     saved_updates = 0
     failed: List[Dict[str, Any]] = []
     skipped_blocked: List[Dict[str, Any]] = []
     processed_doc_ids: List[str] = []
+    pending_neon_documents: List[Dict[str, Any]] = []
     duplicate_records_removed = 0
     legacy_bloomberg_records_removed = 0
     invalid_wired_records_removed = 0
@@ -2619,7 +2724,11 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
             record = _extract_record(args.connector, scraper, entry, idx, base_url)
             metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
             doc_id = str(metadata.get("document_id", "") or "").strip()
-            replaced = core._upsert_custom_document_record(custom_payload, record)
+            if neon_authoritative:
+                pending_neon_documents.append(record)
+                replaced = entry.get("ingest_status") == "update_available"
+            else:
+                replaced = core._upsert_custom_document_record(custom_payload, record)
             if replaced:
                 saved_updates += 1
             else:
@@ -2627,6 +2736,8 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
             if doc_id:
                 processed_doc_ids.append(doc_id)
         except Exception as exc:
+            if isinstance(exc, core.NeonPersistenceError):
+                raise
             key = core._url_match_key(entry.get("url", ""))
             repaired_doc_id = (
                 _repair_existing_finra_notice_metadata(entry, existing_custom_records.get(key))
@@ -2653,6 +2764,9 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
                     }
                 )
 
+    if neon_authoritative and not args.dry_run:
+        core._persist_documents_to_neon(pending_neon_documents)
+
     if args.connector in BLOOMBERG_CONNECTORS and (saved_new or saved_updates):
         duplicate_records_removed = _remove_duplicate_bloomberg_records(custom_payload)
         legacy_bloomberg_records_removed = _remove_legacy_bloomberg_apify_records(custom_payload)
@@ -2661,7 +2775,11 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         invalid_wired_records_removed = _remove_invalid_wired_coupon_records(custom_payload)
 
     rule_summaries_rebuilt = False
-    if not args.dry_run and (saved_new or saved_updates or invalid_wired_records_removed):
+    if (
+        not neon_authoritative
+        and not args.dry_run
+        and (saved_new or saved_updates or invalid_wired_records_removed)
+    ):
         core._save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
         enrichment_state = core._load_enrichment_state(storage)
         core._rebuild_rule_summaries(
@@ -2677,7 +2795,10 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         "connector": args.connector,
         "ran_at": core._utc_now_iso(),
         "require_remote_persistence": bool(args.require_remote_persistence),
-        "remote_persistence": bool(storage is not None),
+        "remote_persistence": bool(storage is not None) or neon_authoritative,
+        "persistence_mode": persistence_mode,
+        "existing_lookup": existing_lookup,
+        "gcs_snapshot_loaded": gcs_snapshot_loaded,
         "base_url": base_url,
         "selection": args.selection,
         "max_pages": int(args.max_pages),
@@ -2752,6 +2873,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--connector", required=True, choices=sorted(SUPPORTED_CONNECTORS))
     parser.add_argument("--base-url", default="")
     parser.add_argument("--selection", choices=["new_or_updated", "all"], default="new_or_updated")
+    parser.add_argument(
+        "--persistence-mode",
+        choices=sorted(core.PERSISTENCE_MODES),
+        default="gcs_authoritative",
+    )
     parser.add_argument("--max-pages", type=int, default=5)
     parser.add_argument("--limit", type=int, default=25)
     parser.add_argument("--include-pdfs", default="")

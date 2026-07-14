@@ -1,0 +1,62 @@
+name: Daily Neon to Legacy Compatibility Sync
+
+on:
+  schedule:
+    # One bounded compatibility refresh per day while legacy readers migrate.
+    - cron: "43 9 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report snapshot changes without uploading them"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sec20-neon-corpus-writers
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event_name != 'schedule' || vars.ENABLE_NEON_LEGACY_COMPAT_SYNC == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEON_BACKFILL_VERIFIED: "true"
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Sync pilot rows to compatibility snapshots
+        run: |
+          set -euo pipefail
+          args=(--summary-path neon_legacy_compat_sync_summary.json)
+          if [ "${DRY_RUN}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python sync_neon_to_legacy_snapshots.py "${args[@]}"
+
+      - name: Show summary
+        if: always()
+        run: |
+          if [ -f neon_legacy_compat_sync_summary.json ]; then
+            python -m json.tool neon_legacy_compat_sync_summary.json
+          fi

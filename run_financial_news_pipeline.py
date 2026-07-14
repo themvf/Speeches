@@ -60,6 +60,124 @@ ENRICHMENT_PIPELINE_VERSION = "v1"
 # --mode only_missing_or_failed, so a persistently-broken doc stops being
 # re-billed on every scheduled leg run once it hits this many attempts.
 MAX_ENRICHMENT_ATTEMPTS = 3
+PERSISTENCE_MODES = {"gcs_authoritative", "neon_authoritative"}
+NEON_BACKFILL_VERIFIED_ENV = "NEON_BACKFILL_VERIFIED"
+NEON_ENRICHMENT_SOURCE_KINDS = {
+    "newsapi_article",
+    "bloomberg_public_article",
+    "substack_public_article",
+}
+
+
+class NeonPersistenceError(RuntimeError):
+    """Raised when a required row-level Neon durability operation fails."""
+
+
+def _persistence_mode(args: argparse.Namespace) -> str:
+    mode = str(getattr(args, "persistence_mode", "gcs_authoritative") or "").strip().lower()
+    if mode not in PERSISTENCE_MODES:
+        raise RuntimeError(f"Unsupported persistence mode '{mode}'.")
+    return mode
+
+
+def _env_truthy(name: str) -> bool:
+    return str(os.getenv(name, "") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _require_neon_authoritative_ready() -> None:
+    if not os.getenv("DATABASE_URL", "").strip():
+        raise RuntimeError("neon_authoritative persistence requires DATABASE_URL.")
+    if not _env_truthy(NEON_BACKFILL_VERIFIED_ENV):
+        raise RuntimeError(
+            "neon_authoritative persistence is locked until the verified document/enrichment "
+            f"backfill is acknowledged with {NEON_BACKFILL_VERIFIED_ENV}=true."
+        )
+    try:
+        import neon_feeds
+
+        document_count = neon_feeds.count_documents()
+        checkpoint = neon_feeds.get_migration_checkpoint(
+            neon_feeds.NEON_FULL_BACKFILL_CHECKPOINT
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Could not verify the Neon document mirror: {exc}") from exc
+    if document_count <= 0:
+        raise RuntimeError("Neon document mirror is empty; refusing authoritative row writes.")
+    if not checkpoint or str(checkpoint.get("status", "") or "").lower() != "verified":
+        raise RuntimeError(
+            "Neon full backfill checkpoint is not verified; refusing authoritative row writes."
+        )
+
+
+def _persist_documents_to_neon(records: Sequence[Dict[str, Any]]) -> None:
+    """Atomically persist one extraction batch with a single Neon connection.
+
+    In row-authoritative mode a later write failure must not strand documents
+    that were already committed but never made it into the extraction summary
+    (and therefore never reached targeted enrichment).  The batch helper uses
+    one Postgres transaction and also avoids a connection per article.
+    """
+    if not records:
+        return
+    deduplicated: Dict[str, Dict[str, Any]] = {}
+    for record in records:
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+        document_id = str(metadata.get("document_id", "") or "").strip()
+        if not document_id:
+            raise NeonPersistenceError("Required Neon document write has no document_id.")
+        deduplicated[document_id] = record
+    try:
+        import neon_feeds
+
+        submitted = neon_feeds.mirror_documents_batch(list(deduplicated.values()))
+    except Exception as exc:
+        raise NeonPersistenceError(f"Required Neon document batch write failed: {exc}") from exc
+    if submitted != len(deduplicated):
+        raise NeonPersistenceError(
+            f"Required Neon document write submitted {submitted} of {len(deduplicated)} records."
+        )
+
+
+def _persist_enrichment_entries_to_neon(entries: Dict[str, Dict[str, Any]]) -> None:
+    if not entries:
+        return
+    try:
+        import neon_feeds
+
+        submitted = neon_feeds.upsert_enrichment_entries(entries)
+    except Exception as exc:
+        raise NeonPersistenceError(f"Required Neon enrichment write failed: {exc}") from exc
+    if submitted != len(entries):
+        raise NeonPersistenceError(
+            f"Required Neon enrichment write submitted {submitted} of {len(entries)} entries."
+        )
+
+
+def _load_neon_documents_by_ids(document_ids: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+    try:
+        import neon_feeds
+
+        return neon_feeds.get_documents(list(document_ids))
+    except Exception as exc:
+        raise NeonPersistenceError(f"Required Neon document read failed: {exc}") from exc
+
+
+def _load_neon_enrichment_entries(document_ids: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+    try:
+        import neon_feeds
+
+        return neon_feeds.get_enrichment_entries(list(document_ids))
+    except Exception as exc:
+        raise NeonPersistenceError(f"Required Neon enrichment read failed: {exc}") from exc
+
+
+def _load_neon_enrichment_catchup_ids(source_kind: str, limit: int) -> List[str]:
+    try:
+        import neon_feeds
+
+        return neon_feeds.get_document_ids_needing_enrichment([source_kind], limit=limit)
+    except Exception as exc:
+        raise NeonPersistenceError(f"Required Neon enrichment catch-up read failed: {exc}") from exc
 
 # Shared with run_connector_extraction_pipeline.py's _build_short_text_fallback,
 # which is the single source of every metadata-backed placeholder body across
@@ -459,12 +577,25 @@ def _load_json_store(
         try:
             blob = storage.bucket.blob(blob_name)
             if blob.exists():
-                payload = normalize_fn(json.loads(blob.download_as_text(encoding="utf-8")))
+                # ``exists()`` and a media download do not populate generation
+                # on a real google-cloud-storage Blob. Reload first, then pin
+                # the download to that generation so the later conditional
+                # upload has a real optimistic-concurrency baseline.
+                blob.reload()
+                loaded_generation = int(blob.generation)
+                payload = normalize_fn(
+                    json.loads(
+                        blob.download_as_text(
+                            encoding="utf-8",
+                            if_generation_match=loaded_generation,
+                        )
+                    )
+                )
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(local_path, "w", encoding="utf-8") as f:
                     json.dump(payload, f, indent=2, ensure_ascii=False)
                 _REMOTE_LOAD_ERRORED_BLOBS.discard(blob_name)
-                _BLOB_GENERATIONS[blob_name] = blob.generation
+                _BLOB_GENERATIONS[blob_name] = loaded_generation
                 return payload
             _REMOTE_LOAD_ERRORED_BLOBS.discard(blob_name)
             _BLOB_GENERATIONS[blob_name] = 0
@@ -553,6 +684,98 @@ def _load_custom_documents(storage: Optional[GCSStorage]) -> Dict[str, Any]:
         default_factory=_empty_custom_docs_payload,
         normalize_fn=_normalize_custom_docs_payload,
     )
+
+
+def _load_complete_neon_documents_for_urls(
+    urls: Sequence[str],
+    source_kinds: Optional[Sequence[str]] = None,
+    require_complete: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """Return bounded Neon records, requiring full URL coverage by default.
+
+    The GCS blob remains authoritative during this migration.  A complete
+    Neon result is sufficient for the read-only discovery comparison, but an
+    incomplete result must never be interpreted as proof that an item is new:
+    an older document may simply predate the mirror.  Returning ``None`` makes
+    callers fall back to the existing GCS read before they classify or write.
+    ``require_complete=False`` is reserved for the explicitly gated
+    Neon-authoritative path, where a verified backfill makes absence evidence
+    that a discovered URL is new.
+    """
+    requested_urls = list(
+        dict.fromkeys(str(url or "").strip() for url in (urls or []) if str(url or "").strip())
+    )
+    if not requested_urls:
+        return _empty_custom_docs_payload()
+    if not os.getenv("DATABASE_URL", "").strip():
+        return None
+
+    try:
+        import neon_feeds
+
+        lookup_urls = list(
+            dict.fromkeys(
+                [
+                    candidate
+                    for url in requested_urls
+                    for candidate in (url, _url_match_key(url))
+                    if candidate
+                ]
+            )
+        )
+        records_by_url = neon_feeds.get_documents_by_urls(lookup_urls)
+    except Exception as exc:
+        _stderr(f"Neon URL metadata lookup failed; using authoritative GCS snapshot: {exc}")
+        return None
+
+    if not isinstance(records_by_url, dict):
+        return None
+    records = [record for record in records_by_url.values() if isinstance(record, dict)]
+    requested_keys = {_url_match_key(url) for url in requested_urls if _url_match_key(url)}
+    def found_url_keys() -> set[str]:
+        keys = {
+            _url_match_key(
+                (
+                    record.get("metadata", {})
+                    if isinstance(record.get("metadata", {}), dict)
+                    else {}
+                ).get("url", "")
+            )
+            for record in records
+        }
+        keys.discard("")
+        return keys
+
+    found_keys = found_url_keys()
+    clean_source_kinds = list(
+        dict.fromkeys(
+            str(source_kind or "").strip()
+            for source_kind in (source_kinds or [])
+            if str(source_kind or "").strip()
+        )
+    )
+    if require_complete and not requested_keys.issubset(found_keys) and clean_source_kinds:
+        try:
+            source_records = neon_feeds.get_document_records_by_source_kinds(
+                clean_source_kinds,
+                include_full_text=False,
+            )
+        except Exception as exc:
+            _stderr(f"Neon source metadata fallback failed; using authoritative GCS snapshot: {exc}")
+            return None
+        records.extend(record for record in source_records if isinstance(record, dict))
+        found_keys = found_url_keys()
+    if require_complete and not requested_keys.issubset(found_keys):
+        return None
+    deduplicated_records: Dict[str, Dict[str, Any]] = {}
+    for record in records:
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata", {}), dict) else {}
+        key = str(metadata.get("document_id", "") or "").strip() or _url_match_key(
+            metadata.get("url", "")
+        )
+        if key:
+            deduplicated_records[key] = record
+    return {"updated_at": "", "documents": list(deduplicated_records.values())}
 
 
 def _save_custom_documents(
@@ -895,6 +1118,26 @@ def _mirror_document_to_neon_best_effort(record: Dict[str, Any]) -> None:
         neon_feeds.mirror_document(record)
     except Exception as exc:
         _stderr(f"Neon document mirror-write failed (non-blocking, Phase 1): {exc}")
+
+
+def _mirror_enrichment_entries_to_neon_best_effort(
+    entries: Dict[str, Dict[str, Any]],
+) -> None:
+    """Mirror only newly saved enrichment rows after the GCS save succeeds.
+
+    Keeping this call outside ``_save_enrichment_state`` avoids resubmitting
+    the entire legacy state at every checkpoint.  Callers must invoke it only
+    after the authoritative save returns, so an upload/precondition failure
+    can never leave Neon ahead of GCS.
+    """
+    if not entries or not os.getenv("DATABASE_URL", "").strip():
+        return
+    try:
+        import neon_feeds
+
+        neon_feeds.upsert_enrichment_entries(entries)
+    except Exception as exc:
+        _stderr(f"Neon enrichment mirror-write failed (non-blocking): {exc}")
 
 
 def _upsert_custom_document_record(custom_payload: Dict[str, Any], record: Dict[str, Any]) -> bool:
@@ -1966,10 +2209,51 @@ def _trim_newsapi_debug(debug_payload: Dict[str, Any]) -> Dict[str, Any]:
         "pages": trimmed_pages[:12],
     }
 
+
+def _build_existing_document_metadata_map(custom_payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    existing: Dict[str, Dict[str, Any]] = {}
+    for item in custom_payload.get("documents", []):
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
+        key = _url_match_key(metadata.get("url", ""))
+        if key:
+            existing[key] = metadata
+    return existing
+
+
+def _classify_news_discovery_entries(
+    discovered: Sequence[Dict[str, Any]],
+    existing_custom: Dict[str, Dict[str, Any]],
+) -> None:
+    for entry in discovered:
+        key = _url_match_key(entry.get("url", ""))
+        status = "new"
+        existing_meta = existing_custom.get(key)
+        if existing_meta:
+            existing_published = str(
+                existing_meta.get("published_at", "")
+                or existing_meta.get("published_date", "")
+                or existing_meta.get("date", "")
+                or ""
+            ).strip()
+            incoming_published = str(entry.get("published_at", "") or entry.get("date", "") or "").strip()
+            status = (
+                "update_available"
+                if incoming_published and existing_published and incoming_published != existing_published
+                else "existing"
+            )
+        entry["ingest_status"] = status
+
+
 def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
+    persistence_mode = _persistence_mode(args)
+    neon_authoritative = persistence_mode == "neon_authoritative"
     secrets_payload = _load_streamlit_secrets()
     storage, gcs_status = _get_gcs_storage(secrets_payload)
-    if args.require_remote_persistence and storage is None:
+    if neon_authoritative:
+        _require_neon_authoritative_ready()
+    elif args.require_remote_persistence and storage is None:
         raise RuntimeError(gcs_status)
 
     api_key = _get_newsapi_api_key(secrets_payload)
@@ -2040,32 +2324,27 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         filtered_discovered.append(entry)
     discovered = filtered_discovered
 
-    custom_payload = _load_custom_documents(storage)
-    existing_custom = {}
-    for item in custom_payload.get("documents", []):
-        if not isinstance(item, dict):
-            continue
-        metadata = item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {}
-        existing_custom[_url_match_key(metadata.get("url", ""))] = metadata
+    custom_payload: Optional[Dict[str, Any]] = None
+    neon_payload = _load_complete_neon_documents_for_urls(
+        [entry.get("url", "") for entry in discovered],
+        source_kinds=["newsapi_article"],
+        require_complete=not neon_authoritative,
+    )
+    if neon_payload is None:
+        if neon_authoritative:
+            raise RuntimeError("Required Neon discovery metadata lookup failed.")
+        custom_payload = _load_custom_documents(storage)
+        lookup_payload = custom_payload
+        existing_lookup = "gcs"
+        gcs_snapshot_loaded = True
+    else:
+        lookup_payload = neon_payload
+        existing_lookup = "neon_authoritative" if neon_authoritative else "neon"
+        gcs_snapshot_loaded = False
 
-    for entry in discovered:
-        key = _url_match_key(entry.get("url", ""))
-        status = "new"
-        existing_meta = existing_custom.get(key)
-        if existing_meta:
-            existing_published = str(
-                existing_meta.get("published_at", "")
-                or existing_meta.get("published_date", "")
-                or existing_meta.get("date", "")
-                or ""
-            ).strip()
-            incoming_published = str(entry.get("published_at", "") or entry.get("date", "") or "").strip()
-            status = (
-                "update_available"
-                if incoming_published and existing_published and incoming_published != existing_published
-                else "existing"
-            )
-        entry["ingest_status"] = status
+    bounded_lookup_payload = lookup_payload
+    existing_custom = _build_existing_document_metadata_map(lookup_payload)
+    _classify_news_discovery_entries(discovered, existing_custom)
 
     if args.selection == "all":
         candidates = list(discovered)
@@ -2075,6 +2354,26 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
     limit = len(candidates) if args.limit is None else max(0, int(args.limit))
     selected = candidates[:limit] if limit > 0 else []
 
+    if selected and custom_payload is None and not neon_authoritative:
+        custom_payload = _load_custom_documents(storage)
+        existing_custom = _build_existing_document_metadata_map(custom_payload)
+        _classify_news_discovery_entries(discovered, existing_custom)
+        if args.selection == "all":
+            candidates = list(discovered)
+        else:
+            candidates = [
+                entry
+                for entry in discovered
+                if entry.get("ingest_status") in {"new", "update_available"}
+            ]
+        limit = len(candidates) if args.limit is None else max(0, int(args.limit))
+        selected = candidates[:limit] if limit > 0 else []
+        existing_lookup = "neon_then_gcs"
+        gcs_snapshot_loaded = True
+
+    if custom_payload is None:
+        custom_payload = _empty_custom_docs_payload()
+
     saved_new = 0
     saved_updates = 0
     failed = []
@@ -2082,6 +2381,7 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
     new_doc_ids: List[str] = []
     updated_doc_ids: List[str] = []
     migrated_enrichment_ids: Dict[str, str] = {}
+    pending_neon_documents: List[Dict[str, Any]] = []
 
     for idx, entry in enumerate(selected, 1):
         try:
@@ -2150,8 +2450,15 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
             if _is_cjk_custom_record(record):
                 raise RuntimeError("Blocked CJK-language news article.")
 
-            previous_doc_id = _find_existing_custom_document_id(custom_payload, record)
-            replaced = _upsert_custom_document_record(custom_payload, record)
+            previous_doc_id = _find_existing_custom_document_id(
+                bounded_lookup_payload if neon_authoritative else custom_payload,
+                record,
+            )
+            if neon_authoritative:
+                pending_neon_documents.append(record)
+                replaced = entry.get("ingest_status") == "update_available"
+            else:
+                replaced = _upsert_custom_document_record(custom_payload, record)
             doc_id = str(metadata.get("document_id", "") or "").strip()
             if previous_doc_id and doc_id and previous_doc_id != doc_id:
                 migrated_enrichment_ids[previous_doc_id] = doc_id
@@ -2166,17 +2473,46 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
                 if doc_id:
                     new_doc_ids.append(doc_id)
         except Exception as e:
+            if isinstance(e, NeonPersistenceError):
+                raise
             failed.append({"url": entry.get("url", ""), "title": entry.get("title", ""), "error": str(e)})
 
-    cjk_language_records_removed = _remove_cjk_language_records(custom_payload)
+    if neon_authoritative and not args.dry_run:
+        _persist_documents_to_neon(pending_neon_documents)
+
+    if neon_authoritative and migrated_enrichment_ids and not args.dry_run:
+        old_entries = _load_neon_enrichment_entries(list(migrated_enrichment_ids))
+        migrated_entries: Dict[str, Dict[str, Any]] = {}
+        for old_doc_id, new_doc_id in migrated_enrichment_ids.items():
+            old_entry = old_entries.get(old_doc_id)
+            if not isinstance(old_entry, dict):
+                continue
+            migrated_entry = dict(old_entry)
+            migrated_entry["doc_id"] = new_doc_id
+            migrated_entries[new_doc_id] = migrated_entry
+        _persist_enrichment_entries_to_neon(migrated_entries)
+
+    cjk_language_records_removed = (
+        0 if neon_authoritative else _remove_cjk_language_records(custom_payload)
+    )
 
     rule_summaries_rebuilt = False
-    if not args.dry_run and (saved_new or saved_updates or cjk_language_records_removed or migrated_enrichment_ids):
+    if (
+        not neon_authoritative
+        and not args.dry_run
+        and (saved_new or saved_updates or cjk_language_records_removed or migrated_enrichment_ids)
+    ):
         _save_custom_documents(storage, custom_payload, require_remote=args.require_remote_persistence)
         enrichment_state = _load_enrichment_state(storage)
         migrated_enrichment_entries = _migrate_enrichment_entry_ids(enrichment_state, migrated_enrichment_ids)
         if migrated_enrichment_entries:
             _save_enrichment_state(storage, enrichment_state, require_remote=args.require_remote_persistence)
+            mirrored_migrations = {
+                new_doc_id: enrichment_state.get("entries", {}).get(new_doc_id, {})
+                for new_doc_id in migrated_enrichment_ids.values()
+                if isinstance(enrichment_state.get("entries", {}).get(new_doc_id), dict)
+            }
+            _mirror_enrichment_entries_to_neon_best_effort(mirrored_migrations)
         _rebuild_rule_summaries(
             storage,
             custom_payload=custom_payload,
@@ -2190,7 +2526,10 @@ def _run_news_ingest(args: argparse.Namespace) -> Dict[str, Any]:
         "mode": "ingest",
         "ran_at": _utc_now_iso(),
         "require_remote_persistence": bool(args.require_remote_persistence),
-        "remote_persistence": bool(storage is not None),
+        "remote_persistence": bool(storage is not None) or neon_authoritative,
+        "persistence_mode": persistence_mode,
+        "existing_lookup": existing_lookup,
+        "gcs_snapshot_loaded": gcs_snapshot_loaded,
         "newsapi_auth": {
             "source": api_key_source,
             "key_len": len(api_key),
@@ -2294,14 +2633,20 @@ def _build_news_enrichment_candidates(
 
 
 def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
+    persistence_mode = _persistence_mode(args)
+    neon_authoritative = persistence_mode == "neon_authoritative"
+    if neon_authoritative and args.source_kind not in NEON_ENRICHMENT_SOURCE_KINDS:
+        raise RuntimeError(
+            f"neon_authoritative enrichment is not enabled for source kind '{args.source_kind}'."
+        )
     secrets_payload = _load_streamlit_secrets()
-    storage, gcs_status = _get_gcs_storage(secrets_payload)
-    if args.require_remote_persistence and storage is None:
-        raise RuntimeError(gcs_status)
-
-    custom_payload = _load_custom_documents(storage)
-    enrichment_state = _load_enrichment_state(storage)
-    entries = enrichment_state.setdefault("entries", {})
+    if neon_authoritative:
+        _require_neon_authoritative_ready()
+        storage, gcs_status = None, ""
+    else:
+        storage, gcs_status = _get_gcs_storage(secrets_payload)
+        if args.require_remote_persistence and storage is None:
+            raise RuntimeError(gcs_status)
 
     doc_ids_from_summary = str(getattr(args, "doc_ids_from_summary", "") or "").strip()
     explicit_doc_ids = list(getattr(args, "doc_id", []) or [])
@@ -2319,17 +2664,77 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             seen_ids.add(item)
             dedup_doc_ids.append(item)
 
-    if targeted_doc_ids_requested and not dedup_doc_ids:
+    neon_catchup_requested = False
+    if neon_authoritative and not targeted_doc_ids_requested:
+        if args.mode != "only_missing_or_failed":
+            raise RuntimeError(
+                "Untargeted neon_authoritative enrichment is only allowed in bounded "
+                "only_missing_or_failed catch-up mode."
+            )
+        catchup_limit = 10 if args.limit is None else max(0, min(int(args.limit), 100))
+        dedup_doc_ids = _load_neon_enrichment_catchup_ids(args.source_kind, catchup_limit)
+        neon_catchup_requested = True
+
+    if (targeted_doc_ids_requested or neon_catchup_requested) and not dedup_doc_ids:
         # An explicitly supplied summary/--doc-id is a targeting boundary.
-        # If it resolves to no IDs, doing no work is safer than silently
-        # widening --mode all to every document for the source kind.
-        candidates = []
+        # Exit before either monolithic snapshot is loaded.  Besides avoiding
+        # accidental widening, this keeps every unchanged connector leg at a
+        # bounded summary-file read with no GCS egress or model initialization.
+        provider = str(args.provider or "deepseek").strip().lower()
+        summary = {
+            "mode": "enrich",
+            "ran_at": _utc_now_iso(),
+            "require_remote_persistence": bool(args.require_remote_persistence),
+            "remote_persistence": bool(storage is not None) or neon_authoritative,
+            "persistence_mode": persistence_mode,
+            "provider": provider,
+            "source_kind": args.source_kind,
+            "mode_selection": args.mode,
+            "order": str(args.order or "stored").strip().lower(),
+            "future_dated_candidate_count": 0,
+            "requested_doc_ids": [],
+            "catchup_mode": neon_catchup_requested,
+            "candidate_count": 0,
+            "selected_count": 0,
+            "processed_count": 0,
+            "enriched_count": 0,
+            "fallback_enriched_count": 0,
+            "used_models": [],
+            "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "selected_preview": [],
+            "dry_run": bool(args.dry_run),
+            "rule_summaries_rebuilt": False,
+            "gcs_snapshot_loaded": False,
+        }
+        _write_summary(args.summary_path, summary)
+        return summary
+
+    if neon_authoritative:
+        documents_by_id = _load_neon_documents_by_ids(dedup_doc_ids)
+        missing_document_ids = [
+            document_id for document_id in dedup_doc_ids if document_id not in documents_by_id
+        ]
+        if missing_document_ids:
+            raise NeonPersistenceError(
+                "Required Neon documents are missing for targeted enrichment: "
+                + ", ".join(missing_document_ids[:10])
+            )
+        custom_payload = {"documents": list(documents_by_id.values())}
+        enrichment_state = {
+            "version": 1,
+            "pipeline_version": ENRICHMENT_PIPELINE_VERSION,
+            "updated_at": "",
+            "entries": _load_neon_enrichment_entries(dedup_doc_ids),
+        }
     else:
-        candidates = _build_news_enrichment_candidates(
-            custom_payload=custom_payload,
-            source_kind=args.source_kind,
-            doc_ids=dedup_doc_ids or None,
-        )
+        custom_payload = _load_custom_documents(storage)
+        enrichment_state = _load_enrichment_state(storage)
+    entries = enrichment_state.setdefault("entries", {})
+    candidates = _build_news_enrichment_candidates(
+        custom_payload=custom_payload,
+        source_kind=args.source_kind,
+        doc_ids=dedup_doc_ids or None,
+    )
 
     if not dedup_doc_ids and args.mode == "only_missing_or_failed":
         filtered = []
@@ -2386,6 +2791,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
     used_models: List[str] = []
     checkpoint_every = max(0, int(getattr(args, "checkpoint_every", 0) or 0))
     usage_totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    pending_neon_entries: Dict[str, Dict[str, Any]] = {}
 
     for index, candidate in enumerate(targets, start=1):
         doc_id = candidate["doc_id"]
@@ -2470,33 +2876,53 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
             "enrichment": enrichment,
             "sentiment": sentiment_entry,
         }
+        pending_neon_entries[doc_id] = entries[doc_id]
         if not args.dry_run and checkpoint_every and index % checkpoint_every == 0:
             enrichment_state["entries"] = entries
-            _save_enrichment_state(storage, enrichment_state, require_remote=args.require_remote_persistence)
+            if neon_authoritative:
+                _persist_enrichment_entries_to_neon(pending_neon_entries)
+            else:
+                _save_enrichment_state(
+                    storage,
+                    enrichment_state,
+                    require_remote=args.require_remote_persistence,
+                )
+                _mirror_enrichment_entries_to_neon_best_effort(pending_neon_entries)
+            pending_neon_entries = {}
 
     enrichment_state["entries"] = entries
     rule_summaries_rebuilt = False
     if not args.dry_run and targets:
-        _save_enrichment_state(storage, enrichment_state, require_remote=args.require_remote_persistence)
-        _rebuild_rule_summaries(
-            storage,
-            custom_payload=custom_payload,
-            enrichment_state=enrichment_state,
-            require_remote=args.require_remote_persistence,
-        )
-        rule_summaries_rebuilt = True
+        if neon_authoritative:
+            _persist_enrichment_entries_to_neon(pending_neon_entries)
+        else:
+            _save_enrichment_state(
+                storage,
+                enrichment_state,
+                require_remote=args.require_remote_persistence,
+            )
+            _mirror_enrichment_entries_to_neon_best_effort(pending_neon_entries)
+            _rebuild_rule_summaries(
+                storage,
+                custom_payload=custom_payload,
+                enrichment_state=enrichment_state,
+                require_remote=args.require_remote_persistence,
+            )
+            rule_summaries_rebuilt = True
 
     summary = {
         "mode": "enrich",
         "ran_at": _utc_now_iso(),
         "require_remote_persistence": bool(args.require_remote_persistence),
-        "remote_persistence": bool(storage is not None),
+        "remote_persistence": bool(storage is not None) or neon_authoritative,
+        "persistence_mode": persistence_mode,
         "provider": provider,
         "source_kind": args.source_kind,
         "mode_selection": args.mode,
         "order": order,
         "future_dated_candidate_count": future_dated_candidate_count,
         "requested_doc_ids": dedup_doc_ids,
+        "catchup_mode": neon_catchup_requested,
         "candidate_count": len(candidates),
         "selected_count": len(targets),
         "processed_count": len(targets),
@@ -2514,6 +2940,7 @@ def _run_news_enrichment(args: argparse.Namespace) -> Dict[str, Any]:
         ],
         "dry_run": bool(args.dry_run),
         "rule_summaries_rebuilt": rule_summaries_rebuilt,
+        "gcs_snapshot_loaded": not neon_authoritative,
     }
     _write_summary(args.summary_path, summary)
     return summary
@@ -2535,6 +2962,11 @@ def _build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--exclude-domains", default=None)
     ingest.add_argument("--tags-csv", default=None)
     ingest.add_argument("--selection", choices=["new_or_updated", "all"], default="new_or_updated")
+    ingest.add_argument(
+        "--persistence-mode",
+        choices=sorted(PERSISTENCE_MODES),
+        default="gcs_authoritative",
+    )
     ingest.add_argument("--limit", type=int, default=None)
     ingest.add_argument("--dry-run", action="store_true")
     ingest.add_argument("--require-remote-persistence", action="store_true")
@@ -2542,6 +2974,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     enrich = subparsers.add_parser("enrich", help="Enrich ingested financial news articles")
     enrich.add_argument("--source-kind", default="newsapi_article")
+    enrich.add_argument(
+        "--persistence-mode",
+        choices=sorted(PERSISTENCE_MODES),
+        default="gcs_authoritative",
+    )
     enrich.add_argument("--mode", choices=["all", "only_missing_or_failed"], default="only_missing_or_failed")
     enrich.add_argument("--doc-id", action="append", default=[])
     enrich.add_argument("--doc-ids-from-summary", default="")

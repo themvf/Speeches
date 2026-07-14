@@ -103,6 +103,7 @@ def test_enrichment_candidates_include_real_body_text():
 def test_news_enrichment_checkpoints_progress(monkeypatch):
     payload = {"documents": [_doc("doc-1"), _doc("doc-2"), _doc("doc-3")]}
     saved_doc_ids = []
+    mirrored_doc_ids = []
 
     monkeypatch.setattr(pipeline, "_load_streamlit_secrets", lambda: {})
     monkeypatch.setattr(pipeline, "_get_gcs_storage", lambda secrets: (None, "local"))
@@ -112,6 +113,11 @@ def test_news_enrichment_checkpoints_progress(monkeypatch):
         pipeline,
         "_save_enrichment_state",
         lambda storage, state, require_remote=False: saved_doc_ids.append(tuple(sorted(state["entries"].keys()))),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_mirror_enrichment_entries_to_neon_best_effort",
+        lambda entries: mirrored_doc_ids.append(tuple(sorted(entries.keys()))),
     )
     monkeypatch.setattr(pipeline, "_rebuild_rule_summaries", lambda *args, **kwargs: None)
     monkeypatch.setattr(pipeline, "_write_summary", lambda *args, **kwargs: None)
@@ -137,17 +143,245 @@ def test_news_enrichment_checkpoints_progress(monkeypatch):
     assert summary["processed_count"] == 3
     assert summary["fallback_enriched_count"] == 3
     assert saved_doc_ids == [("doc-1", "doc-2"), ("doc-1", "doc-2", "doc-3")]
+    assert mirrored_doc_ids == [("doc-1", "doc-2"), ("doc-3",)]
+
+
+def test_failed_authoritative_enrichment_save_never_mirrors_to_neon(monkeypatch):
+    payload = {"documents": [_doc("doc-1")]}
+    mirrored_doc_ids = []
+
+    monkeypatch.setattr(pipeline, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(pipeline, "_get_gcs_storage", lambda secrets: (object(), ""))
+    monkeypatch.setattr(pipeline, "_load_custom_documents", lambda storage: payload)
+    monkeypatch.setattr(pipeline, "_load_enrichment_state", lambda storage: {"entries": {}})
+    monkeypatch.setattr(
+        pipeline,
+        "_save_enrichment_state",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("GCS generation conflict")),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_mirror_enrichment_entries_to_neon_best_effort",
+        lambda entries: mirrored_doc_ids.append(tuple(sorted(entries.keys()))),
+    )
+    monkeypatch.setattr(pipeline, "_write_summary", lambda *args, **kwargs: None)
+
+    args = SimpleNamespace(
+        require_remote_persistence=True,
+        source_kind="substack_public_article",
+        doc_ids_from_summary="",
+        doc_id=[],
+        mode="all",
+        order="stored",
+        limit=None,
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        heuristic_only=True,
+        dry_run=False,
+        checkpoint_every=0,
+        summary_path="",
+    )
+
+    with pytest.raises(RuntimeError, match="GCS generation conflict"):
+        pipeline._run_news_enrichment(args)
+
+    assert mirrored_doc_ids == []
+
+
+def test_neon_authoritative_targeted_enrichment_uses_only_bounded_rows(monkeypatch):
+    persisted_batches = []
+    monkeypatch.setattr(pipeline, "_require_neon_authoritative_ready", lambda: None)
+    monkeypatch.setattr(pipeline, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(
+        pipeline,
+        "_get_gcs_storage",
+        lambda secrets: (_ for _ in ()).throw(AssertionError("GCS was initialized")),
+    )
+    monkeypatch.setattr(pipeline, "_load_neon_documents_by_ids", lambda ids: {"doc-1": _doc("doc-1")})
+    monkeypatch.setattr(pipeline, "_load_neon_enrichment_entries", lambda ids: {})
+    monkeypatch.setattr(
+        pipeline,
+        "_load_custom_documents",
+        lambda storage: (_ for _ in ()).throw(AssertionError("custom snapshot was loaded")),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_load_enrichment_state",
+        lambda storage: (_ for _ in ()).throw(AssertionError("enrichment snapshot was loaded")),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_persist_enrichment_entries_to_neon",
+        lambda entries: persisted_batches.append(dict(entries)),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_rebuild_rule_summaries",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("legacy summaries rebuilt")),
+    )
+    monkeypatch.setattr(pipeline, "_write_summary", lambda *args, **kwargs: None)
+
+    summary = pipeline._run_news_enrichment(
+        SimpleNamespace(
+            persistence_mode="neon_authoritative",
+            require_remote_persistence=True,
+            source_kind="substack_public_article",
+            doc_ids_from_summary="",
+            doc_id=["doc-1"],
+            mode="all",
+            order="stored",
+            limit=None,
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            heuristic_only=True,
+            dry_run=False,
+            checkpoint_every=0,
+            summary_path="",
+        )
+    )
+
+    assert [sorted(batch) for batch in persisted_batches] == [["doc-1"]]
+    assert persisted_batches[0]["doc-1"]["status"] == "fallback_enriched"
+    assert summary["processed_count"] == 1
+    assert summary["persistence_mode"] == "neon_authoritative"
+    assert summary["gcs_snapshot_loaded"] is False
+    assert summary["rule_summaries_rebuilt"] is False
+
+
+def test_neon_authoritative_catchup_enriches_bounded_missing_rows(monkeypatch):
+    persisted_batches = []
+    monkeypatch.setattr(pipeline, "_require_neon_authoritative_ready", lambda: None)
+    monkeypatch.setattr(pipeline, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(
+        pipeline,
+        "_load_neon_enrichment_catchup_ids",
+        lambda source_kind, limit: ["doc-1"],
+    )
+    monkeypatch.setattr(pipeline, "_load_neon_documents_by_ids", lambda ids: {"doc-1": _doc("doc-1")})
+    monkeypatch.setattr(pipeline, "_load_neon_enrichment_entries", lambda ids: {})
+    monkeypatch.setattr(
+        pipeline,
+        "_persist_enrichment_entries_to_neon",
+        lambda entries: persisted_batches.append(dict(entries)),
+    )
+    monkeypatch.setattr(pipeline, "_write_summary", lambda *args, **kwargs: None)
+
+    summary = pipeline._run_news_enrichment(
+        SimpleNamespace(
+            persistence_mode="neon_authoritative",
+            require_remote_persistence=True,
+            source_kind="substack_public_article",
+            doc_ids_from_summary="",
+            doc_id=[],
+            mode="only_missing_or_failed",
+            order="stored",
+            limit=10,
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            heuristic_only=True,
+            dry_run=False,
+            checkpoint_every=0,
+            summary_path="",
+        )
+    )
+
+    assert summary["catchup_mode"] is True
+    assert summary["requested_doc_ids"] == ["doc-1"]
+    assert summary["processed_count"] == 1
+    assert list(persisted_batches[0]) == ["doc-1"]
+
+
+def test_neon_authoritative_empty_catchup_exits_before_model_or_gcs(monkeypatch):
+    monkeypatch.setattr(pipeline, "_require_neon_authoritative_ready", lambda: None)
+    monkeypatch.setattr(pipeline, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(pipeline, "_load_neon_enrichment_catchup_ids", lambda source_kind, limit: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_get_model_client",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("model initialized")),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_get_gcs_storage",
+        lambda secrets: (_ for _ in ()).throw(AssertionError("GCS initialized")),
+    )
+    monkeypatch.setattr(pipeline, "_write_summary", lambda *args, **kwargs: None)
+
+    summary = pipeline._run_news_enrichment(
+        SimpleNamespace(
+            persistence_mode="neon_authoritative",
+            require_remote_persistence=True,
+            source_kind="substack_public_article",
+            doc_ids_from_summary="",
+            doc_id=[],
+            mode="only_missing_or_failed",
+            order="stored",
+            limit=10,
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            heuristic_only=False,
+            dry_run=False,
+            checkpoint_every=0,
+            summary_path="",
+        )
+    )
+
+    assert summary["catchup_mode"] is True
+    assert summary["processed_count"] == 0
+    assert summary["gcs_snapshot_loaded"] is False
+
+
+def test_neon_authoritative_enrichment_write_failure_is_fatal(monkeypatch):
+    monkeypatch.setattr(pipeline, "_require_neon_authoritative_ready", lambda: None)
+    monkeypatch.setattr(pipeline, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(pipeline, "_load_neon_documents_by_ids", lambda ids: {"doc-1": _doc("doc-1")})
+    monkeypatch.setattr(pipeline, "_load_neon_enrichment_entries", lambda ids: {})
+    monkeypatch.setattr(
+        pipeline,
+        "_persist_enrichment_entries_to_neon",
+        lambda entries: (_ for _ in ()).throw(
+            pipeline.NeonPersistenceError("required row write failed")
+        ),
+    )
+    monkeypatch.setattr(pipeline, "_write_summary", lambda *args, **kwargs: None)
+
+    with pytest.raises(pipeline.NeonPersistenceError, match="required row write failed"):
+        pipeline._run_news_enrichment(
+            SimpleNamespace(
+                persistence_mode="neon_authoritative",
+                require_remote_persistence=True,
+                source_kind="substack_public_article",
+                doc_ids_from_summary="",
+                doc_id=["doc-1"],
+                mode="all",
+                order="stored",
+                limit=None,
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                heuristic_only=True,
+                dry_run=False,
+                checkpoint_every=0,
+                summary_path="",
+            )
+        )
 
 
 @pytest.mark.parametrize("target_kind", ["summary", "doc_id"])
 def test_explicit_empty_enrichment_target_never_expands_to_all_documents(monkeypatch, tmp_path, target_kind):
-    payload = {"documents": [_doc("doc-1"), _doc("doc-2")]}
     saved_states = []
 
     monkeypatch.setattr(pipeline, "_load_streamlit_secrets", lambda: {})
     monkeypatch.setattr(pipeline, "_get_gcs_storage", lambda secrets: (None, "local"))
-    monkeypatch.setattr(pipeline, "_load_custom_documents", lambda storage: payload)
-    monkeypatch.setattr(pipeline, "_load_enrichment_state", lambda storage: {"entries": {}})
+    monkeypatch.setattr(
+        pipeline,
+        "_load_custom_documents",
+        lambda storage: (_ for _ in ()).throw(AssertionError("custom_documents.json was loaded")),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_load_enrichment_state",
+        lambda storage: (_ for _ in ()).throw(AssertionError("enrichment snapshot was loaded")),
+    )
     monkeypatch.setattr(
         pipeline,
         "_save_enrichment_state",
@@ -186,4 +420,5 @@ def test_explicit_empty_enrichment_target_never_expands_to_all_documents(monkeyp
     assert summary["candidate_count"] == 0
     assert summary["selected_count"] == 0
     assert summary["processed_count"] == 0
+    assert summary["gcs_snapshot_loaded"] is False
     assert saved_states == []

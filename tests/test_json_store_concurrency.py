@@ -17,12 +17,18 @@ class FakeBlob:
 
     def exists(self):
         record = self._bucket.objects.get(self.name)
-        self.generation = record["generation"] if record else None
         return record is not None
 
-    def download_as_text(self, encoding="utf-8"):
-        record = self._bucket.objects[self.name]
+    def reload(self):
+        record = self._bucket.objects.get(self.name)
+        if record is None:
+            raise RuntimeError("missing object")
         self.generation = record["generation"]
+
+    def download_as_text(self, encoding="utf-8", if_generation_match=None):
+        record = self._bucket.objects[self.name]
+        if if_generation_match is not None and if_generation_match != record["generation"]:
+            raise PreconditionFailed("generation mismatch")
         return record["text"]
 
     def upload_from_string(self, data, content_type=None, if_generation_match=None):
