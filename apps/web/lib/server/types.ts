@@ -567,11 +567,26 @@ export interface IntradayAttentionRow {
   ticker: string;
   decayedMentionCount: number; // freshness-weighted, unique-author count
   rawMentionCount: number;     // unique authors, no decay
+  freshnessRatio: number;      // decayed/raw, 0-1: how concentrated the buzz is in the very recent past
+}
+
+// SEC-22: hour-over-hour momentum for the movers split. changePct is null
+// for a ticker with zero mentions in the prior window (a "new" arrival, not
+// a quantifiable percent change).
+export interface AttentionMoverRow {
+  ticker: string;
+  recentCount: number;
+  priorCount: number;
+  changePct: number | null;
 }
 
 export interface MarketAttentionIntradayData {
   hoursBack: number;
   rows: IntradayAttentionRow[];
+  // SEC-22: empty when hoursBack is under the movers window requirement (6h)
+  // - not an error, just insufficient history to compare two windows.
+  heatingUp: AttentionMoverRow[];
+  coolingOff: AttentionMoverRow[];
   warning?: string;
   generatedAt: string;
 }

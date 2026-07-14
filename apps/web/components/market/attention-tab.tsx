@@ -682,6 +682,125 @@ function AuthorsBoard({ onSelectAuthor }: { onSelectAuthor: (author: string) => 
   );
 }
 
+// SEC-22 quadrant palette - reuses this file's existing mood/divergence
+// colors rather than introducing new ones, so the vocabulary stays
+// consistent across the tab: green = the good/active corner, amber/purple =
+// the two "half-signal" corners (matching DIVERGENCE_STYLES above), faint =
+// background noise.
+const QUADRANT_STYLES = {
+  surging:    { label: "Surging",    color: "#41d39d" }, // high volume, fresh
+  emerging:   { label: "Emerging",   color: "#a78bfa" }, // low volume, fresh - the early signal
+  fading:     { label: "Fading",     color: "#fbbf24" }, // high volume, stale - was hot
+  background: { label: "Background", color: "var(--ink-faint)" }, // low volume, stale
+} as const;
+
+function quadrantFor(row: IntradayAttentionRow, medianRaw: number, medianFreshness: number): keyof typeof QUADRANT_STYLES {
+  const highVolume = row.rawMentionCount >= medianRaw;
+  const fresh = row.freshnessRatio >= medianFreshness;
+  if (highVolume && fresh) return "surging";
+  if (!highVolume && fresh) return "emerging";
+  if (highVolume && !fresh) return "fading";
+  return "background";
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
+
+const SCATTER_W = 620;
+const SCATTER_H = 220;
+const SCATTER_PAD = 28;
+
+// Idea 3: heating vs. cooling scatter. X = raw mention volume, Y =
+// freshness ratio (decayed/raw - how concentrated a ticker's buzz is in the
+// very recent past vs. spread out over the whole window). Quadrants split
+// at the median of the rows actually shown, so the chart adapts to whatever
+// volume range is live instead of a hardcoded threshold.
+function HeatScatter({ rows }: { rows: IntradayAttentionRow[] }) {
+  const shown = rows.slice(0, 20);
+  if (shown.length < 2) {
+    return <p className="text-xs text-[color:var(--ink-faint)]">Not enough tickers yet for the scatter view.</p>;
+  }
+  const medianRaw = median(shown.map((r) => r.rawMentionCount));
+  const medianFreshness = median(shown.map((r) => r.freshnessRatio));
+  const maxRaw = Math.max(...shown.map((r) => r.rawMentionCount), 1);
+  const maxFreshness = Math.max(...shown.map((r) => r.freshnessRatio), 0.01);
+
+  const x = (raw: number) => SCATTER_PAD + (raw / maxRaw) * (SCATTER_W - 2 * SCATTER_PAD);
+  const y = (fresh: number) => SCATTER_H - SCATTER_PAD - (fresh / maxFreshness) * (SCATTER_H - 2 * SCATTER_PAD);
+  const midX = x(medianRaw);
+  const midY = y(medianFreshness);
+  const radius = (raw: number) => 4 + Math.min(6, (raw / maxRaw) * 6);
+
+  return (
+    <div className="space-y-2">
+      <svg viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`} className="block w-full" role="img" aria-label="Ticker volume vs. freshness scatter plot">
+        <line x1={midX} x2={midX} y1={SCATTER_PAD} y2={SCATTER_H - SCATTER_PAD} stroke="var(--line)" strokeDasharray="3 3" />
+        <line x1={SCATTER_PAD} x2={SCATTER_W - SCATTER_PAD} y1={midY} y2={midY} stroke="var(--line)" strokeDasharray="3 3" />
+        <text x={SCATTER_PAD + 2} y={16} fontSize={9} fill="var(--ink-faint)">fresher ↑</text>
+        <text x={SCATTER_W - SCATTER_PAD - 2} y={SCATTER_H - 8} fontSize={9} textAnchor="end" fill="var(--ink-faint)">more volume →</text>
+        {shown.map((row) => {
+          const quadrant = quadrantFor(row, medianRaw, medianFreshness);
+          const style = QUADRANT_STYLES[quadrant];
+          const cx = x(row.rawMentionCount);
+          const cy = y(row.freshnessRatio);
+          return (
+            <g key={row.ticker}>
+              <circle cx={cx} cy={cy} r={radius(row.rawMentionCount)} fill={style.color} opacity={0.85} />
+              <text x={cx} y={cy - radius(row.rawMentionCount) - 3} fontSize={10} textAnchor="middle" fill="var(--ink)" fontWeight={600}>
+                {row.ticker}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[color:var(--ink-faint)]">
+        {(Object.entries(QUADRANT_STYLES) as [keyof typeof QUADRANT_STYLES, typeof QUADRANT_STYLES[keyof typeof QUADRANT_STYLES]][]).map(([key, style]) => (
+          <span key={key} className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: style.color }} />
+            {style.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Idea 4: heating up / cooling off, ranked by hour-over-hour distinct-author
+// change (last 3h vs. the 3h before that). "New" = zero mentions in the
+// prior window at all - the strongest possible heating signal, no percent
+// to show.
+function MoversColumn({ title, rows, direction }: { title: string; rows: MarketAttentionIntradayData["heatingUp"]; direction: "up" | "down" }) {
+  const color = direction === "up" ? "#41d39d" : "#f87171";
+  return (
+    <div className="flex-1 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] p-3">
+      <p className="mb-2 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color }}>
+        {direction === "up" ? "▲" : "▼"} {title}
+      </p>
+      {rows.length === 0 ? (
+        <p className="py-3 text-center text-[11px] text-[color:var(--ink-faint)]">Nothing notable right now.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {rows.map((row) => (
+            <li key={row.ticker} className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-bold text-[color:var(--accent)]">{row.ticker}</span>
+              <span className="tabular-nums text-[color:var(--ink-faint)]">
+                {row.priorCount} → {row.recentCount}
+              </span>
+              <span className="font-semibold tabular-nums" style={{ color }}>
+                {row.changePct == null ? "new" : `${row.changePct >= 0 ? "+" : ""}${row.changePct.toFixed(0)}%`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function IntradayBoard() {
   const [data, setData] = useState<MarketAttentionIntradayData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -720,31 +839,57 @@ function IntradayBoard() {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-            <th className="py-2 pl-4 pr-2 text-left font-semibold">#</th>
-            <th className="px-2 py-2 text-left font-semibold">Ticker</th>
-            <th className="px-2 py-2 text-right font-semibold">Freshness-Weighted</th>
-            <th className="py-2 pl-2 pr-4 text-right font-semibold">Raw Mentions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((row: IntradayAttentionRow) => (
-            <tr key={row.ticker} className="border-b border-[color:var(--line)] last:border-0">
-              <td className="py-2 pl-4 pr-2 text-xs tabular-nums text-[color:var(--ink-faint)]">{row.rank}</td>
-              <td className="px-2 py-2 text-xs font-bold text-[color:var(--accent)]">{row.ticker}</td>
-              <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink)]">
-                {row.decayedMentionCount.toFixed(1)}
-              </td>
-              <td className="py-2 pl-2 pr-4 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">
-                {row.rawMentionCount}
-              </td>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] p-3">
+        <HeatScatter rows={data.rows} />
+      </div>
+
+      {(data.heatingUp.length > 0 || data.coolingOff.length > 0) && (
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <MoversColumn title="Heating up" rows={data.heatingUp} direction="up" />
+          <MoversColumn title="Cooling off" rows={data.coolingOff} direction="down" />
+        </div>
+      )}
+
+      <details className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
+        <summary className="cursor-pointer px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+          Full ranked board ({data.rows.length} tickers)
+        </summary>
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-t border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+              <th className="py-2 pl-4 pr-2 text-left font-semibold">#</th>
+              <th className="px-2 py-2 text-left font-semibold">Ticker</th>
+              <th className="px-2 py-2 text-right font-semibold">Freshness-Weighted</th>
+              <th className="px-2 py-2 text-right font-semibold">Raw Mentions</th>
+              <th className="py-2 pl-2 pr-4 text-right font-semibold">Freshness Ratio</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.rows.map((row: IntradayAttentionRow) => (
+              <tr key={row.ticker} className="border-b border-[color:var(--line)] last:border-0">
+                <td className="py-2 pl-4 pr-2 text-xs tabular-nums text-[color:var(--ink-faint)]">{row.rank}</td>
+                <td className="px-2 py-2 text-xs font-bold text-[color:var(--accent)]">{row.ticker}</td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink)]">
+                  {row.decayedMentionCount.toFixed(1)}
+                </td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">
+                  {row.rawMentionCount}
+                </td>
+                <td className="py-2 pl-2 pr-4 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">
+                  {row.freshnessRatio.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+
+      <p className="text-[10px] text-[color:var(--ink-faint)]">
+        Scatter axes: volume (distinct authors, unweighted) vs. freshness ratio (how much of a ticker&apos;s decayed
+        score is concentrated in the very recent past). Heating up / cooling off compares distinct authors in the
+        last 3h against the 3h before that; low-volume tickers are filtered out to avoid noisy percentages.
+      </p>
     </div>
   );
 }
