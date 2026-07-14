@@ -26,7 +26,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "overview",  label: "Overview" },
   { id: "sectors",   label: "Sectors" },
   { id: "movers",    label: "Movers" },
-  { id: "attention", label: "Attention" },
+  { id: "attention", label: "Reddit" },
   { id: "cboe",      label: "CBOE" },
   { id: "crypto",    label: "Crypto" },
   { id: "exchanges", label: "Exchanges" },

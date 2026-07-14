@@ -6,14 +6,15 @@ import test from "node:test";
 import {
   computeIntradayRows,
   computeMovers,
+  moodPlurality,
   type IntradayMentionInput,
 } from "./intraday-attention.ts";
 
 const HOUR = 60 * 60 * 1000;
 const NOW = Date.parse("2026-07-14T12:00:00.000Z");
 
-function mention(ticker: string, author: string, hoursAgo: number): IntradayMentionInput {
-  return { ticker, author, created_utc: new Date(NOW - hoursAgo * HOUR).toISOString() };
+function mention(ticker: string, author: string, hoursAgo: number, mood?: string): IntradayMentionInput {
+  return { ticker, author, created_utc: new Date(NOW - hoursAgo * HOUR).toISOString(), mood };
 }
 
 test("computeIntradayRows dedupes by distinct author and decays by recency", () => {
@@ -39,6 +40,35 @@ test("computeIntradayRows dedupes by distinct author and decays by recency", () 
 
   // Ranked and capped.
   assert.deepEqual(rows.map((r) => r.rank), rows.map((_, i) => i + 1));
+});
+
+test("moodPlurality follows the daily rollup's rules", () => {
+  assert.equal(moodPlurality([]), "neutral");
+  assert.equal(moodPlurality(["neutral", "neutral"]), "neutral");
+  assert.equal(moodPlurality(["bullish", "neutral"]), "bullish");
+  assert.equal(moodPlurality(["bearish"]), "bearish");
+  assert.equal(moodPlurality(["bullish", "bearish"]), "mixed");
+  assert.equal(moodPlurality(["bullish", "bullish", "bearish"]), "bullish");
+  assert.equal(moodPlurality(["bearish", "bearish", "bullish", "neutral"]), "bearish");
+});
+
+test("computeIntradayRows aggregates mood per ticker from each author's latest mention", () => {
+  const mentions: IntradayMentionInput[] = [
+    // Author a flipped bearish -> bullish; only the latest (bullish) counts.
+    mention("NVDA", "a", 5, "bearish"),
+    mention("NVDA", "a", 1, "bullish"),
+    mention("NVDA", "b", 1, "bullish"),
+    mention("NVDA", "c", 1, "bearish"),
+    // TSLA: one bull, one bear -> mixed. GME: no directional votes -> neutral.
+    mention("TSLA", "d", 1, "bullish"),
+    mention("TSLA", "e", 1, "bearish"),
+    mention("GME", "f", 1, "neutral"),
+    mention("GME", "g", 1), // absent mood treated as neutral
+  ];
+  const byTicker = new Map(computeIntradayRows(mentions, NOW, 30).map((r) => [r.ticker, r.mood]));
+  assert.equal(byTicker.get("NVDA"), "bullish"); // 2 bull vs 1 bear; a's stale bearish vote superseded
+  assert.equal(byTicker.get("TSLA"), "mixed");
+  assert.equal(byTicker.get("GME"), "neutral");
 });
 
 test("computeIntradayRows respects topN and sorts by decayed count desc", () => {

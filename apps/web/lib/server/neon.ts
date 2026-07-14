@@ -3134,17 +3134,19 @@ export async function getStockAttentionSparklines(
   return map;
 }
 
-export type IntradayMentionRow = { ticker: string; author: string; created_utc: string };
+export type IntradayMentionRow = { ticker: string; author: string; created_utc: string; mood: string };
 
 // Item 3c: raw rows for the "hot right now" intraday view. Deliberately
 // unaggregated - the API route computes per-author dedup + freshness
 // decay at request time (not stored; this is the freshness-decay math
 // the daily rollup's §6.2 explicitly keeps out of the persisted rollup).
+// mood rides along (SEC-23) so the scatter can color bubbles by per-ticker
+// sentiment plurality.
 export async function getIntradayTickerMentions(hoursBack = 24): Promise<IntradayMentionRow[]> {
   const sql = getSql();
   const cappedHours = Math.max(1, Math.min(72, hoursBack));
   const rows = (await sql`
-    SELECT m.value AS ticker, i.author, i.created_utc::text AS created_utc
+    SELECT m.value AS ticker, i.author, i.created_utc::text AS created_utc, i.mood
     FROM intelligence_mentions m
     JOIN reddit_attention_items i ON i.source_id = m.source_id
     WHERE m.mention_type = 'ticker'

@@ -568,6 +568,7 @@ export interface IntradayAttentionRow {
   decayedMentionCount: number; // freshness-weighted, unique-author count
   rawMentionCount: number;     // unique authors, no decay
   freshnessRatio: number;      // decayed/raw, 0-1: how concentrated the buzz is in the very recent past
+  mood: string;                // SEC-23: plurality over deduped authors - colors the scatter bubbles
 }
 
 // SEC-22: hour-over-hour momentum for the movers split. changePct is null

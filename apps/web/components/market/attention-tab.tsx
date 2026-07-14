@@ -682,27 +682,6 @@ function AuthorsBoard({ onSelectAuthor }: { onSelectAuthor: (author: string) => 
   );
 }
 
-// SEC-22 quadrant palette - reuses this file's existing mood/divergence
-// colors rather than introducing new ones, so the vocabulary stays
-// consistent across the tab: green = the good/active corner, amber/purple =
-// the two "half-signal" corners (matching DIVERGENCE_STYLES above), faint =
-// background noise.
-const QUADRANT_STYLES = {
-  surging:    { label: "Surging",    color: "#41d39d" }, // high volume, fresh
-  emerging:   { label: "Emerging",   color: "#a78bfa" }, // low volume, fresh - the early signal
-  fading:     { label: "Fading",     color: "#fbbf24" }, // high volume, stale - was hot
-  background: { label: "Background", color: "var(--ink-faint)" }, // low volume, stale
-} as const;
-
-function quadrantFor(row: IntradayAttentionRow, medianRaw: number, medianFreshness: number): keyof typeof QUADRANT_STYLES {
-  const highVolume = row.rawMentionCount >= medianRaw;
-  const fresh = row.freshnessRatio >= medianFreshness;
-  if (highVolume && fresh) return "surging";
-  if (!highVolume && fresh) return "emerging";
-  if (highVolume && !fresh) return "fading";
-  return "background";
-}
-
 function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -711,16 +690,52 @@ function median(values: number[]): number {
 }
 
 const SCATTER_W = 620;
-const SCATTER_H = 220;
+const SCATTER_H = 240;
 const SCATTER_PAD = 28;
+// SEC-23: a ticker with 1-2 distinct authors gets freshnessRatio ~1.0 from a
+// single fresh mention and pins the top of the chart (the TRIN case) - keep
+// those off the scatter (they stay in the ranked board below). Falls back to
+// no floor when the window is too sparse for the floor to leave a chart.
+const SCATTER_MIN_AUTHORS = 3;
+const SCATTER_MAX_POINTS = 20;
 
-// Idea 3: heating vs. cooling scatter. X = raw mention volume, Y =
-// freshness ratio (decayed/raw - how concentrated a ticker's buzz is in the
-// very recent past vs. spread out over the whole window). Quadrants split
-// at the median of the rows actually shown, so the chart adapts to whatever
-// volume range is live instead of a hardcoded threshold.
+// Greedy label placement: try above, below, then further out; take the first
+// slot that doesn't collide with an already-placed label. Cheap and
+// deterministic - enough to fix the overlapping-cluster readability problem
+// without a layout library.
+function placeLabels(points: { cx: number; cy: number; r: number; ticker: string }[]): { x: number; y: number }[] {
+  const placed: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  return points.map((p) => {
+    const w = p.ticker.length * 6.5;
+    const candidates = [
+      { x: p.cx, y: p.cy - p.r - 4 },
+      { x: p.cx, y: p.cy + p.r + 12 },
+      { x: p.cx, y: p.cy - p.r - 15 },
+      { x: p.cx, y: p.cy + p.r + 23 },
+    ];
+    let chosen = candidates[0]!;
+    for (const c of candidates) {
+      const box = { x1: c.x - w / 2, y1: c.y - 9, x2: c.x + w / 2, y2: c.y + 2 };
+      const collides = placed.some((b) => box.x1 < b.x2 && box.x2 > b.x1 && box.y1 < b.y2 && box.y2 > b.y1);
+      if (!collides) {
+        chosen = c;
+        break;
+      }
+    }
+    const w2 = w / 2;
+    placed.push({ x1: chosen.x - w2, y1: chosen.y - 9, x2: chosen.x + w2, y2: chosen.y + 2 });
+    return chosen;
+  });
+}
+
+// Idea 3 (SEC-22, reworked in SEC-23): X = raw mention volume on a
+// square-root scale (spreads the low-volume cluster instead of letting one
+// runaway ticker compress everything left), Y = freshness ratio. Bubble
+// color = sentiment (position already encodes the quadrant, so coloring by
+// quadrant was redundant); quadrant identity is named in the corners.
 function HeatScatter({ rows }: { rows: IntradayAttentionRow[] }) {
-  const shown = rows.slice(0, 20);
+  const floored = rows.filter((r) => r.rawMentionCount >= SCATTER_MIN_AUTHORS);
+  const shown = (floored.length >= 4 ? floored : rows).slice(0, SCATTER_MAX_POINTS);
   if (shown.length < 2) {
     return <p className="text-xs text-[color:var(--ink-faint)]">Not enough tickers yet for the scatter view.</p>;
   }
@@ -729,41 +744,59 @@ function HeatScatter({ rows }: { rows: IntradayAttentionRow[] }) {
   const maxRaw = Math.max(...shown.map((r) => r.rawMentionCount), 1);
   const maxFreshness = Math.max(...shown.map((r) => r.freshnessRatio), 0.01);
 
-  const x = (raw: number) => SCATTER_PAD + (raw / maxRaw) * (SCATTER_W - 2 * SCATTER_PAD);
+  const x = (raw: number) => SCATTER_PAD + Math.sqrt(raw / maxRaw) * (SCATTER_W - 2 * SCATTER_PAD);
   const y = (fresh: number) => SCATTER_H - SCATTER_PAD - (fresh / maxFreshness) * (SCATTER_H - 2 * SCATTER_PAD);
   const midX = x(medianRaw);
   const midY = y(medianFreshness);
-  const radius = (raw: number) => 4 + Math.min(6, (raw / maxRaw) * 6);
+  const radius = (raw: number) => 4 + Math.min(6, Math.sqrt(raw / maxRaw) * 6);
+
+  const points = shown.map((row) => ({
+    cx: x(row.rawMentionCount),
+    cy: y(row.freshnessRatio),
+    r: radius(row.rawMentionCount),
+    ticker: row.ticker,
+    mood: row.mood,
+    raw: row.rawMentionCount,
+    fresh: row.freshnessRatio,
+  }));
+  const labels = placeLabels(points);
 
   return (
     <div className="space-y-2">
-      <svg viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`} className="block w-full" role="img" aria-label="Ticker volume vs. freshness scatter plot">
+      <svg viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`} className="block w-full" role="img" aria-label="Ticker volume vs. freshness scatter plot, colored by sentiment">
         <line x1={midX} x2={midX} y1={SCATTER_PAD} y2={SCATTER_H - SCATTER_PAD} stroke="var(--line)" strokeDasharray="3 3" />
         <line x1={SCATTER_PAD} x2={SCATTER_W - SCATTER_PAD} y1={midY} y2={midY} stroke="var(--line)" strokeDasharray="3 3" />
-        <text x={SCATTER_PAD + 2} y={16} fontSize={9} fill="var(--ink-faint)">fresher ↑</text>
-        <text x={SCATTER_W - SCATTER_PAD - 2} y={SCATTER_H - 8} fontSize={9} textAnchor="end" fill="var(--ink-faint)">more volume →</text>
-        {shown.map((row) => {
-          const quadrant = quadrantFor(row, medianRaw, medianFreshness);
-          const style = QUADRANT_STYLES[quadrant];
-          const cx = x(row.rawMentionCount);
-          const cy = y(row.freshnessRatio);
+        <text x={SCATTER_PAD + 2} y={14} fontSize={9} fill="var(--ink-faint)">fresher ↑</text>
+        <text x={SCATTER_W - SCATTER_PAD - 2} y={SCATTER_H - 6} fontSize={9} textAnchor="end" fill="var(--ink-faint)">more volume →</text>
+        <text x={SCATTER_W - SCATTER_PAD - 2} y={14} fontSize={9} textAnchor="end" fill="var(--ink-faint)" opacity={0.8}>surging</text>
+        <text x={SCATTER_PAD + 2} y={SCATTER_PAD + 12} fontSize={9} fill="var(--ink-faint)" opacity={0.8}>emerging</text>
+        <text x={SCATTER_W - SCATTER_PAD - 2} y={SCATTER_H - SCATTER_PAD - 4} fontSize={9} textAnchor="end" fill="var(--ink-faint)" opacity={0.8}>fading</text>
+        <text x={SCATTER_PAD + 2} y={SCATTER_H - SCATTER_PAD - 4} fontSize={9} fill="var(--ink-faint)" opacity={0.8}>background</text>
+        {points.map((p, i) => {
+          const style = MOOD_STYLES[p.mood] ?? MOOD_STYLES.neutral!;
+          const label = labels[i]!;
           return (
-            <g key={row.ticker}>
-              <circle cx={cx} cy={cy} r={radius(row.rawMentionCount)} fill={style.color} opacity={0.85} />
-              <text x={cx} y={cy - radius(row.rawMentionCount) - 3} fontSize={10} textAnchor="middle" fill="var(--ink)" fontWeight={600}>
-                {row.ticker}
+            <g key={p.ticker}>
+              <title>{`${p.ticker}: ${p.raw} distinct authors, freshness ${p.fresh.toFixed(2)}, ${style.label.toLowerCase()}`}</title>
+              <circle cx={p.cx} cy={p.cy} r={p.r} fill={style.color} opacity={0.85} />
+              <text x={label.x} y={label.y} fontSize={10} textAnchor="middle" fill="var(--ink)" fontWeight={600}>
+                {p.ticker}
               </text>
             </g>
           );
         })}
       </svg>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[color:var(--ink-faint)]">
-        {(Object.entries(QUADRANT_STYLES) as [keyof typeof QUADRANT_STYLES, typeof QUADRANT_STYLES[keyof typeof QUADRANT_STYLES]][]).map(([key, style]) => (
-          <span key={key} className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: style.color }} />
-            {style.label}
-          </span>
-        ))}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[color:var(--ink-faint)]">
+        {(["bullish", "bearish", "mixed", "neutral"] as const).map((mood) => {
+          const style = MOOD_STYLES[mood]!;
+          return (
+            <span key={mood} className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: style.color }} />
+              {style.label}
+            </span>
+          );
+        })}
+        <span className="opacity-70">keyword-based tone - directional only</span>
       </div>
     </div>
   );
@@ -886,9 +919,12 @@ function IntradayBoard() {
       </details>
 
       <p className="text-[10px] text-[color:var(--ink-faint)]">
-        Scatter axes: volume (distinct authors, unweighted) vs. freshness ratio (how much of a ticker&apos;s decayed
-        score is concentrated in the very recent past). Heating up / cooling off compares distinct authors in the
-        last 3h against the 3h before that; low-volume tickers are filtered out to avoid noisy percentages.
+        Scatter axes: volume (distinct authors, square-root scale) vs. freshness ratio (how much of a ticker&apos;s
+        decayed score is concentrated in the very recent past). Bubble color is the keyword-based tone estimate;
+        tickers with fewer than {SCATTER_MIN_AUTHORS} distinct authors are left off the scatter (still in the ranked board below).
+        Heating up / cooling off compares distinct authors in the last 3h against the 3h before that.
+        Note this view is a live rolling window — the Daily board shows the last <em>completed</em> UTC day&apos;s
+        rollup, so a ticker surging right now can appear here before it exists on any Daily board.
       </p>
     </div>
   );
