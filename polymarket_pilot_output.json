@@ -1,0 +1,601 @@
+{
+ "generated_at": "2026-07-15T00:44:50Z",
+ "markets_analyzed": 120,
+ "fills_processed": 153267,
+ "wallets_seen": 19323,
+ "wallets_qualified": 1704,
+ "min_markets": 5,
+ "open_earnings_markets": 61,
+ "leaderboard": [
+  {
+   "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+   "name": "mmmbop",
+   "markets": 65,
+   "wins": 43,
+   "win_rate": 0.662,
+   "pnl_usd": 20690.26,
+   "cost_usd": 23745.9,
+   "roi": 0.871,
+   "avg_winner_entry_price": 0.551,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0x3bef39e74640f5af9522663400e161f9d2f29a71",
+   "name": "PRNewswire",
+   "markets": 29,
+   "wins": 29,
+   "win_rate": 1.0,
+   "pnl_usd": 14539.3,
+   "cost_usd": 41371.76,
+   "roi": 0.351,
+   "avg_winner_entry_price": 0.854,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0x5b9115312cb4fc2b2b57c65045e611092f222709",
+   "name": "x26",
+   "markets": 66,
+   "wins": 54,
+   "win_rate": 0.818,
+   "pnl_usd": 13599.1,
+   "cost_usd": 169991.7,
+   "roi": 0.08,
+   "avg_winner_entry_price": 0.872,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0x9e88f359b9803e41420fbb13385c5ae1765c301c",
+   "name": "YoungAlphaGoat",
+   "markets": 74,
+   "wins": 48,
+   "win_rate": 0.649,
+   "pnl_usd": 12489.62,
+   "cost_usd": 123202.54,
+   "roi": 0.101,
+   "avg_winner_entry_price": 0.76,
+   "open_earnings_positions": [
+    {
+     "question": "Will UnitedHealth Group (UNH) beat quarterly earnings?",
+     "ticker": "UNH",
+     "net_shares": {
+      "No": 200.0
+     }
+    },
+    {
+     "question": "Will Blackstone (BX) beat quarterly earnings?",
+     "ticker": "BX",
+     "net_shares": {
+      "No": 34.22,
+      "Yes": 200.0
+     }
+    },
+    {
+     "question": "Will PG&E (PCG) beat quarterly earnings?",
+     "ticker": "PCG",
+     "net_shares": {
+      "No": 5.0
+     }
+    },
+    {
+     "question": "Will Tesla (TSLA) beat quarterly earnings?",
+     "ticker": "TSLA",
+     "net_shares": {
+      "No": 225.0
+     }
+    }
+   ]
+  },
+  {
+   "wallet": "0x9256dc04d6a9af8410c253bb5c52a8ff6eb62e8b",
+   "name": "braghs34",
+   "markets": 27,
+   "wins": 21,
+   "win_rate": 0.778,
+   "pnl_usd": 8728.05,
+   "cost_usd": 194208.34,
+   "roi": 0.045,
+   "avg_winner_entry_price": 0.849,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0x8a7902b5f48f0a6eb0bc8fcf1042ab125a36b1a8",
+   "name": "0x8a7902b5F48F0a6Eb0bC8FCF1042Ab125a36b1A8-1759265803557",
+   "markets": 7,
+   "wins": 6,
+   "win_rate": 0.857,
+   "pnl_usd": 8266.05,
+   "cost_usd": 13994.91,
+   "roi": 0.591,
+   "avg_winner_entry_price": 0.721,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0x0a557f8f05af9316c375bb701106281a708fb632",
+   "name": "mynamerobert",
+   "markets": 12,
+   "wins": 5,
+   "win_rate": 0.417,
+   "pnl_usd": 7739.94,
+   "cost_usd": 4319.37,
+   "roi": 1.792,
+   "avg_winner_entry_price": 0.156,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0x1693a139d630da9763c5019e3ab25fe9d65e974e",
+   "name": "Luckbychance",
+   "markets": 22,
+   "wins": 16,
+   "win_rate": 0.727,
+   "pnl_usd": 6105.87,
+   "cost_usd": 28832.56,
+   "roi": 0.212,
+   "avg_winner_entry_price": 0.8,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0x4b92a2d2fd3807981a5dddae7315122530a542e6",
+   "name": "wisser",
+   "markets": 37,
+   "wins": 28,
+   "win_rate": 0.757,
+   "pnl_usd": 5862.72,
+   "cost_usd": 72400.83,
+   "roi": 0.081,
+   "avg_winner_entry_price": 0.694,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0xdebbe89ceb32828a99648bca497684f5209ceedb",
+   "name": "Lexington",
+   "markets": 29,
+   "wins": 29,
+   "win_rate": 1.0,
+   "pnl_usd": 5691.66,
+   "cost_usd": 72798.34,
+   "roi": 0.078,
+   "avg_winner_entry_price": 0.977,
+   "open_earnings_positions": []
+  },
+  {
+   "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+   "name": "Maraq",
+   "markets": 74,
+   "wins": 41,
+   "win_rate": 0.554,
+   "pnl_usd": 5098.93,
+   "cost_usd": 13354.12,
+   "roi": 0.382,
+   "avg_winner_entry_price": 0.538
+  },
+  {
+   "wallet": "0xf9f207b77137caa79c6c4516abdef3133db45cba",
+   "name": "extractive-manatee",
+   "markets": 88,
+   "wins": 47,
+   "win_rate": 0.534,
+   "pnl_usd": 4695.18,
+   "cost_usd": 75149.3,
+   "roi": 0.062,
+   "avg_winner_entry_price": 0.563
+  },
+  {
+   "wallet": "0x23ca4376e7b74376b9247c4daac3dcad1fec9ae6",
+   "name": "fdsfo",
+   "markets": 30,
+   "wins": 19,
+   "win_rate": 0.633,
+   "pnl_usd": 4218.06,
+   "cost_usd": 14096.18,
+   "roi": 0.299,
+   "avg_winner_entry_price": 0.709
+  },
+  {
+   "wallet": "0x2f633efb75256a2f2445110c8978684ab8936643",
+   "name": "Iamnotai",
+   "markets": 41,
+   "wins": 41,
+   "win_rate": 1.0,
+   "pnl_usd": 4180.07,
+   "cost_usd": 28524.7,
+   "roi": 0.147,
+   "avg_winner_entry_price": 0.895
+  },
+  {
+   "wallet": "0xfe40bbeb383f1ea16eadd8e303264dbe79e830f2",
+   "name": "Charge2DaGame",
+   "markets": 15,
+   "wins": 4,
+   "win_rate": 0.267,
+   "pnl_usd": 4099.24,
+   "cost_usd": 2966.32,
+   "roi": 1.382,
+   "avg_winner_entry_price": 0.376
+  },
+  {
+   "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+   "name": "KingDingaLing888",
+   "markets": 20,
+   "wins": 5,
+   "win_rate": 0.25,
+   "pnl_usd": 3730.07,
+   "cost_usd": 1433.35,
+   "roi": 2.602,
+   "avg_winner_entry_price": 0.126
+  },
+  {
+   "wallet": "0x2200b75c27835935a40308779b5656c09ab40f2d",
+   "name": "BeanC0unter",
+   "markets": 14,
+   "wins": 7,
+   "win_rate": 0.5,
+   "pnl_usd": 3684.41,
+   "cost_usd": 5646.23,
+   "roi": 0.653,
+   "avg_winner_entry_price": 0.306
+  },
+  {
+   "wallet": "0xcdb1f1ef8213c06911e4ba6a884176c5571e276c",
+   "name": "Ahpo",
+   "markets": 41,
+   "wins": 40,
+   "win_rate": 0.976,
+   "pnl_usd": 3646.98,
+   "cost_usd": 130102.62,
+   "roi": 0.028,
+   "avg_winner_entry_price": 0.956
+  },
+  {
+   "wallet": "0x5b1c92b757c40d68ce650e7cf8ca50529d772a3e",
+   "name": "walterdog",
+   "markets": 5,
+   "wins": 4,
+   "win_rate": 0.8,
+   "pnl_usd": 3638.58,
+   "cost_usd": 1986.38,
+   "roi": 1.832,
+   "avg_winner_entry_price": 0.273
+  },
+  {
+   "wallet": "0xa58d4f278d7953cd38eeb929f7e242bfc7c0b9b8",
+   "name": "AiBird",
+   "markets": 59,
+   "wins": 29,
+   "win_rate": 0.492,
+   "pnl_usd": 3607.19,
+   "cost_usd": 7672.18,
+   "roi": 0.47,
+   "avg_winner_entry_price": 0.325
+  },
+  {
+   "wallet": "0xc31d0a0d63d760d72a1236d16beaa6a71c854ebe",
+   "name": "FootballFan98",
+   "markets": 7,
+   "wins": 4,
+   "win_rate": 0.571,
+   "pnl_usd": 3549.43,
+   "cost_usd": 1194.72,
+   "roi": 2.971,
+   "avg_winner_entry_price": 0.155
+  },
+  {
+   "wallet": "0x6e3e49819a4edf1a73036259347dad05eb6a5443",
+   "name": "BrooklynDash",
+   "markets": 5,
+   "wins": 5,
+   "win_rate": 1.0,
+   "pnl_usd": 3535.61,
+   "cost_usd": 11882.36,
+   "roi": 0.298,
+   "avg_winner_entry_price": 0.792
+  },
+  {
+   "wallet": "0x5ecde7348ea5100af4360dd7a6e0a3fb1d420787",
+   "name": "0xdc3E831cad",
+   "markets": 11,
+   "wins": 10,
+   "win_rate": 0.909,
+   "pnl_usd": 3385.08,
+   "cost_usd": 13832.55,
+   "roi": 0.245,
+   "avg_winner_entry_price": 0.616
+  },
+  {
+   "wallet": "0x663baf16d2a0ce08711b6695c50233bbae992308",
+   "name": "jjx1970",
+   "markets": 5,
+   "wins": 5,
+   "win_rate": 1.0,
+   "pnl_usd": 3332.03,
+   "cost_usd": 14465.72,
+   "roi": 0.23,
+   "avg_winner_entry_price": 0.784
+  },
+  {
+   "wallet": "0x12195a0fc5596c8bf72aff6df48dd942f178e791",
+   "name": "Casanovaaa",
+   "markets": 7,
+   "wins": 6,
+   "win_rate": 0.857,
+   "pnl_usd": 3320.96,
+   "cost_usd": 14522.44,
+   "roi": 0.229,
+   "avg_winner_entry_price": 0.838
+  },
+  {
+   "wallet": "0xe05655e23c0be00824c119ff0bdb69b5d7ac8120",
+   "name": "nubet",
+   "markets": 19,
+   "wins": 12,
+   "win_rate": 0.632,
+   "pnl_usd": 3196.8,
+   "cost_usd": 24845.64,
+   "roi": 0.129,
+   "avg_winner_entry_price": 0.757
+  },
+  {
+   "wallet": "0x3164a53c6ece13767c5fafa22a539ccbbbb9ad18",
+   "name": "primrose2",
+   "markets": 7,
+   "wins": 5,
+   "win_rate": 0.714,
+   "pnl_usd": 3180.2,
+   "cost_usd": 5656.63,
+   "roi": 0.562,
+   "avg_winner_entry_price": 0.389
+  },
+  {
+   "wallet": "0x9c9ad74b04c7de5bf3030754e5b1cec7ad02553b",
+   "name": "IN.PM",
+   "markets": 46,
+   "wins": 37,
+   "win_rate": 0.804,
+   "pnl_usd": 2992.1,
+   "cost_usd": 13988.93,
+   "roi": 0.214,
+   "avg_winner_entry_price": 0.673
+  },
+  {
+   "wallet": "0x58c028e7c41ba7ef2bde2142cd371cf491661c8e",
+   "name": "residual",
+   "markets": 70,
+   "wins": 47,
+   "win_rate": 0.671,
+   "pnl_usd": 2959.29,
+   "cost_usd": 18472.2,
+   "roi": 0.16,
+   "avg_winner_entry_price": 0.745
+  },
+  {
+   "wallet": "0xd5b97d08ec6098407bfbf66c2786ccc9967fe44e",
+   "name": "Optimus-",
+   "markets": 41,
+   "wins": 16,
+   "win_rate": 0.39,
+   "pnl_usd": 2856.19,
+   "cost_usd": 27073.7,
+   "roi": 0.105,
+   "avg_winner_entry_price": 0.561
+  },
+  {
+   "wallet": "0xa2949095980b775c92257bd0d5cea83be6a552ea",
+   "name": "Bullakijanamainkaun",
+   "markets": 18,
+   "wins": 8,
+   "win_rate": 0.444,
+   "pnl_usd": 2811.58,
+   "cost_usd": 9557.41,
+   "roi": 0.294,
+   "avg_winner_entry_price": 0.655
+  },
+  {
+   "wallet": "0x991b8cdcdc18b74eef8db47a9e89ff0f17a4f19a",
+   "name": "yee123",
+   "markets": 6,
+   "wins": 2,
+   "win_rate": 0.333,
+   "pnl_usd": 2546.65,
+   "cost_usd": 1276.35,
+   "roi": 1.995,
+   "avg_winner_entry_price": 0.212
+  },
+  {
+   "wallet": "0x701e37585fff132e27a5a51c6e778c5c62219013",
+   "name": "0x701e37585fFf132E27a5A51c6e778C5C62219013-1771701930242",
+   "markets": 9,
+   "wins": 5,
+   "win_rate": 0.556,
+   "pnl_usd": 2191.01,
+   "cost_usd": 3977.95,
+   "roi": 0.551,
+   "avg_winner_entry_price": 0.653
+  },
+  {
+   "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+   "name": "HAHAHAHAHAHAHHAAAAAAA",
+   "markets": 10,
+   "wins": 2,
+   "win_rate": 0.2,
+   "pnl_usd": 2051.22,
+   "cost_usd": 858.45,
+   "roi": 2.389,
+   "avg_winner_entry_price": 0.122
+  },
+  {
+   "wallet": "0x672225e5e1aba1c970ac613efd1505f4b7a10762",
+   "name": "rneowanreiowanr",
+   "markets": 65,
+   "wins": 65,
+   "win_rate": 1.0,
+   "pnl_usd": 1984.29,
+   "cost_usd": 97355.48,
+   "roi": 0.02,
+   "avg_winner_entry_price": 0.982
+  },
+  {
+   "wallet": "0xa867771d3c650b95b1109980537505920dad28bf",
+   "name": "0xA867771d3C650b95b1109980537505920daD28BF-1761666470281",
+   "markets": 6,
+   "wins": 5,
+   "win_rate": 0.833,
+   "pnl_usd": 1884.35,
+   "cost_usd": 12208.98,
+   "roi": 0.154,
+   "avg_winner_entry_price": 0.886
+  },
+  {
+   "wallet": "0xd2b2c05847390c792e476415f571d65d349bfd14",
+   "name": "rspol",
+   "markets": 5,
+   "wins": 5,
+   "win_rate": 1.0,
+   "pnl_usd": 1869.78,
+   "cost_usd": 5700.0,
+   "roi": 0.328,
+   "avg_winner_entry_price": 0.852
+  },
+  {
+   "wallet": "0x8fa98e6d9b2a5985abbf7edc9035199392e8ab24",
+   "name": "Kaleenbhaiya",
+   "markets": 9,
+   "wins": 7,
+   "win_rate": 0.778,
+   "pnl_usd": 1849.82,
+   "cost_usd": 3778.87,
+   "roi": 0.49,
+   "avg_winner_entry_price": 0.719
+  },
+  {
+   "wallet": "0x679938c0a1bb8f940f9632e2fc5ed673d5811047",
+   "name": "Awen93",
+   "markets": 17,
+   "wins": 8,
+   "win_rate": 0.471,
+   "pnl_usd": 1689.35,
+   "cost_usd": 1615.56,
+   "roi": 1.046,
+   "avg_winner_entry_price": 0.498
+  },
+  {
+   "wallet": "0x5ea9c7434b51e9c537e89e4f01945b326981894c",
+   "name": "maneki-neko",
+   "markets": 22,
+   "wins": 22,
+   "win_rate": 1.0,
+   "pnl_usd": 1659.95,
+   "cost_usd": 10972.1,
+   "roi": 0.151,
+   "avg_winner_entry_price": 0.946
+  },
+  {
+   "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+   "name": "lunae20",
+   "markets": 45,
+   "wins": 25,
+   "win_rate": 0.556,
+   "pnl_usd": 1632.16,
+   "cost_usd": 4669.72,
+   "roi": 0.35,
+   "avg_winner_entry_price": 0.582
+  },
+  {
+   "wallet": "0x5e5250fc4af865e0e640fc391da3e326cf889434",
+   "name": "tlmonks",
+   "markets": 6,
+   "wins": 2,
+   "win_rate": 0.333,
+   "pnl_usd": 1500.0,
+   "cost_usd": 1000.0,
+   "roi": 1.5,
+   "avg_winner_entry_price": 0.225
+  },
+  {
+   "wallet": "0xee1706b93845d50ea60e49219be7311a2ebb6ea1",
+   "name": "jwerhor",
+   "markets": 20,
+   "wins": 3,
+   "win_rate": 0.15,
+   "pnl_usd": 1489.3,
+   "cost_usd": 10553.19,
+   "roi": 0.141,
+   "avg_winner_entry_price": 0.404
+  },
+  {
+   "wallet": "0x5b0e83863b02c7ec7bf4a015ba6a3fb7114b0b82",
+   "name": "ObertoTarantino32",
+   "markets": 9,
+   "wins": 6,
+   "win_rate": 0.667,
+   "pnl_usd": 1399.07,
+   "cost_usd": 9322.9,
+   "roi": 0.15,
+   "avg_winner_entry_price": 0.726
+  },
+  {
+   "wallet": "0x588284216f7e0452e16f437a2477a8453c98387a",
+   "name": "browjobhyd",
+   "markets": 5,
+   "wins": 4,
+   "win_rate": 0.8,
+   "pnl_usd": 1391.72,
+   "cost_usd": 4216.43,
+   "roi": 0.33,
+   "avg_winner_entry_price": 0.602
+  },
+  {
+   "wallet": "0x0f214043fe6d32f8692a302270e2ce460a523d6e",
+   "name": "KawaiKGIRL",
+   "markets": 6,
+   "wins": 1,
+   "win_rate": 0.167,
+   "pnl_usd": 1301.04,
+   "cost_usd": 210.0,
+   "roi": 6.195,
+   "avg_winner_entry_price": null
+  },
+  {
+   "wallet": "0x9f956620db25c74895fd9d131bf99ec6a9b37c6d",
+   "name": "0x9F956620Db25C74895fD9D131Bf99EC6a9b37C6d-1760705986619",
+   "markets": 5,
+   "wins": 4,
+   "win_rate": 0.8,
+   "pnl_usd": 1297.52,
+   "cost_usd": 1050.0,
+   "roi": 1.236,
+   "avg_winner_entry_price": 0.674
+  },
+  {
+   "wallet": "0x80a4552cdcde3b861b8adc146ab1fbd4711022cc",
+   "name": "puravida",
+   "markets": 27,
+   "wins": 15,
+   "win_rate": 0.556,
+   "pnl_usd": 1283.28,
+   "cost_usd": 4084.63,
+   "roi": 0.314,
+   "avg_winner_entry_price": 0.433
+  },
+  {
+   "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+   "name": "planktonXD",
+   "markets": 98,
+   "wins": 60,
+   "win_rate": 0.612,
+   "pnl_usd": 1246.53,
+   "cost_usd": 4229.52,
+   "roi": 0.295,
+   "avg_winner_entry_price": 0.253
+  },
+  {
+   "wallet": "0xfd3dc3545b86d3bab04ab129226ac018b8f7684d",
+   "name": ".Pan.",
+   "markets": 19,
+   "wins": 5,
+   "win_rate": 0.263,
+   "pnl_usd": 1228.07,
+   "cost_usd": 1487.04,
+   "roi": 0.826,
+   "avg_winner_entry_price": 0.409
+  }
+ ]
+}
