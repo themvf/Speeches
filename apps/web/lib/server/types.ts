@@ -624,6 +624,63 @@ export interface MarketKpiData {
   warning?: string;
 }
 
+// Prediction Markets tab (JIRA epic SEC-24). Ships on a static committed
+// snapshot from the SEC-25 Polymarket earnings pilot, same
+// static-ahead-of-live pattern as the CBOE tab - the live Neon pipeline
+// (SEC-26 ingestion + SEC-27 scoring) swaps in behind this contract later.
+export type PredictionArchetype = "early_sharp" | "news_scalper" | "longshot" | "unclassified";
+
+export interface PredictionConsensusWallet {
+  name: string;
+  wallet: string;
+  archetype: PredictionArchetype;
+  side: string; // "Yes" | "No"
+  shares: number;
+}
+
+export interface PredictionCalendarRow {
+  conditionId: string;
+  ticker: string;
+  question: string;
+  reportDate: string | null;
+  eps: string | null;
+  impliedProbYes: number | null; // Polymarket's current implied P(beat), 0-1
+  volume: number;
+  // Sharp-money consensus counts early_sharp + longshot wallets only;
+  // news_scalper positions are shown on the wallet but never aggregated here.
+  consensus: { yes: number; no: number; wallets: PredictionConsensusWallet[] };
+}
+
+export interface PredictionWalletPosition {
+  ticker: string;
+  question: string;
+  side: string;
+  shares: number;
+}
+
+export interface PredictionWallet {
+  wallet: string;
+  name: string;
+  archetype: PredictionArchetype;
+  markets: number;
+  wins: number;
+  winRate: number;       // 0-1
+  pnlUsd: number;
+  roi: number | null;
+  avgWinnerEntry: number | null; // avg price paid for eventual winners, 0-1 (earliness proxy)
+  openPositions: PredictionWalletPosition[];
+}
+
+export interface MarketPredictionsData {
+  isLive: false;
+  snapshotDate: string;
+  source: string;
+  archMinMarkets: number; // min resolved markets before a wallet is badged
+  calendar: PredictionCalendarRow[];
+  wallets: PredictionWallet[];
+  warning?: string;
+}
+
 // Activity + Authors views (see CLAUDE.md plan, 2026-07-12)
 export interface AttentionActivityItem {
   sourceId: string;

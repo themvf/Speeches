@@ -210,10 +210,38 @@ def fetch_wallet_open_positions(wallet: str, open_markets: Dict[str, Dict[str, s
     return out
 
 
-def run(max_markets: int, min_markets: int) -> Dict[str, Any]:
-    markets = fetch_resolved_earnings_markets(max_markets)
-    print(f"resolved earnings markets selected: {len(markets)}", file=sys.stderr)
+# Archetype classification (shared with the SEC-28 snapshot builder). Code
+# constants, deliberately not config - a silently-moved threshold would make
+# historical badges incomparable (same stance as the Reddit quality flags).
+# ARCH_MIN_MARKETS is a sample-size guard: one lucky call must not mint a
+# "sharp" (mirrors the Reddit author-weighting min_items guard).
+ARCH_MIN_MARKETS = 8
 
+
+def classify_archetype(row: Dict[str, Any]) -> str:
+    """Map a ranked-wallet row to one of: early_sharp / news_scalper /
+    longshot / unclassified. Mutually exclusive by construction (win-rate and
+    entry-price bands don't overlap). entry-price is the pilot-proven proxy
+    for earliness; SEC-27 upgrades it to hours-before-report."""
+    if row["markets"] < ARCH_MIN_MARKETS:
+        return "unclassified"
+    entry = row.get("avg_winner_entry_price")
+    if entry is None:
+        return "unclassified"
+    win = row["win_rate"]
+    roi = row.get("roi")
+    if entry <= 0.60 and win >= 0.55 and row["pnl_usd"] > 0:
+        return "early_sharp"
+    if entry >= 0.80 and win >= 0.90:
+        return "news_scalper"
+    if entry <= 0.35 and win < 0.40 and roi is not None and roi > 1:
+        return "longshot"
+    return "unclassified"
+
+
+def analyze_resolved_markets(markets: List[Dict[str, Any]]) -> tuple:
+    """Fetch each resolved market's tape and fold every fill into per-wallet
+    aggregates. Returns (wallet_stats, total_fills)."""
     wallet_stats: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0,
         "win_entries": [], "name": "",
@@ -240,12 +268,17 @@ def run(max_markets: int, min_markets: int) -> Dict[str, Any]:
                 agg["name"] = stats["name"]
         if i % 20 == 0:
             print(f"  processed {i}/{len(markets)} markets ({total_fills} fills)", file=sys.stderr)
+    return wallet_stats, total_fills
 
+
+def rank_wallets(wallet_stats: Dict[str, Dict[str, Any]], min_markets: int) -> List[Dict[str, Any]]:
+    """Qualified (>=min_markets) wallets as ranked rows, PnL desc, each tagged
+    with its archetype."""
     qualified = []
     for wallet, agg in wallet_stats.items():
         if agg["markets"] < min_markets:
             continue
-        qualified.append({
+        row = {
             "wallet": wallet,
             "name": agg["name"],
             "markets": agg["markets"],
@@ -255,8 +288,19 @@ def run(max_markets: int, min_markets: int) -> Dict[str, Any]:
             "cost_usd": round(agg["cost"], 2),
             "roi": round(agg["pnl"] / agg["cost"], 3) if agg["cost"] > 0 else None,
             "avg_winner_entry_price": round(sum(agg["win_entries"]) / len(agg["win_entries"]), 3) if agg["win_entries"] else None,
-        })
+        }
+        row["archetype"] = classify_archetype(row)
+        qualified.append(row)
     qualified.sort(key=lambda w: -w["pnl_usd"])
+    return qualified
+
+
+def run(max_markets: int, min_markets: int) -> Dict[str, Any]:
+    markets = fetch_resolved_earnings_markets(max_markets)
+    print(f"resolved earnings markets selected: {len(markets)}", file=sys.stderr)
+
+    wallet_stats, total_fills = analyze_resolved_markets(markets)
+    qualified = rank_wallets(wallet_stats, min_markets)
 
     print("fetching open earnings markets + top-wallet positioning...", file=sys.stderr)
     open_markets = fetch_open_earnings_markets()

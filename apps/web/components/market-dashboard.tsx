@@ -10,6 +10,7 @@ import type {
   MarketKpiData,
   MarketMoversData,
   MarketOverviewData,
+  MarketPredictionsData,
   MarketSectorsData,
 } from "@/lib/server/types";
 import { OverviewTab } from "./market/overview-tab";
@@ -19,17 +20,19 @@ import { AttentionTab } from "./market/attention-tab";
 import { CryptoTab } from "./market/crypto-tab";
 import { ExchangesTab } from "./market/exchanges-tab";
 import { CboeTab } from "./market/cboe-tab";
+import { PredictionMarketsTab } from "./market/prediction-markets-tab";
 
-type TabId = "overview" | "sectors" | "movers" | "attention" | "cboe" | "crypto" | "exchanges";
+type TabId = "overview" | "sectors" | "movers" | "attention" | "cboe" | "predictions" | "crypto" | "exchanges";
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: "overview",  label: "Overview" },
-  { id: "sectors",   label: "Sectors" },
-  { id: "movers",    label: "Movers" },
-  { id: "attention", label: "Reddit" },
-  { id: "cboe",      label: "CBOE" },
-  { id: "crypto",    label: "Crypto" },
-  { id: "exchanges", label: "Exchanges" },
+  { id: "overview",    label: "Overview" },
+  { id: "sectors",     label: "Sectors" },
+  { id: "movers",      label: "Movers" },
+  { id: "attention",   label: "Reddit" },
+  { id: "cboe",        label: "CBOE" },
+  { id: "predictions", label: "Prediction Markets" },
+  { id: "crypto",      label: "Crypto" },
+  { id: "exchanges",   label: "Exchanges" },
 ];
 
 interface TabState<T> {
@@ -86,6 +89,9 @@ export function MarketDashboard() {
   // Static snapshot (SEC-17/19) - long poll interval since the route never
   // changes until the SEC-9/SEC-10 live pipeline replaces it.
   const cboe      = useTabData<MarketKpiData>      ("cboe",      tab, "/api/market/kpis",      3_600_000);
+  // Static snapshot (SEC-25/28) - long poll interval like CBOE; the route
+  // never changes until the SEC-26/27 live pipeline replaces it.
+  const predictions = useTabData<MarketPredictionsData>("predictions", tab, "/api/market/predictions", 3_600_000);
   const crypto    = useTabData<MarketCryptoData>   ("crypto",    tab, "/api/market/crypto",    120_000);
   const exchanges = useTabData<MarketExchangesData>("exchanges", tab, "/api/market/exchanges",  60_000);
 
@@ -114,6 +120,7 @@ export function MarketDashboard() {
       {tab === "movers"    && <MoversTab    {...movers} />}
       {tab === "attention" && <AttentionTab {...attention} />}
       {tab === "cboe"      && <CboeTab      {...cboe} />}
+      {tab === "predictions" && <PredictionMarketsTab {...predictions} />}
       {tab === "crypto"    && <CryptoTab    {...crypto} />}
       {tab === "exchanges" && <ExchangesTab {...exchanges} />}
     </div>
