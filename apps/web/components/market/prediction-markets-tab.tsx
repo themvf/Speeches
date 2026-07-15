@@ -155,6 +155,7 @@ function CalendarView({ rows }: { rows: PredictionCalendarRow[] }) {
               <th className="px-2 py-2 text-left font-semibold">Reports</th>
               <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">EPS line</th>
               <th className="px-2 py-2 text-right font-semibold">Implied beat</th>
+              <th className="hidden px-2 py-2 text-right font-semibold md:table-cell">Volume</th>
               <th className="py-2 pl-2 pr-4 text-left font-semibold">Sharp money</th>
             </tr>
           </thead>
@@ -195,11 +196,14 @@ function FragmentRow({ row, open, hasWallets, onToggle }: { row: PredictionCalen
         <td className="px-2 py-2.5 text-right text-xs tabular-nums text-[color:var(--ink)]">
           {implied == null ? "—" : `${Math.round(implied * 100)}%`}
         </td>
+        <td className="hidden px-2 py-2.5 text-right text-xs tabular-nums text-[color:var(--ink-faint)] md:table-cell">
+          {usd(row.volume)}
+        </td>
         <td className="py-2.5 pl-2 pr-4 text-left"><ConsensusCell row={row} /></td>
       </tr>
       {open && hasWallets && (
         <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.5)] last:border-0">
-          <td colSpan={5} className="px-4 py-3">
+          <td colSpan={6} className="px-4 py-3">
             <p className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
               Tracked sharp positions · {row.question}
             </p>
@@ -393,7 +397,8 @@ function ClosedView({ rows }: { rows: PredictionClosedMarket[] }) {
                   <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.5)] last:border-0">
                     <td colSpan={5} className="px-4 py-3">
                       <p className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                        Tracked sharp results · {row.question}
+                        Tracked sharp results · {row.question} · P&amp;L is what each wallet made on this one market
+                        (these markets are small — see Volume); cumulative records live in Sharp wallets
                       </p>
                       <ul className="space-y-1.5">
                         {row.sharpCohort.wallets.map((w) => (
