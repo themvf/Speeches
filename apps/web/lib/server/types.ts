@@ -691,7 +691,10 @@ export interface PredictionClosedMarket {
 }
 
 export interface MarketPredictionsData {
-  isLive: false;
+  // true once the SEC-26/27 Neon pipeline is serving (3x-daily sync);
+  // false = the committed static snapshot (also the fail-soft fallback
+  // whenever the live tables are missing/empty or the DB is unreachable).
+  isLive: boolean;
   snapshotDate: string;
   source: string;
   archMinMarkets: number; // min resolved markets before a wallet is badged

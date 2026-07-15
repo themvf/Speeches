@@ -3167,3 +3167,126 @@ export async function getRedditAttentionItems(sourceIds: string[]): Promise<Redd
   `) as unknown as RedditAttentionItemRow[];
   return rows;
 }
+
+// ─── Polymarket earnings tracker readers (SEC-26/27) ─────────────────────────
+// Python-owned tables (schema in neon_feeds.py's _ensure_polymarket_schema) -
+// deliberately no ensureSchema here. Before the first sync/backfill runs the
+// queries fail naturally and the predictions route falls back to its static
+// snapshot.
+
+export type PolymarketOpenMarketRow = {
+  condition_id: string;
+  ticker: string;
+  question: string;
+  eps: string | null;
+  report_date: string | null;
+  implied_prob_yes: number | null;
+  volume: number;
+};
+
+export async function getPolymarketOpenMarkets(): Promise<PolymarketOpenMarketRow[]> {
+  const sql = getSql();
+  return (await sql`
+    SELECT condition_id, ticker, question, eps,
+           report_date::text AS report_date,
+           implied_prob_yes::float AS implied_prob_yes,
+           volume::float AS volume
+    FROM polymarket_markets
+    WHERE status = 'open'
+    ORDER BY report_date ASC NULLS LAST, volume DESC
+  `) as unknown as PolymarketOpenMarketRow[];
+}
+
+export type PolymarketClosedMarketRow = {
+  condition_id: string;
+  ticker: string;
+  question: string;
+  winner: string | null;
+  resolved_date: string | null;
+  volume: number;
+};
+
+export async function getPolymarketClosedMarkets(limit = 50): Promise<PolymarketClosedMarketRow[]> {
+  const sql = getSql();
+  const cappedLimit = Math.max(1, Math.min(200, limit));
+  return (await sql`
+    SELECT condition_id, ticker, question, winner,
+           end_date::date::text AS resolved_date,
+           volume::float AS volume
+    FROM polymarket_markets
+    WHERE status = 'resolved'
+    ORDER BY end_date DESC NULLS LAST
+    LIMIT ${cappedLimit}
+  `) as unknown as PolymarketClosedMarketRow[];
+}
+
+export type PolymarketWalletStatsRow = {
+  wallet: string;
+  name: string;
+  markets: number;
+  wins: number;
+  pnl: number;
+  cost: number;
+  win_entry_avg: number | null;
+  archetype: string;
+};
+
+export async function getPolymarketWalletStats(limit = 60): Promise<PolymarketWalletStatsRow[]> {
+  const sql = getSql();
+  const cappedLimit = Math.max(1, Math.min(200, limit));
+  return (await sql`
+    SELECT wallet, name, markets, wins, pnl::float AS pnl, cost::float AS cost,
+           win_entry_avg::float AS win_entry_avg, archetype
+    FROM polymarket_wallet_stats
+    ORDER BY pnl DESC
+    LIMIT ${cappedLimit}
+  `) as unknown as PolymarketWalletStatsRow[];
+}
+
+export type PolymarketWalletResultRow = {
+  condition_id: string;
+  wallet: string;
+  name: string;
+  pnl: number;
+  correct: boolean;
+  archetype: string;
+};
+
+// Sharp-cohort per-market results for the Closed view - durable rows joined
+// to current archetypes, sharp cohort only (consensus rule).
+export async function getPolymarketSharpResults(conditionIds: string[]): Promise<PolymarketWalletResultRow[]> {
+  if (conditionIds.length === 0) return [];
+  const sql = getSql();
+  return (await sql`
+    SELECT r.condition_id, r.wallet, r.name, r.pnl::float AS pnl, r.correct, s.archetype
+    FROM polymarket_wallet_market_results r
+    JOIN polymarket_wallet_stats s ON s.wallet = r.wallet
+    WHERE r.condition_id = ANY(${conditionIds})
+      AND s.archetype IN ('early_sharp', 'longshot')
+    ORDER BY r.pnl DESC
+  `) as unknown as PolymarketWalletResultRow[];
+}
+
+export type PolymarketOpenPositionRow = {
+  condition_id: string;
+  wallet: string;
+  net_yes: number;
+  net_no: number;
+};
+
+// Net stance per wallet per OPEN market, aggregated from our own ingested
+// tapes (SEC-26 ingests open markets from birth, so this replaces the
+// pilot's per-wallet API calls and its last-500-fills blind spot).
+export async function getPolymarketOpenPositionsForWallets(wallets: string[]): Promise<PolymarketOpenPositionRow[]> {
+  if (wallets.length === 0) return [];
+  const sql = getSql();
+  return (await sql`
+    SELECT t.condition_id, t.wallet,
+           SUM(CASE WHEN t.outcome = 'Yes' THEN CASE WHEN t.side = 'BUY' THEN t.size ELSE -t.size END ELSE 0 END)::float AS net_yes,
+           SUM(CASE WHEN t.outcome = 'No'  THEN CASE WHEN t.side = 'BUY' THEN t.size ELSE -t.size END ELSE 0 END)::float AS net_no
+    FROM polymarket_trades t
+    JOIN polymarket_markets m ON m.condition_id = t.condition_id AND m.status = 'open'
+    WHERE t.wallet = ANY(${wallets})
+    GROUP BY t.condition_id, t.wallet
+  `) as unknown as PolymarketOpenPositionRow[];
+}

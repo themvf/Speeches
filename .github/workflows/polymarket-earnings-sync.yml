@@ -1,0 +1,65 @@
+name: Polymarket Earnings Sync
+
+# Three pulls daily (SEC-26 cadence, user-specified 2026-07-15):
+# 9:00am / 4:25pm / 9:00pm ET, pinned to EDT because GitHub cron is UTC-only
+# (winter runs drift 1h later in ET - harmless: ingestion is cursor-based, so
+# cadence affects display freshness only, never data completeness).
+on:
+  schedule:
+    - cron: "0 13 * * *"    # 9:00am ET (EDT)
+    - cron: "25 20 * * *"   # 4:25pm ET (EDT) - just-after-close earnings prints
+    - cron: "0 1 * * *"     # 9:00pm ET (EDT, previous day) - after-hours flow
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "One-time cold start: settle resolved markets into the durable results table (raw fills not stored)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: polymarket-earnings-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BACKFILL: ${{ github.event.inputs.backfill || 'false' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Sync Polymarket earnings markets
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "${BACKFILL}" = "true" ]; then
+            args+=(--backfill)
+          fi
+          python polymarket_earnings_sync.py "${args[@]}" | tee polymarket_sync_summary.json
+
+      - name: Upload Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: polymarket-sync-summary-${{ github.run_id }}
+          path: polymarket_sync_summary.json
+          if-no-files-found: ignore

@@ -1516,3 +1516,345 @@ def insert_ticker_mentions(mentions: List[Dict[str, Any]]) -> int:
             )
             conn.commit()
     return len(rows)
+
+
+# ─── Polymarket earnings tracker (SEC-26/27) ─────────────────────────────────
+#
+# Two-tier retention (SEC-26 success criteria): polymarket_trades is
+# EPHEMERAL (fills deletable only after their market is settled - keyed on
+# settlement, never fill age, so long-lived open markets keep their full tape
+# until resolution); polymarket_markets / polymarket_wallet_market_results /
+# polymarket_wallet_stats are DURABLE and accumulate across quarters. Wallet
+# stats are always recomputed from the durable results table, never from raw
+# fills, so pruning is invisible to the tracked-trader product.
+
+_POLYMARKET_SCHEMA_ENSURED = False
+
+
+def _ensure_polymarket_schema() -> None:
+    global _POLYMARKET_SCHEMA_ENSURED
+    if _POLYMARKET_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS polymarket_markets (
+                  condition_id     TEXT PRIMARY KEY,
+                  ticker           TEXT NOT NULL DEFAULT '',
+                  question         TEXT NOT NULL DEFAULT '',
+                  slug             TEXT NOT NULL DEFAULT '',
+                  eps              TEXT,
+                  report_date      DATE,
+                  end_date         TIMESTAMPTZ,
+                  volume           NUMERIC NOT NULL DEFAULT 0,
+                  implied_prob_yes NUMERIC,
+                  status           TEXT NOT NULL DEFAULT 'open',
+                  winner           TEXT,
+                  settled_at       TIMESTAMPTZ,
+                  fills_pruned_at  TIMESTAMPTZ,
+                  first_seen       TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS polymarket_trades (
+                  fill_key     TEXT PRIMARY KEY,
+                  condition_id TEXT NOT NULL,
+                  wallet       TEXT NOT NULL,
+                  name         TEXT NOT NULL DEFAULT '',
+                  outcome      TEXT NOT NULL,
+                  side         TEXT NOT NULL,
+                  size         NUMERIC NOT NULL,
+                  price        NUMERIC NOT NULL,
+                  filled_at    TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS polymarket_trades_market ON polymarket_trades (condition_id, filled_at)")
+            cur.execute("CREATE INDEX IF NOT EXISTS polymarket_trades_wallet ON polymarket_trades (wallet)")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS polymarket_wallet_market_results (
+                  condition_id  TEXT NOT NULL,
+                  wallet        TEXT NOT NULL,
+                  name          TEXT NOT NULL DEFAULT '',
+                  ticker        TEXT NOT NULL DEFAULT '',
+                  resolved_date DATE,
+                  pnl           NUMERIC NOT NULL DEFAULT 0,
+                  cost          NUMERIC NOT NULL DEFAULT 0,
+                  win_entry_avg NUMERIC,
+                  correct       BOOLEAN NOT NULL DEFAULT false,
+                  PRIMARY KEY (condition_id, wallet)
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS polymarket_results_wallet ON polymarket_wallet_market_results (wallet)")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS polymarket_wallet_stats (
+                  wallet        TEXT PRIMARY KEY,
+                  name          TEXT NOT NULL DEFAULT '',
+                  markets       INTEGER NOT NULL DEFAULT 0,
+                  wins          INTEGER NOT NULL DEFAULT 0,
+                  pnl           NUMERIC NOT NULL DEFAULT 0,
+                  cost          NUMERIC NOT NULL DEFAULT 0,
+                  win_entry_avg NUMERIC,
+                  archetype     TEXT NOT NULL DEFAULT 'unclassified',
+                  refreshed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            conn.commit()
+    _POLYMARKET_SCHEMA_ENSURED = True
+
+
+def upsert_polymarket_markets(rows: List[Dict[str, Any]]) -> int:
+    """Metadata refresh for tracked markets. Never downgrades a resolved
+    market back to open, and never touches settlement bookkeeping."""
+    prepared = []
+    for row in rows:
+        condition_id = _strip_nul_bytes(str(row.get("condition_id", "") or "").strip())
+        if not condition_id:
+            continue
+        prepared.append((
+            condition_id,
+            _strip_nul_bytes(str(row.get("ticker", "") or "")),
+            _strip_nul_bytes(str(row.get("question", "") or "")),
+            _strip_nul_bytes(str(row.get("slug", "") or "")),
+            row.get("eps"),
+            row.get("report_date"),
+            row.get("end_date") or None,
+            float(row.get("volume", 0) or 0),
+            row.get("implied_prob_yes"),
+        ))
+    if not prepared:
+        return 0
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO polymarket_markets
+                  (condition_id, ticker, question, slug, eps, report_date, end_date, volume, implied_prob_yes)
+                VALUES %s
+                ON CONFLICT (condition_id) DO UPDATE SET
+                  ticker = EXCLUDED.ticker,
+                  question = EXCLUDED.question,
+                  slug = EXCLUDED.slug,
+                  eps = EXCLUDED.eps,
+                  report_date = EXCLUDED.report_date,
+                  end_date = EXCLUDED.end_date,
+                  volume = EXCLUDED.volume,
+                  implied_prob_yes = EXCLUDED.implied_prob_yes,
+                  updated_at = now()
+                """,
+                prepared,
+            )
+            conn.commit()
+    return len(prepared)
+
+
+def mark_polymarket_resolved(condition_id: str, winner: str) -> None:
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE polymarket_markets SET status = 'resolved', winner = %s, updated_at = now() WHERE condition_id = %s AND status != 'resolved'",
+                (winner, condition_id),
+            )
+            conn.commit()
+
+
+def get_polymarket_tracked_markets() -> List[Dict[str, Any]]:
+    """Every tracked market with its lifecycle fields, plus the per-market
+    fill cursor (max stored fill timestamp) in one query."""
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT m.condition_id, m.ticker, m.status, m.winner,
+                       m.settled_at, m.fills_pruned_at, m.end_date,
+                       (SELECT MAX(t.filled_at) FROM polymarket_trades t WHERE t.condition_id = m.condition_id) AS fill_cursor
+                FROM polymarket_markets m
+                """
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def insert_polymarket_fills(rows: List[Dict[str, Any]]) -> int:
+    """Batch fill insert. fill_key is a content hash computed by the caller
+    (the data API exposes no trade id); ON CONFLICT DO NOTHING makes
+    re-ingestion of a boundary page a no-op."""
+    prepared = []
+    for row in rows:
+        fill_key = str(row.get("fill_key", "") or "")
+        if not fill_key:
+            continue
+        prepared.append((
+            fill_key,
+            str(row.get("condition_id", "") or ""),
+            _strip_nul_bytes(str(row.get("wallet", "") or "")),
+            _strip_nul_bytes(str(row.get("name", "") or "")),
+            str(row.get("outcome", "") or ""),
+            str(row.get("side", "") or ""),
+            float(row.get("size", 0) or 0),
+            float(row.get("price", 0) or 0),
+            row.get("filled_at"),
+        ))
+    if not prepared:
+        return 0
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO polymarket_trades
+                  (fill_key, condition_id, wallet, name, outcome, side, size, price, filled_at)
+                VALUES %s
+                ON CONFLICT (fill_key) DO NOTHING
+                """,
+                prepared,
+            )
+            conn.commit()
+    return len(prepared)
+
+
+def get_polymarket_market_fills(condition_id: str) -> List[Dict[str, Any]]:
+    """Full stored tape for one market, shaped for polymarket_pilot.settle_market."""
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT wallet AS \"proxyWallet\", name, outcome, side, size, price FROM polymarket_trades WHERE condition_id = %s",
+                (condition_id,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def save_polymarket_settlement(condition_id: str, ticker: str, resolved_date: Any, settled: Dict[str, Dict[str, Any]]) -> int:
+    """Writes the durable per-wallet results for one resolved market and
+    stamps settled_at, in one transaction (SEC-26 settle-then-prune ordering:
+    settled_at is what later licenses pruning this market's raw fills)."""
+    rows = []
+    for wallet, stats in settled.items():
+        rows.append((
+            condition_id,
+            _strip_nul_bytes(str(wallet)),
+            _strip_nul_bytes(str(stats.get("name", "") or "")),
+            _strip_nul_bytes(str(ticker or "")),
+            resolved_date,
+            round(float(stats.get("pnl", 0) or 0), 4),
+            round(float(stats.get("cost", 0) or 0), 4),
+            stats.get("win_entry_avg"),
+            bool(float(stats.get("pnl", 0) or 0) > 0),
+        ))
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if rows:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO polymarket_wallet_market_results
+                      (condition_id, wallet, name, ticker, resolved_date, pnl, cost, win_entry_avg, correct)
+                    VALUES %s
+                    ON CONFLICT (condition_id, wallet) DO UPDATE SET
+                      name = EXCLUDED.name, pnl = EXCLUDED.pnl, cost = EXCLUDED.cost,
+                      win_entry_avg = EXCLUDED.win_entry_avg, correct = EXCLUDED.correct,
+                      resolved_date = EXCLUDED.resolved_date
+                    """,
+                    rows,
+                )
+            cur.execute(
+                "UPDATE polymarket_markets SET settled_at = now(), updated_at = now() WHERE condition_id = %s",
+                (condition_id,),
+            )
+            conn.commit()
+    return len(rows)
+
+
+def get_polymarket_wallet_results() -> List[Dict[str, Any]]:
+    """Every durable wallet-market result row - the (compact) source of truth
+    for wallet-stat recomputes."""
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT wallet, name, pnl, cost, win_entry_avg, correct FROM polymarket_wallet_market_results"
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def upsert_polymarket_wallet_stats(rows: List[Dict[str, Any]]) -> int:
+    prepared = []
+    for row in rows:
+        wallet = _strip_nul_bytes(str(row.get("wallet", "") or "").strip())
+        if not wallet:
+            continue
+        prepared.append((
+            wallet,
+            _strip_nul_bytes(str(row.get("name", "") or "")),
+            int(row.get("markets", 0) or 0),
+            int(row.get("wins", 0) or 0),
+            round(float(row.get("pnl", 0) or 0), 4),
+            round(float(row.get("cost", 0) or 0), 4),
+            row.get("win_entry_avg"),
+            str(row.get("archetype", "unclassified") or "unclassified"),
+        ))
+    if not prepared:
+        return 0
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO polymarket_wallet_stats
+                  (wallet, name, markets, wins, pnl, cost, win_entry_avg, archetype)
+                VALUES %s
+                ON CONFLICT (wallet) DO UPDATE SET
+                  name = EXCLUDED.name, markets = EXCLUDED.markets, wins = EXCLUDED.wins,
+                  pnl = EXCLUDED.pnl, cost = EXCLUDED.cost, win_entry_avg = EXCLUDED.win_entry_avg,
+                  archetype = EXCLUDED.archetype, refreshed_at = now()
+                """,
+                prepared,
+            )
+            conn.commit()
+    return len(prepared)
+
+
+def prune_settled_polymarket_fills(days_after_settlement: int = 7) -> int:
+    """SEC-26 retention: delete raw fills ONLY for markets settled at least
+    N days ago (settle-then-prune - never keyed on fill age, so long-running
+    open markets keep their full tape). Returns fills deleted."""
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM polymarket_trades t
+                USING polymarket_markets m
+                WHERE m.condition_id = t.condition_id
+                  AND m.settled_at IS NOT NULL
+                  AND m.settled_at < now() - (%s * INTERVAL '1 day')
+                """,
+                (days_after_settlement,),
+            )
+            deleted = cur.rowcount
+            cur.execute(
+                """
+                UPDATE polymarket_markets SET fills_pruned_at = now()
+                WHERE settled_at IS NOT NULL
+                  AND settled_at < now() - (%s * INTERVAL '1 day')
+                  AND fills_pruned_at IS NULL
+                """,
+                (days_after_settlement,),
+            )
+            conn.commit()
+    return int(deleted or 0)
