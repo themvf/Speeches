@@ -239,13 +239,18 @@ def classify_archetype(row: Dict[str, Any]) -> str:
     return "unclassified"
 
 
-def analyze_resolved_markets(markets: List[Dict[str, Any]]) -> tuple:
+def analyze_resolved_markets(markets: List[Dict[str, Any]], capture_per_market: bool = False) -> tuple:
     """Fetch each resolved market's tape and fold every fill into per-wallet
-    aggregates. Returns (wallet_stats, total_fills)."""
+    aggregates. Returns (wallet_stats, total_fills), or
+    (wallet_stats, total_fills, per_market) when capture_per_market is set -
+    per_market[condition_id] is that market's settle_market result, retained
+    so the closed-markets retrospective can show per-market sharp performance
+    without a second fetch pass."""
     wallet_stats: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0,
         "win_entries": [], "name": "",
     })
+    per_market: Dict[str, Dict[str, Any]] = {}
     total_fills = 0
     for i, market in enumerate(markets, 1):
         try:
@@ -255,6 +260,8 @@ def analyze_resolved_markets(markets: List[Dict[str, Any]]) -> tuple:
             continue
         total_fills += len(fills)
         settled = settle_market(fills, market["winner"])
+        if capture_per_market:
+            per_market[market["condition_id"]] = settled
         for wallet, stats in settled.items():
             agg = wallet_stats[wallet]
             agg["markets"] += 1
@@ -268,6 +275,8 @@ def analyze_resolved_markets(markets: List[Dict[str, Any]]) -> tuple:
                 agg["name"] = stats["name"]
         if i % 20 == 0:
             print(f"  processed {i}/{len(markets)} markets ({total_fills} fills)", file=sys.stderr)
+    if capture_per_market:
+        return wallet_stats, total_fills, per_market
     return wallet_stats, total_fills
 
 

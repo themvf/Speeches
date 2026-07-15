@@ -671,12 +671,32 @@ export interface PredictionWallet {
   openPositions: PredictionWalletPosition[];
 }
 
+export interface PredictionClosedCohortWallet {
+  name: string;
+  wallet: string;
+  archetype: PredictionArchetype;
+  pnlUsd: number;
+  correct: boolean; // booked positive P&L, i.e. net on the winning side
+}
+
+export interface PredictionClosedMarket {
+  conditionId: string;
+  ticker: string;
+  question: string;
+  resolvedDate: string | null;
+  outcome: "beat" | "miss";
+  volume: number;
+  // How the tracked sharp cohort (early_sharp + longshot) actually did.
+  sharpCohort: { correct: number; total: number; wallets: PredictionClosedCohortWallet[] };
+}
+
 export interface MarketPredictionsData {
   isLive: false;
   snapshotDate: string;
   source: string;
   archMinMarkets: number; // min resolved markets before a wallet is badged
   calendar: PredictionCalendarRow[];
+  closed: PredictionClosedMarket[];
   wallets: PredictionWallet[];
   warning?: string;
 }

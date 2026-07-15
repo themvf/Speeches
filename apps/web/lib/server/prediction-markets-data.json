@@ -1,10 +1,10 @@
 {
- "generatedAt": "2026-07-15T12:22:43Z",
+ "generatedAt": "2026-07-15T12:46:08Z",
  "source": "Polymarket public data API (earnings markets) \u2014 SEC-25 pilot analysis",
  "marketsAnalyzed": 120,
  "fillsProcessed": 153267,
  "walletsQualified": 895,
- "openMarketCount": 59,
+ "openMarketCount": 57,
  "archMinMarkets": 8,
  "consensusPoolSize": 40,
  "calendar": [
@@ -39,7 +39,7 @@
       "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
       "archetype": "early_sharp",
       "side": "No",
-      "shares": 122.1
+      "shares": 109.0
      }
     ]
    }
@@ -50,7 +50,7 @@
    "question": "Will IBM (IBM) beat quarterly earnings?",
    "reportDate": "2026-07-22",
    "eps": "3.02",
-   "impliedProbYes": 0.118,
+   "impliedProbYes": 0.092,
    "volume": 6301.69,
    "consensus": {
     "yes": 2,
@@ -79,7 +79,7 @@
    "question": "Will Domino's Pizza (DPZ) beat quarterly earnings?",
    "reportDate": "2026-07-20",
    "eps": "4.22",
-   "impliedProbYes": 0.25,
+   "impliedProbYes": 0.245,
    "volume": 1465.35,
    "consensus": {
     "yes": 0,
@@ -137,8 +137,8 @@
    "question": "Will Cintas (CTAS) beat quarterly earnings?",
    "reportDate": "2026-07-15",
    "eps": "1.23",
-   "impliedProbYes": 0.8,
-   "volume": 5665.98,
+   "impliedProbYes": 1.0,
+   "volume": 7112.06,
    "consensus": {
     "yes": 0,
     "no": 1,
@@ -160,7 +160,7 @@
    "reportDate": "2026-07-15",
    "eps": "0.46",
    "impliedProbYes": 0.78,
-   "volume": 4035.94,
+   "volume": 4235.94,
    "consensus": {
     "yes": 0,
     "no": 1,
@@ -286,35 +286,13 @@
    }
   },
   {
-   "conditionId": "0x451482fd504fcfd83cfd28787301b96956a17407fc582c5184daa79e3a684371",
-   "ticker": "PNC",
-   "question": "Will PNC (PNC) beat quarterly earnings?",
-   "reportDate": "2026-07-15",
-   "eps": "4.41",
-   "impliedProbYes": 1.0,
-   "volume": 1323.6,
-   "consensus": {
-    "yes": 0,
-    "no": 1,
-    "wallets": [
-     {
-      "name": "Maraq",
-      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
-      "archetype": "early_sharp",
-      "side": "No",
-      "shares": 450.0
-     }
-    ]
-   }
-  },
-  {
    "conditionId": "0x3afe38120f0a5cf6c4fc98b798562e693456da1235e0e83407d6cd64d3220dc4",
    "ticker": "UNH",
    "question": "Will UnitedHealth Group (UNH) beat quarterly earnings?",
    "reportDate": "2026-07-16",
    "eps": "4.85",
-   "impliedProbYes": 0.645,
-   "volume": 1068.28,
+   "impliedProbYes": 0.705,
+   "volume": 1190.77,
    "consensus": {
     "yes": 0,
     "no": 1,
@@ -379,7 +357,7 @@
    "question": "Will Wintrust (WTFC) beat quarterly earnings?",
    "reportDate": "2026-07-20",
    "eps": "3.16",
-   "impliedProbYes": 0.83,
+   "impliedProbYes": 0.84,
    "volume": 621.51,
    "consensus": {
     "yes": 1,
@@ -391,6 +369,28 @@
       "archetype": "early_sharp",
       "side": "Yes",
       "shares": 100.0
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x3fb7a3601d37752fe0653070d3c35d12cd8d0d457659698930e6ae245a23943a",
+   "ticker": "BX",
+   "question": "Will Blackstone (BX) beat quarterly earnings?",
+   "reportDate": "2026-07-23",
+   "eps": "1.33",
+   "impliedProbYes": 0.33,
+   "volume": 463.0,
+   "consensus": {
+    "yes": 1,
+    "no": 0,
+    "wallets": [
+     {
+      "name": "qqqppp-l1",
+      "wallet": "0x229c0a7d92977a9934e5ac2348d507988996b966",
+      "archetype": "longshot",
+      "side": "Yes",
+      "shares": 8.0
      }
     ]
    }
@@ -614,26 +614,12 @@
    }
   },
   {
-   "conditionId": "0x7290b04dbadb8aa552ac16c7ad9b84389674b83622b8f2f7e43f2fc1c334a93c",
-   "ticker": "JNJ",
-   "question": "Will Johnson & Johnson (JNJ) beat quarterly earnings?",
-   "reportDate": "2026-07-15",
-   "eps": "2.85",
-   "impliedProbYes": 1.0,
-   "volume": 1911.66,
-   "consensus": {
-    "yes": 0,
-    "no": 0,
-    "wallets": []
-   }
-  },
-  {
    "conditionId": "0xbb048382c65b727d8b1a51d588e6beb05e71ad2f23900a0aa5c3c6c5bac04ef8",
    "ticker": "TSLA",
    "question": "Will Tesla (TSLA) beat quarterly earnings?",
    "reportDate": "2026-07-22",
    "eps": "0.5",
-   "impliedProbYes": 0.56,
+   "impliedProbYes": 0.565,
    "volume": 1232.26,
    "consensus": {
     "yes": 0,
@@ -670,20 +656,6 @@
    }
   },
   {
-   "conditionId": "0x3fb7a3601d37752fe0653070d3c35d12cd8d0d457659698930e6ae245a23943a",
-   "ticker": "BX",
-   "question": "Will Blackstone (BX) beat quarterly earnings?",
-   "reportDate": "2026-07-23",
-   "eps": "1.33",
-   "impliedProbYes": 0.37,
-   "volume": 439.41,
-   "consensus": {
-    "yes": 0,
-    "no": 0,
-    "wallets": []
-   }
-  },
-  {
    "conditionId": "0x168f973e2aa48e5ee9fbc334f99ed0dbd723a8c8a11f4626cd8068c973905a12",
    "ticker": "LMT",
    "question": "Will Lockheed Martin (LMT) beat quarterly earnings?",
@@ -703,7 +675,7 @@
    "question": "Will American Airlines (AAL) beat quarterly earnings?",
    "reportDate": "2026-07-23",
    "eps": "0.04",
-   "impliedProbYes": 0.7,
+   "impliedProbYes": 0.705,
    "volume": 226.56,
    "consensus": {
     "yes": 0,
@@ -733,6 +705,20 @@
    "eps": "4.2",
    "impliedProbYes": 0.835,
    "volume": 208.17,
+   "consensus": {
+    "yes": 0,
+    "no": 0,
+    "wallets": []
+   }
+  },
+  {
+   "conditionId": "0x30658a1b169af87a80f3b3f6c252051d41804b47e40fe75296c0b6bfb6ee721e",
+   "ticker": "MSCI",
+   "question": "Will MSCI (MSCI) beat quarterly earnings?",
+   "reportDate": "2026-07-21",
+   "eps": "4.90",
+   "impliedProbYes": 0.89,
+   "volume": 200.83,
    "consensus": {
     "yes": 0,
     "no": 0,
@@ -782,20 +768,6 @@
    }
   },
   {
-   "conditionId": "0x30658a1b169af87a80f3b3f6c252051d41804b47e40fe75296c0b6bfb6ee721e",
-   "ticker": "MSCI",
-   "question": "Will MSCI (MSCI) beat quarterly earnings?",
-   "reportDate": "2026-07-21",
-   "eps": "4.90",
-   "impliedProbYes": 0.89,
-   "volume": 121.94,
-   "consensus": {
-    "yes": 0,
-    "no": 0,
-    "wallets": []
-   }
-  },
-  {
    "conditionId": "0xd3b10bdff8c069534beda2890457b994777389b30832fe8afc0cb54c02b69136",
    "ticker": "STBA",
    "question": "Will S&T Bancorp (STBA) beat quarterly earnings?",
@@ -815,7 +787,7 @@
    "question": "Will KeyCorp (KEY) beat quarterly earnings?",
    "reportDate": "2026-07-21",
    "eps": "0.42",
-   "impliedProbYes": 0.775,
+   "impliedProbYes": 0.765,
    "volume": 99.58,
    "consensus": {
     "yes": 0,
@@ -927,22 +899,8 @@
    "question": "Will Infosys (INFY) beat quarterly earnings?",
    "reportDate": "2026-07-23",
    "eps": "0.21",
-   "impliedProbYes": 0.545,
+   "impliedProbYes": 0.55,
    "volume": 49.99,
-   "consensus": {
-    "yes": 0,
-    "no": 0,
-    "wallets": []
-   }
-  },
-  {
-   "conditionId": "0xeecec90bfe0c89db437fdfdabbb6c7920fcc7454262213c9656a0bcb82eca43c",
-   "ticker": "UBSI",
-   "question": "Will United Bankshares (UBSI) beat quarterly earnings?",
-   "reportDate": "2026-07-23",
-   "eps": "0.89",
-   "impliedProbYes": 0.64,
-   "volume": 45.0,
    "consensus": {
     "yes": 0,
     "no": 0,
@@ -956,6 +914,20 @@
    "reportDate": "2026-07-23",
    "eps": "1.25",
    "impliedProbYes": 0.68,
+   "volume": 45.0,
+   "consensus": {
+    "yes": 0,
+    "no": 0,
+    "wallets": []
+   }
+  },
+  {
+   "conditionId": "0xeecec90bfe0c89db437fdfdabbb6c7920fcc7454262213c9656a0bcb82eca43c",
+   "ticker": "UBSI",
+   "question": "Will United Bankshares (UBSI) beat quarterly earnings?",
+   "reportDate": "2026-07-23",
+   "eps": "0.89",
+   "impliedProbYes": 0.64,
    "volume": 45.0,
    "consensus": {
     "yes": 0,
@@ -983,7 +955,7 @@
    "question": "Will Verizon Communications (VZ) beat quarterly earnings?",
    "reportDate": "2026-07-24",
    "eps": "1.27",
-   "impliedProbYes": 0.745,
+   "impliedProbYes": 0.72,
    "volume": 38.26,
    "consensus": {
     "yes": 0,
@@ -1059,6 +1031,2255 @@
     "yes": 0,
     "no": 0,
     "wallets": []
+   }
+  }
+ ],
+ "closed": [
+  {
+   "conditionId": "0xda94681de9edc0649c6f248ada1463aec1a3c6f44b5d26693fc27e2d6c473ed0",
+   "ticker": "GME",
+   "question": "Will GameStop (GME) beat quarterly earnings?",
+   "resolvedDate": "2026-06-09",
+   "outcome": "miss",
+   "volume": 41215.57,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 115.02,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 40.7,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 32.73,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 7.0,
+      "correct": true
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xa8871eaadf3a0a74e336066d6c4ec98c63948c4a986f33929b9ce969cbdc5c56",
+   "ticker": "AVGO",
+   "question": "Will Broadcom (AVGO) beat quarterly earnings?",
+   "resolvedDate": "2026-06-03",
+   "outcome": "beat",
+   "volume": 34371.07,
+   "sharpCohort": {
+    "correct": 1,
+    "total": 2,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 4.79,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -0.92,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x16eb038154626c8fc295578673d805e6da12e61df7cf5c63fcf45110ee70f2e2",
+   "ticker": "NVDA",
+   "question": "Will NVIDIA (NVDA) beat quarterly earnings?",
+   "resolvedDate": "2026-05-20",
+   "outcome": "beat",
+   "volume": 180972.23,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 5,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 43.13,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 28.12,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 11.9,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 8.66,
+      "correct": true
+     },
+     {
+      "name": "KingDingaLing888",
+      "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+      "archetype": "longshot",
+      "pnlUsd": -56.6,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xf45ddbb98b2f8751a7475b88c1ede53090f303b556badb6647c73060e56e353f",
+   "ticker": "UBER",
+   "question": "Will Uber (UBER) beat quarterly earnings?",
+   "resolvedDate": "2026-05-06",
+   "outcome": "miss",
+   "volume": 40572.04,
+   "sharpCohort": {
+    "correct": 1,
+    "total": 2,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 39.8,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -16.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x9073d232735a32de5f1805b3e1205fafc67fe0551cdbf0a46894585a6af5bd39",
+   "ticker": "META",
+   "question": "Will Meta Platforms (META) beat quarterly earnings?",
+   "resolvedDate": "2026-04-29",
+   "outcome": "beat",
+   "volume": 164783.71,
+   "sharpCohort": {
+    "correct": 0,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -1.24,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -25.71,
+      "correct": false
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -35.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x7d32292f9b305098581859a93ef954f34f92efd8d2fd10fee7ce263b9c5474c3",
+   "ticker": "MSFT",
+   "question": "Will Microsoft (MSFT) beat quarterly earnings?",
+   "resolvedDate": "2026-04-29",
+   "outcome": "beat",
+   "volume": 130046.52,
+   "sharpCohort": {
+    "correct": 1,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 13.4,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -0.05,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -20.54,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xb844a61b3fe6a8e3fffa232905a3fa71205d4b308993ec76329f4cf21d5867aa",
+   "ticker": "AMZN",
+   "question": "Will Amazon (AMZN) beat quarterly earnings?",
+   "resolvedDate": "2026-04-29",
+   "outcome": "beat",
+   "volume": 76059.69,
+   "sharpCohort": {
+    "correct": 0,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -40.0,
+      "correct": false
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": -120.62,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -194.02,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x25d304e7d3eca4898745c358be9f5209091acf2032473a7027911d86f58c3676",
+   "ticker": "GOOGL",
+   "question": "Will Alphabet (GOOGL) beat quarterly earnings?",
+   "resolvedDate": "2026-04-29",
+   "outcome": "beat",
+   "volume": 32734.58,
+   "sharpCohort": {
+    "correct": 0,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -10.32,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -50.47,
+      "correct": false
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": -144.33,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x9932a126b03eb1bd88bbc754dc925710fcd7b436b3705a5543c78c3a609772f9",
+   "ticker": "BBBY",
+   "question": "Will Bed Bath & Beyond (BBBY) beat quarterly earnings?",
+   "resolvedDate": "2026-04-27",
+   "outcome": "miss",
+   "volume": 63019.75,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 2,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 91.93,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 2.72,
+      "correct": true
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xa6e7592ba207b357c885eb110fd170ccc79dc82f80b366f7a903aff76d140d59",
+   "ticker": "TSLA",
+   "question": "Will Tesla (TSLA) beat quarterly earnings?",
+   "resolvedDate": "2026-04-22",
+   "outcome": "beat",
+   "volume": 59683.42,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 127.0,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 37.35,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 1.19,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": -1491.66,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xfefef6b3b9197323deba34011b611fd6ab9357ea0c383d48cd640543df968a19",
+   "ticker": "KMX",
+   "question": "Will Carmax (KMX) beat quarterly earnings?",
+   "resolvedDate": "2026-04-14",
+   "outcome": "miss",
+   "volume": 38533.96,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 26.6,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 20.6,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 5.67,
+      "correct": true
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x1a2700084a22491fec81ba8c488b8820f20e1174703389bd2689231d9e722c99",
+   "ticker": "AEO",
+   "question": "Will American Eagle Outfitters (AEO) beat quarterly earnings?",
+   "resolvedDate": "2026-03-04",
+   "outcome": "miss",
+   "volume": 58561.02,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 161.46,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 3.81,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -62.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x8bef426c53d21ea3427ae154156a7c26e4fbbe46171f539f90ec4a2fe0bc2e89",
+   "ticker": "HGV",
+   "question": "Will Hilton Grand Vacations (HGV) beat quarterly earnings?",
+   "resolvedDate": "2026-02-26",
+   "outcome": "miss",
+   "volume": 850539.22,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 46.92,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 41.0,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 3.59,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -5.87,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x7efacba192fadccfa3f6c17c7362f3f89c08cb2e70e146d0618b59e49f1e4ab1",
+   "ticker": "RKLB",
+   "question": "Will Rocket Lab (RKLB) beat quarterly earnings?",
+   "resolvedDate": "2026-02-26",
+   "outcome": "beat",
+   "volume": 371770.43,
+   "sharpCohort": {
+    "correct": 1,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 6.74,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -9.41,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -223.97,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xf6a874aae0a33379fbd7aa2ac48cfa5ee74c8e7cb17fbb411da41bdd33018d29",
+   "ticker": "PZZA",
+   "question": "Will Papa John's International (PZZA) beat quarterly earnings?",
+   "resolvedDate": "2026-02-26",
+   "outcome": "beat",
+   "volume": 365785.09,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 50.65,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 44.09,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 5.4,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -18.68,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x4116364a30edf0db220553d5f4032b32f05d42b6d64e1bacaa0c065bb4146015",
+   "ticker": "NVDA",
+   "question": "Will NVIDIA (NVDA) beat quarterly earnings?",
+   "resolvedDate": "2026-02-25",
+   "outcome": "beat",
+   "volume": 381687.06,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 130.95,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 85.65,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 27.98,
+      "correct": true
+     },
+     {
+      "name": "KingDingaLing888",
+      "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+      "archetype": "longshot",
+      "pnlUsd": -51.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x57089bd657907396fb040c773ec9b14de3bc7f16a9f2cb6184321f3cff7d49a0",
+   "ticker": "BYND",
+   "question": "Will Beyond Meat (BYND) beat quarterly earnings?",
+   "resolvedDate": "2026-02-25",
+   "outcome": "miss",
+   "volume": 207486.23,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 29.96,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 8.12,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 4.0,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -274.11,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x6ae59e1bff0233495383d802a9748cbf401e0e2c8a526f7d74da9c7ffb6bb252",
+   "ticker": "ZM",
+   "question": "Will Zoom Communications (ZM) beat quarterly earnings?",
+   "resolvedDate": "2026-02-25",
+   "outcome": "miss",
+   "volume": 64803.42,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 5,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 12.5,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.2,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -7.57,
+      "correct": false
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": -98.77,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -1678.98,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x42a0a74464fd979182163c88a2c308f0402ad6eb07bc4f63af49bec4c5ef8a76",
+   "ticker": "AS",
+   "question": "Will Amer Sports (AS) beat quarterly earnings?",
+   "resolvedDate": "2026-02-24",
+   "outcome": "beat",
+   "volume": 260299.65,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 7.29,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.3,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -118.75,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x92ad9cce642cd896dc1743ec4f17817d1ff53614acf0c23b39d044213e9375a5",
+   "ticker": "DPZ",
+   "question": "Will Domino's Pizza (DPZ) beat quarterly earnings?",
+   "resolvedDate": "2026-02-23",
+   "outcome": "miss",
+   "volume": 385836.35,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 2,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 653.66,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 15.24,
+      "correct": true
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xc0cdea6ec66d0bee106cceb754a305f6ca7cfe7cd6ea380e6c778a20c688438c",
+   "ticker": "HIMS",
+   "question": "Will Hims & Hers Health (HIMS) beat quarterly earnings?",
+   "resolvedDate": "2026-02-23",
+   "outcome": "beat",
+   "volume": 287931.95,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 5,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 52.61,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 14.0,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 8.06,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 5.56,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -762.84,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x7eab6e959abfd65beccb5277319249f04a3f2ca3e7e433fdae789a8cca9c1075",
+   "ticker": "ETSY",
+   "question": "Will ETSY (ETSY) beat quarterly earnings?",
+   "resolvedDate": "2026-02-19",
+   "outcome": "beat",
+   "volume": 98833.64,
+   "sharpCohort": {
+    "correct": 0,
+    "total": 2,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -1.84,
+      "correct": false
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -5.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x7186c546c705b4d2e8755489590d2e0262862d058ca58e8f5b026e9a66875845",
+   "ticker": "ED",
+   "question": "Will Consolidated Edison (ED) beat quarterly earnings?",
+   "resolvedDate": "2026-02-19",
+   "outcome": "beat",
+   "volume": 66932.51,
+   "sharpCohort": {
+    "correct": 1,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.61,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -4.2,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -285.46,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xe923673ba211c54d72ba450877492a9e39582897edb9e8bf48fd1b42db746561",
+   "ticker": "DASH",
+   "question": "Will DoorDash (DASH) beat quarterly earnings?",
+   "resolvedDate": "2026-02-18",
+   "outcome": "miss",
+   "volume": 34662.05,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 6,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 90.03,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 69.82,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 62.0,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.75,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -2.78,
+      "correct": false
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -58.06,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xbebb1c8c6996bdd0783db8891f4cb764afe301c7393ae19cad4c81b0d9e25e11",
+   "ticker": "PANW",
+   "question": "Will Palo Alto Networks (PANW) beat quarterly earnings?",
+   "resolvedDate": "2026-02-17",
+   "outcome": "beat",
+   "volume": 33169.98,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 44.66,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 30.86,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 8.0,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 2.03,
+      "correct": true
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x5d60d7ebfca4e6088748be637f95c1582d5e07505d44ee5a67059056b9a6d477",
+   "ticker": "COIN",
+   "question": "Will Coinbase Global (COIN) beat quarterly earnings?",
+   "resolvedDate": "2026-02-12",
+   "outcome": "miss",
+   "volume": 102737.1,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 6,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 400.49,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 42.02,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 37.12,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 4.59,
+      "correct": true
+     },
+     {
+      "name": "KingDingaLing888",
+      "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+      "archetype": "longshot",
+      "pnlUsd": -9.5,
+      "correct": false
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": -49.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x27b4633db1360293257a729bacd3be27cfc33075a51feb03240a43b8c0b05ded",
+   "ticker": "TMUS",
+   "question": "Will T-Mobile (TMUS) beat quarterly earnings?",
+   "resolvedDate": "2026-02-11",
+   "outcome": "miss",
+   "volume": 113515.35,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 263.44,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 74.1,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 12.49,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -28.39,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x79e400ae710d4696ff8a750bd77ab3b5bc69ffe804cfa11c94f8de43eb13d4e3",
+   "ticker": "APP",
+   "question": "Will Applovin (APP) beat quarterly earnings?",
+   "resolvedDate": "2026-02-11",
+   "outcome": "beat",
+   "volume": 67199.78,
+   "sharpCohort": {
+    "correct": 0,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "KingDingaLing888",
+      "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+      "archetype": "longshot",
+      "pnlUsd": -15.0,
+      "correct": false
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -17.0,
+      "correct": false
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -34.0,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -124.76,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x6cab2ea03d40de3168d92d72b6fcef6376cc3745f3ae856f732461a9fe48d94c",
+   "ticker": "LYFT",
+   "question": "Will Lyft (LYFT) beat quarterly earnings?",
+   "resolvedDate": "2026-02-10",
+   "outcome": "beat",
+   "volume": 33178.35,
+   "sharpCohort": {
+    "correct": 0,
+    "total": 2,
+    "wallets": [
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -5.47,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -140.99,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x0420d4ad423e8f87d86521a92111f5c209e80e65dc8d9f46534c590fc18d85db",
+   "ticker": "TPG",
+   "question": "Will TPG (TPG) beat quarterly earnings?",
+   "resolvedDate": "2026-02-09",
+   "outcome": "miss",
+   "volume": 48922.08,
+   "sharpCohort": {
+    "correct": 1,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 53.5,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": -5.62,
+      "correct": false
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -125.49,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xf3032e04d2e76e314afb161b520b67abe86414b9145be98371b445f68f3dfbf1",
+   "ticker": "AMZN",
+   "question": "Will Amazon (AMZN) beat quarterly earnings?",
+   "resolvedDate": "2026-02-05",
+   "outcome": "miss",
+   "volume": 85202.23,
+   "sharpCohort": {
+    "correct": 8,
+    "total": 8,
+    "wallets": [
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": 2400.0,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 2105.23,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 1905.66,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 951.49,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 261.27,
+      "correct": true
+     },
+     {
+      "name": "KingDingaLing888",
+      "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+      "archetype": "longshot",
+      "pnlUsd": 94.5,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 17.75,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 4.57,
+      "correct": true
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x1f26c2c251f60e68222b69b9f9637a542c2546a0a6873ee5f581c201a03162ce",
+   "ticker": "RDDT",
+   "question": "Will Reddit (RDDT) beat quarterly earnings?",
+   "resolvedDate": "2026-02-05",
+   "outcome": "beat",
+   "volume": 36473.14,
+   "sharpCohort": {
+    "correct": 0,
+    "total": 3,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -5.62,
+      "correct": false
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": -6.0,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -120.7,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x9b4a6afc8ecaa5126acab9337be86aa4a6d4c51b1b34a2ab77ebb4ecf1b832b5",
+   "ticker": "GOOGL",
+   "question": "Will Alphabet (GOOGL) beat quarterly earnings?",
+   "resolvedDate": "2026-02-04",
+   "outcome": "beat",
+   "volume": 182367.17,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 6,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 73.99,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 17.52,
+      "correct": true
+     },
+     {
+      "name": "KingDingaLing888",
+      "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+      "archetype": "longshot",
+      "pnlUsd": -6.82,
+      "correct": false
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -40.0,
+      "correct": false
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": -51.1,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -148.2,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x891619c52a01324fbc7e535a971f09e772e1c029424e9535b932a781fcb58e4f",
+   "ticker": "NYT",
+   "question": "Will New York Times Company (NYT) beat quarterly earnings?",
+   "resolvedDate": "2026-02-04",
+   "outcome": "beat",
+   "volume": 39075.85,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 7,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 34.0,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 30.0,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 21.35,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 2.01,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": -1.03,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -8.42,
+      "correct": false
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": -100.48,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x7602953678d63abae3edf1ac13c6648ad5a75a0e1c595e95e9b54c31fe0f3666",
+   "ticker": "PLTR",
+   "question": "Will Palantir Technologies Inc (PLTR) beat quarterly earnings?",
+   "resolvedDate": "2026-02-02",
+   "outcome": "beat",
+   "volume": 65565.24,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 5,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 6.21,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.25,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -0.28,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -47.97,
+      "correct": false
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": -119.43,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x627cbfd192283371f82649502216f6f689de883ac7f80f5ee7782ba914bb9459",
+   "ticker": "DIS",
+   "question": "Will Walt Disney Co (DIS) beat quarterly earnings?",
+   "resolvedDate": "2026-02-02",
+   "outcome": "beat",
+   "volume": 39371.78,
+   "sharpCohort": {
+    "correct": 1,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 32.46,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -15.96,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -83.07,
+      "correct": false
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": -125.2,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xb3a5f4222bf620b27e709fd9e5bbd66730ec80c77e1fe1b90d9a8960efe21480",
+   "ticker": "LMT",
+   "question": "Will Lockheed Martin (LMT) beat quarterly earnings?",
+   "resolvedDate": "2026-01-29",
+   "outcome": "miss",
+   "volume": 69174.86,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 5,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 162.5,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 60.0,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 4.22,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.0,
+      "correct": true
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": -99.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xbc5cec91ce2a7a912e4ee0224f6e3e65b0ca89a56359c2c483af2a191447299a",
+   "ticker": "AAPL",
+   "question": "Will Apple (AAPL) beat quarterly earnings?",
+   "resolvedDate": "2026-01-29",
+   "outcome": "beat",
+   "volume": 62703.95,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 7,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 24.52,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 21.83,
+      "correct": true
+     },
+     {
+      "name": "Ytrev",
+      "wallet": "0xb68fb727eaece4154552ac979d99632fa713613f",
+      "archetype": "longshot",
+      "pnlUsd": -2.5,
+      "correct": false
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -3.66,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -58.96,
+      "correct": false
+     },
+     {
+      "name": "KingDingaLing888",
+      "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+      "archetype": "longshot",
+      "pnlUsd": -68.0,
+      "correct": false
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": -82.77,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xd63994beb77dc627524e6cb6b51425afec6afcfeb65d27a922f44c865d815d61",
+   "ticker": "V",
+   "question": "Will Visa (V) beat quarterly earnings?",
+   "resolvedDate": "2026-01-29",
+   "outcome": "beat",
+   "volume": 37235.98,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 7,
+    "wallets": [
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 12.4,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 2.0,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": -0.0,
+      "correct": false
+     },
+     {
+      "name": "Ytrev",
+      "wallet": "0xb68fb727eaece4154552ac979d99632fa713613f",
+      "archetype": "longshot",
+      "pnlUsd": -1.75,
+      "correct": false
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -2.02,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -28.5,
+      "correct": false
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": -108.64,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x6c6a1951fc8f841356ef67415f6e79155f74d0e7d50c1ab2ad7ce149b0279c09",
+   "ticker": "TSLA",
+   "question": "Will Tesla (TSLA) beat quarterly earnings?",
+   "resolvedDate": "2026-01-28",
+   "outcome": "beat",
+   "volume": 145386.59,
+   "sharpCohort": {
+    "correct": 6,
+    "total": 6,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 1184.96,
+      "correct": true
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": 325.77,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 117.93,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 23.7,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 8.0,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.25,
+      "correct": true
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x307cb08f3dd72cf84d3f766cf6afe0d08c731805e4c03611f6e184f6e5ab47cc",
+   "ticker": "MSFT",
+   "question": "Will Microsoft (MSFT) beat quarterly earnings?",
+   "resolvedDate": "2026-01-28",
+   "outcome": "beat",
+   "volume": 40691.68,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 7,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 8.01,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.67,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": -0.55,
+      "correct": false
+     },
+     {
+      "name": "Ytrev",
+      "wallet": "0xb68fb727eaece4154552ac979d99632fa713613f",
+      "archetype": "longshot",
+      "pnlUsd": -3.5,
+      "correct": false
+     },
+     {
+      "name": "KingDingaLing888",
+      "wallet": "0xdce05e525e2cbe2886a23dbb90299bd8e7db5ba0",
+      "archetype": "longshot",
+      "pnlUsd": -51.0,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -92.72,
+      "correct": false
+     },
+     {
+      "name": "HAHAHAHAHAHAHHAAAAAAA",
+      "wallet": "0x21d2c3a26bb78e102c548bb01d67e55db170177f",
+      "archetype": "longshot",
+      "pnlUsd": -107.13,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xb2b5ba1688887a69d18aebeee1385dd996aa1e71514acebf163b986fc0f820f0",
+   "ticker": "AAL",
+   "question": "Will American Airlines (AAL) beat quarterly earnings?",
+   "resolvedDate": "2026-01-22",
+   "outcome": "miss",
+   "volume": 34675.28,
+   "sharpCohort": {
+    "correct": 2,
+    "total": 5,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 694.88,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 158.04,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -19.06,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -80.0,
+      "correct": false
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -131.99,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xaa961d07661553768261adcaaf680a40d5da6e5bd3b4a6b060415d6999154b6d",
+   "ticker": "PG",
+   "question": "Will Procter & Gamble (PG) beat quarterly earnings?",
+   "resolvedDate": "2026-01-22",
+   "outcome": "beat",
+   "volume": 33602.31,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 5,
+    "wallets": [
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 46.0,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 19.63,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 5.39,
+      "correct": true
+     },
+     {
+      "name": "Beaulieusurmer",
+      "wallet": "0x6e24147ccbc9582f6fde58506b5c534f753570a6",
+      "archetype": "longshot",
+      "pnlUsd": -31.25,
+      "correct": false
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": -108.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x849ccba97e929ad084891b4ac7e0398e776b541e28536131d5110e8b819b0553",
+   "ticker": "TFC",
+   "question": "Will Truist Financial (TFC) beat quarterly earnings?",
+   "resolvedDate": "2026-01-21",
+   "outcome": "beat",
+   "volume": 60301.47,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 4,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 921.83,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 659.37,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 531.54,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 114.05,
+      "correct": true
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x4791b5f8da5935820a4866148e91282c23be1e32e8d7ee30301f209b0f21ee90",
+   "ticker": "JNJ",
+   "question": "Will Johnson & Johnson (JNJ) beat quarterly earnings?",
+   "resolvedDate": "2026-01-21",
+   "outcome": "miss",
+   "volume": 35829.91,
+   "sharpCohort": {
+    "correct": 5,
+    "total": 7,
+    "wallets": [
+     {
+      "name": "Beaulieusurmer",
+      "wallet": "0x6e24147ccbc9582f6fde58506b5c534f753570a6",
+      "archetype": "longshot",
+      "pnlUsd": 432.0,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 36.78,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 27.35,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 13.14,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 2.29,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -225.99,
+      "correct": false
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": -270.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xe11056a5e125a39c3fdfc6b260af389372a7f6e9a41b5730a287707bbe80c5f6",
+   "ticker": "NFLX",
+   "question": "Will Netflix (NFLX) beat quarterly earnings?",
+   "resolvedDate": "2026-01-20",
+   "outcome": "beat",
+   "volume": 75530.17,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 5,
+    "wallets": [
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 45.52,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 23.32,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 2.0,
+      "correct": true
+     },
+     {
+      "name": "Ytrev",
+      "wallet": "0xb68fb727eaece4154552ac979d99632fa713613f",
+      "archetype": "longshot",
+      "pnlUsd": -16.0,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -247.62,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xc3e2caf899d38010e4797d6c9f7c1b3b46ee01e5ccfed0322ab20678b3362fb7",
+   "ticker": "MMM",
+   "question": "Will 3M (MMM) beat quarterly earnings?",
+   "resolvedDate": "2026-01-20",
+   "outcome": "beat",
+   "volume": 43951.52,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 6,
+    "wallets": [
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 17.0,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 13.56,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 1.44,
+      "correct": true
+     },
+     {
+      "name": "Ytrev",
+      "wallet": "0xb68fb727eaece4154552ac979d99632fa713613f",
+      "archetype": "longshot",
+      "pnlUsd": -11.0,
+      "correct": false
+     },
+     {
+      "name": "Beaulieusurmer",
+      "wallet": "0x6e24147ccbc9582f6fde58506b5c534f753570a6",
+      "archetype": "longshot",
+      "pnlUsd": -61.01,
+      "correct": false
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": -186.0,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xcbd8d6c5acc3c2d5b0f04e6cd63c1922dbca1ff89be9edce99f4c7d53be2ac58",
+   "ticker": "TSM",
+   "question": "Will Taiwan Semiconductor (TSM) beat quarterly earnings?",
+   "resolvedDate": "2026-01-15",
+   "outcome": "beat",
+   "volume": 97961.83,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 6,
+    "wallets": [
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 28.99,
+      "correct": true
+     },
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 24.64,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 3.68,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": 3.5,
+      "correct": true
+     },
+     {
+      "name": "Beaulieusurmer",
+      "wallet": "0x6e24147ccbc9582f6fde58506b5c534f753570a6",
+      "archetype": "longshot",
+      "pnlUsd": -71.26,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -496.86,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0xbfd6497fca9e900c03e88734d2f91ec11ffe1952928f7c4338582f64ec0c116e",
+   "ticker": "MS",
+   "question": "Will Morgan Stanley (MS) beat quarterly earnings?",
+   "resolvedDate": "2026-01-15",
+   "outcome": "beat",
+   "volume": 40360.27,
+   "sharpCohort": {
+    "correct": 3,
+    "total": 7,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 181.75,
+      "correct": true
+     },
+     {
+      "name": "lunae20",
+      "wallet": "0xb0f65a17694cfa95f4c34a4edd1530218de1451c",
+      "archetype": "early_sharp",
+      "pnlUsd": 49.8,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 8.98,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -1.26,
+      "correct": false
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": -5.28,
+      "correct": false
+     },
+     {
+      "name": "Beaulieusurmer",
+      "wallet": "0x6e24147ccbc9582f6fde58506b5c534f753570a6",
+      "archetype": "longshot",
+      "pnlUsd": -29.76,
+      "correct": false
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": -195.04,
+      "correct": false
+     }
+    ]
+   }
+  },
+  {
+   "conditionId": "0x9b49db9417c3275700691123dae474dd4183f02ae2bd5e1fd088a883e0d12ac3",
+   "ticker": "GS",
+   "question": "Will Goldman Sachs (GS) beat quarterly earnings?",
+   "resolvedDate": "2026-01-15",
+   "outcome": "beat",
+   "volume": 39226.24,
+   "sharpCohort": {
+    "correct": 4,
+    "total": 6,
+    "wallets": [
+     {
+      "name": "mmmbop",
+      "wallet": "0xd5555147366b7e5bfcea444f4a06a745c18be28a",
+      "archetype": "early_sharp",
+      "pnlUsd": 118.5,
+      "correct": true
+     },
+     {
+      "name": "Happy-town",
+      "wallet": "0x4497895c3360abc4d79887ecfe32adeeb8758c81",
+      "archetype": "early_sharp",
+      "pnlUsd": 13.95,
+      "correct": true
+     },
+     {
+      "name": "Maraq",
+      "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
+      "archetype": "early_sharp",
+      "pnlUsd": 2.5,
+      "correct": true
+     },
+     {
+      "name": "planktonXD",
+      "wallet": "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71",
+      "archetype": "early_sharp",
+      "pnlUsd": 0.14,
+      "correct": true
+     },
+     {
+      "name": "gyhs9bkybhy",
+      "wallet": "0xe38144dd45632a9f59fe210038f8c0e99de13ba9",
+      "archetype": "early_sharp",
+      "pnlUsd": -0.5,
+      "correct": false
+     },
+     {
+      "name": "Beaulieusurmer",
+      "wallet": "0x6e24147ccbc9582f6fde58506b5c534f753570a6",
+      "archetype": "longshot",
+      "pnlUsd": -66.64,
+      "correct": false
+     }
+    ]
    }
   }
  ],
@@ -1213,7 +3434,14 @@
    "pnlUsd": 5691.66,
    "roi": 0.078,
    "avgWinnerEntry": 0.977,
-   "openPositions": []
+   "openPositions": [
+    {
+     "ticker": "CAG",
+     "question": "Will Conagra Brands (CAG) beat quarterly earnings?",
+     "side": "Yes",
+     "shares": 200.0
+    }
+   ]
   },
   {
    "wallet": "0x7f0f780b9eceeb62d5c28e5e61859394a8384f31",
@@ -1243,12 +3471,6 @@
      "question": "Will Hasbro (HAS) beat quarterly earnings?",
      "side": "Yes",
      "shares": 100.0
-    },
-    {
-     "ticker": "PNC",
-     "question": "Will PNC (PNC) beat quarterly earnings?",
-     "side": "No",
-     "shares": 450.0
     },
     {
      "ticker": "IBKR",
@@ -1401,7 +3623,14 @@
    "pnlUsd": 4180.07,
    "roi": 0.147,
    "avgWinnerEntry": 0.895,
-   "openPositions": []
+   "openPositions": [
+    {
+     "ticker": "CTAS",
+     "question": "Will Cintas (CTAS) beat quarterly earnings?",
+     "side": "Yes",
+     "shares": 1041.1
+    }
+   ]
   },
   {
    "wallet": "0xfe40bbeb383f1ea16eadd8e303264dbe79e830f2",
@@ -1670,7 +3899,7 @@
      "ticker": "TSM",
      "question": "Will TSMC (TSM) beat quarterly earnings?",
      "side": "No",
-     "shares": 122.1
+     "shares": 109.0
     }
    ]
   },
@@ -1732,18 +3961,6 @@
      "question": "Will Hasbro (HAS) beat quarterly earnings?",
      "side": "No",
      "shares": 187.4
-    },
-    {
-     "ticker": "PNC",
-     "question": "Will PNC (PNC) beat quarterly earnings?",
-     "side": "No",
-     "shares": 13.4
-    },
-    {
-     "ticker": "JNJ",
-     "question": "Will Johnson & Johnson (JNJ) beat quarterly earnings?",
-     "side": "No",
-     "shares": 50.3
     },
     {
      "ticker": "TSM",

@@ -3,6 +3,7 @@ import type {
   MarketPredictionsData,
   PredictionArchetype,
   PredictionCalendarRow,
+  PredictionClosedMarket,
   PredictionWallet,
 } from "@/lib/server/types";
 import snapshot from "@/lib/server/prediction-markets-data.json" with { type: "json" };
@@ -37,6 +38,26 @@ export async function GET() {
     },
   }));
 
+  const closed: PredictionClosedMarket[] = snapshot.closed.map((row) => ({
+    conditionId: row.conditionId,
+    ticker: row.ticker,
+    question: row.question,
+    resolvedDate: row.resolvedDate,
+    outcome: row.outcome === "beat" ? "beat" : "miss",
+    volume: row.volume,
+    sharpCohort: {
+      correct: row.sharpCohort.correct,
+      total: row.sharpCohort.total,
+      wallets: row.sharpCohort.wallets.map((w) => ({
+        name: w.name,
+        wallet: w.wallet,
+        archetype: w.archetype as PredictionArchetype,
+        pnlUsd: w.pnlUsd,
+        correct: w.correct,
+      })),
+    },
+  }));
+
   const wallets: PredictionWallet[] = snapshot.wallets.map((w) => ({
     wallet: w.wallet,
     name: w.name,
@@ -56,6 +77,7 @@ export async function GET() {
     source: snapshot.source,
     archMinMarkets: snapshot.archMinMarkets,
     calendar,
+    closed,
     wallets,
     warning:
       "Static pilot snapshot (SEC-25) - not a live feed. Live daily ingestion + scoring is scoped in JIRA SEC-26/SEC-27.",

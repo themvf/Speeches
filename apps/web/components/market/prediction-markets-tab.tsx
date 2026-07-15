@@ -5,6 +5,7 @@ import type {
   MarketPredictionsData,
   PredictionArchetype,
   PredictionCalendarRow,
+  PredictionClosedMarket,
   PredictionWallet,
 } from "@/lib/server/types";
 
@@ -99,25 +100,66 @@ function ConsensusCell({ row }: { row: PredictionCalendarRow }) {
   );
 }
 
+function ImpliedBeatExplainer() {
+  return (
+    <details className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.35)] px-3 py-2">
+      <summary className="cursor-pointer text-[11px] font-medium text-[color:var(--ink-soft)]">
+        What does &quot;implied beat&quot; mean?
+      </summary>
+      <div className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-[color:var(--ink-faint)]">
+        <p>
+          Each market trades a <span className="text-[color:var(--ink-soft)]">Yes</span> share that pays out{" "}
+          <span className="text-[color:var(--ink-soft)]">$1</span> if the company beats consensus EPS and{" "}
+          <span className="text-[color:var(--ink-soft)]">$0</span> if it doesn&apos;t. So a Yes share trading at 71¢
+          means the market is collectively pricing a <span className="text-[color:var(--ink-soft)]">71% chance of a
+          beat</span> — buyers are willing to risk 71¢ to make 29¢, sellers the reverse, and the price is where that
+          balances. <span className="text-[color:var(--ink-soft)]">Implied beat = the current Yes price</span>, shown
+          as a percent.
+        </p>
+        <p>
+          It moves in real time as traders take positions, so it&apos;s a live, money-weighted probability — not a
+          survey or a model. The sharp-money column is the useful contrast: when tracked sharps lean the opposite way
+          from the implied probability, that&apos;s informed money disagreeing with the crowd. (Not a forecast, and
+          it carries no view on whether a beat is priced in vs. the stock reaction — research context only.)
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function CalendarView({ rows }: { rows: PredictionCalendarRow[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Chronological by report date, soonest first; undated markets sink to the
+  // bottom. Volume breaks ties so the busiest market leads a given day.
+  const sorted = useMemo(
+    () =>
+      [...rows].sort((a, b) => {
+        const da = a.reportDate ?? "9999-12-31";
+        const db = b.reportDate ?? "9999-12-31";
+        if (da !== db) return da < db ? -1 : 1;
+        return b.volume - a.volume;
+      }),
+    [rows]
+  );
   if (rows.length === 0) {
     return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">No open earnings markets in the snapshot.</p>;
   }
   return (
-    <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-            <th className="py-2 pl-4 pr-2 text-left font-semibold">Ticker</th>
-            <th className="px-2 py-2 text-left font-semibold">Reports</th>
-            <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">EPS line</th>
-            <th className="px-2 py-2 text-right font-semibold">Implied beat</th>
-            <th className="py-2 pl-2 pr-4 text-left font-semibold">Sharp money</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
+    <div className="space-y-3">
+      <ImpliedBeatExplainer />
+      <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+              <th className="py-2 pl-4 pr-2 text-left font-semibold">Ticker</th>
+              <th className="px-2 py-2 text-left font-semibold">Reports</th>
+              <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">EPS line</th>
+              <th className="px-2 py-2 text-right font-semibold">Implied beat</th>
+              <th className="py-2 pl-2 pr-4 text-left font-semibold">Sharp money</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => {
             const open = expanded === row.conditionId;
             const hasWallets = row.consensus.wallets.length > 0;
             return (
@@ -130,8 +172,9 @@ function CalendarView({ rows }: { rows: PredictionCalendarRow[] }) {
               />
             );
           })}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -290,7 +333,100 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
   );
 }
 
-type View = "calendar" | "wallets";
+function ClosedView({ rows }: { rows: PredictionClosedMarket[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const sorted = useMemo(
+    () => [...rows].sort((a, b) => (b.resolvedDate ?? "").localeCompare(a.resolvedDate ?? "")),
+    [rows]
+  );
+  if (rows.length === 0) {
+    return <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">No resolved markets in the snapshot.</p>;
+  }
+  return (
+    <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+            <th className="py-2 pl-4 pr-2 text-left font-semibold">Ticker</th>
+            <th className="px-2 py-2 text-left font-semibold">Resolved</th>
+            <th className="px-2 py-2 text-left font-semibold">Outcome</th>
+            <th className="hidden px-2 py-2 text-right font-semibold sm:table-cell">Volume</th>
+            <th className="py-2 pl-2 pr-4 text-left font-semibold">Sharps correct</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row) => {
+            const open = expanded === row.conditionId;
+            const hasCohort = row.sharpCohort.total > 0;
+            const beat = row.outcome === "beat";
+            return (
+              <Fragment key={row.conditionId}>
+                <tr
+                  onClick={() => setExpanded(open ? null : hasCohort ? row.conditionId : null)}
+                  className={`border-b border-[color:var(--line)] last:border-0 ${hasCohort ? "cursor-pointer hover:bg-[color:rgba(79,213,255,0.04)]" : ""}`}
+                >
+                  <td className="py-2.5 pl-4 pr-2 text-xs font-bold text-[color:var(--accent)]">{row.ticker || "—"}</td>
+                  <td className="px-2 py-2.5 text-xs text-[color:var(--ink-soft)]">{reportLabel(row.resolvedDate)}</td>
+                  <td className="px-2 py-2.5">
+                    <span
+                      className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                      style={{ color: beat ? "#41d39d" : "#f87171", backgroundColor: `color-mix(in srgb, ${beat ? "#41d39d" : "#f87171"} 14%, transparent)` }}
+                    >
+                      {beat ? "Beat" : "Miss"}
+                    </span>
+                  </td>
+                  <td className="hidden px-2 py-2.5 text-right text-xs tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
+                    {usd(row.volume)}
+                  </td>
+                  <td className="py-2.5 pl-2 pr-4 text-left text-xs tabular-nums">
+                    {hasCohort ? (
+                      <span className="text-[color:var(--ink-soft)]">
+                        <span className="font-semibold text-[color:var(--ink)]">{row.sharpCohort.correct}</span>
+                        <span className="text-[color:var(--ink-faint)]">/{row.sharpCohort.total}</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-[color:var(--ink-faint)]">no tracked sharps</span>
+                    )}
+                  </td>
+                </tr>
+                {open && hasCohort && (
+                  <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.5)] last:border-0">
+                    <td colSpan={5} className="px-4 py-3">
+                      <p className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                        Tracked sharp results · {row.question}
+                      </p>
+                      <ul className="space-y-1.5">
+                        {row.sharpCohort.wallets.map((w) => (
+                          <li key={w.wallet} className="flex items-center gap-2 text-xs">
+                            <span style={{ color: w.correct ? "#41d39d" : "#f87171" }}>{w.correct ? "✓" : "✕"}</span>
+                            <a
+                              href={`https://polymarket.com/profile/${w.wallet}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline"
+                            >
+                              {w.name}
+                            </a>
+                            <ArchetypeBadge archetype={w.archetype} />
+                            <span className="ml-auto font-semibold tabular-nums" style={{ color: w.pnlUsd >= 0 ? "#41d39d" : "#f87171" }}>
+                              {w.pnlUsd >= 0 ? "+" : ""}{usd(w.pnlUsd)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+type View = "calendar" | "closed" | "wallets";
 
 export function PredictionMarketsTab({ data, loading, error }: Props) {
   const [view, setView] = useState<View>("calendar");
@@ -315,14 +451,14 @@ export function PredictionMarketsTab({ data, loading, error }: Props) {
           </p>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-[color:var(--line)]">
-          {(["calendar", "wallets"] as const).map((id) => (
+          {(["calendar", "closed", "wallets"] as const).map((id) => (
             <button
               key={id}
               type="button"
               onClick={() => setView(id)}
-              className={`whitespace-nowrap px-3 py-1 text-xs font-medium capitalize ${view === id ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
+              className={`whitespace-nowrap px-3 py-1 text-xs font-medium ${view === id ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
             >
-              {id === "wallets" ? "Sharp wallets" : "Calendar"}
+              {id === "wallets" ? "Sharp wallets" : id === "closed" ? "Closed" : "Upcoming"}
             </button>
           ))}
         </div>
@@ -337,10 +473,18 @@ export function PredictionMarketsTab({ data, loading, error }: Props) {
       <p className="max-w-3xl text-xs text-[color:var(--ink-faint)]">
         {view === "calendar" ? (
           <>
-            Upcoming &quot;Will X beat quarterly earnings?&quot; markets, paired with Polymarket&apos;s implied beat
-            probability and what tracked <span className="text-[color:var(--ink-soft)]">sharp</span> wallets currently
-            hold. The consensus counts early sharps and longshots only — news scalpers (post-print traders) are shown
-            on each wallet but never aggregated here. Click a row with tracked positions to expand.
+            Upcoming &quot;Will X beat quarterly earnings?&quot; markets in report-date order, paired with
+            Polymarket&apos;s implied beat probability and what tracked <span className="text-[color:var(--ink-soft)]">sharp</span> wallets
+            currently hold. The consensus counts early sharps and longshots only — news scalpers (post-print traders)
+            are shown on each wallet but never aggregated here. Click a row with tracked positions to expand.
+          </>
+        ) : view === "closed" ? (
+          <>
+            Resolved earnings markets, most recent first — each showing how it settled (
+            <span className="text-[color:var(--ink-soft)]">beat</span> or{" "}
+            <span className="text-[color:var(--ink-soft)]">miss</span>) and how the tracked sharp cohort (early sharps
+            + longshots) actually did on it. Click a market to see each wallet&apos;s call and P&amp;L — the track
+            record behind the badges.
           </>
         ) : (
           <>
@@ -354,7 +498,9 @@ export function PredictionMarketsTab({ data, loading, error }: Props) {
         )}
       </p>
 
-      {view === "calendar" ? <CalendarView rows={data.calendar} /> : <WalletsView wallets={data.wallets} />}
+      {view === "calendar" && <CalendarView rows={data.calendar} />}
+      {view === "closed" && <ClosedView rows={data.closed} />}
+      {view === "wallets" && <WalletsView wallets={data.wallets} />}
     </div>
   );
 }

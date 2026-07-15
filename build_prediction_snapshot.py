@@ -100,10 +100,10 @@ def _net_side(net_shares: Dict[str, float]) -> Optional[Dict[str, Any]]:
     return {"side": "No", "shares": round(no, 1)}
 
 
-def build(max_markets: int, min_markets: int, leaderboard_n: int, consensus_pool: int) -> Dict[str, Any]:
+def build(max_markets: int, min_markets: int, leaderboard_n: int, consensus_pool: int, closed_n: int) -> Dict[str, Any]:
     markets = pilot.fetch_resolved_earnings_markets(max_markets)
     print(f"resolved earnings markets: {len(markets)}", file=sys.stderr)
-    wallet_stats, total_fills = pilot.analyze_resolved_markets(markets)
+    wallet_stats, total_fills, per_market = pilot.analyze_resolved_markets(markets, capture_per_market=True)
     ranked = pilot.rank_wallets(wallet_stats, min_markets)
     print(f"qualified wallets (>= {min_markets} markets): {len(ranked)}", file=sys.stderr)
 
@@ -171,6 +171,42 @@ def build(max_markets: int, min_markets: int, leaderboard_n: int, consensus_pool
     # Markets with tracked sharp positions first, then by volume.
     calendar.sort(key=lambda row: (-(row["consensus"]["yes"] + row["consensus"]["no"]), -(row["volume"] or 0)))
 
+    # Closed-markets retrospective: how the tracked sharp cohort (leaderboard
+    # early_sharp + longshot wallets) actually did on each resolved market.
+    # "correct" = the wallet booked positive P&L on that market (i.e. was net
+    # on the winning side). Excludes scalpers, same cohort rule as consensus.
+    sharp_cohort = {r["wallet"]: r for r in leaderboard if r["archetype"] in ("early_sharp", "longshot")}
+    closed = []
+    for market in markets:
+        settled = per_market.get(market["condition_id"], {})
+        cohort = []
+        for wallet, r in sharp_cohort.items():
+            s = settled.get(wallet)
+            if not s:
+                continue
+            cohort.append({
+                "name": r["name"] or (wallet[:8] + "…"),
+                "wallet": wallet,
+                "archetype": r["archetype"],
+                "pnlUsd": round(s["pnl"], 2),
+                "correct": s["pnl"] > 0,
+            })
+        closed.append({
+            "conditionId": market["condition_id"],
+            "ticker": market["ticker"],
+            "question": market["question"],
+            "resolvedDate": (market["end_date"] or "")[:10] or None,
+            "outcome": "beat" if market["winner"] == "Yes" else "miss",
+            "volume": round(market["volume"], 2),
+            "sharpCohort": {
+                "correct": sum(1 for c in cohort if c["correct"]),
+                "total": len(cohort),
+                "wallets": sorted(cohort, key=lambda c: -c["pnlUsd"]),
+            },
+        })
+    closed.sort(key=lambda c: (c["resolvedDate"] or ""), reverse=True)
+    closed = closed[:closed_n]
+
     wallets_out = []
     for r in leaderboard:
         positions = positions_by_wallet.get(r["wallet"], [])
@@ -200,6 +236,7 @@ def build(max_markets: int, min_markets: int, leaderboard_n: int, consensus_pool
         "archMinMarkets": pilot.ARCH_MIN_MARKETS,
         "consensusPoolSize": len(pool),
         "calendar": calendar,
+        "closed": closed,
         "wallets": wallets_out,
     }
 
@@ -243,9 +280,10 @@ def main() -> int:
     parser.add_argument("--min-markets", type=int, default=pilot.ARCH_MIN_MARKETS)
     parser.add_argument("--leaderboard", type=int, default=60)
     parser.add_argument("--consensus-pool", type=int, default=40)
+    parser.add_argument("--closed", type=int, default=50)
     args = parser.parse_args()
 
-    snapshot = build(args.max_markets, args.min_markets, args.leaderboard, args.consensus_pool)
+    snapshot = build(args.max_markets, args.min_markets, args.leaderboard, args.consensus_pool, args.closed)
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
     with open(OUT_PATH, "w", encoding="utf-8") as handle:
         json.dump(snapshot, handle, indent=1)
@@ -257,6 +295,8 @@ def main() -> int:
     print(f"  leaderboard: {len(snapshot['wallets'])} wallets {dict(counts)}")
     print(f"  calendar: {len(snapshot['calendar'])} open markets, "
           f"{sum(1 for c in snapshot['calendar'] if c['consensus']['wallets'])} with sharp positions")
+    print(f"  closed: {len(snapshot['closed'])} resolved markets, "
+          f"{sum(1 for c in snapshot['closed'] if c['sharpCohort']['total']) } with sharp-cohort activity")
     return 0
 
 
