@@ -12,7 +12,7 @@ export default function MarketPage() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-[color:var(--ink)]">Market</h1>
         <p className="mt-1 text-sm text-[color:var(--ink-faint)]">
-          Live indices, sector performance, top movers, crypto markets, and global exchange status.
+          Live indices, US macro indicators, sector performance, top movers, crypto markets, and global exchange status.
         </p>
       </div>
       <MarketDashboard />

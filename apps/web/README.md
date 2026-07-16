@@ -21,6 +21,7 @@ Primary config lives in `.env.local`.
 - `OPENAI_API_KEY`: required for `/chats` to use OpenAI-backed retrieval and synthesis
 - `OPENAI_CHAT_MODEL`: optional, defaults to `gpt-5.1`
 - `OPENAI_BASE_URL`: optional, defaults to `https://api.openai.com/v1`
+- `FRED_API_KEY`: required for the server-cached `Market → Macro` dashboard
 - `GITHUB_ACTIONS_*`: dispatch and status for ingest/enrich/extract workflows
 - `JOB_EXECUTION_MODE`: `github_actions` (default) or `local` for direct Python extraction
 - `PYTHON_BIN`: python executable for local extraction mode (`python` by default)
@@ -45,6 +46,7 @@ The Vercel `/chats` route now uses OpenAI plus the persisted vector-store state 
 - `POST /api/jobs/ingest`
 - `POST /api/jobs/enrich`
 - `GET /api/jobs/{jobId}`
+- `GET /api/market/macro`
 
 ## Build Check
 

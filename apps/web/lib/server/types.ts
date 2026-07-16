@@ -450,6 +450,44 @@ export interface MarketOverviewData {
   generatedAt: string;
 }
 
+export type MarketMacroIndicatorId =
+  | "real_gdp_growth"
+  | "cpi_inflation"
+  | "nonfarm_payrolls"
+  | "unemployment_rate"
+  | "effective_fed_funds"
+  | "yield_curve_10y2y";
+
+export type MarketMacroUnit = "percent" | "percentage_points" | "thousands";
+
+export interface MarketMacroPoint {
+  date: string;
+  value: number;
+}
+
+export interface MarketMacroIndicator {
+  id: MarketMacroIndicatorId;
+  fredSeriesId: string;
+  label: string;
+  description: string;
+  frequency: string;
+  unit: MarketMacroUnit;
+  value: number;
+  previousValue: number | null;
+  change: number | null;
+  observationDate: string;
+  lastUpdated: string;
+  points: MarketMacroPoint[];
+  sourceUrl: string;
+}
+
+export interface MarketMacroData {
+  indicators: MarketMacroIndicator[];
+  generatedAt: string;
+  cacheSeconds: number;
+  source: "FRED";
+}
+
 export interface SectorStock {
   symbol: string;
   name: string;

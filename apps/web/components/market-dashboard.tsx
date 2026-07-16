@@ -8,6 +8,7 @@ import type {
   MarketCryptoData,
   MarketExchangesData,
   MarketKpiData,
+  MarketMacroData,
   MarketMoversData,
   MarketOverviewData,
   MarketPredictionsData,
@@ -21,11 +22,13 @@ import { CryptoTab } from "./market/crypto-tab";
 import { ExchangesTab } from "./market/exchanges-tab";
 import { CboeTab } from "./market/cboe-tab";
 import { PredictionMarketsTab } from "./market/prediction-markets-tab";
+import { MacroTab } from "./market/macro-tab";
 
-type TabId = "overview" | "sectors" | "movers" | "attention" | "cboe" | "predictions" | "crypto" | "exchanges";
+type TabId = "overview" | "macro" | "sectors" | "movers" | "attention" | "cboe" | "predictions" | "crypto" | "exchanges";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview",    label: "Overview" },
+  { id: "macro",       label: "Macro" },
   { id: "sectors",     label: "Sectors" },
   { id: "movers",      label: "Movers" },
   { id: "attention",   label: "Reddit" },
@@ -82,6 +85,7 @@ export function MarketDashboard() {
   const overview    = useTabData<MarketOverviewData>   ("overview", tab, "/api/market/overview",    60_000);
   const commodities = useTabData<MarketCommoditiesData>("overview", tab, "/api/market/commodities", 120_000);
   const bonds       = useTabData<MarketBondsData>      ("overview", tab, "/api/market/bonds",       3_600_000);
+  const macro       = useTabData<MarketMacroData>      ("macro",    tab, "/api/market/macro",       900_000);
 
   const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors",   300_000);
   const movers    = useTabData<MarketMoversData>   ("movers",    tab, "/api/market/movers",    120_000);
@@ -116,6 +120,7 @@ export function MarketDashboard() {
       </div>
 
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
+      {tab === "macro"     && <MacroTab     {...macro} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "movers"    && <MoversTab    {...movers} />}
       {tab === "attention" && <AttentionTab {...attention} />}
