@@ -523,6 +523,52 @@ export interface MarketMacroData {
   source: "FRED";
 }
 
+export type MacroPredictionTheme =
+  | "fed_policy"
+  | "growth"
+  | "inflation"
+  | "labor"
+  | "recession"
+  | "housing";
+
+export type MacroPredictionMatchKind = "exact_series" | "related_signal";
+
+export interface MacroPredictionOutcome {
+  marketId: string;
+  conditionId: string;
+  label: string;
+  probability: number;
+  oneDayChange: number | null;
+  volume: number;
+  liquidity: number;
+  closed: boolean;
+}
+
+export interface MacroPredictionEvent {
+  mappingKey: string;
+  eventId: string;
+  slug: string;
+  title: string;
+  url: string;
+  theme: MacroPredictionTheme;
+  matchKind: MacroPredictionMatchKind;
+  matchNote: string;
+  indicatorIds: MarketMacroIndicatorId[];
+  endDate: string | null;
+  volume: number;
+  liquidity: number;
+  leadingOutcome: MacroPredictionOutcome | null;
+  outcomes: MacroPredictionOutcome[];
+}
+
+export interface MarketMacroPredictionsData {
+  events: MacroPredictionEvent[];
+  generatedAt: string;
+  cacheSeconds: number;
+  source: "Polymarket Gamma API";
+  warning?: string;
+}
+
 export interface SectorStock {
   symbol: string;
   name: string;

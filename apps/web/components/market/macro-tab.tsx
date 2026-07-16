@@ -5,13 +5,21 @@ import type {
   MarketMacroGroup,
   MarketMacroIndicator,
   MarketMacroIndicatorId,
+  MarketMacroPredictionsData,
   MarketMacroPoint,
+  MacroPredictionEvent,
 } from "@/lib/server/types";
+import { MacroPredictionInline } from "./macro-prediction-panel";
 
 interface Props {
   data: MarketMacroData | null;
   loading: boolean;
   error: string | null;
+  predictions: {
+    data: MarketMacroPredictionsData | null;
+    loading: boolean;
+    error: string | null;
+  };
 }
 
 interface Signal {
@@ -113,7 +121,7 @@ function MacroSparkline({ points }: { points: MarketMacroPoint[] }) {
   );
 }
 
-function MacroCard({ indicator }: { indicator: MarketMacroIndicator }) {
+function MacroCard({ indicator, contracts }: { indicator: MarketMacroIndicator; contracts: MacroPredictionEvent[] }) {
   const signal = SIGNALS[indicator.id](indicator);
   return (
     <article className="flex min-h-[280px] flex-col rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.5)] p-4">
@@ -143,6 +151,7 @@ function MacroCard({ indicator }: { indicator: MarketMacroIndicator }) {
 
       <div className="mt-3"><MacroSparkline points={indicator.points} /></div>
       <p className="mt-2 flex-1 text-xs leading-5 text-[color:var(--ink-faint)]">{indicator.description}</p>
+      <MacroPredictionInline events={contracts} />
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-[color:var(--line)] pt-3 text-[10px] text-[color:var(--ink-faint)]">
         <span>{indicator.lastUpdated ? `FRED updated ${formatFredUpdatedAt(indicator.lastUpdated)}` : "FRED update time unavailable"}</span>
         <a href={indicator.sourceUrl} target="_blank" rel="noreferrer" className="font-semibold text-[color:var(--accent)] hover:underline">Source</a>
@@ -151,17 +160,17 @@ function MacroCard({ indicator }: { indicator: MarketMacroIndicator }) {
   );
 }
 
-function IndicatorGrid({ indicators }: { indicators: MarketMacroIndicator[] }) {
+function IndicatorGrid({ indicators, contracts }: { indicators: MarketMacroIndicator[]; contracts: MacroPredictionEvent[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {[...indicators]
         .sort((left, right) => left.priority - right.priority)
-        .map((indicator) => <MacroCard key={indicator.id} indicator={indicator} />)}
+        .map((indicator) => <MacroCard key={indicator.id} indicator={indicator} contracts={contracts.filter((contract) => contract.indicatorIds.includes(indicator.id))} />)}
     </div>
   );
 }
 
-export function MacroTab({ data, loading, error }: Props) {
+export function MacroTab({ data, loading, error, predictions }: Props) {
   if (loading && !data) {
     return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading FRED macro indicators…</div>;
   }
@@ -176,6 +185,7 @@ export function MacroTab({ data, loading, error }: Props) {
   if (!data) return null;
 
   const headline = data.indicators.filter((indicator) => indicator.group === "headline");
+  const contracts = predictions.data?.events ?? [];
 
   return (
     <div className="space-y-5">
@@ -191,7 +201,11 @@ export function MacroTab({ data, loading, error }: Props) {
         </p>
       </div>
 
-      <IndicatorGrid indicators={headline} />
+      {predictions.error && !predictions.data && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">Market expectations are temporarily unavailable: {predictions.error}</div>
+      )}
+
+      <IndicatorGrid indicators={headline} contracts={contracts} />
 
       <div className="space-y-3">
         {GROUPS.map((group) => {
@@ -210,7 +224,7 @@ export function MacroTab({ data, loading, error }: Props) {
                 </span>
               </summary>
               <div className="border-t border-[color:var(--line)] p-4">
-                <IndicatorGrid indicators={indicators} />
+                <IndicatorGrid indicators={indicators} contracts={contracts} />
               </div>
             </details>
           );

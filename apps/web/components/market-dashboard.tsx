@@ -9,6 +9,7 @@ import type {
   MarketExchangesData,
   MarketKpiData,
   MarketMacroData,
+  MarketMacroPredictionsData,
   MarketMoversData,
   MarketOverviewData,
   MarketPredictionsData,
@@ -45,11 +46,12 @@ interface TabState<T> {
 }
 
 function useTabData<T>(
-  thisTab: TabId,
+  thisTab: TabId | readonly TabId[],
   activeTab: TabId,
   endpoint: string,
   pollMs: number,
 ): TabState<T> {
+  const active = typeof thisTab === "string" ? activeTab === thisTab : thisTab.includes(activeTab);
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,11 +71,11 @@ function useTabData<T>(
   }, [endpoint]);
 
   useEffect(() => {
-    if (activeTab !== thisTab) return;
+    if (!active) return;
     if (!loadedRef.current) { loadedRef.current = true; load(); }
     const id = setInterval(load, pollMs);
     return () => clearInterval(id);
-  }, [activeTab, thisTab, load, pollMs]);
+  }, [active, load, pollMs]);
 
   return { data, loading, error };
 }
@@ -86,6 +88,7 @@ export function MarketDashboard() {
   const commodities = useTabData<MarketCommoditiesData>("overview", tab, "/api/market/commodities", 120_000);
   const bonds       = useTabData<MarketBondsData>      ("overview", tab, "/api/market/bonds",       3_600_000);
   const macro       = useTabData<MarketMacroData>      ("macro",    tab, "/api/market/macro",       900_000);
+  const macroPredictions = useTabData<MarketMacroPredictionsData>(["macro", "predictions"], tab, "/api/market/macro-contracts", 300_000);
 
   const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors",   300_000);
   const movers    = useTabData<MarketMoversData>   ("movers",    tab, "/api/market/movers",    120_000);
@@ -120,12 +123,12 @@ export function MarketDashboard() {
       </div>
 
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
-      {tab === "macro"     && <MacroTab     {...macro} />}
+      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "movers"    && <MoversTab    {...movers} />}
       {tab === "attention" && <AttentionTab {...attention} />}
       {tab === "cboe"      && <CboeTab      {...cboe} />}
-      {tab === "predictions" && <PredictionMarketsTab {...predictions} />}
+      {tab === "predictions" && <PredictionMarketsTab {...predictions} macro={macroPredictions} />}
       {tab === "crypto"    && <CryptoTab    {...crypto} />}
       {tab === "exchanges" && <ExchangesTab {...exchanges} />}
     </div>

@@ -2,17 +2,24 @@
 
 import { Fragment, useMemo, useState } from "react";
 import type {
+  MarketMacroPredictionsData,
   MarketPredictionsData,
   PredictionArchetype,
   PredictionCalendarRow,
   PredictionClosedMarket,
   PredictionWallet,
 } from "@/lib/server/types";
+import { MacroPredictionMarketsView } from "./macro-prediction-panel";
 
 interface Props {
   data: MarketPredictionsData | null;
   loading: boolean;
   error: string | null;
+  macro: {
+    data: MarketMacroPredictionsData | null;
+    loading: boolean;
+    error: string | null;
+  };
 }
 
 // Reuses this page's existing attention-tab hues so the archetype vocabulary
@@ -431,52 +438,49 @@ function ClosedView({ rows }: { rows: PredictionClosedMarket[] }) {
   );
 }
 
-type View = "calendar" | "closed" | "wallets";
+type View = "calendar" | "closed" | "wallets" | "macro";
 
-export function PredictionMarketsTab({ data, loading, error }: Props) {
+export function PredictionMarketsTab({ data, loading, error, macro }: Props) {
   const [view, setView] = useState<View>("calendar");
-
-  if (loading && !data) {
-    return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading prediction markets…</div>;
-  }
-  if (error && !data) {
-    return <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">{error}</div>;
-  }
-  if (!data) return null;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-            Earnings Prediction Markets · Polymarket sharp money
+            Prediction Markets · Polymarket
           </p>
           <p className="mt-0.5 text-[10px] text-[color:var(--ink-faint)]">
             Research context only — not investment advice.
           </p>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-[color:var(--line)]">
-          {(["calendar", "closed", "wallets"] as const).map((id) => (
+          {(["calendar", "closed", "wallets", "macro"] as const).map((id) => (
             <button
               key={id}
               type="button"
               onClick={() => setView(id)}
               className={`whitespace-nowrap px-3 py-1 text-xs font-medium ${view === id ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}
             >
-              {id === "wallets" ? "Sharp wallets" : id === "closed" ? "Closed" : "Upcoming"}
+              {id === "wallets" ? "Sharp wallets" : id === "closed" ? "Closed" : id === "macro" ? "Macro" : "Upcoming"}
             </button>
           ))}
         </div>
       </div>
 
-      {data.warning && (
+      {view !== "macro" && data?.warning && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
           {data.warning} · snapshot {data.snapshotDate}
         </div>
       )}
 
       <p className="max-w-3xl text-xs text-[color:var(--ink-faint)]">
-        {view === "calendar" ? (
+        {view === "macro" ? (
+          <>
+            Live contract distributions for Fed policy, growth, inflation, labor, recession risk, and housing,
+            mapped to the related FRED indicators. Exact-series matches and related signals are labeled explicitly.
+          </>
+        ) : view === "calendar" ? (
           <>
             Upcoming &quot;Will X beat quarterly earnings?&quot; markets in report-date order, paired with
             Polymarket&apos;s implied beat probability and what tracked <span className="text-[color:var(--ink-soft)]">sharp</span> wallets
@@ -493,7 +497,7 @@ export function PredictionMarketsTab({ data, loading, error }: Props) {
           </>
         ) : (
           <>
-            Wallets ranked by realized P&amp;L across {data.archMinMarkets}+ resolved earnings markets. Archetype is
+            Wallets ranked by realized P&amp;L across {data?.archMinMarkets ?? 8}+ resolved earnings markets. Archetype is
             set by win rate and average entry price on eventual winners — an
             <span className="text-[color:var(--ink-soft)]"> early sharp</span> buys winners cheap (real edge), a
             <span className="text-[color:var(--ink-soft)]"> news scalper</span> buys them near-certain after the print
@@ -503,9 +507,12 @@ export function PredictionMarketsTab({ data, loading, error }: Props) {
         )}
       </p>
 
-      {view === "calendar" && <CalendarView rows={data.calendar} />}
-      {view === "closed" && <ClosedView rows={data.closed} />}
-      {view === "wallets" && <WalletsView wallets={data.wallets} />}
+      {view !== "macro" && loading && !data && <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading prediction markets…</div>}
+      {view !== "macro" && error && !data && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">{error}</div>}
+      {view === "calendar" && data && <CalendarView rows={data.calendar} />}
+      {view === "closed" && data && <ClosedView rows={data.closed} />}
+      {view === "wallets" && data && <WalletsView wallets={data.wallets} />}
+      {view === "macro" && <MacroPredictionMarketsView {...macro} />}
     </div>
   );
 }
