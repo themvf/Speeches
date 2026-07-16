@@ -83,21 +83,31 @@ def _duration_days(row: Dict[str, Any]) -> Optional[int]:
         return None
 
 
+def _member_suffix(value: Any) -> str:
+    """Local-name of an XBRL member (drops the namespace prefix), so config
+    can specify bare member names (e.g. 'DataCenterMember') without pinning
+    each company's namespace prefix - members are unique enough across the
+    tracked set that suffix matching is safe, and it keeps the config
+    portable across the 23 companies' differing prefixes."""
+    return str(value).split(":")[-1] if value is not None else ""
+
+
 def _matches_dims(row: Dict[str, Any], dims: Optional[Dict[str, str]], dim_cols: List[str]) -> bool:
     required = dims or {}
     for col, member in required.items():
-        if str(row.get(col)) != member:
+        if _member_suffix(row.get(col)) != _member_suffix(member):
             return False
     # every OTHER dim column must be empty (a fact tagged with extra axes
     # is a different, finer-grained slice than the KPI wants) - except the
     # known-neutral axis/member combinations.
+    neutral_suffixes = {col: {_member_suffix(m) for m in members} for col, members in NEUTRAL_DIMS.items()}
     for col in dim_cols:
         if col in required:
             continue
         value = row.get(col)
         if _is_na(value):
             continue
-        if str(value) in NEUTRAL_DIMS.get(col, set()):
+        if _member_suffix(value) in neutral_suffixes.get(col, set()):
             continue
         return False
     return True
@@ -144,7 +154,21 @@ def _extract_series(filings_facts: List[Dict[str, Any]], kpi: Dict[str, Any]) ->
     return sorted(quarterly.values(), key=lambda p: p["period_end"])
 
 
-def run(quarters: int) -> Dict[str, Any]:
+def _concept_chain(kpi: Dict[str, Any]) -> List[str]:
+    """Ordered concept candidates for a KPI: primary, then singular
+    fallback_concept (back-compat), then the fallback_concepts list. Revenue
+    varies across the 23 companies (RevenueFromContract... for tech,
+    Revenues for NVDA/banks, RevenuesNetOfInterestExpense for some banks),
+    so most revenue KPIs carry a fallback chain."""
+    chain = [kpi["concept"]]
+    if kpi.get("fallback_concept"):
+        chain.append(kpi["fallback_concept"])
+    chain.extend(kpi.get("fallback_concepts", []))
+    seen: set = set()
+    return [c for c in chain if not (c in seen or seen.add(c))]
+
+
+def run(quarters: int, company_kpis: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     from edgar import Company, set_identity
     set_identity("joshbandes@gmail.com")
 
@@ -153,14 +177,20 @@ def run(quarters: int) -> Dict[str, Any]:
     n_10k = max(2, quarters // 4 + 1)
 
     output: Dict[str, Any] = {"companies": {}}
-    for ticker, kpis in PILOT_KPIS.items():
-        company = Company(ticker)
-        print(f"[{ticker}] {company.name} (CIK {company.cik})", file=sys.stderr)
-        filings = list(company.get_filings(form="10-Q").latest(n_10q)) \
-            + list(company.get_filings(form="10-K").latest(n_10k))
+    for ticker, kpis in (company_kpis or PILOT_KPIS).items():
+        try:
+            company = Company(ticker)
+            print(f"[{ticker}] {company.name} (CIK {company.cik})", file=sys.stderr)
+            filings = list(company.get_filings(form="10-Q").latest(n_10q)) \
+                + list(company.get_filings(form="10-K").latest(n_10k))
+        except Exception as exc:
+            print(f"[{ticker}] ! skipped: {exc}", file=sys.stderr)
+            continue
 
         # concept -> accumulated fact rows across all filings
-        concepts = {k["concept"] for k in kpis} | {k.get("fallback_concept") for k in kpis if k.get("fallback_concept")}
+        concepts: set = set()
+        for k in kpis:
+            concepts.update(_concept_chain(k))
         facts_by_concept: Dict[str, List[Dict[str, Any]]] = {c: [] for c in concepts}
         dim_cols_by_concept: Dict[str, set] = {c: set() for c in concepts}
         for filing in filings:
@@ -183,7 +213,9 @@ def run(quarters: int) -> Dict[str, Any]:
 
         company_out = {"name": company.name, "cik": company.cik, "kpis": {}}
         for kpi in kpis:
-            for concept in [kpi["concept"]] + ([kpi["fallback_concept"]] if kpi.get("fallback_concept") else []):
+            series: List[Dict[str, Any]] = []
+            concept = kpi["concept"]
+            for concept in _concept_chain(kpi):
                 dim_cols = sorted(dim_cols_by_concept.get(concept, set()))
                 rows = [r for r in facts_by_concept.get(concept, [])
                         if _matches_dims(r, kpi["dims"], dim_cols) and r.get("numeric_value") == r.get("numeric_value")]

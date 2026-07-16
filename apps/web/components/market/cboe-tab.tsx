@@ -192,6 +192,10 @@ function CompanySection({ company, color }: { company: CompanyKpis; color: strin
 }
 
 export function CboeTab({ data, loading, error }: Props) {
+  // null = show all companies; a ticker filters to that company. Declared
+  // before the early returns so hook order stays stable across renders.
+  const [selected, setSelected] = useState<string | null>(null);
+
   if (loading && !data) {
     return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading KPI data…</div>;
   }
@@ -200,8 +204,13 @@ export function CboeTab({ data, loading, error }: Props) {
   }
   if (!data) return null;
 
+  // Colors are keyed to each company's position in the full list, so they
+  // stay stable when the view is filtered to one ticker.
+  const colorByTicker = new Map(data.companies.map((company, i) => [company.ticker, colorFor(company.ticker, i)]));
+  const shown = selected ? data.companies.filter((company) => company.ticker === selected) : data.companies;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
@@ -227,9 +236,33 @@ export function CboeTab({ data, loading, error }: Props) {
         the trend and see where the listing sits relative to the recent trajectory.
       </p>
 
-      {data.companies.map((company, i) => (
-        <CompanySection key={company.ticker} company={company} color={colorFor(company.ticker, i)} />
-      ))}
+      {/* Company filter - one row of ticker chips over 22 companies. */}
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => setSelected(null)}
+          className={`rounded-lg px-2.5 py-1 text-[11px] font-medium ${selected === null ? "bg-[rgba(79,213,255,0.14)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)] hover:text-[color:var(--ink-soft)]"}`}
+        >
+          All {data.companies.length}
+        </button>
+        {data.companies.map((company) => (
+          <button
+            key={company.ticker}
+            type="button"
+            onClick={() => setSelected(company.ticker)}
+            className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold ${selected === company.ticker ? "text-[color:var(--ink)]" : "text-[color:var(--ink-faint)] hover:text-[color:var(--ink-soft)]"}`}
+            style={selected === company.ticker ? { backgroundColor: `color-mix(in srgb, ${colorByTicker.get(company.ticker)} 18%, transparent)`, color: colorByTicker.get(company.ticker) } : undefined}
+          >
+            {company.ticker}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-8">
+        {shown.map((company) => (
+          <CompanySection key={company.ticker} company={company} color={colorByTicker.get(company.ticker)!} />
+        ))}
+      </div>
     </div>
   );
 }
