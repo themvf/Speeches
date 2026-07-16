@@ -13,8 +13,8 @@ Live market intelligence dashboard at `/market`, providing real-time financial d
 
 ### Sectors
 - All 11 S&P GICS sectors sorted by daily % change
-- Each sector is collapsible to reveal 5 representative stocks with ticker, name, price, and % change
-- Sector-level % change sourced from Finnhub; stock quotes fetched in a single parallel batch
+- Each sector is collapsible to reveal 10 representative stocks with ticker, name, price, and % change
+- Sector-level performance uses Yahoo Finance ETF candles; stock quotes are fetched in a single parallel batch
 
 ### Movers
 - **Top 10 Gainers** and **Top 10 Losers** from a curated 35-stock watchlist
@@ -42,8 +42,8 @@ Used for US indices, VIX, global index proxies, sector performance, stock quotes
 | `GET /api/v1/quote?symbol=SPY\|DIA\|QQQ\|IWM` | US index cards (ETF proxies) | 60s |
 | `GET /api/v1/quote?symbol=^VIX` | VIX fear & greed meter | 60s |
 | `GET /api/v1/quote?symbol=EWU\|EWG\|EWJ\|EWH\|EWA\|EWQ` | Global index ETF proxies | 60s |
-| `GET /api/v1/stock/sector-performance` | Sector-level % change | 300s |
-| `GET /api/v1/quote?symbol=<ticker>` (×55 batch) | Per-sector stock quotes | 300s |
+| Yahoo Finance ETF chart (×11 batch) | Sector-level performance | 300s |
+| Yahoo Finance quote (×110 batch) | Per-sector stock quotes | 300s |
 | `GET /api/v1/quote?symbol=<ticker>` (×35 batch) | Movers watchlist | 120s |
 | `GET /api/v1/stock/market-status?exchange=<code>` (×16) | Exchange open/closed status | 60s |
 
@@ -143,7 +143,7 @@ All routes live under `app/api/market/` and follow the standard `{ ok, data, req
 | Route | Source | Cache TTL |
 |---|---|---|
 | `GET /api/market/overview` | Finnhub (14 symbols) | 60s |
-| `GET /api/market/sectors` | Finnhub sector-perf + 55 stock quotes | 300s |
+| `GET /api/market/sectors` | Yahoo ETF candles + 110 stock quotes | 300s |
 | `GET /api/market/movers` | Finnhub (35 symbol batch) | 120s |
 | `GET /api/market/crypto` | CoinGecko | 120s |
 | `GET /api/market/exchanges` | Finnhub (16 market-status calls) | 60s |
@@ -199,17 +199,25 @@ All market types are in `apps/web/lib/server/types.ts`:
 
 ## Rate Limit Budget
 
-On the Finnhub free plan (60 calls/min), the worst-case burst on a cold cache is:
+On the Finnhub free plan (60 calls/min), the worst-case burst on a cold cache is 65 requests. The Sectors tab uses Yahoo Finance separately:
 
-| Route | Calls |
-|---|---|
-| /api/market/overview | 14 |
-| /api/market/sectors | 56 (1 sector-perf + 55 stock quotes) |
-| /api/market/movers | 35 |
-| /api/market/exchanges | 16 |
-| **Total (all tabs cold)** | **121** |
+| Route | Provider | Calls |
+|---|---|---|
+| /api/market/overview | Finnhub | 14 |
+| /api/market/movers | Finnhub | 35 |
+| /api/market/exchanges | Finnhub | 16 |
+| **Finnhub total** |  | **65** |
+| /api/market/sectors | Yahoo Finance | 121 (11 ETF candle requests + 110 stock quotes) |
 
 In practice this is spread across multiple minutes because:
 1. Tabs fetch lazily — only the active tab fires on load
 2. Next.js caches responses for the full revalidation window
 3. Sectors (the heaviest tab) revalidates only every 5 minutes
+
+## Sector enrichment backlog
+
+1. **Market cap and sector weight** — show each company's market capitalization, weight within its sector ETF, and rank so users can distinguish leaders from smaller constituents.
+2. **Volume and liquidity signals** — add daily volume, 20-day average volume, and relative volume to make unusual trading activity visible.
+3. **Valuation snapshot** — include forward P/E, price-to-sales, dividend yield, and sector-relative percentile with clear as-of dates.
+4. **Price context** — add 1-week, 1-month, YTD, and 52-week-range performance plus a compact sparkline for every company.
+5. **News and regulatory signals** — connect each ticker to recent corpus articles, SEC filings/enforcement mentions, sentiment, and the latest material catalyst with source links.
