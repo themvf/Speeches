@@ -31,7 +31,8 @@ export async function GET() {
     snapshotDate: kpiPilotData.generatedAt,
     source: kpiPilotData.source,
     companies,
-    warning: "Static snapshot from SEC XBRL filings (SEC-8) - not a live feed. Live daily ingestion is scoped in JIRA SEC-9/SEC-10.",
+    warning:
+      "Auto-refreshed from SEC EDGAR (SEC-34): new 10-Q/10-K filings are detected hourly on weekdays and redeploy this data within ~1 hour of acceptance.",
   };
   return ok(data, requestId);
 }

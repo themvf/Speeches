@@ -28,8 +28,17 @@ import kpi_pilot
 OUT_PATH = os.path.join("apps", "web", "lib", "server", "kpi-pilot-data.json")
 
 
-def build(quarters: int) -> dict:
-    raw = kpi_pilot.run(quarters, company_kpis=kpi_config.COMPANY_KPIS)
+def build(quarters: int, tickers: list | None = None) -> dict:
+    """Full rebuild, or - with tickers - rebuild just those companies and
+    merge into the existing snapshot (the filing-watch path, SEC-34: a new
+    10-Q should cost one company's extraction, not all 22)."""
+    selected = kpi_config.COMPANY_KPIS
+    if tickers:
+        unknown = [t for t in tickers if t not in kpi_config.COMPANY_KPIS]
+        if unknown:
+            print(f"ignoring unknown tickers: {unknown}", file=sys.stderr)
+        selected = {t: kpi_config.COMPANY_KPIS[t] for t in tickers if t in kpi_config.COMPANY_KPIS}
+    raw = kpi_pilot.run(quarters, company_kpis=selected)
     companies: dict = {}
     dropped: list = []
     for ticker, cdata in raw["companies"].items():
@@ -57,26 +66,43 @@ def build(quarters: int) -> dict:
         companies[ticker] = {"name": kpi_config.NAMES.get(ticker, cdata["name"]), "kpis": kpis_out}
 
     return {
-        "generatedAt": time.strftime("%Y-%m-%d", time.gmtime()),
+        "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
         "companies": companies,
         "_dropped": dropped,
     }
 
 
+def merge_into_existing(fresh: dict, out_path: str) -> dict:
+    """Overlay freshly-rebuilt companies onto the existing snapshot, keeping
+    every other company's data untouched. Company ORDER is preserved from
+    the existing file (the tab's chip row and colors key off position)."""
+    with open(out_path, encoding="utf-8") as handle:
+        existing = json.load(handle)
+    merged_companies = dict(existing.get("companies", {}))
+    merged_companies.update(fresh["companies"])
+    fresh["companies"] = merged_companies
+    return fresh
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quarters", type=int, default=8)
+    parser.add_argument("--tickers", default="",
+                        help="Comma/space-separated tickers to rebuild and merge (filing-watch path); empty = full rebuild")
     args = parser.parse_args()
+    tickers = [t for t in args.tickers.replace(",", " ").split() if t]
 
-    snapshot = build(args.quarters)
+    snapshot = build(args.quarters, tickers=tickers or None)
     dropped = snapshot.pop("_dropped")
+    if tickers and os.path.exists(OUT_PATH):
+        snapshot = merge_into_existing(snapshot, OUT_PATH)
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
     with open(OUT_PATH, "w", encoding="utf-8") as handle:
         json.dump(snapshot, handle, indent=1)
 
     total_kpis = sum(len(c["kpis"]) for c in snapshot["companies"].values())
-    print(f"\nwrote {OUT_PATH}")
+    print(f"\nwrote {OUT_PATH}" + (f" (merged {len(tickers)} rebuilt companies)" if tickers else ""))
     print(f"  companies: {len(snapshot['companies'])} | KPIs with data: {total_kpis}")
     if dropped:
         print(f"  dropped (no data): {len(dropped)} -> {', '.join(dropped)}", file=sys.stderr)

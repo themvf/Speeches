@@ -1,0 +1,86 @@
+name: KPI Filing Watch
+
+# SEC-34: near-real-time CBOE KPI refresh, git-as-store. Hourly during EDGAR
+# acceptance hours (6am-10pm ET; crons pinned to EDT = 10:00-02:00 UTC, +1h
+# winter drift is harmless - the daily --full pass reconciles anything a
+# window ever misses). The no-change path is Python-stdlib only (no pip
+# install) and exits in seconds; a detected filing rebuilds only the changed
+# companies and pushes the snapshot, which auto-deploys via Vercel.
+# Minute offset :10 avoids the :05 reddit-sweep pileup.
+on:
+  schedule:
+    - cron: "10 10-23 * * 1-5"   # hourly, 6:10am-7:10pm ET (EDT)
+    - cron: "10 0-2 * * 2-6"     # the 8:10pm-10:10pm ET wrap (next-day UTC)
+    - cron: "40 9 * * 1-5"       # daily full reconciliation, 5:40am ET
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Detection mode"
+        required: false
+        type: choice
+        options: [detect, full]
+        default: detect
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kpi-filing-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect new filings (stdlib fast path)
+        id: detect
+        run: |
+          set -euo pipefail
+          MODE="${{ github.event.inputs.mode || '' }}"
+          if [ -z "$MODE" ]; then
+            if [ "${{ github.event.schedule }}" = "40 9 * * 1-5" ]; then MODE=full; else MODE=detect; fi
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          CHANGED=$(python3 kpi_filing_watch.py --$MODE | tail -1)
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Detected mode=$MODE changed='[$CHANGED]'"
+
+      - name: Setup Python
+        if: steps.detect.outputs.changed != ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        if: steps.detect.outputs.changed != ''
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Rebuild changed companies and update state
+        if: steps.detect.outputs.changed != ''
+        run: |
+          set -euo pipefail
+          python build_kpi_snapshot.py --tickers "${{ steps.detect.outputs.changed }}"
+          python3 kpi_filing_watch.py --${{ steps.detect.outputs.mode }} --commit-state
+
+      - name: Commit and push snapshot
+        if: steps.detect.outputs.changed != ''
+        run: |
+          set -euo pipefail
+          git config user.name "kpi-filing-watch[bot]"
+          git config user.email "actions@github.com"
+          git add apps/web/lib/server/kpi-pilot-data.json kpi_state.json
+          if git diff --cached --quiet; then
+            echo "nothing to commit (values unchanged)"; exit 0
+          fi
+          git commit -m "KPI auto-refresh: ${{ steps.detect.outputs.changed }} (SEC-34 filing watch)"
+          git pull --rebase origin main
+          git push origin HEAD:main
