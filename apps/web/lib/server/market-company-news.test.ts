@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildCompanyNewsRssUrl, normalizeCompanyNewsArticles } from "./market-company-news.ts";
+import {
+  buildCompanyNewsRssUrl,
+  classifyCompanyNewsCatalyst,
+  companyNewsResultWindow,
+  manualRefreshDecision,
+  normalizeCompanyNewsArticles,
+} from "./market-company-news.ts";
 import { findMarketSectorCompany, MARKET_SECTOR_COMPANIES } from "./market-sector-companies.ts";
 import type { RssArticle } from "./rss-fetcher.ts";
 
@@ -97,4 +103,65 @@ test("accepts canonical aliases and filters non-English Google News results", ()
 
   assert.equal(results.length, 1);
   assert.equal(results[0].title, "Procter & Gamble raises its outlook");
+});
+
+test("ranks a strong company headline above a newer incidental mention", () => {
+  const company = findMarketSectorCompany("AAPL");
+  assert.ok(company);
+  const results = normalizeCompanyNewsArticles([
+    article({
+      guid: "incidental",
+      title: "Alibaba shares rise on AI partnership - CNBC",
+      url: "https://news.google.com/rss/articles/alibaba-partnership",
+      description: "The agreement will integrate models into Apple Intelligence.",
+      publishedAt: new Date("2026-07-16T11:30:00.000Z"),
+    }),
+    article({
+      guid: "direct",
+      title: "Apple expands U.S. manufacturing investment - Reuters",
+      url: "https://news.google.com/rss/articles/apple-manufacturing",
+      description: "Apple announced a major expansion for the company.",
+      publishedAt: new Date("2026-07-14T11:30:00.000Z"),
+    }),
+  ], company, NOW);
+
+  assert.equal(results[0].title, "Apple expands U.S. manufacturing investment");
+  assert.ok(results[0].relevanceScore > results[1].relevanceScore);
+});
+
+test("assigns deterministic catalyst labels without model inference", () => {
+  assert.equal(classifyCompanyNewsCatalyst("Company raises quarterly earnings guidance"), "Earnings");
+  assert.equal(classifyCompanyNewsCatalyst("Company agrees to acquisition in $4 billion deal"), "M&A");
+  assert.equal(classifyCompanyNewsCatalyst("Analyst upgrades shares and lifts price target"), "Analyst Rating");
+  assert.equal(classifyCompanyNewsCatalyst("Company settles shareholder lawsuit"), "Litigation");
+  assert.equal(classifyCompanyNewsCatalyst("FTC opens antitrust investigation"), "Regulation");
+  assert.equal(classifyCompanyNewsCatalyst("Board appoints a new CEO"), "Management");
+  assert.equal(classifyCompanyNewsCatalyst("Company launches new software platform"), "Product");
+  assert.equal(classifyCompanyNewsCatalyst("Company hosts annual community event"), null);
+});
+
+test("limits cached results to five or ten without another provider fetch", () => {
+  const articles = Array.from({ length: 10 }, (_, index) => ({
+    title: `Apple article ${index}`,
+    publisher: "Reuters",
+    url: `https://example.com/${index}`,
+    snippet: "Apple update",
+    publishedAt: new Date(NOW.getTime() - index * 60_000).toISOString(),
+    relevanceScore: 90 - index,
+    catalyst: null,
+  }));
+
+  const initial = companyNewsResultWindow(articles, 5);
+  const expanded = companyNewsResultWindow(articles, 10);
+  assert.equal(initial.articles.length, 5);
+  assert.equal(initial.availableArticleCount, 10);
+  assert.equal(initial.hasMore, true);
+  assert.equal(expanded.articles.length, 10);
+  assert.equal(expanded.hasMore, false);
+});
+
+test("allows one manual refresh per cooldown window", () => {
+  assert.deepEqual(manualRefreshDecision(undefined, 120_000), { allowed: true, remainingSeconds: 60 });
+  assert.deepEqual(manualRefreshDecision(100_000, 120_000), { allowed: false, remainingSeconds: 40 });
+  assert.deepEqual(manualRefreshDecision(100_000, 160_000), { allowed: true, remainingSeconds: 60 });
 });

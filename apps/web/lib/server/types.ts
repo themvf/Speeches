@@ -484,7 +484,18 @@ export interface CompanyNewsArticle {
   url: string;
   snippet: string;
   publishedAt: string;
+  relevanceScore: number;
+  catalyst: CompanyNewsCatalyst | null;
 }
+
+export type CompanyNewsCatalyst =
+  | "Earnings"
+  | "M&A"
+  | "Product"
+  | "Regulation"
+  | "Litigation"
+  | "Analyst Rating"
+  | "Management";
 
 export interface MarketCompanyNewsData {
   symbol: string;
@@ -493,6 +504,10 @@ export interface MarketCompanyNewsData {
   provider: "Google News RSS";
   searchedDays: 7 | 30;
   generatedAt: string;
+  availableArticleCount: number;
+  hasMore: boolean;
+  refreshStatus?: "refreshed" | "throttled";
+  refreshCooldownSeconds?: number;
   warning?: string;
 }
 

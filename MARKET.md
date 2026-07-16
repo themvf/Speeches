@@ -16,6 +16,7 @@ Live market intelligence dashboard at `/market`, providing real-time financial d
 - Each sector is collapsible to reveal 10 representative stocks with ticker, name, price, and % change
 - Sector-level performance uses Yahoo Finance ETF candles; stock quotes are fetched in a single parallel batch
 - Clicking a company row lazily reveals up to 5 recent English-language U.S. Google News articles inline
+- Company news is relevance-ranked, labeled with rule-based catalysts, expandable to 10 cached results, and manually refreshable with a 60-second cooldown
 
 ### Movers
 - **Top 10 Gainers** and **Top 10 Losers** from a curated 35-stock watchlist
@@ -145,7 +146,7 @@ All routes live under `app/api/market/` and follow the standard `{ ok, data, req
 |---|---|---|
 | `GET /api/market/overview` | Finnhub (14 symbols) | 60s |
 | `GET /api/market/sectors` | Yahoo ETF candles + 110 stock quotes | 300s |
-| `GET /api/market/company-news?symbol=<ticker>` | Google News RSS on demand | 900s per ticker |
+| `GET /api/market/company-news?symbol=<ticker>&limit=5|10&refresh=0|1` | Google News RSS on demand | 900s per ticker; 60s manual-refresh cooldown |
 | `GET /api/market/movers` | Finnhub (35 symbol batch) | 120s |
 | `GET /api/market/crypto` | CoinGecko | 120s |
 | `GET /api/market/exchanges` | Finnhub (16 market-status calls) | 60s |

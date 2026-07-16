@@ -50,6 +50,21 @@ function PctBar({ pct, maxAbs }: { pct: number; maxAbs: number }) {
   );
 }
 
+async function fetchCompanyNews(
+  symbol: string,
+  limit: 5 | 10,
+  options: { refresh?: boolean; signal?: AbortSignal } = {},
+): Promise<MarketCompanyNewsData> {
+  const params = new URLSearchParams({ symbol, limit: String(limit) });
+  if (options.refresh) params.set("refresh", "1");
+  const response = await fetch(`/api/market/company-news?${params}`, { signal: options.signal });
+  const envelope = await response.json();
+  if (!response.ok || !envelope.ok || !envelope.data) {
+    throw new Error(envelope.error ?? "Recent company news is unavailable.");
+  }
+  return envelope.data as MarketCompanyNewsData;
+}
+
 function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
   const color = stock.up ? "#41d39d" : "#f87171";
   const sign = stock.pct >= 0 ? "+" : "";
@@ -57,8 +72,11 @@ function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
   const [expanded, setExpanded] = useState(false);
   const [news, setNews] = useState<MarketCompanyNewsData | null>(null);
   const [loadingNews, setLoadingNews] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [articleLimit, setArticleLimit] = useState<5 | 10>(5);
 
   useEffect(() => {
     if (!expanded || news) return;
@@ -67,14 +85,7 @@ function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
     setLoadingNews(true);
     setNewsError(null);
 
-    fetch(`/api/market/company-news?symbol=${encodeURIComponent(stock.symbol)}`, { signal: controller.signal })
-      .then(async (response) => {
-        const envelope = await response.json();
-        if (!response.ok || !envelope.ok || !envelope.data) {
-          throw new Error(envelope.error ?? "Recent company news is unavailable.");
-        }
-        return envelope.data as MarketCompanyNewsData;
-      })
+    fetchCompanyNews(stock.symbol, 5, { signal: controller.signal })
       .then((data) => { if (active) setNews(data); })
       .catch((error) => {
         if (active && error instanceof Error && error.name !== "AbortError") {
@@ -93,6 +104,30 @@ function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
   const retry = () => {
     setNewsError(null);
     setRetryCount((current) => current + 1);
+  };
+  const viewMore = async () => {
+    setLoadingMore(true);
+    setNewsError(null);
+    try {
+      const data = await fetchCompanyNews(stock.symbol, 10);
+      setArticleLimit(10);
+      setNews(data);
+    } catch (error) {
+      setNewsError(error instanceof Error ? error.message : "More company news is unavailable.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+  const refresh = async () => {
+    setRefreshing(true);
+    setNewsError(null);
+    try {
+      setNews(await fetchCompanyNews(stock.symbol, articleLimit, { refresh: true }));
+    } catch (error) {
+      setNewsError(error instanceof Error ? error.message : "Company news refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -137,9 +172,19 @@ function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
                   Recent news · {stock.name}
                 </p>
                 {news && (
-                  <span className="text-[10px] text-[color:var(--ink-faint)]">
-                    {news.provider} · last {news.searchedDays} days
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[color:var(--ink-faint)]">
+                      {news.provider} · last {news.searchedDays} days
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); void refresh(); }}
+                      disabled={refreshing}
+                      className="rounded-md border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold text-[color:var(--accent)] transition-colors hover:bg-[color:rgba(79,213,255,0.08)] disabled:cursor-wait disabled:opacity-50"
+                    >
+                      {refreshing ? "Refreshing…" : "Refresh"}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -183,14 +228,40 @@ function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
                           {new Date(article.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         </span>
                       </div>
-                      <p className="mt-0.5 text-[10px] font-medium text-[color:var(--accent)]">{article.publisher}</p>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <p className="text-[10px] font-medium text-[color:var(--accent)]">{article.publisher}</p>
+                        {article.catalyst && (
+                          <span
+                            title={`Relevance score: ${article.relevanceScore}`}
+                            className="rounded-full border border-[color:rgba(79,213,255,0.24)] bg-[color:rgba(79,213,255,0.08)] px-1.5 py-0.5 text-[9px] font-semibold text-[color:var(--ink-faint)]"
+                          >
+                            {article.catalyst}
+                          </span>
+                        )}
+                      </div>
                       {article.snippet && <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-[color:var(--ink-faint)]">{article.snippet}</p>}
                     </a>
                   ))}
                 </div>
               )}
 
+              {news?.hasMore && (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); void viewMore(); }}
+                    disabled={loadingMore}
+                    className="rounded-lg border border-[color:var(--line)] px-3 py-1.5 text-[10px] font-semibold text-[color:var(--accent)] transition-colors hover:bg-[color:rgba(79,213,255,0.08)] disabled:cursor-wait disabled:opacity-50"
+                  >
+                    {loadingMore ? "Loading…" : `View more (${news.availableArticleCount - news.articles.length})`}
+                  </button>
+                </div>
+              )}
+
               {news?.warning && <p className="text-[10px] text-amber-300/80">{news.warning}</p>}
+              {news?.refreshStatus === "refreshed" && !news.warning && (
+                <p className="text-[10px] text-[color:var(--ink-faint)]">Fresh results loaded. Refresh is available again in 60 seconds.</p>
+              )}
             </div>
           </td>
         </tr>
