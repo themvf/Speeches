@@ -566,6 +566,52 @@ export interface MarketMacroPredictionsData {
   generatedAt: string;
   cacheSeconds: number;
   source: "Polymarket Gamma API";
+  walletTracking?: MacroWalletTrackingData;
+  warning?: string;
+}
+
+export type MacroSharpCohort =
+  | "fed_decision"
+  | "nonfarm_payrolls"
+  | "unemployment"
+  | "headline_cpi"
+  | "core_cpi"
+  | "us_gdp"
+  | "macro_generalist";
+
+export type MacroSharpArchetype = "early_sharp" | "release_scalper" | "longshot" | "unclassified";
+
+export interface MacroSharpWallet {
+  wallet: string;
+  name: string;
+  cohort: MacroSharpCohort;
+  cohortLabel: string;
+  archetype: MacroSharpArchetype;
+  events: number;
+  wins: number;
+  winRate: number;
+  pnlUsd: number;
+  roi: number | null;
+  predictiveShare: number | null;
+  timingCoverage: number | null;
+  avgWinnerEntry: number | null;
+}
+
+export interface MacroSharpCohortSummary {
+  id: Exclude<MacroSharpCohort, "macro_generalist">;
+  label: string;
+  cadence: string;
+  qualifiedWallets: number;
+  observations: number;
+}
+
+export interface MacroWalletTrackingData {
+  isLive: boolean;
+  minCohortEvents: number;
+  generalistMinEvents: number;
+  generalistMinCohorts: number;
+  cohorts: MacroSharpCohortSummary[];
+  wallets: MacroSharpWallet[];
   warning?: string;
 }
 

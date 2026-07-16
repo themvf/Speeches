@@ -27,38 +27,38 @@ test("maps supported macro events and selects the nearest upcoming Fed decision"
   const events = buildMacroPredictionEvents([
     event("fed-september", "Fed Decision in September?", "2026-09-16T12:00:00Z", 900),
     event("fed-july", "Fed Decision in July?", "2026-07-29T12:00:00Z", 300),
-    event("unemployment", "How high will US unemployment go in 2026?", "2026-12-31T12:00:00Z", 800, "Above 5%"),
-    event("recession", "US recession by end of 2026?", "2026-12-31T12:00:00Z", 700),
-    event("mortgage", "Will the 30-year Mortgage Rate hit 7% in 2026?", "2026-12-31T12:00:00Z", 600),
+    event("jobs", "How many jobs added in July?", "2026-08-07T12:30:00Z", 800, "100k to 150k"),
+    event("unemployment", "July Unemployment Rate", "2026-08-07T12:30:00Z", 700, "4.1%"),
+    event("gdp", "US GDP growth in Q2 2026?", "2026-07-30T12:30:00Z", 600, "2% to 3%"),
   ], new Date("2026-07-16T12:00:00Z"));
 
   assert.equal(events.find((item) => item.mappingKey === "fed_next_decision")?.eventId, "fed-july");
-  assert.equal(events.find((item) => item.mappingKey === "unemployment_annual_high")?.matchKind, "exact_series");
-  assert.equal(events.find((item) => item.mappingKey === "recession_year")?.matchKind, "related_signal");
-  assert.equal(events.find((item) => item.mappingKey === "mortgage_annual_range")?.indicatorIds[0], "mortgage_rate_30y");
+  assert.equal(events.find((item) => item.mappingKey === "nonfarm_payrolls_next")?.indicatorIds[0], "nonfarm_payrolls");
+  assert.equal(events.find((item) => item.mappingKey === "unemployment_next")?.matchKind, "exact_series");
+  assert.equal(events.find((item) => item.mappingKey === "us_gdp_next")?.indicatorIds[0], "real_gdp_growth");
 });
 
 test("deduplicates tag results, parses probabilities, and ignores malformed markets", () => {
-  const valid = event("gdp", "GDP growth in 2026", "2026-12-31T12:00:00Z", 1000, "2% to 3%");
+  const valid = event("gdp", "US GDP growth in Q2 2026?", "2026-07-30T12:30:00Z", 1000, "2% to 3%");
   valid.markets?.push({ id: "bad", outcomes: "not json", outcomePrices: "[]" });
   const events = buildMacroPredictionEvents([valid, valid]);
-  const result = events.find((item) => item.mappingKey === "gdp_full_year");
+  const result = events.find((item) => item.mappingKey === "us_gdp_next");
 
   assert.ok(result);
   assert.equal(result.outcomes.length, 1);
   assert.equal(result.leadingOutcome?.label, "2% to 3%");
   assert.equal(result.leadingOutcome?.probability, 0.64);
   assert.equal(result.leadingOutcome?.oneDayChange, 0.03);
-  assert.match(result.matchNote, /full-year/i);
+  assert.match(result.matchNote, /quarterly/i);
   assert.equal(result.url, "https://polymarket.com/event/gdp");
 });
 
-test("prefers the highest-volume annual contract and clamps invalid probabilities", () => {
-  const low = event("cpi-low", "How high will inflation get in 2026?", "2026-12-31T12:00:00Z", 50);
-  const high = event("cpi-high", "How high will inflation get in 2026?", "2026-12-31T12:00:00Z", 500);
-  if (high.markets) high.markets[0].outcomePrices = JSON.stringify(["1.4", "-0.4"]);
-  const result = buildMacroPredictionEvents([low, high]).find((item) => item.mappingKey === "inflation_annual_tail");
+test("selects the nearest recurring CPI release and clamps invalid probabilities", () => {
+  const july = event("cpi-july", "July Inflation US - Annual", "2026-08-12T12:30:00Z", 50);
+  const august = event("cpi-august", "August Inflation US - Annual", "2026-09-11T12:30:00Z", 500);
+  if (july.markets) july.markets[0].outcomePrices = JSON.stringify(["1.4", "-0.4"]);
+  const result = buildMacroPredictionEvents([august, july], new Date("2026-07-16T12:00:00Z")).find((item) => item.mappingKey === "headline_cpi_annual_next");
 
-  assert.equal(result?.eventId, "cpi-high");
+  assert.equal(result?.eventId, "cpi-july");
   assert.equal(result?.leadingOutcome?.probability, 1);
 });

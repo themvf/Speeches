@@ -1544,6 +1544,12 @@ def _ensure_polymarket_schema() -> None:
                 )
                 """
             )
+            cur.execute("ALTER TABLE polymarket_markets ADD COLUMN IF NOT EXISTS market_type TEXT NOT NULL DEFAULT 'earnings'")
+            cur.execute("ALTER TABLE polymarket_markets ADD COLUMN IF NOT EXISTS cohort TEXT")
+            cur.execute("ALTER TABLE polymarket_markets ADD COLUMN IF NOT EXISTS event_key TEXT")
+            cur.execute("ALTER TABLE polymarket_markets ADD COLUMN IF NOT EXISTS event_title TEXT")
+            cur.execute("ALTER TABLE polymarket_markets ADD COLUMN IF NOT EXISTS release_at TIMESTAMPTZ")
+            cur.execute("CREATE INDEX IF NOT EXISTS polymarket_markets_type_event ON polymarket_markets (market_type, event_key)")
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS polymarket_trades (
@@ -1593,6 +1599,46 @@ def _ensure_polymarket_schema() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS polymarket_macro_wallet_event_results (
+                  event_key        TEXT NOT NULL,
+                  wallet           TEXT NOT NULL,
+                  name             TEXT NOT NULL DEFAULT '',
+                  cohort           TEXT NOT NULL,
+                  resolved_date    DATE,
+                  pnl              NUMERIC NOT NULL DEFAULT 0,
+                  cost             NUMERIC NOT NULL DEFAULT 0,
+                  early_cost       NUMERIC NOT NULL DEFAULT 0,
+                  pre_release_cost NUMERIC NOT NULL DEFAULT 0,
+                  late_cost        NUMERIC NOT NULL DEFAULT 0,
+                  post_release_cost NUMERIC NOT NULL DEFAULT 0,
+                  win_entry_avg    NUMERIC,
+                  correct          BOOLEAN NOT NULL DEFAULT false,
+                  PRIMARY KEY (event_key, wallet)
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS polymarket_macro_results_wallet ON polymarket_macro_wallet_event_results (wallet, cohort)")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS polymarket_macro_wallet_stats (
+                  wallet            TEXT NOT NULL,
+                  cohort            TEXT NOT NULL,
+                  name              TEXT NOT NULL DEFAULT '',
+                  events            INTEGER NOT NULL DEFAULT 0,
+                  wins              INTEGER NOT NULL DEFAULT 0,
+                  pnl               NUMERIC NOT NULL DEFAULT 0,
+                  cost              NUMERIC NOT NULL DEFAULT 0,
+                  predictive_cost   NUMERIC NOT NULL DEFAULT 0,
+                  timing_cost       NUMERIC NOT NULL DEFAULT 0,
+                  win_entry_avg     NUMERIC,
+                  archetype         TEXT NOT NULL DEFAULT 'unclassified',
+                  refreshed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  PRIMARY KEY (wallet, cohort)
+                )
+                """
+            )
             conn.commit()
     _POLYMARKET_SCHEMA_ENSURED = True
 
@@ -1615,6 +1661,11 @@ def upsert_polymarket_markets(rows: List[Dict[str, Any]]) -> int:
             row.get("end_date") or None,
             float(row.get("volume", 0) or 0),
             row.get("implied_prob_yes"),
+            _strip_nul_bytes(str(row.get("market_type", "earnings") or "earnings")),
+            _strip_nul_bytes(str(row.get("cohort", "") or "")) or None,
+            _strip_nul_bytes(str(row.get("event_key", "") or "")) or None,
+            _strip_nul_bytes(str(row.get("event_title", "") or "")) or None,
+            row.get("release_at") or None,
         ))
     if not prepared:
         return 0
@@ -1625,7 +1676,8 @@ def upsert_polymarket_markets(rows: List[Dict[str, Any]]) -> int:
                 cur,
                 """
                 INSERT INTO polymarket_markets
-                  (condition_id, ticker, question, slug, eps, report_date, end_date, volume, implied_prob_yes)
+                  (condition_id, ticker, question, slug, eps, report_date, end_date, volume, implied_prob_yes,
+                   market_type, cohort, event_key, event_title, release_at)
                 VALUES %s
                 ON CONFLICT (condition_id) DO UPDATE SET
                   ticker = EXCLUDED.ticker,
@@ -1636,6 +1688,11 @@ def upsert_polymarket_markets(rows: List[Dict[str, Any]]) -> int:
                   end_date = EXCLUDED.end_date,
                   volume = EXCLUDED.volume,
                   implied_prob_yes = EXCLUDED.implied_prob_yes,
+                  market_type = EXCLUDED.market_type,
+                  cohort = EXCLUDED.cohort,
+                  event_key = EXCLUDED.event_key,
+                  event_title = EXCLUDED.event_title,
+                  release_at = EXCLUDED.release_at,
                   updated_at = now()
                 """,
                 prepared,
@@ -1655,7 +1712,7 @@ def mark_polymarket_resolved(condition_id: str, winner: str) -> None:
             conn.commit()
 
 
-def get_polymarket_tracked_markets() -> List[Dict[str, Any]]:
+def get_polymarket_tracked_markets(market_type: str = "earnings") -> List[Dict[str, Any]]:
     """Every tracked market with its lifecycle fields, plus the per-market
     fill cursor (max stored fill timestamp) in one query."""
     _ensure_polymarket_schema()
@@ -1663,11 +1720,14 @@ def get_polymarket_tracked_markets() -> List[Dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT m.condition_id, m.ticker, m.status, m.winner,
-                       m.settled_at, m.fills_pruned_at, m.end_date,
+                SELECT m.condition_id, m.ticker, m.question, m.slug, m.status, m.winner,
+                       m.settled_at, m.fills_pruned_at, m.end_date, m.cohort,
+                       m.event_key, m.event_title, m.release_at,
                        (SELECT MAX(t.filled_at) FROM polymarket_trades t WHERE t.condition_id = m.condition_id) AS fill_cursor
                 FROM polymarket_markets m
+                WHERE m.market_type = %s
                 """
+                , (market_type,)
             )
             return [dict(row) for row in cur.fetchall()]
 
@@ -1717,7 +1777,7 @@ def get_polymarket_market_fills(condition_id: str) -> List[Dict[str, Any]]:
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT wallet AS \"proxyWallet\", name, outcome, side, size, price FROM polymarket_trades WHERE condition_id = %s",
+                "SELECT wallet AS \"proxyWallet\", name, outcome, side, size, price, filled_at FROM polymarket_trades WHERE condition_id = %s",
                 (condition_id,),
             )
             return [dict(row) for row in cur.fetchall()]
@@ -1807,6 +1867,114 @@ def upsert_polymarket_wallet_stats(rows: List[Dict[str, Any]]) -> int:
                 ON CONFLICT (wallet) DO UPDATE SET
                   name = EXCLUDED.name, markets = EXCLUDED.markets, wins = EXCLUDED.wins,
                   pnl = EXCLUDED.pnl, cost = EXCLUDED.cost, win_entry_avg = EXCLUDED.win_entry_avg,
+                  archetype = EXCLUDED.archetype, refreshed_at = now()
+                """,
+                prepared,
+            )
+            conn.commit()
+    return len(prepared)
+
+
+def save_polymarket_macro_event_settlement(
+    event_key: str, cohort: str, resolved_date: Any, settled: Dict[str, Dict[str, Any]]
+) -> int:
+    """Persist one row per wallet/release after all bracket markets have
+    been combined. This is the macro sample-size guard: ten brackets from
+    one CPI print are still one observation."""
+    rows = []
+    for wallet, stats in settled.items():
+        rows.append((
+            event_key, _strip_nul_bytes(str(wallet)),
+            _strip_nul_bytes(str(stats.get("name", "") or "")), cohort,
+            resolved_date, round(float(stats.get("pnl", 0) or 0), 4),
+            round(float(stats.get("cost", 0) or 0), 4),
+            round(float(stats.get("early_cost", 0) or 0), 4),
+            round(float(stats.get("pre_release_cost", 0) or 0), 4),
+            round(float(stats.get("late_cost", 0) or 0), 4),
+            round(float(stats.get("post_release_cost", 0) or 0), 4),
+            stats.get("win_entry_avg"), bool(float(stats.get("pnl", 0) or 0) > 0),
+        ))
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if rows:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO polymarket_macro_wallet_event_results
+                      (event_key, wallet, name, cohort, resolved_date, pnl, cost,
+                       early_cost, pre_release_cost, late_cost, post_release_cost,
+                       win_entry_avg, correct)
+                    VALUES %s
+                    ON CONFLICT (event_key, wallet) DO UPDATE SET
+                      name = EXCLUDED.name, cohort = EXCLUDED.cohort,
+                      resolved_date = EXCLUDED.resolved_date, pnl = EXCLUDED.pnl,
+                      cost = EXCLUDED.cost, early_cost = EXCLUDED.early_cost,
+                      pre_release_cost = EXCLUDED.pre_release_cost,
+                      late_cost = EXCLUDED.late_cost,
+                      post_release_cost = EXCLUDED.post_release_cost,
+                      win_entry_avg = EXCLUDED.win_entry_avg, correct = EXCLUDED.correct
+                    """,
+                    rows,
+                )
+            cur.execute(
+                "UPDATE polymarket_markets SET settled_at = now(), updated_at = now() WHERE market_type = 'macro' AND event_key = %s",
+                (event_key,),
+            )
+            conn.commit()
+    return len(rows)
+
+
+def get_polymarket_macro_wallet_results() -> List[Dict[str, Any]]:
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT event_key, wallet, name, cohort, pnl, cost, early_cost,
+                       pre_release_cost, late_cost, post_release_cost,
+                       win_entry_avg, correct
+                FROM polymarket_macro_wallet_event_results
+                """
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def upsert_polymarket_macro_wallet_stats(rows: List[Dict[str, Any]]) -> int:
+    prepared = []
+    for row in rows:
+        wallet = _strip_nul_bytes(str(row.get("wallet", "") or "").strip())
+        cohort = str(row.get("cohort", "") or "")
+        if not wallet or not cohort:
+            continue
+        prepared.append((
+            wallet, cohort, _strip_nul_bytes(str(row.get("name", "") or "")),
+            int(row.get("events", 0) or 0), int(row.get("wins", 0) or 0),
+            round(float(row.get("pnl", 0) or 0), 4),
+            round(float(row.get("cost", 0) or 0), 4),
+            round(float(row.get("predictive_cost", 0) or 0), 4),
+            round(float(row.get("timing_cost", 0) or 0), 4),
+            row.get("win_entry_avg"),
+            str(row.get("archetype", "unclassified") or "unclassified"),
+        ))
+    if not prepared:
+        return 0
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO polymarket_macro_wallet_stats
+                  (wallet, cohort, name, events, wins, pnl, cost,
+                   predictive_cost, timing_cost, win_entry_avg, archetype)
+                VALUES %s
+                ON CONFLICT (wallet, cohort) DO UPDATE SET
+                  name = EXCLUDED.name, events = EXCLUDED.events, wins = EXCLUDED.wins,
+                  pnl = EXCLUDED.pnl, cost = EXCLUDED.cost,
+                  predictive_cost = EXCLUDED.predictive_cost,
+                  timing_cost = EXCLUDED.timing_cost,
+                  win_entry_avg = EXCLUDED.win_entry_avg,
                   archetype = EXCLUDED.archetype, refreshed_at = now()
                 """,
                 prepared,

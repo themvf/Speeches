@@ -3160,7 +3160,7 @@ export async function getPolymarketOpenMarkets(): Promise<PolymarketOpenMarketRo
            implied_prob_yes::float AS implied_prob_yes,
            volume::float AS volume
     FROM polymarket_markets
-    WHERE status = 'open'
+    WHERE status = 'open' AND market_type = 'earnings'
     ORDER BY report_date ASC NULLS LAST, volume DESC
   `) as unknown as PolymarketOpenMarketRow[];
 }
@@ -3182,7 +3182,7 @@ export async function getPolymarketClosedMarkets(limit = 50): Promise<Polymarket
            end_date::date::text AS resolved_date,
            volume::float AS volume
     FROM polymarket_markets
-    WHERE status = 'resolved'
+    WHERE status = 'resolved' AND market_type = 'earnings'
     ORDER BY end_date DESC NULLS LAST
     LIMIT ${cappedLimit}
   `) as unknown as PolymarketClosedMarketRow[];
@@ -3253,8 +3253,37 @@ export async function getPolymarketOpenPositionsForWallets(wallets: string[]): P
            SUM(CASE WHEN t.outcome = 'Yes' THEN CASE WHEN t.side = 'BUY' THEN t.size ELSE -t.size END ELSE 0 END)::float AS net_yes,
            SUM(CASE WHEN t.outcome = 'No'  THEN CASE WHEN t.side = 'BUY' THEN t.size ELSE -t.size END ELSE 0 END)::float AS net_no
     FROM polymarket_trades t
-    JOIN polymarket_markets m ON m.condition_id = t.condition_id AND m.status = 'open'
+    JOIN polymarket_markets m ON m.condition_id = t.condition_id AND m.status = 'open' AND m.market_type = 'earnings'
     WHERE t.wallet = ANY(${wallets})
     GROUP BY t.condition_id, t.wallet
   `) as unknown as PolymarketOpenPositionRow[];
+}
+
+export type PolymarketMacroWalletStatsRow = {
+  wallet: string;
+  cohort: string;
+  name: string;
+  events: number;
+  wins: number;
+  pnl: number;
+  cost: number;
+  predictive_cost: number;
+  timing_cost: number;
+  win_entry_avg: number | null;
+  archetype: string;
+};
+
+export async function getPolymarketMacroWalletStats(limit = 100): Promise<PolymarketMacroWalletStatsRow[]> {
+  const sql = getSql();
+  const cappedLimit = Math.max(1, Math.min(300, limit));
+  return (await sql`
+    SELECT wallet, cohort, name, events, wins,
+           pnl::float AS pnl, cost::float AS cost,
+           predictive_cost::float AS predictive_cost,
+           timing_cost::float AS timing_cost,
+           win_entry_avg::float AS win_entry_avg, archetype
+    FROM polymarket_macro_wallet_stats
+    ORDER BY pnl DESC
+    LIMIT ${cappedLimit}
+  `) as unknown as PolymarketMacroWalletStatsRow[];
 }

@@ -1,0 +1,57 @@
+name: Polymarket Macro Sync
+
+# Capture the pre-release tape after the major 8:30am ET data window, after
+# the 2:00pm ET FOMC window, and once overnight. Fill timestamps—not run
+# timestamps—drive the early/pre/late/post classification.
+on:
+  schedule:
+    - cron: "45 13 * * 1-5"
+    - cron: "45 18 * * 1-5"
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "Backfill up to 120 resolved recurring US macro releases"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: polymarket-macro-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BACKFILL: ${{ github.event.inputs.backfill || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Sync recurring macro markets
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "${BACKFILL}" = "true" ]; then args+=(--backfill); fi
+          python polymarket_macro_sync.py "${args[@]}" | tee polymarket_macro_sync_summary.json
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: polymarket-macro-sync-summary-${{ github.run_id }}
+          path: polymarket_macro_sync_summary.json
+          if-no-files-found: ignore

@@ -1,6 +1,7 @@
 "use client";
 
-import type { MacroPredictionEvent, MacroPredictionTheme, MarketMacroPredictionsData } from "@/lib/server/types";
+import { useMemo, useState } from "react";
+import type { MacroPredictionEvent, MacroPredictionTheme, MacroSharpArchetype, MacroSharpCohort, MarketMacroPredictionsData } from "@/lib/server/types";
 
 const THEME_LABELS: Record<MacroPredictionTheme, string> = {
   fed_policy: "Fed policy",
@@ -102,14 +103,66 @@ interface MacroViewProps {
 }
 
 export function MacroPredictionMarketsView({ data, loading, error }: MacroViewProps) {
+  const [view, setView] = useState<"contracts" | "wallets">("contracts");
   if (loading && !data) return <p className="py-12 text-center text-sm text-[color:var(--ink-faint)]">Loading macro contracts…</p>;
   if (error && !data) return <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">{error}</div>;
   if (!data) return null;
+  const tracking = data.walletTracking;
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] text-[color:var(--ink-faint)]">Recurring US macro releases only</p>
+        <div className="flex overflow-hidden rounded-lg border border-[color:var(--line)]">
+          {(["contracts", "wallets"] as const).map((id) => (
+            <button key={id} type="button" onClick={() => setView(id)} className={`px-3 py-1 text-xs font-medium ${view === id ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}>
+              {id === "contracts" ? "Contracts" : "Macro sharps"}
+            </button>
+          ))}
+        </div>
+      </div>
       {data.warning && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">{data.warning}</div>}
-      {data.events.length ? <div className="grid grid-cols-1 gap-4 lg:grid-cols-2"><>{data.events.map((event) => <EventCard key={event.mappingKey} event={event} />)}</></div> : <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">No supported US macro contracts are active.</p>}
-      <p className="text-[10px] text-[color:var(--ink-faint)]">Live US, English-language contracts via {data.source} · {Math.round(data.cacheSeconds / 60)} min cache. Market prices are probabilities, not forecasts or investment advice. Earnings sharp-wallet scores are intentionally not applied.</p>
+      {view === "contracts" && (data.events.length ? <div className="grid grid-cols-1 gap-4 lg:grid-cols-2"><>{data.events.map((event) => <EventCard key={event.mappingKey} event={event} />)}</></div> : <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">No supported US macro contracts are active.</p>)}
+      {view === "wallets" && tracking && <MacroSharpWallets tracking={tracking} />}
+      {view === "wallets" && !tracking && <p className="py-8 text-center text-sm text-[color:var(--ink-faint)]">Macro wallet scoring is initializing.</p>}
+      <p className="text-[10px] text-[color:var(--ink-faint)]">Live US, English-language contracts via {data.source} · {Math.round(data.cacheSeconds / 60)} min cache. Each release counts once across all brackets. Only positions entered at least one hour before publication contribute to predictive share. Research context only.</p>
+    </div>
+  );
+}
+
+const ARCHETYPE: Record<MacroSharpArchetype, { label: string; color: string }> = {
+  early_sharp: { label: "Early sharp", color: "#41d39d" },
+  release_scalper: { label: "Release scalper", color: "#fbbf24" },
+  longshot: { label: "Longshot", color: "#a78bfa" },
+  unclassified: { label: "Building sample", color: "var(--ink-faint)" },
+};
+
+function MacroSharpWallets({ tracking }: { tracking: NonNullable<MarketMacroPredictionsData["walletTracking"]> }) {
+  const [cohort, setCohort] = useState<MacroSharpCohort | "all">("all");
+  const wallets = useMemo(() => tracking.wallets.filter((wallet) => cohort === "all" || wallet.cohort === cohort).slice(0, 40), [tracking.wallets, cohort]);
+  return (
+    <div className="space-y-4">
+      {tracking.warning && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">{tracking.warning}</div>}
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {tracking.cohorts.map((item) => (
+          <button key={item.id} type="button" onClick={() => setCohort(item.id)} className={`rounded-xl border p-3 text-left ${cohort === item.id ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.08)]" : "border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]"}`}>
+            <p className="text-xs font-semibold text-[color:var(--ink)]">{item.label}</p>
+            <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">{item.cadence} · max sample {item.observations}</p>
+            <p className="mt-2 text-lg font-bold tabular-nums text-[color:var(--accent)]">{item.qualifiedWallets}</p>
+            <p className="text-[9px] text-[color:var(--ink-faint)]">qualified wallets</p>
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-[10px]">
+        <button type="button" onClick={() => setCohort("all")} className={`rounded px-2 py-1 ${cohort === "all" ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}>All cohorts</button>
+        <span className="text-[color:var(--ink-faint)]">Qualification: {tracking.minCohortEvents} releases in one family; generalist: {tracking.generalistMinEvents} across {tracking.generalistMinCohorts}+ families.</span>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-[color:var(--line)]">
+        <table className="w-full min-w-[760px] text-xs">
+          <thead><tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.08em] text-[color:var(--ink-faint)]"><th className="px-3 py-2 text-left">Wallet</th><th className="px-3 py-2 text-left">Specialty</th><th className="px-3 py-2 text-left">Class</th><th className="px-3 py-2 text-right">Events</th><th className="px-3 py-2 text-right">Win</th><th className="px-3 py-2 text-right">P&amp;L</th><th className="px-3 py-2 text-right">ROI</th><th className="px-3 py-2 text-right">Pre-release</th></tr></thead>
+          <tbody>{wallets.map((wallet) => { const style = ARCHETYPE[wallet.archetype]; return <tr key={`${wallet.wallet}-${wallet.cohort}`} className="border-b border-[color:var(--line)] last:border-0"><td className="px-3 py-2"><a href={`https://polymarket.com/profile/${wallet.wallet}`} target="_blank" rel="noreferrer" className="font-medium text-[color:var(--ink-soft)] hover:text-[color:var(--accent)] hover:underline">{wallet.name}</a></td><td className="px-3 py-2 text-[color:var(--ink-faint)]">{wallet.cohortLabel}</td><td className="px-3 py-2"><span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: style.color, backgroundColor: `color-mix(in srgb, ${style.color} 12%, transparent)` }}>{style.label}</span></td><td className="px-3 py-2 text-right tabular-nums">{wallet.events}</td><td className="px-3 py-2 text-right tabular-nums">{Math.round(wallet.winRate * 100)}%</td><td className="px-3 py-2 text-right font-semibold tabular-nums" style={{ color: wallet.pnlUsd >= 0 ? "#41d39d" : "#f87171" }}>{money(wallet.pnlUsd)}</td><td className="px-3 py-2 text-right tabular-nums">{wallet.roi == null ? "—" : `${Math.round(wallet.roi * 100)}%`}</td><td className="px-3 py-2 text-right tabular-nums">{wallet.predictiveShare == null ? "—" : `${Math.round(wallet.predictiveShare * 100)}%`}</td></tr>; })}</tbody>
+        </table>
+      </div>
+      {!wallets.length && <p className="py-6 text-center text-xs text-[color:var(--ink-faint)]">No wallet has accumulated history in this cohort yet.</p>}
     </div>
   );
 }
