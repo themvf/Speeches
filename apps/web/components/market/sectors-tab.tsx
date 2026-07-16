@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { MarketSectorsData, SectorData, SectorStock } from "@/lib/server/types";
+import { useEffect, useState } from "react";
+import type { MarketCompanyNewsData, MarketSectorsData, SectorData, SectorStock } from "@/lib/server/types";
 import { InlineChart } from "./price-chart";
 
 const SECTOR_ETF: Record<string, string> = {
@@ -54,25 +54,148 @@ function StockRow({ stock, maxAbs }: { stock: SectorStock; maxAbs: number }) {
   const color = stock.up ? "#41d39d" : "#f87171";
   const sign = stock.pct >= 0 ? "+" : "";
   const barW = Math.round((Math.abs(stock.pct) / maxAbs) * 60);
+  const [expanded, setExpanded] = useState(false);
+  const [news, setNews] = useState<MarketCompanyNewsData | null>(null);
+  const [loadingNews, setLoadingNews] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    if (!expanded || news) return;
+    const controller = new AbortController();
+    let active = true;
+    setLoadingNews(true);
+    setNewsError(null);
+
+    fetch(`/api/market/company-news?symbol=${encodeURIComponent(stock.symbol)}`, { signal: controller.signal })
+      .then(async (response) => {
+        const envelope = await response.json();
+        if (!response.ok || !envelope.ok || !envelope.data) {
+          throw new Error(envelope.error ?? "Recent company news is unavailable.");
+        }
+        return envelope.data as MarketCompanyNewsData;
+      })
+      .then((data) => { if (active) setNews(data); })
+      .catch((error) => {
+        if (active && error instanceof Error && error.name !== "AbortError") {
+          setNewsError(error.message);
+        }
+      })
+      .finally(() => { if (active) setLoadingNews(false); });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [expanded, news, retryCount, stock.symbol]);
+
+  const toggle = () => setExpanded((current) => !current);
+  const retry = () => {
+    setNewsError(null);
+    setRetryCount((current) => current + 1);
+  };
 
   return (
-    <tr className="border-b border-[color:var(--line)] last:border-0 hover:bg-[color:rgba(79,213,255,0.03)]">
-      <td className="pl-10 pr-2 py-2 w-16">
-        <span className="text-xs font-bold text-[color:var(--accent)]">{stock.symbol}</span>
-      </td>
-      <td className="px-2 py-2 text-xs text-[color:var(--ink-faint)]">{stock.name}</td>
-      <td className="px-2 py-2 tabular-nums text-xs text-right text-[color:var(--ink)]">
-        ${stock.price.toFixed(2)}
-      </td>
-      <td className="px-2 py-2 tabular-nums text-xs text-right font-semibold" style={{ color }}>
-        {sign}{stock.pct.toFixed(2)}%
-      </td>
-      <td className="pl-2 pr-4 py-2 w-20">
-        <div className="flex justify-end">
-          <div className="h-2.5 rounded-sm" style={{ width: barW, backgroundColor: color, opacity: 0.7 }} />
-        </div>
-      </td>
-    </tr>
+    <>
+      <tr
+        className="border-b border-[color:var(--line)] cursor-pointer hover:bg-[color:rgba(79,213,255,0.03)]"
+        onClick={toggle}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            toggle();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? "Hide" : "Show"} recent news for ${stock.name}`}
+      >
+        <td className="pl-10 pr-2 py-2 w-20">
+          <span className="mr-1.5 text-[10px] text-[color:var(--ink-faint)]">{expanded ? "−" : "+"}</span>
+          <span className="text-xs font-bold text-[color:var(--accent)]">{stock.symbol}</span>
+        </td>
+        <td className="px-2 py-2 text-xs text-[color:var(--ink-faint)]">{stock.name}</td>
+        <td className="px-2 py-2 tabular-nums text-xs text-right text-[color:var(--ink)]">
+          ${stock.price.toFixed(2)}
+        </td>
+        <td className="px-2 py-2 tabular-nums text-xs text-right font-semibold" style={{ color }}>
+          {sign}{stock.pct.toFixed(2)}%
+        </td>
+        <td className="pl-2 pr-4 py-2 w-20">
+          <div className="flex justify-end">
+            <div className="h-2.5 rounded-sm" style={{ width: barW, backgroundColor: color, opacity: 0.7 }} />
+          </div>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-[color:var(--line)]">
+          <td colSpan={5} className="px-5 py-4 bg-[color:rgba(5,15,25,0.45)]">
+            <div className="mx-auto max-w-4xl space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+                  Recent news · {stock.name}
+                </p>
+                {news && (
+                  <span className="text-[10px] text-[color:var(--ink-faint)]">
+                    {news.provider} · last {news.searchedDays} days
+                  </span>
+                )}
+              </div>
+
+              {loadingNews && (
+                <div className="space-y-2" aria-label={`Loading recent news for ${stock.name}`}>
+                  {[0, 1, 2].map((item) => (
+                    <div key={item} className="h-12 animate-pulse rounded-lg bg-[color:rgba(79,213,255,0.06)]" />
+                  ))}
+                </div>
+              )}
+
+              {newsError && !loadingNews && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-300">
+                  <span>{newsError}</span>
+                  <button type="button" onClick={(event) => { event.stopPropagation(); retry(); }} className="font-semibold text-red-200 hover:text-white">
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {news && news.articles.length === 0 && (
+                <p className="rounded-lg border border-[color:var(--line)] px-3 py-4 text-center text-xs text-[color:var(--ink-faint)]">
+                  No relevant English-language U.S. news was found in the last {news.searchedDays} days.
+                </p>
+              )}
+
+              {news && news.articles.length > 0 && (
+                <div className="divide-y divide-[color:var(--line)] overflow-hidden rounded-lg border border-[color:var(--line)]">
+                  {news.articles.map((article) => (
+                    <a
+                      key={`${article.url}:${article.publishedAt}`}
+                      href={article.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      className="block bg-[color:rgba(9,21,34,0.45)] px-3 py-3 transition-colors hover:bg-[color:rgba(79,213,255,0.06)]"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-xs font-semibold leading-5 text-[color:var(--ink)]">{article.title}</p>
+                        <span className="shrink-0 text-[10px] text-[color:var(--ink-faint)]">
+                          {new Date(article.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[10px] font-medium text-[color:var(--accent)]">{article.publisher}</p>
+                      {article.snippet && <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-[color:var(--ink-faint)]">{article.snippet}</p>}
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              {news?.warning && <p className="text-[10px] text-amber-300/80">{news.warning}</p>}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 

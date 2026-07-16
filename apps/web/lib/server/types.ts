@@ -478,6 +478,24 @@ export interface MarketSectorsData {
   generatedAt: string;
 }
 
+export interface CompanyNewsArticle {
+  title: string;
+  publisher: string;
+  url: string;
+  snippet: string;
+  publishedAt: string;
+}
+
+export interface MarketCompanyNewsData {
+  symbol: string;
+  companyName: string;
+  articles: CompanyNewsArticle[];
+  provider: "Google News RSS";
+  searchedDays: 7 | 30;
+  generatedAt: string;
+  warning?: string;
+}
+
 export interface MoverQuote {
   rank: number;
   symbol: string;

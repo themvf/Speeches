@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint . --max-warnings 0",
     "test:theme-intelligence": "node --experimental-strip-types --test lib/theme-intelligence.test.ts",
+    "test:company-news": "node --experimental-strip-types --test lib/server/market-company-news.test.ts",
     "test:intel-topic-matching": "node --experimental-strip-types --test lib/intel-topic-matching.test.ts",
     "test:entity-aliases": "node --experimental-strip-types --test lib/server/entity-aliases.test.ts",
     "test:document-metadata-feed": "node --experimental-strip-types --test lib/server/document-metadata-feed.test.ts",

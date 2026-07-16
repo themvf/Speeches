@@ -15,6 +15,7 @@ Live market intelligence dashboard at `/market`, providing real-time financial d
 - All 11 S&P GICS sectors sorted by daily % change
 - Each sector is collapsible to reveal 10 representative stocks with ticker, name, price, and % change
 - Sector-level performance uses Yahoo Finance ETF candles; stock quotes are fetched in a single parallel batch
+- Clicking a company row lazily reveals up to 5 recent English-language U.S. Google News articles inline
 
 ### Movers
 - **Top 10 Gainers** and **Top 10 Losers** from a curated 35-stock watchlist
@@ -144,6 +145,7 @@ All routes live under `app/api/market/` and follow the standard `{ ok, data, req
 |---|---|---|
 | `GET /api/market/overview` | Finnhub (14 symbols) | 60s |
 | `GET /api/market/sectors` | Yahoo ETF candles + 110 stock quotes | 300s |
+| `GET /api/market/company-news?symbol=<ticker>` | Google News RSS on demand | 900s per ticker |
 | `GET /api/market/movers` | Finnhub (35 symbol batch) | 120s |
 | `GET /api/market/crypto` | CoinGecko | 120s |
 | `GET /api/market/exchanges` | Finnhub (16 market-status calls) | 60s |
@@ -169,7 +171,7 @@ app/market/page.tsx                         Server Component (metadata + shell)
 | Tab | Poll interval |
 |---|---|
 | Overview | 60s |
-| Sectors | 300s |
+| Sectors | 300s for prices; 900s per opened company for news |
 | Movers | 120s |
 | Crypto | 120s |
 | Exchanges | 60s |
@@ -187,6 +189,7 @@ All market types are in `apps/web/lib/server/types.ts`:
 - `MarketOverviewData` — indices, vix, globalIndices, generatedAt
 - `SectorData` / `SectorStock` — sector name + pct + nested stocks
 - `MarketSectorsData`
+- `CompanyNewsArticle` / `MarketCompanyNewsData` — normalized on-demand Google News RSS results
 - `MoverQuote` — rank, symbol, name, price, pct, change, up
 - `MarketMoversData` — gainers[], losers[], generatedAt
 - `CryptoCoin` — rank, id, symbol, name, price, pct24h, marketCap, volume24h, up
@@ -208,11 +211,13 @@ On the Finnhub free plan (60 calls/min), the worst-case burst on a cold cache is
 | /api/market/exchanges | Finnhub | 16 |
 | **Finnhub total** |  | **65** |
 | /api/market/sectors | Yahoo Finance | 121 (11 ETF candle requests + 110 stock quotes) |
+| /api/market/company-news | Google News RSS | 0 cached; 1 typical miss; 2 maximum sparse-result miss |
 
 In practice this is spread across multiple minutes because:
 1. Tabs fetch lazily — only the active tab fires on load
 2. Next.js caches responses for the full revalidation window
 3. Sectors (the heaviest tab) revalidates only every 5 minutes
+4. Company news is never prefetched or persisted; only an opened row can trigger its per-ticker RSS lookup
 
 ## Sector enrichment backlog
 
