@@ -1,4 +1,5 @@
 import type {
+  MarketMacroGroup,
   MarketMacroIndicator,
   MarketMacroIndicatorId,
   MarketMacroPoint,
@@ -8,7 +9,7 @@ import type {
 const FRED_API_BASE = "https://api.stlouisfed.org/fred";
 export const FRED_MACRO_CACHE_SECONDS = 15 * 60;
 
-type FredUnits = "lin" | "chg" | "pc1";
+type FredUnits = "lin" | "chg" | "pch" | "pc1";
 
 export interface FredMacroDefinition {
   id: MarketMacroIndicatorId;
@@ -16,8 +17,11 @@ export interface FredMacroDefinition {
   label: string;
   description: string;
   unit: MarketMacroUnit;
+  group: MarketMacroGroup;
+  priority: number;
   units: FredUnits;
   limit: number;
+  scale?: number;
 }
 
 interface FredObservationPayload {
@@ -33,58 +37,129 @@ interface FredSeriesPayload {
 
 export const FRED_MACRO_DEFINITIONS: readonly FredMacroDefinition[] = [
   {
-    id: "real_gdp_growth",
-    seriesId: "A191RL1Q225SBEA",
-    label: "Real GDP Growth",
+    id: "real_gdp_growth", seriesId: "A191RL1Q225SBEA", label: "Real GDP Growth",
     description: "Inflation-adjusted economic growth at a seasonally adjusted annual rate.",
-    unit: "percent",
-    units: "lin",
-    limit: 20,
+    unit: "percent", group: "headline", priority: 1, units: "lin", limit: 20,
   },
   {
-    id: "cpi_inflation",
-    seriesId: "CPIAUCSL",
-    label: "CPI Inflation",
+    id: "cpi_inflation", seriesId: "CPIAUCSL", label: "CPI Inflation",
     description: "Headline consumer inflation measured as the percent change from one year ago.",
-    unit: "percent",
-    units: "pc1",
-    limit: 60,
+    unit: "percent", group: "headline", priority: 2, units: "pc1", limit: 60,
   },
   {
-    id: "nonfarm_payrolls",
-    seriesId: "PAYEMS",
-    label: "Nonfarm Payrolls",
+    id: "nonfarm_payrolls", seriesId: "PAYEMS", label: "Nonfarm Payrolls",
     description: "Monthly change in US payroll employment, excluding farm workers.",
-    unit: "thousands",
-    units: "chg",
-    limit: 60,
+    unit: "thousands", group: "headline", priority: 3, units: "chg", limit: 60,
   },
   {
-    id: "unemployment_rate",
-    seriesId: "UNRATE",
-    label: "Unemployment Rate",
+    id: "unemployment_rate", seriesId: "UNRATE", label: "Unemployment Rate",
     description: "Share of the US labor force that is unemployed and actively seeking work.",
-    unit: "percent",
-    units: "lin",
-    limit: 60,
+    unit: "percent", group: "headline", priority: 4, units: "lin", limit: 60,
   },
   {
-    id: "effective_fed_funds",
-    seriesId: "DFF",
-    label: "Effective Fed Funds Rate",
+    id: "effective_fed_funds", seriesId: "DFF", label: "Effective Fed Funds Rate",
     description: "Volume-weighted overnight rate for federal funds transactions.",
-    unit: "percent",
-    units: "lin",
-    limit: 365,
+    unit: "percent", group: "headline", priority: 5, units: "lin", limit: 365,
   },
   {
-    id: "yield_curve_10y2y",
-    seriesId: "T10Y2Y",
-    label: "10Y-2Y Treasury Spread",
+    id: "yield_curve_10y2y", seriesId: "T10Y2Y", label: "10Y-2Y Treasury Spread",
     description: "Difference between 10-year and 2-year Treasury yields; negative values indicate inversion.",
-    unit: "percentage_points",
-    units: "lin",
-    limit: 365,
+    unit: "percentage_points", group: "headline", priority: 6, units: "lin", limit: 365,
+  },
+  {
+    id: "retail_sales_growth", seriesId: "RSAFS", label: "Retail Sales",
+    description: "Monthly change in advance estimates of US retail and food-services sales.",
+    unit: "percent", group: "activity", priority: 1, units: "pch", limit: 60,
+  },
+  {
+    id: "industrial_production_growth", seriesId: "INDPRO", label: "Industrial Production",
+    description: "Monthly change in real output from manufacturing, mining, and utilities.",
+    unit: "percent", group: "activity", priority: 2, units: "pch", limit: 60,
+  },
+  {
+    id: "core_pce_inflation", seriesId: "PCEPILFE", label: "Core PCE Inflation",
+    description: "The Federal Reserve's preferred underlying inflation measure, excluding food and energy.",
+    unit: "percent", group: "inflation", priority: 1, units: "pc1", limit: 60,
+  },
+  {
+    id: "breakeven_inflation_10y", seriesId: "T10YIE", label: "10Y Breakeven Inflation",
+    description: "Market-implied average inflation over the next decade from nominal and inflation-protected Treasuries.",
+    unit: "percent", group: "inflation", priority: 2, units: "lin", limit: 365,
+  },
+  {
+    id: "producer_price_inflation", seriesId: "WPSFD4", label: "Producer Price Inflation",
+    description: "Year-over-year change in the Producer Price Index for final demand.",
+    unit: "percent", group: "inflation", priority: 3, units: "pc1", limit: 60,
+  },
+  {
+    id: "initial_claims", seriesId: "ICSA", label: "Initial Jobless Claims",
+    description: "New weekly claims for unemployment insurance, shown in thousands of people.",
+    unit: "thousands_level", group: "labor", priority: 1, units: "lin", limit: 156, scale: 0.001,
+  },
+  {
+    id: "average_hourly_earnings_growth", seriesId: "CES0500000003", label: "Average Hourly Earnings",
+    description: "Year-over-year wage growth for all private nonfarm employees.",
+    unit: "percent", group: "labor", priority: 2, units: "pc1", limit: 60,
+  },
+  {
+    id: "labor_force_participation", seriesId: "CIVPART", label: "Labor Force Participation",
+    description: "Share of the civilian working-age population employed or actively looking for work.",
+    unit: "percent", group: "labor", priority: 3, units: "lin", limit: 60,
+  },
+  {
+    id: "job_openings", seriesId: "JTSJOL", label: "Job Openings",
+    description: "Total nonfarm job openings reported by employers, in thousands.",
+    unit: "thousands_level", group: "labor", priority: 4, units: "lin", limit: 60,
+  },
+  {
+    id: "sahm_rule", seriesId: "SAHMREALTIME", label: "Sahm Rule Indicator",
+    description: "Real-time recession signal; a reading of 0.50 percentage points or more triggers the rule.",
+    unit: "percentage_points", group: "labor", priority: 5, units: "lin", limit: 60,
+  },
+  {
+    id: "national_financial_conditions", seriesId: "NFCI", label: "National Financial Conditions",
+    description: "Chicago Fed index of financial conditions; positive values indicate tighter-than-average conditions.",
+    unit: "index", group: "financial", priority: 1, units: "lin", limit: 156,
+  },
+  {
+    id: "financial_stress", seriesId: "STLFSI4", label: "Financial Stress Index",
+    description: "St. Louis Fed measure of market stress; values above zero indicate above-average stress.",
+    unit: "index", group: "financial", priority: 2, units: "lin", limit: 156,
+  },
+  {
+    id: "fed_balance_sheet", seriesId: "WALCL", label: "Federal Reserve Assets",
+    description: "Total assets held by the Federal Reserve, shown in trillions of dollars.",
+    unit: "trillions", group: "financial", priority: 3, units: "lin", limit: 156, scale: 0.000001,
+  },
+  {
+    id: "m2_money_stock", seriesId: "M2SL", label: "M2 Money Stock",
+    description: "Broad money supply including cash, checking deposits, and readily convertible near money.",
+    unit: "trillions", group: "financial", priority: 4, units: "lin", limit: 60, scale: 0.001,
+  },
+  {
+    id: "sofr", seriesId: "SOFR", label: "Secured Overnight Financing Rate",
+    description: "Broad measure of the cost of borrowing cash overnight collateralized by Treasury securities.",
+    unit: "percent", group: "financial", priority: 5, units: "lin", limit: 365,
+  },
+  {
+    id: "trade_weighted_dollar", seriesId: "DTWEXBGS", label: "Trade-Weighted US Dollar",
+    description: "Broad index of the US dollar against currencies of major trading partners.",
+    unit: "index", group: "financial", priority: 6, units: "lin", limit: 365,
+  },
+  {
+    id: "housing_starts", seriesId: "HOUST", label: "Housing Starts",
+    description: "Annualized pace of newly started privately owned homes, in thousands.",
+    unit: "thousands_level", group: "housing", priority: 1, units: "lin", limit: 60,
+  },
+  {
+    id: "building_permits", seriesId: "PERMIT", label: "Building Permits",
+    description: "Annualized pace of permits for new privately owned housing units, in thousands.",
+    unit: "thousands_level", group: "housing", priority: 2, units: "lin", limit: 60,
+  },
+  {
+    id: "mortgage_rate_30y", seriesId: "MORTGAGE30US", label: "30Y Mortgage Rate",
+    description: "Average US interest rate on a 30-year fixed-rate mortgage.",
+    unit: "percent", group: "housing", priority: 3, units: "lin", limit: 156,
   },
 ] as const;
 
@@ -112,18 +187,18 @@ export function parseFredObservations(payload: FredObservationPayload): MarketMa
   return (payload.observations ?? [])
     .flatMap((observation) => {
       const value = Number(observation.value);
-      return observation.date && Number.isFinite(value)
-        ? [{ date: observation.date, value }]
-        : [];
+      return observation.date && Number.isFinite(value) ? [{ date: observation.date, value }] : [];
     })
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
 export function buildMacroIndicator(
   definition: FredMacroDefinition,
-  points: MarketMacroPoint[],
+  rawPoints: MarketMacroPoint[],
   metadata: { frequency?: string; lastUpdated?: string },
 ): MarketMacroIndicator {
+  const scale = definition.scale ?? 1;
+  const points = rawPoints.map((point) => ({ ...point, value: point.value * scale }));
   const current = points.at(-1);
   if (!current) throw new Error(`FRED returned no observations for ${definition.seriesId}`);
   const previous = points.at(-2) ?? null;
@@ -134,6 +209,8 @@ export function buildMacroIndicator(
     description: definition.description,
     frequency: metadata.frequency || "Unknown",
     unit: definition.unit,
+    group: definition.group,
+    priority: definition.priority,
     value: current.value,
     previousValue: previous?.value ?? null,
     change: previous ? current.value - previous.value : null,
@@ -161,7 +238,20 @@ async function fetchMacroIndicator(definition: FredMacroDefinition, apiKey: stri
   });
 }
 
-export async function fetchFredMacroIndicators(apiKey = String(process.env.FRED_API_KEY ?? "").trim()): Promise<MarketMacroIndicator[]> {
+export async function fetchFredMacroIndicators(
+  apiKey = String(process.env.FRED_API_KEY ?? "").trim(),
+): Promise<MarketMacroIndicator[]> {
   if (!apiKey) throw new Error("FRED_API_KEY is not configured.");
-  return Promise.all(FRED_MACRO_DEFINITIONS.map((definition) => fetchMacroIndicator(definition, apiKey)));
+
+  const results = await Promise.allSettled(
+    FRED_MACRO_DEFINITIONS.map((definition) => fetchMacroIndicator(definition, apiKey)),
+  );
+  const indicators = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  if (!indicators.length) {
+    const firstFailure = results.find((result) => result.status === "rejected");
+    throw firstFailure && firstFailure.status === "rejected"
+      ? firstFailure.reason
+      : new Error("FRED returned no macro indicators.");
+  }
+  return indicators;
 }

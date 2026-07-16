@@ -7,7 +7,7 @@ import {
   parseFredObservations,
 } from "./fred-macro.ts";
 
-test("defines the six initial market macro indicators", () => {
+test("defines the complete grouped market macro catalog", () => {
   assert.deepEqual(FRED_MACRO_DEFINITIONS.map((definition) => definition.seriesId), [
     "A191RL1Q225SBEA",
     "CPIAUCSL",
@@ -15,7 +15,44 @@ test("defines the six initial market macro indicators", () => {
     "UNRATE",
     "DFF",
     "T10Y2Y",
+    "RSAFS",
+    "INDPRO",
+    "PCEPILFE",
+    "T10YIE",
+    "WPSFD4",
+    "ICSA",
+    "CES0500000003",
+    "CIVPART",
+    "JTSJOL",
+    "SAHMREALTIME",
+    "NFCI",
+    "STLFSI4",
+    "WALCL",
+    "M2SL",
+    "SOFR",
+    "DTWEXBGS",
+    "HOUST",
+    "PERMIT",
+    "MORTGAGE30US",
   ]);
+  assert.equal(new Set(FRED_MACRO_DEFINITIONS.map((definition) => definition.id)).size, 25);
+  assert.deepEqual(new Set(FRED_MACRO_DEFINITIONS.map((definition) => definition.group)), new Set([
+    "headline", "activity", "inflation", "labor", "financial", "housing",
+  ]));
+});
+
+test("scales source units into dashboard display units", () => {
+  const definition = FRED_MACRO_DEFINITIONS.find((item) => item.seriesId === "WALCL");
+  assert.ok(definition);
+  const indicator = buildMacroIndicator(definition, [
+    { date: "2026-06-03", value: 6_600_000 },
+    { date: "2026-06-10", value: 6_625_000 },
+  ], { frequency: "Weekly" });
+  assert.equal(indicator.value, 6.625);
+  assert.equal(indicator.previousValue, 6.6);
+  assert.ok(Math.abs((indicator.change ?? 0) - 0.025) < 1e-12);
+  assert.equal(indicator.unit, "trillions");
+  assert.equal(indicator.group, "financial");
 });
 
 test("parses observations chronologically and discards missing values", () => {

@@ -456,9 +456,42 @@ export type MarketMacroIndicatorId =
   | "nonfarm_payrolls"
   | "unemployment_rate"
   | "effective_fed_funds"
-  | "yield_curve_10y2y";
+  | "yield_curve_10y2y"
+  | "core_pce_inflation"
+  | "initial_claims"
+  | "retail_sales_growth"
+  | "industrial_production_growth"
+  | "breakeven_inflation_10y"
+  | "national_financial_conditions"
+  | "housing_starts"
+  | "building_permits"
+  | "mortgage_rate_30y"
+  | "average_hourly_earnings_growth"
+  | "labor_force_participation"
+  | "job_openings"
+  | "fed_balance_sheet"
+  | "m2_money_stock"
+  | "sofr"
+  | "sahm_rule"
+  | "producer_price_inflation"
+  | "financial_stress"
+  | "trade_weighted_dollar";
 
-export type MarketMacroUnit = "percent" | "percentage_points" | "thousands";
+export type MarketMacroUnit =
+  | "percent"
+  | "percentage_points"
+  | "thousands"
+  | "thousands_level"
+  | "trillions"
+  | "index";
+
+export type MarketMacroGroup =
+  | "headline"
+  | "activity"
+  | "inflation"
+  | "labor"
+  | "financial"
+  | "housing";
 
 export interface MarketMacroPoint {
   date: string;
@@ -472,6 +505,8 @@ export interface MarketMacroIndicator {
   description: string;
   frequency: string;
   unit: MarketMacroUnit;
+  group: MarketMacroGroup;
+  priority: number;
   value: number;
   previousValue: number | null;
   change: number | null;
