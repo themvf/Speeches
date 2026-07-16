@@ -2933,41 +2933,6 @@ export async function saveAttentionSweepConfig(config: AttentionSweepConfig): Pr
   }
 }
 
-export type AttentionReviewRow = {
-  id: number;
-  review_date: string;
-  ticker: string;
-  status: string;
-  sample_source_ids: string;
-  created_at: string;
-  reviewed_at: string | null;
-};
-
-export async function getAttentionReviewQueue(status = "pending", limit = 100): Promise<AttentionReviewRow[]> {
-  const sql = getSql();
-  const rows = (await sql`
-    SELECT id, review_date::text AS review_date, ticker, status, sample_source_ids,
-           created_at::text AS created_at, reviewed_at::text AS reviewed_at
-    FROM attention_review_queue
-    WHERE status = ${status}
-    ORDER BY review_date DESC, ticker ASC
-    LIMIT ${limit}
-  `) as unknown as AttentionReviewRow[];
-  return rows;
-}
-
-export async function resolveAttentionReviewItem(id: number, status: "legit" | "false_positive"): Promise<AttentionReviewRow | null> {
-  const sql = getSql();
-  const rows = (await sql`
-    UPDATE attention_review_queue
-    SET status = ${status}, reviewed_at = now()
-    WHERE id = ${id}
-    RETURNING id, review_date::text AS review_date, ticker, status, sample_source_ids,
-              created_at::text AS created_at, reviewed_at::text AS reviewed_at
-  `) as unknown as AttentionReviewRow[];
-  return rows[0] ?? null;
-}
-
 // ─── Attention Activity + Authors views (see CLAUDE.md plan, 2026-07-12) ───
 
 export type AttentionActivityRow = {

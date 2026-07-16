@@ -1202,22 +1202,8 @@ def _ensure_stock_attention_schema() -> None:
             # "count"}]), so the board can name them instead of only counting.
             cur.execute("ALTER TABLE reddit_author_stats ADD COLUMN IF NOT EXISTS top_tickers TEXT NOT NULL DEFAULT '[]'")
             cur.execute("ALTER TABLE reddit_author_stats ADD COLUMN IF NOT EXISTS top_subreddits TEXT NOT NULL DEFAULT '[]'")
-            # Item 6: review queue for tickers newly entering the top of the
-            # board - populated by the rollup, worked through the admin UI.
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS attention_review_queue (
-                  id                SERIAL PRIMARY KEY,
-                  review_date       DATE NOT NULL,
-                  ticker            TEXT NOT NULL,
-                  status            TEXT NOT NULL DEFAULT 'pending',
-                  sample_source_ids TEXT NOT NULL DEFAULT '[]',
-                  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-                  reviewed_at       TIMESTAMPTZ,
-                  UNIQUE (review_date, ticker)
-                )
-                """
-            )
+            # (The former item-6 attention_review_queue was removed - newcomer
+            # tickers now go straight to the board; quality_flags still annotate.)
             conn.commit()
     _STOCK_ATTENTION_SCHEMA_ENSURED = True
 

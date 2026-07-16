@@ -3137,7 +3137,7 @@ function ManualDocumentUploadSection() {
 }
 
 /* ─── Divider ──────────────────────────────────────────────────────── */
-/* ─── Stock attention sweep config + review queue (enhancement items 4/6) ── */
+/* ─── Stock attention sweep config (enhancement item 4) ─────────────────── */
 
 type SweepSubreddit = { name: string; tier: number; weight: number; active: boolean };
 type SweepConfig = {
@@ -3146,17 +3146,8 @@ type SweepConfig = {
   symbol_overrides: { force_ambiguous: string[]; force_unambiguous: string[] };
   author_weighting: { low_diversity_share: number; low_diversity_max_tickers: number; discount: number; min_items?: number };
 };
-type ReviewQueueRow = {
-  id: number;
-  review_date: string;
-  ticker: string;
-  samples: { title: string; permalink: string; subreddit: string }[];
-};
-
 function AttentionSweepSection() {
   const [config, setConfig] = useState<SweepConfig | null>(null);
-  const [queue, setQueue] = useState<ReviewQueueRow[]>([]);
-  const [queueWarning, setQueueWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -3164,16 +3155,10 @@ function AttentionSweepSection() {
   const [newSubreddit, setNewSubreddit] = useState("");
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/admin/attention-config").then((r) => r.json()),
-      fetch("/api/admin/attention-review").then((r) => r.json()),
-    ])
-      .then(([cfg, review]) => {
+    fetch("/api/admin/attention-config")
+      .then((r) => r.json())
+      .then((cfg) => {
         if (cfg.ok) setConfig(cfg.data.config); else setError(cfg.error);
-        if (review.ok) {
-          setQueue(review.data.queue ?? []);
-          if (review.data.warning) setQueueWarning(review.data.warning);
-        }
       })
       .catch(() => setError("Network error"))
       .finally(() => setLoading(false));
@@ -3210,26 +3195,6 @@ function AttentionSweepSection() {
       else setError(d.error ?? "Save failed");
     } catch { setError("Network error"); }
     finally { setSaving(false); }
-  }
-
-  async function handleReview(id: number, action: "legit" | "false_positive") {
-    try {
-      const res = await fetch("/api/admin/attention-review", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action }),
-      });
-      const d = await res.json();
-      if (!d.ok) { setError(d.error ?? "Review action failed"); return; }
-      setQueue((prev) => prev.filter((row) => row.id !== id));
-      if (d.data.configUpdated) {
-        // false positive force-gated the symbol; reflect it locally
-        const ticker = String(d.data.row?.ticker ?? "").toUpperCase();
-        setConfig((prev) => prev && ticker && !prev.symbol_overrides.force_ambiguous.includes(ticker)
-          ? { ...prev, symbol_overrides: { ...prev.symbol_overrides, force_ambiguous: [...prev.symbol_overrides.force_ambiguous, ticker].sort() } }
-          : prev);
-      }
-    } catch { setError("Network error"); }
   }
 
   return (
@@ -3331,53 +3296,6 @@ function AttentionSweepSection() {
                 {saving ? "Saving…" : "Save Sweep Config"}
               </button>
               {saved && <span className="text-xs text-[#41d39d]">Saved</span>}
-            </div>
-
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                Review Queue — new tickers entering the board
-              </p>
-              {queueWarning && <p className="text-[10px] text-amber-300">{queueWarning}</p>}
-              {queue.length === 0 && !queueWarning && (
-                <p className="text-xs text-[color:var(--ink-faint)]">No pending reviews.</p>
-              )}
-              <ul className="space-y-2">
-                {queue.map((row) => (
-                  <li key={row.id} className="rounded border border-[color:var(--line)] px-3 py-2 text-xs">
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-[color:var(--accent)]">{row.ticker}</span>
-                      <span className="text-[10px] text-[color:var(--ink-faint)]">{row.review_date}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleReview(row.id, "legit")}
-                        className="rounded border border-[#41d39d]/40 px-2 py-0.5 text-[10px] text-[#41d39d] hover:bg-[#41d39d]/10"
-                      >
-                        Legit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleReview(row.id, "false_positive")}
-                        className="rounded border border-[color:var(--danger)]/40 px-2 py-0.5 text-[10px] text-[color:var(--danger)] hover:bg-red-500/10"
-                        title="Marks false positive AND force-gates the symbol (requires $ to count) in the sweep config"
-                      >
-                        False positive → gate
-                      </button>
-                    </div>
-                    {row.samples.length > 0 && (
-                      <ul className="mt-1 space-y-0.5">
-                        {row.samples.map((sample, i) => (
-                          <li key={i} className="truncate text-[10px] text-[color:var(--ink-faint)]">
-                            r/{sample.subreddit} ·{" "}
-                            <a href={sample.permalink} target="_blank" rel="noopener noreferrer" className="hover:text-[color:var(--accent)] hover:underline">
-                              {sample.title || sample.permalink}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
             </div>
           </div>
         )}
@@ -3485,6 +3403,10 @@ export default function AdminPage() {
     <div className="mx-auto max-w-3xl px-4 py-12">
       <p className="mb-1 text-xs font-bold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Admin</p>
       <h1 className="mb-10 text-2xl font-bold text-[color:var(--ink)]">Pipeline Controls</h1>
+
+      {/* ── Add article to the news feed (kept at the top for quick access) ── */}
+      <SectionDivider label="Add Article to Feed" />
+      <UrlIngestSection />
 
       {/* ── Ticker bar ─────────────────────────────────────────────── */}
       <SectionDivider label="Ticker Bar" />
@@ -3636,7 +3558,6 @@ export default function AdminPage() {
       <SectionDivider label="Document Library" />
       <DocumentLibrarySection />
       <ManualDocumentUploadSection />
-      <UrlIngestSection />
 
       {/* ── Workflows ──────────────────────────────────────────────── */}
       <SectionDivider label="GitHub Actions" />

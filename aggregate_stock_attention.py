@@ -76,7 +76,6 @@ YOUNG_SHARE_THRESHOLD = 0.5
 YOUNG_MIN_KNOWN = 3               # need this many known-age authors before judging
 SINGLE_THREAD_SHARE = 0.8
 SINGLE_THREAD_MIN_ROWS = 5
-REVIEW_QUEUE_TOP_N = 50
 
 _THREAD_KEY_RE = re.compile(r"/comments/([a-z0-9]+)/", re.IGNORECASE)
 
@@ -124,16 +123,6 @@ FETCH_AUTHOR_SUBREDDIT_COUNTS_SQL = """
 
 FETCH_KNOWN_ACCOUNT_AGES_SQL = """
     SELECT author, account_created FROM reddit_author_stats WHERE account_created IS NOT NULL
-"""
-
-FETCH_SEEN_TICKERS_SQL = """
-    SELECT DISTINCT ticker FROM daily_stock_attention WHERE attention_date < %(day)s
-"""
-
-INSERT_REVIEW_QUEUE_SQL = """
-    INSERT INTO attention_review_queue (review_date, ticker, sample_source_ids)
-    VALUES %s
-    ON CONFLICT (review_date, ticker) DO NOTHING
 """
 
 FETCH_NEWS_ROWS_SQL = """
@@ -525,7 +514,6 @@ def _run(
         "author_stats_computed": 0,
         "authors_discounted": 0,
         "flagged_tickers": 0,
-        "review_queue_added": 0,
         "tickers": 0,
         "rows_written": 0,
         "retention": {"skipped": True},
@@ -618,14 +606,6 @@ def _run(
                     rollup["quality_flags"] = json.dumps(flags)
             summary["flagged_tickers"] = sum(1 for r in rollups if r.get("quality_flags", "[]") != "[]")
 
-            # Item 6: review queue - tickers entering the top of the board
-            # that have never appeared in any prior day's rollup.
-            cur.execute(FETCH_SEEN_TICKERS_SQL, {"day": target_day})
-            seen_tickers = {str(row["ticker"]) for row in cur.fetchall()}
-            newcomers = [
-                r for r in rollups[:REVIEW_QUEUE_TOP_N] if r["ticker"] not in seen_tickers
-            ]
-
             summary["top_tickers"] = [
                 {
                     "ticker": r["ticker"],
@@ -677,14 +657,6 @@ def _run(
                         ],
                     )
                 summary["rows_written"] = len(rollups)
-
-                if newcomers:
-                    psycopg2.extras.execute_values(
-                        cur,
-                        INSERT_REVIEW_QUEUE_SQL,
-                        [(target_day, r["ticker"], r["top_source_ids"]) for r in newcomers],
-                    )
-                    summary["review_queue_added"] = len(newcomers)
 
                 # Persist the item-5 author stats (uses its own connection
                 # via neon_feeds; account_created/link_karma untouched).

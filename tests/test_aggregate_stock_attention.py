@@ -93,8 +93,7 @@ def test_day_bounds_are_utc_midnights():
 # ─── _run against mocked DB ─────────────────────────────────────────────────
 
 def _mock_conn(day_rows, *, prev_day_rows=None, news_rows=None, author_item_stats=None,
-               author_ticker_counts=None, author_subreddit_counts=None, account_age_rows=None,
-               seen_tickers=None):
+               author_ticker_counts=None, author_subreddit_counts=None, account_age_rows=None):
     """Query-aware fake cursor: fetchall() answers based on the last SQL
     executed, since _run now issues several distinct SELECTs."""
     cursor = MagicMock()
@@ -115,8 +114,6 @@ def _mock_conn(day_rows, *, prev_day_rows=None, news_rows=None, author_item_stat
             return list(author_subreddit_counts or [])
         if "account_created IS NOT NULL" in sql:
             return list(account_age_rows or [])
-        if "SELECT DISTINCT ticker FROM daily_stock_attention" in sql:
-            return [{"ticker": t} for t in (seen_tickers or [])]
         if "FROM rss_articles" in sql:
             return list(news_rows or [])
         # day-rows query, disambiguated today-vs-yesterday by day_start
@@ -481,20 +478,6 @@ def test_quality_flag_single_thread_concentration():
     assert "single_thread_concentration" in flags
     spread = [_row("XYZ", f"t3_p{i}", f"u{i}", permalink=f"https://www.reddit.com/r/stocks/comments/post{i}/slug/") for i in range(5)]
     assert "single_thread_concentration" not in agg.compute_quality_flags(spread, set(), {}, datetime.now(UTC))
-
-
-def test_run_populates_review_queue_for_new_tickers_only(monkeypatch):
-    monkeypatch.setattr(neon_feeds, "_STOCK_ATTENTION_SCHEMA_ENSURED", True)
-    conn, cursor = _mock_conn(
-        [_row("NVDA", "t3_a", "u1"), _row("NEWCO", "t3_b", "u2")],
-        seen_tickers=["NVDA"],
-    )
-    summary, mock_ev, _ = _run_patched(
-        conn, target_day=date(2026, 7, 10), dry_run=False, retention_days=90, skip_news=True, skip_market=True
-    )
-    assert summary["review_queue_added"] == 1
-    queue_rows = _ev_rows(mock_ev, "INSERT INTO attention_review_queue")
-    assert queue_rows[0][1] == "NEWCO"
 
 
 def test_run_uses_config_subreddit_weights(monkeypatch):
