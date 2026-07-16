@@ -2880,6 +2880,123 @@ const SOURCE_KIND_OPTIONS = [
   "reddit_post", "hedge_fund_letter", "newsapi_article",
 ];
 
+type UrlIngestResult = {
+  added: boolean;
+  outcome?: string;
+  feedKey: string;
+  article: {
+    title: string;
+    author: string;
+    publishedAt: string | null;
+    description: string;
+    readableText: string;
+    wordCount: number;
+    jsonLdCount: number;
+    hiddenNodes: { tag: string; hiddenBy: string; textPreview: string }[];
+    textVisibility: { totalWords: number; hiddenWords: number; visibleWords: number; hiddenRatio: number };
+  };
+};
+
+function UrlIngestSection() {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState<"" | "preview" | "add">("");
+  const [result, setResult] = useState<UrlIngestResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(dryRun: boolean) {
+    if (!url.trim()) return;
+    setBusy(dryRun ? "preview" : "add");
+    setError(null);
+    if (dryRun) setResult(null);
+    try {
+      const res = await fetch("/api/admin/ingest-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, dryRun }),
+      });
+      const d = (await res.json()) as { ok: boolean; data?: UrlIngestResult; error?: string };
+      if (d.ok && d.data) setResult(d.data);
+      else setError(d.error ?? "Unknown error");
+    } catch {
+      setError("Network error");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const a = result?.article;
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Add Article from URL</h2>
+      <p className="mb-3 text-xs text-[color:var(--ink-faint)]">
+        Fetch a web page, extract its readable article text, and add it to the news feed (feed key{" "}
+        <code className="rounded bg-[color:rgba(255,255,255,0.06)] px-1">manual_url</code>). Preview first to inspect
+        the extraction — title, byline, JSON-LD, hidden-node and text-visibility diagnostics — before adding.
+      </p>
+
+      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.88)] px-4 py-4">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={url}
+            onChange={(e) => { setUrl(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") run(true); }}
+            placeholder="https://example.com/article"
+            className="flex-1 rounded-lg border border-[color:var(--line)] bg-transparent px-3 py-2 text-sm text-[color:var(--ink)]"
+          />
+          <button
+            type="button"
+            onClick={() => run(true)}
+            disabled={!!busy || !url.trim()}
+            className="rounded-lg border border-[color:var(--line)] px-3 py-2 text-sm text-[color:var(--ink-soft)] hover:bg-[color:rgba(255,255,255,0.04)] disabled:opacity-50"
+          >
+            {busy === "preview" ? "Fetching…" : "Preview"}
+          </button>
+          <button
+            type="button"
+            onClick={() => run(false)}
+            disabled={!!busy || !url.trim()}
+            className="rounded-lg border border-[rgba(79,213,255,0.35)] bg-[rgba(79,213,255,0.1)] px-3 py-2 text-sm font-medium text-[color:var(--accent)] hover:bg-[rgba(79,213,255,0.16)] disabled:opacity-50"
+          >
+            {busy === "add" ? "Adding…" : "Add to feed"}
+          </button>
+        </div>
+
+        {error && <p className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-400">{error}</p>}
+
+        {a && (
+          <div className="mt-4 space-y-3">
+            {result.added && (
+              <p className="rounded-lg border border-[rgba(65,211,157,0.25)] bg-[rgba(65,211,157,0.08)] px-3 py-2 text-xs text-[color:var(--ok)]">
+                {result.outcome === "added" ? "Added to the news feed." : `Feed entry ${result.outcome}.`}
+              </p>
+            )}
+            <div className="rounded-lg border border-[color:var(--line)] px-3 py-3">
+              <p className="text-sm font-medium text-[color:var(--ink)]">{a.title || "(no title)"}</p>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[color:var(--ink-faint)]">
+                <span>{a.author ? `By ${a.author}` : "No byline"}</span>
+                <span>{a.publishedAt ? new Date(a.publishedAt).toLocaleDateString() : "No date"}</span>
+                <span>{a.wordCount.toLocaleString()} words</span>
+                <span>{a.jsonLdCount} JSON-LD block{a.jsonLdCount === 1 ? "" : "s"}</span>
+                <span>{a.hiddenNodes.length} hidden node{a.hiddenNodes.length === 1 ? "" : "s"}</span>
+                <span title="Share of on-page words inside display:none / visibility:hidden nodes">
+                  {(a.textVisibility.hiddenRatio * 100).toFixed(1)}% hidden text
+                </span>
+              </div>
+              {a.description && <p className="mt-2 text-xs text-[color:var(--ink-soft)]">{a.description}</p>}
+              {a.readableText && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[11px] text-[color:var(--ink-faint)]">Extracted readable text ({a.wordCount.toLocaleString()} words)</summary>
+                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-[color:rgba(255,255,255,0.03)] p-2 text-[11px] leading-relaxed text-[color:var(--ink-soft)]">{a.readableText.slice(0, 4000)}{a.readableText.length > 4000 ? "\n\n… (truncated)" : ""}</pre>
+                </details>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ManualDocumentUploadSection() {
   const empty = { title: "", organization: "", source_kind: "custom_document", doc_type: "Document", speaker: "", date: "", url: "", content: "" };
   const [form, setForm] = useState(empty);
@@ -3519,6 +3636,7 @@ export default function AdminPage() {
       <SectionDivider label="Document Library" />
       <DocumentLibrarySection />
       <ManualDocumentUploadSection />
+      <UrlIngestSection />
 
       {/* ── Workflows ──────────────────────────────────────────────── */}
       <SectionDivider label="GitHub Actions" />
