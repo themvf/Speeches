@@ -862,6 +862,23 @@ export interface PredictionWalletPosition {
   shares: number;
 }
 
+export type PredictionWalletSpecialtyId = "earnings" | MacroSharpCohort;
+
+export interface PredictionWalletSpecialty {
+  id: PredictionWalletSpecialtyId;
+  label: string;
+  family: "earnings" | "macro";
+  qualified: boolean;
+  classLabel: string;
+  events: number;
+  wins: number;
+  winRate: number;
+  pnlUsd: number;
+  roi: number | null;
+  predictiveShare: number | null;
+  avgWinnerEntry: number | null;
+}
+
 export interface PredictionWallet {
   wallet: string;
   name: string;
@@ -873,6 +890,8 @@ export interface PredictionWallet {
   roi: number | null;
   avgWinnerEntry: number | null; // avg price paid for eventual winners, 0-1 (earliness proxy)
   openPositions: PredictionWalletPosition[];
+  specialties: PredictionWalletSpecialty[];
+  qualifiedSpecialties: number;
 }
 
 export interface PredictionClosedCohortWallet {

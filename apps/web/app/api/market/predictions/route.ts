@@ -5,11 +5,11 @@ import type {
   PredictionCalendarRow,
   PredictionClosedMarket,
   PredictionConsensusWallet,
-  PredictionWallet,
   PredictionWalletPosition,
 } from "@/lib/server/types";
 import {
   getPolymarketClosedMarkets,
+  getPolymarketMacroWalletStats,
   getPolymarketOpenMarkets,
   getPolymarketOpenPositionsForWallets,
   getPolymarketSharpResults,
@@ -17,6 +17,11 @@ import {
   type PolymarketOpenPositionRow,
   type PolymarketWalletStatsRow,
 } from "@/lib/server/neon";
+import {
+  mergeWalletIntelligence,
+  type BasePredictionWallet,
+  type MacroWalletStatInput,
+} from "@/lib/server/prediction-wallet-intelligence";
 import snapshot from "@/lib/server/prediction-markets-data.json" with { type: "json" };
 
 export const runtime = "nodejs";
@@ -33,6 +38,8 @@ const MIN_SHARES = 0.5; // dust floor for a "position"
 
 const SHARP_ARCHETYPES: ReadonlySet<string> = new Set(["early_sharp", "longshot"]);
 
+type BaseMarketPredictionsData = Omit<MarketPredictionsData, "wallets"> & { wallets: BasePredictionWallet[] };
+
 function dominantSide(position: PolymarketOpenPositionRow): { side: string; shares: number } | null {
   const yes = position.net_yes;
   const no = position.net_no;
@@ -45,7 +52,7 @@ function walletLabel(row: PolymarketWalletStatsRow): string {
   return row.name || `${row.wallet.slice(0, 8)}…`;
 }
 
-async function buildLive(): Promise<MarketPredictionsData> {
+async function buildLive(): Promise<BaseMarketPredictionsData> {
   const [openMarkets, closedMarkets, stats] = await Promise.all([
     getPolymarketOpenMarkets(),
     getPolymarketClosedMarkets(CLOSED_LIMIT),
@@ -132,7 +139,7 @@ async function buildLive(): Promise<MarketPredictionsData> {
     };
   });
 
-  const wallets: PredictionWallet[] = stats.map((s) => ({
+  const wallets: BasePredictionWallet[] = stats.map((s) => ({
     wallet: s.wallet,
     name: walletLabel(s),
     archetype: s.archetype as PredictionArchetype,
@@ -156,7 +163,7 @@ async function buildLive(): Promise<MarketPredictionsData> {
   };
 }
 
-function buildFromSnapshot(reason: string): MarketPredictionsData {
+function buildFromSnapshot(reason: string): BaseMarketPredictionsData {
   const calendar: PredictionCalendarRow[] = snapshot.calendar.map((row) => ({
     conditionId: row.conditionId,
     ticker: row.ticker,
@@ -198,7 +205,7 @@ function buildFromSnapshot(reason: string): MarketPredictionsData {
     },
   }));
 
-  const wallets: PredictionWallet[] = snapshot.wallets.map((w) => ({
+  const wallets: BasePredictionWallet[] = snapshot.wallets.map((w) => ({
     wallet: w.wallet,
     name: w.name,
     archetype: w.archetype as PredictionArchetype,
@@ -225,13 +232,21 @@ function buildFromSnapshot(reason: string): MarketPredictionsData {
 
 export async function GET() {
   const requestId = createRequestId();
+  const macroRowsPromise = getPolymarketMacroWalletStats(300)
+    .catch((error) => {
+      console.warn("[market/predictions] macro wallet intelligence unavailable:", error);
+      return [] as MacroWalletStatInput[];
+    });
   try {
-    return ok(await buildLive(), requestId);
+    const [data, macroRows] = await Promise.all([buildLive(), macroRowsPromise]);
+    return ok({ ...data, wallets: mergeWalletIntelligence(data.wallets, macroRows, ARCH_MIN_MARKETS) }, requestId);
   } catch (err) {
     // Missing tables (sync not deployed/backfilled yet), empty stats, or any
     // DB failure -> static snapshot, visibly labeled. Never a 500.
     const reason = err instanceof Error ? err.message : "live data unavailable";
     console.warn("[market/predictions] falling back to static snapshot:", reason);
-    return ok(buildFromSnapshot(reason), requestId);
+    const macroRows = await macroRowsPromise;
+    const data = buildFromSnapshot(reason);
+    return ok({ ...data, wallets: mergeWalletIntelligence(data.wallets, macroRows, ARCH_MIN_MARKETS) }, requestId);
   }
 }

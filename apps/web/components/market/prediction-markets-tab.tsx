@@ -8,6 +8,7 @@ import type {
   PredictionCalendarRow,
   PredictionClosedMarket,
   PredictionWallet,
+  PredictionWalletSpecialty,
 } from "@/lib/server/types";
 import { MacroPredictionMarketsView } from "./macro-prediction-panel";
 
@@ -25,34 +26,30 @@ interface Props {
 // Reuses this page's existing attention-tab hues so the archetype vocabulary
 // stays consistent: green = the trustworthy signal, amber = caution/discount,
 // purple = high-variance, faint = unhighlighted.
-const ARCHETYPE_STYLES: Record<PredictionArchetype, { label: string; color: string; blurb: (w: PredictionWallet) => string }> = {
+const ARCHETYPE_STYLES: Record<PredictionArchetype, { label: string; color: string }> = {
   early_sharp: {
     label: "Early sharp",
     color: "#41d39d",
-    blurb: (w) =>
-      `Buys eventual winners while they're still cheap (avg entry ${w.avgWinnerEntry != null ? Math.round(w.avgWinnerEntry * 100) + "¢" : "—"}) — informed conviction, not hindsight. These are the follow targets.`,
   },
   news_scalper: {
     label: "News scalper",
     color: "#fbbf24",
-    blurb: (w) =>
-      `${Math.round(w.winRate * 100)}% win rate but buys late (avg entry ${w.avgWinnerEntry != null ? Math.round(w.avgWinnerEntry * 100) + "¢" : "—"}) — trading the print after it's public, not predicting it. Excluded from the sharp-money consensus.`,
   },
   longshot: {
     label: "Longshot",
     color: "#a78bfa",
-    blurb: (w) =>
-      `Wrong more often than not (${Math.round(w.winRate * 100)}% win) but paid off big when right (ROI ${w.roi != null ? w.roi.toFixed(2) : "—"}) — directional, high-variance.`,
   },
   unclassified: {
     label: "—",
     color: "var(--ink-faint)",
-    blurb: () => "Qualifies on volume but doesn't fit a defined pattern.",
   },
 };
 
-const FILTERS: { id: PredictionArchetype | "all"; label: string }[] = [
+type WalletFilter = PredictionArchetype | "macro" | "all";
+
+const FILTERS: { id: WalletFilter; label: string }[] = [
   { id: "all", label: "All" },
+  { id: "macro", label: "Macro specialists" },
   { id: "early_sharp", label: "Early sharps" },
   { id: "news_scalper", label: "News scalpers" },
   { id: "longshot", label: "Longshots" },
@@ -69,6 +66,19 @@ function ArchetypeBadge({ archetype }: { archetype: PredictionArchetype }) {
       style={{ color: style.color, backgroundColor: `color-mix(in srgb, ${style.color} 14%, transparent)` }}
     >
       {style.label}
+    </span>
+  );
+}
+
+function SpecialtyBadge({ specialty }: { specialty: PredictionWalletSpecialty }) {
+  const color = specialty.family === "macro" ? "#4fd5ff" : "#41d39d";
+  return (
+    <span
+      className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{ color, backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)` }}
+      title={`${specialty.classLabel} · ${specialty.events} observations`}
+    >
+      {specialty.label}
     </span>
   );
 }
@@ -244,10 +254,14 @@ function FragmentRow({ row, open, hasWallets, onToggle }: { row: PredictionCalen
 }
 
 function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
-  const [filter, setFilter] = useState<PredictionArchetype | "all">("all");
+  const [filter, setFilter] = useState<WalletFilter>("all");
   const [expanded, setExpanded] = useState<string | null>(null);
   const filtered = useMemo(
-    () => (filter === "all" ? wallets : wallets.filter((w) => w.archetype === filter)),
+    () => filter === "all"
+      ? wallets
+      : filter === "macro"
+        ? wallets.filter((w) => w.specialties.some((specialty) => specialty.family === "macro" && specialty.qualified))
+        : wallets.filter((w) => w.archetype === filter),
     [wallets, filter]
   );
 
@@ -271,11 +285,11 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
           <thead>
             <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
               <th className="py-2 pl-4 pr-2 text-left font-semibold">Wallet</th>
-              <th className="px-2 py-2 text-left font-semibold">Archetype</th>
-              <th className="px-2 py-2 text-right font-semibold">Mkts</th>
+              <th className="px-2 py-2 text-left font-semibold">Proven specialties</th>
+              <th className="px-2 py-2 text-right font-semibold">Obs</th>
               <th className="px-2 py-2 text-right font-semibold">Win</th>
               <th className="px-2 py-2 text-right font-semibold">PnL</th>
-              <th className="hidden py-2 pl-2 pr-4 text-right font-semibold sm:table-cell">Entry</th>
+              <th className="hidden py-2 pl-2 pr-4 text-right font-semibold sm:table-cell">Areas</th>
             </tr>
           </thead>
           <tbody>
@@ -288,23 +302,51 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
                     className="cursor-pointer border-b border-[color:var(--line)] last:border-0 hover:bg-[color:rgba(79,213,255,0.04)]"
                   >
                     <td className="py-2 pl-4 pr-2 text-xs font-medium text-[color:var(--ink-soft)]">{w.name}</td>
-                    <td className="px-2 py-2"><ArchetypeBadge archetype={w.archetype} /></td>
+                    <td className="px-2 py-2">
+                      <div className="flex flex-wrap gap-1">
+                        {w.specialties.filter((specialty) => specialty.qualified).slice(0, 3).map((specialty) => <SpecialtyBadge key={specialty.id} specialty={specialty} />)}
+                        {w.qualifiedSpecialties > 3 && <span className="text-[10px] text-[color:var(--ink-faint)]">+{w.qualifiedSpecialties - 3}</span>}
+                        {w.qualifiedSpecialties === 0 && <span className="text-[10px] text-[color:var(--ink-faint)]">Building sample</span>}
+                      </div>
+                    </td>
                     <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">{w.markets}</td>
                     <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink)]">{Math.round(w.winRate * 100)}%</td>
                     <td className="px-2 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: w.pnlUsd >= 0 ? "#41d39d" : "#f87171" }}>
                       {usd(w.pnlUsd)}
                     </td>
                     <td className="hidden py-2 pl-2 pr-4 text-right text-xs tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
-                      {w.avgWinnerEntry != null ? w.avgWinnerEntry.toFixed(2) : "—"}
+                      {w.specialties.length}
                     </td>
                   </tr>
                   {open && (
                     <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.5)] last:border-0">
                       <td colSpan={6} className="px-4 py-3">
-                        <p className="text-xs text-[color:var(--ink-soft)]">{ARCHETYPE_STYLES[w.archetype].blurb(w)}</p>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-[color:var(--ink-soft)]">Skill map by market family</p>
+                          <ArchetypeBadge archetype={w.archetype} />
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                          {w.specialties.map((specialty) => (
+                            <div key={specialty.id} className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(15,32,50,0.55)] p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <SpecialtyBadge specialty={specialty} />
+                                <span className={`text-[9px] font-semibold uppercase tracking-[0.08em] ${specialty.qualified ? "text-emerald-300" : "text-[color:var(--ink-faint)]"}`}>
+                                  {specialty.qualified ? "Qualified" : "Building"}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]">{specialty.classLabel}</p>
+                              <div className="mt-2 grid grid-cols-4 gap-2 text-[10px] text-[color:var(--ink-faint)]">
+                                <span><strong className="block text-xs text-[color:var(--ink)]">{specialty.events}</strong>events</span>
+                                <span><strong className="block text-xs text-[color:var(--ink)]">{Math.round(specialty.winRate * 100)}%</strong>win</span>
+                                <span><strong className="block text-xs" style={{ color: specialty.pnlUsd >= 0 ? "#41d39d" : "#f87171" }}>{usd(specialty.pnlUsd)}</strong>P&amp;L</span>
+                                <span><strong className="block text-xs text-[color:var(--ink)]">{specialty.roi == null ? "—" : `${Math.round(specialty.roi * 100)}%`}</strong>ROI</span>
+                              </div>
+                              {specialty.predictiveShare != null && <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]">Pre-release share {Math.round(specialty.predictiveShare * 100)}%</p>}
+                            </div>
+                          ))}
+                        </div>
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[color:var(--ink-faint)]">
-                          <span>{w.wins}/{w.markets} markets won</span>
-                          {w.roi != null && <span>ROI {w.roi.toFixed(2)}</span>}
+                          <span>{w.wins}/{w.markets} observations won across distinct specialties</span>
                           <a
                             href={`https://polymarket.com/profile/${w.wallet}`}
                             target="_blank"
@@ -338,7 +380,7 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
         </table>
       </div>
       {filtered.length === 0 && (
-        <p className="py-6 text-center text-xs text-[color:var(--ink-faint)]">No wallets in this archetype.</p>
+        <p className="py-6 text-center text-xs text-[color:var(--ink-faint)]">No wallets match this skill filter.</p>
       )}
     </div>
   );
@@ -497,12 +539,10 @@ export function PredictionMarketsTab({ data, loading, error, macro }: Props) {
           </>
         ) : (
           <>
-            Wallets ranked by realized P&amp;L across {data?.archMinMarkets ?? 8}+ resolved earnings markets. Archetype is
-            set by win rate and average entry price on eventual winners — an
-            <span className="text-[color:var(--ink-soft)]"> early sharp</span> buys winners cheap (real edge), a
-            <span className="text-[color:var(--ink-soft)]"> news scalper</span> buys them near-certain after the print
-            (no predictive value), a <span className="text-[color:var(--ink-soft)]">longshot</span> is wrong often but
-            paid when right. Click a wallet for the reasoning and its open positions.
+            A unified trader directory across earnings and recurring US macro markets. Proven specialties use the
+            existing sample-size, timing, and performance gates; developing histories remain visible but are not
+            presented as skill. Click a wallet to compare its evidence across earnings, Fed decisions, payrolls,
+            unemployment, CPI, core CPI, and GDP, plus any open earnings positions.
           </>
         )}
       </p>
