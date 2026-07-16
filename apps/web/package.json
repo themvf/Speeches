@@ -9,6 +9,8 @@
     "lint": "eslint . --max-warnings 0",
     "test:theme-intelligence": "node --experimental-strip-types --test lib/theme-intelligence.test.ts",
     "test:company-news": "node --experimental-strip-types --test lib/server/market-company-news.test.ts lib/market-news-signals.test.ts",
+    "test:rss-sources": "node --experimental-strip-types --test lib/rss-source-catalog.test.ts",
+    "test:rss-sources:live": "node --experimental-strip-types scripts/check-promoted-rss-sources.ts",
     "test:intel-topic-matching": "node --experimental-strip-types --test lib/intel-topic-matching.test.ts",
     "test:entity-aliases": "node --experimental-strip-types --test lib/server/entity-aliases.test.ts",
     "test:document-metadata-feed": "node --experimental-strip-types --test lib/server/document-metadata-feed.test.ts",

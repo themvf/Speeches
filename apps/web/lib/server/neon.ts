@@ -5,6 +5,7 @@ import { isAllowedRssArticleForIngestion } from "@/lib/server/rss-ingestion-filt
 import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
+import { rssArticleIdentity } from "@/lib/rss-article-identity";
 import { TOPIC_RULE_RECOMMENDATIONS, formatTopicRuleKeywords } from "@/lib/topic-rule-recommendations";
 import { canonicalEntityLabel, normalizeMentionValue } from "@/lib/server/entity-aliases";
 
@@ -380,7 +381,7 @@ async function ensureSchemaUncached(): Promise<void> {
   await sql`
     CREATE TABLE IF NOT EXISTS rss_articles (
       id           SERIAL PRIMARY KEY,
-      guid         TEXT UNIQUE NOT NULL,
+      guid         TEXT NOT NULL,
       feed_key     TEXT NOT NULL,
       title        TEXT NOT NULL,
       url          TEXT NOT NULL,
@@ -394,6 +395,10 @@ async function ensureSchemaUncached(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS rss_articles_fetched_at ON rss_articles (fetched_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS rss_articles_feed_key ON rss_articles (feed_key)`;
   await sql`CREATE INDEX IF NOT EXISTS rss_articles_published_at ON rss_articles (published_at DESC)`;
+  // A publisher may syndicate the same GUID or canonical URL as another
+  // publisher. Preserve both rows: repeated independent coverage is a signal.
+  await sql`ALTER TABLE rss_articles DROP CONSTRAINT IF EXISTS rss_articles_guid_key`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS rss_articles_feed_key_guid_unique ON rss_articles (feed_key, guid)`;
   await sql`
     CREATE TABLE IF NOT EXISTS rss_article_analysis (
       article_id          INTEGER PRIMARY KEY REFERENCES rss_articles(id) ON DELETE CASCADE,
@@ -765,12 +770,13 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
   if (articles.length === 0) return stats;
   const sql = getSql();
   for (const a of articles) {
+    const identity = rssArticleIdentity(feedKey, a.guid);
     const toneLabel = inferToneLabel(a.title, a.description ?? "", feedKey);
     const result = (await sql`
       INSERT INTO rss_articles (guid, feed_key, title, url, description, author, published_at, tone_label)
       VALUES (
-        ${a.guid},
-        ${feedKey},
+        ${identity.guid},
+        ${identity.feedKey},
         ${a.title},
         ${a.url},
         ${a.description ?? ""},
@@ -778,13 +784,12 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
         ${a.publishedAt ? a.publishedAt.toISOString() : null},
         ${toneLabel}
       )
-      ON CONFLICT (guid) DO UPDATE
+      ON CONFLICT (feed_key, guid) DO UPDATE
       SET title = EXCLUDED.title,
           url = EXCLUDED.url,
           description = EXCLUDED.description,
           author = EXCLUDED.author,
           published_at = COALESCE(EXCLUDED.published_at, rss_articles.published_at),
-          feed_key = EXCLUDED.feed_key,
           tone_label = CASE
             WHEN rss_articles.tone_label IS NULL THEN EXCLUDED.tone_label
             WHEN rss_articles.tone_label = 'neutral' AND EXCLUDED.tone_label <> 'neutral' THEN EXCLUDED.tone_label
@@ -796,7 +801,6 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
         rss_articles.description,
         rss_articles.author,
         rss_articles.published_at,
-        rss_articles.feed_key,
         rss_articles.tone_label
       ) IS DISTINCT FROM (
         EXCLUDED.title,
@@ -804,7 +808,6 @@ export async function upsertRssArticles(articles: RssArticle[], feedKey: string)
         EXCLUDED.description,
         EXCLUDED.author,
         COALESCE(EXCLUDED.published_at, rss_articles.published_at),
-        EXCLUDED.feed_key,
         CASE
           WHEN rss_articles.tone_label IS NULL THEN EXCLUDED.tone_label
           WHEN rss_articles.tone_label = 'neutral' AND EXCLUDED.tone_label <> 'neutral' THEN EXCLUDED.tone_label

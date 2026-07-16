@@ -1,4 +1,8 @@
 import { ProxyAgent, request } from "undici";
+import {
+  EXISTING_RSS_SOURCE_PROMOTIONS,
+  type RssFeedDefinition,
+} from "../rss-source-catalog.ts";
 
 export type RssArticle = {
   guid: string;
@@ -9,11 +13,7 @@ export type RssArticle = {
   publishedAt: Date | null;
 };
 
-export type RssFeedDefinition = {
-  label: string;
-  feedUrl: string;
-  refreshIntervalMinutes?: number;
-};
+export type { RssFeedDefinition } from "../rss-source-catalog.ts";
 
 export const WSJ_FEEDS: Record<string, RssFeedDefinition> = {
   wsj_us_business: {
@@ -344,6 +344,7 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     label: "A Wealth of Common Sense",
     feedUrl: "https://awealthofcommonsense.com/feed/",
   },
+  ...EXISTING_RSS_SOURCE_PROMOTIONS,
 };
 
 const SOURCE_LABEL_ACRONYMS = new Set([

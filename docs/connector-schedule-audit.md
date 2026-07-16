@@ -153,6 +153,26 @@ These files exist as scraper/source concepts but are not all scheduled as durabl
 
 These are app-level RSS feeds defined in `apps/web/lib/server/rss-fetcher.ts`. They are refreshed by Vercel cron `*/10 * * * *` through `/api/intel/rss-refresh`, stored in Neon RSS tables, and are separate from `custom_documents.json` document ingestion.
 
+The maintained catalog also restores 15 feeds that already existed in the deployed registry or earlier source configuration. Their established feed keys are retained so historical rows remain continuous. Similar coverage from different publishers is intentionally preserved: repeated independent reporting is treated as a corroboration and attention signal. Only replay of the same GUID within the same feed is collapsed.
+
+| Existing source promoted to maintained defaults | Feed key | Default cadence |
+|---|---|---:|
+| Harvard Corporate Governance Forum | `harvard_corp_gov_forum` | 60m |
+| CLS Blue Sky Blog | `cls_blue_sky_blog` | 60m |
+| The Corporate Counsel | `the_corporate_counsel_net` | 60m |
+| NYT Economy | `rss_nytimes_com_services_xml_rss_nyt_economy_xml` | 60m |
+| Google News: Senate Banking Committee | `google_news_senate_banking_committee` | 180m |
+| Google News: Senate Finance Committee | `google_news_senate_finance_committee` | 180m |
+| Google News: Senate Agriculture Committee | `google_news_senate_agriculture_committee` | 180m |
+| Google News: Senate Judiciary Committee | `google_news_senate_judiciary_committee` | 180m |
+| Google News: Senate Homeland Security Committee | `google_news_senate_hsgac` | 180m |
+| Google News: Senate Commerce Committee | `google_news_senate_commerce_committee` | 180m |
+| American Banker | `american_banker` | 60m |
+| CNBC | `search_cnbc_com_rs_search_combinedcms_view_xml` | 30m |
+| NYT Business | `rss_nytimes_com_services_xml_rss_nyt_business_xml` | 60m |
+| NYT DealBook | `rss_nytimes_com_services_xml_rss_nyt_dealbook_xml` | 60m |
+| Central Banking | `www_centralbanking_com_feeds_rss_category_central_banks_fina` | 60m |
+
 | Feed key | Label | Feed URL | Cron |
 |---|---|---|---|
 | `wsj_us_business` | WSJ US Business | `https://feeds.content.dowjones.io/public/rss/WSJcomUSBusinessNews` | `*/10 * * * *` |

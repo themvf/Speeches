@@ -181,6 +181,12 @@ const FEED_META: Record<string, FeedMeta> = {
   prnewswire_policy_public_interest: { label: "PR Newswire Policy & Public Interest", code: "PRN", color: "#66d9e8" },
   google_news_ponzi_investor_fraud: { label: "Google News: Ponzi & Investor Fraud", code: "GNEWS", color: "#8ce99a" },
   google_news_finra_member_firms: { label: "Google News: FINRA Member Firms", code: "GNEWS", color: "#d0bfff" },
+  google_news_senate_banking_committee: { label: "Senate Banking", code: "SBC", color: "#b88fff" },
+  google_news_senate_finance_committee: { label: "Senate Finance", code: "SFC", color: "#b88fff" },
+  google_news_senate_agriculture_committee: { label: "Senate Agriculture", code: "SAC", color: "#b88fff" },
+  google_news_senate_judiciary_committee: { label: "Senate Judiciary", code: "SJC", color: "#b88fff" },
+  google_news_senate_hsgac: { label: "Senate HSGAC", code: "HSGAC", color: "#b88fff" },
+  google_news_senate_commerce_committee: { label: "Senate Commerce", code: "SCC", color: "#b88fff" },
   cftc_general_press_releases: { label: "CFTC General Press Releases", code: "CFTC", color: "#ffd43b" },
   cftc_enforcement_press_releases: { label: "CFTC Enforcement Press Releases", code: "CFTC", color: "#ff8aa0" },
   cftc_speeches_testimony: { label: "CFTC Speeches and Testimony", code: "CFTC", color: "#ffd43b" },
@@ -197,6 +203,7 @@ const FEED_META: Record<string, FeedMeta> = {
   economist_business: { label: "The Economist Business", code: "ECO", color: "#74c0fc" },
   economist_united_states: { label: "The Economist United States", code: "ECO", color: "#74c0fc" },
   investmentnews: { label: "InvestmentNews", code: "INV", color: "#66d9e8" },
+  american_banker: { label: "American Banker", code: "AB", color: "#66d9e8" },
   harvard_corp_gov_forum: { label: "Harvard Corporate Governance Forum", code: "HLS", color: "#d0bfff" },
   cls_blue_sky_blog: { label: "CLS Blue Sky Blog", code: "CLS", color: "#d0bfff" },
   the_corporate_counsel_net: { label: "The Corporate Counsel", code: "TCC", color: "#d0bfff" },
@@ -295,6 +302,18 @@ const TRADE_MEDIA_FEED_KEYS = new Set([
   "flashpoint_blog",
   "recorded_future",
   "intel471_blog",
+]);
+
+const PROMOTED_MARKET_SOURCE_FEED_KEYS = new Set([
+  "american_banker",
+  "cls_blue_sky_blog",
+  "harvard_corp_gov_forum",
+  "rss_nytimes_com_services_xml_rss_nyt_business_xml",
+  "rss_nytimes_com_services_xml_rss_nyt_dealbook_xml",
+  "rss_nytimes_com_services_xml_rss_nyt_economy_xml",
+  "search_cnbc_com_rs_search_combinedcms_view_xml",
+  "the_corporate_counsel_net",
+  "www_centralbanking_com_feeds_rss_category_central_banks_fina",
 ]);
 
 const SOURCE_LABEL_ACRONYMS = new Set([
@@ -602,6 +621,7 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
   }
   if (sourceFilter === "MARKET_SOURCES") {
     return (
+      PROMOTED_MARKET_SOURCE_FEED_KEYS.has(feedKey) ||
       sourceKind === "sec_press_release_rss" ||
       sourceKind === "sec_federal_register" ||
       sourceKind === "sec_pcaob_rulemaking" ||
@@ -613,7 +633,7 @@ function matchesSourceFilter(article: FeedItem, sourceFilter: SourceFilter): boo
     );
   }
   if (sourceFilter === "CONGRESS") {
-    return sourceKind === "congress_crs_product" || text.includes("congress.gov") || text.includes("crs product");
+    return feedKey.startsWith("google_news_senate_") || sourceKind === "congress_crs_product" || text.includes("congress.gov") || text.includes("crs product");
   }
   if (sourceFilter === "WSJ") {
     return (
