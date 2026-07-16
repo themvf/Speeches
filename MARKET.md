@@ -17,6 +17,10 @@ Live market intelligence dashboard at `/market`, providing real-time financial d
 - Sector-level performance uses Yahoo Finance ETF candles; stock quotes are fetched in a single parallel batch
 - Clicking a company row lazily reveals up to 5 recent English-language U.S. Google News articles inline
 - Company news is relevance-ranked, labeled with rule-based catalysts, expandable to 10 cached results, and manually refreshable with a 60-second cooldown
+- Loaded results remain available in a 15-minute browser-session cache and add closed-row coverage/catalyst badges without prefetching
+- Each expanded sector summarizes loaded coverage, article volume, dominant catalyst, and same-day price direction
+- Deterministic controls sort/filter companies by price move, news recency, relevance, and catalyst; article filters support source tiers and press-release suppression
+- Articles show publisher quality, likely-paywall and clustered-story indicators; recent categorized stories beside a 1%+ move are marked as a non-causal "Possible catalyst"
 
 ### Movers
 - **Top 10 Gainers** and **Top 10 Losers** from a curated 35-stock watchlist
@@ -190,7 +194,7 @@ All market types are in `apps/web/lib/server/types.ts`:
 - `MarketOverviewData` — indices, vix, globalIndices, generatedAt
 - `SectorData` / `SectorStock` — sector name + pct + nested stocks
 - `MarketSectorsData`
-- `CompanyNewsArticle` / `MarketCompanyNewsData` — normalized on-demand Google News RSS results
+- `CompanyNewsArticle` / `MarketCompanyNewsData` — normalized on-demand Google News RSS results with source-quality, story-cluster, relevance, and catalyst metadata
 - `MoverQuote` — rank, symbol, name, price, pct, change, up
 - `MarketMoversData` — gainers[], losers[], generatedAt
 - `CryptoCoin` — rank, id, symbol, name, price, pct24h, marketCap, volume24h, up

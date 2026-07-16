@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   buildCompanyNewsRssUrl,
   classifyCompanyNewsCatalyst,
+  classifyCompanyNewsSource,
   companyNewsResultWindow,
+  headlineSimilarity,
   manualRefreshDecision,
   normalizeCompanyNewsArticles,
 } from "./market-company-news.ts";
@@ -81,6 +83,8 @@ test("normalizes, sorts, and deduplicates relevant company news", () => {
   assert.equal(results[0].title, "Apple earnings lift shares");
   assert.equal(results[0].publisher, "CNBC");
   assert.equal(results[1].publisher, "Reuters");
+  assert.equal(results[1].clusterSize, 2);
+  assert.equal(results[1].sourceTier, "Premium");
 });
 
 test("accepts canonical aliases and filters non-English Google News results", () => {
@@ -140,6 +144,17 @@ test("assigns deterministic catalyst labels without model inference", () => {
   assert.equal(classifyCompanyNewsCatalyst("Company hosts annual community event"), null);
 });
 
+test("classifies publisher quality and detects similar story headlines", () => {
+  assert.deepEqual(classifyCompanyNewsSource("Bloomberg"), {
+    sourceTier: "Premium", isLikelyPaywalled: true, isPressRelease: false,
+  });
+  assert.deepEqual(classifyCompanyNewsSource("Business Wire"), {
+    sourceTier: "Other", isLikelyPaywalled: false, isPressRelease: true,
+  });
+  assert.ok(headlineSimilarity("Apple raises earnings guidance after strong quarter", "Apple raises guidance following strong earnings quarter") >= 0.5);
+  assert.equal(headlineSimilarity("Apple earnings guidance", "FTC probes Microsoft cloud business"), 0);
+});
+
 test("limits cached results to five or ten without another provider fetch", () => {
   const articles = Array.from({ length: 10 }, (_, index) => ({
     title: `Apple article ${index}`,
@@ -149,6 +164,10 @@ test("limits cached results to five or ten without another provider fetch", () =
     publishedAt: new Date(NOW.getTime() - index * 60_000).toISOString(),
     relevanceScore: 90 - index,
     catalyst: null,
+    sourceTier: "Premium" as const,
+    isLikelyPaywalled: false,
+    isPressRelease: false,
+    clusterSize: 1,
   }));
 
   const initial = companyNewsResultWindow(articles, 5);

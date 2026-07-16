@@ -1,7 +1,7 @@
 import type { RssArticle } from "./rss-fetcher.ts";
 import { isEnglishRssArticle } from "./rss-language-filter.ts";
 import type { MarketSectorCompany } from "./market-sector-companies.ts";
-import type { CompanyNewsArticle, CompanyNewsCatalyst } from "./types.ts";
+import type { CompanyNewsArticle, CompanyNewsCatalyst, CompanyNewsSourceTier } from "./types.ts";
 
 const GOOGLE_NEWS_BASE_URL = "https://news.google.com/rss/search";
 const MAX_SNIPPET_LENGTH = 280;
@@ -124,12 +124,50 @@ const TIER_ONE_PUBLISHERS = [
 const TIER_TWO_PUBLISHERS = [
   "yahoo finance", "marketwatch", "forbes", "business insider", "fortune", "investors business daily",
 ];
+const LIKELY_PAYWALLED_PUBLISHERS = [
+  "bloomberg", "wall street journal", "financial times", "barron s", "new york times", "washington post",
+];
+const PRESS_RELEASE_PUBLISHERS = ["pr newswire", "business wire", "globenewswire", "accesswire"];
+
+export function classifyCompanyNewsSource(publisher: string): {
+  sourceTier: CompanyNewsSourceTier;
+  isLikelyPaywalled: boolean;
+  isPressRelease: boolean;
+} {
+  const normalized = normalizeText(publisher);
+  const sourceTier: CompanyNewsSourceTier =
+    TIER_ONE_PUBLISHERS.some((name) => normalized.includes(name)) || normalized === "ap"
+      ? "Premium"
+      : TIER_TWO_PUBLISHERS.some((name) => normalized.includes(name))
+        ? "Established"
+        : "Other";
+  return {
+    sourceTier,
+    isLikelyPaywalled: LIKELY_PAYWALLED_PUBLISHERS.some((name) => normalized.includes(name)),
+    isPressRelease: PRESS_RELEASE_PUBLISHERS.some((name) => normalized.includes(name)),
+  };
+}
 
 function publisherScore(publisher: string): number {
-  const normalized = normalizeText(publisher);
-  if (TIER_ONE_PUBLISHERS.some((name) => normalized.includes(name))) return 15;
-  if (TIER_TWO_PUBLISHERS.some((name) => normalized.includes(name))) return 8;
-  return 3;
+  const tier = classifyCompanyNewsSource(publisher).sourceTier;
+  return tier === "Premium" ? 15 : tier === "Established" ? 8 : 3;
+}
+
+const HEADLINE_STOP_WORDS = new Set([
+  "a", "an", "and", "as", "at", "by", "for", "from", "in", "is", "it", "of", "on", "or", "the", "to", "with",
+]);
+
+function headlineTokens(title: string): Set<string> {
+  return new Set(normalizeText(title).split(" ").filter((token) => token.length > 2 && !HEADLINE_STOP_WORDS.has(token)));
+}
+
+export function headlineSimilarity(left: string, right: string): number {
+  const leftTokens = headlineTokens(left);
+  const rightTokens = headlineTokens(right);
+  if (leftTokens.size === 0 || rightTokens.size === 0) return 0;
+  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  const union = new Set([...leftTokens, ...rightTokens]).size;
+  return union > 0 ? intersection / union : 0;
 }
 
 function relevanceScore(
@@ -170,6 +208,7 @@ export function normalizeCompanyNewsArticles(
     const signals = companyMatchSignals(title, article.description, company);
     if (!Object.values(signals).some(Boolean)) continue;
     const catalyst = classifyCompanyNewsCatalyst(title, article.description);
+    const source = classifyCompanyNewsSource(publisher);
 
     candidates.push({
       title,
@@ -179,6 +218,8 @@ export function normalizeCompanyNewsArticles(
       publishedAt: article.publishedAt.toISOString(),
       relevanceScore: relevanceScore(signals, publisher, catalyst, article.publishedAt, now),
       catalyst,
+      ...source,
+      clusterSize: 1,
     });
   }
 
@@ -187,13 +228,17 @@ export function normalizeCompanyNewsArticles(
   );
 
   const seenUrls = new Set<string>();
-  const seenTitles = new Set<string>();
-  return candidates.filter((article) => {
+  const clustered: CompanyNewsArticle[] = [];
+  for (const article of candidates) {
     const urlKey = article.url.trim().toLowerCase();
-    const titleKey = normalizeText(article.title);
-    if (!urlKey || !titleKey || seenUrls.has(urlKey) || seenTitles.has(titleKey)) return false;
+    if (!urlKey || seenUrls.has(urlKey)) continue;
     seenUrls.add(urlKey);
-    seenTitles.add(titleKey);
-    return true;
-  });
+    const matchingCluster = clustered.find((existing) => headlineSimilarity(existing.title, article.title) >= 0.72);
+    if (matchingCluster) {
+      matchingCluster.clusterSize += 1;
+      continue;
+    }
+    clustered.push(article);
+  }
+  return clustered;
 }

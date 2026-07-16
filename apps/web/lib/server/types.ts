@@ -486,7 +486,13 @@ export interface CompanyNewsArticle {
   publishedAt: string;
   relevanceScore: number;
   catalyst: CompanyNewsCatalyst | null;
+  sourceTier: CompanyNewsSourceTier;
+  isLikelyPaywalled: boolean;
+  isPressRelease: boolean;
+  clusterSize: number;
 }
+
+export type CompanyNewsSourceTier = "Premium" | "Established" | "Other";
 
 export type CompanyNewsCatalyst =
   | "Earnings"
