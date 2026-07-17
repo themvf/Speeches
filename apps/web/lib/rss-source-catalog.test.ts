@@ -7,7 +7,9 @@ import {
   EXISTING_RSS_SOURCE_PROMOTIONS,
   MARKET_COMMENTARY_RSS_SOURCE_KEYS,
   MARKET_COMMENTARY_RSS_SOURCES,
+  RETIRED_RSS_FEED_KEYS,
 } from "./rss-source-catalog.ts";
+import { DEFAULT_RSS_FEEDS } from "./server/rss-fetcher.ts";
 
 const EXPECTED_EXISTING_KEYS = [
   "harvard_corp_gov_forum",
@@ -82,4 +84,14 @@ test("uses unique valid URLs and bounded refresh cadences for market commentary"
     assert.ok(feed.refreshIntervalMinutes >= 30);
     assert.ok(feed.refreshIntervalMinutes <= 180);
   }
+});
+
+test("keeps only PR Newswire Financial Services active", () => {
+  const activePrNewswireKeys = Object.keys(DEFAULT_RSS_FEEDS).filter((key) => key.startsWith("prnewswire_"));
+  assert.deepEqual(activePrNewswireKeys, ["prnewswire_financial_services"]);
+  assert.deepEqual([...RETIRED_RSS_FEED_KEYS], [
+    "prnewswire_all",
+    "prnewswire_consumer_technology",
+    "prnewswire_policy_public_interest",
+  ]);
 });

@@ -5,6 +5,7 @@ import { isAllowedRssArticleForIngestion } from "@/lib/server/rss-ingestion-filt
 import { isEnglishRssArticle, shouldEnglishOnlyFilterFeed } from "@/lib/server/rss-language-filter";
 import type { RssArticle } from "@/lib/server/rss-fetcher";
 import { DEFAULT_RSS_FEEDS } from "@/lib/server/rss-fetcher";
+import { RETIRED_RSS_FEED_KEYS } from "@/lib/rss-source-catalog";
 import { rssArticleIdentity } from "@/lib/rss-article-identity";
 import { TOPIC_RULE_RECOMMENDATIONS, formatTopicRuleKeywords } from "@/lib/topic-rule-recommendations";
 import { canonicalEntityLabel, normalizeMentionValue } from "@/lib/server/entity-aliases";
@@ -138,6 +139,7 @@ const DEPRECATED_RSS_FEED_KEYS = [
   "dark_reading",
   "securityweek",
   "microsoft_security_blog",
+  ...RETIRED_RSS_FEED_KEYS,
 ] as const;
 
 const ACTIVE_RSS_FEED_KEYS = [
@@ -577,6 +579,27 @@ async function applyFeedSourceMigrations(sql: ReturnType<typeof neon>): Promise<
           "https://www.microsoft.com/en-us/security/blog/feed/",
         ]})
       )
+  `;
+
+  // These overlapping PR Newswire feeds were deliberately consolidated into
+  // Financial Services. Remove both their source rows and already-ingested
+  // copies so the Admin source list and Intel Feed converge immediately.
+  await sql`
+    DELETE FROM intelligence_mentions
+    WHERE source_type = 'rss_article'
+      AND source_id IN (
+        SELECT id::text
+        FROM rss_articles
+        WHERE feed_key = ANY(${RETIRED_RSS_FEED_KEYS})
+      )
+  `;
+  await sql`
+    DELETE FROM rss_articles
+    WHERE feed_key = ANY(${RETIRED_RSS_FEED_KEYS})
+  `;
+  await sql`
+    DELETE FROM rss_feeds
+    WHERE feed_key = ANY(${RETIRED_RSS_FEED_KEYS})
   `;
   await sql`
     UPDATE rss_feeds

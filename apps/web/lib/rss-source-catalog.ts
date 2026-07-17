@@ -160,3 +160,10 @@ export const MARKET_COMMENTARY_RSS_SOURCES = {
 export const MARKET_COMMENTARY_RSS_SOURCE_KEYS = Object.freeze(
   Object.keys(MARKET_COMMENTARY_RSS_SOURCES),
 ) as ReadonlyArray<keyof typeof MARKET_COMMENTARY_RSS_SOURCES>;
+
+/** Feed keys intentionally removed from both ingestion and stored source lists. */
+export const RETIRED_RSS_FEED_KEYS = [
+  "prnewswire_all",
+  "prnewswire_consumer_technology",
+  "prnewswire_policy_public_interest",
+] as const;
