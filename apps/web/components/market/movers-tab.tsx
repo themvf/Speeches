@@ -1,6 +1,7 @@
 "use client";
 
 import type { MarketMoversData, MoverQuote } from "@/lib/server/types";
+import { FilingChips } from "./filing-chip";
 
 interface Props {
   data: MarketMoversData | null;
@@ -19,7 +20,10 @@ function MoverRow({ q, maxAbs }: { q: MoverQuote; maxAbs: number }) {
       <td className="px-2 py-2.5 w-16">
         <span className="text-xs font-bold text-[color:var(--accent)]">{q.symbol}</span>
       </td>
-      <td className="px-2 py-2.5 text-xs text-[color:var(--ink-faint)] max-w-[160px] truncate">{q.name}</td>
+      <td className="px-2 py-2.5 text-xs text-[color:var(--ink-faint)]">
+        <span className="mr-1.5 inline-block max-w-[160px] truncate align-middle">{q.name}</span>
+        <FilingChips filings={q.filings} />
+      </td>
       <td className="px-2 py-2.5 tabular-nums text-xs text-right text-[color:var(--ink)]">
         ${q.price.toFixed(2)}
       </td>

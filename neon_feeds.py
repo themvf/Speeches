@@ -1983,6 +1983,137 @@ def upsert_polymarket_macro_wallet_stats(rows: List[Dict[str, Any]]) -> int:
     return len(prepared)
 
 
+# ─── Filing catalyst events (SEC-50) ────────────────────────────────────────
+# 8-K and Form 4 filings for the tracked (industry-config) universe, written
+# by filing_catalyst_sync.py and read by the movers/attention routes for
+# "why is this moving?" chips. Two-phase: rows land immediately with
+# detail_status='pending' (chips can render a generic label), then a capped
+# per-run enrichment pass fills items/summary and flips to 'done'.
+
+_FILING_EVENTS_SCHEMA_ENSURED = False
+
+
+def _ensure_filing_events_schema() -> None:
+    global _FILING_EVENTS_SCHEMA_ENSURED
+    if _FILING_EVENTS_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS filing_events (
+                  accession     TEXT PRIMARY KEY,
+                  cik           TEXT NOT NULL,
+                  ticker        TEXT NOT NULL,
+                  form          TEXT NOT NULL,
+                  filed_at      TIMESTAMPTZ NOT NULL,
+                  items         TEXT NOT NULL DEFAULT '',
+                  summary       TEXT NOT NULL DEFAULT '',
+                  url           TEXT NOT NULL DEFAULT '',
+                  detail_status TEXT NOT NULL DEFAULT 'pending',
+                  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS filing_events_ticker_time ON filing_events (ticker, filed_at DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS filing_events_filed_at ON filing_events (filed_at DESC)")
+            conn.commit()
+    _FILING_EVENTS_SCHEMA_ENSURED = True
+
+
+def insert_filing_events(rows: List[Dict[str, Any]]) -> int:
+    """Phase 1: register newly-seen filings. ON CONFLICT DO NOTHING - the
+    accession is EDGAR's own id, so re-seeing a filing is a no-op."""
+    prepared = []
+    for row in rows:
+        accession = str(row.get("accession", "") or "").strip()
+        if not accession:
+            continue
+        prepared.append((
+            accession,
+            str(row.get("cik", "") or ""),
+            _strip_nul_bytes(str(row.get("ticker", "") or "")),
+            str(row.get("form", "") or ""),
+            row.get("filed_at"),
+            _strip_nul_bytes(str(row.get("url", "") or "")),
+        ))
+    if not prepared:
+        return 0
+    _ensure_filing_events_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO filing_events (accession, cik, ticker, form, filed_at, url)
+                VALUES %s
+                ON CONFLICT (accession) DO NOTHING
+                """,
+                prepared,
+            )
+            inserted = cur.rowcount
+            conn.commit()
+    return int(inserted or 0)
+
+
+def get_pending_filing_events(limit: int = 30) -> List[Dict[str, Any]]:
+    """Newest-first enrichment queue (newest first so chips for what's
+    moving TODAY get details before old backlog)."""
+    _ensure_filing_events_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT accession, cik, ticker, form, filed_at
+                FROM filing_events
+                WHERE detail_status = 'pending'
+                ORDER BY filed_at DESC
+                LIMIT %s
+                """,
+                (int(limit),),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def update_filing_event_detail(accession: str, items: str, summary: str) -> None:
+    _ensure_filing_events_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE filing_events
+                SET items = %s, summary = %s, detail_status = 'done'
+                WHERE accession = %s
+                """,
+                (_strip_nul_bytes(items or ""), _strip_nul_bytes(summary or ""), accession),
+            )
+            conn.commit()
+
+
+def get_known_filing_accessions(accessions: List[str]) -> List[str]:
+    if not accessions:
+        return []
+    _ensure_filing_events_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT accession FROM filing_events WHERE accession = ANY(%s)", (accessions,))
+            return [str(row["accession"]) for row in cur.fetchall()]
+
+
+def prune_old_filing_events(retention_days: int = 30) -> int:
+    """Chips only care about recency; a month is plenty."""
+    _ensure_filing_events_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM filing_events WHERE filed_at < now() - (%s * INTERVAL '1 day')",
+                (int(retention_days),),
+            )
+            deleted = cur.rowcount
+            conn.commit()
+    return int(deleted or 0)
+
+
 def prune_settled_polymarket_fills(days_after_settlement: int = 7) -> int:
     """SEC-26 retention: delete raw fills ONLY for markets settled at least
     N days ago (settle-then-prune - never keyed on fill age, so long-running

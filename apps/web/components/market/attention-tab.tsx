@@ -13,6 +13,7 @@ import type {
   MarketAttentionHistoryData,
   MarketAttentionIntradayData,
 } from "@/lib/server/types";
+import { FilingChips } from "./filing-chip";
 
 interface Props {
   data: MarketAttentionData | null;
@@ -305,7 +306,10 @@ function AttentionTableRow({ row, expanded, onToggle }: { row: AttentionRow; exp
             </span>
           )}
         </td>
-        <td className="max-w-[160px] truncate px-2 py-2.5 text-xs text-[color:var(--ink-faint)]">{row.company}</td>
+        <td className="px-2 py-2.5 text-xs text-[color:var(--ink-faint)]">
+          <span className="mr-1.5 inline-block max-w-[150px] truncate align-middle">{row.company}</span>
+          <FilingChips filings={row.filings} />
+        </td>
         <td className="px-2 py-2.5 text-right text-xs tabular-nums text-[color:var(--ink)]">{row.mentionCount}</td>
         <td className="px-2 py-2.5 text-right">
           <MentionDelta current={row.mentionCount} prev={row.prevMentionCount} />

@@ -682,6 +682,17 @@ export interface MarketCompanyNewsData {
   warning?: string;
 }
 
+// SEC-50: recent 8-K / Form 4 catalyst chip attached to mover/attention
+// rows - "why is this moving?". Populated fail-soft from filing_events
+// (Python-owned, filing_catalyst_sync.py); absent when the DB is
+// unreachable or the ticker has no recent filings.
+export interface FilingEventChip {
+  form: string;      // '8-K' | '4'
+  filedAt: string;   // ISO
+  label: string;     // e.g. "8-K items 2.02,9.01" / "Insider sold $2.1M"
+  url: string;       // EDGAR filing index page
+}
+
 export interface MoverQuote {
   rank: number;
   symbol: string;
@@ -690,6 +701,7 @@ export interface MoverQuote {
   pct: number;
   change: number;
   up: boolean;
+  filings?: FilingEventChip[];
 }
 
 export interface MarketMoversData {
@@ -735,6 +747,7 @@ export interface AttentionRow {
   sparkline: number[];               // last N days' total_mention_count, oldest first
   topSources: AttentionSource[];
   topNews: { title: string; url: string }[]; // SEC-4: articles behind the news count
+  filings?: FilingEventChip[];       // SEC-50: recent 8-K / Form 4 catalysts
 }
 
 export interface MarketAttentionData {

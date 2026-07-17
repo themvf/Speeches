@@ -1,6 +1,7 @@
 import { createRequestId, ok } from "@/lib/server/api-utils";
 import type { MarketMoversData, MoverQuote } from "@/lib/server/types";
 import { fetchYahooQuote } from "@/lib/server/yahoo";
+import { loadFilingChips } from "@/lib/server/filing-chips";
 
 export const runtime = "nodejs";
 export const revalidate = 120;
@@ -46,9 +47,11 @@ const WATCHLIST: { symbol: string; name: string }[] = [
 export async function GET() {
   const requestId = createRequestId();
 
-  const settled = await Promise.allSettled(
-    WATCHLIST.map(({ symbol }) => fetchYahooQuote(symbol, 120))
-  );
+  // Quotes and catalyst chips load in parallel; chips are fail-soft (SEC-50).
+  const [settled, filingChips] = await Promise.all([
+    Promise.allSettled(WATCHLIST.map(({ symbol }) => fetchYahooQuote(symbol, 120))),
+    loadFilingChips(72),
+  ]);
 
   const quoted = settled
     .map((r, i) => ({
@@ -63,6 +66,7 @@ export async function GET() {
       pct: item.q!.pct,
       change: item.q!.change,
       up: item.q!.change >= 0,
+      ...(filingChips.has(item.symbol!) ? { filings: filingChips.get(item.symbol!) } : {}),
     }));
 
   const byPct = [...quoted].sort((a, b) => b.pct - a.pct);

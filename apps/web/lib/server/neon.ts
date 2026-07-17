@@ -3159,6 +3159,30 @@ export async function getRedditAttentionItems(sourceIds: string[]): Promise<Redd
   return rows;
 }
 
+// ─── Filing catalyst events reader (SEC-50) ──────────────────────────────────
+// Python-owned table (filing_catalyst_sync.py). Callers must treat a thrown
+// error as "no chips" - the movers/attention boards render fine without.
+
+export type FilingEventRow = {
+  ticker: string;
+  form: string;
+  filed_at: string;
+  items: string;
+  summary: string;
+  url: string;
+};
+
+export async function getRecentFilingEvents(hoursBack = 72): Promise<FilingEventRow[]> {
+  const sql = getSql();
+  const cappedHours = Math.max(1, Math.min(24 * 14, hoursBack));
+  return (await sql`
+    SELECT ticker, form, filed_at::text AS filed_at, items, summary, url
+    FROM filing_events
+    WHERE filed_at >= now() - (${cappedHours} * INTERVAL '1 hour')
+    ORDER BY filed_at DESC
+  `) as unknown as FilingEventRow[];
+}
+
 // ─── Polymarket earnings tracker readers (SEC-26/27) ─────────────────────────
 // Python-owned tables (schema in neon_feeds.py's _ensure_polymarket_schema) -
 // deliberately no ensureSchema here. Before the first sync/backfill runs the

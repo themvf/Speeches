@@ -1,0 +1,65 @@
+name: Filing Catalyst Sync
+
+# SEC-50: 8-K + Form 4 catalyst chips for the tracked industry universe.
+# Every 2 hours during EDGAR acceptance hours (EDT-pinned, weekdays; the +1h
+# winter drift is harmless - the daily reconcile pass reads the complete
+# form.idx). Minute :35 dodges the :05 reddit sweep and :10 KPI watch.
+on:
+  schedule:
+    - cron: "35 10-23/2 * * 1-5"   # intraday detect (atom feed)
+    - cron: "35 0-2/2 * * 2-6"     # evening wrap (next-day UTC)
+    - cron: "50 9 * * 1-5"         # daily reconcile (yesterday's form.idx)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Sync mode"
+        required: false
+        type: choice
+        options: [detect, reconcile]
+        default: detect
+
+permissions:
+  contents: read
+
+concurrency:
+  group: filing-catalyst-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Sync filing catalysts
+        run: |
+          set -euo pipefail
+          MODE="${{ github.event.inputs.mode || '' }}"
+          if [ -z "$MODE" ]; then
+            if [ "${{ github.event.schedule }}" = "50 9 * * 1-5" ]; then MODE=reconcile; else MODE=detect; fi
+          fi
+          python filing_catalyst_sync.py --$MODE | tee filing_catalyst_summary.json
+
+      - name: Upload Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: filing-catalyst-summary-${{ github.run_id }}
+          path: filing_catalyst_summary.json
+          if-no-files-found: ignore

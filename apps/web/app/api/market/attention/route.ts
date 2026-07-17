@@ -14,6 +14,7 @@ import {
   type RssArticleRef,
 } from "@/lib/server/neon";
 import { fetchYahooQuote } from "@/lib/server/yahoo";
+import { loadFilingChips } from "@/lib/server/filing-chips";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,8 +83,11 @@ export async function GET(req: NextRequest) {
     }
 
     // The Daily-view subreddit dropdown is populated regardless of whether a
-    // filter is applied.
-    const subreddits = await getDistinctAttentionSubredditsForDay(date);
+    // filter is applied. Filing chips are fail-soft (SEC-50).
+    const [subreddits, filingChips] = await Promise.all([
+      getDistinctAttentionSubredditsForDay(date),
+      loadFilingChips(72),
+    ]);
 
     // ── Single-subreddit view: recompute the day's board from raw items ──
     if (subredditFilter) {
@@ -139,6 +143,7 @@ export async function GET(req: NextRequest) {
             sparkline: [], // 14d trend is a blended-rollup signal; not meaningful for one subreddit
             topSources,
             topNews: [],
+            ...(filingChips.has(row.ticker) ? { filings: filingChips.get(row.ticker) } : {}),
           };
         }),
         generatedAt: new Date().toISOString(),
@@ -219,6 +224,7 @@ export async function GET(req: NextRequest) {
             .map((id) => newsById.get(Number(id)))
             .filter((article): article is RssArticleRef => Boolean(article))
             .map((article) => ({ title: article.title, url: article.url })),
+          ...(filingChips.has(row.ticker) ? { filings: filingChips.get(row.ticker) } : {}),
         };
       }),
       generatedAt: new Date().toISOString(),
