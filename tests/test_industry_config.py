@@ -42,9 +42,41 @@ def test_committed_config_integrity():
             assert entry["ticker"] and entry["name"] and entry["cik"], entry
             assert entry["ticker"] not in seen, f"ticker {entry['ticker']} in two industries"
             seen.add(entry["ticker"])
-    # The universe should stay meaningfully broad.
-    assert len(seen) >= 100
+    # SEC-56: the universe should stay broad enough for real peer groups.
+    assert len(seen) >= 400, f"universe shrank to {len(seen)}"
     # The CBOE KPI companies must all be classified.
     import kpi_config
     missing = set(kpi_config.COMPANY_KPIS) - seen
     assert not missing, f"KPI companies missing from industry config: {missing}"
+
+
+def test_committed_config_has_meaningful_peer_depth():
+    """SEC-56: the point of the expansion - most members should sit in a
+    group with actual peers, not alone."""
+    with open(CONFIG_PATH, encoding="utf-8") as handle:
+        config = json.load(handle)
+    industries = config["industries"]
+    assert sum(1 for i in industries if len(i["tickers"]) >= 3) >= 40
+    total = sum(len(i["tickers"]) for i in industries)
+    in_real_groups = sum(len(i["tickers"]) for i in industries if len(i["tickers"]) >= 3)
+    assert in_real_groups / total >= 0.7, "most tickers should have >=2 peers"
+
+
+def test_committed_config_financials_reconcile():
+    """Revenue - profit must equal the derived expenses exactly, and share
+    counts must be positive - the peer table's three columns have to tie."""
+    with open(CONFIG_PATH, encoding="utf-8") as handle:
+        config = json.load(handle)
+    checked = 0
+    for industry in config["industries"]:
+        for entry in industry["tickers"]:
+            rev, profit, exp = entry.get("revenue"), entry.get("profit"), entry.get("expenses")
+            if exp is not None:
+                assert rev is not None and profit is not None, entry["ticker"]
+                assert abs((rev - profit) - exp) < 1.0, f"{entry['ticker']} expenses don't reconcile"
+                assert entry.get("periodEnd"), f"{entry['ticker']} has financials but no periodEnd"
+                checked += 1
+            shares = entry.get("sharesOutstanding")
+            if shares is not None:
+                assert shares > 0, f"{entry['ticker']} non-positive shares outstanding"
+    assert checked >= 300, f"only {checked} companies carry reconciled financials"

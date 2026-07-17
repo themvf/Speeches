@@ -80,16 +80,28 @@ export async function GET(req: NextRequest) {
       const rows: IndustryPeerRow[] = industry.tickers.map((t, i) => {
         const settled = quotes[i];
         const quote = settled && settled.status === "fulfilled" ? settled.value : null;
+        const entry = t as typeof t & {
+          revenue?: number; expenses?: number; profit?: number;
+          sharesOutstanding?: number; periodEnd?: string;
+        };
+        const price = quote?.price ?? null;
+        const shares = entry.sharesOutstanding ?? null;
         return {
           ticker: t.ticker,
           name: t.name,
-          price: quote?.price ?? null,
+          price,
           pricePct: quote?.pct ?? null,
+          marketCap: price != null && shares != null ? price * shares : null,
+          revenue: entry.revenue ?? null,
+          expenses: entry.expenses ?? null,
+          profit: entry.profit ?? null,
+          periodEnd: entry.periodEnd ?? null,
           mentions: joins.mentionsByTicker.get(t.ticker) ?? 0,
           reportDate: joins.reportByTicker.get(t.ticker) ?? null,
         };
       });
-      rows.sort((a, b) => (b.pricePct ?? -Infinity) - (a.pricePct ?? -Infinity));
+      // Biggest first - the natural read for a peer table.
+      rows.sort((a, b) => (b.marketCap ?? -Infinity) - (a.marketCap ?? -Infinity));
       data.peers = { label: industry.label, rows };
     }
   }

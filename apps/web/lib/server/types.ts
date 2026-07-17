@@ -930,6 +930,17 @@ export interface IndustryPeerRow {
   name: string;
   price: number | null;
   pricePct: number | null;
+  // Market cap = baked shares-outstanding x the live price, so it stays
+  // current without an extra request. Null when either side is missing.
+  marketCap: number | null;
+  // Latest reported quarter from SEC XBRL frames (baked at build time).
+  // expenses is DERIVED as revenue - profit (one definition that's identical
+  // across peers and reconciles); filed cost tags mean different things at
+  // different filers. periodEnd is the quarter these three cover.
+  revenue: number | null;
+  expenses: number | null;
+  profit: number | null;
+  periodEnd: string | null;
   mentions: number;                    // latest-day total mentions, 0 if none/unavailable
   reportDate: string | null;           // from open Polymarket earnings markets, else null
 }
