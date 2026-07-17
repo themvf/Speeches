@@ -7,6 +7,7 @@ import type {
   MarketCommoditiesData,
   MarketCryptoData,
   MarketExchangesData,
+  MarketIndustriesData,
   MarketKpiData,
   MarketMacroData,
   MarketMacroPredictionsData,
@@ -24,13 +25,15 @@ import { ExchangesTab } from "./market/exchanges-tab";
 import { CboeTab } from "./market/cboe-tab";
 import { PredictionMarketsTab } from "./market/prediction-markets-tab";
 import { MacroTab } from "./market/macro-tab";
+import { IndustriesTab } from "./market/industries-tab";
 
-type TabId = "overview" | "macro" | "sectors" | "movers" | "attention" | "cboe" | "predictions" | "crypto" | "exchanges";
+type TabId = "overview" | "macro" | "sectors" | "industries" | "movers" | "attention" | "cboe" | "predictions" | "crypto" | "exchanges";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview",    label: "Overview" },
   { id: "macro",       label: "Macro" },
   { id: "sectors",     label: "Sectors" },
+  { id: "industries",  label: "Industries" },
   { id: "movers",      label: "Movers" },
   { id: "attention",   label: "Reddit" },
   { id: "cboe",        label: "CBOE" },
@@ -91,6 +94,9 @@ export function MarketDashboard() {
   const macroPredictions = useTabData<MarketMacroPredictionsData>(["macro", "predictions"], tab, "/api/market/macro-contracts", 300_000);
 
   const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors",   300_000);
+  // Industry list is config + one cheap DB join; peer quotes load lazily per
+  // expanded industry inside the tab, so a long poll here is fine.
+  const industries = useTabData<MarketIndustriesData>("industries", tab, "/api/market/industries", 600_000);
   const movers    = useTabData<MarketMoversData>   ("movers",    tab, "/api/market/movers",    120_000);
   const attention = useTabData<MarketAttentionData>("attention", tab, "/api/market/attention", 300_000);
   // Static snapshot (SEC-17/19) - long poll interval since the route never
@@ -125,6 +131,7 @@ export function MarketDashboard() {
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
       {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
+      {tab === "industries" && <IndustriesTab {...industries} />}
       {tab === "movers"    && <MoversTab    {...movers} />}
       {tab === "attention" && <AttentionTab {...attention} />}
       {tab === "cboe"      && <CboeTab      {...cboe} />}

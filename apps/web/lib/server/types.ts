@@ -913,6 +913,35 @@ export interface PredictionClosedMarket {
   sharpCohort: { correct: number; total: number; wallets: PredictionClosedCohortWallet[] };
 }
 
+// Industries tab (SEC-53): SIC-classified peer groups from the committed
+// industry-config.json (built by build_industry_config.py from EDGAR
+// submissions). Attention/report joins are fail-soft; quotes load only for
+// the expanded industry.
+export interface IndustrySummary {
+  sic: string;
+  label: string;
+  tickers: string[];
+  attentionTotal: number;              // sum of members' latest-day mentions (0 when DB unavailable)
+  reportingSoon: { ticker: string; reportDate: string }[]; // members with an open earnings market
+}
+
+export interface IndustryPeerRow {
+  ticker: string;
+  name: string;
+  price: number | null;
+  pricePct: number | null;
+  mentions: number;                    // latest-day total mentions, 0 if none/unavailable
+  reportDate: string | null;           // from open Polymarket earnings markets, else null
+}
+
+export interface MarketIndustriesData {
+  generatedAt: string;
+  industries: IndustrySummary[];
+  // present only when ?industry=<label> was requested
+  peers?: { label: string; rows: IndustryPeerRow[] };
+  warning?: string;
+}
+
 export interface MarketPredictionsData {
   // true once the SEC-26/27 Neon pipeline is serving (3x-daily sync);
   // false = the committed static snapshot (also the fail-soft fallback

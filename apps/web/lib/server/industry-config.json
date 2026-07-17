@@ -1,0 +1,917 @@
+{
+ "generatedAt": "2026-07-17T00:11:51Z",
+ "source": "SEC EDGAR submissions API (SIC classification)",
+ "tickerCount": 122,
+ "industries": [
+  {
+   "sic": "3674",
+   "label": "Semiconductors & Related Devices",
+   "tickers": [
+    {
+     "ticker": "AMAT",
+     "name": "Applied Materials Inc /De",
+     "cik": "6951"
+    },
+    {
+     "ticker": "AMD",
+     "name": "Advanced Micro Devices Inc",
+     "cik": "2488"
+    },
+    {
+     "ticker": "ARM",
+     "name": "Arm Holdings Plc /Uk",
+     "cik": "1973239"
+    },
+    {
+     "ticker": "AVGO",
+     "name": "Broadcom Inc.",
+     "cik": "1730168"
+    },
+    {
+     "ticker": "INTC",
+     "name": "Intel Corp",
+     "cik": "50863"
+    },
+    {
+     "ticker": "MRVL",
+     "name": "Marvell Technology, Inc.",
+     "cik": "1835632"
+    },
+    {
+     "ticker": "MU",
+     "name": "Micron Technology Inc",
+     "cik": "723125"
+    },
+    {
+     "ticker": "NVDA",
+     "name": "Nvidia Corp",
+     "cik": "1045810"
+    },
+    {
+     "ticker": "TSM",
+     "name": "Taiwan Semiconductor Manufacturing Co Ltd",
+     "cik": "1046179"
+    },
+    {
+     "ticker": "TXN",
+     "name": "Texas Instruments Inc",
+     "cik": "97476"
+    }
+   ]
+  },
+  {
+   "sic": "7372",
+   "label": "Services-Prepackaged Software",
+   "tickers": [
+    {
+     "ticker": "ADBE",
+     "name": "Adobe Inc.",
+     "cik": "796343"
+    },
+    {
+     "ticker": "BB",
+     "name": "Blackberry Ltd",
+     "cik": "1070235"
+    },
+    {
+     "ticker": "CRM",
+     "name": "Salesforce, Inc.",
+     "cik": "1108524"
+    },
+    {
+     "ticker": "MSFT",
+     "name": "Microsoft Corp",
+     "cik": "789019"
+    },
+    {
+     "ticker": "NOW",
+     "name": "Servicenow, Inc.",
+     "cik": "1373715"
+    },
+    {
+     "ticker": "ORCL",
+     "name": "Oracle Corp",
+     "cik": "1341439"
+    },
+    {
+     "ticker": "PLTR",
+     "name": "Palantir Technologies Inc.",
+     "cik": "1321655"
+    },
+    {
+     "ticker": "SHOP",
+     "name": "Shopify Inc.",
+     "cik": "1594805"
+    },
+    {
+     "ticker": "SNOW",
+     "name": "Snowflake Inc.",
+     "cik": "1640147"
+    }
+   ]
+  },
+  {
+   "sic": "2834",
+   "label": "Pharmaceutical Preparations",
+   "tickers": [
+    {
+     "ticker": "ABBV",
+     "name": "Abbvie Inc.",
+     "cik": "1551152"
+    },
+    {
+     "ticker": "BMY",
+     "name": "Bristol Myers Squibb Co",
+     "cik": "14272"
+    },
+    {
+     "ticker": "JNJ",
+     "name": "Johnson & Johnson",
+     "cik": "200406"
+    },
+    {
+     "ticker": "LLY",
+     "name": "Eli Lilly & Co",
+     "cik": "59478"
+    },
+    {
+     "ticker": "MRK",
+     "name": "Merck & Co., Inc.",
+     "cik": "310158"
+    },
+    {
+     "ticker": "PFE",
+     "name": "Pfizer Inc",
+     "cik": "78003"
+    },
+    {
+     "ticker": "REGN",
+     "name": "Regeneron Pharmaceuticals, Inc.",
+     "cik": "872589"
+    },
+    {
+     "ticker": "VRTX",
+     "name": "Vertex Pharmaceuticals Inc / Ma",
+     "cik": "875320"
+    }
+   ]
+  },
+  {
+   "sic": "6199",
+   "label": "Finance Services",
+   "tickers": [
+    {
+     "ticker": "AXP",
+     "name": "American Express Co",
+     "cik": "4962"
+    },
+    {
+     "ticker": "CLSK",
+     "name": "Cleanspark, Inc.",
+     "cik": "827876"
+    },
+    {
+     "ticker": "COIN",
+     "name": "Coinbase Global, Inc.",
+     "cik": "1679788"
+    },
+    {
+     "ticker": "MARA",
+     "name": "Mara Holdings, Inc.",
+     "cik": "1507605"
+    },
+    {
+     "ticker": "MSTR",
+     "name": "Strategy Inc",
+     "cik": "1050446"
+    },
+    {
+     "ticker": "RIOT",
+     "name": "Riot Platforms, Inc.",
+     "cik": "1167419"
+    },
+    {
+     "ticker": "SOFI",
+     "name": "Sofi Technologies, Inc.",
+     "cik": "1818874"
+    }
+   ]
+  },
+  {
+   "sic": "6021",
+   "label": "National Commercial Banks",
+   "tickers": [
+    {
+     "ticker": "BAC",
+     "name": "Bank Of America Corp /De/",
+     "cik": "70858"
+    },
+    {
+     "ticker": "C",
+     "name": "Citigroup Inc",
+     "cik": "831001"
+    },
+    {
+     "ticker": "JPM",
+     "name": "Jpmorgan Chase & Co",
+     "cik": "19617"
+    },
+    {
+     "ticker": "PNC",
+     "name": "Pnc Financial Services Group, Inc.",
+     "cik": "713676"
+    },
+    {
+     "ticker": "TFC",
+     "name": "Truist Financial Corp",
+     "cik": "92230"
+    },
+    {
+     "ticker": "USB",
+     "name": "Us Bancorp \\De\\",
+     "cik": "36104"
+    },
+    {
+     "ticker": "WFC",
+     "name": "Wells Fargo & Company/Mn",
+     "cik": "72971"
+    }
+   ]
+  },
+  {
+   "sic": "3711",
+   "label": "Motor Vehicles & Passenger Car Bodies",
+   "tickers": [
+    {
+     "ticker": "F",
+     "name": "Ford Motor Co",
+     "cik": "37996"
+    },
+    {
+     "ticker": "GM",
+     "name": "General Motors Co",
+     "cik": "1467858"
+    },
+    {
+     "ticker": "LCID",
+     "name": "Lucid Group, Inc.",
+     "cik": "1811210"
+    },
+    {
+     "ticker": "NIO",
+     "name": "Nio Inc.",
+     "cik": "1736541"
+    },
+    {
+     "ticker": "RIVN",
+     "name": "Rivian Automotive, Inc. / De",
+     "cik": "1874178"
+    },
+    {
+     "ticker": "TSLA",
+     "name": "Tesla, Inc.",
+     "cik": "1318605"
+    }
+   ]
+  },
+  {
+   "sic": "4512",
+   "label": "Air Transportation, Scheduled",
+   "tickers": [
+    {
+     "ticker": "AAL",
+     "name": "American Airlines Group Inc.",
+     "cik": "6201"
+    },
+    {
+     "ticker": "DAL",
+     "name": "Delta Air Lines, Inc.",
+     "cik": "27904"
+    },
+    {
+     "ticker": "LUV",
+     "name": "Southwest Airlines Co",
+     "cik": "92380"
+    },
+    {
+     "ticker": "UAL",
+     "name": "United Airlines Holdings, Inc.",
+     "cik": "100517"
+    }
+   ]
+  },
+  {
+   "sic": "6324",
+   "label": "Hospital & Medical Service Plans",
+   "tickers": [
+    {
+     "ticker": "CI",
+     "name": "Cigna Group",
+     "cik": "1739940"
+    },
+    {
+     "ticker": "ELV",
+     "name": "Elevance Health, Inc.",
+     "cik": "1156039"
+    },
+    {
+     "ticker": "HUM",
+     "name": "Humana Inc",
+     "cik": "49071"
+    },
+    {
+     "ticker": "UNH",
+     "name": "Unitedhealth Group Inc",
+     "cik": "731766"
+    }
+   ]
+  },
+  {
+   "sic": "5331",
+   "label": "Retail-Variety Stores",
+   "tickers": [
+    {
+     "ticker": "COST",
+     "name": "Costco Wholesale Corp /New",
+     "cik": "909832"
+    },
+    {
+     "ticker": "DG",
+     "name": "Dollar General Corp",
+     "cik": "29534"
+    },
+    {
+     "ticker": "TGT",
+     "name": "Target Corp",
+     "cik": "27419"
+    },
+    {
+     "ticker": "WMT",
+     "name": "Walmart Inc.",
+     "cik": "104169"
+    }
+   ]
+  },
+  {
+   "sic": "6211",
+   "label": "Security Brokers, Dealers & Flotation Companies",
+   "tickers": [
+    {
+     "ticker": "GS",
+     "name": "Goldman Sachs Group Inc",
+     "cik": "886982"
+    },
+    {
+     "ticker": "HOOD",
+     "name": "Robinhood Markets, Inc.",
+     "cik": "1783879"
+    },
+    {
+     "ticker": "MS",
+     "name": "Morgan Stanley",
+     "cik": "895421"
+    },
+    {
+     "ticker": "SCHW",
+     "name": "Schwab Charles Corp",
+     "cik": "316709"
+    }
+   ]
+  },
+  {
+   "sic": "7389",
+   "label": "Services-Business Services, NEC",
+   "tickers": [
+    {
+     "ticker": "MA",
+     "name": "Mastercard Inc",
+     "cik": "1141391"
+    },
+    {
+     "ticker": "PYPL",
+     "name": "Paypal Holdings, Inc.",
+     "cik": "1633917"
+    },
+    {
+     "ticker": "UBER",
+     "name": "Uber Technologies, Inc",
+     "cik": "1543151"
+    },
+    {
+     "ticker": "V",
+     "name": "Visa Inc.",
+     "cik": "1403161"
+    }
+   ]
+  },
+  {
+   "sic": "2836",
+   "label": "Biological Products, (No Diagnostic Substances)",
+   "tickers": [
+    {
+     "ticker": "AMGN",
+     "name": "Amgen Inc",
+     "cik": "318154"
+    },
+    {
+     "ticker": "GILD",
+     "name": "Gilead Sciences, Inc.",
+     "cik": "882095"
+    },
+    {
+     "ticker": "MRNA",
+     "name": "Moderna, Inc.",
+     "cik": "1682852"
+    }
+   ]
+  },
+  {
+   "sic": "3571",
+   "label": "Electronic Computers",
+   "tickers": [
+    {
+     "ticker": "AAPL",
+     "name": "Apple Inc.",
+     "cik": "320193"
+    },
+    {
+     "ticker": "DELL",
+     "name": "Dell Technologies Inc.",
+     "cik": "1571996"
+    },
+    {
+     "ticker": "SMCI",
+     "name": "Super Micro Computer, Inc.",
+     "cik": "1375365"
+    }
+   ]
+  },
+  {
+   "sic": "2911",
+   "label": "Petroleum Refining",
+   "tickers": [
+    {
+     "ticker": "COP",
+     "name": "Conocophillips",
+     "cik": "1163165"
+    },
+    {
+     "ticker": "CVX",
+     "name": "Chevron Corp",
+     "cik": "93410"
+    },
+    {
+     "ticker": "XOM",
+     "name": "Exxonmobil Holdings Corp",
+     "cik": "2115436"
+    }
+   ]
+  },
+  {
+   "sic": "3724",
+   "label": "Aircraft Engines & Engine Parts",
+   "tickers": [
+    {
+     "ticker": "HON",
+     "name": "Honeywell International Inc",
+     "cik": "773840"
+    },
+    {
+     "ticker": "RTX",
+     "name": "Rtx Corp",
+     "cik": "101829"
+    }
+   ]
+  },
+  {
+   "sic": "2080",
+   "label": "Beverages",
+   "tickers": [
+    {
+     "ticker": "KO",
+     "name": "Coca Cola Co",
+     "cik": "21344"
+    },
+    {
+     "ticker": "PEP",
+     "name": "Pepsico Inc",
+     "cik": "77476"
+    }
+   ]
+  },
+  {
+   "sic": "4841",
+   "label": "Cable & Other Pay Television Services",
+   "tickers": [
+    {
+     "ticker": "CMCSA",
+     "name": "Comcast Corp",
+     "cik": "1166691"
+    },
+    {
+     "ticker": "WBD",
+     "name": "Warner Bros. Discovery, Inc.",
+     "cik": "1437107"
+    }
+   ]
+  },
+  {
+   "sic": "3570",
+   "label": "Computer & office Equipment",
+   "tickers": [
+    {
+     "ticker": "HPQ",
+     "name": "Hp Inc",
+     "cik": "47217"
+    },
+    {
+     "ticker": "IBM",
+     "name": "International Business Machines Corp",
+     "cik": "51143"
+    }
+   ]
+  },
+  {
+   "sic": "4931",
+   "label": "Electric & Other Services Combined",
+   "tickers": [
+    {
+     "ticker": "DUK",
+     "name": "Duke Energy Corp",
+     "cik": "1326160"
+    },
+    {
+     "ticker": "PCG",
+     "name": "Pg&E Corp",
+     "cik": "1004980"
+    }
+   ]
+  },
+  {
+   "sic": "1389",
+   "label": "Oil & Gas Field Services, NEC",
+   "tickers": [
+    {
+     "ticker": "HAL",
+     "name": "Halliburton Co",
+     "cik": "45012"
+    },
+    {
+     "ticker": "SLB",
+     "name": "Slb Limited/Nv",
+     "cik": "87347"
+    }
+   ]
+  },
+  {
+   "sic": "5812",
+   "label": "Retail-Eating  Places",
+   "tickers": [
+    {
+     "ticker": "CMG",
+     "name": "Chipotle Mexican Grill Inc",
+     "cik": "1058090"
+    },
+    {
+     "ticker": "MCD",
+     "name": "Mcdonalds Corp",
+     "cik": "63908"
+    }
+   ]
+  },
+  {
+   "sic": "5211",
+   "label": "Retail-Lumber & Other Building Materials Dealers",
+   "tickers": [
+    {
+     "ticker": "HD",
+     "name": "Home Depot, Inc.",
+     "cik": "354950"
+    },
+    {
+     "ticker": "LOW",
+     "name": "Lowes Companies Inc",
+     "cik": "60667"
+    }
+   ]
+  },
+  {
+   "sic": "7370",
+   "label": "Services-Computer Programming, Data Processing, Etc.",
+   "tickers": [
+    {
+     "ticker": "GOOGL",
+     "name": "Alphabet Inc.",
+     "cik": "1652044"
+    },
+    {
+     "ticker": "META",
+     "name": "Meta Platforms, Inc.",
+     "cik": "1326801"
+    }
+   ]
+  },
+  {
+   "sic": "4813",
+   "label": "Telephone Communications (No Radiotelephone)",
+   "tickers": [
+    {
+     "ticker": "T",
+     "name": "At&T Inc.",
+     "cik": "732717"
+    },
+    {
+     "ticker": "VZ",
+     "name": "Verizon Communications Inc",
+     "cik": "732712"
+    }
+   ]
+  },
+  {
+   "sic": "3721",
+   "label": "Aircraft",
+   "tickers": [
+    {
+     "ticker": "BA",
+     "name": "Boeing Co",
+     "cik": "12927"
+    }
+   ]
+  },
+  {
+   "sic": "2300",
+   "label": "Apparel & Other Finishd Prods of  Fabrics & Similar Matl",
+   "tickers": [
+    {
+     "ticker": "LULU",
+     "name": "Lululemon Athletica Inc.",
+     "cik": "1397187"
+    }
+   ]
+  },
+  {
+   "sic": "3576",
+   "label": "Computer Communications Equipment",
+   "tickers": [
+    {
+     "ticker": "CSCO",
+     "name": "Cisco Systems, Inc.",
+     "cik": "858877"
+    }
+   ]
+  },
+  {
+   "sic": "3531",
+   "label": "Construction Machinery & Equip",
+   "tickers": [
+    {
+     "ticker": "CAT",
+     "name": "Caterpillar Inc",
+     "cik": "18230"
+    }
+   ]
+  },
+  {
+   "sic": "1311",
+   "label": "Crude Petroleum & Natural Gas",
+   "tickers": [
+    {
+     "ticker": "OXY",
+     "name": "Occidental Petroleum Corp /De/",
+     "cik": "797468"
+    }
+   ]
+  },
+  {
+   "sic": "4911",
+   "label": "Electric Services",
+   "tickers": [
+    {
+     "ticker": "NEE",
+     "name": "Nextera Energy Inc",
+     "cik": "753308"
+    }
+   ]
+  },
+  {
+   "sic": "3600",
+   "label": "Electronic & Other Electrical Equipment (No Computer Equip)",
+   "tickers": [
+    {
+     "ticker": "GE",
+     "name": "General Electric Co",
+     "cik": "40545"
+    }
+   ]
+  },
+  {
+   "sic": "3523",
+   "label": "Farm Machinery & Equipment",
+   "tickers": [
+    {
+     "ticker": "DE",
+     "name": "Deere & Co",
+     "cik": "315189"
+    }
+   ]
+  },
+  {
+   "sic": "3760",
+   "label": "Guided Missiles & Space Vehicles & Parts",
+   "tickers": [
+    {
+     "ticker": "LMT",
+     "name": "Lockheed Martin Corp",
+     "cik": "936468"
+    }
+   ]
+  },
+  {
+   "sic": "3663",
+   "label": "Radio & Tv Broadcasting & Communications Equipment",
+   "tickers": [
+    {
+     "ticker": "QCOM",
+     "name": "Qualcomm Inc/De",
+     "cik": "804328"
+    }
+   ]
+  },
+  {
+   "sic": "4832",
+   "label": "Radio Broadcasting Stations",
+   "tickers": [
+    {
+     "ticker": "SPOT",
+     "name": "Spotify Technology S.A.",
+     "cik": "1639920"
+    }
+   ]
+  },
+  {
+   "sic": "4812",
+   "label": "Radiotelephone Communications",
+   "tickers": [
+    {
+     "ticker": "TMUS",
+     "name": "T-Mobile Us, Inc.",
+     "cik": "1283699"
+    }
+   ]
+  },
+  {
+   "sic": "4011",
+   "label": "Railroads, Line-Haul Operating",
+   "tickers": [
+    {
+     "ticker": "UNP",
+     "name": "Union Pacific Corp",
+     "cik": "100885"
+    }
+   ]
+  },
+  {
+   "sic": "5961",
+   "label": "Retail-Catalog & Mail-Order Houses",
+   "tickers": [
+    {
+     "ticker": "AMZN",
+     "name": "Amazon Com Inc",
+     "cik": "1018724"
+    }
+   ]
+  },
+  {
+   "sic": "5734",
+   "label": "Retail-Computer & Computer Software Stores",
+   "tickers": [
+    {
+     "ticker": "GME",
+     "name": "Gamestop Corp.",
+     "cik": "1326380"
+    }
+   ]
+  },
+  {
+   "sic": "5912",
+   "label": "Retail-Drug Stores and Proprietary Stores",
+   "tickers": [
+    {
+     "ticker": "CVS",
+     "name": "Cvs Health Corp",
+     "cik": "64803"
+    }
+   ]
+  },
+  {
+   "sic": "5810",
+   "label": "Retail-Eating & Drinking Places",
+   "tickers": [
+    {
+     "ticker": "SBUX",
+     "name": "Starbucks Corp",
+     "cik": "829224"
+    }
+   ]
+  },
+  {
+   "sic": "3021",
+   "label": "Rubber & Plastics Footwear",
+   "tickers": [
+    {
+     "ticker": "NKE",
+     "name": "Nike, Inc.",
+     "cik": "320187"
+    }
+   ]
+  },
+  {
+   "sic": "3812",
+   "label": "Search, Detection, Navigation, Guidance, Aeronautical Sys",
+   "tickers": [
+    {
+     "ticker": "NOC",
+     "name": "Northrop Grumman Corp /De/",
+     "cik": "1133421"
+    }
+   ]
+  },
+  {
+   "sic": "7990",
+   "label": "Services-Miscellaneous Amusement & Recreation",
+   "tickers": [
+    {
+     "ticker": "DIS",
+     "name": "Walt Disney Co",
+     "cik": "1744489"
+    }
+   ]
+  },
+  {
+   "sic": "7830",
+   "label": "Services-Motion Picture Theaters",
+   "tickers": [
+    {
+     "ticker": "AMC",
+     "name": "Amc Entertainment Holdings, Inc.",
+     "cik": "1411579"
+    }
+   ]
+  },
+  {
+   "sic": "7340",
+   "label": "Services-To Dwellings & Other Buildings",
+   "tickers": [
+    {
+     "ticker": "ABNB",
+     "name": "Airbnb, Inc.",
+     "cik": "1559720"
+    }
+   ]
+  },
+  {
+   "sic": "7841",
+   "label": "Services-Video Tape Rental",
+   "tickers": [
+    {
+     "ticker": "NFLX",
+     "name": "Netflix Inc",
+     "cik": "1065280"
+    }
+   ]
+  },
+  {
+   "sic": "3730",
+   "label": "Ship & Boat Building & Repairing",
+   "tickers": [
+    {
+     "ticker": "GD",
+     "name": "General Dynamics Corp",
+     "cik": "40533"
+    }
+   ]
+  },
+  {
+   "sic": "2840",
+   "label": "Soap, Detergents, Cleang Preparations, Perfumes, Cosmetics",
+   "tickers": [
+    {
+     "ticker": "PG",
+     "name": "Procter & Gamble Co",
+     "cik": "80424"
+    }
+   ]
+  },
+  {
+   "sic": "5140",
+   "label": "Wholesale-Groceries & Related Products",
+   "tickers": [
+    {
+     "ticker": "DPZ",
+     "name": "Dominos Pizza Inc",
+     "cik": "1286681"
+    }
+   ]
+  }
+ ]
+}
