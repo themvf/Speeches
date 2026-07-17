@@ -68,6 +68,16 @@ CORE_FEEDS: List[Dict[str, str]] = [
 ]
 ADDITIONAL_SUBSTACK_FEEDS: List[Dict[str, str]] = [
     {
+        "label": "The Bear Cave",
+        "feed_url": "https://thebearcave.substack.com/feed",
+        "tags_csv": "the-bear-cave,short-research,corporate-misconduct,equities",
+    },
+    {
+        "label": "Klement on Investing",
+        "feed_url": "https://klementoninvesting.substack.com/feed",
+        "tags_csv": "klement-on-investing,financial-markets,behavioral-finance,macro",
+    },
+    {
         "label": "Doomberg",
         "feed_url": "https://newsletter.doomberg.com/feed",
         "tags_csv": "doomberg,financial-markets,energy,macro",

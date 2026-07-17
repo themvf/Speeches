@@ -24,8 +24,10 @@ def test_default_substack_feeds_include_curated_expansion_without_duplicates():
     labels = {feed["label"] for feed in ADDITIONAL_SUBSTACK_FEEDS}
 
     assert len(CORE_FEEDS) == 8
-    assert len(ADDITIONAL_SUBSTACK_FEEDS) == 25
+    assert len(ADDITIONAL_SUBSTACK_FEEDS) == 27
     assert len(feed_urls) == len(set(feed_urls))
+    assert "The Bear Cave" in labels
+    assert "Klement on Investing" in labels
     assert "Doomberg" in labels
     assert "CyberMaterial" in labels
     assert "DC/ai Decoded" in labels

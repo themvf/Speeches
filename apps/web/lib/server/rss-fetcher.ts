@@ -1,6 +1,7 @@
 import { ProxyAgent, request } from "undici";
 import {
   EXISTING_RSS_SOURCE_PROMOTIONS,
+  MARKET_COMMENTARY_RSS_SOURCES,
   type RssFeedDefinition,
 } from "../rss-source-catalog.ts";
 
@@ -344,6 +345,7 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     label: "A Wealth of Common Sense",
     feedUrl: "https://awealthofcommonsense.com/feed/",
   },
+  ...MARKET_COMMENTARY_RSS_SOURCES,
   ...EXISTING_RSS_SOURCE_PROMOTIONS,
 };
 

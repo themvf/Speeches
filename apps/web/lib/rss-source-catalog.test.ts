@@ -5,6 +5,8 @@ import { isSameStoredRssArticle, rssArticleIdentity } from "./rss-article-identi
 import {
   EXISTING_RSS_SOURCE_PROMOTION_KEYS,
   EXISTING_RSS_SOURCE_PROMOTIONS,
+  MARKET_COMMENTARY_RSS_SOURCE_KEYS,
+  MARKET_COMMENTARY_RSS_SOURCES,
 } from "./rss-source-catalog.ts";
 
 const EXPECTED_EXISTING_KEYS = [
@@ -45,4 +47,39 @@ test("preserves the same upstream GUID when different sources cover it", () => {
   const secondPublisher = rssArticleIdentity("publisher_two", "shared-story-guid");
   assert.equal(isSameStoredRssArticle(firstPublisher, secondPublisher), false);
   assert.equal(isSameStoredRssArticle(firstPublisher, rssArticleIdentity("publisher_one", "shared-story-guid")), true);
+});
+
+const EXPECTED_MARKET_COMMENTARY_KEYS = [
+  "fox_business_markets",
+  "bbc_business",
+  "seeking_alpha_all_news",
+  "investing_com_news",
+  "investing_com_stock_markets",
+  "investing_com_market_overview",
+  "abnormal_returns",
+  "the_bear_cave",
+  "klement_on_investing",
+  "angry_bear_blog",
+  "zerohedge",
+] as const;
+
+test("registers the SEC-55 market commentary sources without duplicating MarketWatch", () => {
+  assert.deepEqual([...MARKET_COMMENTARY_RSS_SOURCE_KEYS], EXPECTED_MARKET_COMMENTARY_KEYS);
+  assert.equal(new Set(MARKET_COMMENTARY_RSS_SOURCE_KEYS).size, EXPECTED_MARKET_COMMENTARY_KEYS.length);
+  assert.equal("mw_top_stories" in MARKET_COMMENTARY_RSS_SOURCES, false);
+  assert.equal(
+    Object.values(MARKET_COMMENTARY_RSS_SOURCES).some((feed) => feed.feedUrl.includes("capitalflowresearch.com")),
+    false,
+  );
+  assert.equal(MARKET_COMMENTARY_RSS_SOURCES.angry_bear_blog.proxyFallback, "webshare");
+});
+
+test("uses unique valid URLs and bounded refresh cadences for market commentary", () => {
+  const definitions = Object.values(MARKET_COMMENTARY_RSS_SOURCES);
+  assert.equal(new Set(definitions.map((feed) => feed.feedUrl)).size, definitions.length);
+  for (const feed of definitions) {
+    assert.doesNotThrow(() => new URL(feed.feedUrl));
+    assert.ok(feed.refreshIntervalMinutes >= 30);
+    assert.ok(feed.refreshIntervalMinutes <= 180);
+  }
 });

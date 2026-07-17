@@ -2,6 +2,7 @@ export type RssFeedDefinition = {
   label: string;
   feedUrl: string;
   refreshIntervalMinutes?: number;
+  proxyFallback?: "webshare";
 };
 
 /**
@@ -90,3 +91,72 @@ export const EXISTING_RSS_SOURCE_PROMOTIONS = {
 export const EXISTING_RSS_SOURCE_PROMOTION_KEYS = Object.freeze(
   Object.keys(EXISTING_RSS_SOURCE_PROMOTIONS),
 ) as ReadonlyArray<keyof typeof EXISTING_RSS_SOURCE_PROMOTIONS>;
+
+/**
+ * SEC-55 market-news and independent-research additions. MarketWatch is not
+ * repeated here because its maintained Dow Jones feed already lives in
+ * WSJ_FEEDS. The shared fetcher retries 403/429 responses through Webshare,
+ * which is required by Angry Bear's otherwise-valid WordPress feed.
+ */
+export const MARKET_COMMENTARY_RSS_SOURCES = {
+  fox_business_markets: {
+    label: "Fox Business Markets",
+    feedUrl: "https://moxie.foxbusiness.com/google-publisher/markets.xml",
+    refreshIntervalMinutes: 30,
+  },
+  bbc_business: {
+    label: "BBC Business",
+    feedUrl: "https://feeds.bbci.co.uk/news/business/rss.xml",
+    refreshIntervalMinutes: 30,
+  },
+  seeking_alpha_all_news: {
+    label: "Seeking Alpha",
+    feedUrl: "https://seekingalpha.com/market_currents.xml",
+    refreshIntervalMinutes: 30,
+  },
+  investing_com_news: {
+    label: "Investing.com News",
+    feedUrl: "https://www.investing.com/rss/news.rss",
+    refreshIntervalMinutes: 30,
+  },
+  investing_com_stock_markets: {
+    label: "Investing.com Stock Markets",
+    feedUrl: "https://www.investing.com/rss/stock.rss",
+    refreshIntervalMinutes: 30,
+  },
+  investing_com_market_overview: {
+    label: "Investing.com Market Overview",
+    feedUrl: "https://www.investing.com/rss/market_overview.rss",
+    refreshIntervalMinutes: 30,
+  },
+  abnormal_returns: {
+    label: "Abnormal Returns",
+    feedUrl: "https://abnormalreturns.com/feed/",
+    refreshIntervalMinutes: 60,
+  },
+  the_bear_cave: {
+    label: "The Bear Cave",
+    feedUrl: "https://thebearcave.substack.com/feed",
+    refreshIntervalMinutes: 180,
+  },
+  klement_on_investing: {
+    label: "Klement on Investing",
+    feedUrl: "https://klementoninvesting.substack.com/feed",
+    refreshIntervalMinutes: 60,
+  },
+  angry_bear_blog: {
+    label: "Angry Bear Blog",
+    feedUrl: "https://angrybearblog.com/feed/",
+    refreshIntervalMinutes: 180,
+    proxyFallback: "webshare",
+  },
+  zerohedge: {
+    label: "ZeroHedge",
+    feedUrl: "https://feeds.feedburner.com/zerohedge/feed",
+    refreshIntervalMinutes: 30,
+  },
+} as const satisfies Record<string, RssFeedDefinition>;
+
+export const MARKET_COMMENTARY_RSS_SOURCE_KEYS = Object.freeze(
+  Object.keys(MARKET_COMMENTARY_RSS_SOURCES),
+) as ReadonlyArray<keyof typeof MARKET_COMMENTARY_RSS_SOURCES>;
