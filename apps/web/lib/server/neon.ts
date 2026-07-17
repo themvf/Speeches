@@ -3183,6 +3183,37 @@ export async function getRecentFilingEvents(hoursBack = 72): Promise<FilingEvent
   `) as unknown as FilingEventRow[];
 }
 
+// SEC-51: per-ticker filing events for the event-annotated chart (longer
+// window than the chips reader - a quarter of context).
+export async function getFilingEventsForTicker(ticker: string, days = 120): Promise<FilingEventRow[]> {
+  const sql = getSql();
+  const cappedDays = Math.max(1, Math.min(365, days));
+  return (await sql`
+    SELECT ticker, form, filed_at::text AS filed_at, items, summary, url
+    FROM filing_events
+    WHERE ticker = ${ticker}
+      AND filed_at >= now() - (${cappedDays} * INTERVAL '1 day')
+    ORDER BY filed_at ASC
+  `) as unknown as FilingEventRow[];
+}
+
+// SEC-51: a ticker's earnings markets (open + resolved) for chart annotations.
+export type PolymarketTickerEventRow = {
+  report_date: string | null;
+  status: string;
+  winner: string | null;
+};
+
+export async function getPolymarketEventsForTicker(ticker: string): Promise<PolymarketTickerEventRow[]> {
+  const sql = getSql();
+  return (await sql`
+    SELECT COALESCE(report_date, end_date::date)::text AS report_date, status, winner
+    FROM polymarket_markets
+    WHERE ticker = ${ticker}
+    ORDER BY report_date ASC NULLS LAST
+  `) as unknown as PolymarketTickerEventRow[];
+}
+
 // ─── Polymarket earnings tracker readers (SEC-26/27) ─────────────────────────
 // Python-owned tables (schema in neon_feeds.py's _ensure_polymarket_schema) -
 // deliberately no ensureSchema here. Before the first sync/backfill runs the

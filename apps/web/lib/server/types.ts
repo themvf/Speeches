@@ -693,6 +693,18 @@ export interface FilingEventChip {
   url: string;       // EDGAR filing index page
 }
 
+// SEC-51: everything the event-annotated ticker chart needs in one payload.
+// Candles come from Yahoo; the three event layers are fail-soft DB joins
+// (each may be empty when the tables are missing or the ticker is quiet).
+export interface TickerEventsData {
+  ticker: string;
+  candles: { t: number; c: number }[];          // unix seconds, close
+  filings: FilingEventChip[];                    // 8-K / Form 4 in-window
+  earnings: { date: string; resolved: boolean; outcome: "beat" | "miss" | null }[];
+  attention: { date: string; mentions: number }[]; // daily total mentions
+  warning?: string;
+}
+
 export interface MoverQuote {
   rank: number;
   symbol: string;

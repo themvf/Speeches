@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import type { IndustrySummary, MarketIndustriesData } from "@/lib/server/types";
+import { TickerEventChart } from "./ticker-event-chart";
 
 interface Props {
   data: MarketIndustriesData | null;
@@ -32,6 +33,8 @@ function usdCompact(value: number | null): string {
 function PeerTable({ label }: { label: string }) {
   const [data, setData] = useState<MarketIndustriesData | null>(null);
   const [loading, setLoading] = useState(true);
+  // SEC-51: clicking a peer's ticker toggles its event-annotated chart.
+  const [chartTicker, setChartTicker] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,8 +80,18 @@ function PeerTable({ label }: { label: string }) {
             {rows.map((row) => {
               const priceColor = (row.pricePct ?? 0) >= 0 ? "#41d39d" : "#f87171";
               return (
-                <tr key={row.ticker} className="border-b border-[color:var(--line)] text-xs last:border-0">
-                  <td className="py-2 pr-2 font-bold text-[color:var(--accent)]">{row.ticker}</td>
+                <Fragment key={row.ticker}>
+                <tr className="border-b border-[color:var(--line)] text-xs last:border-0">
+                  <td className="py-2 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => setChartTicker(chartTicker === row.ticker ? null : row.ticker)}
+                      className="font-bold text-[color:var(--accent)] hover:underline"
+                      title={`${chartTicker === row.ticker ? "Hide" : "Show"} ${row.ticker} price chart with filing/earnings/attention events`}
+                    >
+                      {row.ticker}
+                    </button>
+                  </td>
                   <td className="hidden max-w-[190px] truncate px-2 py-2 text-[color:var(--ink-faint)] lg:table-cell">{row.name}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-[color:var(--ink)]">
                     {row.price == null ? "—" : `$${row.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
@@ -106,6 +119,14 @@ function PeerTable({ label }: { label: string }) {
                   </td>
                   <td className="py-2 pl-2 text-right text-[color:var(--ink-soft)]">{reportLabel(row.reportDate) || "—"}</td>
                 </tr>
+                {chartTicker === row.ticker && (
+                  <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] last:border-0">
+                    <td colSpan={10}>
+                      <TickerEventChart ticker={row.ticker} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
