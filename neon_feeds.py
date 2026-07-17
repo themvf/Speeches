@@ -2050,6 +2050,9 @@ def insert_filing_events(rows: List[Dict[str, Any]]) -> int:
                 ON CONFLICT (accession) DO NOTHING
                 """,
                 prepared,
+                # One page so rowcount reflects the whole batch (the default
+                # 100-row paging makes rowcount = last page only).
+                page_size=max(100, len(prepared)),
             )
             inserted = cur.rowcount
             conn.commit()
