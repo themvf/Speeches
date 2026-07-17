@@ -180,7 +180,8 @@ def summarize_form4(transactions: List[Tuple[str, float, Optional[float]]]) -> s
 
 
 def _form4_summary_via_edgartools(accession: str) -> str:
-    from edgar import find
+    from edgar import find, set_identity
+    set_identity("joshbandes@gmail.com")
     filing = find(accession)
     ownership = filing.obj()
     transactions: List[Tuple[str, float, Optional[float]]] = []
