@@ -693,6 +693,34 @@ export interface FilingEventChip {
   url: string;       // EDGAR filing index page
 }
 
+// SEC-52: the Earnings Week hub - one card per reporting company, joining
+// four existing surfaces keyed by ticker + report date: Polymarket implied
+// beat + sharp consensus, the CBOE KPI trend (where covered), and Reddit
+// attention with a day-over-day delta. Headlines load lazily per card via
+// the existing /api/market/company-news endpoint.
+export interface EarningsWeekCompany {
+  ticker: string;
+  question: string;
+  reportDate: string;
+  eps: string | null;
+  impliedProbYes: number | null;
+  volume: number;
+  consensus: { yes: number; no: number; wallets: PredictionConsensusWallet[] };
+  kpiLabel: string | null;                       // e.g. "Diluted EPS" when the CBOE snapshot covers this ticker
+  kpiSeries: { end: string; value: number }[];   // trailing quarters, oldest first ([] when uncovered)
+  mentions: number | null;                       // latest attention-day total (null = DB unavailable)
+  mentionsPrev: number | null;
+}
+
+export interface MarketEarningsWeekData {
+  isLive: boolean;      // false = served from the committed predictions snapshot fallback
+  windowStart: string;
+  windowEnd: string;
+  companies: EarningsWeekCompany[];
+  warning?: string;
+  generatedAt: string;
+}
+
 // SEC-51: everything the event-annotated ticker chart needs in one payload.
 // Candles come from Yahoo; the three event layers are fail-soft DB joins
 // (each may be empty when the tables are missing or the ticker is quiet).

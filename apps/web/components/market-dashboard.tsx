@@ -6,6 +6,7 @@ import type {
   MarketBondsData,
   MarketCommoditiesData,
   MarketCryptoData,
+  MarketEarningsWeekData,
   MarketExchangesData,
   MarketIndustriesData,
   MarketKpiData,
@@ -26,8 +27,9 @@ import { CboeTab } from "./market/cboe-tab";
 import { PredictionMarketsTab } from "./market/prediction-markets-tab";
 import { MacroTab } from "./market/macro-tab";
 import { IndustriesTab } from "./market/industries-tab";
+import { EarningsTab } from "./market/earnings-tab";
 
-type TabId = "overview" | "macro" | "sectors" | "industries" | "movers" | "attention" | "cboe" | "predictions" | "crypto" | "exchanges";
+type TabId = "overview" | "macro" | "sectors" | "industries" | "movers" | "attention" | "cboe" | "earnings" | "predictions" | "crypto" | "exchanges";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview",    label: "Overview" },
@@ -37,6 +39,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "movers",      label: "Movers" },
   { id: "attention",   label: "Reddit" },
   { id: "cboe",        label: "CBOE" },
+  { id: "earnings",    label: "Earnings" },
   { id: "predictions", label: "Prediction Markets" },
   { id: "crypto",      label: "Crypto" },
   { id: "exchanges",   label: "Exchanges" },
@@ -105,6 +108,7 @@ export function MarketDashboard() {
   // Static snapshot (SEC-25/28) - long poll interval like CBOE; the route
   // never changes until the SEC-26/27 live pipeline replaces it.
   const predictions = useTabData<MarketPredictionsData>("predictions", tab, "/api/market/predictions", 3_600_000);
+  const earnings  = useTabData<MarketEarningsWeekData>("earnings",  tab, "/api/market/earnings-week", 600_000);
   const crypto    = useTabData<MarketCryptoData>   ("crypto",    tab, "/api/market/crypto",    120_000);
   const exchanges = useTabData<MarketExchangesData>("exchanges", tab, "/api/market/exchanges",  60_000);
 
@@ -135,6 +139,7 @@ export function MarketDashboard() {
       {tab === "movers"    && <MoversTab    {...movers} />}
       {tab === "attention" && <AttentionTab {...attention} />}
       {tab === "cboe"      && <CboeTab      {...cboe} />}
+      {tab === "earnings"  && <EarningsTab  {...earnings} />}
       {tab === "predictions" && <PredictionMarketsTab {...predictions} macro={macroPredictions} />}
       {tab === "crypto"    && <CryptoTab    {...crypto} />}
       {tab === "exchanges" && <ExchangesTab {...exchanges} />}
