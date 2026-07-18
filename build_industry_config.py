@@ -64,83 +64,133 @@ UNIVERSE: List[str] = [
     "NVDA", "AMD", "INTC", "AVGO", "QCOM", "MU", "TXN", "AMAT", "LRCX", "KLAC",
     "ADI", "NXPI", "MCHP", "ON", "MPWR", "SWKS", "QRVO", "TER", "ENTG", "TSM",
     "ASML", "ARM", "MRVL", "SMCI", "WOLF", "AMKR", "GFS",
+    "ONTO", "COHR", "LSCC", "ALAB", "CRDO", "RMBS", "SLAB", "SITM", "FORM",
+    "OLED", "IPGP", "ACLS", "VSH", "DIOD", "MTSI", "POWI", "CRUS", "SYNA",
     # ── Software & cloud ──
     "MSFT", "ORCL", "CRM", "ADBE", "NOW", "INTU", "SNOW", "DDOG", "MDB", "TEAM",
     "WDAY", "PANW", "CRWD", "ZS", "OKTA", "NET", "FTNT", "SPLK", "HUBS", "ZM",
     "DOCU", "TWLO", "PLTR", "AI", "PATH", "U", "RBLX", "EA", "TTWO", "ADSK",
     "ANSS", "CDNS", "SNPS", "VEEV", "TYL", "PTC", "SSNC", "BB",
+    "APP", "GTLB", "S", "CFLT", "ESTC", "DT", "BRZE", "ASAN", "MNDY", "BOX",
+    "DBX", "GEN", "VRNS", "QLYS", "TENB", "CYBR", "CHKP", "AKAM", "FSLY", "DUOL",
+    # ── Financial data & analytics ──
+    "SPGI", "MCO", "MSCI", "FICO", "FDS", "MORN", "TRU", "VRSK", "EFX",
     # ── Internet & media ──
     "GOOGL", "META", "AMZN", "NFLX", "DIS", "CMCSA", "WBD", "PARA", "SPOT",
     "PINS", "SNAP", "MTCH", "BMBL", "YELP", "TRIP", "EXPE", "BKNG", "ABNB",
     "UBER", "LYFT", "DASH", "ETSY", "EBAY", "SHOP", "SE", "BABA", "JD", "PDD",
+    "RDDT", "TTD", "ROKU", "LYV", "NYT", "FOXA", "NWSA", "OMC", "IPG", "TKO",
+    "BIDU", "NTES", "TME", "BILI", "FUTU",
     # ── Hardware & devices ──
     "AAPL", "DELL", "HPQ", "HPE", "IBM", "CSCO", "ANET", "JNPR", "NTAP", "STX",
     "WDC", "PSTG", "ZBRA", "GRMN", "SONO",
+    "GLW", "TDY", "KEYS", "TRMB", "LOGI", "CIEN", "LITE", "VRT",
     # ── Banks ──
     "JPM", "BAC", "C", "WFC", "USB", "PNC", "TFC", "COF", "MTB", "FITB",
     "HBAN", "RF", "KEY", "CFG", "ZION", "CMA", "ALLY", "NYCB", "FHN", "SNV",
+    "EWBC", "WAL", "PB", "CFR", "WTFC", "PNFP", "CBSH", "BOKF", "FNB", "ONB", "UBSI",
     # ── Brokers, asset managers & exchanges ──
     "GS", "MS", "SCHW", "BLK", "BX", "KKR", "APO", "CG", "TROW", "BEN",
     "IVZ", "AMP", "RJF", "LPLA", "HOOD", "IBKR", "VIRT", "CME", "ICE", "NDAQ", "CBOE",
+    "JEF", "EVR", "LAZ", "PJT", "HLI", "MC", "SF", "ARES", "OWL", "TPG", "STT", "BK", "NTRS",
     # ── Payments & fintech ──
     "V", "MA", "PYPL", "AXP", "FIS", "FISV", "GPN", "TOST", "AFRM", "SOFI", "UPST", "SQ",
+    "XYZ", "NU", "FOUR", "BILL", "WEX", "CPAY", "PAYX", "ADP", "BR",
     # ── Crypto-linked ──
     "COIN", "MARA", "RIOT", "CLSK", "HUT", "MSTR", "BITF", "CIFR", "WULF",
+    "CORZ", "IREN", "HIVE", "BTBT", "GLXY", "CRCL",
     # ── Insurance ──
     "BRK-B", "PGR", "ALL", "TRV", "CB", "AIG", "MET", "PRU", "AFL", "HIG",
     "LNC", "GL", "CINF", "WRB", "MKL",
+    "MMC", "AON", "AJG", "BRO", "WTW", "ACGL", "RNR", "EG", "KNSL", "LMND",
+    "ROOT", "UNM", "PFG", "RGA", "VOYA",
     # ── Pharma ──
     "LLY", "PFE", "MRK", "JNJ", "ABBV", "BMY", "ZTS", "VTRS", "OGN", "JAZZ", "NVO", "AZN",
+    "GSK", "SNY", "TEVA", "ELAN", "RPRX",
     # ── Biotech ──
     "AMGN", "GILD", "REGN", "VRTX", "MRNA", "BIIB", "ALNY", "BMRN", "INCY",
     "SRPT", "NBIX", "EXAS", "IONS", "UTHR", "RARE",
+    "CRSP", "NTLA", "BEAM", "VKTX", "ARWR", "MDGL", "AXSM", "ACAD", "HALO",
+    "ROIV", "SMMT", "INSM", "LEGN", "RVMD",
     # ── Medical devices & life-science tools ──
     "ABT", "TMO", "DHR", "MDT", "SYK", "BSX", "BDX", "ISRG", "EW", "ZBH",
     "BAX", "A", "IQV", "RMD", "DXCM", "PODD", "ALGN", "HOLX", "WAT", "MTD", "ILMN",
+    "GEHC", "SOLV", "STE", "COO", "TFX", "PEN", "MASI", "RVTY", "AVTR", "CRL",
+    "TECH", "BIO", "IRTC", "GMED",
     # ── Managed care & health services ──
     "UNH", "CVS", "CI", "HUM", "ELV", "CNC", "MOH", "MCK", "COR", "CAH", "HCA", "UHS", "DVA",
+    "THC", "EHC", "ENSG", "CHE", "OSCR", "HIMS", "DOCS", "TDOC", "LH", "DGX", "CLOV",
     # ── Retail & e-commerce ──
     "WMT", "TGT", "COST", "HD", "LOW", "DG", "DLTR", "BJ", "KR", "ACI",
     "ROST", "TJX", "BURL", "GPS", "M", "JWN", "KSS", "BBY", "ORLY", "AZO",
     "AAP", "TSCO", "ULTA", "FIVE", "GME", "BBWI", "W", "CHWY", "CVNA", "KMX",
+    "ANF", "AEO", "URBN", "DKS", "ASO", "BOOT", "WSM", "RH", "FND", "OLLI",
+    "GPC", "SFM", "CASY", "MUSA",
     # ── Apparel & luxury ──
     "NKE", "LULU", "DECK", "SKX", "CROX", "VFC", "RL", "PVH", "HBI", "UAA", "ONON", "BIRK",
+    "TPR", "CPRI", "LEVI", "SIG",
     # ── Food, beverage & household ──
     "KO", "PEP", "PG", "MDLZ", "GIS", "K", "HSY", "CAG", "CPB", "SJM",
     "KHC", "HRL", "TSN", "STZ", "TAP", "MNST", "CELH", "KDP", "CL", "KMB", "CHD", "EL",
+    "BROS", "COCO", "UTZ", "LW", "FRPT", "POST", "MKC", "BG", "ADM", "INGR",
+    "SYY", "USFD", "PFGC", "DAR", "FLO",
     # ── Restaurants ──
     "MCD", "SBUX", "CMG", "YUM", "QSR", "DPZ", "DRI", "TXRH", "WEN", "SHAK", "CAVA", "WING",
+    "EAT", "PZZA", "JACK", "SG", "PTLO", "CBRL", "BLMN",
     # ── Autos & EV ──
     "TSLA", "F", "GM", "RIVN", "LCID", "NIO", "LI", "XPEV", "STLA", "HMC", "TM", "APTV", "LEA", "BWA",
+    "MBLY", "ALV", "GNTX", "GT", "HOG", "THO", "WGO", "LKQ", "PAG", "AN", "LAD", "ABG", "PII",
     # ── Energy: majors, E&P, services ──
     "XOM", "CVX", "COP", "OXY", "EOG", "PXD", "DVN", "FANG", "HES", "MRO",
     "APA", "CTRA", "SLB", "HAL", "BKR", "NOV", "FTI", "PSX", "VLO", "MPC", "OKE", "KMI", "WMB", "LNG",
+    "EQT", "AR", "RRC", "EXE", "MTDR", "PR", "CHRD", "SM", "MUR", "CRC",
+    "ET", "EPD", "TRGP", "WES", "PAA", "DTM", "DINO", "PBF", "DK",
+    "CHX", "LBRT", "HP", "PTEN", "RIG", "VAL", "NE", "WFRD", "TDW",
+    # ── Clean energy & power equipment ──
+    "FSLR", "ENPH", "SEDG", "RUN", "NXT", "ARRY", "BE", "PLUG", "GEV", "FLNC",
     # ── Utilities & power ──
     "NEE", "DUK", "SO", "D", "AEP", "EXC", "XEL", "ED", "WEC", "ES",
     "PEG", "SRE", "PCG", "EIX", "FE", "AEE", "CMS", "DTE", "PPL", "VST", "CEG", "NRG",
+    "ETR", "CNP", "NI", "LNT", "EVRG", "PNW", "ATO", "AES", "IDA", "OGE", "TLN",
     # ── Airlines & travel ──
     "DAL", "UAL", "AAL", "LUV", "ALK", "JBLU", "SAVE", "HA", "RCL", "CCL", "NCLH", "MAR", "HLT", "H", "WH",
+    "SKYW", "ALGT", "TCOM", "VIK",
     # ── Aerospace & defense ──
     "BA", "LMT", "RTX", "NOC", "GD", "LHX", "HII", "TDG", "HWM", "TXT", "SPR", "AXON", "LDOS", "BAH",
+    "HEI", "CW", "WWD", "KTOS", "AVAV", "MRCY", "DRS",
     # ── Industrials & machinery ──
     "CAT", "DE", "GE", "HON", "MMM", "EMR", "ETN", "ITW", "PH", "CMI",
     "PCAR", "ROK", "DOV", "IR", "SWK", "FAST", "GWW", "URI", "WM", "RSG",
+    "TT", "CARR", "OTIS", "JCI", "LII", "PNR", "AOS", "XYL", "IEX", "NDSN",
+    "GGG", "AME", "ROP", "EME", "FIX", "PWR", "MAS", "ALLE", "BLDR", "POOL",
+    "WSO", "FERG", "CSL", "TREX", "MLI",
+    # ── Business & HR services ──
+    "CTAS", "CPRT", "RHI", "MAN", "G", "EXLS",
     # ── Transport & logistics ──
     "UPS", "FDX", "UNP", "CSX", "NSC", "ODFL", "JBHT", "CHRW", "XPO", "SAIA",
+    "KNX", "SNDR", "WERN", "LSTR", "GXO", "EXPD", "MATX", "R", "UHAL", "ARCB",
     # ── Telecom ──
     "T", "VZ", "TMUS", "LUMN", "USM", "TDS",
+    "CHTR", "ATUS", "CABO", "IRDM", "SATS", "VSAT", "GSAT",
     # ── REITs & real estate ──
     "AMT", "PLD", "CCI", "EQIX", "DLR", "SPG", "O", "PSA", "WELL", "VTR",
     "AVB", "EQR", "MAA", "ESS", "INVH", "ARE", "BXP", "VNO", "IRM", "WY", "CBRE", "Z", "OPEN",
+    "VICI", "GLPI", "EXR", "CUBE", "REXR", "STAG", "KIM", "REG", "FRT", "NNN",
+    "ADC", "WPC", "HST", "CPT", "UDR", "ELS", "SUI", "AMH", "SBAC", "OHI", "DOC", "COLD",
     # ── Materials & chemicals ──
     "LIN", "APD", "SHW", "ECL", "DD", "DOW", "LYB", "PPG", "NUE", "STLD",
     "CLF", "X", "AA", "FCX", "NEM", "MOS", "CF", "ALB", "VMC", "MLM",
+    "CTVA", "FMC", "EMN", "CE", "AVY", "IP", "PKG", "BALL", "CCK", "AMCR",
+    "RS", "CMC", "ATI", "CRS", "SCCO", "RGLD", "AEM", "CCJ", "UEC", "HL", "CDE", "LEU", "UUUU",
     # ── Homebuilders ──
     "DHI", "LEN", "PHM", "NVR", "TOL", "KBH", "TMHC", "MTH",
+    "TPH", "GRBK", "CCS", "IBP", "OC",
     # ── Gaming & leisure ──
     "LVS", "MGM", "WYNN", "CZR", "PENN", "DKNG", "BYD", "CHDN", "PLNT", "PTON",
+    "FLUT", "RSI", "GENI", "LNW", "IGT", "FUN", "RRR", "LTH",
     # ── Attention regulars ──
     "AMC", "BBAI", "SOUN", "IONQ", "RGTI", "QBTS", "LUNR", "RKLB", "ASTS", "JOBY", "ACHR", "NNE", "OKLO", "SMR",
+    "CRWV", "NBIS", "APLD", "PL", "QUBT", "TEM", "DJT", "RUM",
 ]
 
 
