@@ -3313,6 +3313,34 @@ export async function getPolymarketSharpResults(conditionIds: string[]): Promise
   `) as unknown as PolymarketWalletResultRow[];
 }
 
+export type PolymarketSharpAlertRow = {
+  wallet: string;
+  name: string;
+  archetype: string;
+  side: string;
+  outcome: string;
+  size: number;
+  price: number;
+  filled_at: string;
+};
+
+// SEC-29: recent sharp-wallet entries into a ticker's still-open earnings
+// market - written by polymarket_earnings_sync.py's fill-ingestion pass
+// (polymarket_sharp_alerts). Python-owned table, no ensureSchema call here;
+// the caller (the /api/market/earnings-alerts route) is fail-soft on error.
+export async function getPolymarketSharpAlerts(ticker: string, limit = 20): Promise<PolymarketSharpAlertRow[]> {
+  const sql = getSql();
+  const cappedLimit = Math.max(1, Math.min(50, limit));
+  return (await sql`
+    SELECT wallet, name, archetype, side, outcome, size::float AS size, price::float AS price,
+           filled_at::text AS filled_at
+    FROM polymarket_sharp_alerts
+    WHERE ticker = ${ticker}
+    ORDER BY filled_at DESC
+    LIMIT ${cappedLimit}
+  `) as unknown as PolymarketSharpAlertRow[];
+}
+
 export type PolymarketOpenPositionRow = {
   condition_id: string;
   wallet: string;

@@ -1601,6 +1601,25 @@ def _ensure_polymarket_schema() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS polymarket_sharp_alerts (
+                  fill_key     TEXT PRIMARY KEY,
+                  condition_id TEXT NOT NULL,
+                  ticker       TEXT NOT NULL DEFAULT '',
+                  wallet       TEXT NOT NULL,
+                  name         TEXT NOT NULL DEFAULT '',
+                  archetype    TEXT NOT NULL,
+                  side         TEXT NOT NULL,
+                  outcome      TEXT NOT NULL DEFAULT '',
+                  size         NUMERIC NOT NULL,
+                  price        NUMERIC NOT NULL,
+                  filled_at    TIMESTAMPTZ NOT NULL,
+                  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS polymarket_sharp_alerts_ticker ON polymarket_sharp_alerts (ticker, filled_at DESC)")
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS polymarket_macro_wallet_event_results (
                   event_key        TEXT NOT NULL,
                   wallet           TEXT NOT NULL,
@@ -1769,6 +1788,81 @@ def insert_polymarket_fills(rows: List[Dict[str, Any]]) -> int:
             )
             conn.commit()
     return len(prepared)
+
+
+def get_polymarket_sharp_wallet_set() -> Dict[str, Dict[str, str]]:
+    """wallet -> {name, archetype} for the sharp archetypes (early_sharp,
+    longshot) - the exact same filter used app-wide for "sharp consensus"
+    (predictions route, earnings-week route). SEC-29 alerting reuses this
+    directly instead of a separate watchlist config table, since the
+    archetype classification on polymarket_wallet_stats already IS the
+    watchlist."""
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT wallet, name, archetype FROM polymarket_wallet_stats WHERE archetype IN ('early_sharp', 'longshot')"
+            )
+            return {row["wallet"]: {"name": row["name"], "archetype": row["archetype"]} for row in cur.fetchall()}
+
+
+def insert_polymarket_sharp_alerts(rows: List[Dict[str, Any]]) -> int:
+    """Batch insert of detected sharp-wallet entries into still-open earnings
+    markets (SEC-29). fill_key (the same content-hash as polymarket_trades)
+    doubles as the dedup key, so re-ingesting a boundary page is a no-op."""
+    prepared = []
+    for row in rows:
+        fill_key = str(row.get("fill_key", "") or "")
+        if not fill_key:
+            continue
+        prepared.append((
+            fill_key,
+            str(row.get("condition_id", "") or ""),
+            _strip_nul_bytes(str(row.get("ticker", "") or "")),
+            _strip_nul_bytes(str(row.get("wallet", "") or "")),
+            _strip_nul_bytes(str(row.get("name", "") or "")),
+            str(row.get("archetype", "") or ""),
+            str(row.get("side", "") or ""),
+            str(row.get("outcome", "") or ""),
+            float(row.get("size", 0) or 0),
+            float(row.get("price", 0) or 0),
+            row.get("filled_at"),
+        ))
+    if not prepared:
+        return 0
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO polymarket_sharp_alerts
+                  (fill_key, condition_id, ticker, wallet, name, archetype, side, outcome, size, price, filled_at)
+                VALUES %s
+                ON CONFLICT (fill_key) DO NOTHING
+                """,
+                prepared,
+                page_size=max(100, len(prepared)),
+            )
+            conn.commit()
+    return len(prepared)
+
+
+def prune_old_polymarket_sharp_alerts(days: int = 30) -> int:
+    """Age-based retention for the alert feed. Unlike polymarket_trades,
+    alerts aren't a durable-results source (nothing recomputes stats from
+    them), so a simple age cutoff is sufficient - no settle-then-prune
+    ordering needed."""
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM polymarket_sharp_alerts WHERE filled_at < now() - (%s * INTERVAL '1 day')",
+                (int(days),),
+            )
+            deleted = cur.rowcount
+            conn.commit()
+    return int(deleted or 0)
 
 
 def get_polymarket_market_fills(condition_id: str) -> List[Dict[str, Any]]:

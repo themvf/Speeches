@@ -10,13 +10,17 @@ cadence affects freshness only, never completeness):
 3. Ingest new fills for every unsettled tracked market - client-side cursor
    (newest-first paging, stop below the stored max fill timestamp; the data
    API has no since-param and no trade ids, so dedup is a content-hash
-   fill_key with ON CONFLICT DO NOTHING).
+   fill_key with ON CONFLICT DO NOTHING). SEC-29: any new fill in a still-OPEN
+   market whose wallet is on the sharp watchlist (polymarket_wallet_stats
+   archetype early_sharp/longshot) is written to polymarket_sharp_alerts in
+   the same pass - no second scan of the fills.
 4. Settle newly-resolved markets into the DURABLE
    polymarket_wallet_market_results table (one compact row per
    wallet-market), then recompute polymarket_wallet_stats + archetypes from
    that table - never from raw fills.
 5. Prune raw fills of markets settled >= 7 days ago (settle-then-prune;
-   open markets keep their full tape regardless of age).
+   open markets keep their full tape regardless of age), and age out
+   polymarket_sharp_alerts older than 30 days.
 
 --backfill (one-time cold start): settles the top-volume RESOLVED earnings
 markets in memory straight into the durable results table - their raw fills
@@ -46,6 +50,7 @@ SOURCE_KEY = "polymarket_earnings_sync"
 TRADES_PAGE = 500
 MAX_INCREMENTAL_FILLS = 6000
 PRUNE_DAYS_AFTER_SETTLEMENT = 7
+PRUNE_ALERT_DAYS = 30
 RESOLUTION_PAGES = 2  # x100 recently-closed events checked per run
 
 
@@ -251,8 +256,12 @@ def run_sync(summary: Dict[str, Any]) -> None:
             resolved_now.append(market)
     summary["newly_resolved"] = len(resolved_now)
 
-    # 3. Incremental fill ingestion for every unsettled tracked market.
+    # 3. Incremental fill ingestion for every unsettled tracked market, plus
+    #    SEC-29 sharp-wallet alerting on new fills into still-open markets -
+    #    piggybacked on this same fetch so alerting never needs its own pass.
+    sharp_wallets = neon_feeds.get_polymarket_sharp_wallet_set()
     fills_written = 0
+    alerts_written = 0
     for market in tracked:
         if market["settled_at"] is not None:
             continue
@@ -260,9 +269,24 @@ def run_sync(summary: Dict[str, Any]) -> None:
             new_fills = fetch_new_fills(market["condition_id"], market["fill_cursor"])
             if new_fills:
                 fills_written += neon_feeds.insert_polymarket_fills(new_fills)
+                if market["status"] == "open" and sharp_wallets:
+                    alerts = [
+                        {
+                            "fill_key": f["fill_key"], "condition_id": f["condition_id"],
+                            "ticker": market["ticker"] or "", "wallet": f["wallet"],
+                            "name": sharp_wallets[f["wallet"]]["name"] or f["name"],
+                            "archetype": sharp_wallets[f["wallet"]]["archetype"],
+                            "side": f["side"], "outcome": f["outcome"],
+                            "size": f["size"], "price": f["price"], "filled_at": f["filled_at"],
+                        }
+                        for f in new_fills if f["wallet"] in sharp_wallets
+                    ]
+                    if alerts:
+                        alerts_written += neon_feeds.insert_polymarket_sharp_alerts(alerts)
         except Exception as exc:
             summary["errors"].append(f"fills {market['ticker'] or market['condition_id'][:10]}: {exc}")
     summary["fills_written"] = fills_written
+    summary["alerts_written"] = alerts_written
 
     # 4. Settle newly-resolved markets from their (now-complete) stored tapes,
     #    then recompute durable wallet stats once.
@@ -281,8 +305,9 @@ def run_sync(summary: Dict[str, Any]) -> None:
     if settled_count:
         summary["stats"] = recompute_wallet_stats()
 
-    # 5. Settle-then-prune raw-fill retention.
+    # 5. Settle-then-prune raw-fill retention, plus age-based alert retention.
     summary["fills_pruned"] = neon_feeds.prune_settled_polymarket_fills(PRUNE_DAYS_AFTER_SETTLEMENT)
+    summary["alerts_pruned"] = neon_feeds.prune_old_polymarket_sharp_alerts(PRUNE_ALERT_DAYS)
 
 
 def main(argv: List[str] | None = None) -> int:

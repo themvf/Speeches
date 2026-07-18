@@ -110,7 +110,9 @@ def test_run_sync_settles_before_pruning_and_only_after_resolution():
          patch.object(sync.neon_feeds, "mark_polymarket_resolved", manager.mark), \
          patch.object(sync.neon_feeds, "get_polymarket_market_fills", return_value=[]), \
          patch.object(sync.neon_feeds, "save_polymarket_settlement", manager.settle), \
-         patch.object(sync.neon_feeds, "prune_settled_polymarket_fills", manager.prune):
+         patch.object(sync.neon_feeds, "prune_settled_polymarket_fills", manager.prune), \
+         patch.object(sync.neon_feeds, "get_polymarket_sharp_wallet_set", return_value={}), \
+         patch.object(sync.neon_feeds, "prune_old_polymarket_sharp_alerts", return_value=0):
         manager.settle.return_value = 0
         manager.prune.return_value = 0
         summary = {"errors": []}
@@ -124,3 +126,50 @@ def test_run_sync_settles_before_pruning_and_only_after_resolution():
     ops = [c[0] for c in manager.mock_calls if c[0] in ("settle", "prune")]
     assert ops == ["settle", "prune"]
     assert summary["newly_resolved"] == 1 and summary["settled"] == 1
+
+
+def test_run_sync_alerts_only_on_sharp_wallets_in_open_markets():
+    """SEC-29: a fill from a sharp-watchlist wallet into a still-OPEN market
+    is written as an alert; a fill from a non-sharp wallet, or into a
+    resolved-but-unsettled market, is not."""
+    tracked = [
+        {"condition_id": "0xopen", "ticker": "AAA", "status": "open", "winner": None,
+         "settled_at": None, "fills_pruned_at": None, "end_date": None, "fill_cursor": None},
+        {"condition_id": "0xresolved", "ticker": "BBB", "status": "resolved", "winner": "Yes",
+         "settled_at": None, "fills_pruned_at": None, "end_date": None, "fill_cursor": None},
+    ]
+    open_fills = [
+        sync.fill_row("0xopen", _api_fill(NOW_TS, wallet="0xsharp", tx="0x1")),
+        sync.fill_row("0xopen", _api_fill(NOW_TS, wallet="0xrando", tx="0x2")),
+    ]
+    resolved_fills = [sync.fill_row("0xresolved", _api_fill(NOW_TS, wallet="0xsharp", tx="0x3"))]
+
+    def fake_fetch(condition_id, cursor):
+        return open_fills if condition_id == "0xopen" else resolved_fills
+
+    inserted_alerts = []
+    with patch.object(sync, "fetch_open_earnings_detailed", return_value={}), \
+         patch.object(sync, "fetch_recent_resolutions", return_value={}), \
+         patch.object(sync, "fetch_new_fills", side_effect=fake_fetch), \
+         patch.object(sync.neon_feeds, "upsert_polymarket_markets", return_value=0), \
+         patch.object(sync.neon_feeds, "get_polymarket_tracked_markets", return_value=tracked), \
+         patch.object(sync.neon_feeds, "insert_polymarket_fills", side_effect=lambda rows: len(rows)), \
+         patch.object(sync.neon_feeds, "get_polymarket_sharp_wallet_set",
+                       return_value={"0xsharp": {"name": "sharpie", "archetype": "early_sharp"}}), \
+         patch.object(sync.neon_feeds, "insert_polymarket_sharp_alerts",
+                       side_effect=lambda rows: inserted_alerts.extend(rows) or len(rows)), \
+         patch.object(sync.neon_feeds, "get_polymarket_market_fills", return_value=[]), \
+         patch.object(sync.pilot, "settle_market", return_value={}), \
+         patch.object(sync.neon_feeds, "save_polymarket_settlement", return_value=0), \
+         patch.object(sync, "recompute_wallet_stats", return_value={"wallets": 0}), \
+         patch.object(sync.neon_feeds, "prune_settled_polymarket_fills", return_value=0), \
+         patch.object(sync.neon_feeds, "prune_old_polymarket_sharp_alerts", return_value=0):
+        summary = {"errors": []}
+        sync.run_sync(summary)
+
+    # Only the sharp wallet's fill into the OPEN market became an alert.
+    assert len(inserted_alerts) == 1
+    assert inserted_alerts[0]["wallet"] == "0xsharp"
+    assert inserted_alerts[0]["condition_id"] == "0xopen"
+    assert inserted_alerts[0]["archetype"] == "early_sharp"
+    assert summary["alerts_written"] == 1

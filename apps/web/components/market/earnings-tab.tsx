@@ -39,6 +39,51 @@ function Sparkline({ series }: { series: { end: string; value: number }[] }) {
   );
 }
 
+// SEC-29: lazy sharp-wallet entry alerts, fetched only when a card is
+// expanded (same pattern as Headlines below) so collapsed cards never pay
+// for N extra requests on page load.
+function SharpAlerts({ ticker }: { ticker: string }) {
+  const [alerts, setAlerts] = useState<{ wallet: string; name: string; archetype: string; side: string; size: number; price: number; filledAt: string }[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/market/earnings-alerts?ticker=${encodeURIComponent(ticker)}`)
+      .then((r) => r.json())
+      .then((env) => {
+        if (cancelled) return;
+        if (env.ok && env.data?.alerts) setAlerts(env.data.alerts);
+        else setFailed(true);
+      })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [ticker]);
+
+  if (failed || (alerts && alerts.length === 0)) return null;
+  if (!alerts) return null;
+  return (
+    <div className="px-4 pb-3 pt-1">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+        Recent sharp entries
+      </p>
+      <ul className="space-y-1">
+        {alerts.map((a, i) => (
+          <li key={i} className="flex items-center gap-2 text-xs tabular-nums">
+            <span className="text-[10px] text-[color:var(--ink-faint)]">
+              {new Date(a.filledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </span>
+            <span style={{ color: ARCHETYPE_COLORS[a.archetype] ?? "var(--ink-soft)" }}>{a.name}</span>
+            <span style={{ color: a.side === "SELL" ? "#f87171" : "#41d39d" }}>{a.side}</span>
+            <span className="text-[color:var(--ink-faint)]">
+              {a.size.toLocaleString()} @ {(a.price * 100).toFixed(0)}¢
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // Lazy headlines via the existing per-symbol company-news endpoint; not
 // every reporting ticker is in the sector-company catalog, so 4xx/errors
 // just hide the section.
@@ -143,6 +188,7 @@ function CompanyCard({ company }: { company: EarningsWeekCompany }) {
       {open && (
         <div className="border-t border-[color:var(--line)]">
           <TickerEventChart ticker={company.ticker} />
+          <SharpAlerts ticker={company.ticker} />
           <Headlines ticker={company.ticker} />
         </div>
       )}

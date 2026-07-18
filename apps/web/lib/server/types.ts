@@ -721,6 +721,27 @@ export interface MarketEarningsWeekData {
   generatedAt: string;
 }
 
+// SEC-29: sharp-wallet entries into a still-open earnings market, detected by
+// polymarket_earnings_sync.py during its normal fill-ingestion pass (no
+// separate scan) and read on demand per ticker. Live-only - no static
+// snapshot equivalent exists, since alerts are inherently event data.
+export interface PolymarketSharpAlert {
+  wallet: string;
+  name: string;
+  archetype: "early_sharp" | "longshot";
+  side: "BUY" | "SELL";
+  outcome: string;
+  size: number;
+  price: number;
+  filledAt: string;
+}
+
+export interface MarketEarningsAlertsData {
+  ticker: string;
+  alerts: PolymarketSharpAlert[];
+  warning?: string;
+}
+
 // SEC-51: everything the event-annotated ticker chart needs in one payload.
 // Candles come from Yahoo; the three event layers are fail-soft DB joins
 // (each may be empty when the tables are missing or the ticker is quiet).
