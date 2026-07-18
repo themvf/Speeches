@@ -414,6 +414,38 @@ function normalizeGuid(raw: string, fallbackUrl: string, title: string): string 
 }
 
 const RSS_FETCH_HEADERS = { "User-Agent": "Mozilla/5.0 (compatible; PolicyHubBot/1.0)" };
+export const MAX_RSS_FEED_BYTES = 4_000_000;
+
+const RSS_DISCOVERY_FALLBACKS: ReadonlyArray<{ matches: (url: URL) => boolean; query: string }> = [
+  {
+    matches: (url) => url.hostname.endsWith("spglobal.com") && url.pathname.includes("/spdji/en/rss/"),
+    query: "site:spglobal.com/spdji/en/ corporate news when:30d",
+  },
+  {
+    matches: (url) => url.hostname === "ir.thomsonreuters.com" && url.pathname.includes("/rss/news-releases"),
+    query: "site:thomsonreuters.com/en/press-releases OR site:ir.thomsonreuters.com/news-and-events/press-releases when:30d",
+  },
+  {
+    matches: (url) => url.hostname.endsWith("tripwire.com") && url.pathname.includes("/state-of-security/feed"),
+    query: "site:tripwire.com/state-of-security when:30d",
+  },
+  {
+    matches: (url) => url.hostname.endsWith("akamai.com") && url.pathname === "/blog/rss.xml",
+    query: "site:akamai.com/blog when:30d",
+  },
+];
+
+export function rssDiscoveryFallbackUrl(feedUrl: string): string {
+  try {
+    const parsed = new URL(feedUrl);
+    const fallback = RSS_DISCOVERY_FALLBACKS.find((item) => item.matches(parsed));
+    if (!fallback) return "";
+    const params = new URLSearchParams({ q: fallback.query, hl: "en-US", gl: "US", ceid: "US:en" });
+    return `https://news.google.com/rss/search?${params.toString()}`;
+  } catch {
+    return "";
+  }
+}
 
 function webshareRotatingProxyUrl(): string {
   const username = String(process.env.WEBSHARE_PROXY_USERNAME || "").trim();
@@ -425,7 +457,7 @@ function webshareRotatingProxyUrl(): string {
 
 function shouldRetryWithWebshare(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || "");
-  return /\b(?:403|429)\b/.test(message);
+  return /\b(?:403|429)\b|fetch failed|aborted|aborterror|econnreset|etimedout|tls|socket|network/i.test(message);
 }
 
 async function fetchRssText(feedUrl: string, timeoutMs: number, proxyUrl = ""): Promise<string> {
@@ -457,16 +489,47 @@ async function fetchRssText(feedUrl: string, timeoutMs: number, proxyUrl = ""): 
   }
 }
 
-export async function fetchRssFeed(feedUrl: string, maxItems = 50, timeoutMs = 10_000): Promise<RssArticle[]> {
-  let xml: string;
-  try {
-    xml = await fetchRssText(feedUrl, timeoutMs);
-  } catch (error) {
-    const proxyUrl = webshareRotatingProxyUrl();
-    if (!proxyUrl || !shouldRetryWithWebshare(error)) throw error;
-    xml = await fetchRssText(feedUrl, timeoutMs, proxyUrl);
+function validateRssXml(xml: string, feedUrl: string): string {
+  if (xml.length > MAX_RSS_FEED_BYTES) {
+    throw new Error(`RSS feed response too large (${xml.length} bytes): ${feedUrl}`);
   }
-  if (xml.length > 2_000_000) throw new Error(`RSS feed response too large (${xml.length} bytes): ${feedUrl}`);
+  if (!/<(?:rss|feed|rdf:RDF)\b/i.test(xml)) {
+    throw new Error(`RSS feed returned non-feed content: ${feedUrl}`);
+  }
+  return xml;
+}
+
+async function fetchRssXml(feedUrl: string, timeoutMs: number): Promise<string> {
+  let lastError: unknown;
+  try {
+    return validateRssXml(await fetchRssText(feedUrl, timeoutMs), feedUrl);
+  } catch (error) {
+    lastError = error;
+  }
+
+  const proxyUrl = webshareRotatingProxyUrl();
+  if (proxyUrl && shouldRetryWithWebshare(lastError)) {
+    try {
+      return validateRssXml(await fetchRssText(feedUrl, timeoutMs, proxyUrl), feedUrl);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const discoveryFallback = rssDiscoveryFallbackUrl(feedUrl);
+  if (discoveryFallback) {
+    try {
+      return validateRssXml(await fetchRssText(discoveryFallback, timeoutMs), discoveryFallback);
+    } catch (error) {
+      lastError = new Error(`RSS source and discovery fallback failed for ${feedUrl}: ${String(error)}`, { cause: error });
+    }
+  }
+
+  throw lastError;
+}
+
+export async function fetchRssFeed(feedUrl: string, maxItems = 50, timeoutMs = 10_000): Promise<RssArticle[]> {
+  const xml = await fetchRssXml(feedUrl, timeoutMs);
 
   const itemRe = /<item[\s>]([\s\S]*?)<\/item>/gi;
   const results: RssArticle[] = [];

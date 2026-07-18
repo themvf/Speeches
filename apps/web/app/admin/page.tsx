@@ -322,6 +322,7 @@ function sourceHealthAction(source: SourceHealthSource): string {
   if (category === "blocked_403") return "Try proxy first, then rotate or replace source.";
   if (category === "rate_limited_429") return "Back off cadence or add source-specific throttling.";
   if (category === "stale_404") return "Refresh the URL or retire the connector.";
+  if (category === "billing") return "Fund or replace the configured paid provider, then retry.";
   if (category === "proxy_tunnel" || category === "network_tls") return "Check proxy/TLS path and retry.";
   if (category === "parser") return "Fix parser or feed format handling.";
   if (category === "auth") return "Check API credentials.";

@@ -441,3 +441,37 @@ def test_deepseek_relevance_filter_uses_chat_completions():
     assert [item["substack_post_id"] for item in included] == [1]
     assert excluded == []
     assert included[0]["relevance_reason"] == "Institutional markets coverage."
+
+
+class _InsufficientBalanceCompletions:
+    def create(self, **_kwargs):
+        raise RuntimeError("Error code: 402 - Insufficient Balance")
+
+
+class _InsufficientBalanceChat:
+    completions = _InsufficientBalanceCompletions()
+
+
+class _InsufficientBalanceClient:
+    chat = _InsufficientBalanceChat()
+
+
+def test_relevance_filter_retains_topic_matched_entries_when_provider_is_unfunded():
+    scraper = SubstackPublicScraper(min_delay_seconds=0)
+    entries = [{
+        "substack_post_id": 7,
+        "url": "https://example.substack.com/p/market-structure",
+        "title": "SEC market structure proposal",
+        "matched_keywords": ["securities"],
+    }]
+
+    included, excluded = scraper.filter_institutional_finance(
+        entries,
+        client=_InsufficientBalanceClient(),
+        provider="deepseek",
+    )
+
+    assert excluded == []
+    assert included[0]["relevance_classification"] == "ambiguous"
+    assert "deterministic topic filter" in included[0]["relevance_reason"]
+    assert "Insufficient Balance" in scraper.last_relevance_filter_error

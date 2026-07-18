@@ -509,6 +509,7 @@ class SubstackPublicScraper:
         self.direct_proxy_fallback = _env_bool("SUBSTACK_DIRECT_PROXY_FALLBACK", True)
         self._last_request_ts = 0.0
         self.last_discovery_debug: Dict[str, Any] = {}
+        self.last_relevance_filter_error = ""
 
     def _rate_limit(self) -> None:
         elapsed = time.time() - self._last_request_ts
@@ -995,8 +996,9 @@ class SubstackPublicScraper:
         exclusion_threshold: float = 0.8,
         batch_size: int = 20,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        self.last_relevance_filter_error = ""
         if client is None:
-            raise RuntimeError("A hosted model client is required for Substack relevance filtering")
+            self.last_relevance_filter_error = "Hosted relevance model unavailable."
         provider = _normalize_space(provider).lower() or "deepseek"
         decisions: Dict[str, Dict[str, Any]] = {}
         size = max(1, int(batch_size or 20))
@@ -1027,24 +1029,30 @@ class SubstackPublicScraper:
                 "promotion. Use personal_finance only when the content is primarily advice or promotion for an "
                 "individual consumer. Use ambiguous when evidence is insufficient. Include every post_id exactly once."
             )
-            if provider == "deepseek":
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": instruction},
-                        {"role": "user", "content": json.dumps({"candidates": candidates}, ensure_ascii=True)},
-                    ],
-                    temperature=0.1,
-                    response_format={"type": "json_object"},
-                )
-                parsed = _json_object(_chat_completion_text(response))
-            else:
-                response = client.responses.create(
-                    model=model,
-                    instructions=instruction,
-                    input=json.dumps({"candidates": candidates}, ensure_ascii=True),
-                )
-                parsed = _json_object(_response_text(response))
+            if client is None:
+                continue
+            try:
+                if provider == "deepseek":
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": instruction},
+                            {"role": "user", "content": json.dumps({"candidates": candidates}, ensure_ascii=True)},
+                        ],
+                        temperature=0.1,
+                        response_format={"type": "json_object"},
+                    )
+                    parsed = _json_object(_chat_completion_text(response))
+                else:
+                    response = client.responses.create(
+                        model=model,
+                        instructions=instruction,
+                        input=json.dumps({"candidates": candidates}, ensure_ascii=True),
+                    )
+                    parsed = _json_object(_response_text(response))
+            except Exception as exc:
+                self.last_relevance_filter_error = _normalize_space(exc)[:500]
+                continue
             raw_decisions = (
                 parsed.get("decisions")
                 if isinstance(parsed.get("decisions"), list)
@@ -1085,7 +1093,11 @@ class SubstackPublicScraper:
                 {
                     "classification": "ambiguous",
                     "confidence": 0.0,
-                    "reason": "No model decision returned.",
+                    "reason": (
+                        "Relevance model unavailable; retained by deterministic topic filter."
+                        if self.last_relevance_filter_error
+                        else "No model decision returned."
+                    ),
                 },
             )
             enriched = dict(entry)

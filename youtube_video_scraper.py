@@ -25,6 +25,11 @@ YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v={video_id}"
 SEC_YOUTUBE_DEFAULT_URL = "https://www.youtube.com/user/SECViews"
 
 
+def _is_proxy_billing_error(exc: BaseException) -> bool:
+    message = str(exc or "").lower()
+    return "402" in message or "payment required" in message or "insufficient balance" in message
+
+
 def _normalize_space(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
@@ -215,6 +220,11 @@ class YouTubeVideoScraper:
             except (IpBlocked, RequestBlocked, CouldNotRetrieveTranscript):
                 raise
             except requests.exceptions.RequestException as exc:
+                if _is_proxy_billing_error(exc):
+                    raise RuntimeError(
+                        "YouTube transcript proxy unavailable: 402 Payment Required. "
+                        "Fund or replace WEBSHARE_PROXY_* / YOUTUBE_PROXY_URL before retrying."
+                    ) from exc
                 last_error = exc
                 if attempt < attempts - 1:
                     time.sleep(2 * (attempt + 1))

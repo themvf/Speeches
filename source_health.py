@@ -189,6 +189,8 @@ def categorize_error(sample_error: str, summary: Dict[str, Any]) -> str:
         if "invalid choice" in text:
             return "invalid_choice"
         return "cli_usage_error"
+    if "402" in text or "payment required" in text or "insufficient balance" in text or "insufficient credit" in text:
+        return "billing"
     if "403" in text or "forbidden" in text:
         return "blocked_403"
     if "429" in text or "rate limit" in text or "too many requests" in text:

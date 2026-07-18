@@ -1,4 +1,5 @@
 from source_health import build_run_entry, build_source_health_report, update_source_rollup, utc_now_iso
+from youtube_video_scraper import _is_proxy_billing_error
 
 
 def test_build_run_entry_categorizes_blocked_403() -> None:
@@ -18,6 +19,20 @@ def test_build_run_entry_categorizes_blocked_403() -> None:
     rollup = update_source_rollup({}, entry)
     assert rollup["consecutive_failures"] == 1
     assert rollup["last_error_category"] == "blocked_403"
+
+
+def test_build_run_entry_categorizes_provider_billing_before_proxy_failure() -> None:
+    entry = build_run_entry(
+        {
+            "connector": "sec_youtube_video",
+            "command": "extract",
+            "ok": False,
+            "error": "ProxyError: Tunnel connection failed: 402 Payment Required",
+        }
+    )
+
+    assert entry["error_category"] == "billing"
+    assert _is_proxy_billing_error(RuntimeError(entry["sample_error"])) is True
 
 
 def test_build_source_health_report_groups_failing_and_quiet_sources() -> None:

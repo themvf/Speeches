@@ -2665,6 +2665,9 @@ def _run_connector_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         discovery_debug["relevance_checked_count"] = len(relevance_inputs)
         discovery_debug["relevance_included_count"] = len(relevance_included)
         discovery_debug["relevance_excluded_count"] = len(relevance_excluded)
+        relevance_error = str(getattr(scraper, "last_relevance_filter_error", "") or "").strip()
+        if relevance_error:
+            discovery_debug["relevance_fallback_error"] = relevance_error
     else:
         filtered_discovered = list(prefiltered_discovered)
 

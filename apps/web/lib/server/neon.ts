@@ -139,6 +139,7 @@ const DEPRECATED_RSS_FEED_KEYS = [
   "dark_reading",
   "securityweek",
   "microsoft_security_blog",
+  "www_securitieslawexchange_com_feed",
   ...RETIRED_RSS_FEED_KEYS,
 ] as const;
 
@@ -577,6 +578,7 @@ async function applyFeedSourceMigrations(sql: ReturnType<typeof neon>): Promise<
           "https://www.darkreading.com/rss.xml",
           "https://www.securityweek.com/feed/",
           "https://www.microsoft.com/en-us/security/blog/feed/",
+          "https://www.securitieslawexchange.com/feed/",
         ]})
       )
   `;
@@ -653,7 +655,13 @@ export async function getFeeds(onlyActive = false, opts: { dueOnly?: boolean } =
       WHERE active = true
         AND (
           last_refresh_at IS NULL
-          OR last_refresh_at <= now() - (GREATEST(refresh_interval_minutes, 1) * INTERVAL '1 minute')
+          OR last_refresh_at <= now() - (
+            LEAST(
+              1440,
+              GREATEST(refresh_interval_minutes, 1)
+                * POWER(2, LEAST(GREATEST(consecutive_failures, 0), 8))
+            ) * INTERVAL '1 minute'
+          )
         )
       ORDER BY last_refresh_at ASC NULLS FIRST, added_at ASC
     `;

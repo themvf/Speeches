@@ -9,7 +9,11 @@ import {
   MARKET_COMMENTARY_RSS_SOURCES,
   RETIRED_RSS_FEED_KEYS,
 } from "./rss-source-catalog.ts";
-import { DEFAULT_RSS_FEEDS } from "./server/rss-fetcher.ts";
+import {
+  DEFAULT_RSS_FEEDS,
+  MAX_RSS_FEED_BYTES,
+  rssDiscoveryFallbackUrl,
+} from "./server/rss-fetcher.ts";
 
 const EXPECTED_EXISTING_KEYS = [
   "harvard_corp_gov_forum",
@@ -94,4 +98,21 @@ test("keeps only PR Newswire Financial Services active", () => {
     "prnewswire_consumer_technology",
     "prnewswire_policy_public_interest",
   ]);
+});
+
+test("uses bounded discovery fallbacks for publishers that block server RSS fetches", () => {
+  const fallbackSources = [
+    "https://www.spglobal.com/spdji/en/rss/rss-details/?rssFeedName=corporate-news",
+    "https://ir.thomsonreuters.com/rss/news-releases.xml?items=15",
+    "https://www.tripwire.com/state-of-security/feed",
+    "https://www.akamai.com/blog/rss.xml",
+  ];
+  for (const source of fallbackSources) {
+    const fallback = new URL(rssDiscoveryFallbackUrl(source));
+    assert.equal(fallback.hostname, "news.google.com");
+    assert.equal(fallback.pathname, "/rss/search");
+  }
+  assert.equal(rssDiscoveryFallbackUrl("https://example.com/feed"), "");
+  assert.ok(MAX_RSS_FEED_BYTES >= 3_000_000);
+  assert.ok(MAX_RSS_FEED_BYTES <= 5_000_000);
 });
