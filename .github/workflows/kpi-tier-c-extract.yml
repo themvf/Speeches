@@ -10,6 +10,14 @@ on:
         description: "Comma-separated subset (blank = all Tier C companies)"
         required: false
         default: ""
+      provider:
+        description: "LLM provider"
+        required: false
+        default: "deepseek"
+        type: choice
+        options:
+          - deepseek
+          - openai
 
 permissions:
   contents: write
@@ -24,6 +32,7 @@ jobs:
     timeout-minutes: 30
     env:
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,6 +50,7 @@ jobs:
           set -euo pipefail
           python kpi_tier_c_extract.py \
             --tickers "${{ github.event.inputs.tickers }}" \
+            --provider "${{ github.event.inputs.provider || 'deepseek' }}" \
             --summary-path kpi_tier_c_summary.json
 
       - name: Commit updated snapshot

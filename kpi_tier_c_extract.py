@@ -55,8 +55,15 @@ SOURCE_KEY = "kpi_tier_c_extract"
 OUTPUT_PATH = Path("apps/web/lib/server/kpi-tier-c-data.json")
 STATE_PATH = Path("kpi_state.json")
 UA = {"User-Agent": "sec-speeches research joshbandes@gmail.com"}
-DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-MODEL = "deepseek-v4-pro"
+# DeepSeek is the primary (ticket-specified quality tier); OpenAI is the
+# fallback provider, matching the enrichment stack's existing convention -
+# added when the first live run hit DeepSeek 402 (account out of credit).
+PROVIDERS = {
+    "deepseek": {"url": "https://api.deepseek.com/chat/completions",
+                 "model": "deepseek-v4-pro", "env": "DEEPSEEK_API"},
+    "openai": {"url": "https://api.openai.com/v1/chat/completions",
+               "model": "gpt-5-mini", "env": "OPENAI_API_KEY"},
+}
 MAX_TEXT_CHARS = 80_000
 
 
@@ -159,12 +166,15 @@ def build_prompt(ticker: str, kpis: List[Dict[str, str]], text: str) -> List[Dic
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
-def call_deepseek(messages: List[Dict[str, str]], api_key: str) -> Tuple[Dict[str, Any], Dict[str, int]]:
+def call_model(messages: List[Dict[str, str]], api_key: str, provider: Dict[str, str], model: str) -> Tuple[Dict[str, Any], Dict[str, int]]:
+    body_json: Dict[str, Any] = {"model": model, "messages": messages,
+                                 "response_format": {"type": "json_object"}}
+    if not model.startswith("gpt-5"):
+        body_json["temperature"] = 0  # gpt-5* models reject temperature overrides
     resp = requests.post(
-        DEEPSEEK_URL,
+        provider["url"],
         headers={"Authorization": f"Bearer {api_key}"},
-        json={"model": MODEL, "messages": messages, "temperature": 0,
-              "response_format": {"type": "json_object"}},
+        json=body_json,
         timeout=180,
     )
     resp.raise_for_status()
@@ -225,10 +235,15 @@ def merge_company(existing: Dict[str, Any], fresh_kpis: Dict[str, Dict[str, Any]
     return merged
 
 
-def run(tickers: Optional[List[str]] = None) -> Dict[str, Any]:
-    api_key = os.environ.get("DEEPSEEK_API", "").strip()
+def run(tickers: Optional[List[str]] = None, provider_name: str = "deepseek",
+        model_override: str = "") -> Dict[str, Any]:
+    provider = PROVIDERS.get(provider_name)
+    if provider is None:
+        raise RuntimeError(f"Unknown provider '{provider_name}'.")
+    model = model_override.strip() or provider["model"]
+    api_key = os.environ.get(provider["env"], "").strip()
     if not api_key:
-        raise RuntimeError("DEEPSEEK_API is not set.")
+        raise RuntimeError(f"{provider['env']} is not set.")
     ciks = load_ciks()
     targets = {t: TIER_C_KPIS[t] for t in (tickers or sorted(TIER_C_KPIS)) if t in TIER_C_KPIS}
 
@@ -238,7 +253,7 @@ def run(tickers: Optional[List[str]] = None) -> Dict[str, Any]:
 
     summary: Dict[str, Any] = {
         "source_key": SOURCE_KEY, "connector": SOURCE_KEY, "ran_at": _utc_now_iso(),
-        "model": MODEL, "companies": {}, "errors": [],
+        "provider": provider_name, "model": model, "companies": {}, "errors": [],
         "tokens": {"prompt_tokens": 0, "completion_tokens": 0},
     }
     companies = dict(existing.get("companies", {}))
@@ -257,7 +272,7 @@ def run(tickers: Optional[List[str]] = None) -> Dict[str, Any]:
                 summary["companies"][ticker] = {"note": note, "filed_at": filing["filed_at"]}
                 continue
             text = exhibit_text(exhibit_url)
-            raw, tokens = call_deepseek(build_prompt(ticker, kpis, text), api_key)
+            raw, tokens = call_model(build_prompt(ticker, kpis, text), api_key, provider, model)
             summary["tokens"]["prompt_tokens"] += tokens["prompt_tokens"]
             summary["tokens"]["completion_tokens"] += tokens["completion_tokens"]
             fresh = parse_extraction(raw, kpis, text)
@@ -278,7 +293,7 @@ def run(tickers: Optional[List[str]] = None) -> Dict[str, Any]:
 
     payload = {
         "generatedAt": _utc_now_iso(),
-        "source": f"LLM extraction ({MODEL}) from 8-K earnings releases (EX-99)",
+        "source": f"LLM extraction ({model}) from 8-K earnings releases (EX-99)",
         "companies": companies,
     }
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -295,11 +310,13 @@ def run(tickers: Optional[List[str]] = None) -> Dict[str, Any]:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tickers", default="", help="Comma-separated subset (default: all Tier C companies)")
+    parser.add_argument("--provider", default="deepseek", choices=sorted(PROVIDERS))
+    parser.add_argument("--model", default="", help="Override the provider's default model")
     parser.add_argument("--summary-path", default="kpi_tier_c_summary.json")
     args = parser.parse_args(argv)
     tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()] or None
     try:
-        summary = run(tickers)
+        summary = run(tickers, provider_name=args.provider, model_override=args.model)
     except Exception as exc:
         summary = {"source_key": SOURCE_KEY, "connector": SOURCE_KEY,
                    "ran_at": _utc_now_iso(), "ok": False, "errors": [str(exc)],
