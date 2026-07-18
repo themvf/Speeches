@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { CompanyKpi, CompanyKpis, MarketKpiData } from "@/lib/server/types";
+import type { CompanyKpi, CompanyKpis, MarketFundamentalsData, MarketKpiData } from "@/lib/server/types";
 
 interface Props {
   data: MarketKpiData | null;
@@ -191,6 +191,69 @@ function CompanySection({ company, color }: { company: CompanyKpis; color: strin
   );
 }
 
+// SEC-54: on-demand fundamentals lookup for any ticker in the industry
+// universe, rendered with the same KPI cards as the curated companies.
+function FundamentalsLookup() {
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<MarketFundamentalsData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function lookup() {
+    const ticker = query.trim().toUpperCase();
+    if (!ticker) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/market/fundamentals?ticker=${encodeURIComponent(ticker)}`);
+      const env = (await res.json()) as { ok: boolean; data?: MarketFundamentalsData; error?: string };
+      if (env.ok && env.data) setResult(env.data);
+      else { setResult(null); setError(env.error ?? "Lookup failed"); }
+    } catch {
+      setError("Network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] p-4">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+        Look up any company — quarterly fundamentals on demand (SEC XBRL)
+      </p>
+      <div className="flex gap-2">
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setError(null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") lookup(); }}
+          placeholder="Ticker, e.g. CAT or LLY…"
+          className="w-44 rounded-lg border border-[color:var(--line)] bg-transparent px-3 py-1.5 text-sm text-[color:var(--ink)]"
+        />
+        <button
+          type="button"
+          onClick={lookup}
+          disabled={busy || !query.trim()}
+          className="rounded-lg border border-[rgba(79,213,255,0.35)] bg-[rgba(79,213,255,0.1)] px-3 py-1.5 text-sm font-medium text-[color:var(--accent)] hover:bg-[rgba(79,213,255,0.16)] disabled:opacity-50"
+        >
+          {busy ? "Fetching…" : "Fetch"}
+        </button>
+        {result && (
+          <button type="button" onClick={() => setResult(null)} className="text-[10px] text-[color:var(--ink-faint)] underline hover:text-[color:var(--accent)]">
+            clear
+          </button>
+        )}
+      </div>
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {result && (
+        <div className="mt-4 space-y-3">
+          <CompanySection company={result.company} color="#f2ab43" />
+          <p className="text-[10px] text-[color:var(--ink-faint)]">{result.note} · {result.source}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CboeTab({ data, loading, error }: Props) {
   // null = show all companies; a ticker filters to that company. Declared
   // before the early returns so hook order stays stable across renders.
@@ -235,6 +298,8 @@ export function CboeTab({ data, loading, error }: Props) {
         fiscal Q4s (full year minus nine months). Enter a CBOE strike level in any card to draw it against
         the trend and see where the listing sits relative to the recent trajectory.
       </p>
+
+      <FundamentalsLookup />
 
       {/* Company filter - one row of ticker chips over 22 companies. */}
       <div className="flex flex-wrap gap-1.5">

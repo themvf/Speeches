@@ -873,6 +873,15 @@ export interface CompanyKpis {
   kpis: CompanyKpi[];
 }
 
+// SEC-54: on-demand fundamentals for any ticker in the industry universe,
+// rendered with the CBOE tab's existing KPI card components.
+export interface MarketFundamentalsData {
+  company: CompanyKpis;
+  source: string;
+  note: string;
+  generatedAt: string;
+}
+
 export interface MarketKpiData {
   isLive: false;
   snapshotDate: string;
