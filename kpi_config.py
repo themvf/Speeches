@@ -173,3 +173,59 @@ COMPANY_KPIS: Dict[str, List[Dict[str, Any]]] = {
         _seg("experiences", "Experiences", SEG, "ExperiencesSegmentMember"),
     ]),
 }
+
+
+# ── TIER C (SEC-13): operational metrics absent from XBRL ─────────────────
+# Extracted by kpi_tier_c_extract.py from each company's 8-K earnings
+# release (EX-99) via DeepSeek, with evidence-span verification. Values land
+# as pending_review in apps/web/lib/server/kpi-tier-c-data.json; only
+# approved values render on the Market tab. `hint` is prompt guidance - keep
+# it specific enough that the model can't substitute a lookalike metric.
+TIER_C_KPIS: Dict[str, List[Dict[str, str]]] = {
+    "META": [
+        {"kpi_key": "family_dap", "label": "Family Daily Active People (DAP)", "unit": "count",
+         "hint": "Average daily active people across Meta's Family of Apps for the quarter (reported in billions - convert to a plain number of people)."},
+    ],
+    "HOOD": [
+        {"kpi_key": "funded_customers", "label": "Funded customers", "unit": "count",
+         "hint": "Number of funded customers at quarter end (reported in millions - convert to a plain count)."},
+        {"kpi_key": "arpu", "label": "Average revenue per user (ARPU)", "unit": "usd",
+         "hint": "Average revenue per user for the quarter, in dollars."},
+        {"kpi_key": "gold_subscribers", "label": "Gold subscribers", "unit": "count",
+         "hint": "Number of Robinhood Gold subscribers at quarter end (reported in millions - convert to a plain count)."},
+    ],
+    "COIN": [
+        {"kpi_key": "total_trading_volume", "label": "Total trading volume", "unit": "usd",
+         "hint": "Total quarterly trading volume in dollars (reported in billions - convert to a plain dollar amount)."},
+    ],
+    "MARA": [
+        {"kpi_key": "btc_held", "label": "BTC held", "unit": "count",
+         "hint": "Total bitcoin held on the balance sheet at period end (a count of BTC)."},
+        {"kpi_key": "btc_produced", "label": "BTC produced (quarter)", "unit": "count",
+         "hint": "Bitcoin produced/mined during the quarter (a count of BTC)."},
+        {"kpi_key": "energized_hashrate", "label": "Energized hashrate (EH/s)", "unit": "count",
+         "hint": "Energized hashrate at period end, in exahashes per second - report the EH/s number itself."},
+        {"kpi_key": "blocks_won", "label": "Blocks won (quarter)", "unit": "count",
+         "hint": "Number of bitcoin blocks won during the quarter."},
+    ],
+    "TSLA": [
+        {"kpi_key": "model_3y_production", "label": "Model 3/Y production", "unit": "count",
+         "hint": "Model 3/Y vehicles produced during the quarter."},
+        {"kpi_key": "supercharger_connectors", "label": "Supercharger connectors", "unit": "count",
+         "hint": "Total Supercharger connectors at period end."},
+        {"kpi_key": "free_cash_flow", "label": "Free cash flow", "unit": "usd",
+         "hint": "Free cash flow for the quarter in dollars (reported in millions or billions - convert to a plain dollar amount; negative if an outflow)."},
+    ],
+    "PLTR": [
+        {"kpi_key": "deals_over_1m", "label": "Deals closed ≥ $1M", "unit": "count",
+         "hint": "Number of deals closed during the quarter with total contract value of at least one million dollars."},
+    ],
+    "SMCI": [
+        {"kpi_key": "cash_used_in_operations", "label": "Cash used in operations", "unit": "usd",
+         "hint": "Net cash provided by or used in operating activities for the quarter, in dollars (negative if used)."},
+    ],
+    "MSFT": [
+        {"kpi_key": "microsoft_cloud_revenue", "label": "Microsoft Cloud revenue", "unit": "usd",
+         "hint": "Microsoft Cloud quarterly revenue in dollars (reported in billions - convert to a plain dollar amount)."},
+    ],
+}

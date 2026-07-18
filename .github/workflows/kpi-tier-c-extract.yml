@@ -1,0 +1,68 @@
+name: KPI Tier C Extraction (8-K earnings releases)
+
+# SEC-13: DeepSeek extraction of non-XBRL operational KPIs from 8-K EX-99
+# earnings releases. Manual dispatch (run after earnings weeks); values land
+# as pending_review in the committed JSON and only approved values render.
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Comma-separated subset (blank = all Tier C companies)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kpi-tier-c-extract
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Extract Tier C KPIs
+        run: |
+          set -euo pipefail
+          python kpi_tier_c_extract.py \
+            --tickers "${{ github.event.inputs.tickers }}" \
+            --summary-path kpi_tier_c_summary.json
+
+      - name: Commit updated snapshot
+        run: |
+          set -euo pipefail
+          git config user.name "kpi-tier-c-extract[bot]"
+          git config user.email "kpi-tier-c-extract@users.noreply.github.com"
+          git add apps/web/lib/server/kpi-tier-c-data.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "KPI Tier C extraction: pending-review values (SEC-13)"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && break
+            sleep 5
+          done
+
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kpi-tier-c-summary-${{ github.run_id }}
+          path: kpi_tier_c_summary.json
+          if-no-files-found: ignore

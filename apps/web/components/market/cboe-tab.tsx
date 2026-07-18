@@ -171,6 +171,18 @@ function KpiCard({ kpi, color }: { kpi: CompanyKpi; color: string }) {
   );
 }
 
+// SEC-13 Tier C: counts arrive in base units (DAP 3.43e9), so compact large
+// magnitudes instead of fmt()'s full toLocaleString.
+function fmtOperational(value: number, unit: CompanyKpi["unit"]): string {
+  if (unit === "count") {
+    const abs = Math.abs(value);
+    if (abs >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
+    if (abs >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+    return value.toLocaleString();
+  }
+  return fmt(value, unit);
+}
+
 function CompanySection({ company, color }: { company: CompanyKpis; color: string }) {
   const latestEnd = company.kpis[0]?.series.at(-1)?.periodEnd;
   return (
@@ -187,6 +199,27 @@ function CompanySection({ company, color }: { company: CompanyKpis; color: strin
           <KpiCard key={kpi.kpiKey} kpi={kpi} color={color} />
         ))}
       </div>
+      {company.operational && company.operational.length > 0 && (
+        <div className="mt-3 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+            Operational (from the earnings release)
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
+            {company.operational.map((kpi) => (
+              <div key={kpi.kpiKey} className="text-xs" title={`Evidence: “${kpi.evidence}”`}>
+                <span className="text-[color:var(--ink-faint)]">{kpi.label} </span>
+                <span className="font-semibold tabular-nums text-[color:var(--ink)]">
+                  {fmtOperational(kpi.value, kpi.unit)}
+                </span>
+                {kpi.period && <span className="ml-1 text-[10px] text-[color:var(--ink-faint)]">({kpi.period})</span>}
+              </div>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[10px] text-[color:var(--ink-faint)]">
+            LLM-extracted from the 8-K earnings release (not XBRL-tagged); human-reviewed before display. Hover a value for its verbatim source quote.
+          </p>
+        </div>
+      )}
     </section>
   );
 }

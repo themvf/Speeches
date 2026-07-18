@@ -892,6 +892,20 @@ export interface CompanyKpis {
   ticker: string;
   name: string;
   kpis: CompanyKpi[];
+  // SEC-13 Tier C: operational KPIs LLM-extracted from the 8-K earnings
+  // release. Only human-approved values reach this array (pending_review /
+  // rejected entries in kpi-tier-c-data.json never leave the server).
+  operational?: TierCKpiValue[];
+}
+
+export interface TierCKpiValue {
+  kpiKey: string;
+  label: string;
+  unit: CompanyKpi["unit"];
+  value: number;
+  period: string;
+  evidence: string;
+  sourceUrl: string;
 }
 
 // SEC-54: on-demand fundamentals for any ticker in the industry universe,
