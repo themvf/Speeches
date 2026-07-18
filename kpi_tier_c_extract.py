@@ -41,7 +41,15 @@ import requests
 from bs4 import BeautifulSoup
 
 from kpi_config import NAMES, TIER_C_KPIS
-from source_health import record_source_health
+
+# source_health drags in google-cloud-storage; this workflow deliberately
+# runs on a minimal pip install (requests + bs4, no GCS creds), so health
+# recording is best-effort - same stdlib-fast-path spirit as SEC-34.
+try:
+    from source_health import record_source_health
+except ImportError:  # pragma: no cover - exercised only in the minimal env
+    def record_source_health(summary):  # type: ignore[misc]
+        return None
 
 SOURCE_KEY = "kpi_tier_c_extract"
 OUTPUT_PATH = Path("apps/web/lib/server/kpi-tier-c-data.json")
