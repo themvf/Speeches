@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-07-17T22:05:07Z",
+ "generatedAt": "2026-07-23T11:29:00Z",
  "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
  "companies": {
   "AAPL": {
@@ -291,11 +291,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 1.89,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
        "value": 2.12,
        "derived": false
@@ -329,6 +324,11 @@
        "end": "2026-03-31",
        "value": 5.11,
        "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": 9.11,
+       "derived": false
       }
      ]
     },
@@ -338,37 +338,42 @@
      "series": [
       {
        "end": "2024-06-30",
-       "value": 84742000000.0,
+       "value": 106000000.0,
        "derived": false
       },
       {
        "end": "2024-09-30",
-       "value": 88268000000.0,
+       "value": -6000000.0,
        "derived": false
       },
       {
        "end": "2025-03-31",
-       "value": 90234000000.0,
+       "value": 242000000.0,
        "derived": false
       },
       {
        "end": "2025-06-30",
-       "value": 96428000000.0,
+       "value": -138000000.0,
        "derived": false
       },
       {
        "end": "2025-09-30",
-       "value": 102346000000.0,
+       "value": -237000000.0,
        "derived": false
       },
       {
        "end": "2025-12-31",
-       "value": 113828000000.0,
+       "value": -100000000.0,
        "derived": true
       },
       {
        "end": "2026-03-31",
-       "value": 109896000000.0,
+       "value": -211000000.0,
+       "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": 97000000.0,
        "derived": false
       }
      ]
@@ -378,135 +383,43 @@
      "unit": "usd",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 23619000000.0,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
-       "value": 26301000000.0,
+       "value": -90000000.0,
        "derived": false
       },
       {
        "end": "2024-12-31",
-       "value": 26536000000.0,
+       "value": -151000000.0,
        "derived": true
       },
       {
        "end": "2025-03-31",
-       "value": 34540000000.0,
+       "value": 281000000.0,
        "derived": false
       },
       {
        "end": "2025-06-30",
-       "value": 28196000000.0,
+       "value": -78000000.0,
        "derived": false
       },
       {
        "end": "2025-09-30",
-       "value": 34979000000.0,
+       "value": -147000000.0,
        "derived": false
       },
       {
        "end": "2025-12-31",
-       "value": 34455000000.0,
+       "value": -51000000.0,
        "derived": true
       },
       {
        "end": "2026-03-31",
-       "value": 62578000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "youtube_ads_revenues": {
-     "label": "YouTube ads revenues",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-06-30",
-       "value": 8663000000.0,
+       "value": -139000000.0,
        "derived": false
       },
       {
-       "end": "2024-09-30",
-       "value": 8921000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-12-31",
-       "value": 10473000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-03-31",
-       "value": 8927000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-06-30",
-       "value": 9796000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-09-30",
-       "value": 10261000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-12-31",
-       "value": 11383000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-03-31",
-       "value": 9883000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "google_cloud_revenues": {
-     "label": "Google Cloud revenues",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-06-30",
-       "value": 10347000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-09-30",
-       "value": 11353000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-12-31",
-       "value": 11955000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-03-31",
-       "value": 12260000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-06-30",
-       "value": 13624000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-09-30",
-       "value": 15157000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-12-31",
-       "value": 17664000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-03-31",
-       "value": 20028000000.0,
+       "end": "2026-06-30",
+       "value": 51300000000.0,
        "derived": false
       }
      ]
@@ -4558,11 +4471,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 0.42,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
        "value": 0.62,
        "derived": false
@@ -4596,6 +4504,11 @@
        "end": "2026-03-31",
        "value": 0.13,
        "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": 0.32,
+       "derived": false
       }
      ]
     },
@@ -4603,11 +4516,6 @@
      "label": "Revenue",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-06-30",
-       "value": 25500000000.0,
-       "derived": false
-      },
       {
        "end": "2024-09-30",
        "value": 25182000000.0,
@@ -4635,12 +4543,17 @@
       },
       {
        "end": "2025-12-31",
-       "value": 24901000000.0,
+       "value": -69496000000.0,
        "derived": true
       },
       {
        "end": "2026-03-31",
-       "value": 22387000000.0,
+       "value": 87000000.0,
+       "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": 318000000.0,
        "derived": false
       }
      ]
@@ -4649,11 +4562,6 @@
      "label": "Net income",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-06-30",
-       "value": 1478000000.0,
-       "derived": false
-      },
       {
        "end": "2024-09-30",
        "value": 2167000000.0,
@@ -4688,97 +4596,10 @@
        "end": "2026-03-31",
        "value": 477000000.0,
        "derived": false
-      }
-     ]
-    },
-    "automotive_revenues": {
-     "label": "Automotive revenues",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-06-30",
-       "value": 19878000000.0,
-       "derived": false
       },
       {
-       "end": "2024-09-30",
-       "value": 20016000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-12-31",
-       "value": 19798000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-03-31",
-       "value": 13967000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-06-30",
-       "value": 16661000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-09-30",
-       "value": 21205000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-12-31",
-       "value": 17693000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-03-31",
-       "value": 16234000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "energy_storage": {
-     "label": "Energy generation and storage",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-06-30",
-       "value": 3014000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-09-30",
-       "value": 2376000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-12-31",
-       "value": 3061000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-03-31",
-       "value": 2730000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-06-30",
-       "value": 2789000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-09-30",
-       "value": 3415000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-12-31",
-       "value": 3837000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-03-31",
-       "value": 2408000000.0,
+       "end": "2026-06-30",
+       "value": 1114000000.0,
        "derived": false
       }
      ]
