@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-07-24T11:21:07Z",
+ "generatedAt": "2026-07-29T11:48:25Z",
  "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
  "companies": {
   "AAPL": {
@@ -1471,11 +1471,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 0.46,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
        "value": 0.22,
        "derived": false
@@ -1509,6 +1504,11 @@
        "end": "2026-03-31",
        "value": 0.63,
        "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": -0.33,
+       "derived": false
       }
      ]
     },
@@ -1517,43 +1517,43 @@
      "unit": "usd",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 47808000000.0,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
-       "value": 46196000000.0,
+       "value": 0.0,
        "derived": false
       },
       {
        "end": "2024-12-31",
-       "value": 48211000000.0,
+       "value": 6000000.0,
        "derived": true
       },
       {
        "end": "2025-03-31",
-       "value": 40659000000.0,
+       "value": 2000000.0,
        "derived": false
       },
       {
        "end": "2025-06-30",
-       "value": 50184000000.0,
+       "value": 5000000.0,
        "derived": false
       },
       {
        "end": "2025-09-30",
-       "value": 50534000000.0,
+       "value": -11483000000.0,
        "derived": false
       },
       {
        "end": "2025-12-31",
-       "value": 45890000000.0,
+       "value": 46860000000.0,
        "derived": true
       },
       {
        "end": "2026-03-31",
-       "value": 43253000000.0,
+       "value": -9594000000.0,
+       "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": -11549000000.0,
        "derived": false
       }
      ]
@@ -1563,18 +1563,13 @@
      "unit": "usd",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 1831000000.0,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
        "value": 892000000.0,
        "derived": false
       },
       {
        "end": "2024-12-31",
-       "value": 1824000000.0,
+       "value": -4092000000.0,
        "derived": true
       },
       {
@@ -1594,196 +1589,17 @@
       },
       {
        "end": "2025-12-31",
-       "value": -11064000000.0,
+       "value": -2930000000.0,
        "derived": true
       },
       {
        "end": "2026-03-31",
        "value": 2548000000.0,
        "derived": false
-      }
-     ]
-    },
-    "ford_pro": {
-     "label": "Ford Pro",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-06-30",
-       "value": 16988000000.0,
-       "derived": false
       },
       {
-       "end": "2024-09-30",
-       "value": 15655000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-12-31",
-       "value": 16244000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-03-31",
-       "value": 15181000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-06-30",
-       "value": 18797000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-09-30",
-       "value": 17378000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-12-31",
-       "value": 14930000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-03-31",
-       "value": 14723000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "ford_blue": {
-     "label": "Ford Blue",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-06-30",
-       "value": 26670000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-09-30",
-       "value": 26238000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-12-31",
-       "value": 27273000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-03-31",
-       "value": 20997000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-06-30",
-       "value": 25784000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-09-30",
-       "value": 28018000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-12-31",
-       "value": 26220000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-03-31",
-       "value": 23858000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "ford_model_e": {
-     "label": "Ford Model e",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-06-30",
-       "value": 1149000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-09-30",
-       "value": 1173000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-12-31",
-       "value": 1415000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-03-31",
-       "value": 1242000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-06-30",
-       "value": 2357000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-09-30",
-       "value": 1783000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-12-31",
-       "value": 1288000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-03-31",
-       "value": 1232000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "ford_credit": {
-     "label": "Ford Credit",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-06-30",
-       "value": 2997000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-09-30",
-       "value": 3127000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-12-31",
-       "value": 3275000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-03-31",
-       "value": 3237000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-06-30",
-       "value": 3241000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-09-30",
-       "value": 3349000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-12-31",
-       "value": 3444000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-03-31",
-       "value": 3434000000.0,
+       "end": "2026-06-30",
+       "value": -1327000000.0,
        "derived": false
       }
      ]
