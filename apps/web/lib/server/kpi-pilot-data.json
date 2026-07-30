@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-07-30T12:02:45Z",
+ "generatedAt": "2026-07-30T20:24:28Z",
  "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
  "companies": {
   "AAPL": {
@@ -1328,11 +1328,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 0.14,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
        "value": 0.28,
        "derived": false
@@ -1366,6 +1361,11 @@
        "end": "2026-03-31",
        "value": -1.49,
        "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": -1.36,
+       "derived": false
       }
      ]
     },
@@ -1374,43 +1374,43 @@
      "unit": "usd",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 1449628000.0,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
-       "value": 1205193000.0,
+       "value": 556093000.0,
        "derived": false
       },
       {
        "end": "2024-12-31",
-       "value": 2271637000.0,
+       "value": 641064000.0,
        "derived": true
       },
       {
        "end": "2025-03-31",
-       "value": 2034295000.0,
+       "value": 698111000.0,
        "derived": false
       },
       {
        "end": "2025-06-30",
-       "value": 1497208000.0,
+       "value": 655826000.0,
        "derived": false
       },
       {
        "end": "2025-09-30",
-       "value": 1868693000.0,
+       "value": 746724000.0,
        "derived": false
       },
       {
        "end": "2025-12-31",
-       "value": 1781129000.0,
+       "value": 727387000.0,
        "derived": true
       },
       {
        "end": "2026-03-31",
-       "value": 1412982000.0,
+       "value": 583523000.0,
+       "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": 555145000.0,
        "derived": false
       }
      ]
@@ -1419,11 +1419,6 @@
      "label": "Net income",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-06-30",
-       "value": 36128000.0,
-       "derived": false
-      },
       {
        "end": "2024-09-30",
        "value": 75459000.0,
@@ -1457,6 +1452,11 @@
       {
        "end": "2026-03-31",
        "value": -394117000.0,
+       "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": -359468000.0,
        "derived": false
       }
      ]
