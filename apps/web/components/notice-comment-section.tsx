@@ -1,8 +1,11 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { buildNoticeOverview, confidenceFilterLabel, filterCommentsByConfidence, isEnrichedCommentStatus, type NoticeOverview } from "@/lib/notices-overview";
 import { fetchJson } from "@/lib/fetch-json";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface NoticeCommentItem {
   document_id: string;
@@ -28,7 +31,6 @@ interface NoticeCommentItem {
     rationale: string;
   };
 }
-
 
 interface NoticeGroupItem {
   notice_key: string;
@@ -72,10 +74,20 @@ interface NoticeCommentsResponse {
 interface DerivedNoticeGroupItem extends NoticeGroupItem {
   visible_comments: NoticeCommentItem[];
   visible_overview: NoticeOverview;
+  is_recent: boolean;
 }
+
+type SortKey = "published" | "deadline" | "comments" | "activity";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmt(value: number): string {
   return new Intl.NumberFormat("en-US").format(value || 0);
+}
+
+function parseDate(value: string): number {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
 function fmtDateOnly(value: string): string {
@@ -108,9 +120,7 @@ function familyChipClass(value: string): string {
 
 function formatPositionLabel(value: string): string {
   const normalized = String(value || "").trim();
-  if (!normalized) {
-    return "Unclear";
-  }
+  if (!normalized) return "Unclear";
   return normalized
     .split("_")
     .filter(Boolean)
@@ -125,9 +135,7 @@ function commentDisplayName(comment: NoticeCommentItem): string {
 function commentOrgSuffix(comment: NoticeCommentItem): string {
   const primary = commentDisplayName(comment);
   const org = String(comment.commenter_org || "").trim();
-  if (!org || org === primary) {
-    return "";
-  }
+  if (!org || org === primary) return "";
   return org;
 }
 
@@ -168,6 +176,30 @@ function groupPdfLabel(group: NoticeGroupItem): string {
   return "Notice PDF";
 }
 
+function collectAllTags(groups: NoticeGroupItem[]): string[] {
+  const tagCounts = new Map<string, number>();
+  for (const group of groups) {
+    for (const tag of group.tags) {
+      tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+    }
+    for (const comment of group.comments) {
+      for (const tag of comment.tags) {
+        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+      }
+    }
+  }
+  return [...tagCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 30)
+    .map(([tag]) => tag);
+}
+
+function daysAgo(n: number): number {
+  return Date.now() - n * 24 * 60 * 60 * 1000;
+}
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const OVERVIEW_POSITIONS: Array<{
   key: keyof NoticeOverview["position_counts"];
   label: string;
@@ -186,175 +218,427 @@ const CONFIDENCE_VIEW_OPTIONS = [
   { value: 0.7, label: "70%+ Confidence" }
 ] as const;
 
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: "published", label: "Published Date" },
+  { key: "deadline", label: "Comment Deadline" },
+  { key: "comments", label: "Comment Count" },
+  { key: "activity", label: "Latest Activity" }
+];
+
+const RECENCY_OPTIONS = [
+  { value: 0, label: "All Time" },
+  { value: 7, label: "Last 7 Days" },
+  { value: 30, label: "Last 30 Days" },
+  { value: 90, label: "Last 90 Days" }
+] as const;
+
+const RECENT_THRESHOLD_DAYS = 7;
+
 function pct(value: number, total: number): string {
-  if (total <= 0) {
-    return "0%";
-  }
+  if (total <= 0) return "0%";
   return `${Math.round((value / total) * 100)}%`;
 }
 
 function barWidth(value: number, total: number): string {
-  if (value <= 0 || total <= 0) {
-    return "0%";
-  }
+  if (value <= 0 || total <= 0) return "0%";
   return `${(value / total) * 100}%`;
 }
 
+function sortGroups(groups: DerivedNoticeGroupItem[], sortKey: SortKey): DerivedNoticeGroupItem[] {
+  return [...groups].sort((a, b) => {
+    switch (sortKey) {
+      case "deadline":
+        return (parseDate(b.comment_deadline) || 0) - (parseDate(a.comment_deadline) || 0);
+      case "comments":
+        return b.visible_comments.length - a.visible_comments.length || b.comment_count - a.comment_count;
+      case "activity":
+        return (parseDate(b.latest_comment_at) || 0) - (parseDate(a.latest_comment_at) || 0);
+      case "published":
+      default:
+        return (parseDate(b.published_at) || 0) - (parseDate(a.published_at) || 0);
+    }
+  });
+}
+
+
+// ─── URL State Hook ──────────────────────────────────────────────────────────
+
+function useUrlState() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const getParam = useCallback((key: string, fallback: string) => searchParams.get(key) || fallback, [searchParams]);
+
+  const setParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null || value === "" || value === "0" || value === "all" || (key === "sort" && value === "published")) {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [searchParams, router, pathname]
+  );
+
+  return { getParam, setParams };
+}
+
+// ─── Group Detail (Expandable) ───────────────────────────────────────────────
+
+function GroupDetail({ group, minConfidence }: { group: DerivedNoticeGroupItem; minConfidence: number }) {
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="flex flex-wrap gap-3 text-sm">
+        {group.url ? (
+          <a href={group.url} target="_blank" rel="noreferrer" className="link-inline">
+            {groupPrimaryLinkLabel(group)}
+          </a>
+        ) : null}
+        {group.pdf_url ? (
+          <a href={group.pdf_url} target="_blank" rel="noreferrer" className="link-inline">
+            {groupPdfLabel(group)}
+          </a>
+        ) : null}
+      </div>
+
+      {group.visible_overview.total_comments > 0 ? (
+        <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+          <section className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Comment Stance</p>
+                <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
+                  {fmt(group.visible_overview.enriched_comments)} of {fmt(group.visible_overview.total_comments)} enriched
+                </p>
+              </div>
+              <span className="tone-chip">{fmt(group.visible_overview.total_comments)} comments</span>
+            </div>
+            <div className="mt-4 space-y-3">
+              {OVERVIEW_POSITIONS.map((item) => {
+                const count = group.visible_overview.position_counts[item.key];
+                return (
+                  <div key={item.key} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3 text-xs text-[color:var(--ink-faint)]">
+                      <span>{item.label}</span>
+                      <span>{fmt(count)} | {pct(count, group.visible_overview.total_comments)}</span>
+                    </div>
+                    <div className="h-2.5 overflow-hidden rounded-full bg-[color:rgba(148,163,184,0.16)]">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: barWidth(count, group.visible_overview.total_comments),
+                          minWidth: count > 0 ? "0.75rem" : "0",
+                          background: item.fill
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Top Topics</p>
+                <p className="mt-1 text-sm text-[color:var(--ink-soft)]">Ranked by distinct comments.</p>
+              </div>
+              <span className="tone-chip">{confidenceFilterLabel(minConfidence)}</span>
+            </div>
+            {group.visible_overview.top_topics.length === 0 ? (
+              <p className="mt-4 text-sm text-[color:var(--ink-faint)]">No reliable topics yet.</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {group.visible_overview.top_topics.map((topic, index) => (
+                  <div key={topic.label} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-[color:var(--ink)]">{index + 1}. {topic.label}</span>
+                      <span className="text-[color:var(--ink-faint)]">{fmt(topic.count)} | {pct(topic.count, group.visible_overview.total_comments)}</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-[color:rgba(148,163,184,0.16)]">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,rgba(79,213,255,0.95),rgba(26,74,112,0.95))]"
+                        style={{ width: barWidth(topic.count, group.visible_overview.total_comments), minWidth: topic.count > 0 ? "0.75rem" : "0" }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {(group.tags.length > 0 || group.keywords.length > 0) && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Group Tags</p>
+            {detailChips(group.tags, "No group tags", "tag")}
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Group Keywords</p>
+            {detailChips(group.keywords, "No group keywords", "keyword")}
+          </div>
+        </div>
+      )}
+
+      <div className="soft-divider" />
+
+      {group.visible_comments.length === 0 ? (
+        <p className="text-sm text-[color:var(--ink-faint)]">
+          {minConfidence > 0
+            ? `No comments meet the ${Math.round(minConfidence * 100)}% confidence threshold.`
+            : "No linked comments are associated with this group yet."}
+        </p>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {group.visible_comments.map((comment) => (
+            <article key={comment.document_id} className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={familyChipClass(comment.source_family)}>{group.source_family_label}</span>
+                    <span className={statusClass(comment.enrichment_status)}>{comment.enrichment_status}</span>
+                  </div>
+                  <h3 className="mt-2 text-lg font-semibold leading-snug">{comment.title || "Comment"}</h3>
+                  <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
+                    {commentDisplayName(comment)}
+                    {commentOrgSuffix(comment) ? ` | ${commentOrgSuffix(comment)}` : ""}
+                  </p>
+                </div>
+                <span className="tone-chip">{fmtDateOnly(comment.published_at)}</span>
+              </div>
+
+              <p className="mt-3 text-sm text-[color:var(--ink-soft)]">
+                {comment.summary || "No summary available yet."}
+              </p>
+
+              <div className="mt-3 flex flex-wrap gap-3 text-xs text-[color:var(--ink-faint)]">
+                <span>Review: {comment.review_decision || "pending"}</span>
+                <span className={positionClass(comment.comment_position.label)}>
+                  Position: {formatPositionLabel(comment.comment_position.label)}
+                </span>
+                {comment.comment_position.confidence > 0 ? (
+                  <span>Confidence: {Math.round(comment.comment_position.confidence * 100)}%</span>
+                ) : null}
+              </div>
+              {comment.comment_position.rationale ? (
+                <p className="mt-2 text-xs text-[color:var(--ink-faint)]">{comment.comment_position.rationale}</p>
+              ) : null}
+
+              {(comment.tags.length > 0 || comment.keywords.length > 0) && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Tags</p>
+                    {detailChips(comment.tags, "No tags yet", "tag")}
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Keywords</p>
+                    {detailChips(comment.keywords, "No keywords yet", "keyword")}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                {comment.comment_url ? (
+                  <a href={comment.comment_url} target="_blank" rel="noreferrer" className="link-inline">Open comment</a>
+                ) : null}
+                {comment.pdf_url ? (
+                  <a href={comment.pdf_url} target="_blank" rel="noreferrer" className="link-inline">Comment PDF</a>
+                ) : null}
+                {!comment.pdf_url && comment.resolved_content_url && comment.resolved_content_url !== comment.comment_url ? (
+                  <a href={comment.resolved_content_url} target="_blank" rel="noreferrer" className="link-inline">Resolved file</a>
+                ) : null}
+                {!comment.comment_url && comment.url ? (
+                  <a href={comment.url} target="_blank" rel="noreferrer" className="link-inline">Source page</a>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
 export function NoticeCommentSection() {
+  const { getParam, setParams } = useUrlState();
+
   const [data, setData] = useState<NoticeCommentsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const [familyFilter, setFamilyFilter] = useState("all");
-  const [minConfidence, setMinConfidence] = useState(0);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // URL-persisted state
+  const search = getParam("q", "");
+  const familyFilter = getParam("source", "all");
+  const minConfidence = Number(getParam("confidence", "0")) || 0;
+  const sortKey = (getParam("sort", "published") as SortKey) || "published";
+  const recencyDays = Number(getParam("days", "0")) || 0;
+  const tagFilter = getParam("tag", "");
+
   const deferredSearch = useDeferredValue(search);
+
+  // State setters that push to URL
+  const setSearch = useCallback((v: string) => setParams({ q: v }), [setParams]);
+  const setFamilyFilter = useCallback((v: string) => setParams({ source: v }), [setParams]);
+  const setMinConfidence = useCallback((v: number) => setParams({ confidence: String(v) }), [setParams]);
+  const setSortKey = useCallback((v: SortKey) => setParams({ sort: v }), [setParams]);
+  const setRecencyDays = useCallback((v: number) => setParams({ days: String(v) }), [setParams]);
+  const setTagFilter = useCallback((v: string) => setParams({ tag: v }), [setParams]);
+
+  const toggleGroup = useCallback((key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     let canceled = false;
-
     const load = async () => {
       setLoading(true);
       setError("");
       try {
         const payload = await fetchJson<NoticeCommentsResponse>("/api/notices-comments");
-        if (!canceled) {
-          setData(payload);
-        }
+        if (!canceled) setData(payload);
       } catch (err) {
-        if (!canceled) {
-          setError(err instanceof Error ? err.message : "Failed to load notices and comments.");
-        }
+        if (!canceled) setError(err instanceof Error ? err.message : "Failed to load notices and comments.");
       } finally {
-        if (!canceled) {
-          setLoading(false);
-        }
+        if (!canceled) setLoading(false);
       }
     };
-
     void load();
-    return () => {
-      canceled = true;
-    };
+    return () => { canceled = true; };
   }, []);
 
+  // Derived: available source families
   const familyOptions = useMemo(() => {
-    if (!data) {
-      return [];
-    }
-
+    if (!data) return [];
     const map = new Map<string, { label: string; groupCount: number; commentCount: number }>();
     for (const group of data.groups) {
-      const current = map.get(group.source_family) || {
-        label: group.source_family_label,
-        groupCount: 0,
-        commentCount: 0
-      };
+      const current = map.get(group.source_family) || { label: group.source_family_label, groupCount: 0, commentCount: 0 };
       current.groupCount += 1;
       current.commentCount += group.comments.length;
       map.set(group.source_family, current);
     }
-
-    return [...map.entries()].map(([value, counts]) => ({
-      value,
-      label: counts.label,
-      groupCount: counts.groupCount,
-      commentCount: counts.commentCount
-    }));
+    return [...map.entries()].map(([value, counts]) => ({ value, ...counts }));
   }, [data]);
 
+  // Derived: available tags for faceted filter
+  const availableTags = useMemo(() => (data ? collectAllTags(data.groups) : []), [data]);
+
+  // Derived: filtered + sorted groups
   const filteredGroups = useMemo<DerivedNoticeGroupItem[]>(() => {
-    if (!data) {
-      return [];
-    }
+    if (!data) return [];
 
     const token = deferredSearch.trim().toLowerCase();
+    const recencyCutoff = recencyDays > 0 ? daysAgo(recencyDays) : 0;
+    const recentCutoff = daysAgo(RECENT_THRESHOLD_DAYS);
+    const tagFilterLower = tagFilter.toLowerCase();
 
-    return data.groups
+    const derived = data.groups
       .map((group) => {
         const visibleComments = filterCommentsByConfidence(group.comments, minConfidence);
+        const latestTs = Math.max(parseDate(group.published_at), parseDate(group.latest_comment_at));
         return {
           ...group,
           visible_comments: visibleComments,
-          visible_overview: minConfidence > 0 ? buildNoticeOverview(visibleComments) : group.overview
+          visible_overview: minConfidence > 0 ? buildNoticeOverview(visibleComments) : group.overview,
+          is_recent: latestTs >= recentCutoff
         };
       })
       .filter((group) => {
-        if (familyFilter !== "all" && group.source_family !== familyFilter) {
-          return false;
+        // Source filter
+        if (familyFilter !== "all" && group.source_family !== familyFilter) return false;
+
+        // Confidence filter
+        if (minConfidence > 0 && group.visible_comments.length === 0) return false;
+
+        // Recency filter
+        if (recencyCutoff > 0) {
+          const latestTs = Math.max(parseDate(group.published_at), parseDate(group.latest_comment_at));
+          if (latestTs < recencyCutoff) return false;
         }
 
-        if (minConfidence > 0 && group.visible_comments.length === 0) {
-          return false;
+        // Tag facet filter
+        if (tagFilterLower) {
+          const allTags = [
+            ...group.tags,
+            ...group.visible_comments.flatMap((c) => c.tags)
+          ].map((t) => t.toLowerCase());
+          if (!allTags.includes(tagFilterLower)) return false;
         }
 
-        if (!token) {
-          return true;
+        // Text search
+        if (token) {
+          const haystack = [
+            group.source_family_label, group.group_type_label, group.group_identifier_label,
+            group.group_identifier, group.notice_number, group.docket_id,
+            group.title, group.summary, group.published_at, group.effective_date,
+            group.comment_deadline, ...group.tags, ...group.keywords,
+            ...group.visible_comments.flatMap((c) => [
+              c.title, c.commenter_name, c.commenter_org, c.speaker, c.summary,
+              c.comment_position.label, ...c.tags, ...c.keywords
+            ])
+          ].join("\n").toLowerCase();
+          if (!haystack.includes(token)) return false;
         }
 
-        const haystack = [
-          group.source_family_label,
-          group.group_type_label,
-          group.group_identifier_label,
-          group.group_identifier,
-          group.notice_number,
-          group.docket_id,
-          group.title,
-          group.summary,
-          group.published_at,
-          group.effective_date,
-          group.comment_deadline,
-          ...group.tags,
-          ...group.keywords,
-          ...group.visible_comments.flatMap((comment) => [
-            comment.title,
-            comment.commenter_name,
-            comment.commenter_org,
-            comment.speaker,
-            comment.summary,
-            comment.comment_position.label,
-            comment.comment_position.rationale,
-            ...comment.tags,
-            ...comment.keywords
-          ])
-        ]
-          .join("\n")
-          .toLowerCase();
-
-        return haystack.includes(token);
+        return true;
       });
-  }, [data, deferredSearch, familyFilter, minConfidence]);
+
+    return sortGroups(derived, sortKey);
+  }, [data, deferredSearch, familyFilter, minConfidence, sortKey, recencyDays, tagFilter]);
 
   const filteredCommentCount = useMemo(
-    () => filteredGroups.reduce((sum, group) => sum + group.visible_comments.length, 0),
+    () => filteredGroups.reduce((sum, g) => sum + g.visible_comments.length, 0),
     [filteredGroups]
   );
+  const filteredEnrichedCount = useMemo(
+    () => filteredGroups.reduce((sum, g) => sum + g.visible_comments.filter((c) => isEnrichedCommentStatus(c.enrichment_status)).length, 0),
+    [filteredGroups]
+  );
+  const filteredPendingCount = useMemo(
+    () => filteredGroups.reduce((sum, g) => sum + g.visible_comments.filter((c) => isEnrichedCommentStatus(c.enrichment_status) && !["accepted", "edited", "rejected"].includes(c.review_decision)).length, 0),
+    [filteredGroups]
+  );
+  const recentCount = useMemo(() => filteredGroups.filter((g) => g.is_recent).length, [filteredGroups]);
 
-  const filteredEnrichedCommentCount = useMemo(
-    () =>
-      filteredGroups.reduce(
-        (sum, group) => sum + group.visible_comments.filter((comment) => isEnrichedCommentStatus(comment.enrichment_status)).length,
-        0
-      ),
-    [filteredGroups]
-  );
-
-  const filteredPendingReviewCount = useMemo(
-    () =>
-      filteredGroups.reduce(
-        (sum, group) =>
-          sum +
-          group.visible_comments.filter(
-            (comment) =>
-              isEnrichedCommentStatus(comment.enrichment_status) &&
-              !["accepted", "edited", "rejected"].includes(comment.review_decision)
-          ).length,
-        0
-      ),
-    [filteredGroups]
-  );
+  // ─── Filter pill helper ────────────────────────────────────────────────────
+  function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+    return (
+      <button
+        className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] transition ${
+          active
+            ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.14)] text-[color:var(--ink)]"
+            : "border-[color:var(--line)] text-[color:var(--ink-faint)] hover:text-[color:var(--ink-soft)]"
+        }`}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+    );
+  }
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+      {/* Header */}
       <header className="panel hero-panel reveal p-6 md:p-8">
         <span className="kicker">Notice Review</span>
         <h1 className="mt-3 text-3xl font-bold leading-tight md:text-5xl">Rulemakings &amp; Comments</h1>
@@ -364,73 +648,88 @@ export function NoticeCommentSection() {
         </p>
       </header>
 
+      {/* Filters + Stats */}
       <section className="grid gap-4 md:grid-cols-[1.3fr_0.7fr]">
-        <article className="panel reveal reveal-delay-1 p-5">
-          <label className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-            Search Rulemakings Or Comments
-          </label>
-          <input
-            className="form-control mt-3 w-full px-3 py-2 text-sm"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Docket, notice number, title, commenter, tags, keywords..."
-          />
+        <article className="panel reveal reveal-delay-1 p-5 space-y-4">
+          {/* Search */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
+              Search Rulemakings Or Comments
+            </label>
+            <input
+              className="form-control mt-2 w-full px-3 py-2 text-sm"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Docket, notice number, title, commenter, tags, keywords..."
+            />
+          </div>
 
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Source Filter</p>
+          {/* Source filter */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Source</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] ${
-                  familyFilter === "all"
-                    ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.14)] text-[color:var(--ink)]"
-                    : "border-[color:var(--line)] text-[color:var(--ink-faint)]"
-                }`}
-                onClick={() => setFamilyFilter("all")}
-              >
-                All Sources
-              </button>
-              {familyOptions.map((option) => (
-                <button
-                  key={option.value}
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] ${
-                    familyFilter === option.value
-                      ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.14)] text-[color:var(--ink)]"
-                      : "border-[color:var(--line)] text-[color:var(--ink-faint)]"
-                  }`}
-                  onClick={() => setFamilyFilter(option.value)}
-                >
-                  {option.label} {option.groupCount}/{option.commentCount}
-                </button>
+              <FilterPill active={familyFilter === "all"} onClick={() => setFamilyFilter("all")}>All Sources</FilterPill>
+              {familyOptions.map((opt) => (
+                <FilterPill key={opt.value} active={familyFilter === opt.value} onClick={() => setFamilyFilter(opt.value)}>
+                  {opt.label} {opt.groupCount}/{opt.commentCount}
+                </FilterPill>
               ))}
             </div>
           </div>
 
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Confidence View</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {CONFIDENCE_VIEW_OPTIONS.map((option) => (
-                <button
-                  key={option.label}
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] ${
-                    minConfidence === option.value
-                      ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.14)] text-[color:var(--ink)]"
-                      : "border-[color:var(--line)] text-[color:var(--ink-faint)]"
-                  }`}
-                  onClick={() => setMinConfidence(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
+          {/* Tag facet filter */}
+          {availableTags.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Topic / Tag</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <FilterPill active={!tagFilter} onClick={() => setTagFilter("")}>All Topics</FilterPill>
+                {availableTags.slice(0, 12).map((tag) => (
+                  <FilterPill key={tag} active={tagFilter === tag} onClick={() => setTagFilter(tag)}>
+                    {tag}
+                  </FilterPill>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Confidence + Recency row */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Confidence</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {CONFIDENCE_VIEW_OPTIONS.map((opt) => (
+                  <FilterPill key={opt.label} active={minConfidence === opt.value} onClick={() => setMinConfidence(opt.value)}>
+                    {opt.label}
+                  </FilterPill>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Recency</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {RECENCY_OPTIONS.map((opt) => (
+                  <FilterPill key={opt.value} active={recencyDays === opt.value} onClick={() => setRecencyDays(opt.value)}>
+                    {opt.label}
+                  </FilterPill>
+                ))}
+              </div>
             </div>
           </div>
 
-          <p className="mt-3 text-sm text-[color:var(--ink-faint)]">
-            Topic rankings are normalized into canonical buckets. Comment position is estimated from enrichment when
-            available, and the current view shows {confidenceFilterLabel(minConfidence).toLowerCase()}. SEC is grouped
-            by file number, FINRA by notice, and Regulations.gov by docket or rule link.
-          </p>
+          {/* Sort */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Sort By</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {SORT_OPTIONS.map((opt) => (
+                <FilterPill key={opt.key} active={sortKey === opt.key} onClick={() => setSortKey(opt.key)}>
+                  {opt.label}
+                </FilterPill>
+              ))}
+            </div>
+          </div>
         </article>
 
+        {/* Stats cards */}
         <section className="grid gap-3 sm:grid-cols-2">
           <article className="panel p-4">
             <p className="text-xs uppercase tracking-[0.1em]">Groups</p>
@@ -445,273 +744,114 @@ export function NoticeCommentSection() {
             </p>
           </article>
           <article className="panel p-4">
-            <p className="text-xs uppercase tracking-[0.1em]">Enriched Comments</p>
-            <p className="mt-1 text-2xl font-semibold">{loading ? "..." : `${fmt(filteredEnrichedCommentCount)} / ${fmt(data?.totals.enriched_comments || 0)}`}</p>
-          </article>
-          <article className="panel p-4">
-            <p className="text-xs uppercase tracking-[0.1em]">Pending Review</p>
+            <p className="text-xs uppercase tracking-[0.1em]">Enriched</p>
             <p className="mt-1 text-2xl font-semibold">
-              {loading ? "..." : `${fmt(filteredPendingReviewCount)} / ${fmt(data?.totals.pending_review_comments || 0)}`}
+              {loading ? "..." : `${fmt(filteredEnrichedCount)} / ${fmt(data?.totals.enriched_comments || 0)}`}
             </p>
+          </article>
+          <article className="panel p-4 relative">
+            <p className="text-xs uppercase tracking-[0.1em]">Recent Activity</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {loading ? "..." : fmt(recentCount)}
+            </p>
+            {!loading && recentCount > 0 && (
+              <span className="absolute top-3 right-3 h-2.5 w-2.5 rounded-full bg-[color:var(--accent)] animate-pulse" title={`${recentCount} groups with activity in the last ${RECENT_THRESHOLD_DAYS} days`} />
+            )}
           </article>
         </section>
       </section>
 
+      {/* Error */}
       {error ? <p className="callout callout-error">{error}</p> : null}
 
+      {/* Group List */}
       {loading ? (
-        <section className="panel p-5">
-          <p className="text-sm">Loading notice and comment groups...</p>
+        <section className="grid gap-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="panel p-5 animate-pulse">
+              <div className="h-4 w-1/3 rounded bg-[color:rgba(148,163,184,0.16)]" />
+              <div className="mt-3 h-6 w-2/3 rounded bg-[color:rgba(148,163,184,0.12)]" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-[color:rgba(148,163,184,0.08)]" />
+            </div>
+          ))}
         </section>
       ) : filteredGroups.length === 0 ? (
         <section className="panel p-5">
           <p className="text-sm">No notice or rulemaking groups matched the current filters.</p>
         </section>
       ) : (
-        <section className="grid gap-4">
-          {filteredGroups.map((group) => (
-            <article key={group.notice_key} className="panel reveal reveal-delay-2 overflow-hidden p-5">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={familyChipClass(group.source_family)}>{group.source_family_label}</span>
-                    <span className="tone-chip">{group.group_type_label}</span>
-                    {group.group_identifier ? (
-                      <span className="tone-chip">
-                        {group.group_identifier_label}: {group.group_identifier}
-                      </span>
-                    ) : null}
-                    <span className="tone-chip">{minConfidence > 0 ? `${fmt(group.visible_comments.length)} / ${fmt(group.comment_count)} shown` : `${fmt(group.comment_count)} comments`}</span>
-                    <span className={statusClass(group.enrichment_status)}>{group.enrichment_status}</span>
-                  </div>
-                  <h2 className="text-2xl font-semibold leading-tight">{group.title || "Notice or Rulemaking"}</h2>
-                  <p className="max-w-4xl text-sm text-[color:var(--ink-soft)]">
-                    {group.summary || "No summary is available yet. Enrich the record to generate one."}
-                  </p>
-                </div>
-
-                <div className="grid gap-2 text-xs text-[color:var(--ink-faint)] sm:grid-cols-2">
-                  <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.84)] px-3 py-2">
-                    <p className="uppercase tracking-[0.08em]">Published</p>
-                    <p className="mt-1 text-sm text-[color:var(--ink)]">{fmtDateOnly(group.published_at)}</p>
-                  </div>
-                  <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.84)] px-3 py-2">
-                    <p className="uppercase tracking-[0.08em]">Effective</p>
-                    <p className="mt-1 text-sm text-[color:var(--ink)]">{group.effective_date || "-"}</p>
-                  </div>
-                  <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.84)] px-3 py-2">
-                    <p className="uppercase tracking-[0.08em]">Comment Deadline</p>
-                    <p className="mt-1 text-sm text-[color:var(--ink)]">{group.comment_deadline || "-"}</p>
-                  </div>
-                  <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.84)] px-3 py-2">
-                    <p className="uppercase tracking-[0.08em]">Latest Comment</p>
-                    <p className="mt-1 text-sm text-[color:var(--ink)]">{fmtDateOnly(group.latest_comment_at)}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-3 text-sm">
-                {group.url ? (
-                  <a href={group.url} target="_blank" rel="noreferrer" className="link-inline">
-                    {groupPrimaryLinkLabel(group)}
-                  </a>
-                ) : null}
-                {group.pdf_url ? (
-                  <a href={group.pdf_url} target="_blank" rel="noreferrer" className="link-inline">
-                    {groupPdfLabel(group)}
-                  </a>
-                ) : null}
-              </div>
-
-              {group.visible_overview.total_comments > 0 ? (
-                <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-                  <section className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                          Comment Stance
-                        </p>
-                        <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
-                          {fmt(group.visible_overview.enriched_comments)} of {fmt(group.visible_overview.total_comments)} comments enriched
-                        </p>
+        <section className="grid gap-3">
+          {filteredGroups.map((group) => {
+            const isExpanded = expandedGroups.has(group.notice_key);
+            return (
+              <article key={group.notice_key} className="panel overflow-hidden">
+                {/* Compact row — always visible */}
+                <button
+                  className="w-full p-5 text-left transition hover:bg-[color:rgba(79,213,255,0.03)]"
+                  onClick={() => toggleGroup(group.notice_key)}
+                  aria-expanded={isExpanded}
+                >
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={familyChipClass(group.source_family)}>{group.source_family_label}</span>
+                        {group.group_identifier ? (
+                          <span className="tone-chip">{group.group_identifier_label}: {group.group_identifier}</span>
+                        ) : null}
+                        <span className="tone-chip">{fmt(group.comment_count)} comments</span>
+                        {group.is_recent && (
+                          <span className="rounded-full border border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.12)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--accent)]">
+                            New
+                          </span>
+                        )}
                       </div>
-                      <span className="tone-chip">{fmt(group.visible_overview.total_comments)} comments</span>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {OVERVIEW_POSITIONS.map((item) => {
-                        const count = group.visible_overview.position_counts[item.key];
-                        return (
-                          <div key={item.key} className="space-y-1.5">
-                            <div className="flex items-center justify-between gap-3 text-xs text-[color:var(--ink-faint)]">
-                              <span>{item.label}</span>
-                              <span>{fmt(count)} | {pct(count, group.visible_overview.total_comments)}</span>
-                            </div>
-                            <div className="h-2.5 overflow-hidden rounded-full bg-[color:rgba(148,163,184,0.16)]">
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: barWidth(count, group.visible_overview.total_comments),
-                                  minWidth: count > 0 ? "0.75rem" : "0",
-                                  background: item.fill
-                                }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  <section className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                          Top Topics
-                        </p>
-                        <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
-                          Canonicalized from the displayed comments and ranked by distinct comments.
-                        </p>
-                      </div>
-                      <span className="tone-chip">{confidenceFilterLabel(minConfidence)}</span>
-                    </div>
-                    {group.visible_overview.top_topics.length === 0 ? (
-                      <p className="mt-4 text-sm text-[color:var(--ink-faint)]">
-                        No reliable topics yet. Enrich more comments to populate this view.
+                      <h2 className="text-lg font-semibold leading-snug truncate">{group.title || "Notice or Rulemaking"}</h2>
+                      <p className="text-sm text-[color:var(--ink-soft)] line-clamp-1">
+                        {group.summary || "No summary available."}
                       </p>
-                    ) : (
-                      <div className="mt-4 space-y-3">
-                        {group.visible_overview.top_topics.map((topic, index) => (
-                          <div key={topic.label} className="space-y-1.5">
-                            <div className="flex items-center justify-between gap-3 text-sm">
-                              <span className="text-[color:var(--ink)]">
-                                {index + 1}. {topic.label}
-                              </span>
-                              <span className="text-[color:var(--ink-faint)]">
-                                {fmt(topic.count)} | {pct(topic.count, group.visible_overview.total_comments)}
-                              </span>
-                            </div>
-                            <div className="h-2 overflow-hidden rounded-full bg-[color:rgba(148,163,184,0.16)]">
-                              <div
-                                className="h-full rounded-full bg-[linear-gradient(90deg,rgba(79,213,255,0.95),rgba(26,74,112,0.95))]"
-                                style={{
-                                  width: barWidth(topic.count, group.visible_overview.total_comments),
-                                  minWidth: topic.count > 0 ? "0.75rem" : "0"
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                </div>
-              ) : null}
-
-              {(group.tags.length > 0 || group.keywords.length > 0) && (
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                      Group Tags
-                    </p>
-                    {detailChips(group.tags, "No group tags", "tag")}
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-[color:var(--ink-faint)] shrink-0">
+                      <span>{fmtDateOnly(group.published_at)}</span>
+                      <svg
+                        className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
                   </div>
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                      Group Keywords
-                    </p>
-                    {detailChips(group.keywords, "No group keywords", "keyword")}
+                </button>
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div className="border-t border-[color:var(--line)] px-5 pb-5">
+                    <div className="mt-4 grid gap-2 text-xs text-[color:var(--ink-faint)] sm:grid-cols-4">
+                      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.84)] px-3 py-2">
+                        <p className="uppercase tracking-[0.08em]">Published</p>
+                        <p className="mt-1 text-sm text-[color:var(--ink)]">{fmtDateOnly(group.published_at)}</p>
+                      </div>
+                      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.84)] px-3 py-2">
+                        <p className="uppercase tracking-[0.08em]">Effective</p>
+                        <p className="mt-1 text-sm text-[color:var(--ink)]">{group.effective_date || "-"}</p>
+                      </div>
+                      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.84)] px-3 py-2">
+                        <p className="uppercase tracking-[0.08em]">Deadline</p>
+                        <p className="mt-1 text-sm text-[color:var(--ink)]">{group.comment_deadline || "-"}</p>
+                      </div>
+                      <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,22,36,0.84)] px-3 py-2">
+                        <p className="uppercase tracking-[0.08em]">Latest Comment</p>
+                        <p className="mt-1 text-sm text-[color:var(--ink)]">{fmtDateOnly(group.latest_comment_at)}</p>
+                      </div>
+                    </div>
+                    <GroupDetail group={group} minConfidence={minConfidence} />
                   </div>
-                </div>
-              )}
-
-              <div className="my-5 soft-divider" />
-
-              {group.visible_comments.length === 0 ? (
-                <p className="text-sm text-[color:var(--ink-faint)]">{minConfidence > 0 ? `No comments meet the ${Math.round(minConfidence * 100)}% confidence threshold for this group.` : "No linked comments are associated with this group yet."}</p>
-              ) : (
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {group.visible_comments.map((comment) => (
-                    <article
-                      key={comment.document_id}
-                      className="rounded-2xl border border-[color:var(--line)] bg-[color:rgba(8,18,30,0.9)] p-4"
-                    >
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={familyChipClass(comment.source_family)}>{group.source_family_label}</span>
-                            <span className={statusClass(comment.enrichment_status)}>{comment.enrichment_status}</span>
-                          </div>
-                          <h3 className="mt-2 text-lg font-semibold leading-snug">{comment.title || "Comment"}</h3>
-                          <p className="mt-1 text-sm text-[color:var(--ink-soft)]">
-                            {commentDisplayName(comment)}
-                            {commentOrgSuffix(comment) ? ` | ${commentOrgSuffix(comment)}` : ""}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="tone-chip">{fmtDateOnly(comment.published_at)}</span>
-                        </div>
-                      </div>
-
-                      <p className="mt-3 text-sm text-[color:var(--ink-soft)]">
-                        {comment.summary || "No comment summary is available yet. Enrich this comment to generate one."}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-[color:var(--ink-faint)]">
-                        <span>Review: {comment.review_decision || "pending"}</span>
-                        <span className={positionClass(comment.comment_position.label)}>
-                          Position: {formatPositionLabel(comment.comment_position.label)}
-                        </span>
-                        {comment.comment_position.confidence > 0 ? (
-                          <span>Confidence: {Math.round(comment.comment_position.confidence * 100)}%</span>
-                        ) : null}
-                      </div>
-                      {comment.comment_position.rationale ? (
-                        <p className="mt-2 text-xs text-[color:var(--ink-faint)]">{comment.comment_position.rationale}</p>
-                      ) : null}
-
-                      <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                            Tags
-                          </p>
-                          {detailChips(comment.tags, "No tags yet", "tag")}
-                        </div>
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
-                            Keywords
-                          </p>
-                          {detailChips(comment.keywords, "No keywords yet", "keyword")}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-3 text-sm">
-                        {comment.comment_url ? (
-                          <a href={comment.comment_url} target="_blank" rel="noreferrer" className="link-inline">
-                            Open comment
-                          </a>
-                        ) : null}
-                        {comment.pdf_url ? (
-                          <a href={comment.pdf_url} target="_blank" rel="noreferrer" className="link-inline">
-                            Comment PDF
-                          </a>
-                        ) : null}
-                        {!comment.pdf_url && comment.resolved_content_url && comment.resolved_content_url !== comment.comment_url ? (
-                          <a href={comment.resolved_content_url} target="_blank" rel="noreferrer" className="link-inline">
-                            Resolved file
-                          </a>
-                        ) : null}
-                        {!comment.comment_url && comment.url ? (
-                          <a href={comment.url} target="_blank" rel="noreferrer" className="link-inline">
-                            Source page
-                          </a>
-                        ) : null}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </article>
-          ))}
+                )}
+              </article>
+            );
+          })}
         </section>
       )}
     </div>
