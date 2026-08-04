@@ -39,7 +39,7 @@ const RULE_SUMMARIES_BLOB = "rule_summaries.json";
 const SETTINGS_BLOB = "news_connector_settings.json";
 const TRENDS_BLOB = "trends_daily.json";
 
-const CACHE_TTL_MS = 15_000;
+const CACHE_TTL_MS = 120_000;
 
 type CacheEntry<T> = {
   loadedAt: number;

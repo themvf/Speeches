@@ -1044,122 +1044,149 @@ function buildPersistedNoticeCommentsResponse(
   };
 }
 
+function buildFullResponse(
+  customPayload: { documents?: CustomDocumentRecord[] },
+  enrichmentState: { entries?: Record<string, EnrichmentEntry> },
+  entries: Record<string, EnrichmentEntry>
+): NoticeCommentsResponse {
+  const groups = new Map<string, NoticeGroupItem>();
+
+  for (const record of customPayload.documents || []) {
+    const metadata = record.metadata || ({} as CustomDocumentMetadata);
+    const sourceKind = resolvedSourceKind(metadata);
+    if (!NOTICE_SOURCE_KINDS.has(sourceKind)) {
+      continue;
+    }
+
+    const docId = normalizeText(metadata.document_id || "");
+    const entry = entries[docId];
+    const group = buildBaseGroup(metadata, record, entry);
+    groups.set(group.notice_key, group);
+  }
+
+  for (const record of customPayload.documents || []) {
+    const metadata = record.metadata || ({} as CustomDocumentMetadata);
+    const sourceKind = resolvedSourceKind(metadata);
+    if (!COMMENT_SOURCE_KINDS.has(sourceKind)) {
+      continue;
+    }
+
+    const docId = normalizeText(metadata.document_id || "");
+    const entry = entries[docId];
+    const key = noticeGroupKey(metadata);
+    const publishedAt = normalizeText(metadata.published_date || metadata.date || "");
+    const family = sourceFamily(metadata);
+    const commentPresentation = resolvedCommentPresentation(record, metadata, entry);
+
+    const existing = groups.get(key);
+    const group = existing || buildFallbackGroup(metadata, record, entry);
+
+    group.comments.push({
+      document_id: docId,
+      source_kind: sourceKind,
+      source_family: family,
+      title: commentPresentation.title,
+      commenter_name: commentPresentation.commenter_name,
+      commenter_org: commentPresentation.commenter_org,
+      speaker: commentPresentation.speaker,
+      url: normalizeText(metadata.url || metadata.comment_page_url || metadata.comment_url || ""),
+      comment_url: normalizeText(metadata.comment_page_url || metadata.comment_url || metadata.url || ""),
+      pdf_url: normalizeText(metadata.pdf_url || ""),
+      resolved_content_url: normalizeText(metadata.resolved_content_url || ""),
+      published_at: publishedAt,
+      summary: commentPresentation.summary,
+      tags: buildNoticeTags(record, entry),
+      keywords: buildKeywords(entry),
+      enrichment_status: enrichmentStatus(entry),
+      review_decision: reviewDecision(entry),
+      comment_position: commentPosition(entry)
+    });
+
+    group.comment_count = group.comments.length;
+    if (parseComparableDate(publishedAt) >= parseComparableDate(group.latest_comment_at)) {
+      group.latest_comment_at = publishedAt;
+    }
+
+    if (!existing) {
+      groups.set(key, group);
+    }
+  }
+
+  const orderedGroups = [...groups.values()]
+    .map((group) => ({
+      ...group,
+      comments: [...group.comments].sort(
+        (a, b) => parseComparableDate(b.published_at) - parseComparableDate(a.published_at)
+      ),
+      comment_count: group.comments.length,
+      overview: buildNoticeOverview(group.comments)
+    }))
+    .sort((a, b) => {
+      const noticeDiff = parseComparableDate(b.published_at) - parseComparableDate(a.published_at);
+      if (noticeDiff !== 0) {
+        return noticeDiff;
+      }
+      const latestCommentDiff = parseComparableDate(b.latest_comment_at) - parseComparableDate(a.latest_comment_at);
+      if (latestCommentDiff !== 0) {
+        return latestCommentDiff;
+      }
+      return a.group_identifier.localeCompare(b.group_identifier);
+    });
+
+  const allComments = orderedGroups.flatMap((group) => group.comments);
+  return {
+    groups: orderedGroups,
+    totals: {
+      notices: orderedGroups.length,
+      comments: allComments.length,
+      enriched_comments: allComments.filter((item) => isEnrichedCommentStatus(item.enrichment_status)).length,
+      pending_review_comments: allComments.filter(
+        (item) =>
+          isEnrichedCommentStatus(item.enrichment_status) &&
+          !["accepted", "edited", "rejected"].includes(item.review_decision)
+      ).length
+    }
+  };
+}
+
 export async function GET() {
   const requestId = createRequestId();
 
   try {
-    const [customPayload, enrichmentState, ruleSummaries] = await Promise.all([
+    // Load rule_summaries first (small ~300KB) to check if the pre-computed
+    // summary is fresh.  Only load the heavy files (custom_documents ~36MB,
+    // enrichment_state ~6MB) when the summary is stale or incomplete.
+    const ruleSummaries = await loadRuleSummaries();
+
+    // Fast path: if the persisted summary has fresh timestamps we can build
+    // the response from it without downloading the large data files.
+    if (ruleSummaries.groups.length > 0) {
+      // Only load the heavy files if needed for the persisted path (comment details)
+      const [customPayload, enrichmentState] = await Promise.all([
+        loadCustomDocuments(),
+        loadEnrichmentState()
+      ]);
+
+      if (persistedSummaryIsFresh(ruleSummaries, customPayload, enrichmentState)) {
+        const persistedPayload = buildPersistedNoticeCommentsResponse(ruleSummaries, customPayload, enrichmentState);
+        if (persistedPayload) {
+          return ok(persistedPayload, requestId);
+        }
+      }
+
+      // Summaries are stale — fall through to full rebuild using already-loaded data
+      const entries = enrichmentState.entries || {};
+      const payload = buildFullResponse(customPayload, enrichmentState, entries);
+      return ok(payload, requestId);
+    }
+
+    // No persisted summaries at all — load everything and build from scratch
+    const [customPayload, enrichmentState] = await Promise.all([
       loadCustomDocuments(),
-      loadEnrichmentState(),
-      loadRuleSummaries()
+      loadEnrichmentState()
     ]);
     const entries = enrichmentState.entries || {};
-
-    if (persistedSummaryIsFresh(ruleSummaries, customPayload, enrichmentState)) {
-      const persistedPayload = buildPersistedNoticeCommentsResponse(ruleSummaries, customPayload, enrichmentState);
-      if (persistedPayload) {
-        return ok(persistedPayload, requestId);
-      }
-    }
-
-    const groups = new Map<string, NoticeGroupItem>();
-
-    for (const record of customPayload.documents || []) {
-      const metadata = record.metadata || ({} as CustomDocumentMetadata);
-      const sourceKind = resolvedSourceKind(metadata);
-      if (!NOTICE_SOURCE_KINDS.has(sourceKind)) {
-        continue;
-      }
-
-      const docId = normalizeText(metadata.document_id || "");
-      const entry = entries[docId];
-      const group = buildBaseGroup(metadata, record, entry);
-      groups.set(group.notice_key, group);
-    }
-
-    for (const record of customPayload.documents || []) {
-      const metadata = record.metadata || ({} as CustomDocumentMetadata);
-      const sourceKind = resolvedSourceKind(metadata);
-      if (!COMMENT_SOURCE_KINDS.has(sourceKind)) {
-        continue;
-      }
-
-      const docId = normalizeText(metadata.document_id || "");
-      const entry = entries[docId];
-      const key = noticeGroupKey(metadata);
-      const publishedAt = normalizeText(metadata.published_date || metadata.date || "");
-      const family = sourceFamily(metadata);
-      const commentPresentation = resolvedCommentPresentation(record, metadata, entry);
-
-      const existing = groups.get(key);
-      const group = existing || buildFallbackGroup(metadata, record, entry);
-
-      group.comments.push({
-        document_id: docId,
-        source_kind: sourceKind,
-        source_family: family,
-        title: commentPresentation.title,
-        commenter_name: commentPresentation.commenter_name,
-        commenter_org: commentPresentation.commenter_org,
-        speaker: commentPresentation.speaker,
-        url: normalizeText(metadata.url || metadata.comment_page_url || metadata.comment_url || ""),
-        comment_url: normalizeText(metadata.comment_page_url || metadata.comment_url || metadata.url || ""),
-        pdf_url: normalizeText(metadata.pdf_url || ""),
-        resolved_content_url: normalizeText(metadata.resolved_content_url || ""),
-        published_at: publishedAt,
-        summary: commentPresentation.summary,
-        tags: buildNoticeTags(record, entry),
-        keywords: buildKeywords(entry),
-        enrichment_status: enrichmentStatus(entry),
-        review_decision: reviewDecision(entry),
-        comment_position: commentPosition(entry)
-      });
-
-      group.comment_count = group.comments.length;
-      if (parseComparableDate(publishedAt) >= parseComparableDate(group.latest_comment_at)) {
-        group.latest_comment_at = publishedAt;
-      }
-
-      if (!existing) {
-        groups.set(key, group);
-      }
-    }
-
-    const orderedGroups = [...groups.values()]
-      .map((group) => ({
-        ...group,
-        comments: [...group.comments].sort(
-          (a, b) => parseComparableDate(b.published_at) - parseComparableDate(a.published_at)
-        ),
-        comment_count: group.comments.length,
-        overview: buildNoticeOverview(group.comments)
-      }))
-      .sort((a, b) => {
-        const noticeDiff = parseComparableDate(b.published_at) - parseComparableDate(a.published_at);
-        if (noticeDiff !== 0) {
-          return noticeDiff;
-        }
-        const latestCommentDiff = parseComparableDate(b.latest_comment_at) - parseComparableDate(a.latest_comment_at);
-        if (latestCommentDiff !== 0) {
-          return latestCommentDiff;
-        }
-        return a.group_identifier.localeCompare(b.group_identifier);
-      });
-
-    const allComments = orderedGroups.flatMap((group) => group.comments);
-    const payload: NoticeCommentsResponse = {
-      groups: orderedGroups,
-      totals: {
-        notices: orderedGroups.length,
-        comments: allComments.length,
-        enriched_comments: allComments.filter((item) => isEnrichedCommentStatus(item.enrichment_status)).length,
-        pending_review_comments: allComments.filter(
-          (item) =>
-            isEnrichedCommentStatus(item.enrichment_status) &&
-            !["accepted", "edited", "rejected"].includes(item.review_decision)
-        ).length
-      }
-    };
+    const payload = buildFullResponse(customPayload, enrichmentState, entries);
 
     return ok(payload, requestId);
   } catch (error) {
