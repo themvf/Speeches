@@ -948,6 +948,36 @@ function persistedSummaryIsFresh(
 }
 
 function buildGroupFromSummary(group: RuleSummaryGroup): NoticeGroupItem {
+  // If the summary already has embedded comment presentation data, use it directly
+  const embeddedComments: NoticeCommentItem[] = Array.isArray(group.comments)
+    ? group.comments.map((c) => ({
+        document_id: normalizeText(c.document_id || ""),
+        source_kind: normalizeText(c.source_kind || ""),
+        source_family: normalizeText(c.source_family || ""),
+        title: normalizeText(c.title || "Comment"),
+        commenter_name: normalizeText(c.commenter_name || ""),
+        commenter_org: normalizeText(c.commenter_org || ""),
+        speaker: normalizeText(c.speaker || ""),
+        url: normalizeText(c.url || ""),
+        comment_url: normalizeText(c.comment_url || ""),
+        pdf_url: normalizeText(c.pdf_url || ""),
+        resolved_content_url: normalizeText(c.resolved_content_url || ""),
+        published_at: normalizeText(c.published_at || ""),
+        summary: normalizeText(c.summary || ""),
+        tags: Array.isArray(c.tags) ? c.tags.map((item) => normalizeText(item)).filter(Boolean) : [],
+        keywords: Array.isArray(c.keywords) ? c.keywords.map((item) => normalizeText(item)).filter(Boolean) : [],
+        enrichment_status: normalizeText(c.enrichment_status || "not_enriched"),
+        review_decision: normalizeText(c.review_decision || "pending"),
+        comment_position: c.comment_position && typeof c.comment_position === "object"
+          ? {
+              label: normalizeText(c.comment_position.label || "unclear"),
+              confidence: Math.max(0, Math.min(1, Number(c.comment_position.confidence) || 0)),
+              rationale: normalizeText(c.comment_position.rationale || "")
+            }
+          : { label: "unclear", confidence: 0, rationale: "" }
+      }))
+    : [];
+
   return {
     notice_key: normalizeText(group.notice_key || ""),
     source_kind: normalizeText(group.source_kind || ""),
@@ -974,7 +1004,7 @@ function buildGroupFromSummary(group: RuleSummaryGroup): NoticeGroupItem {
     comment_count: Number(group.comment_count || 0),
     latest_comment_at: normalizeText(group.latest_comment_at || ""),
     overview: normalizedSummaryOverview(group),
-    comments: []
+    comments: embeddedComments
   };
 }
 
@@ -1040,6 +1070,46 @@ function buildPersistedNoticeCommentsResponse(
       comments: Number(summaries.totals?.comments || 0),
       enriched_comments: Number(summaries.totals?.enriched_comments || 0),
       pending_review_comments: Number(summaries.totals?.pending_review_comments || 0)
+    }
+  };
+}
+
+/**
+ * Check whether the rule_summaries payload contains embedded comment
+ * presentation data (the `comments` array on each group).  When present,
+ * we can serve the response without loading the 36MB custom_documents file.
+ */
+function summariesHaveEmbeddedComments(summaries: RuleSummariesPayload): boolean {
+  // Check first group that has comments — if it has the `comments` array, assume all do
+  for (const group of summaries.groups) {
+    if (group.comment_count > 0) {
+      return Array.isArray(group.comments) && group.comments.length > 0;
+    }
+  }
+  // No groups with comments — embedded path is fine (nothing to resolve)
+  return true;
+}
+
+/**
+ * Build the full API response directly from rule_summaries with embedded
+ * comment data.  This is the ideal fast path: only rule_summaries.json
+ * (~1-3MB) needs to be loaded, not custom_documents.json (~36MB).
+ */
+function buildResponseFromEmbeddedSummaries(summaries: RuleSummariesPayload): NoticeCommentsResponse {
+  const groups = summaries.groups.map((group) => buildGroupFromSummary(group));
+
+  const allComments = groups.flatMap((group) => group.comments);
+  return {
+    groups,
+    totals: {
+      notices: groups.length,
+      comments: allComments.length,
+      enriched_comments: allComments.filter((item) => isEnrichedCommentStatus(item.enrichment_status)).length,
+      pending_review_comments: allComments.filter(
+        (item) =>
+          isEnrichedCommentStatus(item.enrichment_status) &&
+          !["accepted", "edited", "rejected"].includes(item.review_decision)
+      ).length
     }
   };
 }
@@ -1153,15 +1223,25 @@ export async function GET() {
   const requestId = createRequestId();
 
   try {
-    // Load rule_summaries first (small ~300KB) to check if the pre-computed
-    // summary is fresh.  Only load the heavy files (custom_documents ~36MB,
-    // enrichment_state ~6MB) when the summary is stale or incomplete.
+    // Load rule_summaries first (small file, ~300KB–2MB with embedded comments).
+    // If the summaries contain embedded comment presentation data AND are fresh,
+    // we can serve the response without touching the 36MB custom_documents file.
     const ruleSummaries = await loadRuleSummaries();
 
-    // Fast path: if the persisted summary has fresh timestamps we can build
-    // the response from it without downloading the large data files.
+    // Fast path: summaries have embedded comments — serve directly without heavy files
+    if (ruleSummaries.groups.length > 0 && summariesHaveEmbeddedComments(ruleSummaries)) {
+      // Only load enrichment state to check freshness (6MB, much smaller than custom_documents)
+      const enrichmentState = await loadEnrichmentState();
+
+      if (persistedSummaryIsFresh(ruleSummaries, { updated_at: ruleSummaries.custom_documents_updated_at }, enrichmentState)) {
+        const payload = buildResponseFromEmbeddedSummaries(ruleSummaries);
+        return ok(payload, requestId);
+      }
+    }
+
+    // Legacy fast path: summaries exist but without embedded comments.
+    // Must load full custom_documents to populate comment details.
     if (ruleSummaries.groups.length > 0) {
-      // Only load the heavy files if needed for the persisted path (comment details)
       const [customPayload, enrichmentState] = await Promise.all([
         loadCustomDocuments(),
         loadEnrichmentState()
@@ -1174,7 +1254,7 @@ export async function GET() {
         }
       }
 
-      // Summaries are stale — fall through to full rebuild using already-loaded data
+      // Summaries are stale — full rebuild using already-loaded data
       const entries = enrichmentState.entries || {};
       const payload = buildFullResponse(customPayload, enrichmentState, entries);
       return ok(payload, requestId);

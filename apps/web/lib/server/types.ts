@@ -190,6 +190,31 @@ export interface RuleSummaryOverview {
   top_topics: RuleSummaryOverviewTopic[];
 }
 
+export interface RuleSummaryComment {
+  document_id: string;
+  source_kind: string;
+  source_family: string;
+  title: string;
+  commenter_name: string;
+  commenter_org: string;
+  speaker: string;
+  url: string;
+  comment_url: string;
+  pdf_url: string;
+  resolved_content_url: string;
+  published_at: string;
+  summary: string;
+  tags: string[];
+  keywords: string[];
+  enrichment_status: string;
+  review_decision: string;
+  comment_position: {
+    label: string;
+    confidence: number;
+    rationale: string;
+  };
+}
+
 export interface RuleSummaryGroup {
   notice_key: string;
   source_kind: string;
@@ -217,6 +242,7 @@ export interface RuleSummaryGroup {
   latest_comment_at: string;
   overview: RuleSummaryOverview;
   comment_document_ids: string[];
+  comments?: RuleSummaryComment[];
 }
 
 export interface RuleSummariesPayload {

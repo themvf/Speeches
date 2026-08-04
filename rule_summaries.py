@@ -633,6 +633,7 @@ def _build_base_group(metadata: Dict[str, Any], record: Dict[str, Any], entry: O
         "overview": _empty_overview(),
         "comment_document_ids": [],
         "_comment_inputs": [],
+        "_comment_presentations": [],
         "_comment_refs": [],
     }
 
@@ -655,6 +656,55 @@ def _build_fallback_group(metadata: Dict[str, Any], record: Dict[str, Any], entr
         or _normalize_text(metadata.get("rule_url") or metadata.get("notice_url") or metadata.get("source_notice_url") or metadata.get("docket_url") or metadata.get("document_url") or "")
     )
     return base
+
+
+def _build_comment_presentation(
+    record: Dict[str, Any],
+    metadata: Dict[str, Any],
+    entry: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Build the presentation fields for a comment to embed in rule_summaries.
+
+    This precomputes the fields the API needs so the 36MB custom_documents.json
+    file does not need to be loaded at request time.
+    """
+    source_kind = _resolved_source_kind(metadata)
+    family = _source_family(metadata)
+    doc_id = _normalize_text(metadata.get("document_id") or "")
+    published_at = _normalize_text(metadata.get("published_date") or metadata.get("date") or "")
+    summary = _summary_for(record, entry)
+    title = _normalize_text(metadata.get("title") or "Comment")
+    commenter_name = _normalize_text(metadata.get("commenter_name") or "")
+    commenter_org = _normalize_text(metadata.get("commenter_org") or "")
+    speaker = _normalize_text(metadata.get("speaker") or "")
+
+    # Simple submitter resolution (mirrors the TypeScript logic at a basic level)
+    primary_submitter = commenter_name or commenter_org
+    if primary_submitter and not speaker:
+        speaker = primary_submitter
+    if primary_submitter and title.lower() in ("comment", "public comment", doc_id.lower()):
+        title = f"Comment from {primary_submitter}"
+
+    return {
+        "document_id": doc_id,
+        "source_kind": source_kind,
+        "source_family": family,
+        "title": title or "Comment",
+        "commenter_name": commenter_name,
+        "commenter_org": commenter_org,
+        "speaker": speaker,
+        "url": _normalize_text(metadata.get("url") or metadata.get("comment_page_url") or metadata.get("comment_url") or ""),
+        "comment_url": _normalize_text(metadata.get("comment_page_url") or metadata.get("comment_url") or metadata.get("url") or ""),
+        "pdf_url": _normalize_text(metadata.get("pdf_url") or ""),
+        "resolved_content_url": _normalize_text(metadata.get("resolved_content_url") or ""),
+        "published_at": published_at,
+        "summary": summary,
+        "tags": _build_notice_tags(record, entry),
+        "keywords": _build_keywords(entry),
+        "enrichment_status": _enrichment_status(entry),
+        "review_decision": _review_decision(entry),
+        "comment_position": _comment_position(entry),
+    }
 
 
 def build_rule_summaries_payload(custom_payload: Dict[str, Any], enrichment_state: Dict[str, Any]) -> Dict[str, Any]:
@@ -694,6 +744,7 @@ def build_rule_summaries_payload(custom_payload: Dict[str, Any], enrichment_stat
         published_at = _normalize_text(metadata.get("published_date") or metadata.get("date") or "")
         group = groups.get(key) or _build_fallback_group(metadata, record, entry)
         group["_comment_refs"].append((doc_id, published_at))
+        group["_comment_presentations"].append(_build_comment_presentation(record, metadata, entry))
         group["_comment_inputs"].append(
             {
                 "tags": _build_notice_tags(record, entry),
@@ -713,8 +764,12 @@ def build_rule_summaries_payload(custom_payload: Dict[str, Any], enrichment_stat
     for group in groups.values():
         refs = list(group.pop("_comment_refs", []))
         comment_inputs = list(group.pop("_comment_inputs", []))
+        comment_presentations = list(group.pop("_comment_presentations", []))
         refs.sort(key=lambda item: (-_sortable_timestamp(item[1]), str(item[0])))
+        # Sort presentations in the same order as refs (by published_at desc, doc_id)
+        pres_by_id = {p["document_id"]: p for p in comment_presentations}
         group["comment_document_ids"] = [doc_id for doc_id, _ in refs]
+        group["comments"] = [pres_by_id[doc_id] for doc_id, _ in refs if doc_id in pres_by_id]
         group["comment_count"] = len(group["comment_document_ids"])
         group["overview"] = _build_notice_overview(comment_inputs)
         ordered_groups.append(group)

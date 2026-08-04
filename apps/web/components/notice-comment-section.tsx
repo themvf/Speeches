@@ -2,12 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { buildNoticeOverview, confidenceFilterLabel, filterCommentsByConfidence, isEnrichedCommentStatus, type NoticeOverview } from "@/lib/notices-overview";
-
-interface ApiEnvelope<T> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-}
+import { fetchJson } from "@/lib/fetch-json";
 
 interface NoticeCommentItem {
   document_id: string;
@@ -134,18 +129,6 @@ function commentOrgSuffix(comment: NoticeCommentItem): string {
     return "";
   }
   return org;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
-    cache: "no-store",
-    headers: { "Content-Type": "application/json" }
-  });
-  const payload = (await res.json()) as ApiEnvelope<T>;
-  if (!res.ok || !payload?.ok || !payload.data) {
-    throw new Error(payload?.error || `Request failed (${res.status})`);
-  }
-  return payload.data;
 }
 
 function corpusFilterHref(kind: "tag" | "keyword", value: string): string {

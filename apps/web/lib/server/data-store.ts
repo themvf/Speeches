@@ -660,7 +660,41 @@ function normalizeRuleSummariesPayload(payload: unknown): RuleSummariesPayload {
           },
           comment_document_ids: Array.isArray(group.comment_document_ids)
             ? group.comment_document_ids.map((value) => normalizeString(value)).filter(Boolean)
-            : []
+            : [],
+          comments: Array.isArray(group.comments)
+            ? group.comments
+                .filter((c) => c && typeof c === "object")
+                .map((c) => {
+                  const comment = c as Record<string, unknown>;
+                  const posRaw = comment.comment_position && typeof comment.comment_position === "object"
+                    ? (comment.comment_position as Record<string, unknown>)
+                    : {};
+                  return {
+                    document_id: normalizeString(comment.document_id),
+                    source_kind: normalizeString(comment.source_kind),
+                    source_family: normalizeString(comment.source_family),
+                    title: normalizeString(comment.title),
+                    commenter_name: normalizeString(comment.commenter_name),
+                    commenter_org: normalizeString(comment.commenter_org),
+                    speaker: normalizeString(comment.speaker),
+                    url: normalizeString(comment.url),
+                    comment_url: normalizeString(comment.comment_url),
+                    pdf_url: normalizeString(comment.pdf_url),
+                    resolved_content_url: normalizeString(comment.resolved_content_url),
+                    published_at: normalizeString(comment.published_at),
+                    summary: normalizeString(comment.summary),
+                    tags: Array.isArray(comment.tags) ? comment.tags.map((v) => normalizeString(v)).filter(Boolean) : [],
+                    keywords: Array.isArray(comment.keywords) ? comment.keywords.map((v) => normalizeString(v)).filter(Boolean) : [],
+                    enrichment_status: normalizeString(comment.enrichment_status),
+                    review_decision: normalizeString(comment.review_decision),
+                    comment_position: {
+                      label: normalizeString(posRaw.label || "unclear"),
+                      confidence: Math.max(0, Math.min(1, Number.parseFloat(String(posRaw.confidence ?? "0")) || 0)),
+                      rationale: normalizeString(posRaw.rationale)
+                    }
+                  };
+                })
+            : undefined
         };
       })
       .filter((group) => group.notice_key)
