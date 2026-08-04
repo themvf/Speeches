@@ -9,6 +9,7 @@ extracts full text from either comment pages or linked PDF files.
 from __future__ import annotations
 
 import io
+import logging
 import re
 import time
 from datetime import datetime
@@ -17,6 +18,15 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+
+try:
+    from curl_cffi import requests as _cffi_requests
+
+    _CURL_CFFI_AVAILABLE = True
+except ImportError:
+    _CURL_CFFI_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_space(text: Any) -> str:
@@ -80,7 +90,15 @@ def _commenter_from_label(text: str) -> str:
 
 
 class FINRACommentLetterScraper:
+    # Impersonation profiles to try in order when curl_cffi is available.
+    _IMPERSONATE_PROFILES = ("safari17_0", "chrome124", "chrome120")
+
     def __init__(self, min_delay_seconds: float = 0.8):
+        self._use_cffi = _CURL_CFFI_AVAILABLE
+        self._cffi_session: Any = None
+        self._cffi_impersonate: str = self._IMPERSONATE_PROFILES[0]
+
+        # Fallback plain-requests session (used when curl_cffi unavailable or explicitly disabled)
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -95,6 +113,12 @@ class FINRACommentLetterScraper:
         self.min_delay_seconds = max(0.0, float(min_delay_seconds))
         self._last_request_ts = 0.0
 
+    def _get_cffi_session(self) -> Any:
+        """Lazily create a curl_cffi session with browser impersonation."""
+        if self._cffi_session is None:
+            self._cffi_session = _cffi_requests.Session(impersonate=self._cffi_impersonate)
+        return self._cffi_session
+
     def _rate_limit(self):
         elapsed = time.time() - self._last_request_ts
         if elapsed < self.min_delay_seconds:
@@ -106,6 +130,26 @@ class FINRACommentLetterScraper:
         if not target:
             raise ValueError("URL is required")
         self._rate_limit()
+
+        # Try curl_cffi with browser impersonation first (bypasses Cloudflare)
+        if self._use_cffi:
+            for profile in self._IMPERSONATE_PROFILES:
+                try:
+                    self._cffi_impersonate = profile
+                    self._cffi_session = None  # reset for new profile
+                    cffi_session = self._get_cffi_session()
+                    response = cffi_session.get(target, timeout=timeout, allow_redirects=True)
+                    if response.status_code == 403 and "Just a moment" in response.text[:500]:
+                        logger.debug("curl_cffi profile %s got Cloudflare challenge, trying next", profile)
+                        continue
+                    response.raise_for_status()
+                    return response
+                except Exception as e:
+                    logger.debug("curl_cffi profile %s failed: %s", profile, e)
+                    continue
+            # If all curl_cffi profiles fail, fall through to plain requests
+            logger.warning("All curl_cffi profiles failed for %s, falling back to requests", target)
+
         response = self.session.get(target, timeout=timeout, allow_redirects=True)
         response.raise_for_status()
         return response
