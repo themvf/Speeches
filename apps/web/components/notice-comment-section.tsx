@@ -281,7 +281,8 @@ function useUrlState() {
         }
       }
       const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      const href = qs ? `${pathname}?${qs}` : pathname;
+      router.replace(href as any, { scroll: false });
     },
     [searchParams, router, pathname]
   );
