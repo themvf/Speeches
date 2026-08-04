@@ -48,6 +48,7 @@ async function loadJoins(): Promise<JoinData & { warning?: string }> {
 export async function GET(req: NextRequest) {
   const requestId = createRequestId();
   const industryLabel = (req.nextUrl.searchParams.get("industry") ?? "").trim();
+  const tickerQuery = (req.nextUrl.searchParams.get("ticker") ?? "").trim().toUpperCase();
   const joins = await loadJoins();
 
   const industries: IndustrySummary[] = industryConfig.industries.map((industry) => {
@@ -103,6 +104,43 @@ export async function GET(req: NextRequest) {
       // Biggest first - the natural read for a peer table.
       rows.sort((a, b) => (b.marketCap ?? -Infinity) - (a.marketCap ?? -Infinity));
       data.peers = { label: industry.label, rows };
+    }
+  }
+
+  // Global search (market page): one ticker's quote + financials, looked up
+  // across the whole universe regardless of industry. A single Yahoo quote
+  // fetch - bounded the same way the peer drill-down above is bounded to
+  // one industry at a time, just to one ticker here.
+  if (tickerQuery) {
+    let found: { industry: string; entry: (typeof industryConfig.industries)[number]["tickers"][number] } | null = null;
+    for (const industry of industryConfig.industries) {
+      const entry = industry.tickers.find((t) => t.ticker === tickerQuery);
+      if (entry) { found = { industry: industry.label, entry }; break; }
+    }
+    if (found) {
+      const quote = await fetchYahooQuote(found.entry.ticker, 300).catch(() => null);
+      const entry = found.entry as typeof found.entry & {
+        revenue?: number; expenses?: number; profit?: number;
+        sharesOutstanding?: number; periodEnd?: string;
+      };
+      const price = quote?.price ?? null;
+      const shares = entry.sharesOutstanding ?? null;
+      const row: IndustryPeerRow = {
+        ticker: entry.ticker,
+        name: entry.name,
+        price,
+        pricePct: quote?.pct ?? null,
+        marketCap: price != null && shares != null ? price * shares : null,
+        revenue: entry.revenue ?? null,
+        expenses: entry.expenses ?? null,
+        profit: entry.profit ?? null,
+        periodEnd: entry.periodEnd ?? null,
+        mentions: joins.mentionsByTicker.get(entry.ticker) ?? 0,
+        reportDate: joins.reportByTicker.get(entry.ticker) ?? null,
+      };
+      data.tickerResult = { industry: found.industry, row };
+    } else {
+      data.tickerResult = null;
     }
   }
 

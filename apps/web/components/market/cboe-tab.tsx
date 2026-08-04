@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CompanyKpi, CompanyKpis, MarketFundamentalsData, MarketKpiData } from "@/lib/server/types";
 
 interface Props {
   data: MarketKpiData | null;
   loading: boolean;
   error: string | null;
+  // Set by the market-page global search's "Full fundamentals" jump.
+  lookupRequest?: { ticker: string; nonce: number } | null;
 }
 
 // Two company-identity hues, distinct from this page's existing semantic
@@ -226,14 +228,17 @@ function CompanySection({ company, color }: { company: CompanyKpis; color: strin
 
 // SEC-54: on-demand fundamentals lookup for any ticker in the industry
 // universe, rendered with the same KPI cards as the curated companies.
-function FundamentalsLookup() {
+// `initialTicker` is set by the market-page global search's "Full
+// fundamentals" jump - bumping its nonce re-triggers the lookup even for
+// the same ticker (e.g. navigating away and back).
+function FundamentalsLookup({ initialTicker }: { initialTicker?: { ticker: string; nonce: number } | null }) {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<MarketFundamentalsData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function lookup() {
-    const ticker = query.trim().toUpperCase();
+  async function lookup(tickerOverride?: string) {
+    const ticker = (tickerOverride ?? query).trim().toUpperCase();
     if (!ticker) return;
     setBusy(true);
     setError(null);
@@ -248,6 +253,12 @@ function FundamentalsLookup() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!initialTicker) return;
+    setQuery(initialTicker.ticker);
+    lookup(initialTicker.ticker);
+  }, [initialTicker]);
 
   return (
     <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] p-4">
@@ -264,7 +275,7 @@ function FundamentalsLookup() {
         />
         <button
           type="button"
-          onClick={lookup}
+          onClick={() => lookup()}
           disabled={busy || !query.trim()}
           className="rounded-lg border border-[rgba(79,213,255,0.35)] bg-[rgba(79,213,255,0.1)] px-3 py-1.5 text-sm font-medium text-[color:var(--accent)] hover:bg-[rgba(79,213,255,0.16)] disabled:opacity-50"
         >
@@ -287,7 +298,7 @@ function FundamentalsLookup() {
   );
 }
 
-export function CboeTab({ data, loading, error }: Props) {
+export function CboeTab({ data, loading, error, lookupRequest }: Props) {
   // null = show all companies; a ticker filters to that company. Declared
   // before the early returns so hook order stays stable across renders.
   const [selected, setSelected] = useState<string | null>(null);
@@ -332,7 +343,7 @@ export function CboeTab({ data, loading, error }: Props) {
         the trend and see where the listing sits relative to the recent trajectory.
       </p>
 
-      <FundamentalsLookup />
+      <FundamentalsLookup initialTicker={lookupRequest} />
 
       {/* Company filter - one row of ticker chips over 22 companies. */}
       <div className="flex flex-wrap gap-1.5">

@@ -8,6 +8,10 @@ interface Props {
   data: MarketIndustriesData | null;
   loading: boolean;
   error: string | null;
+  // Set by the market-page global search's "View industry peers" jump - the
+  // ref is bumped by the caller on every click so re-selecting the same
+  // industry (e.g. after navigating away and back) still re-expands it.
+  expandRequest?: { label: string; nonce: number } | null;
 }
 
 function reportLabel(iso: string | null): string {
@@ -185,8 +189,12 @@ function IndustryRow({ industry, open, onToggle }: { industry: IndustrySummary; 
   );
 }
 
-export function IndustriesTab({ data, loading, error }: Props) {
+export function IndustriesTab({ data, loading, error, expandRequest }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (expandRequest) setExpanded(expandRequest.label);
+  }, [expandRequest]);
 
   if (loading && !data) {
     return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading industries…</div>;

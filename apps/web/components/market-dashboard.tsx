@@ -28,6 +28,7 @@ import { PredictionMarketsTab } from "./market/prediction-markets-tab";
 import { MacroTab } from "./market/macro-tab";
 import { IndustriesTab } from "./market/industries-tab";
 import { EarningsTab } from "./market/earnings-tab";
+import { TickerSearch } from "./market/ticker-search";
 
 type TabId = "overview" | "macro" | "sectors" | "industries" | "movers" | "attention" | "cboe" | "earnings" | "predictions" | "crypto" | "exchanges";
 
@@ -89,6 +90,13 @@ function useTabData<T>(
 export function MarketDashboard() {
   const [tab, setTab] = useState<TabId>("overview");
 
+  // Global ticker/company search (persistent above the tab bar) jumps into
+  // the Industries or CBOE tabs for a selected company. Nonce bumps on
+  // every click so re-selecting the same target re-triggers the effect
+  // even if it's unchanged from last time.
+  const [industryExpandRequest, setIndustryExpandRequest] = useState<{ label: string; nonce: number } | null>(null);
+  const [fundamentalsLookupRequest, setFundamentalsLookupRequest] = useState<{ ticker: string; nonce: number } | null>(null);
+
   // Overview sub-feeds (all keyed to "overview" tab)
   const overview    = useTabData<MarketOverviewData>   ("overview", tab, "/api/market/overview",    60_000);
   const commodities = useTabData<MarketCommoditiesData>("overview", tab, "/api/market/commodities", 120_000);
@@ -114,6 +122,17 @@ export function MarketDashboard() {
 
   return (
     <div className="space-y-6">
+      <TickerSearch
+        onViewIndustry={(label) => {
+          setIndustryExpandRequest({ label, nonce: Date.now() });
+          setTab("industries");
+        }}
+        onViewFundamentals={(ticker) => {
+          setFundamentalsLookupRequest({ ticker, nonce: Date.now() });
+          setTab("cboe");
+        }}
+      />
+
       {/* Tab bar */}
       <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
         {TABS.map(({ id, label }) => (
@@ -135,10 +154,10 @@ export function MarketDashboard() {
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
       {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
-      {tab === "industries" && <IndustriesTab {...industries} />}
+      {tab === "industries" && <IndustriesTab {...industries} expandRequest={industryExpandRequest} />}
       {tab === "movers"    && <MoversTab    {...movers} />}
       {tab === "attention" && <AttentionTab {...attention} />}
-      {tab === "cboe"      && <CboeTab      {...cboe} />}
+      {tab === "cboe"      && <CboeTab      {...cboe} lookupRequest={fundamentalsLookupRequest} />}
       {tab === "earnings"  && <EarningsTab  {...earnings} />}
       {tab === "predictions" && <PredictionMarketsTab {...predictions} macro={macroPredictions} />}
       {tab === "crypto"    && <CryptoTab    {...crypto} />}

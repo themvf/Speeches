@@ -1073,7 +1073,27 @@ export interface MarketIndustriesData {
   industries: IndustrySummary[];
   // present only when ?industry=<label> was requested
   peers?: { label: string; rows: IndustryPeerRow[] };
+  // present only when ?ticker=<TICKER> was requested - single-company lookup
+  // across the whole tracked universe, independent of which industry group
+  // is expanded (market-page global search). null = ticker not in the
+  // tracked industry-config.json universe.
+  tickerResult?: { industry: string; row: IndustryPeerRow } | null;
   warning?: string;
+}
+
+// Market-page global search (ticker or company name) - a lightweight index
+// over the same tracked industry-config.json universe the Industries tab
+// uses, stripped of financial fields so the client can fetch it once and
+// filter locally on every keystroke instead of round-tripping per keystroke.
+export interface TickerSearchEntry {
+  ticker: string;
+  name: string;
+  industry: string;
+}
+
+export interface MarketSearchIndexData {
+  generatedAt: string;
+  entries: TickerSearchEntry[];
 }
 
 export interface MarketPredictionsData {
