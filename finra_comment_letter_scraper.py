@@ -93,10 +93,11 @@ class FINRACommentLetterScraper:
     # Impersonation profiles to try in order when curl_cffi is available.
     _IMPERSONATE_PROFILES = ("safari17_0", "chrome124", "chrome120")
 
-    def __init__(self, min_delay_seconds: float = 0.8):
+    def __init__(self, min_delay_seconds: float = 2.0):
         self._use_cffi = _CURL_CFFI_AVAILABLE
         self._cffi_session: Any = None
         self._cffi_impersonate: str = self._IMPERSONATE_PROFILES[0]
+        self._cffi_profile_locked = False  # Once a profile works, stop rotating
 
         # Fallback plain-requests session (used when curl_cffi unavailable or explicitly disabled)
         self.session = requests.Session()
@@ -133,16 +134,21 @@ class FINRACommentLetterScraper:
 
         # Try curl_cffi with browser impersonation first (bypasses Cloudflare)
         if self._use_cffi:
-            for profile in self._IMPERSONATE_PROFILES:
+            profiles = (self._cffi_impersonate,) if self._cffi_profile_locked else self._IMPERSONATE_PROFILES
+            for profile in profiles:
                 try:
-                    self._cffi_impersonate = profile
-                    self._cffi_session = None  # reset for new profile
+                    if profile != self._cffi_impersonate or self._cffi_session is None:
+                        self._cffi_impersonate = profile
+                        self._cffi_session = None
                     cffi_session = self._get_cffi_session()
                     response = cffi_session.get(target, timeout=timeout, allow_redirects=True)
                     if response.status_code == 403 and "Just a moment" in response.text[:500]:
                         logger.debug("curl_cffi profile %s got Cloudflare challenge, trying next", profile)
                         continue
                     response.raise_for_status()
+                    # Lock to this profile for subsequent requests
+                    self._cffi_profile_locked = True
+                    self._cffi_impersonate = profile
                     return response
                 except Exception as e:
                     logger.debug("curl_cffi profile %s failed: %s", profile, e)
