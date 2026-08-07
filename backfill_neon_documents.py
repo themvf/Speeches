@@ -30,7 +30,7 @@ import argparse
 import hashlib
 import random
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set, Tuple
 
 import neon_feeds
 import run_financial_news_pipeline as core
@@ -282,8 +282,37 @@ def _verify_enrichments(
     }
 
 
+def _select_missing_documents(documents: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    """Keep only corpus documents that Neon has never seen.
+
+    The two stores have diverged rather than one simply lagging: Neon holds
+    rows from neon-authoritative connectors that no longer write to GCS at all,
+    while GCS holds documents from GCS-authoritative connectors that predate
+    their workflow getting DATABASE_URL. A full re-upsert would repair the
+    second set by overwriting the first with staler copies, so this mode adds
+    the genuinely missing rows and touches nothing else.
+    """
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for document in documents:
+        if not isinstance(document, dict):
+            continue
+        document_id = str((document.get("metadata") or {}).get("document_id", "") or "").strip()
+        if document_id:
+            by_id[document_id] = document
+
+    document_ids = list(by_id)
+    existing: Set[str] = _existing_ids_in_batches(
+        document_ids, neon_feeds.get_existing_document_ids
+    )
+    missing = [by_id[document_id] for document_id in document_ids if document_id not in existing]
+    return missing, len(existing)
+
+
 def _run(args: argparse.Namespace) -> Dict[str, Any]:
-    if not args.dry_run and not bool(getattr(args, "force", False)):
+    only_missing = bool(getattr(args, "only_missing", False))
+    # An additive repair cannot clobber a newer Neon row, so it does not need
+    # the verified-backfill freeze guard that a full re-upsert does.
+    if not args.dry_run and not only_missing and not bool(getattr(args, "force", False)):
         existing_checkpoint = neon_feeds.get_migration_checkpoint(
             neon_feeds.NEON_FULL_BACKFILL_CHECKPOINT
         )
@@ -303,6 +332,9 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
 
     include_speeches = bool(getattr(args, "include_speeches", False))
     corpus_docs = _corpus_documents(storage, include_speeches=include_speeches)
+    already_present = 0
+    if only_missing:
+        corpus_docs, already_present = _select_missing_documents(corpus_docs)
     targets = corpus_docs[: args.limit] if args.limit else corpus_docs
     include_enrichment = bool(getattr(args, "include_enrichment", False))
     enrichment_entries = _corpus_enrichment_entries(storage) if include_enrichment else {}
@@ -326,6 +358,8 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
             "ran_at": _utc_now_iso(),
             "dry_run": True,
             "corpus_document_count": len(corpus_docs),
+            "only_missing": only_missing,
+            "already_present_in_neon": already_present,
             "planned_backfill_count": len(targets),
             "planned_enrichment_backfill_count": len(enrichment_entries),
             "include_speeches": include_speeches,
@@ -429,6 +463,8 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
         "ran_at": _utc_now_iso(),
         "dry_run": False,
         "corpus_document_count": len(corpus_docs),
+        "only_missing": only_missing,
+        "already_present_in_neon": already_present,
         "include_speeches": include_speeches,
         "targeted_count": len(targets),
         "batch_size": args.batch_size,
@@ -474,6 +510,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-speeches",
         action="store_true",
         help="Also normalize and backfill legacy all_speeches.json records.",
+    )
+    parser.add_argument(
+        "--only-missing",
+        action="store_true",
+        help=(
+            "Additive repair: upsert only documents Neon has never seen. Use this when the "
+            "two stores have diverged rather than one simply lagging - a full re-upsert would "
+            "overwrite neon-authoritative rows with staler GCS copies."
+        ),
     )
     parser.add_argument("--summary-path", default="", help="Write JSON run summary to this path.")
     return parser

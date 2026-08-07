@@ -30,6 +30,11 @@ on:
         required: false
         type: boolean
         default: true
+      only_missing:
+        description: "Additive repair: upsert only documents Neon has never seen (safe to run any time; never overwrites newer Neon rows)"
+        required: false
+        type: boolean
+        default: false
       force:
         description: "Allow overwriting an existing verified backfill (only during a full writer freeze)"
         required: false
@@ -57,6 +62,7 @@ jobs:
       VERIFY_SAMPLE: ${{ inputs.verify_sample }}
       INCLUDE_ENRICHMENT: ${{ inputs.include_enrichment }}
       INCLUDE_SPEECHES: ${{ inputs.include_speeches }}
+      ONLY_MISSING: ${{ inputs.only_missing }}
       FORCE: ${{ inputs.force }}
 
     steps:
@@ -89,6 +95,9 @@ jobs:
           fi
           if [ "${FORCE}" = "true" ]; then
             args+=(--force)
+          fi
+          if [ "${ONLY_MISSING}" = "true" ]; then
+            args+=(--only-missing)
           fi
           python backfill_neon_documents.py "${args[@]}"
 
