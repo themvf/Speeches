@@ -2278,23 +2278,13 @@ export async function getMirroredDocumentTimeline(
             ELSE COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC')
           END AS organization_label,
           'not_enriched' AS enrichment_status,
-          lower(regexp_replace(replace(replace(
-            COALESCE(metadata->>'tags', '')
-          , '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS topic_text,
-          lower(regexp_replace(replace(replace(
-            COALESCE(metadata->>'keywords', '')
-          , '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS keyword_text,
-          lower(concat_ws(
-            ' ',
-            title,
-            organization,
-            source_kind,
-            doc_type,
-            speaker,
-            url,
-            metadata::text,
-            full_text
-          )) AS search_text
+          metadata,
+          title,
+          organization,
+          doc_type,
+          speaker,
+          url,
+          full_text
         FROM (
           SELECT
             documents.*,
@@ -2319,12 +2309,28 @@ export async function getMirroredDocumentTimeline(
         WHERE (${organization} = '' OR organization_label = ${organization})
           AND (${sourceKind} = '' OR source_kind = ${sourceKind})
           AND (${status} = '' OR enrichment_status = ${status})
-          AND (${topic} = '' OR position(${topic} in topic_text) > 0)
-          AND (${keyword} = '' OR position(${keyword} in keyword_text) > 0)
-          AND (${tag} = '' OR position(${tag} in topic_text) > 0)
+          AND (${topic} = '' OR position(${topic} in lower(regexp_replace(replace(replace(
+            COALESCE(metadata->>'tags', '')
+          , '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g'))) > 0)
+          AND (${keyword} = '' OR position(${keyword} in lower(regexp_replace(replace(replace(
+            COALESCE(metadata->>'keywords', '')
+          , '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g'))) > 0)
+          AND (${tag} = '' OR position(${tag} in lower(regexp_replace(replace(replace(
+            COALESCE(metadata->>'tags', '')
+          , '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g'))) > 0)
           AND (${fromDate}::date IS NULL OR published_on IS NULL OR published_on >= ${fromDate}::date)
           AND (${toDate}::date IS NULL OR published_on IS NULL OR published_on <= ${toDate}::date)
-          AND (${q} = '' OR position(${q} in search_text) > 0)
+          AND (${q} = '' OR position(${q} in lower(concat_ws(
+            ' ',
+            title,
+            organization,
+            source_kind,
+            doc_type,
+            speaker,
+            url,
+            metadata::text,
+            full_text
+          ))) > 0)
       ),
       totals AS (
         SELECT
@@ -2393,28 +2399,14 @@ export async function getMirroredDocumentTimeline(
             ELSE COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC')
           END AS organization_label,
           COALESCE(NULLIF(enrichment_entry->>'status', ''), 'not_enriched') AS enrichment_status,
-          lower(regexp_replace(replace(replace(concat_ws(
-            ' ',
-            COALESCE(metadata->>'tags', ''),
-            COALESCE(enrichment_entry #>> '{enrichment,tags}', '')
-          ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS topic_text,
-          lower(regexp_replace(replace(replace(concat_ws(
-            ' ',
-            COALESCE(metadata->>'keywords', ''),
-            COALESCE(enrichment_entry #>> '{enrichment,keywords}', '')
-          ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS keyword_text,
-          lower(concat_ws(
-            ' ',
-            title,
-            organization,
-            source_kind,
-            doc_type,
-            speaker,
-            url,
-            metadata::text,
-            enrichment_entry::text,
-            full_text
-          )) AS search_text
+          metadata,
+          title,
+          organization,
+          doc_type,
+          speaker,
+          url,
+          full_text,
+          enrichment_entry
         FROM (
           SELECT
             documents.*,
@@ -2442,12 +2434,35 @@ export async function getMirroredDocumentTimeline(
         WHERE (${organization} = '' OR organization_label = ${organization})
           AND (${sourceKind} = '' OR source_kind = ${sourceKind})
           AND (${status} = '' OR enrichment_status = ${status})
-          AND (${topic} = '' OR position(${topic} in topic_text) > 0)
-          AND (${keyword} = '' OR position(${keyword} in keyword_text) > 0)
-          AND (${tag} = '' OR position(${tag} in topic_text) > 0)
+          AND (${topic} = '' OR position(${topic} in lower(regexp_replace(replace(replace(concat_ws(
+            ' ',
+            COALESCE(metadata->>'tags', ''),
+            COALESCE(enrichment_entry #>> '{enrichment,tags}', '')
+          ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g'))) > 0)
+          AND (${keyword} = '' OR position(${keyword} in lower(regexp_replace(replace(replace(concat_ws(
+            ' ',
+            COALESCE(metadata->>'keywords', ''),
+            COALESCE(enrichment_entry #>> '{enrichment,keywords}', '')
+          ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g'))) > 0)
+          AND (${tag} = '' OR position(${tag} in lower(regexp_replace(replace(replace(concat_ws(
+            ' ',
+            COALESCE(metadata->>'tags', ''),
+            COALESCE(enrichment_entry #>> '{enrichment,tags}', '')
+          ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g'))) > 0)
           AND (${fromDate}::date IS NULL OR published_on IS NULL OR published_on >= ${fromDate}::date)
           AND (${toDate}::date IS NULL OR published_on IS NULL OR published_on <= ${toDate}::date)
-          AND (${q} = '' OR position(${q} in search_text) > 0)
+          AND (${q} = '' OR position(${q} in lower(concat_ws(
+            ' ',
+            title,
+            organization,
+            source_kind,
+            doc_type,
+            speaker,
+            url,
+            metadata::text,
+            enrichment_entry::text,
+            full_text
+          ))) > 0)
       ),
       totals AS (
         SELECT
