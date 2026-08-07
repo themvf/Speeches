@@ -91,3 +91,37 @@ def test_only_missing_skips_the_verified_backfill_freeze_guard(monkeypatch):
     with pytest.raises(RuntimeError, match="GCS read access is required"):
         backfill._run(additive)
     assert calls["checkpoint"] == 1
+
+
+def test_only_missing_also_scopes_the_enrichment_upsert(monkeypatch):
+    """A 30-document repair must not re-upsert 20k enrichment rows."""
+    monkeypatch.setattr(
+        backfill.neon_feeds, "get_existing_document_ids", lambda ids: {"present"}
+    )
+    monkeypatch.setattr(backfill.core, "_load_streamlit_secrets", lambda: {})
+    monkeypatch.setattr(backfill.core, "_get_gcs_storage", lambda secrets: (object(), ""))
+    monkeypatch.setattr(
+        backfill, "_corpus_documents", lambda storage, include_speeches=False: [_doc("present"), _doc("missing")]
+    )
+    monkeypatch.setattr(
+        backfill,
+        "_corpus_enrichment_entries",
+        lambda storage: {"present": {"status": "enriched"}, "missing": {"status": "enriched"}},
+    )
+
+    args = types.SimpleNamespace(
+        dry_run=True,
+        only_missing=True,
+        force=False,
+        limit=0,
+        include_enrichment=True,
+        include_speeches=False,
+        batch_size=200,
+        verify_sample=0,
+    )
+    summary = backfill._run(args)
+
+    assert summary["planned_backfill_count"] == 1
+    assert summary["already_present_in_neon"] == 1
+    # Only the missing document's enrichment travels with it.
+    assert summary["planned_enrichment_backfill_count"] == 1

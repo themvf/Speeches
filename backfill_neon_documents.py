@@ -338,7 +338,11 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
     targets = corpus_docs[: args.limit] if args.limit else corpus_docs
     include_enrichment = bool(getattr(args, "include_enrichment", False))
     enrichment_entries = _corpus_enrichment_entries(storage) if include_enrichment else {}
-    if args.limit and include_enrichment:
+    # Scope enrichment to the documents actually being written. Without this,
+    # an additive 30-document repair would still re-upsert every enrichment
+    # entry in the blob, overwriting newer neon-authoritative rows with staler
+    # copies - the exact overwrite --only-missing exists to avoid.
+    if (args.limit or only_missing) and include_enrichment:
         target_document_ids = {
             str((document.get("metadata") or {}).get("document_id", "") or "").strip()
             for document in targets
