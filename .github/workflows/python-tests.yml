@@ -9,11 +9,15 @@ on:
       # Workflow definitions are validated by tests/test_workflow_connectors_valid.py,
       # so run the suite whenever any workflow changes (not just this one).
       - ".github/workflows/**"
+      - "apps/web/vercel.json"
+      - "apps/web/lib/server/finra-member-firm-rss.ts"
   pull_request:
     paths:
       - "**.py"
       - "requirements.txt"
       - ".github/workflows/**"
+      - "apps/web/vercel.json"
+      - "apps/web/lib/server/finra-member-firm-rss.ts"
   workflow_dispatch:
 
 permissions:
