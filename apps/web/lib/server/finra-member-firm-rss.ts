@@ -34,10 +34,14 @@ const DEFAULT_BATCH_SIZE = 16;
 const MAX_BATCH_SIZE = 32;
 const RSS_ITEMS_PER_FIRM = 5;
 const RSS_FETCH_TIMEOUT_MS = 4_500;
-// The Vercel dispatcher runs every 10 minutes. Rotate on the same cadence so
-// each already-paid invocation checks a fresh firm batch instead of repeating
-// one batch three times during a 30-minute window.
-const BATCH_SLOT_MS = 10 * 60_000;
+// Must track the Vercel dispatcher's cron interval in apps/web/vercel.json.
+// The batch offset is derived from floor(now / BATCH_SLOT_MS), so a slot
+// shorter than the cron interval advances the offset by more than one batch
+// per invocation and skips the firms in between entirely - a silent coverage
+// hole, not just a slower rotation. At 30 minutes and 16 firms per batch,
+// 3,194 firms take ~100h to cycle, which stays inside the `when:7d` window
+// each Google News query already uses, so coverage remains complete.
+export const BATCH_SLOT_MS = 30 * 60_000;
 const CONCURRENCY = 8;
 
 function configuredBatchSize(): number {
