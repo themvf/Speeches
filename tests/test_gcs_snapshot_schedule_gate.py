@@ -13,6 +13,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 GATE = "vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'"
 NEON_PILOT_GATE = "vars.ENABLE_NEON_PILOT_SCHEDULES == 'true'"
 NEON_SUBSTACK_GATE = "vars.ENABLE_NEON_SUBSTACK_SCHEDULES == 'true'"
+RULE_COMMENT_GATE = "vars.ENABLE_RULE_COMMENT_INGEST != 'false'"
 
 SCHEDULED_SNAPSHOT_WORKFLOWS = {
     "agency-official-sites-3hour.yml",
@@ -24,7 +25,6 @@ SCHEDULED_SNAPSHOT_WORKFLOWS = {
     "intelligence-evidence.yml",
     "policy-extraction-scheduled.yml",
     "rss-full-ingestion-3hour.yml",
-    "rule-comment-ingest.yml",
     "sec-speech-sync.yml",
     "sec-youtube-videos-daily.yml",
     "securities-market-sources-daily.yml",
@@ -66,6 +66,24 @@ def test_scheduled_snapshot_readers_are_default_off_but_keep_manual_dispatch() -
         assert "workflow_dispatch:" in workflow, filename
         assert GATE in workflow, filename
         assert "github.event_name != 'schedule'" in workflow, filename
+
+
+def test_rule_comment_ingest_runs_on_its_own_gate_and_mirrors_into_neon() -> None:
+    """/api/notices-comments reads Neon, so this ingest has to keep running.
+
+    It is deliberately NOT on the shared brake: turning that back on would
+    restart fifteen other snapshot readers.  Writes stay GCS-authoritative
+    (these connectors are not neon-authoritative), so DATABASE_URL is what
+    carries new notices and their enrichment into the table the page reads.
+    """
+    workflow = _workflow("rule-comment-ingest.yml")
+
+    assert "schedule:" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "github.event_name != 'schedule'" in workflow
+    assert RULE_COMMENT_GATE in workflow
+    assert GATE not in workflow
+    assert "DATABASE_URL: ${{ secrets.DATABASE_URL }}" in workflow
 
 
 def test_knowledge_sync_does_not_follow_a_gated_scheduled_producer() -> None:

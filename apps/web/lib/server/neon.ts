@@ -2164,6 +2164,77 @@ export async function getMirroredDocumentDetail(
   }
 }
 
+export type MirroredNoticeDocumentOptions = {
+  /** Exact `source_kind` values for notices and their comments. */
+  sourceKinds: string[];
+  /**
+   * Families used only to recover legacy rows that predate `source_kind`
+   * being written. The caller re-derives the real kind and drops anything
+   * that isn't a notice or comment, so this stays a coarse prefilter.
+   */
+  sourceFamilies?: string[];
+  limit?: number;
+};
+
+const NOTICE_DOCUMENT_LIMIT = 5000;
+
+/**
+ * Notices and their comments, with enrichment, straight from the Neon
+ * mirror. Unlike the feed/list readers this one selects `full_text`: the
+ * notices view infers commenter identity and falls back to first-paragraph
+ * summaries for comments that enrichment has not reached, and both of those
+ * read source text. The result set is bounded by source kind (~200 rows
+ * today), not by the whole corpus.
+ */
+export async function getMirroredNoticeDocuments(
+  options: MirroredNoticeDocumentOptions
+): Promise<NeonMirroredDocumentDetailRow[]> {
+  const sql = getSql();
+  const sourceKinds = options.sourceKinds.map((value) => String(value || "").trim()).filter(Boolean);
+  const sourceFamilies = (options.sourceFamilies ?? []).map((value) => String(value || "").trim()).filter(Boolean);
+  const limit = Math.max(1, Math.min(options.limit ?? NOTICE_DOCUMENT_LIMIT, NOTICE_DOCUMENT_LIMIT));
+
+  const loadWithoutEnrichment = async (): Promise<NeonMirroredDocumentDetailRow[]> =>
+    (await sql`
+      SELECT document_id, metadata, full_text, NULL::jsonb AS enrichment_entry
+      FROM documents
+      WHERE source_kind = ANY(${sourceKinds})
+         OR (
+           COALESCE(source_kind, '') = ''
+           AND COALESCE(metadata->>'source_family', '') = ANY(${sourceFamilies})
+         )
+      LIMIT ${limit}
+    `) as unknown as NeonMirroredDocumentDetailRow[];
+
+  if (!(await hasDocumentEnrichmentsTable())) {
+    return loadWithoutEnrichment();
+  }
+
+  try {
+    return (await sql`
+      SELECT
+        documents.document_id,
+        documents.metadata,
+        documents.full_text,
+        enrichment.entry AS enrichment_entry
+      FROM documents
+      LEFT JOIN document_enrichments enrichment
+        ON enrichment.document_id = documents.document_id
+      WHERE documents.source_kind = ANY(${sourceKinds})
+         OR (
+           COALESCE(documents.source_kind, '') = ''
+           AND COALESCE(documents.metadata->>'source_family', '') = ANY(${sourceFamilies})
+         )
+      LIMIT ${limit}
+    `) as unknown as NeonMirroredDocumentDetailRow[];
+  } catch (error) {
+    if (!isMissingDocumentEnrichmentsError(error)) throw error;
+    documentEnrichmentsTableCache = { checkedAt: Date.now(), available: false };
+    console.warn("[neon] document_enrichments disappeared during notice read; using documents-only projection");
+    return loadWithoutEnrichment();
+  }
+}
+
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item || "").trim()).filter(Boolean);

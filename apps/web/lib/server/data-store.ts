@@ -18,14 +18,17 @@ import {
   type TrendsPayload
 } from "@/lib/server/types";
 import {
+  fullTextToDocumentContent,
   loadMetadataOnlyFeed,
   projectionRowsToCorpusAndEnrichment,
+  projectionRowsToEnrichmentState,
 } from "@/lib/server/document-metadata-feed";
 import {
   getAllMirroredDocumentMetadata,
   getMirroredDocumentFacets,
   getMirroredDocumentFeedMetadata,
   getMirroredDocumentListPage,
+  getMirroredNoticeDocuments,
   isDocumentEnrichmentProjectionAvailable,
   type MirroredDocumentListOptions,
   type NeonDocumentFacetData,
@@ -998,6 +1001,74 @@ export async function loadCorpusDocumentsFromNeon(): Promise<CorpusDocumentsLoad
   } catch (error) {
     console.error("[data-store] loadCorpusDocumentsFromNeon failed closed:", error);
     return { documents: [], source: "unavailable", warning: "Neon corpus read failed; GCS fallback is disabled" };
+  }
+}
+
+export type NoticeDocumentsLoadResult = {
+  documents: CustomDocumentRecord[];
+  enrichment: EnrichmentStatePayload;
+  source: "neon" | "unavailable";
+  warning?: string;
+};
+
+/**
+ * Notices/rulemakings and their comments, read from Neon rather than the
+ * legacy `rule_summaries.json` -> `custom_documents.json` chain.
+ *
+ * Fails closed, deliberately: the GCS snapshot for these source kinds stopped
+ * moving when scheduled snapshot egress was paused (SEC-20), so falling back
+ * to it would serve stale data that looks current. An empty result is treated
+ * as a failure for the same reason the caller surfaces a warning - "backend
+ * returned nothing" and "your filters matched nothing" rendered identically
+ * for weeks, which is why this outage went unnoticed.
+ */
+export async function loadNoticeDocumentsFromNeon(
+  sourceKinds: string[],
+  sourceFamilies: string[] = []
+): Promise<NoticeDocumentsLoadResult> {
+  const emptyEnrichment: EnrichmentStatePayload = {
+    version: 1,
+    pipeline_version: "",
+    updated_at: "",
+    entries: {}
+  };
+
+  try {
+    const rows = await getMirroredNoticeDocuments({ sourceKinds, sourceFamilies });
+
+    if (rows.length === 0) {
+      return {
+        documents: [],
+        enrichment: emptyEnrichment,
+        source: "unavailable",
+        warning: "Neon returned no notice or comment records; the GCS fallback is intentionally disabled"
+      };
+    }
+
+    const documents: CustomDocumentRecord[] = [];
+    for (const row of rows) {
+      const id = normalizeString(row.document_id);
+      if (!id) continue;
+      const metadata = (row.metadata && typeof row.metadata === "object" ? row.metadata : {}) as unknown as CustomDocumentMetadata;
+      documents.push({
+        metadata: { ...metadata, document_id: id },
+        content: fullTextToDocumentContent(row.full_text)
+      });
+    }
+
+    return {
+      documents,
+      enrichment: projectionRowsToEnrichmentState(rows),
+      source: "neon"
+    };
+  } catch (error) {
+    console.error("[data-store] loadNoticeDocumentsFromNeon failed closed:", error);
+    return {
+      documents: [],
+      enrichment: emptyEnrichment,
+      source: "unavailable",
+      warning: "Neon notice read failed; the GCS fallback is intentionally disabled"
+    };
   }
 }
 

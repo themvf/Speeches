@@ -1,6 +1,6 @@
-import { loadCustomDocuments, loadEnrichmentState, loadRuleSummaries, parseComparableDate } from "@/lib/server/data-store";
+import { loadNoticeDocumentsFromNeon, parseComparableDate } from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok } from "@/lib/server/api-utils";
-import type { CustomDocumentMetadata, CustomDocumentRecord, EnrichmentEntry, RuleSummaryGroup, RuleSummariesPayload } from "@/lib/server/types";
+import type { CustomDocumentMetadata, CustomDocumentRecord, EnrichmentEntry } from "@/lib/server/types";
 import { buildNoticeOverview, emptyNoticeOverview, isEnrichedCommentStatus, type NoticeOverview } from "@/lib/notices-overview";
 
 export const runtime = "nodejs";
@@ -67,10 +67,16 @@ interface NoticeCommentsResponse {
     enriched_comments: number;
     pending_review_comments: number;
   };
+  source: "neon" | "unavailable";
+  warnings: string[];
 }
 
 const NOTICE_SOURCE_KINDS = new Set(["finra_regulatory_notice", "regulations_gov_rule", "sec_rule_release"]);
 const COMMENT_SOURCE_KINDS = new Set(["finra_comment_letter", "regulations_gov_comment", "sec_rule_comment"]);
+/** Coarse prefilter for the Neon read; `resolvedSourceKind` still decides. */
+const NOTICE_QUERY_SOURCE_KINDS = [...NOTICE_SOURCE_KINDS, ...COMMENT_SOURCE_KINDS];
+/** Recovers legacy rows written before `source_kind` was populated. */
+const NOTICE_QUERY_SOURCE_FAMILIES = ["sec_rule", "regulations_gov"];
 const GENERIC_SUBMITTER_VALUES = new Set([
   "",
   "comment",
@@ -914,214 +920,15 @@ function buildFallbackGroup(
   };
 }
 
-function normalizedSummaryOverview(group: RuleSummaryGroup): NoticeOverview {
-  const positionCounts = group.overview?.position_counts || {};
-  return {
-    total_comments: Number(group.overview?.total_comments || 0),
-    enriched_comments: Number(group.overview?.enriched_comments || 0),
-    position_counts: {
-      supportive: Number(positionCounts.supportive || 0),
-      neutral: Number(positionCounts.neutral || 0),
-      opposed: Number(positionCounts.opposed || 0),
-      mixed: Number(positionCounts.mixed || 0),
-      unclear: Number(positionCounts.unclear || 0)
-    },
-    top_topics: Array.isArray(group.overview?.top_topics)
-      ? group.overview.top_topics.map((item) => ({
-          label: normalizeText(item.label || ""),
-          count: Number(item.count || 0),
-          share: Number(item.share || 0)
-        }))
-      : []
-  };
-}
-
-function persistedSummaryIsFresh(
-  summaries: RuleSummariesPayload,
-  customPayload: { updated_at?: string },
-  enrichmentState: { updated_at?: string }
-): boolean {
-  return (
-    normalizeText(summaries.custom_documents_updated_at || "") === normalizeText(customPayload.updated_at || "") &&
-    normalizeText(summaries.enrichment_state_updated_at || "") === normalizeText(enrichmentState.updated_at || "")
-  );
-}
-
-function buildGroupFromSummary(group: RuleSummaryGroup): NoticeGroupItem {
-  // If the summary already has embedded comment presentation data, use it directly
-  const embeddedComments: NoticeCommentItem[] = Array.isArray(group.comments)
-    ? group.comments.map((c) => ({
-        document_id: normalizeText(c.document_id || ""),
-        source_kind: normalizeText(c.source_kind || ""),
-        source_family: normalizeText(c.source_family || ""),
-        title: normalizeText(c.title || "Comment"),
-        commenter_name: normalizeText(c.commenter_name || ""),
-        commenter_org: normalizeText(c.commenter_org || ""),
-        speaker: normalizeText(c.speaker || ""),
-        url: normalizeText(c.url || ""),
-        comment_url: normalizeText(c.comment_url || ""),
-        pdf_url: normalizeText(c.pdf_url || ""),
-        resolved_content_url: normalizeText(c.resolved_content_url || ""),
-        published_at: normalizeText(c.published_at || ""),
-        summary: normalizeText(c.summary || ""),
-        tags: Array.isArray(c.tags) ? c.tags.map((item) => normalizeText(item)).filter(Boolean) : [],
-        keywords: Array.isArray(c.keywords) ? c.keywords.map((item) => normalizeText(item)).filter(Boolean) : [],
-        enrichment_status: normalizeText(c.enrichment_status || "not_enriched"),
-        review_decision: normalizeText(c.review_decision || "pending"),
-        comment_position: c.comment_position && typeof c.comment_position === "object"
-          ? {
-              label: normalizeText(c.comment_position.label || "unclear"),
-              confidence: Math.max(0, Math.min(1, Number(c.comment_position.confidence) || 0)),
-              rationale: normalizeText(c.comment_position.rationale || "")
-            }
-          : { label: "unclear", confidence: 0, rationale: "" }
-      }))
-    : [];
-
-  return {
-    notice_key: normalizeText(group.notice_key || ""),
-    source_kind: normalizeText(group.source_kind || ""),
-    source_family: normalizeText(group.source_family || ""),
-    source_family_label: normalizeText(group.source_family_label || ""),
-    group_type_label: normalizeText(group.group_type_label || ""),
-    group_identifier_label: normalizeText(group.group_identifier_label || ""),
-    group_identifier: normalizeText(group.group_identifier || ""),
-    notice_document_id: normalizeText(group.notice_document_id || ""),
-    notice_number: normalizeText(group.notice_number || ""),
-    docket_id: normalizeText(group.docket_id || ""),
-    title: normalizeText(group.title || ""),
-    summary: normalizeText(group.summary || ""),
-    organization: normalizeText(group.organization || ""),
-    url: normalizeText(group.url || ""),
-    pdf_url: normalizeText(group.pdf_url || ""),
-    published_at: normalizeText(group.published_at || ""),
-    effective_date: normalizeText(group.effective_date || ""),
-    comment_deadline: normalizeText(group.comment_deadline || ""),
-    tags: Array.isArray(group.tags) ? group.tags.map((item) => normalizeText(item)).filter(Boolean) : [],
-    keywords: Array.isArray(group.keywords) ? group.keywords.map((item) => normalizeText(item)).filter(Boolean) : [],
-    enrichment_status: normalizeText(group.enrichment_status || ""),
-    review_decision: normalizeText(group.review_decision || ""),
-    comment_count: Number(group.comment_count || 0),
-    latest_comment_at: normalizeText(group.latest_comment_at || ""),
-    overview: normalizedSummaryOverview(group),
-    comments: embeddedComments
-  };
-}
-
-function buildPersistedNoticeCommentsResponse(
-  summaries: RuleSummariesPayload,
-  customPayload: { documents?: CustomDocumentRecord[] },
-  enrichmentState: { entries?: Record<string, EnrichmentEntry> }
-): NoticeCommentsResponse | null {
-  const docMap = new Map<string, CustomDocumentRecord>();
-  for (const record of customPayload.documents || []) {
-    const docId = normalizeText(record.metadata?.document_id || "");
-    if (docId) {
-      docMap.set(docId, record);
-    }
-  }
-
-  const entries = enrichmentState.entries || {};
-  const groups = summaries.groups.map((group) => buildGroupFromSummary(group));
-  const groupMap = new Map(groups.map((group) => [group.notice_key, group]));
-
-  for (const summaryGroup of summaries.groups) {
-    const target = groupMap.get(summaryGroup.notice_key);
-    if (!target) {
-      return null;
-    }
-
-    for (const docId of summaryGroup.comment_document_ids || []) {
-      const record = docMap.get(docId);
-      if (!record) {
-        return null;
-      }
-      const metadata = record.metadata || ({} as CustomDocumentMetadata);
-      const entry = entries[docId];
-      const commentPresentation = resolvedCommentPresentation(record, metadata, entry);
-
-      target.comments.push({
-        document_id: docId,
-        source_kind: resolvedSourceKind(metadata),
-        source_family: sourceFamily(metadata),
-        title: commentPresentation.title,
-        commenter_name: commentPresentation.commenter_name,
-        commenter_org: commentPresentation.commenter_org,
-        speaker: commentPresentation.speaker,
-        url: normalizeText(metadata.url || metadata.comment_page_url || metadata.comment_url || ""),
-        comment_url: normalizeText(metadata.comment_page_url || metadata.comment_url || metadata.url || ""),
-        pdf_url: normalizeText(metadata.pdf_url || ""),
-        resolved_content_url: normalizeText(metadata.resolved_content_url || ""),
-        published_at: normalizeText(metadata.published_date || metadata.date || ""),
-        summary: commentPresentation.summary,
-        tags: buildNoticeTags(record, entry),
-        keywords: buildKeywords(entry),
-        enrichment_status: enrichmentStatus(entry),
-        review_decision: reviewDecision(entry),
-        comment_position: commentPosition(entry)
-      });
-    }
-  }
-
-  return {
-    groups,
-    totals: {
-      notices: Number(summaries.totals?.notices || 0),
-      comments: Number(summaries.totals?.comments || 0),
-      enriched_comments: Number(summaries.totals?.enriched_comments || 0),
-      pending_review_comments: Number(summaries.totals?.pending_review_comments || 0)
-    }
-  };
-}
-
-/**
- * Check whether the rule_summaries payload contains embedded comment
- * presentation data (the `comments` array on each group).  When present,
- * we can serve the response without loading the 36MB custom_documents file.
- */
-function summariesHaveEmbeddedComments(summaries: RuleSummariesPayload): boolean {
-  // Check first group that has comments — if it has the `comments` array, assume all do
-  for (const group of summaries.groups) {
-    if (group.comment_count > 0) {
-      return Array.isArray(group.comments) && group.comments.length > 0;
-    }
-  }
-  // No groups with comments — embedded path is fine (nothing to resolve)
-  return true;
-}
-
-/**
- * Build the full API response directly from rule_summaries with embedded
- * comment data.  This is the ideal fast path: only rule_summaries.json
- * (~1-3MB) needs to be loaded, not custom_documents.json (~36MB).
- */
-function buildResponseFromEmbeddedSummaries(summaries: RuleSummariesPayload): NoticeCommentsResponse {
-  const groups = summaries.groups.map((group) => buildGroupFromSummary(group));
-
-  const allComments = groups.flatMap((group) => group.comments);
-  return {
-    groups,
-    totals: {
-      notices: groups.length,
-      comments: allComments.length,
-      enriched_comments: allComments.filter((item) => isEnrichedCommentStatus(item.enrichment_status)).length,
-      pending_review_comments: allComments.filter(
-        (item) =>
-          isEnrichedCommentStatus(item.enrichment_status) &&
-          !["accepted", "edited", "rejected"].includes(item.review_decision)
-      ).length
-    }
-  };
-}
-
 function buildFullResponse(
-  customPayload: { documents?: CustomDocumentRecord[] },
-  enrichmentState: { entries?: Record<string, EnrichmentEntry> },
-  entries: Record<string, EnrichmentEntry>
+  documents: CustomDocumentRecord[],
+  entries: Record<string, EnrichmentEntry>,
+  source: NoticeCommentsResponse["source"],
+  warnings: string[]
 ): NoticeCommentsResponse {
   const groups = new Map<string, NoticeGroupItem>();
 
-  for (const record of customPayload.documents || []) {
+  for (const record of documents) {
     const metadata = record.metadata || ({} as CustomDocumentMetadata);
     const sourceKind = resolvedSourceKind(metadata);
     if (!NOTICE_SOURCE_KINDS.has(sourceKind)) {
@@ -1134,7 +941,7 @@ function buildFullResponse(
     groups.set(group.notice_key, group);
   }
 
-  for (const record of customPayload.documents || []) {
+  for (const record of documents) {
     const metadata = record.metadata || ({} as CustomDocumentMetadata);
     const sourceKind = resolvedSourceKind(metadata);
     if (!COMMENT_SOURCE_KINDS.has(sourceKind)) {
@@ -1215,7 +1022,9 @@ function buildFullResponse(
           isEnrichedCommentStatus(item.enrichment_status) &&
           !["accepted", "edited", "rejected"].includes(item.review_decision)
       ).length
-    }
+    },
+    source,
+    warnings
   };
 }
 
@@ -1223,50 +1032,18 @@ export async function GET() {
   const requestId = createRequestId();
 
   try {
-    // Load rule_summaries first (small file, ~300KB–2MB with embedded comments).
-    // If the summaries contain embedded comment presentation data AND are fresh,
-    // we can serve the response without touching the 36MB custom_documents file.
-    const ruleSummaries = await loadRuleSummaries();
-
-    // Fast path: summaries have embedded comments — serve directly without heavy files
-    if (ruleSummaries.groups.length > 0 && summariesHaveEmbeddedComments(ruleSummaries)) {
-      // Only load enrichment state to check freshness (6MB, much smaller than custom_documents)
-      const enrichmentState = await loadEnrichmentState();
-
-      if (persistedSummaryIsFresh(ruleSummaries, { updated_at: ruleSummaries.custom_documents_updated_at }, enrichmentState)) {
-        const payload = buildResponseFromEmbeddedSummaries(ruleSummaries);
-        return ok(payload, requestId);
-      }
-    }
-
-    // Legacy fast path: summaries exist but without embedded comments.
-    // Must load full custom_documents to populate comment details.
-    if (ruleSummaries.groups.length > 0) {
-      const [customPayload, enrichmentState] = await Promise.all([
-        loadCustomDocuments(),
-        loadEnrichmentState()
-      ]);
-
-      if (persistedSummaryIsFresh(ruleSummaries, customPayload, enrichmentState)) {
-        const persistedPayload = buildPersistedNoticeCommentsResponse(ruleSummaries, customPayload, enrichmentState);
-        if (persistedPayload) {
-          return ok(persistedPayload, requestId);
-        }
-      }
-
-      // Summaries are stale — full rebuild using already-loaded data
-      const entries = enrichmentState.entries || {};
-      const payload = buildFullResponse(customPayload, enrichmentState, entries);
-      return ok(payload, requestId);
-    }
-
-    // No persisted summaries at all — load everything and build from scratch
-    const [customPayload, enrichmentState] = await Promise.all([
-      loadCustomDocuments(),
-      loadEnrichmentState()
-    ]);
-    const entries = enrichmentState.entries || {};
-    const payload = buildFullResponse(customPayload, enrichmentState, entries);
+    // Reads Neon directly. The former rule_summaries.json -> custom_documents.json
+    // chain was removed: scheduled GCS snapshot writes for these source kinds are
+    // paused (SEC-20), nothing regenerates rule_summaries.json, and its freshness
+    // check could therefore never pass again.
+    const notices = await loadNoticeDocumentsFromNeon(NOTICE_QUERY_SOURCE_KINDS, NOTICE_QUERY_SOURCE_FAMILIES);
+    const warnings = notices.warning ? [notices.warning] : [];
+    const payload = buildFullResponse(
+      notices.documents,
+      notices.enrichment.entries || {},
+      notices.source,
+      warnings
+    );
 
     return ok(payload, requestId);
   } catch (error) {

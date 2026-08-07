@@ -41,13 +41,21 @@ concurrency:
 
 jobs:
   rule-comments:
-    # SEC-20: keep manual recovery available while scheduled snapshot reads are paused.
-    if: github.event_name != 'schedule' || vars.ENABLE_GCS_SNAPSHOT_SCHEDULES == 'true'
+    # This job has its own gate rather than the shared ENABLE_GCS_SNAPSHOT_SCHEDULES
+    # one, which covers 17 workflows: /api/notices-comments now reads Neon, and it
+    # goes stale unless this ingest keeps running, but re-enabling the other 16
+    # snapshot jobs is a separate (cost) decision.
+    if: github.event_name != 'schedule' || vars.ENABLE_RULE_COMMENT_INGEST != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
       GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      # Writes stay GCS-authoritative (these connectors are not in
+      # NEON_AUTHORITATIVE_CONNECTORS), but DATABASE_URL activates the
+      # best-effort document and enrichment mirrors, which is what puts new
+      # notices in front of the Neon-backed notices page.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DEEPSEEK_API: ${{ secrets.DEEPSEEK_API }}
       RESIDENTIAL_PROXY_URL: ${{ secrets.RESIDENTIAL_PROXY_URL }}
       WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}

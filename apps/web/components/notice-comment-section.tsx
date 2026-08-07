@@ -69,6 +69,8 @@ interface NoticeCommentsResponse {
     enriched_comments: number;
     pending_review_comments: number;
   };
+  source?: "neon" | "unavailable";
+  warnings?: string[];
 }
 
 interface DerivedNoticeGroupItem extends NoticeGroupItem {
@@ -528,6 +530,15 @@ export function NoticeCommentSection() {
     return () => { canceled = true; };
   }, []);
 
+  const backendWarnings = useMemo(() => {
+    if (!data) return [];
+    const warnings = Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : [];
+    if (warnings.length === 0 && data.source === "unavailable") {
+      return ["The notice store was unreachable."];
+    }
+    return warnings;
+  }, [data]);
+
   // Derived: available source families
   const familyOptions = useMemo(() => {
     if (!data) return [];
@@ -765,6 +776,16 @@ export function NoticeCommentSection() {
       {/* Error */}
       {error ? <p className="callout callout-error">{error}</p> : null}
 
+      {/* Backend warnings. A failed read must never look like an empty filter
+          result - that ambiguity is what hid a multi-week outage. */}
+      {!loading && backendWarnings.length > 0
+        ? backendWarnings.map((warning) => (
+            <p key={warning} className="callout callout-error">
+              Notice data could not be loaded, so this page may be incomplete. {warning}
+            </p>
+          ))
+        : null}
+
       {/* Group List */}
       {loading ? (
         <section className="grid gap-3">
@@ -778,7 +799,11 @@ export function NoticeCommentSection() {
         </section>
       ) : filteredGroups.length === 0 ? (
         <section className="panel p-5">
-          <p className="text-sm">No notice or rulemaking groups matched the current filters.</p>
+          <p className="text-sm">
+            {backendWarnings.length > 0
+              ? "No notice or rulemaking groups could be loaded. This is a data-source problem, not a filter result."
+              : "No notice or rulemaking groups matched the current filters."}
+          </p>
         </section>
       ) : (
         <section className="grid gap-3">
