@@ -11,6 +11,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
@@ -29,6 +30,12 @@ SOURCE_TYPES = {
     "finra_comment_url",
 }
 
+# Canonical host suffix -> (rule-page source_type, comment-url source_type).
+_HOST_SOURCE_TYPES: Dict[str, Tuple[str, str]] = {
+    "finra.org": ("finra_rule_page", "finra_comment_url"),
+    "sec.gov": ("sec_rule_page", "sec_comment_url"),
+}
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC).replace(microsecond=0)
@@ -36,6 +43,32 @@ def utc_now() -> datetime:
 
 def iso(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _host_source_types(source_url: str) -> Optional[Tuple[str, str]]:
+    host = urlparse(str(source_url or "").strip()).netloc.lower().split(":")[0]
+    for suffix, pair in _HOST_SOURCE_TYPES.items():
+        if host == suffix or host.endswith(f".{suffix}"):
+            return pair
+    return None
+
+
+def resolve_source_type(source_type: str, source_url: str) -> str:
+    """Reconcile a monitor's declared source_type with its URL's host.
+
+    A FINRA URL registered as ``sec_rule_page`` sends the SEC scraper at
+    finra.org, which answers 403 - so the monitor fails on every run, forever,
+    and a permanently red daily job trains everyone to ignore the one that
+    matters. The role (rule page vs. comment url) is preserved; only the host
+    family is corrected. Unknown hosts are left alone.
+    """
+    declared = str(source_type or "").strip()
+    pair = _host_source_types(source_url)
+    if pair is None or declared in pair:
+        return declared
+
+    rule_type, comment_type = pair
+    return comment_type if declared.endswith("_comment_url") else rule_type
 
 
 def monitor_id(source_type: str, source_url: str) -> str:
@@ -104,6 +137,9 @@ def parse_iso(value: Any) -> Optional[datetime]:
 
 def upsert_monitor(payload: Dict[str, Any], source_type: str, source_url: str, monitor_days: int) -> Dict[str, Any]:
     now = utc_now()
+    # Correct a host/source_type mismatch at registration so a bad pair never
+    # reaches the registry in the first place.
+    source_type = resolve_source_type(source_type, source_url)
     mid = monitor_id(source_type, source_url)
     expires_at = iso(now + timedelta(days=max(1, int(monitor_days))))
     monitors = payload.setdefault("monitors", [])
@@ -177,8 +213,15 @@ def load_summary(path: Path) -> Dict[str, Any]:
 
 
 def run_monitor(item: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
-    source_type = str(item.get("source_type", "") or "").strip()
+    declared_type = str(item.get("source_type", "") or "").strip()
     source_url = str(item.get("source_url", "") or "").strip()
+    # Heal registry rows written before registration validated the host. The
+    # id is derived from the original pair and is left alone so a monitor
+    # keeps its history.
+    source_type = resolve_source_type(declared_type, source_url)
+    if source_type != declared_type:
+        item["source_type"] = source_type
+        item["source_type_corrected_from"] = declared_type
     mid = str(item.get("id", "") or monitor_id(source_type, source_url))
     run_stamp = utc_now().strftime("%Y%m%dT%H%M%SZ")
     total_processed = 0

@@ -1,0 +1,42 @@
+name: Neon Consumption Report
+
+# Read-only cost diagnostic. Manual dispatch only - it exists to answer
+# "does the database ever go idle?" with a number instead of a guess.
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days of consumption history to report"
+        required: false
+        default: "14"
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Deliberately no pip install: the script is stdlib-only.
+      - name: Report Neon consumption
+        run: python scripts/report_neon_consumption.py --days "${{ github.event.inputs.days || '14' }}" --summary-path neon_consumption.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-consumption-${{ github.run_id }}
+          path: neon_consumption.json
+          if-no-files-found: ignore
