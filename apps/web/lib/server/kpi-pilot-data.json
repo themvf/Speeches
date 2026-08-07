@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-08-05T11:39:06Z",
+ "generatedAt": "2026-08-07T00:13:35Z",
  "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
  "companies": {
   "AAPL": {
@@ -679,11 +679,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 1.52,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
        "value": 1.51,
        "derived": false
@@ -717,6 +712,11 @@
        "end": "2026-03-31",
        "value": 3.06,
        "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": 3.15,
+       "derived": false
       }
      ]
     },
@@ -725,43 +725,43 @@
      "unit": "usd",
      "series": [
       {
+       "end": "2023-09-30",
+       "value": 2897000000.0,
+       "derived": false
+      },
+      {
+       "end": "2024-03-31",
+       "value": 2538000000.0,
+       "derived": false
+      },
+      {
        "end": "2024-06-30",
-       "value": 20139000000.0,
+       "value": 2833000000.0,
        "derived": false
       },
       {
        "end": "2024-09-30",
-       "value": 20315000000.0,
+       "value": 2791000000.0,
        "derived": false
       },
       {
-       "end": "2024-12-31",
-       "value": 19581000000.0,
-       "derived": true
-      },
-      {
        "end": "2025-03-31",
-       "value": 21596000000.0,
+       "value": 2751000000.0,
        "derived": false
       },
       {
        "end": "2025-06-30",
-       "value": 21668000000.0,
+       "value": 2918000000.0,
        "derived": false
       },
       {
        "end": "2025-09-30",
-       "value": 22090000000.0,
+       "value": 3000000000.0,
        "derived": false
       },
       {
-       "end": "2025-12-31",
-       "value": 19871000000.0,
-       "derived": true
-      },
-      {
        "end": "2026-03-31",
-       "value": 24633000000.0,
+       "value": 2816000000.0,
        "derived": false
       }
      ]
@@ -771,43 +771,43 @@
      "unit": "usd",
      "series": [
       {
-       "end": "2024-06-30",
-       "value": 3217000000.0,
-       "derived": false
-      },
-      {
        "end": "2024-09-30",
-       "value": 3238000000.0,
+       "value": 35000000.0,
        "derived": false
       },
       {
        "end": "2024-12-31",
-       "value": 2856000000.0,
+       "value": 12664000000.0,
        "derived": true
       },
       {
        "end": "2025-03-31",
-       "value": 4064000000.0,
+       "value": -1707000000.0,
        "derived": false
       },
       {
        "end": "2025-06-30",
-       "value": 4019000000.0,
+       "value": 14000000.0,
        "derived": false
       },
       {
        "end": "2025-09-30",
-       "value": 3752000000.0,
+       "value": 38000000.0,
        "derived": false
       },
       {
        "end": "2025-12-31",
-       "value": 2471000000.0,
+       "value": 15961000000.0,
        "derived": true
       },
       {
        "end": "2026-03-31",
-       "value": 5785000000.0,
+       "value": 560000000.0,
+       "derived": false
+      },
+      {
+       "end": "2026-06-30",
+       "value": 193000000.0,
        "derived": false
       }
      ]
