@@ -62,6 +62,29 @@ def main() -> int:
         for field in ("compute_time_seconds", "active_time_seconds", "data_storage_bytes_hour", "written_data_bytes"):
             if field in project:
                 summary["project"][field] = project[field]
+
+        # The headline number: what share of the billing period so far has the
+        # compute been awake? Neon suspends after suspend_timeout_seconds of
+        # no queries (0 means the 5-minute default), so a poller whose interval
+        # is shorter than roughly twice that window keeps it permanently up.
+        active = float(project.get("active_time_seconds") or 0)
+        compute = float(project.get("compute_time_seconds") or 0)
+        if consumption and active:
+            started = datetime.fromisoformat(consumption.replace("Z", "+00:00"))
+            elapsed = (now - started).total_seconds()
+            if elapsed > 0:
+                awake = active / elapsed
+                summary["analysis"] = {
+                    "period_elapsed_hours": round(elapsed / 3600, 1),
+                    "active_hours": round(active / 3600, 1),
+                    "awake_fraction": round(awake, 3),
+                    "compute_hours": round(compute / 3600, 1),
+                    "mean_cu_while_active": round(compute / active, 2) if active else 0,
+                    "projected_active_hours_per_month": round(awake * 730, 0),
+                    "projected_compute_hours_per_month": round(
+                        awake * 730 * (compute / active if active else 0), 0
+                    ),
+                }
     except urllib.error.HTTPError as exc:
         summary["project_error"] = f"HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:300]}"
     except Exception as exc:  # noqa: BLE001
@@ -102,7 +125,16 @@ def main() -> int:
                 "total_compute_hours": round(sum(r["compute_time_seconds"] for r in rows) / 3600, 2),
             }
     except urllib.error.HTTPError as exc:
-        summary["history_error"] = f"HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:300]}"
+        if exc.code in (403, 404):
+            # Expected with a project-scoped key: consumption_history is an
+            # org-level endpoint. The project counters above already answer the
+            # question, so this is a note, not a failure.
+            summary["daily_unavailable"] = (
+                "Per-day history needs an organization-scoped NEON_API_KEY; "
+                "using cumulative project counters instead."
+            )
+        else:
+            summary["history_error"] = f"HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:300]}"
     except Exception as exc:  # noqa: BLE001
         summary["history_error"] = str(exc)
 
