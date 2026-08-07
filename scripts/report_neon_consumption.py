@@ -90,6 +90,25 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         summary["project_error"] = str(exc)
 
+    # Stored size decides whether consolidating onto Neon alone still fits the
+    # plan's storage allowance, which is the whole question when weighing a
+    # single store against two.
+    try:
+        branches = _get(f"/projects/{project_id}/branches", api_key).get("branches", [])
+        summary["branches"] = [
+            {
+                "name": branch.get("name", ""),
+                "default": bool(branch.get("default")),
+                "logical_size_mb": round(float(branch.get("logical_size") or 0) / 1_048_576, 1),
+            }
+            for branch in branches
+        ]
+        summary["total_logical_size_mb"] = round(
+            sum(float(branch.get("logical_size") or 0) for branch in branches) / 1_048_576, 1
+        )
+    except Exception as exc:  # noqa: BLE001
+        summary["branches_error"] = str(exc)
+
     try:
         granularity = "daily"
         path = (
