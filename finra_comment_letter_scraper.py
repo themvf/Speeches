@@ -19,6 +19,24 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+
+def _metadata_fallback_marker() -> str:
+    """The shared placeholder marker enrichment uses to skip stub bodies.
+
+    Imported lazily so this scraper keeps working without the database
+    dependencies neon_feeds pulls in; the literal is only a last resort and
+    is asserted against the real constant in the tests.
+    """
+    try:
+        from neon_feeds import METADATA_FALLBACK_TEXT_MARKER
+
+        return METADATA_FALLBACK_TEXT_MARKER
+    except Exception:  # pragma: no cover - exercised only without psycopg2
+        return (
+            "This metadata-backed record is retained so the item can appear in feed, search, "
+            "watchlist, and briefing workflows."
+        )
+
 try:
     from curl_cffi import requests as _cffi_requests
 
@@ -323,8 +341,14 @@ class FINRACommentLetterScraper:
 
         if _is_pdf_url(final_url):
             full_text_body = self._extract_pdf_text(response.content)
-            if not full_text_body:
-                raise RuntimeError("No text extracted from comment letter PDF.")
+            # A scanned comment letter has no text layer, so extraction can
+            # never succeed on a retry. Raising here made one image-only PDF
+            # fail the whole daily monitor forever and hid the letter from the
+            # notices page entirely. Keep the metadata record instead: the
+            # commenter, date and a link to the PDF are the parts the page
+            # actually renders, and the marker keeps the stub out of
+            # enrichment (see _build_news_enrichment_candidates).
+            metadata_only = not full_text_body
 
             if not notice_number:
                 notice_number = _notice_number_from_text(final_url) or _notice_number_from_text(fallback_title)
@@ -348,6 +372,12 @@ class FINRACommentLetterScraper:
             full_text = "\n".join(header_lines).strip()
             if full_text_body:
                 full_text = f"{full_text}\n\n{full_text_body}".strip()
+            else:
+                full_text = (
+                    f"{full_text}\n\n"
+                    "Note: This comment letter is a scanned PDF with no text layer, so no body "
+                    f"text could be extracted. {_metadata_fallback_marker()}"
+                ).strip()
 
             return {
                 "success": True,
@@ -365,6 +395,7 @@ class FINRACommentLetterScraper:
                     "full_text": full_text,
                     "word_count": len(full_text.split()),
                     "source_format": "pdf",
+                    "extraction_mode": "metadata_fallback" if metadata_only else "pdf_text",
                 },
             }
 
