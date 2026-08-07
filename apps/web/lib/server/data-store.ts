@@ -29,7 +29,9 @@ import {
   getMirroredDocumentFeedMetadata,
   getMirroredDocumentListPage,
   getMirroredNoticeDocuments,
+  getNewsConnectorSettingsRow,
   isDocumentEnrichmentProjectionAvailable,
+  saveNewsConnectorSettingsRow,
   type MirroredDocumentListOptions,
   type NeonDocumentFacetData,
 } from "@/lib/server/neon";
@@ -39,7 +41,6 @@ const SEC_SPEECHES_LOCAL_FILE = "all_speeches_final.json";
 const CUSTOM_DOCS_BLOB = "custom_documents.json";
 const ENRICHMENT_BLOB = "document_enrichment_state.json";
 const RULE_SUMMARIES_BLOB = "rule_summaries.json";
-const SETTINGS_BLOB = "news_connector_settings.json";
 const TRENDS_BLOB = "trends_daily.json";
 
 const CACHE_TTL_MS = 120_000;
@@ -882,27 +883,49 @@ export async function loadRuleSummaries(): Promise<RuleSummariesPayload> {
   });
 }
 
+// Neon is the sole store for this settings row (see neon.ts's
+// getNewsConnectorSettingsRow/saveNewsConnectorSettingsRow, and
+// neon_feeds.get_news_connector_settings on the Python read side).
+// news_connector_settings.json had exactly one writer (this admin route) and
+// one Python reader, so this is a straight cutover rather than a dual-read -
+// no GCS fallback, matching the fail-closed posture the other Neon-backed
+// readers in this file already use.
+function emptyNewsConnectorSettings(): NewsConnectorSettingsPayload {
+  return {
+    updated_at: "",
+    query: "",
+    lookback_days: 7,
+    max_pages: 4,
+    page_size: 50,
+    target_count: 100,
+    sort_by: "publishedAt",
+    organization_label: "News",
+    domains: "",
+    exclude_domains: "",
+    tags_csv: "",
+    doj_usao_exclude_terms: ""
+  };
+}
+
 export async function loadNewsConnectorSettings(): Promise<NewsConnectorSettingsPayload> {
-  return loadFromSource({
-    cacheKey: "news_connector_settings",
-    gcsBlobName: SETTINGS_BLOB,
-    localFileName: SETTINGS_BLOB,
-    normalize: normalizeNewsSettingsPayload,
-    emptyFactory: () => ({
-      updated_at: "",
-      query: "",
-      lookback_days: 7,
-      max_pages: 4,
-      page_size: 50,
-      target_count: 100,
-      sort_by: "publishedAt",
-      organization_label: "News",
-      domains: "",
-      exclude_domains: "",
-      tags_csv: "",
-      doj_usao_exclude_terms: ""
-    })
-  });
+  const now = Date.now();
+  const cacheKey = "news_connector_settings";
+  const hit = cache.get(cacheKey);
+  if (hit && now - hit.loadedAt < CACHE_TTL_MS) {
+    return hit.data as NewsConnectorSettingsPayload;
+  }
+
+  let normalized: NewsConnectorSettingsPayload;
+  try {
+    const row = await getNewsConnectorSettingsRow();
+    normalized = normalizeNewsSettingsPayload(row);
+  } catch (error) {
+    console.error("[data-store] loadNewsConnectorSettings failed closed:", error);
+    normalized = emptyNewsConnectorSettings();
+  }
+
+  cache.set(cacheKey, { loadedAt: now, data: normalized });
+  return normalized;
 }
 
 export async function saveNewsConnectorSettings(payload: Partial<NewsConnectorSettingsPayload>): Promise<{
@@ -918,22 +941,19 @@ export async function saveNewsConnectorSettings(payload: Partial<NewsConnectorSe
     updated_at: new Date().toISOString()
   });
 
-  const cfg = getDataSourceConfig();
   let remoteSaved = false;
-  let localSaved = false;
-
-  if (cfg.mode === "gcs" || cfg.mode === "auto") {
-    remoteSaved = await uploadGcsJson(SETTINGS_BLOB, normalized);
-  }
-  if (cfg.mode === "local" || cfg.mode === "auto" || !remoteSaved) {
-    localSaved = writeLocalJson(SETTINGS_BLOB, normalized);
+  try {
+    await saveNewsConnectorSettingsRow(normalized as unknown as Record<string, unknown>);
+    remoteSaved = true;
+  } catch (error) {
+    console.error("[data-store] saveNewsConnectorSettings failed:", error);
   }
 
   clearCacheKey("news_connector_settings");
 
   return {
-    saved: remoteSaved || localSaved,
-    local_saved: localSaved,
+    saved: remoteSaved,
+    local_saved: false,
     remote_saved: remoteSaved,
     settings: normalized
   };

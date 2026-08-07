@@ -868,13 +868,25 @@ def _normalize_news_connector_settings(payload: Dict[str, Any]) -> Dict[str, Any
 
 
 def _load_news_connector_settings(storage: Optional[GCSStorage]) -> Dict[str, Any]:
-    return _load_json_store(
-        storage=storage,
-        blob_name=NEWS_CONNECTOR_SETTINGS_BLOB_NAME,
-        local_path=NEWS_CONNECTOR_SETTINGS_LOCAL_PATH,
-        default_factory=_empty_news_connector_settings,
-        normalize_fn=_normalize_news_connector_settings,
-    )
+    """Read the admin-editable NewsAPI query config.
+
+    Neon is now the sole store for this settings row (the admin UI writes it
+    via apps/web's saveNewsConnectorSettings) - news_connector_settings.json
+    had exactly one writer and one Python reader, so this is a straight
+    cutover rather than a dual-read. ``storage`` is accepted only so call
+    sites do not need to change; it is unused. Falls back to in-code defaults
+    - never to the retired blob - so a missing table or unset DATABASE_URL
+    degrades to defaults, not a crash.
+    """
+    del storage
+    try:
+        import neon_feeds
+
+        config = neon_feeds.get_news_connector_settings()
+    except Exception as exc:  # noqa: BLE001
+        _stderr(f"News connector settings unavailable, using defaults: {exc}")
+        config = None
+    return _normalize_news_connector_settings(config or {})
 
 
 def _empty_enrichment_state() -> Dict[str, Any]:

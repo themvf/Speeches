@@ -1282,6 +1282,54 @@ def get_attention_sweep_config() -> Optional[Dict[str, Any]]:
         return None
 
 
+# ─── News connector settings (single-row config, GCS blob retirement) ──────
+
+# Written by the admin UI (TS side, apps/web/lib/server/neon.ts has the same
+# CREATE - kept in lockstep) and read fail-soft by run_financial_news_pipeline.
+# py's CLI-override merge. Same single-JSONB-row shape and same "None means
+# use in-code defaults, never an error" contract as attention_sweep_config
+# above; this table replaces news_connector_settings.json rather than sitting
+# alongside it, since the blob had exactly one writer (this admin route) and
+# one Python reader.
+_NEWS_CONNECTOR_SETTINGS_SCHEMA_ENSURED = False
+
+
+def _ensure_news_connector_settings_schema() -> None:
+    global _NEWS_CONNECTOR_SETTINGS_SCHEMA_ENSURED
+    if _NEWS_CONNECTOR_SETTINGS_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS news_connector_settings (
+                  id         SERIAL PRIMARY KEY,
+                  config     JSONB NOT NULL,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            conn.commit()
+    _NEWS_CONNECTOR_SETTINGS_SCHEMA_ENSURED = True
+
+
+def get_news_connector_settings() -> Optional[Dict[str, Any]]:
+    """Latest saved settings row, or None on any failure (missing table,
+    connectivity, no row saved yet, malformed row) - callers must treat None
+    as 'use in-code defaults', never as an error."""
+    try:
+        _ensure_news_connector_settings_schema()
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT config FROM news_connector_settings ORDER BY id DESC LIMIT 1")
+                row = cur.fetchone()
+                config = row["config"] if row else None
+                return config if isinstance(config, dict) else None
+    except Exception as exc:
+        print(f"[neon_feeds] news connector settings unavailable, using defaults: {exc}", flush=True)
+        return None
+
+
 # ─── Author stats writers (enhancement item 5) ──────────────────────────────
 
 def upsert_author_stats_batch(rows: List[Dict[str, Any]]) -> int:

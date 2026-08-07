@@ -3375,6 +3375,46 @@ export async function saveAttentionSweepConfig(config: AttentionSweepConfig): Pr
   }
 }
 
+// ─── News connector settings (single-row config, GCS blob retirement) ─────
+// news_connector_settings.json had exactly one writer (this admin route) and
+// one Python reader (run_financial_news_pipeline.py's CLI-override merge, via
+// neon_feeds.get_news_connector_settings - kept in lockstep with the CREATE
+// below). Same single-JSONB-row shape as attention_sweep_config; this table
+// replaces the blob rather than mirroring it.
+
+async function ensureNewsConnectorSettingsSchema(sql: ReturnType<typeof neon>): Promise<void> {
+  await sql`
+    CREATE TABLE IF NOT EXISTS news_connector_settings (
+      id         SERIAL PRIMARY KEY,
+      config     JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+}
+
+export async function getNewsConnectorSettingsRow(): Promise<Record<string, unknown> | null> {
+  const sql = getSql();
+  await ensureNewsConnectorSettingsSchema(sql);
+  const rows = (await sql`SELECT config FROM news_connector_settings ORDER BY id DESC LIMIT 1`) as unknown as {
+    config: Record<string, unknown>;
+  }[];
+  return rows[0]?.config ?? null;
+}
+
+export async function saveNewsConnectorSettingsRow(config: Record<string, unknown>): Promise<void> {
+  const sql = getSql();
+  await ensureNewsConnectorSettingsSchema(sql);
+  const json = JSON.stringify(config);
+  const existing = (await sql`SELECT id FROM news_connector_settings ORDER BY id DESC LIMIT 1`) as unknown as {
+    id: number;
+  }[];
+  if (existing.length > 0) {
+    await sql`UPDATE news_connector_settings SET config = ${json}::jsonb, updated_at = now() WHERE id = ${existing[0].id}`;
+  } else {
+    await sql`INSERT INTO news_connector_settings (config) VALUES (${json}::jsonb)`;
+  }
+}
+
 // ─── Attention Activity + Authors views (see CLAUDE.md plan, 2026-07-12) ───
 
 export type AttentionActivityRow = {
