@@ -626,7 +626,7 @@ export function NoticeCommentSection() {
     () => filteredGroups.reduce((sum, g) => sum + g.visible_comments.filter((c) => isEnrichedCommentStatus(c.enrichment_status)).length, 0),
     [filteredGroups]
   );
-  const filteredPendingCount = useMemo(
+  const _filteredPendingCount = useMemo(
     () => filteredGroups.reduce((sum, g) => sum + g.visible_comments.filter((c) => isEnrichedCommentStatus(c.enrichment_status) && !["accepted", "edited", "rejected"].includes(c.review_decision)).length, 0),
     [filteredGroups]
   );
