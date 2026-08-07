@@ -1,13 +1,7 @@
-import {
-  buildDocumentListItems,
-  buildDocumentsFacets,
-  loadCorpusDocuments,
-  loadEnrichmentState,
-  parseComparableDate
-} from "@/lib/server/data-store";
+import { buildDocumentsFacetsFromNeon } from "@/lib/server/data-store";
 import { createRequestId, fail, normalizeText, ok, parseDate } from "@/lib/server/api-utils";
-import { buildFullTextById, filterDocumentListItems } from "@/lib/server/document-query";
-import type { TimelineBucket, TimelineResponseData } from "@/lib/server/types";
+import { getMirroredDocumentFacets, getMirroredDocumentTimeline } from "@/lib/server/neon";
+import type { DocumentsFacets, TimelineBucket, TimelineResponseData } from "@/lib/server/types";
 
 export const runtime = "nodejs";
 
@@ -98,21 +92,51 @@ export async function GET(request: Request) {
     const toDate = parseDate(url.searchParams.get("date_to"));
     const grain = parseGrain(url.searchParams.get("grain"));
 
-    const [corpusDocs, enrichment] = await Promise.all([loadCorpusDocuments(), loadEnrichmentState()]);
-    const items = buildDocumentListItems(corpusDocs, enrichment);
-    const facets = buildDocumentsFacets(items);
-    const fullTextById = buildFullTextById(corpusDocs);
-    const filtered = filterDocumentListItems(items, fullTextById, {
-      q,
-      org,
-      sourceKind,
-      topic,
-      keyword,
-      tag,
-      status,
-      fromDate,
-      toDate
-    });
+    const warnings: string[] = [];
+    let source: TimelineResponseData["source"] = "neon";
+    let facets: DocumentsFacets = {
+      sources: [],
+      organizations: [],
+      topics: [],
+      key_topics: [],
+      keywords: [],
+      statuses: []
+    };
+    let aggregate = {
+      buckets: [] as Array<{ bucket_start: string; source_kind: string; count: number }>,
+      matching: 0,
+      dated: 0,
+      undated: 0,
+      minDate: "",
+      maxDate: ""
+    };
+
+    // Fails closed. The GCS corpus this route used to read stopped being
+    // refreshed when scheduled snapshot egress was paused, so falling back to
+    // it would draw a timeline that quietly ends months ago.
+    try {
+      const [timeline, facetData] = await Promise.all([
+        getMirroredDocumentTimeline({
+          grain,
+          q,
+          organization: org,
+          sourceKind,
+          topic,
+          keyword,
+          tag,
+          status,
+          fromDate,
+          toDate
+        }),
+        getMirroredDocumentFacets()
+      ]);
+      aggregate = timeline;
+      facets = buildDocumentsFacetsFromNeon(facetData);
+    } catch (error) {
+      console.error("[timeline] Neon read failed closed", error);
+      source = "unavailable";
+      warnings.push("Timeline data could not be read; the GCS fallback is intentionally disabled");
+    }
 
     const bucketMap = new Map<
       string,
@@ -123,31 +147,25 @@ export async function GET(request: Request) {
       }
     >();
 
-    let datedDocuments = 0;
-    let undatedDocuments = 0;
-    let minDateMs = 0;
-    let maxDateMs = 0;
+    const datedDocuments = aggregate.dated;
+    const undatedDocuments = aggregate.undated;
 
-    for (const item of filtered) {
-      const comparable = parseComparableDate(item.published_at || item.date);
-      if (!comparable) {
-        undatedDocuments += 1;
+    for (const row of aggregate.buckets) {
+      // Postgres already truncated to the grain; re-deriving the label and
+      // bounds here keeps the response identical to the previous JS version.
+      const bucketDate = new Date(`${row.bucket_start}T00:00:00Z`);
+      if (Number.isNaN(bucketDate.getTime())) {
         continue;
       }
-
-      datedDocuments += 1;
-      minDateMs = minDateMs === 0 ? comparable : Math.min(minDateMs, comparable);
-      maxDateMs = maxDateMs === 0 ? comparable : Math.max(maxDateMs, comparable);
-
-      const bounds = bucketBounds(new Date(comparable), grain);
+      const bounds = bucketBounds(bucketDate, grain);
       const existing = bucketMap.get(bounds.key) || {
         bucket: bounds,
         count: 0,
         sourceCounts: new Map<string, number>()
       };
 
-      existing.count += 1;
-      existing.sourceCounts.set(item.source_kind, (existing.sourceCounts.get(item.source_kind) || 0) + 1);
+      existing.count += row.count;
+      existing.sourceCounts.set(row.source_kind, (existing.sourceCounts.get(row.source_kind) || 0) + row.count);
       bucketMap.set(bounds.key, existing);
     }
 
@@ -180,17 +198,19 @@ export async function GET(request: Request) {
         grain,
         buckets,
         totals: {
-          matching_documents: filtered.length,
+          matching_documents: aggregate.matching,
           dated_documents: datedDocuments,
           undated_documents: undatedDocuments,
           bucket_count: buckets.length,
           peak_bucket_key: peakBucket?.key || "",
           peak_bucket_label: peakBucket?.label || "",
           peak_bucket_count: peakBucket?.count || 0,
-          start_date: minDateMs ? formatDateOnlyUtc(new Date(minDateMs)) : "",
-          end_date: maxDateMs ? formatDateOnlyUtc(new Date(maxDateMs)) : ""
+          start_date: aggregate.minDate,
+          end_date: aggregate.maxDate
         },
-        facets
+        facets,
+        source,
+        warnings
       },
       requestId
     );

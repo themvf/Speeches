@@ -2164,6 +2164,331 @@ export async function getMirroredDocumentDetail(
   }
 }
 
+export type MirroredTimelineOptions = Omit<
+  MirroredDocumentListOptions,
+  "sort" | "page" | "pageSize" | "documentIds" | "hasDocumentIdsFilter"
+> & {
+  grain: "month" | "quarter" | "year";
+};
+
+export type NeonTimelineBucketRow = {
+  bucket_start: string;
+  source_kind: string;
+  count: number;
+};
+
+export type NeonTimelineAggregate = {
+  buckets: NeonTimelineBucketRow[];
+  matching: number;
+  dated: number;
+  undated: number;
+  minDate: string;
+  maxDate: string;
+};
+
+type RawTimelineRow = {
+  bucket_start: string | null;
+  source_kind: string | null;
+  count: number | string | null;
+  matching: number | string;
+  dated: number | string;
+  undated: number | string;
+  min_date: string | null;
+  max_date: string | null;
+};
+
+function normalizeTimelineRows(rows: RawTimelineRow[]): NeonTimelineAggregate {
+  const head = rows[0];
+  return {
+    // The totals CTE is LEFT JOINed, so a filter that matches only undated
+    // documents still returns one row - with a null bucket - instead of
+    // silently reporting zero matches.
+    buckets: rows
+      .filter((row) => row.bucket_start)
+      .map((row) => ({
+        bucket_start: String(row.bucket_start || ""),
+        source_kind: String(row.source_kind || ""),
+        count: Number(row.count || 0)
+      })),
+    matching: Number(head?.matching || 0),
+    dated: Number(head?.dated || 0),
+    undated: Number(head?.undated || 0),
+    minDate: String(head?.min_date || ""),
+    maxDate: String(head?.max_date || "")
+  };
+}
+
+/**
+ * Date-bucketed counts for /api/timeline, aggregated in Postgres.
+ *
+ * The predicates and the published-date parsing deliberately mirror
+ * getMirroredDocumentListPage so the timeline and the document list can never
+ * disagree about which documents match a filter. Aggregating here instead of
+ * streaming ~24k rows into Node follows getMirroredDocumentMetricsSnapshot.
+ *
+ * The enrichment-joined and documents-only variants are written out in full
+ * rather than composed, matching getMirroredDocumentListPageWithoutEnrichment:
+ * the Neon driver's tagged template does not support nested SQL fragments.
+ */
+export async function getMirroredDocumentTimeline(
+  options: MirroredTimelineOptions
+): Promise<NeonTimelineAggregate> {
+  const sql = getSql();
+  const grain = options.grain === "year" || options.grain === "quarter" ? options.grain : "month";
+  const q = String(options.q || "").trim().toLowerCase();
+  const organization = String(options.organization || "").trim();
+  const sourceKind = String(options.sourceKind || "").trim();
+  const topic = String(options.topic || "").trim().toLowerCase();
+  const keyword = String(options.keyword || "").trim().toLowerCase();
+  const tag = String(options.tag || "").trim().toLowerCase();
+  const status = String(options.status || "").trim();
+  const fromDate = options.fromDate && Number.isFinite(options.fromDate.getTime())
+    ? options.fromDate.toISOString().slice(0, 10)
+    : null;
+  const toDate = options.toDate && Number.isFinite(options.toDate.getTime())
+    ? options.toDate.toISOString().slice(0, 10)
+    : null;
+
+  const loadWithoutEnrichment = async (): Promise<NeonTimelineAggregate> => {
+    const rows = (await sql`
+      WITH projected AS (
+        SELECT
+          source_kind,
+          CASE
+            WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+              AND pg_input_is_valid(substring(raw_published FROM 1 FOR 10), 'date')
+              THEN substring(raw_published FROM 1 FOR 10)::date
+            WHEN raw_published ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(replace(raw_published, '.', ''), 'date')
+              THEN to_date(replace(raw_published, '.', ''), 'Month DD, YYYY')
+            WHEN raw_published ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(
+                regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'date'
+              )
+              THEN to_date(
+                regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'Mon DD, YYYY'
+              )
+            ELSE NULL
+          END AS published_on,
+          CASE
+            WHEN lower(COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC'))
+              IN ('financial news', 'financials news') THEN 'News'
+            ELSE COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC')
+          END AS organization_label,
+          'not_enriched' AS enrichment_status,
+          lower(regexp_replace(replace(replace(
+            COALESCE(metadata->>'tags', '')
+          , '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS topic_text,
+          lower(regexp_replace(replace(replace(
+            COALESCE(metadata->>'keywords', '')
+          , '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS keyword_text,
+          lower(concat_ws(
+            ' ',
+            title,
+            organization,
+            source_kind,
+            doc_type,
+            speaker,
+            url,
+            metadata::text,
+            full_text
+          )) AS search_text
+        FROM (
+          SELECT
+            documents.*,
+            trim(regexp_replace(
+              COALESCE(
+                NULLIF(documents.metadata->>'published_at', ''),
+                NULLIF(documents.metadata->>'published_date', ''),
+                NULLIF(documents.metadata->>'date', ''),
+                NULLIF(documents.published_date, ''),
+                ''
+              ),
+              '[[:space:]]+',
+              ' ',
+              'g'
+            )) AS raw_published
+          FROM documents
+        ) raw_documents
+      ),
+      filtered AS (
+        SELECT *
+        FROM projected
+        WHERE (${organization} = '' OR organization_label = ${organization})
+          AND (${sourceKind} = '' OR source_kind = ${sourceKind})
+          AND (${status} = '' OR enrichment_status = ${status})
+          AND (${topic} = '' OR position(${topic} in topic_text) > 0)
+          AND (${keyword} = '' OR position(${keyword} in keyword_text) > 0)
+          AND (${tag} = '' OR position(${tag} in topic_text) > 0)
+          AND (${fromDate}::date IS NULL OR published_on IS NULL OR published_on >= ${fromDate}::date)
+          AND (${toDate}::date IS NULL OR published_on IS NULL OR published_on <= ${toDate}::date)
+          AND (${q} = '' OR position(${q} in search_text) > 0)
+      ),
+      totals AS (
+        SELECT
+          count(*)::integer AS matching,
+          count(published_on)::integer AS dated,
+          (count(*) - count(published_on))::integer AS undated,
+          to_char(min(published_on), 'YYYY-MM-DD') AS min_date,
+          to_char(max(published_on), 'YYYY-MM-DD') AS max_date
+        FROM filtered
+      ),
+      buckets AS (
+        SELECT
+          to_char(date_trunc(${grain}, published_on), 'YYYY-MM-DD') AS bucket_start,
+          COALESCE(source_kind, '') AS source_kind,
+          count(*)::integer AS count
+        FROM filtered
+        WHERE published_on IS NOT NULL
+        GROUP BY 1, 2
+      )
+      SELECT
+        buckets.bucket_start,
+        buckets.source_kind,
+        buckets.count,
+        totals.matching,
+        totals.dated,
+        totals.undated,
+        totals.min_date,
+        totals.max_date
+      FROM totals
+      LEFT JOIN buckets ON TRUE
+      ORDER BY buckets.bucket_start NULLS FIRST, buckets.source_kind
+    `) as unknown as RawTimelineRow[];
+    return normalizeTimelineRows(rows);
+  };
+
+  if (!(await hasDocumentEnrichmentsTable())) {
+    return loadWithoutEnrichment();
+  }
+
+  try {
+    const rows = (await sql`
+      WITH projected AS (
+        SELECT
+          source_kind,
+          CASE
+            WHEN raw_published ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+              AND pg_input_is_valid(substring(raw_published FROM 1 FOR 10), 'date')
+              THEN substring(raw_published FROM 1 FOR 10)::date
+            WHEN raw_published ~* '^(january|february|march|april|may|june|july|august|september|october|november|december) [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(replace(raw_published, '.', ''), 'date')
+              THEN to_date(replace(raw_published, '.', ''), 'Month DD, YYYY')
+            WHEN raw_published ~* '^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\.? [0-9]{1,2}, [0-9]{4}$'
+              AND pg_input_is_valid(
+                regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'date'
+              )
+              THEN to_date(
+                regexp_replace(replace(raw_published, '.', ''), '^Sept ', 'Sep ', 'i'),
+                'Mon DD, YYYY'
+              )
+            ELSE NULL
+          END AS published_on,
+          CASE
+            WHEN lower(COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC'))
+              IN ('financial news', 'financials news') THEN 'News'
+            ELSE COALESCE(NULLIF(metadata->>'organization', ''), NULLIF(organization, ''), 'SEC')
+          END AS organization_label,
+          COALESCE(NULLIF(enrichment_entry->>'status', ''), 'not_enriched') AS enrichment_status,
+          lower(regexp_replace(replace(replace(concat_ws(
+            ' ',
+            COALESCE(metadata->>'tags', ''),
+            COALESCE(enrichment_entry #>> '{enrichment,tags}', '')
+          ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS topic_text,
+          lower(regexp_replace(replace(replace(concat_ws(
+            ' ',
+            COALESCE(metadata->>'keywords', ''),
+            COALESCE(enrichment_entry #>> '{enrichment,keywords}', '')
+          ), '_', ' '), '-', ' '), '[[:space:]]+', ' ', 'g')) AS keyword_text,
+          lower(concat_ws(
+            ' ',
+            title,
+            organization,
+            source_kind,
+            doc_type,
+            speaker,
+            url,
+            metadata::text,
+            enrichment_entry::text,
+            full_text
+          )) AS search_text
+        FROM (
+          SELECT
+            documents.*,
+            enrichment.entry AS enrichment_entry,
+            trim(regexp_replace(
+              COALESCE(
+                NULLIF(documents.metadata->>'published_at', ''),
+                NULLIF(documents.metadata->>'published_date', ''),
+                NULLIF(documents.metadata->>'date', ''),
+                NULLIF(documents.published_date, ''),
+                ''
+              ),
+              '[[:space:]]+',
+              ' ',
+              'g'
+            )) AS raw_published
+          FROM documents
+          LEFT JOIN document_enrichments enrichment
+            ON enrichment.document_id = documents.document_id
+        ) raw_documents
+      ),
+      filtered AS (
+        SELECT *
+        FROM projected
+        WHERE (${organization} = '' OR organization_label = ${organization})
+          AND (${sourceKind} = '' OR source_kind = ${sourceKind})
+          AND (${status} = '' OR enrichment_status = ${status})
+          AND (${topic} = '' OR position(${topic} in topic_text) > 0)
+          AND (${keyword} = '' OR position(${keyword} in keyword_text) > 0)
+          AND (${tag} = '' OR position(${tag} in topic_text) > 0)
+          AND (${fromDate}::date IS NULL OR published_on IS NULL OR published_on >= ${fromDate}::date)
+          AND (${toDate}::date IS NULL OR published_on IS NULL OR published_on <= ${toDate}::date)
+          AND (${q} = '' OR position(${q} in search_text) > 0)
+      ),
+      totals AS (
+        SELECT
+          count(*)::integer AS matching,
+          count(published_on)::integer AS dated,
+          (count(*) - count(published_on))::integer AS undated,
+          to_char(min(published_on), 'YYYY-MM-DD') AS min_date,
+          to_char(max(published_on), 'YYYY-MM-DD') AS max_date
+        FROM filtered
+      ),
+      buckets AS (
+        SELECT
+          to_char(date_trunc(${grain}, published_on), 'YYYY-MM-DD') AS bucket_start,
+          COALESCE(source_kind, '') AS source_kind,
+          count(*)::integer AS count
+        FROM filtered
+        WHERE published_on IS NOT NULL
+        GROUP BY 1, 2
+      )
+      SELECT
+        buckets.bucket_start,
+        buckets.source_kind,
+        buckets.count,
+        totals.matching,
+        totals.dated,
+        totals.undated,
+        totals.min_date,
+        totals.max_date
+      FROM totals
+      LEFT JOIN buckets ON TRUE
+      ORDER BY buckets.bucket_start NULLS FIRST, buckets.source_kind
+    `) as unknown as RawTimelineRow[];
+    return normalizeTimelineRows(rows);
+  } catch (error) {
+    if (!isMissingDocumentEnrichmentsError(error)) throw error;
+    documentEnrichmentsTableCache = { checkedAt: Date.now(), available: false };
+    console.warn("[neon] document_enrichments disappeared during timeline read; using documents-only projection");
+    return loadWithoutEnrichment();
+  }
+}
+
 export type MirroredNoticeDocumentOptions = {
   /** Exact `source_kind` values for notices and their comments. */
   sourceKinds: string[];

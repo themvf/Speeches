@@ -336,6 +336,8 @@ export interface TimelineResponseData {
   buckets: TimelineBucket[];
   totals: TimelineSummary;
   facets: DocumentsFacets;
+  source?: "neon" | "unavailable";
+  warnings?: string[];
 }
 
 export type GraphNodeKind = "document" | "organization" | "speaker" | "topic" | "keyword" | "entity";
