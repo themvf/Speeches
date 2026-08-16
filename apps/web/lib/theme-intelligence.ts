@@ -1,3 +1,8 @@
+import {
+  CAPITAL_FORMATION_FOCUS_AREAS,
+  CAPITAL_FORMATION_LABEL,
+} from "./capital-formation-vocabulary.ts";
+
 export type ThemeCategory = "MACRO" | "FINANCIAL_SYSTEM" | "GEOPOLITICS" | "REAL_ECONOMY" | "MODERN_THEMES";
 
 export type ProductCategory =
@@ -231,7 +236,7 @@ export const PRODUCT_CATEGORY_ORDER: readonly ProductCategory[] = [
 
 export const PRODUCT_CATEGORY_LABELS: Readonly<Record<ProductCategory, string>> = {
   SECURITIES_REGULATION: "Securities Regulation",
-  CAPITAL_FORMATION: "Capital Formation",
+  CAPITAL_FORMATION: CAPITAL_FORMATION_LABEL,
   AML: "AML",
   ENFORCEMENT: "Enforcement",
   AI_TECH: "AI & Tech",
@@ -254,48 +259,14 @@ const PRODUCT_CATEGORY_DISPLAY_THEMES: Readonly<Record<ProductCategory, readonly
 };
 
 export const PRODUCT_FOCUS_AREAS: readonly ProductFocusArea[] = [
-  {
-    id: "capital_public_offerings",
-    category: "CAPITAL_FORMATION",
-    label: "Public Offerings",
-    raw_patterns: ["IPO", "INITIAL_PUBLIC_OFFERING", "SECURITIES_OFFERING", "EQUITY_OFFERING", "PUBLIC_OFFERING", "SECONDARY_OFFERING", "FOLLOW_ON_OFFERING", "RIGHTS_OFFERING", "AT_THE_MARKET_OFFERING", "SHELF_REGISTRATION", "DIRECT_LISTING", "OFFERING_CIRCULAR", "PROSPECTUS", "SHARE_SALE", "STOCK_LISTING", "SPAC", "DE_SPAC"],
-    normalized_themes: ["FINANCIAL_MARKETS", "CORPORATE_ACTIVITY"]
-  },
-  {
-    id: "capital_private_capital",
-    category: "CAPITAL_FORMATION",
-    label: "Private Capital",
-    raw_patterns: ["PRIVATE_MARKETS", "PRIVATE_EQUITY", "PRIVATE_CREDIT", "VENTURE_CAPITAL", "STARTUP_FUNDING", "PRIVATE_PLACEMENT", "PRIVATE_INVESTMENT_IN_PUBLIC_EQUITY", "REG_D", "RULE_506", "RULE_144A", "REG_S", "ACCREDITED_INVESTOR", "CAPITAL_RAISE", "FUNDRAISING"],
-    normalized_themes: ["CREDIT_MARKETS", "CORPORATE_ACTIVITY"]
-  },
-  {
-    id: "capital_direct_participation",
-    category: "CAPITAL_FORMATION",
-    label: "Direct Participation & Non-Traded Products",
-    raw_patterns: ["DIRECT_PARTICIPATION_PROGRAM", "DPP", "NON_TRADED_REIT", "NON_LISTED_REIT", "REAL_ESTATE_INVESTMENT_TRUST", "BDC", "BUSINESS_DEVELOPMENT_COMPANY", "DELAWARE_STATUTORY_TRUST", "TENANT_IN_COMMON", "INTERVAL_FUND", "TENDER_OFFER_FUND"],
-    normalized_themes: ["FINANCIAL_MARKETS", "CORPORATE_ACTIVITY"]
-  },
-  {
-    id: "capital_debt_financing",
-    category: "CAPITAL_FORMATION",
-    label: "Debt Financing",
-    raw_patterns: ["DEBT_OFFERING", "BOND_ISSUANCE", "CORPORATE_BONDS", "DEBT_FINANCING", "REFINANCING", "LEVERAGED_LOAN", "CREDIT_FACILITY", "HIGH_YIELD", "INVESTMENT_GRADE"],
-    normalized_themes: ["CREDIT_MARKETS", "FINANCIAL_MARKETS"]
-  },
-  {
-    id: "capital_strategic_transactions",
-    category: "CAPITAL_FORMATION",
-    label: "M&A / Strategic Transactions",
-    raw_patterns: ["M&A", "DEALMAKING", "TAKEOVER_BID", "BUYOUT", "MERGER_AGREEMENT", "STRATEGIC_TRANSACTION"],
-    normalized_themes: ["CORPORATE_ACTIVITY", "FINANCIAL_MARKETS"]
-  },
-  {
-    id: "capital_access_policy",
-    category: "CAPITAL_FORMATION",
-    label: "Capital Access / Policy",
-    raw_patterns: ["CAPITAL_FORMATION", "SMALL_BUSINESS_CAPITAL", "EMERGING_GROWTH_COMPANY", "CROWDFUNDING", "REG_CF", "REG_A", "REGULATION_A", "EXEMPT_OFFERING", "INTRASTATE_OFFERING", "BLUE_SKY", "JOBS_ACT", "FORM_D"],
-    normalized_themes: ["REGULATION", "FINANCIAL_MARKETS"]
-  },
+  // Sourced from capital-formation-vocabulary.json (see that file's header).
+  ...CAPITAL_FORMATION_FOCUS_AREAS.map((area) => ({
+    id: area.id,
+    category: "CAPITAL_FORMATION" as ProductCategory,
+    label: area.label,
+    raw_patterns: [...area.rawPatterns],
+    normalized_themes: [...area.normalizedThemes] as NormalizedTheme[]
+  })),
   {
     id: "aml_sanctions",
     category: "AML",
@@ -355,12 +326,17 @@ export const PRODUCT_TAXONOMY: readonly ProductCategoryDefinition[] = [
     category: "CAPITAL_FORMATION",
     label: PRODUCT_CATEGORY_LABELS.CAPITAL_FORMATION,
     subcategories: [
-      { label: "Public Offerings", normalized_themes: [], raw_patterns: ["IPO", "INITIAL_PUBLIC_OFFERING", "SECURITIES_OFFERING", "EQUITY_OFFERING", "PUBLIC_OFFERING", "SECONDARY_OFFERING", "FOLLOW_ON_OFFERING", "RIGHTS_OFFERING", "AT_THE_MARKET_OFFERING", "SHELF_REGISTRATION", "DIRECT_LISTING", "OFFERING_CIRCULAR", "PROSPECTUS", "SHARE_SALE", "STOCK_LISTING", "SPAC", "DE_SPAC"], weight: 9 },
-      { label: "Private Capital", normalized_themes: [], raw_patterns: ["PRIVATE_MARKETS", "PRIVATE_EQUITY", "PRIVATE_CREDIT", "VENTURE_CAPITAL", "STARTUP_FUNDING", "PRIVATE_PLACEMENT", "PRIVATE_INVESTMENT_IN_PUBLIC_EQUITY", "REG_D", "RULE_506", "RULE_144A", "REG_S", "ACCREDITED_INVESTOR", "CAPITAL_RAISE", "FUNDRAISING"], weight: 9 },
-      { label: "Direct Participation & Non-Traded Products", normalized_themes: [], raw_patterns: ["DIRECT_PARTICIPATION_PROGRAM", "DPP", "NON_TRADED_REIT", "NON_LISTED_REIT", "REAL_ESTATE_INVESTMENT_TRUST", "BDC", "BUSINESS_DEVELOPMENT_COMPANY", "DELAWARE_STATUTORY_TRUST", "TENANT_IN_COMMON", "INTERVAL_FUND", "TENDER_OFFER_FUND"], weight: 9 },
-      { label: "Debt Financing", normalized_themes: [], raw_patterns: ["DEBT_OFFERING", "BOND_ISSUANCE", "CORPORATE_BONDS", "DEBT_FINANCING", "REFINANCING", "LEVERAGED_LOAN", "CREDIT_FACILITY", "HIGH_YIELD", "INVESTMENT_GRADE"], weight: 8 },
-      { label: "M&A / Strategic Transactions", normalized_themes: [], raw_patterns: ["M&A", "DEALMAKING", "TAKEOVER_BID", "BUYOUT", "MERGER_AGREEMENT", "STRATEGIC_TRANSACTION"], weight: 4 },
-      { label: "Capital Access / Policy", normalized_themes: [], raw_patterns: ["CAPITAL_FORMATION", "SMALL_BUSINESS_CAPITAL", "EMERGING_GROWTH_COMPANY", "CROWDFUNDING", "REG_CF", "REG_A", "REGULATION_A", "EXEMPT_OFFERING", "INTRASTATE_OFFERING", "BLUE_SKY", "JOBS_ACT", "FORM_D"], weight: 8 }
+      // Sourced from capital-formation-vocabulary.json. normalized_themes is
+      // deliberately empty here even though the focus areas above populate it:
+      // scoreThemeArticle adds a theme-based score for every subcategory theme,
+      // so wiring CREDIT_MARKETS/FINANCIAL_MARKETS in would make any ordinary
+      // credit or equity-market story score as capital formation.
+      ...CAPITAL_FORMATION_FOCUS_AREAS.map((area) => ({
+        label: area.label,
+        normalized_themes: [] as NormalizedTheme[],
+        raw_patterns: [...area.rawPatterns],
+        weight: area.weight
+      }))
     ]
   },
   {

@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 
+import {
+  CAPITAL_FORMATION_PATTERN_ALIASES,
+  capitalFormationQueryTerms,
+} from "../capital-formation-vocabulary.ts";
 import type { IntelligenceEvidenceArticle, IntelligenceProfile } from "../intelligence-types";
 import {
   focusAreasForProductCategory,
@@ -79,51 +83,8 @@ export const CATEGORY_DOC_QUERY_TERMS: Readonly<Partial<Record<ProductCategory, 
     aml_kyc_ownership: ["beneficial ownership", "KYC", "customer identification"],
     aml_illicit_finance: ["suspicious activity", "terrorist financing", "illicit finance"]
   },
-  CAPITAL_FORMATION: {
-    capital_public_offerings: [
-      "IPO",
-      "initial public offering",
-      "public offering",
-      "secondary offering",
-      "follow-on offering",
-      "rights offering",
-      "direct listing",
-      "shelf registration",
-      "offering circular",
-      "SPAC",
-      "de-SPAC"
-    ],
-    capital_private_capital: [
-      "private credit",
-      "private equity",
-      "venture capital",
-      "private placement",
-      "Reg D",
-      "Rule 144A",
-      "accredited investor"
-    ],
-    capital_direct_participation: [
-      "non-traded REIT",
-      "non-listed REIT",
-      "direct participation program",
-      "business development company",
-      "Delaware statutory trust",
-      "1031 exchange",
-      "interval fund"
-    ],
-    capital_debt_financing: ["bond issuance", "debt offering", "credit facility"],
-    capital_strategic_transactions: ["merger", "acquisition", "takeover bid", "buyout"],
-    capital_access_policy: [
-      "crowdfunding",
-      "Reg A",
-      "Reg CF",
-      "Regulation Crowdfunding",
-      "exempt offering",
-      "blue sky",
-      "JOBS Act",
-      "small business capital"
-    ]
-  }
+  // Sourced from capital-formation-vocabulary.json.
+  CAPITAL_FORMATION: capitalFormationQueryTerms()
 };
 
 export const CATEGORY_PATTERN_ALIASES: Readonly<Record<string, readonly string[]>> = {
@@ -142,75 +103,8 @@ export const CATEGORY_PATTERN_ALIASES: Readonly<Record<string, readonly string[]
   SUSPICIOUS_ACTIVITY: ["SUSPICIOUS_ACTIVITY", "SUSPICIOUS_ACTIVITY_REPORT"],
   SAR: ["SAR", "SUSPICIOUS_ACTIVITY_REPORT"],
   TERRORIST_FINANCING: ["TERRORIST_FINANCING", "TERRORISM_FINANCING"],
-  IPO: ["IPO", "INITIAL_PUBLIC_OFFERING", "GO_PUBLIC", "PUBLIC_DEBUT"],
-  INITIAL_PUBLIC_OFFERING: ["INITIAL_PUBLIC_OFFERING", "IPO", "GO_PUBLIC", "PUBLIC_DEBUT"],
-  SECURITIES_OFFERING: ["SECURITIES_OFFERING", "SECURITIES_ISSUANCE"],
-  EQUITY_OFFERING: ["EQUITY_OFFERING", "STOCK_OFFERING", "SHARE_OFFERING"],
-  PUBLIC_OFFERING: ["PUBLIC_OFFERING", "GO_PUBLIC"],
-  SECONDARY_OFFERING: ["SECONDARY_OFFERING", "FOLLOW_ON_OFFERING"],
-  SHARE_SALE: ["SHARE_SALE"],
-  STOCK_LISTING: ["STOCK_LISTING", "GO_PUBLIC"],
-  PRIVATE_MARKETS: ["PRIVATE_MARKETS", "PRIVATE_MARKET"],
-  PRIVATE_EQUITY: ["PRIVATE_EQUITY"],
-  PRIVATE_CREDIT: ["PRIVATE_CREDIT", "DIRECT_LENDING"],
-  VENTURE_CAPITAL: ["VENTURE_CAPITAL", "VC"],
-  FUNDRAISING: ["FUNDRAISING", "FUNDING_ROUND", "RAISES_FUNDS"],
-  STARTUP_FUNDING: ["STARTUP_FUNDING", "SEED_FUNDING", "FUNDING_ROUND"],
-  PRIVATE_PLACEMENT: ["PRIVATE_PLACEMENT"],
-  REG_D: ["REG_D", "REGULATION_D"],
-  ACCREDITED_INVESTOR: ["ACCREDITED_INVESTOR", "ACCREDITED_INVESTORS"],
-  CAPITAL_RAISE: ["CAPITAL_RAISE", "CAPITAL_RAISING", "RAISES_CAPITAL"],
-  DEBT_OFFERING: ["DEBT_OFFERING", "DEBT_ISSUANCE"],
-  BOND_ISSUANCE: ["BOND_ISSUANCE", "BOND_OFFERING"],
-  CORPORATE_BONDS: ["CORPORATE_BONDS", "CORPORATE_BOND"],
-  DEBT_FINANCING: ["DEBT_FINANCING"],
-  REFINANCING: ["REFINANCING", "REFINANCE"],
-  LEVERAGED_LOAN: ["LEVERAGED_LOAN", "LEVERAGED_LOANS"],
-  CREDIT_FACILITY: ["CREDIT_FACILITY", "CREDIT_LINE"],
-  HIGH_YIELD: ["HIGH_YIELD", "JUNK_BOND"],
-  INVESTMENT_GRADE: ["INVESTMENT_GRADE"],
-  "M&A": ["M_AND_A", "MERGER", "ACQUISITION", "ACQUIRE"],
-  DEALMAKING: ["DEALMAKING"],
-  TAKEOVER_BID: ["TAKEOVER_BID"],
-  BUYOUT: ["BUYOUT"],
-  SPAC: ["SPAC", "SPECIAL_PURPOSE_ACQUISITION_COMPANY"],
-  DE_SPAC: ["DE_SPAC", "DESPAC"],
-  MERGER_AGREEMENT: ["MERGER_AGREEMENT"],
-  STRATEGIC_TRANSACTION: ["STRATEGIC_TRANSACTION"],
-  CAPITAL_FORMATION: ["CAPITAL_FORMATION", "CAPITAL_ACCESS"],
-  SMALL_BUSINESS_CAPITAL: ["SMALL_BUSINESS_CAPITAL", "SMALL_BUSINESS_FINANCING"],
-  EMERGING_GROWTH_COMPANY: ["EMERGING_GROWTH_COMPANY"],
-  CROWDFUNDING: ["CROWDFUNDING"],
-  REG_CF: ["REG_CF", "REGULATION_CROWDFUNDING"],
-  REG_A: ["REG_A", "REGULATION_A"],
-  REGULATION_A: ["REGULATION_A", "REG_A"],
-  EXEMPT_OFFERING: ["EXEMPT_OFFERING", "EXEMPT_OFFERINGS"],
-  FOLLOW_ON_OFFERING: ["FOLLOW_ON_OFFERING", "SECONDARY_OFFERING"],
-  RIGHTS_OFFERING: ["RIGHTS_OFFERING"],
-  AT_THE_MARKET_OFFERING: ["AT_THE_MARKET_OFFERING", "ATM_OFFERING"],
-  SHELF_REGISTRATION: ["SHELF_REGISTRATION", "SHELF_OFFERING"],
-  DIRECT_LISTING: ["DIRECT_LISTING"],
-  OFFERING_CIRCULAR: ["OFFERING_CIRCULAR"],
-  PROSPECTUS: ["PROSPECTUS"],
-  PRIVATE_INVESTMENT_IN_PUBLIC_EQUITY: ["PRIVATE_INVESTMENT_IN_PUBLIC_EQUITY", "PIPE_FINANCING", "PIPE_DEAL"],
-  RULE_506: ["RULE_506", "REG_D", "REGULATION_D"],
-  RULE_144A: ["RULE_144A", "144A"],
-  REG_S: ["REG_S", "REGULATION_S"],
-  DIRECT_PARTICIPATION_PROGRAM: ["DIRECT_PARTICIPATION_PROGRAM", "DPP"],
-  DPP: ["DPP", "DIRECT_PARTICIPATION_PROGRAM"],
-  NON_TRADED_REIT: ["NON_TRADED_REIT", "NONTRADED_REIT", "NON_LISTED_REIT"],
-  NON_LISTED_REIT: ["NON_LISTED_REIT", "NONLISTED_REIT", "NON_TRADED_REIT"],
-  REAL_ESTATE_INVESTMENT_TRUST: ["REAL_ESTATE_INVESTMENT_TRUST", "REIT"],
-  BDC: ["BDC", "BUSINESS_DEVELOPMENT_COMPANY"],
-  BUSINESS_DEVELOPMENT_COMPANY: ["BUSINESS_DEVELOPMENT_COMPANY", "BDC"],
-  DELAWARE_STATUTORY_TRUST: ["DELAWARE_STATUTORY_TRUST", "DST"],
-  TENANT_IN_COMMON: ["TENANT_IN_COMMON", "TENANTS_IN_COMMON"],
-  INTERVAL_FUND: ["INTERVAL_FUND", "INTERVAL_FUNDS"],
-  TENDER_OFFER_FUND: ["TENDER_OFFER_FUND", "TENDER_OFFER_FUNDS"],
-  INTRASTATE_OFFERING: ["INTRASTATE_OFFERING"],
-  BLUE_SKY: ["BLUE_SKY", "BLUE_SKY_LAW", "BLUE_SKY_LAWS"],
-  JOBS_ACT: ["JOBS_ACT"],
-  FORM_D: ["FORM_D"]
+  // Sourced from capital-formation-vocabulary.json.
+  ...CAPITAL_FORMATION_PATTERN_ALIASES
 };
 
 function normalizeString(value: unknown): string {
