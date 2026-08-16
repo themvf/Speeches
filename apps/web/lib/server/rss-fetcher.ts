@@ -186,6 +186,23 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
       "https://news.google.com/rss/search?q=%22non-traded%20REIT%22%20OR%20%22direct%20participation%20program%22%20OR%20%22business%20development%20company%22%20OR%20%22Delaware%20statutory%20trust%22%20OR%20%22interval%20fund%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
     refreshIntervalMinutes: 180,
   },
+  // The SEC's Office of the Advocate for Small Business Capital Formation
+  // publishes no RSS feed (verified: sec.gov/news/smallbusiness.rss 404s while
+  // pressreleases.rss 200s from the same client), so this query is the
+  // workaround, the same pattern google_news_fincen_article already uses for
+  // an unreachable agency. A 30d window because the volume is policy-paced.
+  google_news_small_business_capital: {
+    label: "Google News: Small Business Capital Formation",
+    feedUrl:
+      "https://news.google.com/rss/search?q=%22small%20business%20capital%20formation%22%20OR%20%22Office%20of%20the%20Advocate%20for%20Small%20Business%20Capital%20Formation%22%20OR%20%22Small%20Business%20Capital%20Formation%20Advisory%20Committee%22%20OR%20%22accredited%20investor%20definition%22%20OR%20%22capital%20formation%20rules%22%20when%3A30d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 360,
+  },
+  google_news_spac: {
+    label: "Google News: SPAC & de-SPAC",
+    feedUrl:
+      "https://news.google.com/rss/search?q=%22de-SPAC%22%20OR%20%22SPAC%20merger%22%20OR%20%22blank%20check%20company%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
   coindesk: {
     label: "CoinDesk",
     feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",
