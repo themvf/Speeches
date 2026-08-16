@@ -104,6 +104,31 @@ test("keyword regex prefers the most specific term and rejects near-misses", () 
   assert.equal(re.test("quarterly earnings beat expectations"), false);
 });
 
+// The exact normalizer both alias consumers apply before looking a pattern up
+// (gdelt-doc.ts and stored-category-evidence.ts each define this identically).
+function normalizePatternKey(value: string): string {
+  return value.toUpperCase().replace(/&/g, " AND ").replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+test("every alias key is already in normalized form so the lookup can reach it", () => {
+  // A key that is not its own normalized form is dead config: consumers look up
+  // normalizeMatchText(pattern), so "M&A" -> "M_AND_A" misses and silently
+  // falls back to [pattern]. That entry was dead in both source files for as
+  // long as they existed, and the failure mode is invisible without this test.
+  for (const key of Object.keys(CAPITAL_FORMATION_PATTERN_ALIASES)) {
+    assert.equal(normalizePatternKey(key), key, `alias key is unreachable after normalization: ${key}`);
+  }
+});
+
+test("every alias key corresponds to a real focus-area pattern", () => {
+  const patterns = new Set(
+    CAPITAL_FORMATION_FOCUS_AREAS.flatMap((area) => area.rawPatterns.map(normalizePatternKey))
+  );
+  for (const key of Object.keys(CAPITAL_FORMATION_PATTERN_ALIASES)) {
+    assert.ok(patterns.has(normalizePatternKey(key)), `alias key matches no focus-area pattern: ${key}`);
+  }
+});
+
 test("pattern aliases resolve both directions for the paired product terms", () => {
   assert.ok(CAPITAL_FORMATION_PATTERN_ALIASES.BDC?.includes("BUSINESS_DEVELOPMENT_COMPANY"));
   assert.ok(CAPITAL_FORMATION_PATTERN_ALIASES.BUSINESS_DEVELOPMENT_COMPANY?.includes("BDC"));

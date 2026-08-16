@@ -202,7 +202,7 @@
       ]
     }
   ],
-  "_patternAliasesComment": "Union of the two alias maps this file replaced (gdelt-doc.ts and stored-category-evidence.ts had drifted apart). One deliberate exclusion: FUNDING_ROUND is NOT an alias of FUNDRAISING or STARTUP_FUNDING. Focus areas are ranked by how many of their patterns matched, so a single phrase aliased from two sibling patterns counts as two signals - 'files for IPO after private funding round' scored Private Capital above Public Offerings. 'funding round' remains a topic keyword; it just no longer votes twice for a focus area.",
+  "_patternAliasesComment": "Union of the two alias maps this file replaced (gdelt-doc.ts and stored-category-evidence.ts had drifted apart). Keys must already be in normalized form (UPPER_SNAKE, & spelled AND) because both consumers look up normalizeMatchText(pattern) - a key of 'M&A' normalizes to 'M_AND_A' and so never resolves, which is why that entry had been dead in both files since before the merge. A test pins every key against the same normalizer. The revived M_AND_A entry lists only same-term spellings: bare MERGER/ACQUISITION were dropped rather than activated, since the whole point of the SEC-59 rebalance was to stop ordinary deal coverage dominating this category. One deliberate exclusion: FUNDING_ROUND is NOT an alias of FUNDRAISING or STARTUP_FUNDING. Focus areas are ranked by how many of their patterns matched, so a single phrase aliased from two sibling patterns counts as two signals - 'files for IPO after private funding round' scored Private Capital above Public Offerings. 'funding round' remains a topic keyword; it just no longer votes twice for a focus area.",
   "patternAliases": {
     "IPO": ["IPO", "INITIAL_PUBLIC_OFFERING", "GO_PUBLIC", "PUBLIC_DEBUT"],
     "INITIAL_PUBLIC_OFFERING": ["INITIAL_PUBLIC_OFFERING", "IPO", "GO_PUBLIC", "PUBLIC_DEBUT"],
@@ -255,7 +255,7 @@
     "CREDIT_FACILITY": ["CREDIT_FACILITY", "CREDIT_LINE"],
     "HIGH_YIELD": ["HIGH_YIELD", "JUNK_BOND"],
     "INVESTMENT_GRADE": ["INVESTMENT_GRADE", "IG_BOND"],
-    "M&A": ["M_AND_A", "MERGER", "ACQUISITION", "ACQUIRE", "MERGERS_AND_ACQUISITIONS"],
+    "M_AND_A": ["M_AND_A", "MERGERS_AND_ACQUISITIONS"],
     "DEALMAKING": ["DEALMAKING"],
     "TAKEOVER_BID": ["TAKEOVER_BID"],
     "BUYOUT": ["BUYOUT"],
