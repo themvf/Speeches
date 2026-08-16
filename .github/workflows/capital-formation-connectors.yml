@@ -1,0 +1,100 @@
+name: Capital Formation Connectors (6 Hour)
+
+# ipa_news_item and adisa_news_item, split out of connector-gap-6hour.yml.
+#
+# Why a separate file rather than a second job in that workflow:
+#
+# 1. Concurrency. Jobs inside one run execute in PARALLEL - a workflow-level
+#    `concurrency:` block separates runs, not jobs. Neither connector is in
+#    NEON_AUTHORITATIVE_CONNECTORS, so both read-modify-write the GCS
+#    custom_documents.json blob, and _save_json_store guards that with an
+#    if_generation_match precondition that RAISES on conflict. A sibling job
+#    racing the 36-leg extract matrix would have been a hard run failure, and
+#    it would have fired on the very next workflow_dispatch, since dispatch
+#    bypasses both gates and runs every job.
+# 2. `needs: extract` does not solve it. GitHub skips dependents of a skipped
+#    job, so that would re-couple this to the ENABLE_GCS_SNAPSHOT_SCHEDULES
+#    gate it exists to escape - the exact bug, reintroduced.
+#
+# Own concurrency group plus a cron offset from connector-gap's "0 */6" keeps
+# the two apart. Default-ON: the variable is unset and unset != 'false', so
+# this runs on merge; set ENABLE_CAPITAL_FORMATION_CONNECTORS=false to stop it
+# without touching the shared SEC-20 gate.
+
+on:
+  schedule:
+    # Offset from connector-gap-6hour.yml's "0 */6 * * *".
+    - cron: "20 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capital-formation-connectors
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    if: github.event_name != 'schedule' || vars.ENABLE_CAPITAL_FORMATION_CONNECTORS != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - connector: ipa_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: adisa_news_item
+            extraction_limit: "25"
+            max_pages: "1"
+
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      # Load-bearing, not boilerplate: it lets the pipeline's bounded Neon
+      # reader satisfy discovered URLs directly, so only the first run - when
+      # Neon holds no rows for these source kinds - pays for a full blob load.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Deliberately NOT carrying REDDIT_* or WEBSHARE_*. Both sites are plain
+      # HTTP and were verified reachable without a proxy; copying the parent
+      # job's env wholesale would be dead credential exposure, the same call
+      # made when DATABASE_URL was scoped to 16 of 22 workflows in Phase 1.5.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ${{ matrix.connector }}
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector "${{ matrix.connector }}" \
+            --selection new_or_updated \
+            --limit "${{ matrix.extraction_limit }}" \
+            --max-pages "${{ matrix.max_pages }}" \
+            --include-pdfs true \
+            --include-rss true \
+            --require-remote-persistence \
+            --summary-path "capital_formation_${{ matrix.connector }}.json"
+
+      - name: Upload Extraction Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capital-formation-${{ matrix.connector }}-${{ github.run_id }}
+          path: "capital_formation_${{ matrix.connector }}.json"
+          if-no-files-found: ignore
