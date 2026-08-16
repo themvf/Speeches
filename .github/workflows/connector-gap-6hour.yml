@@ -122,6 +122,12 @@ jobs:
           - connector: lsta_news_item
             extraction_limit: "25"
             max_pages: "2"
+          - connector: ipa_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: adisa_news_item
+            extraction_limit: "25"
+            max_pages: "1"
           - connector: wsj_dow_jones
             extraction_limit: "25"
             max_pages: "3"

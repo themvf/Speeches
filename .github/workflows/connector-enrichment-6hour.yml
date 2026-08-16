@@ -80,6 +80,8 @@ jobs:
           - source_kind: bpi_news_item
           - source_kind: icba_news_item
           - source_kind: lsta_news_item
+          - source_kind: ipa_news_item
+          - source_kind: adisa_news_item
           - source_kind: wsj_dow_jones
           - source_kind: reddit_post
           - source_kind: hedge_fund_letter

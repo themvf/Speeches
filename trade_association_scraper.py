@@ -91,6 +91,33 @@ TRADE_ASSOCIATION_SOURCES: Dict[str, Dict[str, Any]] = {
         "tags_csv": "lsta,trade-association,loans,private-credit,clo",
         "article_path_keywords": ["/news-resources/", "/news/"],
     },
+    # Capital formation associations. Neither publishes an RSS feed (checked
+    # 2026-08-16: ipa.com/feed and adisa.org/feed both 404), so both rely on
+    # the listing-scrape path and carry no rss_candidates.
+    "ipa_news_item": {
+        "label": "Institute for Portfolio Alternatives",
+        "organization": "IPA",
+        "default_url": "https://www.ipa.com/about/news",
+        "doc_type": "News Item",
+        "tags_csv": (
+            "ipa,trade-association,capital-formation,alternatives,"
+            "non-traded-reit,bdc,direct-participation,interval-fund"
+        ),
+        "article_path_keywords": ["/articles/"],
+    },
+    "adisa_news_item": {
+        "label": "ADISA",
+        "organization": "ADISA",
+        "default_url": "https://www.adisa.org/news-advocacy",
+        "doc_type": "News Item",
+        "tags_csv": (
+            "adisa,trade-association,capital-formation,alternatives,"
+            "direct-participation,1031-exchange,accredited-investor"
+        ),
+        # Only /article/ detail pages. A bare /news-advocacy/ prefix also let
+        # section landing pages through as if they were articles.
+        "article_path_keywords": ["/news-advocacy/article/"],
+    },
 }
 
 

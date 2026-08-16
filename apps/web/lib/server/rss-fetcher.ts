@@ -156,6 +156,16 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     feedUrl: "https://www.crowdfundinsider.com/feed/",
     refreshIntervalMinutes: 120,
   },
+  sbia: {
+    label: "Small Business Investor Alliance",
+    feedUrl: "https://www.sbia.org/feed/",
+    refreshIntervalMinutes: 240,
+  },
+  nvca: {
+    label: "National Venture Capital Association",
+    feedUrl: "https://nvca.org/feed/",
+    refreshIntervalMinutes: 240,
+  },
   coindesk: {
     label: "CoinDesk",
     feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",

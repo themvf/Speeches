@@ -91,6 +91,26 @@ def test_runner_supports_trade_association_connectors():
         "bpi_news_item",
         "icba_news_item",
         "lsta_news_item",
+        "ipa_news_item",
+        "adisa_news_item",
     ]:
         assert connector in SUPPORTED_CONNECTORS
         assert _default_base_url(connector)
+
+
+def test_capital_formation_associations_scope_to_detail_paths():
+    """IPA and ADISA discover by listing scrape, so their path filters are the
+    only thing keeping section landing pages out of the corpus."""
+    from trade_association_scraper import TRADE_ASSOCIATION_SOURCES
+
+    ipa = TRADE_ASSOCIATION_SOURCES["ipa_news_item"]
+    adisa = TRADE_ASSOCIATION_SOURCES["adisa_news_item"]
+
+    assert ipa["article_path_keywords"] == ["/articles/"]
+    assert adisa["article_path_keywords"] == ["/news-advocacy/article/"]
+    # Neither site publishes RSS; an rss_candidates entry here would mean a
+    # feed URL was guessed rather than verified.
+    assert "rss_candidates" not in ipa
+    assert "rss_candidates" not in adisa
+    for cfg in (ipa, adisa):
+        assert "capital-formation" in cfg["tags_csv"]

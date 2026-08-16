@@ -114,6 +114,8 @@ TRADE_ASSOCIATION_CONNECTORS = {
     "bpi_news_item",
     "icba_news_item",
     "lsta_news_item",
+    "ipa_news_item",
+    "adisa_news_item",
 }
 
 SUPPORTED_CONNECTORS = {
