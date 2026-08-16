@@ -163,7 +163,13 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
   },
   nvca: {
     label: "National Venture Capital Association",
-    feedUrl: "https://nvca.org/feed/",
+    // The site-wide /feed/ is a member-spotlight stream ("Bedy Yang: 500
+    // Global"). Measured against the live topic rules it tagged 10 of 10 items
+    // as Capital Formation purely on "venture capital" in the body -- a pure
+    // false-positive source. The press-release category carries the policy
+    // output instead (e.g. "NVCA Statement on House Passage of SBIR/STTR
+    // Reauthorization").
+    feedUrl: "https://nvca.org/category/press-releases/feed/",
     refreshIntervalMinutes: 240,
   },
   // Google News aggregator queries, same mechanism as the Senate committee
