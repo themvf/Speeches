@@ -122,12 +122,6 @@ jobs:
           - connector: lsta_news_item
             extraction_limit: "25"
             max_pages: "2"
-          - connector: ipa_news_item
-            extraction_limit: "25"
-            max_pages: "2"
-          - connector: adisa_news_item
-            extraction_limit: "25"
-            max_pages: "1"
           - connector: wsj_dow_jones
             extraction_limit: "25"
             max_pages: "3"
@@ -147,6 +141,81 @@ jobs:
       REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
       REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
       REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ${{ matrix.connector }}
+        run: |
+          set -euo pipefail
+          python run_connector_extraction_pipeline.py \
+            --connector "${{ matrix.connector }}" \
+            --selection new_or_updated \
+            --limit "${{ matrix.extraction_limit }}" \
+            --max-pages "${{ matrix.max_pages }}" \
+            --include-pdfs true \
+            --include-rss true \
+            --require-remote-persistence \
+            --summary-path "connector_gap_${{ matrix.connector }}.json"
+
+      - name: Upload Extraction Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connector-gap-${{ matrix.connector }}-${{ github.run_id }}
+          path: "connector_gap_${{ matrix.connector }}.json"
+          if-no-files-found: ignore
+
+  extract-capital-formation:
+    # Carved out of the shared SEC-20 gate above, same pattern and reasoning as
+    # rule-comment-ingest.yml. That gate covers 16 jobs whose dominant cost is
+    # ~204 daily untargeted full-snapshot loads in connector-enrichment-6hour,
+    # every one of which then hits an unfunded LLM provider. These two
+    # connectors are extraction-only and need no model credit, so they should
+    # not stay switched off waiting for that to be resolved.
+    #
+    # Default-ON: the variable is unset, and unset != 'false', so this runs on
+    # merge. Set ENABLE_CAPITAL_FORMATION_CONNECTORS=false to stop it without
+    # touching the shared gate.
+    #
+    # Note these had never executed even once before this job existed - they
+    # were added to the gated matrix, which has been skipping since 2026-07-14.
+    if: github.event_name != 'schedule' || vars.ENABLE_CAPITAL_FORMATION_CONNECTORS != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - connector: ipa_news_item
+            extraction_limit: "25"
+            max_pages: "2"
+          - connector: adisa_news_item
+            extraction_limit: "25"
+            max_pages: "1"
+
+    env:
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+      # DATABASE_URL is load-bearing, not boilerplate: it lets the pipeline's
+      # bounded Neon reader satisfy discovered URLs directly, so runs after the
+      # first stop loading the full custom_documents.json blob.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
+      WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
 
     steps:
       - name: Checkout
