@@ -30,10 +30,32 @@ DEFAULT_TOPIC_RULES = [
         "sort_order": 10,
     },
     {
+        # Keep in step with CAPITAL_FORMATION in
+        # apps/web/lib/topic-rule-recommendations.ts -- both writers seed the
+        # same rss_topic_rules table, so drifting vocabularies here means the
+        # live rule depends on which side initialized the database.
         "topic_key": "CAPITAL_FORMATION",
         "label": "Capital Formation",
-        "keywords": "ipo, spac, capital, offering, funding, venture, startup",
-        "sort_order": 20,
+        "keywords": (
+            "capital formation, ipo, initial public offering, public offering, "
+            "secondary offering, follow-on offering, rights offering, "
+            "registered offering, underwritten offering, at-the-market offering, "
+            "shelf registration, direct listing, offering circular, prospectus, "
+            "private offering, private placement, "
+            "private investment in public equity, pipe financing, capital raise, "
+            "funding round, reg d, regulation d, rule 506, reg a, regulation a, "
+            "reg cf, regulation crowdfunding, reg s, regulation s, rule 144a, "
+            "exempt offering, intrastate offering, accredited investor, "
+            "crowdfunding, form d, form c, form 1-a, form s-1, form s-11, "
+            "direct participation program, non-traded reit, non-listed reit, "
+            "reit offering, business development company, non-traded bdc, "
+            "delaware statutory trust, 1031 exchange, tenant-in-common, "
+            "interval fund, tender offer fund, oil and gas program, spac, "
+            "de-spac, venture capital, startup funding, private markets, "
+            "emerging growth company, small business capital, blue sky law, "
+            "blue sky filing, jobs act"
+        ),
+        "sort_order": 12,
     },
     {
         "topic_key": "AML",

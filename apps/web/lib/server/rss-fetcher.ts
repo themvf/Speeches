@@ -137,6 +137,25 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     label: "FTC Consumer Protection Press Releases",
     feedUrl: "https://www.ftc.gov/feeds/press-release-consumer-protection.xml",
   },
+  // Capital formation sources. The regulator feeds above cover offering policy
+  // only when it reaches a press release; these carry the product-level
+  // non-traded REIT / BDC / DPP and Reg A / Reg CF coverage that nothing else
+  // in this registry reaches. All three URLs verified live before being added.
+  nasaa: {
+    label: "NASAA",
+    feedUrl: "https://www.nasaa.org/feed/",
+    refreshIntervalMinutes: 180,
+  },
+  altswire: {
+    label: "AltsWire",
+    feedUrl: "https://altswire.com/feed/",
+    refreshIntervalMinutes: 120,
+  },
+  crowdfund_insider: {
+    label: "Crowdfund Insider",
+    feedUrl: "https://www.crowdfundinsider.com/feed/",
+    refreshIntervalMinutes: 120,
+  },
   coindesk: {
     label: "CoinDesk",
     feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",

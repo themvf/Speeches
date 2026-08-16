@@ -492,6 +492,12 @@ function articleSourceText(article: FeedItem): string {
   ].join(" ").toLowerCase();
 }
 
+// Kept in step with the CAPITAL_FORMATION keywords in topic-rule-recommendations.ts.
+// Broken out of the inline checks below only because the offering, exempt-offering,
+// and non-traded product vocabulary is too long to read inline.
+const CAPITAL_FORMATION_FALLBACK_RE =
+  /\b(ipo|initial public offering|public offering|secondary offering|follow-on offering|rights offering|registered offering|at-the-market offering|shelf registration|direct listing|offering circular|prospectus|private placement|private offering|capital formation|capital raise|reg a|reg d|reg cf|reg s|regulation a|regulation d|regulation crowdfunding|rule 144a|rule 506|exempt offering|intrastate offering|crowdfunding|accredited investor|form d|form c|form 1-a|form s-1|form s-11|direct participation program|non-traded reit|non-listed reit|reit offering|business development company|non-traded bdc|delaware statutory trust|1031 exchange|tenant-in-common|interval fund|tender offer fund|emerging growth company|small business capital|blue sky law|blue sky filing|jobs act|spac|de-spac|share sale|listing)\b/;
+
 function fallbackDocumentTopicMatches(article: FeedItem, rules: TopicRuleView[]): TopicRuleView[] {
   if (article.item_type !== "document") return [];
   const text = normalizeMatchText([
@@ -510,7 +516,7 @@ function fallbackDocumentTopicMatches(article: FeedItem, rules: TopicRuleView[])
   if (/\b(persian gulf|hormuz|iran|tariff|sanctions|shipping lanes|trade war|export controls)\b/.test(text)) {
     topicKeys.add("GEOPOLITICAL_TRADE_RISK");
   }
-  if (/\b(ipo|initial public offering|public offering|share sale|listing)\b/.test(text)) {
+  if (CAPITAL_FORMATION_FALLBACK_RE.test(text)) {
     topicKeys.add("CAPITAL_FORMATION");
   }
   if (/\b(central bank|interest rate|hawkish fed|federal reserve|ecb|bank capital)\b/.test(text)) {

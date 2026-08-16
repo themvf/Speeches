@@ -207,19 +207,44 @@ test("keeps capital formation focused on explicit capital raising and transactio
   assert.deepEqual(focusAreas.map((item) => item.label), [
     "Public Offerings",
     "Private Capital",
+    "Direct Participation & Non-Traded Products",
     "Debt Financing",
     "M&A / Strategic Transactions",
     "Capital Access / Policy"
   ]);
   assert.equal(broad.product_categories.some((category) => category.category === "CAPITAL_FORMATION"), false);
   assert.ok(capital);
+  // SPAC / de-SPAC score as Public Offerings rather than M&A: they are a route
+  // to market, and leaving them in M&A let ordinary merger coverage dominate.
   assert.deepEqual(new Set(capital?.subcategories.map((subcategory) => subcategory.label)), new Set([
     "Public Offerings",
     "Private Capital",
     "Debt Financing",
-    "Capital Access / Policy",
-    "M&A / Strategic Transactions"
+    "Capital Access / Policy"
   ]));
+});
+
+test("routes direct participation and non-traded product themes into capital formation", () => {
+  const signal = scoreThemeArticle({
+    raw_themes: "NON_TRADED_REIT; BUSINESS_DEVELOPMENT_COMPANY; DELAWARE_STATUTORY_TRUST; INTERVAL_FUND"
+  });
+  const capital = signal.product_categories.find((category) => category.category === "CAPITAL_FORMATION");
+
+  assert.ok(capital);
+  assert.deepEqual(
+    capital?.subcategories.map((subcategory) => subcategory.label),
+    ["Direct Participation & Non-Traded Products"]
+  );
+});
+
+test("ranks exempt-offering themes above plain merger coverage in capital formation", () => {
+  const exempt = scoreThemeArticle({ raw_themes: "REG_CF; EXEMPT_OFFERING; CROWDFUNDING" });
+  const merger = scoreThemeArticle({ raw_themes: "MERGER_AGREEMENT; TAKEOVER_BID; BUYOUT" });
+
+  const exemptScore = exempt.product_categories.find((category) => category.category === "CAPITAL_FORMATION")?.score ?? 0;
+  const mergerScore = merger.product_categories.find((category) => category.category === "CAPITAL_FORMATION")?.score ?? 0;
+
+  assert.ok(exemptScore > mergerScore, `expected exempt-offering score ${exemptScore} to beat merger score ${mergerScore}`);
 });
 
 test("keeps AML focus areas narrow and avoids broad crypto or regulation chips", () => {
@@ -557,9 +582,11 @@ test("maps Capital Formation GDELT evidence from explicit source terms only", ()
   const evidence = mapGdeltGkgRecordsToProductCategoryEvidence("CAPITAL_FORMATION", parseGdeltGkgCsv(rows));
 
   assert.equal(evidence.length, 3);
+  // The SPAC row lands under Public Offerings, not M&A -- see the SPAC note in
+  // "keeps capital formation focused on explicit capital raising ...".
   assert.deepEqual(
     evidence.map((article) => article.focusAreaLabel).sort(),
-    ["M&A / Strategic Transactions", "Private Capital", "Public Offerings"]
+    ["Private Capital", "Public Offerings", "Public Offerings"]
   );
   assert.equal(evidence.some((article) => article.url?.includes("regulation-and-trading")), false);
   assert.equal(evidence.some((article) => article.url?.includes("offering-listing-acquisitions-takeover")), false);

@@ -80,11 +80,49 @@ export const CATEGORY_DOC_QUERY_TERMS: Readonly<Partial<Record<ProductCategory, 
     aml_illicit_finance: ["suspicious activity", "terrorist financing", "illicit finance"]
   },
   CAPITAL_FORMATION: {
-    capital_public_offerings: ["IPO", "initial public offering", "public offering"],
-    capital_private_capital: ["private credit", "private equity", "venture capital"],
+    capital_public_offerings: [
+      "IPO",
+      "initial public offering",
+      "public offering",
+      "secondary offering",
+      "follow-on offering",
+      "rights offering",
+      "direct listing",
+      "shelf registration",
+      "offering circular",
+      "SPAC",
+      "de-SPAC"
+    ],
+    capital_private_capital: [
+      "private credit",
+      "private equity",
+      "venture capital",
+      "private placement",
+      "Reg D",
+      "Rule 144A",
+      "accredited investor"
+    ],
+    capital_direct_participation: [
+      "non-traded REIT",
+      "non-listed REIT",
+      "direct participation program",
+      "business development company",
+      "Delaware statutory trust",
+      "1031 exchange",
+      "interval fund"
+    ],
     capital_debt_financing: ["bond issuance", "debt offering", "credit facility"],
-    capital_strategic_transactions: ["SPAC", "merger", "acquisition"],
-    capital_access_policy: ["crowdfunding", "Reg A", "exempt offering"]
+    capital_strategic_transactions: ["merger", "acquisition", "takeover bid", "buyout"],
+    capital_access_policy: [
+      "crowdfunding",
+      "Reg A",
+      "Reg CF",
+      "Regulation Crowdfunding",
+      "exempt offering",
+      "blue sky",
+      "JOBS Act",
+      "small business capital"
+    ]
   }
 };
 
@@ -146,7 +184,33 @@ export const CATEGORY_PATTERN_ALIASES: Readonly<Record<string, readonly string[]
   REG_CF: ["REG_CF", "REGULATION_CROWDFUNDING"],
   REG_A: ["REG_A", "REGULATION_A"],
   REGULATION_A: ["REGULATION_A", "REG_A"],
-  EXEMPT_OFFERING: ["EXEMPT_OFFERING", "EXEMPT_OFFERINGS"]
+  EXEMPT_OFFERING: ["EXEMPT_OFFERING", "EXEMPT_OFFERINGS"],
+  FOLLOW_ON_OFFERING: ["FOLLOW_ON_OFFERING", "SECONDARY_OFFERING"],
+  RIGHTS_OFFERING: ["RIGHTS_OFFERING"],
+  AT_THE_MARKET_OFFERING: ["AT_THE_MARKET_OFFERING", "ATM_OFFERING"],
+  SHELF_REGISTRATION: ["SHELF_REGISTRATION", "SHELF_OFFERING"],
+  DIRECT_LISTING: ["DIRECT_LISTING"],
+  OFFERING_CIRCULAR: ["OFFERING_CIRCULAR"],
+  PROSPECTUS: ["PROSPECTUS"],
+  PRIVATE_INVESTMENT_IN_PUBLIC_EQUITY: ["PRIVATE_INVESTMENT_IN_PUBLIC_EQUITY", "PIPE_FINANCING", "PIPE_DEAL"],
+  RULE_506: ["RULE_506", "REG_D", "REGULATION_D"],
+  RULE_144A: ["RULE_144A", "144A"],
+  REG_S: ["REG_S", "REGULATION_S"],
+  DIRECT_PARTICIPATION_PROGRAM: ["DIRECT_PARTICIPATION_PROGRAM", "DPP"],
+  DPP: ["DPP", "DIRECT_PARTICIPATION_PROGRAM"],
+  NON_TRADED_REIT: ["NON_TRADED_REIT", "NONTRADED_REIT", "NON_LISTED_REIT"],
+  NON_LISTED_REIT: ["NON_LISTED_REIT", "NONLISTED_REIT", "NON_TRADED_REIT"],
+  REAL_ESTATE_INVESTMENT_TRUST: ["REAL_ESTATE_INVESTMENT_TRUST", "REIT"],
+  BDC: ["BDC", "BUSINESS_DEVELOPMENT_COMPANY"],
+  BUSINESS_DEVELOPMENT_COMPANY: ["BUSINESS_DEVELOPMENT_COMPANY", "BDC"],
+  DELAWARE_STATUTORY_TRUST: ["DELAWARE_STATUTORY_TRUST", "DST"],
+  TENANT_IN_COMMON: ["TENANT_IN_COMMON", "TENANTS_IN_COMMON"],
+  INTERVAL_FUND: ["INTERVAL_FUND", "INTERVAL_FUNDS"],
+  TENDER_OFFER_FUND: ["TENDER_OFFER_FUND", "TENDER_OFFER_FUNDS"],
+  INTRASTATE_OFFERING: ["INTRASTATE_OFFERING"],
+  BLUE_SKY: ["BLUE_SKY", "BLUE_SKY_LAW", "BLUE_SKY_LAWS"],
+  JOBS_ACT: ["JOBS_ACT"],
+  FORM_D: ["FORM_D"]
 };
 
 function normalizeString(value: unknown): string {
