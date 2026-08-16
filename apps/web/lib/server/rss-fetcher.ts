@@ -166,6 +166,26 @@ export const DEFAULT_RSS_FEEDS: Record<string, RssFeedDefinition> = {
     feedUrl: "https://nvca.org/feed/",
     refreshIntervalMinutes: 240,
   },
+  // Google News aggregator queries, same mechanism as the Senate committee
+  // feeds. These reach the regional and small trade press that carries
+  // individual Reg A / Reg CF raises and non-traded product launches, which no
+  // curated publisher feed covers. The google_news_ prefix puts them behind
+  // the keyword filter in rss-ingestion-filter.ts, so an item still has to
+  // match a topic rule to be stored. Both queries were run live before being
+  // added; a broader public-offering query was tried and dropped because it
+  // returned mostly junior-mining private placements and stock-picker SEO.
+  google_news_exempt_offerings: {
+    label: "Google News: Exempt Offerings",
+    feedUrl:
+      "https://news.google.com/rss/search?q=%22Regulation%20A%22%20OR%20%22Reg%20A%2B%22%20OR%20%22Regulation%20Crowdfunding%22%20OR%20%22Reg%20CF%22%20OR%20%22exempt%20offering%22%20OR%20%22Form%20D%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
+  google_news_non_traded_products: {
+    label: "Google News: Non-Traded Products",
+    feedUrl:
+      "https://news.google.com/rss/search?q=%22non-traded%20REIT%22%20OR%20%22direct%20participation%20program%22%20OR%20%22business%20development%20company%22%20OR%20%22Delaware%20statutory%20trust%22%20OR%20%22interval%20fund%22%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
+    refreshIntervalMinutes: 180,
+  },
   coindesk: {
     label: "CoinDesk",
     feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",
