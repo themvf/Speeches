@@ -354,6 +354,45 @@ def _topic_term_matches(term: str, haystack: str) -> bool:
     return bool(pattern and pattern.search(haystack))
 
 
+# Canonical topic slugs written into a document's tags_csv.
+#
+# filterCanonicalTopicMappedDocuments (apps/web/lib/intel-topic-matching.ts)
+# resolves a stored tag to a topic only when its normalized identity EXACTLY
+# equals an active rule's topic_key or label. Descriptive tags like
+# "public-comment" or "file-s7-2026-20" match nothing, so a document carrying
+# only those is dropped from the feed even though it was ingested fine — the
+# failure is silent, and it is why SEC rule-comment documents never surfaced.
+# These slugs normalize onto SECURITIES_REGULATION / CAPITAL_FORMATION.
+_TOPIC_SLUG_SECURITIES_REGULATION = "securities-regulation"
+_TOPIC_SLUG_CAPITAL_FORMATION = "capital-formation"
+
+# How much document text to scan for capital-formation vocabulary. A comment
+# letter's title is usually a file-number stub, so the signal lives in the
+# opening "Re: File No. S7-..., <rule name>" block rather than the title.
+_CAPITAL_FORMATION_SCAN_CHARS = 2000
+
+
+def _capital_formation_slug_for(*parts: Any) -> List[str]:
+    """[_TOPIC_SLUG_CAPITAL_FORMATION] when the text hits the shared capital
+    formation vocabulary, else []. Uses the same word-boundary matcher as topic
+    annotation and the same keyword list the web side reads, so a rulemaking
+    that would be tagged Capital Formation on an article is tagged the same way
+    here."""
+    haystack = " ".join(str(part or "") for part in parts)[:_CAPITAL_FORMATION_SCAN_CHARS]
+    if not haystack.strip():
+        return []
+    try:
+        import capital_formation_vocabulary
+
+        keywords = capital_formation_vocabulary.keywords()
+    except Exception:  # pragma: no cover - fail-soft, same posture as the reader
+        return []
+    for keyword in keywords:
+        if _topic_term_matches(keyword, haystack):
+            return [_TOPIC_SLUG_CAPITAL_FORMATION]
+    return []
+
+
 def _annotate_topic_matches(entry: Dict[str, Any], rules: List[Dict[str, Any]]) -> None:
     if not rules:
         return
@@ -1299,9 +1338,18 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
             date_text = str(data.get("date", "") or entry.get("date", "")).strip()
             rule_type = str(data.get("rule_type", "") or entry.get("rule_type", "") or "Rule Release").strip()
             file_number = str(data.get("file_number", "") or entry.get("file_number", "")).strip().upper()
-            tags_csv = "sec,rulemaking,rule-release,public-comment"
+            rule_title = str(data.get("title", "") or entry.get("title", "")).strip()
+            tag_parts = [
+                "sec",
+                "rulemaking",
+                "rule-release",
+                "public-comment",
+                _TOPIC_SLUG_SECURITIES_REGULATION,
+                *_capital_formation_slug_for(rule_title, rule_type, text),
+            ]
             if file_number:
-                tags_csv = f"{tags_csv},file-{file_number.lower()}"
+                tag_parts.append(f"file-{file_number.lower()}")
+            tags_csv = ",".join(tag_parts)
             record = core._create_uploaded_document_record(
                 text=text,
                 organization="SEC",
@@ -1364,9 +1412,17 @@ def _extract_record(connector: str, scraper: Any, entry: Dict[str, Any], idx: in
         commenter_name = str(data.get("commenter_name", "") or entry.get("commenter_name", "")).strip()
         commenter_org = str(data.get("commenter_org", "") or "").strip()
         file_number = str(data.get("file_number", "") or entry.get("file_number", "") or entry.get("notice_number", "")).strip().upper()
-        tags_csv = "sec,rulemaking,public-comment"
+        comment_title = str(data.get("title", "") or entry.get("title", "")).strip()
+        tag_parts = [
+            "sec",
+            "rulemaking",
+            "public-comment",
+            _TOPIC_SLUG_SECURITIES_REGULATION,
+            *_capital_formation_slug_for(comment_title, commenter_org, text),
+        ]
         if file_number:
-            tags_csv = f"{tags_csv},file-{file_number.lower()}"
+            tag_parts.append(f"file-{file_number.lower()}")
+        tags_csv = ",".join(tag_parts)
         record = core._create_uploaded_document_record(
             text=text,
             organization="SEC",
