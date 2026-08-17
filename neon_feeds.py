@@ -1165,6 +1165,14 @@ def _ensure_stock_attention_schema() -> None:
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS reddit_count INTEGER NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS news_count INTEGER NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS total_mention_count INTEGER NOT NULL DEFAULT 0")
+            # Enhancement 1: total upvotes across the deduped threads/comments
+            # mentioning a ticker that day. The sweep has always stored a
+            # per-item score, but it only ever chose which permalinks the
+            # drawer showed; it fed nothing into ranking. Stored as its own
+            # column (not folded silently into weighted_score) so the
+            # amplifier is auditable and a re-run can be compared against the
+            # unweighted history.
+            cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS engagement_score BIGINT NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS price_close NUMERIC")
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS price_pct NUMERIC")
             cur.execute("ALTER TABLE daily_stock_attention ADD COLUMN IF NOT EXISTS volume BIGINT")

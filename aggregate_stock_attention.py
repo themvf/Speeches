@@ -51,11 +51,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import neon_feeds
 import ticker_resolver
@@ -139,7 +140,7 @@ INSERT_DAY_SQL = """
       (attention_date, ticker, company, mention_count, source_count, subreddit_count,
        weighted_score, mood, top_source_ids, reddit_count, news_count, total_mention_count,
        price_close, price_pct, volume, volume_vs_20d, divergence,
-       weighted_mention_count, quality_flags, top_news_ids)
+       weighted_mention_count, quality_flags, top_news_ids, engagement_score)
     VALUES %s
 """
 
@@ -285,7 +286,43 @@ def compute_quality_flags(
     return flags
 
 
-def compute_weighted_score(mention_count: float, subreddit_count: int, source_count: int) -> float:
+def compute_engagement_score(scored_sources: Iterable[Tuple[int, str]]) -> int:
+    """Total upvotes across the DEDUPED threads/comments mentioning a ticker.
+
+    The sweep has always stored a per-item `score`, but until now it was used
+    only to pick which ten permalinks the drawer shows - it contributed
+    nothing to ranking, so a ticker named once in a 4,000-upvote post ranked
+    exactly level with one named in a downvoted comment nobody read.
+
+    Deduped on source_id because the input has one row per item+ticker pair,
+    so a post naming three tickers would otherwise count its score three
+    times. Negative scores clamp to 0: a downvoted post is no evidence of
+    attention, but it must not subtract from a genuinely popular one.
+    """
+    return sum(max(0, score) for score, _ in set(scored_sources))
+
+
+def compute_engagement_factor(engagement_score: int) -> float:
+    """Bounded log multiplier for compute_weighted_score.
+
+    log10 because upvotes are power-law distributed: the gap between 10 and
+    100 upvotes means far more than the gap between 10,000 and 10,090. Capped
+    at 1.5x so one viral thread cannot dominate the whole board - the same
+    bounded-amplifier shape the subreddit and source factors already use.
+
+    0 upvotes -> 1.00x, 10 -> 1.10x, 100 -> 1.20x, 1k -> 1.30x, 100k+ -> 1.50x
+    """
+    if engagement_score <= 0:
+        return 1.0
+    return round(1 + 0.10 * min(math.log10(1 + engagement_score), 5.0), 4)
+
+
+def compute_weighted_score(
+    mention_count: float,
+    subreddit_count: int,
+    source_count: int,
+    engagement_score: int = 0,
+) -> float:
     """Spec §6.2: deduped humans talking is the base signal; spread across
     communities amplifies most (harder to fake than volume inside one
     board); spread across threads amplifies mildly. No freshness decay in a
@@ -293,11 +330,17 @@ def compute_weighted_score(mention_count: float, subreddit_count: int, source_co
     the item 1/2 additions - scored on Reddit mention_count only, since
     news-article counts are a different trust profile (one article isn't
     equivalent to one deduped human) and mixing them would need its own
-    calibration, not a guess baked into the existing formula."""
+    calibration, not a guess baked into the existing formula.
+
+    Engagement joins as a fourth bounded amplifier. It defaults to 0, which
+    yields a 1.0x factor, so callers that omit it (and every historical row
+    recomputed without it) score exactly as before.
+    """
     return round(
         mention_count
         * (1 + 0.15 * min(subreddit_count, 6))
-        * (1 + 0.05 * min(source_count, 10)),
+        * (1 + 0.05 * min(source_count, 10))
+        * compute_engagement_factor(engagement_score),
         4,
     )
 
@@ -357,6 +400,7 @@ def aggregate_rows(
             source_id
             for _, source_id in sorted(set(agg["scored_sources"]), key=lambda pair: (-pair[0], pair[1]))[:10]
         ]
+        engagement_score = compute_engagement_score(agg["scored_sources"])
         reddit_count = len(agg["authors"])
         source_count = len(agg["sources"])
         subreddit_count = len(agg["subreddits"])
@@ -378,7 +422,10 @@ def aggregate_rows(
             "weighted_mention_count": weighted_mentions,
             "source_count": source_count,
             "subreddit_count": subreddit_count,
-            "weighted_score": compute_weighted_score(weighted_mentions, subreddit_count, source_count),
+            "engagement_score": engagement_score,
+            "weighted_score": compute_weighted_score(
+                weighted_mentions, subreddit_count, source_count, engagement_score
+            ),
             "mood": mood,
             "top_source_ids": json.dumps(top_sources),
             "quality_flags": "[]",
@@ -441,6 +488,7 @@ def merge_news_counts(
                 "news_count": count,
                 "total_mention_count": count,
                 "weighted_mention_count": 0.0,
+                "engagement_score": 0,
                 "source_count": 0,
                 "subreddit_count": 0,
                 "weighted_score": 0.0,
@@ -652,6 +700,7 @@ def _run(
                                 r.get("weighted_mention_count", 0.0),
                                 r.get("quality_flags", "[]"),
                                 r.get("top_news_ids", "[]"),
+                                r.get("engagement_score", 0),
                             )
                             for r in rollups
                         ],
