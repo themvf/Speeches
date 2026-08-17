@@ -2302,3 +2302,250 @@ def prune_settled_polymarket_fills(days_after_settlement: int = 7) -> int:
             )
             conn.commit()
     return int(deleted or 0)
+
+
+# ─── Attention outcomes (enhancement 2: was the attention right?) ───────────
+#
+# attention_outcomes is durable and one compact row per (attention_date,
+# ticker). It stores the contributing subreddits and authors as JSON AT SEED
+# TIME, because reddit_attention_items is pruned at 90 days and the
+# attribution has to outlive it - the same durable-rollup / ephemeral-detail
+# split as polymarket_wallet_market_results vs polymarket_trades.
+#
+# attention_source_stats is always recomputed from the durable table, never
+# from raw items, so pruning stays invisible to the product.
+
+_ATTENTION_OUTCOMES_SCHEMA_ENSURED = False
+
+_ATTENTION_ATTRIBUTION_SUBQUERY = """
+                       COALESCE((
+                         SELECT json_agg(DISTINCT i.{field})
+                         FROM intelligence_mentions m
+                         JOIN reddit_attention_items i ON i.source_id = m.source_id
+                         WHERE m.mention_type = 'ticker'
+                           AND m.value = d.ticker
+                           AND m.source_type IN ('reddit_post','reddit_comment')
+                           AND i.created_utc >= d.attention_date::timestamptz
+                           AND i.created_utc <  d.attention_date::timestamptz + INTERVAL '1 day'
+                       ), '[]'::json)::text AS {alias}
+"""
+
+
+def _ensure_attention_outcomes_schema() -> None:
+    global _ATTENTION_OUTCOMES_SCHEMA_ENSURED
+    if _ATTENTION_OUTCOMES_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attention_outcomes (
+                  attention_date  DATE NOT NULL,
+                  ticker          TEXT NOT NULL,
+                  mood            TEXT NOT NULL DEFAULT 'neutral',
+                  weighted_score  NUMERIC NOT NULL DEFAULT 0,
+                  mention_count   INTEGER NOT NULL DEFAULT 0,
+                  subreddits      TEXT NOT NULL DEFAULT '[]',
+                  authors         TEXT NOT NULL DEFAULT '[]',
+                  fwd_1d_pct      NUMERIC,
+                  fwd_5d_pct      NUMERIC,
+                  fwd_20d_pct     NUMERIC,
+                  correct_1d      BOOLEAN,
+                  correct_5d      BOOLEAN,
+                  correct_20d     BOOLEAN,
+                  seeded_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  resolved_at     TIMESTAMPTZ,
+                  PRIMARY KEY (attention_date, ticker)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS attention_outcomes_unresolved "
+                "ON attention_outcomes (attention_date) WHERE fwd_20d_pct IS NULL"
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attention_source_stats (
+                  kind           TEXT NOT NULL,
+                  key            TEXT NOT NULL,
+                  rows_total     INTEGER NOT NULL DEFAULT 0,
+                  scored_1d      INTEGER NOT NULL DEFAULT 0,
+                  correct_1d     INTEGER NOT NULL DEFAULT 0,
+                  hit_rate_1d    NUMERIC,
+                  scored_5d      INTEGER NOT NULL DEFAULT 0,
+                  correct_5d     INTEGER NOT NULL DEFAULT 0,
+                  hit_rate_5d    NUMERIC,
+                  scored_20d     INTEGER NOT NULL DEFAULT 0,
+                  correct_20d    INTEGER NOT NULL DEFAULT 0,
+                  hit_rate_20d   NUMERIC,
+                  refreshed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  PRIMARY KEY (kind, key)
+                )
+                """
+            )
+            conn.commit()
+    _ATTENTION_OUTCOMES_SCHEMA_ENSURED = True
+
+
+def get_attention_days_missing_outcomes(day_from: Any, day_to: Any) -> List[Dict[str, Any]]:
+    """Rolled-up (date, ticker) pairs with no outcome row yet, carrying the
+    attribution joined from the still-retained raw items. This join is the
+    only chance to capture who said it - the items are pruned at 90 days."""
+    _ensure_attention_outcomes_schema()
+    sql = (
+        """
+        SELECT d.attention_date, d.ticker, d.mood, d.weighted_score, d.mention_count,
+        """
+        + _ATTENTION_ATTRIBUTION_SUBQUERY.format(field="subreddit", alias="subreddits")
+        + ","
+        + _ATTENTION_ATTRIBUTION_SUBQUERY.format(field="author", alias="authors")
+        + """
+        FROM daily_stock_attention d
+        LEFT JOIN attention_outcomes o
+          ON o.attention_date = d.attention_date AND o.ticker = d.ticker
+        WHERE d.attention_date >= %(day_from)s
+          AND d.attention_date <= %(day_to)s
+          AND d.reddit_count > 0
+          AND o.ticker IS NULL
+        """
+    )
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, {"day_from": day_from, "day_to": day_to})
+            return [dict(row) for row in cur.fetchall()]
+
+
+def upsert_attention_outcomes(rows: List[Dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    _ensure_attention_outcomes_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO attention_outcomes
+                  (attention_date, ticker, mood, weighted_score, mention_count, subreddits, authors)
+                VALUES %s
+                ON CONFLICT (attention_date, ticker) DO NOTHING
+                """,
+                [
+                    (
+                        r["attention_date"],
+                        r["ticker"],
+                        str(r.get("mood") or "neutral"),
+                        r.get("weighted_score") or 0,
+                        r.get("mention_count") or 0,
+                        _strip_nul_bytes(r.get("subreddits") or "[]"),
+                        _strip_nul_bytes(r.get("authors") or "[]"),
+                    )
+                    for r in rows
+                ],
+            )
+            conn.commit()
+            return len(rows)
+
+
+def get_unresolved_attention_outcomes(max_horizon_days: int) -> List[Dict[str, Any]]:
+    """Rows with at least one unfilled horizon, old enough that the shortest
+    horizon could plausibly have resolved."""
+    _ensure_attention_outcomes_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT attention_date, ticker, mood, subreddits, authors,
+                       fwd_1d_pct, fwd_5d_pct, fwd_20d_pct
+                FROM attention_outcomes
+                WHERE (fwd_1d_pct IS NULL OR fwd_5d_pct IS NULL OR fwd_20d_pct IS NULL)
+                  AND attention_date >= CURRENT_DATE - ((%(window)s)::int * INTERVAL '1 day')
+                  AND attention_date <= CURRENT_DATE - INTERVAL '2 days'
+                ORDER BY attention_date DESC
+                """,
+                {"window": max_horizon_days * 3},
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def update_attention_outcome_returns(rows: List[Dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    _ensure_attention_outcomes_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            for r in rows:
+                cur.execute(
+                    """
+                    UPDATE attention_outcomes
+                    SET fwd_1d_pct = %(f1)s, fwd_5d_pct = %(f5)s, fwd_20d_pct = %(f20)s,
+                        correct_1d = %(c1)s, correct_5d = %(c5)s, correct_20d = %(c20)s,
+                        resolved_at = now()
+                    WHERE attention_date = %(day)s AND ticker = %(ticker)s
+                    """,
+                    {
+                        "f1": r.get("fwd_1d_pct"),
+                        "f5": r.get("fwd_5d_pct"),
+                        "f20": r.get("fwd_20d_pct"),
+                        "c1": r.get("correct_1d"),
+                        "c5": r.get("correct_5d"),
+                        "c20": r.get("correct_20d"),
+                        "day": r["attention_date"],
+                        "ticker": r["ticker"],
+                    },
+                )
+            conn.commit()
+            return len(rows)
+
+
+def get_resolved_attention_outcomes() -> List[Dict[str, Any]]:
+    """Every row with at least one graded horizon - the input to hit rates."""
+    _ensure_attention_outcomes_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT attention_date, ticker, mood, subreddits, authors,
+                       fwd_1d_pct, fwd_5d_pct, fwd_20d_pct
+                FROM attention_outcomes
+                WHERE fwd_1d_pct IS NOT NULL
+                """
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def replace_attention_source_stats(rows: List[Dict[str, Any]]) -> int:
+    """Recomputed wholesale: a key that no longer qualifies must disappear
+    rather than linger at a stale hit rate."""
+    _ensure_attention_outcomes_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM attention_source_stats")
+            if rows:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO attention_source_stats
+                      (kind, key, rows_total, scored_1d, correct_1d, hit_rate_1d,
+                       scored_5d, correct_5d, hit_rate_5d, scored_20d, correct_20d, hit_rate_20d)
+                    VALUES %s
+                    """,
+                    [
+                        (
+                            r["kind"],
+                            r["key"],
+                            r.get("rows_total", 0),
+                            r.get("scored_1d", 0),
+                            r.get("correct_1d", 0),
+                            r.get("hit_rate_1d"),
+                            r.get("scored_5d", 0),
+                            r.get("correct_5d", 0),
+                            r.get("hit_rate_5d"),
+                            r.get("scored_20d", 0),
+                            r.get("correct_20d", 0),
+                            r.get("hit_rate_20d"),
+                        )
+                        for r in rows
+                    ],
+                )
+            conn.commit()
+            return len(rows)

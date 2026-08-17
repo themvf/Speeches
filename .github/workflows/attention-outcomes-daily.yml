@@ -1,0 +1,79 @@
+name: Attention Outcomes (Daily)
+
+# Scores Reddit attention against forward returns (enhancement 2).
+#
+# Runs after stock-attention-daily.yml's 00:15 UTC rollup, so the day's
+# daily_stock_attention rows exist to seed outcomes from.
+#
+# Not behind ENABLE_GCS_SNAPSHOT_SCHEDULES: that gate exists for jobs whose
+# cost is full custom_documents.json snapshot loads, and this job never touches
+# GCS. It reads Neon and Yahoo's chart endpoint only, and calls no LLM.
+#
+# Seeding is time-critical in a way resolving is not: attribution is joined
+# from reddit_attention_items, which is pruned at 90 days, so a row must be
+# seeded well inside that window or the "who said it" half is lost for good.
+
+on:
+  schedule:
+    - cron: "10 1 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Seed only this attention date (YYYY-MM-DD). Blank = rolling window."
+        required: false
+        default: ""
+      dry_run:
+        description: "Compute and report without writing"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: attention-outcomes-daily
+  cancel-in-progress: false
+
+jobs:
+  score:
+    if: github.event_name != 'schedule' || vars.ENABLE_ATTENTION_OUTCOMES != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Score attention outcomes
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            args+=(--date "${{ github.event.inputs.date }}")
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python attention_outcomes.py "${args[@]}" --summary-path attention_outcomes_summary.json
+
+      - name: Upload Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attention-outcomes-${{ github.run_id }}
+          path: attention_outcomes_summary.json
+          if-no-files-found: ignore

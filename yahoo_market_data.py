@@ -17,6 +17,7 @@ instead of failing the whole rollup.
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -101,6 +102,48 @@ def fetch_daily_market_context(symbol: str) -> Optional[Dict[str, Any]]:
             "volume": latest_volume,
             "volume_vs_20d": volume_vs_20d,
         }
+    except Exception:
+        return None
+
+
+def fetch_close_series(symbol: str, range_: str = "3mo") -> Optional[Dict[str, float]]:
+    """UTC date string -> close, for forward-return scoring.
+
+    fetch_daily_market_context answers "what did this do today"; this answers
+    "what did this do over a window", which is what measuring whether Reddit
+    attention preceded a move requires. Same endpoint, same throttle, same
+    fail-soft contract: None on any failure rather than raising.
+
+    Null bars are dropped rather than forward-filled - a missing close is a
+    day the horizon walk should skip, not a fabricated flat day.
+    """
+    _throttle()
+    try:
+        resp = requests.get(
+            YAHOO_CHART_URL.format(symbol=symbol),
+            params={"range": range_, "interval": "1d"},
+            headers=YAHOO_HEADERS,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if resp.status_code != 200:
+            return None
+        result = ((resp.json().get("chart", {}) or {}).get("result") or [])
+        if not result:
+            return None
+        series = result[0]
+        timestamps: List[int] = series.get("timestamp") or []
+        closes: List[Optional[float]] = (
+            ((series.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+        )
+        if not timestamps or len(closes) != len(timestamps):
+            return None
+        out: Dict[str, float] = {}
+        for ts, close in zip(timestamps, closes):
+            if close is None:
+                continue
+            day = datetime.fromtimestamp(int(ts), tz=UTC).date().isoformat()
+            out[day] = float(close)
+        return out or None
     except Exception:
         return None
 
