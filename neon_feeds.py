@@ -2549,3 +2549,157 @@ def replace_attention_source_stats(rows: List[Dict[str, Any]]) -> int:
                 )
             conn.commit()
             return len(rows)
+
+
+# ─── Attention alerts (enhancement 3) ───────────────────────────────────────
+#
+# Same shape as polymarket_sharp_alerts: content-hash dedup key with
+# ON CONFLICT DO NOTHING so a rollup re-run is idempotent, and plain age
+# pruning rather than settle-then-prune. Alerts are a display concern; the
+# durable record of what happened lives in attention_outcomes.
+
+_ATTENTION_ALERTS_SCHEMA_ENSURED = False
+
+ATTENTION_ALERT_RETENTION_DAYS = 30
+
+
+def _ensure_attention_alerts_schema() -> None:
+    global _ATTENTION_ALERTS_SCHEMA_ENSURED
+    if _ATTENTION_ALERTS_SCHEMA_ENSURED:
+        return
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attention_alerts (
+                  alert_key      TEXT PRIMARY KEY,
+                  attention_date DATE NOT NULL,
+                  ticker         TEXT NOT NULL,
+                  alert_type     TEXT NOT NULL,
+                  rank           INTEGER NOT NULL DEFAULT 0,
+                  detail         TEXT NOT NULL DEFAULT '{}',
+                  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS attention_alerts_recent "
+                "ON attention_alerts (attention_date DESC, rank ASC)"
+            )
+            conn.commit()
+    _ATTENTION_ALERTS_SCHEMA_ENSURED = True
+
+
+def insert_attention_alerts(rows: List[Dict[str, Any]]) -> int:
+    """Returns rows offered, not rows written: ON CONFLICT DO NOTHING means a
+    re-run legitimately writes nothing, and execute_values' rowcount only
+    reflects the final page anyway (a trap already hit in SEC-50)."""
+    if not rows:
+        return 0
+    _ensure_attention_alerts_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO attention_alerts
+                  (alert_key, attention_date, ticker, alert_type, rank, detail)
+                VALUES %s
+                ON CONFLICT (alert_key) DO NOTHING
+                """,
+                [
+                    (
+                        _strip_nul_bytes(r["alert_key"]),
+                        r["attention_date"],
+                        _strip_nul_bytes(r["ticker"]),
+                        _strip_nul_bytes(r["alert_type"]),
+                        int(r.get("rank") or 0),
+                        _strip_nul_bytes(r.get("detail") or "{}"),
+                    )
+                    for r in rows
+                ],
+            )
+            conn.commit()
+            return len(rows)
+
+
+def get_attention_alerts(limit: int = 100, ticker: Optional[str] = None) -> List[Dict[str, Any]]:
+    _ensure_attention_alerts_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if ticker:
+                cur.execute(
+                    """
+                    SELECT alert_key, attention_date, ticker, alert_type, rank, detail, created_at
+                    FROM attention_alerts
+                    WHERE ticker = %(ticker)s
+                    ORDER BY attention_date DESC, rank ASC
+                    LIMIT %(limit)s
+                    """,
+                    {"ticker": ticker.upper(), "limit": max(1, min(limit, 500))},
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT alert_key, attention_date, ticker, alert_type, rank, detail, created_at
+                    FROM attention_alerts
+                    ORDER BY attention_date DESC, rank ASC
+                    LIMIT %(limit)s
+                    """,
+                    {"limit": max(1, min(limit, 500))},
+                )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def get_known_attention_tickers(before_date: Any = None) -> List[str]:
+    """Every ticker that has appeared in a rollup BEFORE `before_date`, for
+    first-appearance detection. Reads the rollup table, which is never pruned,
+    so newcomer status stays correct indefinitely.
+
+    Excluding the target day is load-bearing, not defensive: the rollup
+    replaces a date wholesale, and a --date re-run would otherwise find the
+    day's own tickers already present and never fire a first-appearance alert.
+    """
+    _ensure_stock_attention_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if before_date is None:
+                cur.execute("SELECT DISTINCT ticker FROM daily_stock_attention")
+            else:
+                cur.execute(
+                    "SELECT DISTINCT ticker FROM daily_stock_attention WHERE attention_date < %s",
+                    (before_date,),
+                )
+            return [str(row["ticker"]) for row in cur.fetchall()]
+
+
+def get_daily_attention_rows(day: Any) -> List[Dict[str, Any]]:
+    """One day's rollup rows, ranked as the board shows them - the prior-day
+    baseline for surge detection."""
+    _ensure_stock_attention_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ticker, mention_count, total_mention_count, weighted_score
+                FROM daily_stock_attention
+                WHERE attention_date = %s
+                ORDER BY weighted_score DESC, ticker ASC
+                """,
+                (day,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def prune_attention_alerts(retention_days: int = ATTENTION_ALERT_RETENTION_DAYS) -> int:
+    _ensure_attention_alerts_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM attention_alerts "
+                "WHERE attention_date < CURRENT_DATE - ((%s)::int * INTERVAL '1 day')",
+                (max(1, retention_days),),
+            )
+            deleted = cur.rowcount
+            conn.commit()
+    return int(deleted or 0)

@@ -58,6 +58,7 @@ import sys
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
+import attention_alerts
 import neon_feeds
 import ticker_resolver
 import yahoo_market_data
@@ -670,6 +671,14 @@ def _run(
             ]
 
             if not dry_run:
+                # Read the alert baselines BEFORE the wholesale replace below,
+                # so neither is contaminated by the day being rewritten.
+                try:
+                    known_tickers = neon_feeds.get_known_attention_tickers(before_date=target_day)
+                    prior_day_rows = neon_feeds.get_daily_attention_rows(target_day - timedelta(days=1))
+                except Exception:
+                    known_tickers, prior_day_rows = [], []
+
                 # Replace the date wholesale so re-runs after resolver
                 # tuning or a market-data hiccup also remove tickers that
                 # no longer resolve and refresh price/volume columns.
@@ -710,6 +719,34 @@ def _run(
                 # Persist the item-5 author stats (uses its own connection
                 # via neon_feeds; account_created/link_karma untouched).
                 neon_feeds.upsert_author_stats_batch(author_stats)
+
+                # Enhancement 3: turn the day's interesting transitions into
+                # events. Detection is pure and runs over rows already in
+                # memory. known_tickers deliberately excludes the target day -
+                # the rollup replaces a date wholesale, so a --date re-run
+                # would otherwise see its own tickers as already known and
+                # never fire a first-appearance alert.
+                try:
+                    alerts = attention_alerts.detect_alerts(
+                        target_day,
+                        rollups,
+                        prior_rows=prior_day_rows,
+                        known_tickers=known_tickers,
+                    )
+                    if alerts:
+                        neon_feeds.insert_attention_alerts(alerts)
+                    summary["alerts"] = {
+                        "detected": len(alerts),
+                        "by_type": {
+                            t: sum(1 for a in alerts if a["alert_type"] == t)
+                            for t in sorted({a["alert_type"] for a in alerts})
+                        },
+                        "pruned": neon_feeds.prune_attention_alerts(),
+                    }
+                except Exception as exc:
+                    # Alerts are a display concern layered on top of the
+                    # rollup; a failure here must never cost the day's data.
+                    summary["alerts"] = {"error": str(exc)}
 
                 cutoff = datetime.now(UTC) - timedelta(days=retention_days)
                 cur.execute(RETENTION_DELETE_MENTIONS_VIA_ITEMS_SQL, {"cutoff": cutoff})

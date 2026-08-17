@@ -3853,3 +3853,41 @@ export async function getPolymarketMacroWalletStats(limit = 100): Promise<Polyma
     LIMIT ${cappedLimit}
   `) as unknown as PolymarketMacroWalletStatsRow[];
 }
+
+export type AttentionAlert = {
+  alert_key: string;
+  attention_date: string;
+  ticker: string;
+  alert_type: string;
+  rank: number;
+  detail: string;
+  created_at: string;
+};
+
+/**
+ * Attention alerts (enhancement 3). attention_alerts is Python-owned - the
+ * daily rollup creates it - so this deliberately does NOT call ensureSchema:
+ * the TS side must not race ahead and create a table whose shape the rollup
+ * owns. Callers handle the missing-relation error; see the alerts route.
+ */
+export async function getAttentionAlerts(
+  opts: { ticker?: string; limit?: number } = {}
+): Promise<AttentionAlert[]> {
+  const sql = getSql();
+  const limit = Math.max(1, Math.min(opts.limit ?? 100, 500));
+  const rows = opts.ticker
+    ? await sql`
+        SELECT alert_key, attention_date, ticker, alert_type, rank, detail, created_at
+        FROM attention_alerts
+        WHERE ticker = ${opts.ticker.toUpperCase()}
+        ORDER BY attention_date DESC, rank ASC
+        LIMIT ${limit}
+      `
+    : await sql`
+        SELECT alert_key, attention_date, ticker, alert_type, rank, detail, created_at
+        FROM attention_alerts
+        ORDER BY attention_date DESC, rank ASC
+        LIMIT ${limit}
+      `;
+  return rows as unknown as AttentionAlert[];
+}
