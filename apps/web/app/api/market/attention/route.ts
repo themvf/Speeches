@@ -139,6 +139,9 @@ export async function GET(req: NextRequest) {
             volumeVs20d: null,
             divergence: "",
             weightedMentionCount: row.mention_count,
+            // Recomputed per-subreddit from raw items; the rollup's engagement
+            // figure is blended across all subreddits and cannot be sliced.
+            engagementScore: 0,
             qualityFlags: [],
             sparkline: [], // 14d trend is a blended-rollup signal; not meaningful for one subreddit
             topSources,
@@ -208,6 +211,7 @@ export async function GET(req: NextRequest) {
           sourceCount: row.source_count,
           subredditCount: row.subreddit_count,
           weightedScore: row.weighted_score,
+          engagementScore: row.engagement_score ?? 0,
           mood: row.mood,
           price: quote?.price ?? null,
           pricePct: quote?.pct ?? null,

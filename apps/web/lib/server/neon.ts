@@ -3178,6 +3178,7 @@ export type DailyStockAttentionRow = {
   weighted_mention_count: number;
   quality_flags: string; // JSON array, same convention as top_source_ids
   top_news_ids: string;  // JSON array of rss_articles ids (SEC-4)
+  engagement_score: number; // total upvotes across the deduped threads (enhancement 1)
   generated_at: string;
 };
 
@@ -3208,7 +3209,7 @@ export async function getDailyStockAttention(date: string, limit = 50): Promise<
              top_source_ids, price_close::float AS price_close, price_pct::float AS price_pct,
              volume, volume_vs_20d::float AS volume_vs_20d, divergence,
              weighted_mention_count::float AS weighted_mention_count, quality_flags, top_news_ids,
-             generated_at::text AS generated_at
+             engagement_score, generated_at::text AS generated_at
       FROM daily_stock_attention
       WHERE attention_date = ${date}::date
       ORDER BY weighted_score DESC, total_mention_count DESC, ticker ASC
@@ -3216,9 +3217,11 @@ export async function getDailyStockAttention(date: string, limit = 50): Promise<
     `) as unknown as DailyStockAttentionRow[];
   } catch (err) {
     // Old-schema tolerance (deploy-order rule in CLAUDE.md): top_news_ids
-    // is added by the Python rollup's ALTER; until that runs post-deploy,
-    // retry without the column so the board renders instead of erroring.
-    if (!String(err).includes("top_news_ids")) throw err;
+    // and engagement_score are both added by the Python rollup's ALTERs;
+    // until that runs post-deploy, retry without them so the board renders
+    // instead of erroring. Matching on either name keeps one fallback path
+    // rather than nesting a second try/catch per column added.
+    if (!/top_news_ids|engagement_score/.test(String(err))) throw err;
     const rows = (await sql`
       SELECT attention_date::text AS attention_date, ticker, company, mention_count, reddit_count, news_count,
              total_mention_count, source_count, subreddit_count, weighted_score::float AS weighted_score, mood,
@@ -3230,8 +3233,8 @@ export async function getDailyStockAttention(date: string, limit = 50): Promise<
       WHERE attention_date = ${date}::date
       ORDER BY weighted_score DESC, total_mention_count DESC, ticker ASC
       LIMIT ${limit}
-    `) as unknown as Omit<DailyStockAttentionRow, "top_news_ids">[];
-    return rows.map((row) => ({ ...row, top_news_ids: "[]" }));
+    `) as unknown as Omit<DailyStockAttentionRow, "top_news_ids" | "engagement_score">[];
+    return rows.map((row) => ({ ...row, top_news_ids: "[]", engagement_score: 0 }));
   }
 }
 
@@ -3890,4 +3893,56 @@ export async function getAttentionAlerts(
         LIMIT ${limit}
       `;
   return rows as unknown as AttentionAlert[];
+}
+
+export type AttentionSourceStat = {
+  kind: "subreddit" | "author";
+  key: string;
+  rows_total: number;
+  scored_1d: number;
+  correct_1d: number;
+  hit_rate_1d: number | null;
+  scored_5d: number;
+  correct_5d: number;
+  hit_rate_5d: number | null;
+  scored_20d: number;
+  correct_20d: number;
+  hit_rate_20d: number | null;
+};
+
+/**
+ * Forward-return hit rates per subreddit / author (enhancement 2).
+ *
+ * attention_source_stats is Python-owned and recomputed wholesale by
+ * attention_outcomes.py, so this deliberately does not call ensureSchema -
+ * the TS side must not create a table whose shape that job owns. Callers
+ * handle the missing-relation error; see the accuracy route.
+ */
+export async function getAttentionSourceStats(
+  kind?: "subreddit" | "author",
+  limit = 100
+): Promise<AttentionSourceStat[]> {
+  const sql = getSql();
+  const capped = Math.max(1, Math.min(limit, 500));
+  const rows = kind
+    ? await sql`
+        SELECT kind, key, rows_total,
+               scored_1d, correct_1d, hit_rate_1d::float AS hit_rate_1d,
+               scored_5d, correct_5d, hit_rate_5d::float AS hit_rate_5d,
+               scored_20d, correct_20d, hit_rate_20d::float AS hit_rate_20d
+        FROM attention_source_stats
+        WHERE kind = ${kind}
+        ORDER BY hit_rate_1d DESC NULLS LAST, rows_total DESC, key ASC
+        LIMIT ${capped}
+      `
+    : await sql`
+        SELECT kind, key, rows_total,
+               scored_1d, correct_1d, hit_rate_1d::float AS hit_rate_1d,
+               scored_5d, correct_5d, hit_rate_5d::float AS hit_rate_5d,
+               scored_20d, correct_20d, hit_rate_20d::float AS hit_rate_20d
+        FROM attention_source_stats
+        ORDER BY kind ASC, hit_rate_1d DESC NULLS LAST, rows_total DESC, key ASC
+        LIMIT ${capped}
+      `;
+  return rows as unknown as AttentionSourceStat[];
 }
