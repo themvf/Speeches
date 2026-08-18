@@ -65,7 +65,10 @@ export async function GET(req: NextRequest) {
   });
 
   const data: MarketIndustriesData = {
-    generatedAt: new Date().toISOString(),
+    // The committed snapshot's own build time, not the current request time -
+    // industries/tickers/financials/market-cap shares are only as fresh as
+    // the last build_industry_config.py run, which is manual/unscheduled.
+    generatedAt: industryConfig.generatedAt,
     industries,
     ...(joins.warning ? { warning: joins.warning } : {}),
   };
@@ -83,7 +86,7 @@ export async function GET(req: NextRequest) {
         const quote = settled && settled.status === "fulfilled" ? settled.value : null;
         const entry = t as typeof t & {
           revenue?: number; expenses?: number; profit?: number;
-          sharesOutstanding?: number; periodEnd?: string;
+          sharesOutstanding?: number; periodEnd?: string; filed?: string;
         };
         const price = quote?.price ?? null;
         const shares = entry.sharesOutstanding ?? null;
@@ -97,6 +100,7 @@ export async function GET(req: NextRequest) {
           expenses: entry.expenses ?? null,
           profit: entry.profit ?? null,
           periodEnd: entry.periodEnd ?? null,
+          filed: entry.filed ?? null,
           mentions: joins.mentionsByTicker.get(t.ticker) ?? 0,
           reportDate: joins.reportByTicker.get(t.ticker) ?? null,
         };
@@ -121,7 +125,7 @@ export async function GET(req: NextRequest) {
       const quote = await fetchYahooQuote(found.entry.ticker, 300).catch(() => null);
       const entry = found.entry as typeof found.entry & {
         revenue?: number; expenses?: number; profit?: number;
-        sharesOutstanding?: number; periodEnd?: string;
+        sharesOutstanding?: number; periodEnd?: string; filed?: string;
       };
       const price = quote?.price ?? null;
       const shares = entry.sharesOutstanding ?? null;
@@ -135,6 +139,7 @@ export async function GET(req: NextRequest) {
         expenses: entry.expenses ?? null,
         profit: entry.profit ?? null,
         periodEnd: entry.periodEnd ?? null,
+        filed: entry.filed ?? null,
         mentions: joins.mentionsByTicker.get(entry.ticker) ?? 0,
         reportDate: joins.reportByTicker.get(entry.ticker) ?? null,
       };

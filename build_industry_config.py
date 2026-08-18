@@ -201,10 +201,13 @@ def _fetch_json(url: str) -> Dict[str, Any]:
 
 
 def fetch_frame_metric(concepts: List[str], unit: str, taxonomy: str = "us-gaap", instant: bool = False) -> Dict[str, Dict[str, Any]]:
-    """cik -> {val, end} for the first hit per company, scanning newest
+    """cik -> {val, end, accn} for the first hit per company, scanning newest
     quarter first and, within a quarter, the concept priority order. Period
     recency dominates so peers compare like-for-like periods; the concept
-    chain only decides which tag to trust inside that quarter."""
+    chain only decides which tag to trust inside that quarter. accn (the
+    accession number the value was reported in) is kept so main() can look up
+    the actual filing date - a frame's "end" is the period covered, not when
+    the company actually filed it, and those two dates can differ by weeks."""
     out: Dict[str, Dict[str, Any]] = {}
     for period in QUARTERS:
         frame = f"{period}I" if instant else period
@@ -224,7 +227,7 @@ def fetch_frame_metric(concepts: List[str], unit: str, taxonomy: str = "us-gaap"
                     val = float(row.get("val"))
                 except (TypeError, ValueError):
                     continue
-                out[cik] = {"val": val, "end": str(row.get("end") or "")}
+                out[cik] = {"val": val, "end": str(row.get("end") or ""), "accn": str(row.get("accn") or "")}
             print(f"  frame {concept:52} {frame:9} -> {len(data):5} rows (cum {len(out)})", file=sys.stderr)
     return out
 
@@ -253,8 +256,29 @@ def build_financials() -> Dict[str, Dict[str, Any]]:
             "expenses": exp_val,
             "sharesOutstanding": sha["val"] if sha else None,
             "periodEnd": (rev or pro or {}).get("end") or None,
+            # accession number the revenue/profit figure came from - resolved
+            # to an actual filing date against each company's own submissions
+            # feed in main() (free: that feed is already fetched per ticker
+            # for SIC classification).
+            "accn": (rev or pro or {}).get("accn") or None,
         }
     return out
+
+
+def resolve_filed_date(submissions_data: Dict[str, Any], accn: Optional[str]) -> Optional[str]:
+    """Look up the actual filing date for an accession number inside a
+    company's own EDGAR submissions payload (the "recent" filings window).
+    Pure function so the accn->filingDate zip logic is unit-testable without
+    a network call. Returns None if accn is falsy or has aged out of the
+    "recent" window (older filings live in paginated `filings.files`, not
+    fetched here - a null "filed" just means this row falls back to
+    periodEnd only, same as any other missing-data cell in this pipeline)."""
+    if not accn:
+        return None
+    recent = submissions_data.get("filings", {}).get("recent", {}) or {}
+    accn_list = recent.get("accessionNumber", []) or []
+    filed_list = recent.get("filingDate", []) or []
+    return dict(zip(accn_list, filed_list)).get(accn)
 
 
 def group_by_industry(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -265,7 +289,7 @@ def group_by_industry(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         label = str(record.get("sic_description") or "").strip() or "Unclassified"
         bucket = buckets.setdefault(label, {"sic": str(record.get("sic") or ""), "label": label, "tickers": []})
         entry = {k: record[k] for k in ("ticker", "name", "cik") if k in record}
-        for key in ("revenue", "profit", "expenses", "sharesOutstanding", "periodEnd"):
+        for key in ("revenue", "profit", "expenses", "sharesOutstanding", "periodEnd", "filed"):
             if record.get(key) is not None:
                 entry[key] = record[key]
         bucket["tickers"].append(entry)
@@ -305,6 +329,16 @@ def main() -> int:
             "sic_description": str(data.get("sicDescription") or ""),
         }
         record.update(financials.get(str(cik), {}))
+        # Resolve the revenue/profit accession number to an actual filing
+        # date via this same submissions payload (already in hand, zero extra
+        # requests) - "periodEnd" is the quarter the figure covers, "filed" is
+        # when the company actually submitted it, and those can differ by
+        # weeks (peers on the same fiscal quarter can still have filed on
+        # very different dates).
+        accn = record.pop("accn", None)
+        filed = resolve_filed_date(data, accn)
+        if filed:
+            record["filed"] = filed
         # Foreign private issuers (20-F/40-F filers, e.g. TSM) report ORDINARY
         # shares while the US listing trades as ADRs at a different ratio, so
         # shares x US price overstates market cap badly (TSM came out at

@@ -1067,6 +1067,12 @@ export interface IndustryPeerRow {
   expenses: number | null;
   profit: number | null;
   periodEnd: string | null;
+  // When the company actually filed the 10-Q/10-K carrying periodEnd's
+  // figures (from EDGAR submissions, resolved against the frame's accession
+  // number in build_industry_config.py). Distinct from periodEnd: two peers
+  // can cover the same fiscal quarter but have filed weeks apart, or cover
+  // different quarters but have filed close together.
+  filed: string | null;
   mentions: number;                    // latest-day total mentions, 0 if none/unavailable
   reportDate: string | null;           // from open Polymarket earnings markets, else null
 }

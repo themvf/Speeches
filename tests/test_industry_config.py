@@ -27,6 +27,59 @@ def test_group_by_industry_groups_and_sorts():
     assert semis["sic"] == "3674"
 
 
+def test_resolve_filed_date_matches_accession():
+    submissions = {
+        "filings": {
+            "recent": {
+                "accessionNumber": ["0001-26-000111", "0001-26-000222"],
+                "filingDate": ["2026-08-05", "2026-05-01"],
+            }
+        }
+    }
+    assert builder.resolve_filed_date(submissions, "0001-26-000111") == "2026-08-05"
+    assert builder.resolve_filed_date(submissions, "0001-26-000222") == "2026-05-01"
+
+
+def test_resolve_filed_date_missing_or_aged_out_accession_returns_none():
+    submissions = {
+        "filings": {
+            "recent": {
+                "accessionNumber": ["0001-26-000111"],
+                "filingDate": ["2026-08-05"],
+            }
+        }
+    }
+    assert builder.resolve_filed_date(submissions, None) is None
+    assert builder.resolve_filed_date(submissions, "") is None
+    assert builder.resolve_filed_date(submissions, "0009-99-999999") is None  # not in "recent" window
+    assert builder.resolve_filed_date({}, "0001-26-000111") is None  # malformed/empty payload
+
+
+def test_fetch_frame_metric_keeps_accn_for_filed_date_lookup(monkeypatch):
+    def fake_fetch_json(url):
+        return {"data": [{"cik": 1, "val": 100.0, "end": "2026-06-30", "accn": "0001-26-000111"}]}
+
+    monkeypatch.setattr(builder, "_fetch_json", fake_fetch_json)
+    monkeypatch.setattr(builder, "QUARTERS", ["CY2026Q2"])
+    monkeypatch.setattr(builder, "THROTTLE_S", 0)
+    out = builder.fetch_frame_metric(["Revenues"], "USD")
+    assert out["1"]["accn"] == "0001-26-000111"
+
+
+def test_build_financials_carries_accn_through_to_output(monkeypatch):
+    def fake_fetch_frame_metric(concepts, unit, taxonomy="us-gaap", instant=False):
+        if "Revenue" in concepts[0] or concepts[0] == "Revenues":
+            return {"1": {"val": 100.0, "end": "2026-06-30", "accn": "0001-26-000111"}}
+        if concepts[0] == "NetIncomeLoss":
+            return {"1": {"val": 20.0, "end": "2026-06-30", "accn": "0001-26-000111"}}
+        return {}
+
+    monkeypatch.setattr(builder, "fetch_frame_metric", fake_fetch_frame_metric)
+    financials = builder.build_financials()
+    assert financials["1"]["accn"] == "0001-26-000111"
+    assert financials["1"]["periodEnd"] == "2026-06-30"
+
+
 def test_committed_config_integrity():
     with open(CONFIG_PATH, encoding="utf-8") as handle:
         config = json.load(handle)

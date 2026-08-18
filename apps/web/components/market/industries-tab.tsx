@@ -20,6 +20,32 @@ function reportLabel(iso: string | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+// Longer form for "as of" banners, where the year matters (the snapshot can
+// be weeks old and "Aug 5" alone reads as current-year-obvious when it isn't).
+function asOfLabel(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+// Per-company "reported X ago" - this is the answer to "one company filed
+// yesterday, another filed 2 months ago": periodEnd is the quarter covered,
+// this is when the filing actually landed, and the two can diverge (same
+// quarter filed weeks apart, or different quarters filed close together).
+function filedAgo(iso: string | null): { label: string; days: number } | null {
+  if (!iso) return null;
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const days = Math.max(0, Math.round((Date.now() - d.getTime()) / 86400000));
+  if (days === 0) return { label: "today", days };
+  if (days === 1) return { label: "1d ago", days };
+  if (days < 30) return { label: `${days}d ago`, days };
+  const months = Math.round(days / 30);
+  if (months < 12) return { label: `${months}mo ago`, days };
+  return { label: `${Math.round(months / 12)}y ago`, days };
+}
+
 // Compact USD for the financial columns; negatives (loss-making peers) keep
 // their sign so a red -$1.2B reads correctly next to profitable peers.
 function usdCompact(value: number | null): string {
@@ -60,22 +86,26 @@ function PeerTable({ label }: { label: string }) {
   if (loading) return <p className="px-4 py-3 text-xs text-[color:var(--ink-faint)]">Loading peers…</p>;
   const rows = data?.peers?.rows ?? [];
   if (rows.length === 0) return <p className="px-4 py-3 text-xs text-[color:var(--ink-faint)]">No peer data.</p>;
-  const period = rows.find((r) => r.periodEnd)?.periodEnd ?? null;
 
   return (
     <div className="px-4 py-3">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px]">
+        <table className="w-full min-w-[840px]">
           <thead>
             <tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
               <th className="py-1.5 pr-2 text-left font-semibold">Ticker</th>
               <th className="hidden px-2 py-1.5 text-left font-semibold lg:table-cell">Company</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Price</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Δ Today</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Market cap</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Revenue</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Expenses</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Profit</th>
+              <th className="px-2 py-1.5 text-right font-semibold" title="Live quote, fetched on page load">
+                Price <span className="text-[color:var(--accent)]">●</span>
+              </th>
+              <th className="px-2 py-1.5 text-right font-semibold" title="Live quote, fetched on page load">
+                Δ Today <span className="text-[color:var(--accent)]">●</span>
+              </th>
+              <th className="px-2 py-1.5 text-right font-semibold" title="Live price × shares outstanding from the snapshot below">Market cap</th>
+              <th className="px-2 py-1.5 text-right font-semibold" title="From the snapshot below, not live">Revenue</th>
+              <th className="px-2 py-1.5 text-right font-semibold" title="When this peer actually filed the report these figures come from - not the quarter it covers">Filed</th>
+              <th className="px-2 py-1.5 text-right font-semibold" title="From the snapshot below, not live">Expenses</th>
+              <th className="px-2 py-1.5 text-right font-semibold" title="From the snapshot below, not live">Profit</th>
               <th className="hidden px-2 py-1.5 text-right font-semibold sm:table-cell">Mentions</th>
               <th className="py-1.5 pl-2 text-right font-semibold">Reports</th>
             </tr>
@@ -109,12 +139,46 @@ function PeerTable({ label }: { label: string }) {
                       </span>
                     )}
                   </td>
-                  <td className="px-2 py-2 text-right tabular-nums text-[color:var(--ink)]">{usdCompact(row.marketCap)}</td>
-                  <td className="px-2 py-2 text-right tabular-nums text-[color:var(--ink-soft)]">{usdCompact(row.revenue)}</td>
-                  <td className="px-2 py-2 text-right tabular-nums text-[color:var(--ink-faint)]">{usdCompact(row.expenses)}</td>
+                  <td
+                    className="px-2 py-2 text-right tabular-nums text-[color:var(--ink)]"
+                    title={row.marketCap == null ? "Missing live price or snapshot share count" : undefined}
+                  >
+                    {usdCompact(row.marketCap)}
+                  </td>
+                  <td
+                    className="px-2 py-2 text-right tabular-nums text-[color:var(--ink-soft)]"
+                    title={row.revenue == null ? "Revenue tag not found in this filer's XBRL for this period" : undefined}
+                  >
+                    {usdCompact(row.revenue)}
+                  </td>
+                  {(() => {
+                    const filed = filedAgo(row.filed);
+                    const stale = filed != null && filed.days > 120;
+                    const quarterNote = row.periodEnd ? `Quarter ended ${reportLabel(row.periodEnd)}. ` : "";
+                    return (
+                      <td
+                        className="px-2 py-2 text-right tabular-nums"
+                        style={{ color: stale ? "#f0b429" : "var(--ink-faint)" }}
+                        title={
+                          filed
+                            ? `${quarterNote}Filed ${new Date(`${row.filed}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}`
+                            : "No resolvable filing date for this figure"
+                        }
+                      >
+                        {filed ? filed.label : "—"}
+                      </td>
+                    );
+                  })()}
+                  <td
+                    className="px-2 py-2 text-right tabular-nums text-[color:var(--ink-faint)]"
+                    title={row.expenses == null ? "Derived from revenue − profit; unavailable when either is missing" : undefined}
+                  >
+                    {usdCompact(row.expenses)}
+                  </td>
                   <td
                     className="px-2 py-2 text-right font-semibold tabular-nums"
                     style={{ color: row.profit == null ? undefined : row.profit >= 0 ? "#41d39d" : "#f87171" }}
+                    title={row.profit == null ? "Net income tag not found in this filer's XBRL for this period" : undefined}
                   >
                     {usdCompact(row.profit)}
                   </td>
@@ -125,7 +189,7 @@ function PeerTable({ label }: { label: string }) {
                 </tr>
                 {chartTicker === row.ticker && (
                   <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] last:border-0">
-                    <td colSpan={10}>
+                    <td colSpan={11}>
                       <TickerEventChart ticker={row.ticker} />
                     </td>
                   </tr>
@@ -137,10 +201,17 @@ function PeerTable({ label }: { label: string }) {
         </table>
       </div>
       <p className="mt-2 text-[10px] leading-relaxed text-[color:var(--ink-faint)]">
-        Market cap = shares outstanding × live price. Revenue and profit are the latest quarter reported to SEC XBRL
-        {period ? ` (most recent here ends ${period})` : ""}; fiscal calendars differ, so quarters aren&apos;t always
-        aligned across peers. Expenses = revenue − profit (total cost including tax) — derived rather than taken from a
-        filed cost line, because filers tag those inconsistently and a peer column needs one shared definition.
+        <span className="text-[color:var(--accent)]">●</span> Price and Δ Today are live quotes; Market cap, Revenue,
+        Expenses, Profit, and Filed come from the financials snapshot dated above and only refresh when it&apos;s
+        rebuilt. <strong className="font-semibold text-[color:var(--ink-soft)]">Filed</strong> is per company on
+        purpose — it&apos;s when that specific peer actually submitted the filing these figures come from, not the
+        quarter it covers (hover a Filed cell for the exact date and period end). Two peers can cover the same
+        fiscal quarter but have filed weeks apart, since fiscal calendars and reporting speed both differ across
+        filers; a <span style={{ color: "#f0b429" }}>highlighted</span> Filed value means over 120 days have passed
+        since that peer&apos;s last filing this table has data for. Expenses = revenue − profit (total cost including
+        tax) — derived rather than taken from a filed cost line, because filers tag those inconsistently and a peer
+        column needs one shared definition; a dash means the underlying XBRL tag wasn&apos;t found for that
+        filer/period, not that the value is zero.
       </p>
     </div>
   );
@@ -212,6 +283,12 @@ export function IndustriesTab({ data, loading, error, expandRequest }: Props) {
         </p>
         <p className="mt-0.5 text-[10px] text-[color:var(--ink-faint)]">
           Research context only — not investment advice.
+          {data.generatedAt && (
+            <>
+              {" "}· Financials snapshot as of {asOfLabel(data.generatedAt)}
+              <span className="text-[color:var(--accent)]"> ●</span> = live quote
+            </>
+          )}
         </p>
       </div>
 
