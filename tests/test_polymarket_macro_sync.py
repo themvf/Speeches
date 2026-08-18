@@ -68,3 +68,16 @@ def test_wallet_classifier_requires_sample_and_timing_coverage():
     assert macro.classify_wallet(10, 8, 100, 100, 10, 100, 0.8) == "release_scalper"
     assert macro.classify_wallet(10, 3, 150, 100, 80, 100, 0.2) == "longshot"
     assert macro.classify_wallet(10, 8, 100, 100, 10, 40, 0.8) == "unclassified"
+
+
+def test_wallet_classifier_uses_a_lower_bar_for_quarterly_cohorts():
+    # us_gdp is quarterly (4 releases/year); the shared default of 10 events
+    # would take 2.5 years to season a single wallet. It gets its own,
+    # lower bar so it seasons on a timeline comparable to every other cohort.
+    assert macro.cohort_min_events("us_gdp") == 5
+    assert macro.cohort_min_events("fed_decision") == macro.COHORT_MIN_EVENTS
+    assert macro.cohort_min_events("core_pce") == macro.COHORT_MIN_EVENTS
+    assert macro.classify_wallet(4, 4, 100, 100, 90, 100, 0.5, cohort="us_gdp") == "unclassified"
+    assert macro.classify_wallet(5, 4, 100, 100, 70, 100, 0.5, cohort="us_gdp") == "early_sharp"
+    # Same raw numbers fail to qualify for a monthly-cadence cohort at 5 events.
+    assert macro.classify_wallet(5, 4, 100, 100, 70, 100, 0.5, cohort="headline_cpi") == "unclassified"

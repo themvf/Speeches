@@ -6,18 +6,26 @@ import type { MacroSharpCohort, MacroSharpCohortSummary, MacroSharpWallet, Macro
 export const runtime = "nodejs";
 export const revalidate = 300;
 
-const COHORTS: Array<{ id: MacroSharpCohort; label: string; cadence: string }> = [
-  { id: "fed_decision", label: "Fed Sharp", cadence: "~8/year" },
-  { id: "nonfarm_payrolls", label: "Payrolls Sharp", cadence: "monthly" },
-  { id: "unemployment", label: "Unemployment Sharp", cadence: "monthly" },
-  { id: "headline_cpi", label: "Headline CPI Sharp", cadence: "monthly" },
-  { id: "core_cpi", label: "Core CPI Sharp", cadence: "monthly" },
-  { id: "us_gdp", label: "GDP Sharp", cadence: "quarterly" },
-  { id: "core_pce", label: "Core PCE Sharp", cadence: "monthly" },
-  { id: "ism_manufacturing", label: "ISM Manufacturing Sharp", cadence: "monthly" },
-  { id: "ism_services", label: "ISM Services Sharp", cadence: "monthly" },
-  { id: "ppi", label: "PPI Sharp", cadence: "monthly" },
-  { id: "macro_generalist", label: "Macro Generalist", cadence: "cross-cohort" },
+// minEvents mirrors cohort_min_events()/COHORT_MIN_EVENTS_OVERRIDES in
+// polymarket_macro_sync.py: 10 for ~monthly-or-better cadence (seasons in
+// <=15 months even at fed_decision's ~8/year rate), 5 for quarterly us_gdp
+// (5 releases = 15 months, matching every other cohort's timeline instead of
+// needing 2.5 years at the shared default).
+const DEFAULT_MIN_EVENTS = 10;
+const MIN_EVENTS_OVERRIDES: Partial<Record<MacroSharpCohort, number>> = { us_gdp: 5 };
+
+const COHORTS: Array<{ id: MacroSharpCohort; label: string; cadence: string; minEvents: number }> = [
+  { id: "fed_decision", label: "Fed Sharp", cadence: "~8/year", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "nonfarm_payrolls", label: "Payrolls Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "unemployment", label: "Unemployment Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "headline_cpi", label: "Headline CPI Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "core_cpi", label: "Core CPI Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "us_gdp", label: "GDP Sharp", cadence: "quarterly", minEvents: MIN_EVENTS_OVERRIDES.us_gdp! },
+  { id: "core_pce", label: "Core PCE Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "ism_manufacturing", label: "ISM Manufacturing Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "ism_services", label: "ISM Services Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "ppi", label: "PPI Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "macro_generalist", label: "Macro Generalist", cadence: "cross-cohort", minEvents: DEFAULT_MIN_EVENTS },
 ];
 
 async function walletTracking(): Promise<MacroWalletTrackingData> {
@@ -48,13 +56,13 @@ async function walletTracking(): Promise<MacroWalletTrackingData> {
       };
     });
     return {
-      isLive: rows.length > 0, minCohortEvents: 10, generalistMinEvents: 20,
+      isLive: rows.length > 0, minCohortEvents: DEFAULT_MIN_EVENTS, generalistMinEvents: 20,
       generalistMinCohorts: 3, cohorts, wallets,
       ...(rows.length ? {} : { warning: "Macro wallet history is initializing; run the backfill workflow to seed resolved releases." }),
     };
   } catch {
     return {
-      isLive: false, minCohortEvents: 10, generalistMinEvents: 20, generalistMinCohorts: 3,
+      isLive: false, minCohortEvents: DEFAULT_MIN_EVENTS, generalistMinEvents: 20, generalistMinCohorts: 3,
       cohorts: COHORTS.filter((cohort) => cohort.id !== "macro_generalist").map((cohort) => ({
         ...cohort, id: cohort.id as MacroSharpCohortSummary["id"], qualifiedWallets: 0, observations: 0,
       })),

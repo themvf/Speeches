@@ -635,6 +635,7 @@ export interface MacroSharpCohortSummary {
   cadence: string;
   qualifiedWallets: number;
   observations: number;
+  minEvents: number;
 }
 
 export interface MacroWalletTrackingData {

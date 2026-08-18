@@ -146,7 +146,7 @@ function MacroSharpWallets({ tracking }: { tracking: NonNullable<MarketMacroPred
         {tracking.cohorts.map((item) => (
           <button key={item.id} type="button" onClick={() => setCohort(item.id)} className={`rounded-xl border p-3 text-left ${cohort === item.id ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.08)]" : "border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]"}`}>
             <p className="text-xs font-semibold text-[color:var(--ink)]">{item.label}</p>
-            <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">{item.cadence} · max sample {item.observations}</p>
+            <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">{item.cadence} · max sample {item.observations}/{item.minEvents}</p>
             <p className="mt-2 text-lg font-bold tabular-nums text-[color:var(--accent)]">{item.qualifiedWallets}</p>
             <p className="text-[9px] text-[color:var(--ink-faint)]">qualified wallets</p>
           </button>
@@ -154,7 +154,7 @@ function MacroSharpWallets({ tracking }: { tracking: NonNullable<MarketMacroPred
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[10px]">
         <button type="button" onClick={() => setCohort("all")} className={`rounded px-2 py-1 ${cohort === "all" ? "bg-[rgba(79,213,255,0.12)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)]"}`}>All cohorts</button>
-        <span className="text-[color:var(--ink-faint)]">Qualification: {tracking.minCohortEvents} releases in one family; generalist: {tracking.generalistMinEvents} across {tracking.generalistMinCohorts}+ families.</span>
+        <span className="text-[color:var(--ink-faint)]">Qualification: {tracking.minCohortEvents} releases in one family (quarterly cohorts use a lower bar, shown per card above); generalist: {tracking.generalistMinEvents} across {tracking.generalistMinCohorts}+ families.</span>
       </div>
       <div className="overflow-x-auto rounded-xl border border-[color:var(--line)]">
         <table className="w-full min-w-[760px] text-xs">

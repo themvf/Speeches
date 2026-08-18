@@ -40,9 +40,20 @@ SOURCE_KEY = "polymarket_macro_sync"
 # "jobs-report"/"unemployment" are the tags actually carried by current live events
 # (verified live against gamma-api.polymarket.com 2026-08-17).
 DISCOVERY_TAGS = ("fed", "cpi-release", "nfp", "jobs-report", "unemployment", "gdp", "pce", "ism", "ppi")
+# Default assumes ~monthly-or-better cadence: 10 events seasons in <=15 months
+# even for fed_decision's ~8/year rate. Quarterly cohorts get their own,
+# lower bar (see COHORT_MIN_EVENTS_OVERRIDES) so they season on a comparable
+# timeline instead of needing 2.5 years to hit the shared default.
 COHORT_MIN_EVENTS = 10
+COHORT_MIN_EVENTS_OVERRIDES = {
+    "us_gdp": 5,  # quarterly: 5 releases = 15 months, matching every other cohort's bar
+}
 GENERALIST_MIN_EVENTS = 20
 GENERALIST_MIN_COHORTS = 3
+
+
+def cohort_min_events(cohort: str) -> int:
+    return COHORT_MIN_EVENTS_OVERRIDES.get(cohort, COHORT_MIN_EVENTS)
 MONTHS = {name.lower(): i for i, name in enumerate(
     ("January", "February", "March", "April", "May", "June", "July",
      "August", "September", "October", "November", "December"), 1)}
@@ -248,8 +259,8 @@ def aggregate_release(markets: List[Dict[str, Any]], fills_by_market: Dict[str, 
     return dict(aggregate)
 
 
-def classify_wallet(events: int, wins: int, pnl: float, cost: float, predictive_cost: float, timing_cost: float, entry: Optional[float]) -> str:
-    if events < COHORT_MIN_EVENTS or cost <= 0 or timing_cost / cost < 0.5:
+def classify_wallet(events: int, wins: int, pnl: float, cost: float, predictive_cost: float, timing_cost: float, entry: Optional[float], cohort: str = "") -> str:
+    if events < cohort_min_events(cohort) or cost <= 0 or timing_cost / cost < 0.5:
         return "unclassified"
     win_rate, roi, predictive_share = wins / events, pnl / cost, predictive_cost / timing_cost
     if predictive_share < 0.25 and win_rate >= 0.60:
@@ -283,7 +294,7 @@ def recompute_wallet_stats() -> Dict[str, int]:
         if cohort == "macro_generalist" and (value["events"] < GENERALIST_MIN_EVENTS or len(cohorts_by_wallet[wallet]) < GENERALIST_MIN_COHORTS):
             continue
         entry = sum(value["entries"]) / len(value["entries"]) if value["entries"] else None
-        archetype = classify_wallet(value["events"], value["wins"], value["pnl"], value["cost"], value["predictive_cost"], value["timing_cost"], entry)
+        archetype = classify_wallet(value["events"], value["wins"], value["pnl"], value["cost"], value["predictive_cost"], value["timing_cost"], entry, cohort)
         rows.append({"wallet": wallet, "cohort": cohort, "name": value["name"], **{k: value[k] for k in ("events", "wins", "pnl", "cost", "predictive_cost", "timing_cost")}, "win_entry_avg": entry, "archetype": archetype})
     return {"wallets": neon_feeds.upsert_polymarket_macro_wallet_stats(rows), "results": len(results)}
 
