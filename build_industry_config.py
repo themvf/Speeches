@@ -193,6 +193,132 @@ UNIVERSE: List[str] = [
     "CRWV", "NBIS", "APLD", "PL", "QUBT", "TEM", "DJT", "RUM",
 ]
 
+# Hand-curated second grouping level, keyed by ticker, for the SIC buckets
+# large enough that the SEC's own classification stops being useful as a peer
+# table (SIC 7372 "Services-Prepackaged Software" alone holds 62 companies -
+# SEC doesn't publish a finer code, so this is a manual layer on top, not
+# derived from EDGAR). Written as label -> [tickers] for readability, then
+# inverted below. Only the 13 SIC groups with 15+ members are covered
+# (~330 tickers); every ticker outside those groups gets no subIndustry, and
+# the peer table falls back to its existing flat rendering for them - this is
+# deliberately NOT full universe coverage. Regenerate/extend by hand; there's
+# no free data source that subdivides SIC codes any further than this.
+SUB_INDUSTRY_GROUPS: Dict[str, List[str]] = {
+    # SIC 7372 - Services-Prepackaged Software (62)
+    "Enterprise SaaS & Productivity": [
+        "MSFT", "ORCL", "CRM", "NOW", "INTU", "HUBS", "BILL", "ASAN", "MNDY",
+        "BOX", "DOCU", "DBX", "TWLO", "BRZE", "PTC", "TYL", "SSNC", "VEEV", "TEAM",
+    ],
+    "Cybersecurity": ["CHKP", "CRWD", "CYBR", "GEN", "OKTA", "QLYS", "S", "TENB", "VRNS", "BB"],
+    "Cloud Infrastructure & DevOps": [
+        "DDOG", "DT", "ESTC", "GTLB", "MDB", "NET", "SNOW", "SPLK", "CFLT", "FSLY", "CRWV",
+    ],
+    "Design & Engineering Software": ["ADBE", "ADSK", "ANSS", "CDNS", "SNPS"],
+    "AI, Automation & Robotics Software": ["AI", "PLTR", "PATH", "SOUN", "QUBT", "BBAI", "MBLY"],
+    "Gaming & Interactive Media": ["EA", "TTWO", "RBLX", "U", "DUOL", "NTES", "PARA"],
+    "Ecommerce & Fintech Platforms": ["SHOP", "SQ", "XYZ"],
+
+    # SIC 6798 - Real Estate Investment Trusts (41)
+    "Residential REITs": ["AMH", "AVB", "CPT", "ELS", "EQR", "ESS", "MAA", "SUI", "UDR"],
+    "Office REITs": ["ARE", "BXP", "VNO"],
+    "Retail REITs": ["FRT", "KIM", "REG", "SPG"],
+    "Net Lease REITs": ["ADC", "NNN", "O", "WPC"],
+    "Industrial & Logistics REITs": ["PLD", "REXR", "STAG", "COLD"],
+    "Data Center REITs": ["DLR", "EQIX"],
+    "Infrastructure REITs (Towers)": ["AMT", "CCI", "SBAC"],
+    "Self-Storage REITs": ["CUBE", "EXR", "PSA"],
+    "Healthcare REITs": ["DOC", "OHI", "VTR", "WELL"],
+    "Hotel & Lodging REITs": ["HST"],
+    "Gaming & Leisure REITs": ["GLPI", "VICI"],
+    "Specialty REITs (Records/Storage)": ["IRM"],
+    "Timberland REITs": ["WY"],
+
+    # SIC 3674 - Semiconductors & Related Devices (38)
+    "Compute & Logic Leaders": ["NVDA", "AMD", "INTC", "AVGO", "TXN", "MRVL", "NXPI", "ARM"],
+    "Analog, Power & Mixed-Signal": ["ADI", "MCHP", "MPWR", "ON", "POWI", "DIOD", "CRUS", "SLAB", "SYNA", "WOLF"],
+    "RF & Wireless Chips": ["SWKS", "QRVO", "MTSI"],
+    "Memory": ["MU"],
+    "Foundry & Packaging": ["TSM", "GFS", "AMKR"],
+    "Connectivity & High-Speed Interconnect": ["CRDO", "ALAB", "RMBS", "SITM", "LSCC", "IPGP"],
+    "Semiconductor Equipment & Test": ["AMAT", "FORM"],
+    # SIC-classification quirk, not chipmakers - solar/clean-energy equipment
+    # makers that EDGAR nonetheless files under 3674.
+    "Solar & Clean Energy Equipment": ["ARRY", "ENPH", "FSLR", "SEDG", "NXT"],
+
+    # SIC 2834 - Pharmaceutical Preparations (35)
+    "Big Pharma & Diversified Healthcare": ["ABBV", "ABT", "JNJ", "LLY", "MRK", "PFE", "BMY", "AZN", "GSK", "SNY", "NVO"],
+    "Animal Health": ["ZTS", "ELAN"],
+    "Specialty & Generic Pharma": ["JAZZ", "OGN", "VTRS", "TEVA", "RPRX"],
+    "Large-Cap Biotech": ["REGN", "VRTX", "BMRN", "ROIV"],
+    "Rare Disease & Genetic Medicine Biotech": [
+        "ALNY", "ARWR", "IONS", "SRPT", "RARE", "VKTX", "MDGL", "INSM", "LEGN", "SMMT", "UTHR",
+    ],
+    "CNS & Neuro Biotech": ["ACAD", "AXSM"],
+
+    # SIC 7389 - Services-Business Services, NEC (23)
+    "Payments & Fintech Infrastructure": ["MA", "V", "PYPL", "FIS", "FISV", "GPN", "FOUR", "CPAY", "WEX", "BR"],
+    "Ride-Share & Delivery": ["UBER", "LYFT", "DASH"],
+    "Ecommerce & Marketplaces": ["EBAY", "ETSY", "PDD", "BABA", "Z"],
+    "Data, Analytics & Ratings": ["FICO", "MSCI", "EXLS"],
+    "Travel & Booking": ["TCOM"],
+    "Content Delivery & Edge Infrastructure": ["AKAM"],
+
+    # SIC 6021 - National Commercial Banks (20)
+    "Global Money Center Banks": ["BAC", "C", "JPM", "WFC"],
+    "Super-Regional Banks": ["PNC", "TFC", "USB", "KEY", "RF", "HBAN"],
+    "Regional & Community Banks": ["CMA", "FHN", "FNB", "ONB", "ZION", "CFR", "BOKF", "SNV", "PNFP"],
+    "Consumer & Credit Card Lending": ["COF"],
+
+    # SIC 4911 - Electric Services (20)
+    "Regulated Utilities (Diversified)": [
+        "AEP", "CNP", "D", "DTE", "EIX", "ES", "ETR", "FE", "IDA", "NEE", "OGE", "PNW", "PPL", "SO",
+    ],
+    "Merchant & Competitive Power Generation": ["CEG", "NRG", "TLN", "VST"],
+    "Emerging Nuclear & SMR": ["NNE", "OKLO"],
+
+    # SIC 6199 - Finance Services (18)
+    "Crypto Exchanges & Infrastructure": ["COIN", "CRCL"],
+    "Bitcoin & Crypto Miners": ["MARA", "RIOT", "CLSK", "CIFR", "HUT", "IREN", "WULF", "CORZ", "BITF", "HIVE", "BTBT"],
+    "Corporate Bitcoin Treasury": ["MSTR"],
+    "Consumer Fintech & Neobanks": ["SOFI", "NU", "UPST"],
+    "Card Networks & Payments": ["AXP"],
+
+    # SIC 1311 - Crude Petroleum & Natural Gas (18)
+    "Large-Cap Diversified E&P": ["OXY", "DVN", "EOG", "APA"],
+    "Permian Basin E&P": ["FANG", "PR", "PXD", "MTDR"],
+    "Natural Gas-Focused E&P": ["EQT", "AR", "EXE", "RRC"],
+    "Diversified Mid-Cap E&P": ["CHRD", "CRC", "CTRA", "MRO", "MUR", "SM"],
+
+    # SIC 7370 - Services-Computer Programming, Data Processing, Etc. (17)
+    "Search, Social & Ad Platforms": ["GOOGL", "META", "SNAP", "PINS", "TTD"],
+    "Mobile Ad-Tech & Gaming Platforms": ["APP", "FLUT"],
+    "Dating & Social Apps": ["MTCH", "BMBL"],
+    "AI, Data & Research Platforms": ["TEM", "NBIS", "FDS"],
+    "Alt-Media & Video Platforms": ["DJT", "RUM", "ZM", "TRIP"],
+    "Chinese Internet": ["BIDU"],
+
+    # SIC 6282 - Investment Advice (17)
+    "Alternative Asset Managers (PE/Credit)": ["APO", "ARES", "BX", "CG", "KKR", "TPG", "OWL"],
+    "Advisory & Boutique Investment Banks": ["EVR", "HLI", "LAZ", "MC", "PJT"],
+    "Traditional Asset & Wealth Managers": ["AMP", "BEN", "TROW", "IVZ"],
+    "Investment Research & Data": ["MORN"],
+
+    # SIC 6331 - Fire, Marine & Casualty Insurance (16)
+    "Large-Cap P&C & Multi-Line Insurance": ["ALL", "TRV", "PGR", "CB", "AIG", "BRK-B"],
+    "Specialty & Reinsurance": ["ACGL", "EG", "RNR", "WRB", "MKL", "KNSL", "CINF"],
+    "Commercial & Group Insurance": ["HIG"],
+    "Insurtech / Direct-to-Consumer": ["LMND", "ROOT"],
+
+    # SIC 5812 - Retail-Eating Places (15)
+    "Fast Food / QSR": ["MCD", "YUM", "QSR", "JACK", "PZZA"],
+    "Fast Casual": ["CMG", "CAVA", "WING", "SG", "PTLO"],
+    "Casual Dining": ["DRI", "EAT", "TXRH", "CBRL", "BLMN"],
+}
+
+SUB_INDUSTRY_BY_TICKER: Dict[str, str] = {
+    ticker: label for label, tickers in SUB_INDUSTRY_GROUPS.items() for ticker in tickers
+}
+
 
 def _fetch_json(url: str) -> Dict[str, Any]:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -289,7 +415,7 @@ def group_by_industry(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         label = str(record.get("sic_description") or "").strip() or "Unclassified"
         bucket = buckets.setdefault(label, {"sic": str(record.get("sic") or ""), "label": label, "tickers": []})
         entry = {k: record[k] for k in ("ticker", "name", "cik") if k in record}
-        for key in ("revenue", "profit", "expenses", "sharesOutstanding", "periodEnd", "filed"):
+        for key in ("revenue", "profit", "expenses", "sharesOutstanding", "periodEnd", "filed", "subIndustry"):
             if record.get(key) is not None:
                 entry[key] = record[key]
         bucket["tickers"].append(entry)
@@ -328,6 +454,9 @@ def main() -> int:
             "sic": str(data.get("sic") or ""),
             "sic_description": str(data.get("sicDescription") or ""),
         }
+        sub_industry = SUB_INDUSTRY_BY_TICKER.get(ticker)
+        if sub_industry:
+            record["subIndustry"] = sub_industry
         record.update(financials.get(str(cik), {}))
         # Resolve the revenue/profit accession number to an actual filing
         # date via this same submissions payload (already in hand, zero extra

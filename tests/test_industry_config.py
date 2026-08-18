@@ -80,6 +80,35 @@ def test_build_financials_carries_accn_through_to_output(monkeypatch):
     assert financials["1"]["periodEnd"] == "2026-06-30"
 
 
+def test_sub_industry_groups_have_no_duplicate_tickers():
+    seen = {}
+    for label, tickers in builder.SUB_INDUSTRY_GROUPS.items():
+        for ticker in tickers:
+            assert ticker not in seen, f"{ticker} in both {seen.get(ticker)!r} and {label!r}"
+            seen[ticker] = label
+    assert len(builder.SUB_INDUSTRY_BY_TICKER) == sum(len(t) for t in builder.SUB_INDUSTRY_GROUPS.values())
+
+
+def test_committed_config_sub_industry_coverage_is_complete_for_large_sics():
+    """Every ticker in the 13 large SIC buckets the sub-industry taxonomy
+    targets must be tagged - a ticker silently missing its tag would fall
+    into an unlabeled "Other" group in the UI instead of erroring, so this
+    is the guard that actually catches it. If the universe grows a new
+    member of one of these SICs, extend SUB_INDUSTRY_GROUPS in
+    build_industry_config.py rather than loosening this test."""
+    with open(CONFIG_PATH, encoding="utf-8") as handle:
+        config = json.load(handle)
+    target_sics = {"7372", "6798", "3674", "2834", "7389", "6021", "4911", "6199", "1311", "7370", "6282", "6331", "5812"}
+    missing = []
+    for industry in config["industries"]:
+        if industry["sic"] not in target_sics:
+            continue
+        for entry in industry["tickers"]:
+            if entry["ticker"] not in builder.SUB_INDUSTRY_BY_TICKER:
+                missing.append((industry["label"], entry["ticker"]))
+    assert not missing, f"tickers missing a subIndustry tag: {missing}"
+
+
 def test_committed_config_integrity():
     with open(CONFIG_PATH, encoding="utf-8") as handle:
         config = json.load(handle)

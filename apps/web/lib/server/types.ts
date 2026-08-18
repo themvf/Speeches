@@ -1078,6 +1078,12 @@ export interface IndustryPeerRow {
   // can cover the same fiscal quarter but have filed weeks apart, or cover
   // different quarters but have filed close together.
   filed: string | null;
+  // Hand-curated second grouping level (build_industry_config.py's
+  // SUB_INDUSTRY_GROUPS), only populated for the ~13 SIC buckets large
+  // enough that SEC's own classification stops being a useful peer table
+  // (e.g. all software lands in one 60+ member SIC code). Null everywhere
+  // else - the UI falls back to its existing flat rendering.
+  subIndustry: string | null;
   mentions: number;                    // latest-day total mentions, 0 if none/unavailable
   reportDate: string | null;           // from open Polymarket earnings markets, else null
 }

@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
         const quote = settled && settled.status === "fulfilled" ? settled.value : null;
         const entry = t as typeof t & {
           revenue?: number; expenses?: number; profit?: number;
-          sharesOutstanding?: number; periodEnd?: string; filed?: string;
+          sharesOutstanding?: number; periodEnd?: string; filed?: string; subIndustry?: string;
         };
         const price = quote?.price ?? null;
         const shares = entry.sharesOutstanding ?? null;
@@ -101,6 +101,7 @@ export async function GET(req: NextRequest) {
           profit: entry.profit ?? null,
           periodEnd: entry.periodEnd ?? null,
           filed: entry.filed ?? null,
+          subIndustry: entry.subIndustry ?? null,
           mentions: joins.mentionsByTicker.get(t.ticker) ?? 0,
           reportDate: joins.reportByTicker.get(t.ticker) ?? null,
         };
@@ -125,7 +126,7 @@ export async function GET(req: NextRequest) {
       const quote = await fetchYahooQuote(found.entry.ticker, 300).catch(() => null);
       const entry = found.entry as typeof found.entry & {
         revenue?: number; expenses?: number; profit?: number;
-        sharesOutstanding?: number; periodEnd?: string; filed?: string;
+        sharesOutstanding?: number; periodEnd?: string; filed?: string; subIndustry?: string;
       };
       const price = quote?.price ?? null;
       const shares = entry.sharesOutstanding ?? null;
@@ -140,6 +141,7 @@ export async function GET(req: NextRequest) {
         profit: entry.profit ?? null,
         periodEnd: entry.periodEnd ?? null,
         filed: entry.filed ?? null,
+        subIndustry: entry.subIndustry ?? null,
         mentions: joins.mentionsByTicker.get(entry.ticker) ?? 0,
         reportDate: joins.reportByTicker.get(entry.ticker) ?? null,
       };

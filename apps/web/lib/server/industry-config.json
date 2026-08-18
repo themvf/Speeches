@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-08-18T11:48:05Z",
+ "generatedAt": "2026-08-18T22:54:50Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 917,
  "industries": [
@@ -16,7 +16,8 @@
      "expenses": 4509000000.0,
      "sharesOutstanding": 404200000.0,
      "periodEnd": "2026-02-27",
-     "filed": "2026-03-25"
+     "filed": "2026-03-25",
+     "subIndustry": "Design & Engineering Software"
     },
     {
      "ticker": "ADSK",
@@ -27,7 +28,8 @@
      "expenses": 1443000000.0,
      "sharesOutstanding": 211000000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-29"
+     "filed": "2026-05-29",
+     "subIndustry": "Design & Engineering Software"
     },
     {
      "ticker": "AI",
@@ -37,12 +39,14 @@
      "profit": -133363000.0,
      "expenses": 186623000.0,
      "periodEnd": "2026-01-31",
-     "filed": "2026-03-11"
+     "filed": "2026-03-11",
+     "subIndustry": "AI, Automation & Robotics Software"
     },
     {
      "ticker": "ANSS",
      "name": "Ansys Inc",
-     "cik": "1013462"
+     "cik": "1013462",
+     "subIndustry": "Design & Engineering Software"
     },
     {
      "ticker": "ASAN",
@@ -52,7 +56,8 @@
      "profit": -14405000.0,
      "expenses": 219500000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-28"
+     "filed": "2026-05-28",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "BB",
@@ -63,7 +68,8 @@
      "expenses": 128100000.0,
      "sharesOutstanding": 587882400.0,
      "periodEnd": "2025-11-30",
-     "filed": "2025-12-19"
+     "filed": "2025-12-19",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "BBAI",
@@ -74,7 +80,8 @@
      "expenses": 91198000.0,
      "sharesOutstanding": 478949450.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "AI, Automation & Robotics Software"
     },
     {
      "ticker": "BILL",
@@ -85,7 +92,8 @@
      "expenses": 393777000.0,
      "sharesOutstanding": 99596727.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "BOX",
@@ -96,7 +104,8 @@
      "expenses": 288215000.0,
      "sharesOutstanding": 138449825.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-27"
+     "filed": "2026-05-27",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "BRZE",
@@ -107,7 +116,8 @@
      "expenses": 237590000.0,
      "sharesOutstanding": 113448702.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-28"
+     "filed": "2026-05-28",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "CDNS",
@@ -118,7 +128,8 @@
      "expenses": 1138560000.0,
      "sharesOutstanding": 275816000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Design & Engineering Software"
     },
     {
      "ticker": "CFLT",
@@ -128,12 +139,14 @@
      "profit": -66504000.0,
      "expenses": 365028000.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-10-27"
+     "filed": "2025-10-27",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "CHKP",
      "name": "Check Point Software Technologies Ltd",
-     "cik": "1015922"
+     "cik": "1015922",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "CRM",
@@ -144,7 +157,8 @@
      "expenses": 9026000000.0,
      "sharesOutstanding": 923000000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-28"
+     "filed": "2026-05-28",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "CRWD",
@@ -153,7 +167,8 @@
      "profit": 27774000.0,
      "sharesOutstanding": 252098440.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-06-04"
+     "filed": "2026-06-04",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "CRWV",
@@ -163,12 +178,14 @@
      "profit": -740000000.0,
      "expenses": 2818000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "CYBR",
      "name": "Cyberark Software Ltd.",
-     "cik": "1598110"
+     "cik": "1598110",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "DBX",
@@ -178,7 +195,8 @@
      "profit": 114500000.0,
      "expenses": 515000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "DDOG",
@@ -188,7 +206,8 @@
      "profit": 52574000.0,
      "expenses": 953852000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "DOCU",
@@ -199,7 +218,8 @@
      "expenses": 752038000.0,
      "sharesOutstanding": 194427928.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-06-05"
+     "filed": "2026-06-05",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "DT",
@@ -210,7 +230,8 @@
      "expenses": 475418000.0,
      "sharesOutstanding": 298251114.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-02-09"
+     "filed": "2026-02-09",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "DUOL",
@@ -220,7 +241,8 @@
      "profit": 43460000.0,
      "expenses": 248507000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Gaming & Interactive Media"
     },
     {
      "ticker": "EA",
@@ -231,7 +253,8 @@
      "expenses": 1813000000.0,
      "sharesOutstanding": 250751484.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-02-03"
+     "filed": "2026-02-03",
+     "subIndustry": "Gaming & Interactive Media"
     },
     {
      "ticker": "ESTC",
@@ -242,7 +265,8 @@
      "expenses": 442128000.0,
      "sharesOutstanding": 103501008.0,
      "periodEnd": "2026-01-31",
-     "filed": "2026-02-27"
+     "filed": "2026-02-27",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "FSLY",
@@ -251,7 +275,8 @@
      "profit": -20524000.0,
      "sharesOutstanding": 156500000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "GEN",
@@ -262,7 +287,8 @@
      "expenses": 1048000000.0,
      "sharesOutstanding": 605663774.0,
      "periodEnd": "2026-01-02",
-     "filed": "2026-02-06"
+     "filed": "2026-02-06",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "GTLB",
@@ -272,7 +298,8 @@
      "profit": -4972000.0,
      "expenses": 269130000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-06-02"
+     "filed": "2026-06-02",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "HUBS",
@@ -283,7 +310,8 @@
      "expenses": 848441000.0,
      "sharesOutstanding": 51217740.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "INTU",
@@ -294,7 +322,8 @@
      "expenses": 5494000000.0,
      "sharesOutstanding": 276550000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-20"
+     "filed": "2026-05-20",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "MBLY",
@@ -305,7 +334,8 @@
      "expenses": 4376000000.0,
      "sharesOutstanding": 244415099.0,
      "periodEnd": "2026-03-28",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "AI, Automation & Robotics Software"
     },
     {
      "ticker": "MDB",
@@ -316,12 +346,14 @@
      "expenses": 683182000.0,
      "sharesOutstanding": 80369527.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-29"
+     "filed": "2026-05-29",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "MNDY",
      "name": "Monday.Com Ltd.",
-     "cik": "1845338"
+     "cik": "1845338",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "MSFT",
@@ -332,7 +364,8 @@
      "expenses": 51108000000.0,
      "sharesOutstanding": 7428434704.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "NET",
@@ -342,7 +375,8 @@
      "profit": -22927000.0,
      "expenses": 662682000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "NOW",
@@ -353,12 +387,14 @@
      "expenses": 3301000000.0,
      "sharesOutstanding": 1031000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "NTES",
      "name": "Netease, Inc.",
-     "cik": "1110646"
+     "cik": "1110646",
+     "subIndustry": "Gaming & Interactive Media"
     },
     {
      "ticker": "OKTA",
@@ -368,7 +404,8 @@
      "profit": 74000000.0,
      "expenses": 691000000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-29"
+     "filed": "2026-05-29",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "ORCL",
@@ -379,7 +416,8 @@
      "expenses": 13469000000.0,
      "sharesOutstanding": 2876046000.0,
      "periodEnd": "2026-02-28",
-     "filed": "2026-03-11"
+     "filed": "2026-03-11",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "PARA",
@@ -389,7 +427,8 @@
      "profit": -8417000.0,
      "expenses": 11113000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-17"
+     "filed": "2026-07-17",
+     "subIndustry": "Gaming & Interactive Media"
     },
     {
      "ticker": "PATH",
@@ -399,7 +438,8 @@
      "profit": 22525000.0,
      "expenses": 395857000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-06-04"
+     "filed": "2026-06-04",
+     "subIndustry": "AI, Automation & Robotics Software"
     },
     {
      "ticker": "PLTR",
@@ -409,7 +449,8 @@
      "profit": 870527000.0,
      "expenses": 762056000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "AI, Automation & Robotics Software"
     },
     {
      "ticker": "PTC",
@@ -420,7 +461,8 @@
      "expenses": 183580000.0,
      "sharesOutstanding": 115505791.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "QLYS",
@@ -431,7 +473,8 @@
      "expenses": 124995000.0,
      "sharesOutstanding": 35217007.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "QUBT",
@@ -442,7 +485,8 @@
      "expenses": 7741000.0,
      "sharesOutstanding": 224538254.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
+     "filed": "2026-05-11",
+     "subIndustry": "AI, Automation & Robotics Software"
     },
     {
      "ticker": "RBLX",
@@ -452,7 +496,8 @@
      "profit": -246000000.0,
      "expenses": 1688000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Gaming & Interactive Media"
     },
     {
      "ticker": "S",
@@ -462,7 +507,8 @@
      "profit": -76164000.0,
      "expenses": 352821000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-28"
+     "filed": "2026-05-28",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "SHOP",
@@ -472,7 +518,8 @@
      "profit": -581000000.0,
      "expenses": 3751000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Ecommerce & Fintech Platforms"
     },
     {
      "ticker": "SNOW",
@@ -483,7 +530,8 @@
      "expenses": 1686522000.0,
      "sharesOutstanding": 345700000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-29"
+     "filed": "2026-05-29",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "SNPS",
@@ -494,7 +542,8 @@
      "expenses": 2258880000.0,
      "sharesOutstanding": 191562027.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-27"
+     "filed": "2026-05-27",
+     "subIndustry": "Design & Engineering Software"
     },
     {
      "ticker": "SOUN",
@@ -502,12 +551,14 @@
      "cik": "1840856",
      "profit": -25028000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
+     "filed": "2026-05-11",
+     "subIndustry": "AI, Automation & Robotics Software"
     },
     {
      "ticker": "SPLK",
      "name": "Splunk Inc",
-     "cik": "1353283"
+     "cik": "1353283",
+     "subIndustry": "Cloud Infrastructure & DevOps"
     },
     {
      "ticker": "SQ",
@@ -517,7 +568,8 @@
      "profit": -308681000.0,
      "expenses": 6365528000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Ecommerce & Fintech Platforms"
     },
     {
      "ticker": "SSNC",
@@ -528,7 +580,8 @@
      "expenses": 1421000000.0,
      "sharesOutstanding": 240834039.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "TEAM",
@@ -538,7 +591,8 @@
      "profit": -98389000.0,
      "expenses": 1885360000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "TENB",
@@ -549,7 +603,8 @@
      "expenses": 260644000.0,
      "sharesOutstanding": 110271973.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "TTWO",
@@ -560,7 +615,8 @@
      "expenses": 1791900000.0,
      "sharesOutstanding": 185666663.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-02-04"
+     "filed": "2026-02-04",
+     "subIndustry": "Gaming & Interactive Media"
     },
     {
      "ticker": "TWLO",
@@ -571,7 +627,8 @@
      "expenses": 1316768000.0,
      "sharesOutstanding": 151773860.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "TYL",
@@ -582,7 +639,8 @@
      "expenses": 532323000.0,
      "sharesOutstanding": 42167455.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "U",
@@ -593,7 +651,8 @@
      "expenses": 855848000.0,
      "sharesOutstanding": 436534997.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Gaming & Interactive Media"
     },
     {
      "ticker": "VEEV",
@@ -604,7 +663,8 @@
      "expenses": 622012000.0,
      "sharesOutstanding": 163330933.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-06-05"
+     "filed": "2026-06-05",
+     "subIndustry": "Enterprise SaaS & Productivity"
     },
     {
      "ticker": "VRNS",
@@ -613,7 +673,8 @@
      "profit": -36854000.0,
      "sharesOutstanding": 114814150.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-29"
+     "filed": "2026-07-29",
+     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "XYZ",
@@ -623,7 +684,8 @@
      "profit": -308681000.0,
      "expenses": 6365528000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Ecommerce & Fintech Platforms"
     }
    ]
   },
@@ -640,7 +702,8 @@
      "expenses": 138756000.0,
      "sharesOutstanding": 120102901.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-21"
+     "filed": "2026-04-21",
+     "subIndustry": "Net Lease REITs"
     },
     {
      "ticker": "AMH",
@@ -648,7 +711,8 @@
      "cik": "1562401",
      "profit": 148844000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-31"
+     "filed": "2026-07-31",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "AMT",
@@ -659,7 +723,8 @@
      "expenses": -662400000.0,
      "sharesOutstanding": 465893069.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Infrastructure REITs (Towers)"
     },
     {
      "ticker": "ARE",
@@ -668,7 +733,8 @@
      "profit": 361653000.0,
      "sharesOutstanding": 174269480.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-27"
+     "filed": "2026-04-27",
+     "subIndustry": "Office REITs"
     },
     {
      "ticker": "AVB",
@@ -679,7 +745,8 @@
      "expenses": -323897000.0,
      "sharesOutstanding": 139112069.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "BXP",
@@ -690,7 +757,8 @@
      "expenses": 770572000.0,
      "sharesOutstanding": 159477391.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Office REITs"
     },
     {
      "ticker": "CCI",
@@ -701,7 +769,8 @@
      "expenses": -102000000.0,
      "sharesOutstanding": 436451983.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Infrastructure REITs (Towers)"
     },
     {
      "ticker": "COLD",
@@ -712,7 +781,8 @@
      "expenses": 628788000.0,
      "sharesOutstanding": 285306052.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Industrial & Logistics REITs"
     },
     {
      "ticker": "CPT",
@@ -723,7 +793,8 @@
      "expenses": -40306000.0,
      "sharesOutstanding": 100519732.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "CUBE",
@@ -734,7 +805,8 @@
      "expenses": 199179000.0,
      "sharesOutstanding": 226413630.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Self-Storage REITs"
     },
     {
      "ticker": "DLR",
@@ -745,7 +817,8 @@
      "expenses": 1455899000.0,
      "sharesOutstanding": 351406070.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Data Center REITs"
     },
     {
      "ticker": "DOC",
@@ -756,7 +829,8 @@
      "expenses": 6712000.0,
      "sharesOutstanding": 689419702.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Healthcare REITs"
     },
     {
      "ticker": "ELS",
@@ -767,7 +841,8 @@
      "expenses": 286131000.0,
      "sharesOutstanding": 193937553.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "EQIX",
@@ -778,16 +853,14 @@
      "expenses": 2029000000.0,
      "sharesOutstanding": 98624248.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Data Center REITs"
     },
     {
      "ticker": "EQR",
-     "name": "Vivmark Residential",
-     "cik": "906107",
-     "profit": 90079000.0,
-     "sharesOutstanding": 374671735.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "name": "Erp Operating Ltd Partnership",
+     "cik": "931182",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "ESS",
@@ -798,7 +871,8 @@
      "expenses": -109895000.0,
      "sharesOutstanding": 64262866.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "EXR",
@@ -809,7 +883,8 @@
      "expenses": -207282000.0,
      "sharesOutstanding": 211260936.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Self-Storage REITs"
     },
     {
      "ticker": "FRT",
@@ -820,7 +895,8 @@
      "expenses": 181985000.0,
      "sharesOutstanding": 86389197.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Retail REITs"
     },
     {
      "ticker": "GLPI",
@@ -831,7 +907,8 @@
      "expenses": 188156000.0,
      "sharesOutstanding": 283221841.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "Gaming & Leisure REITs"
     },
     {
      "ticker": "HST",
@@ -842,7 +919,8 @@
      "expenses": 1151000000.0,
      "sharesOutstanding": 684879281.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Hotel & Lodging REITs"
     },
     {
      "ticker": "IRM",
@@ -853,7 +931,8 @@
      "expenses": 1787150000.0,
      "sharesOutstanding": 297524681.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Specialty REITs (Records/Storage)"
     },
     {
      "ticker": "KIM",
@@ -864,7 +943,8 @@
      "expenses": 393118000.0,
      "sharesOutstanding": 674389792.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Retail REITs"
     },
     {
      "ticker": "MAA",
@@ -875,7 +955,8 @@
      "expenses": 429366000.0,
      "sharesOutstanding": 116384802.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "NNN",
@@ -886,7 +967,8 @@
      "expenses": 133320000.0,
      "sharesOutstanding": 189939441.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-11-04"
+     "filed": "2025-11-04",
+     "subIndustry": "Net Lease REITs"
     },
     {
      "ticker": "O",
@@ -897,7 +979,8 @@
      "expenses": 1227792000.0,
      "sharesOutstanding": 932492530.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Net Lease REITs"
     },
     {
      "ticker": "OHI",
@@ -908,7 +991,8 @@
      "expenses": -144392000.0,
      "sharesOutstanding": 297802000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Healthcare REITs"
     },
     {
      "ticker": "PLD",
@@ -919,7 +1003,8 @@
      "expenses": 1315747000.0,
      "sharesOutstanding": 932338000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Industrial & Logistics REITs"
     },
     {
      "ticker": "PSA",
@@ -930,7 +1015,8 @@
      "expenses": 691468000.0,
      "sharesOutstanding": 175545748.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-27"
+     "filed": "2026-04-27",
+     "subIndustry": "Self-Storage REITs"
     },
     {
      "ticker": "REG",
@@ -941,7 +1027,8 @@
      "expenses": 283904000.0,
      "sharesOutstanding": 183096790.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Retail REITs"
     },
     {
      "ticker": "REXR",
@@ -952,7 +1039,8 @@
      "expenses": -91187000.0,
      "sharesOutstanding": 225718119.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Industrial & Logistics REITs"
     },
     {
      "ticker": "SBAC",
@@ -963,7 +1051,8 @@
      "expenses": -137541000.0,
      "sharesOutstanding": 106063017.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Infrastructure REITs (Towers)"
     },
     {
      "ticker": "SPG",
@@ -973,7 +1062,8 @@
      "profit": 568535000.0,
      "expenses": 1188558000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
+     "filed": "2026-05-11",
+     "subIndustry": "Retail REITs"
     },
     {
      "ticker": "STAG",
@@ -984,7 +1074,8 @@
      "expenses": 162208000.0,
      "sharesOutstanding": 191205055.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Industrial & Logistics REITs"
     },
     {
      "ticker": "SUI",
@@ -995,7 +1086,8 @@
      "expenses": 514300000.0,
      "sharesOutstanding": 123230757.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "UDR",
@@ -1006,7 +1098,8 @@
      "expenses": -187303000.0,
      "sharesOutstanding": 324915653.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "VICI",
@@ -1017,7 +1110,8 @@
      "expenses": 146131000.0,
      "sharesOutstanding": 1069030187.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Gaming & Leisure REITs"
     },
     {
      "ticker": "VNO",
@@ -1028,7 +1122,8 @@
      "expenses": 466422000.0,
      "sharesOutstanding": 188097756.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Office REITs"
     },
     {
      "ticker": "VTR",
@@ -1039,7 +1134,8 @@
      "expenses": 1597898000.0,
      "sharesOutstanding": 486169723.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Healthcare REITs"
     },
     {
      "ticker": "WELL",
@@ -1050,7 +1146,8 @@
      "expenses": 2028607000.0,
      "sharesOutstanding": 705914450.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Healthcare REITs"
     },
     {
      "ticker": "WPC",
@@ -1061,7 +1158,8 @@
      "expenses": 278207000.0,
      "sharesOutstanding": 222739105.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Net Lease REITs"
     },
     {
      "ticker": "WY",
@@ -1072,7 +1170,8 @@
      "expenses": 1571000000.0,
      "sharesOutstanding": 721043000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Timberland REITs"
     }
    ]
   },
@@ -1089,7 +1188,8 @@
      "expenses": 2447115000.0,
      "sharesOutstanding": 487087040.0,
      "periodEnd": "2026-05-02",
-     "filed": "2026-05-20"
+     "filed": "2026-05-20",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "ALAB",
@@ -1100,7 +1200,8 @@
      "expenses": 228051000.0,
      "sharesOutstanding": 171407939.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Connectivity & High-Speed Interconnect"
     },
     {
      "ticker": "AMAT",
@@ -1111,7 +1212,8 @@
      "expenses": 5104000000.0,
      "sharesOutstanding": 793959430.0,
      "periodEnd": "2026-04-26",
-     "filed": "2026-05-21"
+     "filed": "2026-05-21",
+     "subIndustry": "Semiconductor Equipment & Test"
     },
     {
      "ticker": "AMD",
@@ -1122,7 +1224,8 @@
      "expenses": 8870000000.0,
      "sharesOutstanding": 1630600639.0,
      "periodEnd": "2026-03-28",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Compute & Logic Leaders"
     },
     {
      "ticker": "AMKR",
@@ -1133,7 +1236,8 @@
      "expenses": 1601350000.0,
      "sharesOutstanding": 247872518.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Foundry & Packaging"
     },
     {
      "ticker": "ARM",
@@ -1143,7 +1247,8 @@
      "profit": 223000000.0,
      "expenses": 1019000000.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-02-04"
+     "filed": "2026-02-04",
+     "subIndustry": "Compute & Logic Leaders"
     },
     {
      "ticker": "ARRY",
@@ -1154,7 +1259,8 @@
      "expenses": 221415000.0,
      "sharesOutstanding": 153826378.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Solar & Clean Energy Equipment"
     },
     {
      "ticker": "AVGO",
@@ -1165,7 +1271,8 @@
      "expenses": 12877000000.0,
      "sharesOutstanding": 4734668184.0,
      "periodEnd": "2026-05-03",
-     "filed": "2026-06-09"
+     "filed": "2026-06-09",
+     "subIndustry": "Compute & Logic Leaders"
     },
     {
      "ticker": "CRDO",
@@ -1176,7 +1283,8 @@
      "expenses": 249870000.0,
      "sharesOutstanding": 184449940.0,
      "periodEnd": "2026-01-31",
-     "filed": "2026-03-03"
+     "filed": "2026-03-03",
+     "subIndustry": "Connectivity & High-Speed Interconnect"
     },
     {
      "ticker": "CRUS",
@@ -1187,7 +1295,8 @@
      "expenses": 440314000.0,
      "sharesOutstanding": 51007389.0,
      "periodEnd": "2025-12-27",
-     "filed": "2026-02-03"
+     "filed": "2026-02-03",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "DIOD",
@@ -1198,7 +1307,8 @@
      "expenses": 390506000.0,
      "sharesOutstanding": 45944734.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "ENPH",
@@ -1209,7 +1319,8 @@
      "expenses": 290306000.0,
      "sharesOutstanding": 131798220.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Solar & Clean Energy Equipment"
     },
     {
      "ticker": "FORM",
@@ -1220,7 +1331,8 @@
      "expenses": 205760000.0,
      "sharesOutstanding": 77954772.0,
      "periodEnd": "2026-03-28",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Semiconductor Equipment & Test"
     },
     {
      "ticker": "FSLR",
@@ -1231,12 +1343,14 @@
      "expenses": 697621000.0,
      "sharesOutstanding": 107453363.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Solar & Clean Energy Equipment"
     },
     {
      "ticker": "GFS",
      "name": "Globalfoundries Inc.",
-     "cik": "1709048"
+     "cik": "1709048",
+     "subIndustry": "Foundry & Packaging"
     },
     {
      "ticker": "INTC",
@@ -1247,7 +1361,8 @@
      "expenses": 17305000000.0,
      "sharesOutstanding": 5026000000.0,
      "periodEnd": "2026-03-28",
-     "filed": "2026-04-24"
+     "filed": "2026-04-24",
+     "subIndustry": "Compute & Logic Leaders"
     },
     {
      "ticker": "IPGP",
@@ -1258,7 +1373,8 @@
      "expenses": 263913000.0,
      "sharesOutstanding": 42443616.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Connectivity & High-Speed Interconnect"
     },
     {
      "ticker": "LSCC",
@@ -1269,7 +1385,8 @@
      "expenses": 149080000.0,
      "sharesOutstanding": 137007857.0,
      "periodEnd": "2026-04-04",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Connectivity & High-Speed Interconnect"
     },
     {
      "ticker": "MCHP",
@@ -1280,7 +1397,8 @@
      "expenses": 1123300000.0,
      "sharesOutstanding": 542079281.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-02-05"
+     "filed": "2026-02-05",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "MPWR",
@@ -1291,7 +1409,8 @@
      "expenses": 610959000.0,
      "sharesOutstanding": 49130000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "MRVL",
@@ -1302,7 +1421,8 @@
      "expenses": 2383300000.0,
      "sharesOutstanding": 874300000.0,
      "periodEnd": "2026-05-02",
-     "filed": "2026-05-28"
+     "filed": "2026-05-28",
+     "subIndustry": "Compute & Logic Leaders"
     },
     {
      "ticker": "MTSI",
@@ -1313,7 +1433,8 @@
      "expenses": 242624000.0,
      "sharesOutstanding": 76295774.0,
      "periodEnd": "2026-04-03",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "RF & Wireless Chips"
     },
     {
      "ticker": "MU",
@@ -1324,7 +1445,8 @@
      "expenses": 10075000000.0,
      "sharesOutstanding": 1127734051.0,
      "periodEnd": "2026-02-26",
-     "filed": "2026-03-19"
+     "filed": "2026-03-19",
+     "subIndustry": "Memory"
     },
     {
      "ticker": "NVDA",
@@ -1335,7 +1457,8 @@
      "expenses": 23294000000.0,
      "sharesOutstanding": 24300000000.0,
      "periodEnd": "2026-04-26",
-     "filed": "2026-05-20"
+     "filed": "2026-05-20",
+     "subIndustry": "Compute & Logic Leaders"
     },
     {
      "ticker": "NXPI",
@@ -1346,7 +1469,8 @@
      "expenses": 2059000000.0,
      "sharesOutstanding": 252471079.0,
      "periodEnd": "2026-03-29",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Compute & Logic Leaders"
     },
     {
      "ticker": "NXT",
@@ -1356,7 +1480,8 @@
      "profit": 131236000.0,
      "expenses": 778116000.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-01-30"
+     "filed": "2026-01-30",
+     "subIndustry": "Solar & Clean Energy Equipment"
     },
     {
      "ticker": "ON",
@@ -1367,7 +1492,8 @@
      "expenses": 1546700000.0,
      "sharesOutstanding": 391903191.0,
      "periodEnd": "2026-04-03",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "POWI",
@@ -1378,7 +1504,8 @@
      "expenses": 105008000.0,
      "sharesOutstanding": 55719984.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "QRVO",
@@ -1389,7 +1516,8 @@
      "expenses": 828897000.0,
      "sharesOutstanding": 88013673.0,
      "periodEnd": "2025-12-27",
-     "filed": "2026-01-28"
+     "filed": "2026-01-28",
+     "subIndustry": "RF & Wireless Chips"
     },
     {
      "ticker": "RMBS",
@@ -1398,7 +1526,8 @@
      "profit": 59858000.0,
      "sharesOutstanding": 108136967.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Connectivity & High-Speed Interconnect"
     },
     {
      "ticker": "SEDG",
@@ -1409,7 +1538,8 @@
      "expenses": 367867000.0,
      "sharesOutstanding": 60818202.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Solar & Clean Energy Equipment"
     },
     {
      "ticker": "SITM",
@@ -1420,7 +1550,8 @@
      "expenses": 118784000.0,
      "sharesOutstanding": 26396828.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Connectivity & High-Speed Interconnect"
     },
     {
      "ticker": "SLAB",
@@ -1431,7 +1562,8 @@
      "expenses": 229397000.0,
      "sharesOutstanding": 32981823.0,
      "periodEnd": "2026-04-04",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "SWKS",
@@ -1442,7 +1574,8 @@
      "expenses": 908100000.0,
      "sharesOutstanding": 150405963.0,
      "periodEnd": "2026-04-03",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "RF & Wireless Chips"
     },
     {
      "ticker": "SYNA",
@@ -1453,12 +1586,14 @@
      "expenses": 302200000.0,
      "sharesOutstanding": 38637685.0,
      "periodEnd": "2026-03-28",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     },
     {
      "ticker": "TSM",
      "name": "Taiwan Semiconductor Manufacturing Co Ltd",
-     "cik": "1046179"
+     "cik": "1046179",
+     "subIndustry": "Foundry & Packaging"
     },
     {
      "ticker": "TXN",
@@ -1469,7 +1604,8 @@
      "expenses": 3280000000.0,
      "sharesOutstanding": 910092791.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-24"
+     "filed": "2026-04-24",
+     "subIndustry": "Compute & Logic Leaders"
     },
     {
      "ticker": "WOLF",
@@ -1480,7 +1616,8 @@
      "expenses": 270100000.0,
      "sharesOutstanding": 48339081.0,
      "periodEnd": "2026-03-29",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Analog, Power & Mixed-Signal"
     }
    ]
   },
@@ -1497,7 +1634,8 @@
      "expenses": 14307000000.0,
      "sharesOutstanding": 1766792821.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "ABT",
@@ -1508,7 +1646,8 @@
      "expenses": 10087000000.0,
      "sharesOutstanding": 1741812429.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "ACAD",
@@ -1519,7 +1658,8 @@
      "expenses": 264425000.0,
      "sharesOutstanding": 171235870.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "CNS & Neuro Biotech"
     },
     {
      "ticker": "ALNY",
@@ -1529,7 +1669,8 @@
      "profit": 205991000.0,
      "sharesOutstanding": 132623144.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-10-30"
+     "filed": "2025-10-30",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "ARWR",
@@ -1540,7 +1681,8 @@
      "expenses": 206469000.0,
      "sharesOutstanding": 140857021.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "AXSM",
@@ -1551,12 +1693,14 @@
      "expenses": 255745000.0,
      "sharesOutstanding": 51459766.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "CNS & Neuro Biotech"
     },
     {
      "ticker": "AZN",
      "name": "Astrazeneca Plc",
-     "cik": "901832"
+     "cik": "901832",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "BMRN",
@@ -1567,7 +1711,8 @@
      "expenses": 660681000.0,
      "sharesOutstanding": 193284438.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Large-Cap Biotech"
     },
     {
      "ticker": "BMY",
@@ -1578,7 +1723,8 @@
      "expenses": 8812000000.0,
      "sharesOutstanding": 2042071247.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "ELAN",
@@ -1589,12 +1735,14 @@
      "expenses": 1314000000.0,
      "sharesOutstanding": 499449583.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Animal Health"
     },
     {
      "ticker": "GSK",
      "name": "Gsk Plc",
-     "cik": "1131399"
+     "cik": "1131399",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "INSM",
@@ -1605,7 +1753,8 @@
      "expenses": 469527000.0,
      "sharesOutstanding": 216752451.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "IONS",
@@ -1616,7 +1765,8 @@
      "expenses": 338619000.0,
      "sharesOutstanding": 165262556.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "JAZZ",
@@ -1627,7 +1777,8 @@
      "expenses": 775800000.0,
      "sharesOutstanding": 62738815.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Specialty & Generic Pharma"
     },
     {
      "ticker": "JNJ",
@@ -1638,12 +1789,14 @@
      "expenses": 18827000000.0,
      "sharesOutstanding": 2407216971.0,
      "periodEnd": "2026-03-29",
-     "filed": "2026-04-22"
+     "filed": "2026-04-22",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "LEGN",
      "name": "Legend Biotech Corp",
-     "cik": "1801198"
+     "cik": "1801198",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "LLY",
@@ -1654,7 +1807,8 @@
      "expenses": 12403000000.0,
      "sharesOutstanding": 941741406.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "MDGL",
@@ -1665,7 +1819,8 @@
      "expenses": 405728000.0,
      "sharesOutstanding": 23055659.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "MRK",
@@ -1676,12 +1831,14 @@
      "expenses": 20526000000.0,
      "sharesOutstanding": 2469824415.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "NVO",
      "name": "Novo Nordisk A S",
-     "cik": "353278"
+     "cik": "353278",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "OGN",
@@ -1692,7 +1849,8 @@
      "expenses": 1314000000.0,
      "sharesOutstanding": 262600862.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Specialty & Generic Pharma"
     },
     {
      "ticker": "PFE",
@@ -1703,7 +1861,8 @@
      "expenses": 11764000000.0,
      "sharesOutstanding": 5699444169.0,
      "periodEnd": "2026-03-29",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "RARE",
@@ -1714,7 +1873,8 @@
      "expenses": 321000000.0,
      "sharesOutstanding": 98489224.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "REGN",
@@ -1724,7 +1884,8 @@
      "profit": 727200000.0,
      "expenses": 2878200000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Large-Cap Biotech"
     },
     {
      "ticker": "ROIV",
@@ -1735,7 +1896,8 @@
      "expenses": 267890000.0,
      "sharesOutstanding": 719270385.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-02-06"
+     "filed": "2026-02-06",
+     "subIndustry": "Large-Cap Biotech"
     },
     {
      "ticker": "RPRX",
@@ -1745,7 +1907,8 @@
      "profit": 294690000.0,
      "expenses": 335886000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Specialty & Generic Pharma"
     },
     {
      "ticker": "SMMT",
@@ -1754,12 +1917,14 @@
      "profit": -189424000.0,
      "sharesOutstanding": 776162645.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-23"
+     "filed": "2026-07-23",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "SNY",
      "name": "Sanofi",
-     "cik": "1121404"
+     "cik": "1121404",
+     "subIndustry": "Big Pharma & Diversified Healthcare"
     },
     {
      "ticker": "SRPT",
@@ -1770,7 +1935,8 @@
      "expenses": -444000.0,
      "sharesOutstanding": 105576222.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "TEVA",
@@ -1781,7 +1947,8 @@
      "expenses": 3613000000.0,
      "sharesOutstanding": 1164426972.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Specialty & Generic Pharma"
     },
     {
      "ticker": "UTHR",
@@ -1792,7 +1959,8 @@
      "expenses": 506600000.0,
      "sharesOutstanding": 42446733.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "VKTX",
@@ -1803,7 +1971,8 @@
      "expenses": 158325000.0,
      "sharesOutstanding": 116105643.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
      "ticker": "VRTX",
@@ -1814,7 +1983,8 @@
      "expenses": 1955500000.0,
      "sharesOutstanding": 253805417.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Large-Cap Biotech"
     },
     {
      "ticker": "VTRS",
@@ -1823,7 +1993,8 @@
      "revenue": 3509700000.0,
      "sharesOutstanding": 1164552654.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Specialty & Generic Pharma"
     },
     {
      "ticker": "ZTS",
@@ -1834,7 +2005,8 @@
      "expenses": 1661000000.0,
      "sharesOutstanding": 419228118.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Animal Health"
     }
    ]
   },
@@ -1849,12 +2021,14 @@
      "profit": 106319000.0,
      "sharesOutstanding": 145385451.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Content Delivery & Edge Infrastructure"
     },
     {
      "ticker": "BABA",
      "name": "Alibaba Group Holding Ltd",
-     "cik": "1577552"
+     "cik": "1577552",
+     "subIndustry": "Ecommerce & Marketplaces"
     },
     {
      "ticker": "BR",
@@ -1865,7 +2039,8 @@
      "expenses": 1677300000.0,
      "sharesOutstanding": 115658297.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "CPAY",
@@ -1876,7 +2051,8 @@
      "expenses": 910921000.0,
      "sharesOutstanding": 65361919.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "DASH",
@@ -1886,7 +2062,8 @@
      "profit": 184000000.0,
      "expenses": 3852000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Ride-Share & Delivery"
     },
     {
      "ticker": "EBAY",
@@ -1897,7 +2074,8 @@
      "expenses": 2577000000.0,
      "sharesOutstanding": 444000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Ecommerce & Marketplaces"
     },
     {
      "ticker": "ETSY",
@@ -1908,7 +2086,8 @@
      "expenses": 561597000.0,
      "sharesOutstanding": 94896231.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Ecommerce & Marketplaces"
     },
     {
      "ticker": "EXLS",
@@ -1919,7 +2098,8 @@
      "expenses": 503270000.0,
      "sharesOutstanding": 152782931.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Data, Analytics & Ratings"
     },
     {
      "ticker": "FICO",
@@ -1930,7 +2110,8 @@
      "expenses": 427219000.0,
      "sharesOutstanding": 23190906.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Data, Analytics & Ratings"
     },
     {
      "ticker": "FIS",
@@ -1941,7 +2122,8 @@
      "expenses": 929000000.0,
      "sharesOutstanding": 516879151.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "FISV",
@@ -1952,7 +2134,8 @@
      "expenses": 4456000000.0,
      "sharesOutstanding": 533253986.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "FOUR",
@@ -1963,7 +2146,8 @@
      "expenses": 1106000000.0,
      "sharesOutstanding": 79328924.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "GPN",
@@ -1974,7 +2158,8 @@
      "expenses": 4769560000.0,
      "sharesOutstanding": 273543507.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "LYFT",
@@ -1985,7 +2170,8 @@
      "expenses": 1636239000.0,
      "sharesOutstanding": 379682532.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Ride-Share & Delivery"
     },
     {
      "ticker": "MA",
@@ -1995,7 +2181,8 @@
      "profit": 3882000000.0,
      "expenses": 4516000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "MSCI",
@@ -2006,12 +2193,14 @@
      "expenses": 444800000.0,
      "sharesOutstanding": 72800000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-21"
+     "filed": "2026-04-21",
+     "subIndustry": "Data, Analytics & Ratings"
     },
     {
      "ticker": "PDD",
      "name": "Pdd Holdings Inc.",
-     "cik": "1737806"
+     "cik": "1737806",
+     "subIndustry": "Ecommerce & Marketplaces"
     },
     {
      "ticker": "PYPL",
@@ -2022,12 +2211,14 @@
      "expenses": 7240000000.0,
      "sharesOutstanding": 882105493.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "TCOM",
      "name": "Trip.Com Group Ltd",
-     "cik": "1269238"
+     "cik": "1269238",
+     "subIndustry": "Travel & Booking"
     },
     {
      "ticker": "UBER",
@@ -2038,7 +2229,8 @@
      "expenses": 12940000000.0,
      "sharesOutstanding": 2035599013.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Ride-Share & Delivery"
     },
     {
      "ticker": "V",
@@ -2048,7 +2240,8 @@
      "profit": 6021000000.0,
      "expenses": 5209000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "WEX",
@@ -2059,7 +2252,8 @@
      "expenses": 384500000.0,
      "sharesOutstanding": 34668143.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "Payments & Fintech Infrastructure"
     },
     {
      "ticker": "Z",
@@ -2069,7 +2263,8 @@
      "profit": 46000000.0,
      "expenses": 662000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Ecommerce & Marketplaces"
     }
    ]
   },
@@ -2086,7 +2281,8 @@
      "expenses": 5018000000.0,
      "sharesOutstanding": 544104955.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "CEG",
@@ -2097,7 +2293,8 @@
      "expenses": 5951000000.0,
      "sharesOutstanding": 361190063.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
+     "filed": "2026-05-11",
+     "subIndustry": "Merchant & Competitive Power Generation"
     },
     {
      "ticker": "CNP",
@@ -2108,7 +2305,8 @@
      "expenses": 2659000000.0,
      "sharesOutstanding": 654169480.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "D",
@@ -2119,7 +2317,8 @@
      "expenses": 4470000000.0,
      "sharesOutstanding": 879455403.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "DTE",
@@ -2128,7 +2327,8 @@
      "profit": 247000000.0,
      "sharesOutstanding": 208028313.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "EIX",
@@ -2139,7 +2339,8 @@
      "expenses": 3572000000.0,
      "sharesOutstanding": 384793941.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "ES",
@@ -2150,7 +2351,8 @@
      "expenses": 3895642000.0,
      "sharesOutstanding": 376080025.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "ETR",
@@ -2161,7 +2363,8 @@
      "expenses": 2796821000.0,
      "sharesOutstanding": 457832070.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "FE",
@@ -2172,7 +2375,8 @@
      "expenses": 3797000000.0,
      "sharesOutstanding": 578431175.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "IDA",
@@ -2183,7 +2387,8 @@
      "expenses": 401987000.0,
      "sharesOutstanding": 54899034.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-10-30"
+     "filed": "2025-10-30",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "NEE",
@@ -2192,7 +2397,8 @@
      "profit": 2182000000.0,
      "sharesOutstanding": 2085341456.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "NNE",
@@ -2201,7 +2407,8 @@
      "profit": -9180166.0,
      "sharesOutstanding": 52083294.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-14"
+     "filed": "2026-05-14",
+     "subIndustry": "Emerging Nuclear & SMR"
     },
     {
      "ticker": "NRG",
@@ -2212,7 +2419,8 @@
      "expenses": 10011000000.0,
      "sharesOutstanding": 210986470.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Merchant & Competitive Power Generation"
     },
     {
      "ticker": "OGE",
@@ -2223,7 +2431,8 @@
      "expenses": 686500000.0,
      "sharesOutstanding": 206374321.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "OKLO",
@@ -2232,7 +2441,8 @@
      "profit": -33065000.0,
      "sharesOutstanding": 173568788.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-08-07"
+     "filed": "2026-08-07",
+     "subIndustry": "Emerging Nuclear & SMR"
     },
     {
      "ticker": "PNW",
@@ -2243,7 +2453,8 @@
      "expenses": 1114483000.0,
      "sharesOutstanding": 121187166.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "PPL",
@@ -2254,7 +2465,8 @@
      "expenses": 2333000000.0,
      "sharesOutstanding": 752350362.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "SO",
@@ -2265,7 +2477,8 @@
      "expenses": 7041000000.0,
      "sharesOutstanding": 1127301098.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
      "ticker": "TLN",
@@ -2276,7 +2489,8 @@
      "expenses": 1505000000.0,
      "sharesOutstanding": 45695007.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Merchant & Competitive Power Generation"
     },
     {
      "ticker": "VST",
@@ -2287,7 +2501,8 @@
      "expenses": 3972000000.0,
      "sharesOutstanding": 337182468.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Merchant & Competitive Power Generation"
     }
    ]
   },
@@ -2304,7 +2519,8 @@
      "expenses": 21688000000.0,
      "sharesOutstanding": 7096590651.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Global Money Center Banks"
     },
     {
      "ticker": "BOKF",
@@ -2313,7 +2529,8 @@
      "profit": 155766000.0,
      "sharesOutstanding": 60759992.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Regional & Community Banks"
     },
     {
      "ticker": "C",
@@ -2324,7 +2541,8 @@
      "expenses": 18338000000.0,
      "sharesOutstanding": 1749319009.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-11-06"
+     "filed": "2025-11-06",
+     "subIndustry": "Global Money Center Banks"
     },
     {
      "ticker": "CFR",
@@ -2335,7 +2553,8 @@
      "expenses": -138830000.0,
      "sharesOutstanding": 62797048.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Regional & Community Banks"
     },
     {
      "ticker": "CMA",
@@ -2346,7 +2565,8 @@
      "expenses": 11000000.0,
      "sharesOutstanding": 127742643.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-10-28"
+     "filed": "2025-10-28",
+     "subIndustry": "Regional & Community Banks"
     },
     {
      "ticker": "COF",
@@ -2357,7 +2577,8 @@
      "expenses": 236000000.0,
      "sharesOutstanding": 622292783.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Consumer & Credit Card Lending"
     },
     {
      "ticker": "FHN",
@@ -2368,7 +2589,8 @@
      "expenses": 600000000.0,
      "sharesOutstanding": 474617813.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Regional & Community Banks"
     },
     {
      "ticker": "FNB",
@@ -2377,7 +2599,8 @@
      "profit": 137000000.0,
      "sharesOutstanding": 355963949.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Regional & Community Banks"
     },
     {
      "ticker": "HBAN",
@@ -2388,7 +2611,8 @@
      "expenses": -51000000.0,
      "sharesOutstanding": 2027130587.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Super-Regional Banks"
     },
     {
      "ticker": "JPM",
@@ -2399,7 +2623,8 @@
      "expenses": 33342000000.0,
      "sharesOutstanding": 2679511418.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Global Money Center Banks"
     },
     {
      "ticker": "KEY",
@@ -2410,7 +2635,8 @@
      "expenses": -60000000.0,
      "sharesOutstanding": 1084225688.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Super-Regional Banks"
     },
     {
      "ticker": "ONB",
@@ -2419,7 +2645,8 @@
      "profit": 233672000.0,
      "sharesOutstanding": 386373000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-29"
+     "filed": "2026-07-29",
+     "subIndustry": "Regional & Community Banks"
     },
     {
      "ticker": "PNC",
@@ -2430,7 +2657,8 @@
      "expenses": 4393000000.0,
      "sharesOutstanding": 401564632.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Super-Regional Banks"
     },
     {
      "ticker": "PNFP",
@@ -2439,7 +2667,8 @@
      "profit": 150000000.0,
      "sharesOutstanding": 151106812.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Regional & Community Banks"
     },
     {
      "ticker": "RF",
@@ -2448,7 +2677,8 @@
      "profit": 559000000.0,
      "sharesOutstanding": 853379538.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-08-06"
+     "filed": "2026-08-06",
+     "subIndustry": "Super-Regional Banks"
     },
     {
      "ticker": "SNV",
@@ -2457,7 +2687,8 @@
      "profit": 196994000.0,
      "sharesOutstanding": 138817293.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-11-04"
+     "filed": "2025-11-04",
+     "subIndustry": "Regional & Community Banks"
     },
     {
      "ticker": "TFC",
@@ -2466,7 +2697,8 @@
      "profit": 1481000000.0,
      "sharesOutstanding": 1245879275.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Super-Regional Banks"
     },
     {
      "ticker": "USB",
@@ -2477,7 +2709,8 @@
      "expenses": 5343000000.0,
      "sharesOutstanding": 1552299745.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Super-Regional Banks"
     },
     {
      "ticker": "WFC",
@@ -2488,7 +2721,8 @@
      "expenses": 16193000000.0,
      "sharesOutstanding": 3060189494.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Global Money Center Banks"
     },
     {
      "ticker": "ZION",
@@ -2499,7 +2733,8 @@
      "expenses": -99000000.0,
      "sharesOutstanding": 147091817.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Regional & Community Banks"
     }
    ]
   },
@@ -2514,7 +2749,8 @@
      "profit": 446000000.0,
      "sharesOutstanding": 353470227.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Large-Cap Diversified E&P"
     },
     {
      "ticker": "AR",
@@ -2525,7 +2761,8 @@
      "expenses": 1396913000.0,
      "sharesOutstanding": 309836000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Natural Gas-Focused E&P"
     },
     {
      "ticker": "CHRD",
@@ -2536,7 +2773,8 @@
      "expenses": 1557027000.0,
      "sharesOutstanding": 56299183.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Diversified Mid-Cap E&P"
     },
     {
      "ticker": "CRC",
@@ -2547,7 +2785,8 @@
      "expenses": 1616000000.0,
      "sharesOutstanding": 88794901.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Diversified Mid-Cap E&P"
     },
     {
      "ticker": "CTRA",
@@ -2558,7 +2797,8 @@
      "expenses": 1915000000.0,
      "sharesOutstanding": 759356619.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Diversified Mid-Cap E&P"
     },
     {
      "ticker": "DVN",
@@ -2569,7 +2809,8 @@
      "expenses": 4388000000.0,
      "sharesOutstanding": 621000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Large-Cap Diversified E&P"
     },
     {
      "ticker": "EOG",
@@ -2580,7 +2821,8 @@
      "expenses": 4941000000.0,
      "sharesOutstanding": 532628530.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Large-Cap Diversified E&P"
     },
     {
      "ticker": "EQT",
@@ -2591,7 +2833,8 @@
      "expenses": 1891507000.0,
      "sharesOutstanding": 625478000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-22"
+     "filed": "2026-04-22",
+     "subIndustry": "Natural Gas-Focused E&P"
     },
     {
      "ticker": "EXE",
@@ -2602,7 +2845,8 @@
      "expenses": 3238000000.0,
      "sharesOutstanding": 239228849.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Natural Gas-Focused E&P"
     },
     {
      "ticker": "FANG",
@@ -2613,12 +2857,14 @@
      "expenses": 4215000000.0,
      "sharesOutstanding": 281313297.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Permian Basin E&P"
     },
     {
      "ticker": "MRO",
      "name": "Marathon Oil Corp",
-     "cik": "101778"
+     "cik": "101778",
+     "subIndustry": "Diversified Mid-Cap E&P"
     },
     {
      "ticker": "MTDR",
@@ -2629,7 +2875,8 @@
      "expenses": 977476000.0,
      "sharesOutstanding": 124249941.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Permian Basin E&P"
     },
     {
      "ticker": "MUR",
@@ -2640,7 +2887,8 @@
      "expenses": 679368000.0,
      "sharesOutstanding": 143349576.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Diversified Mid-Cap E&P"
     },
     {
      "ticker": "OXY",
@@ -2651,7 +2899,8 @@
      "expenses": 2210000000.0,
      "sharesOutstanding": 994634701.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Large-Cap Diversified E&P"
     },
     {
      "ticker": "PR",
@@ -2662,12 +2911,14 @@
      "expenses": 1344526000.0,
      "sharesOutstanding": 837288124.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Permian Basin E&P"
     },
     {
      "ticker": "PXD",
      "name": "Pioneer Natural Resources Co",
-     "cik": "1038357"
+     "cik": "1038357",
+     "subIndustry": "Permian Basin E&P"
     },
     {
      "ticker": "RRC",
@@ -2678,7 +2929,8 @@
      "expenses": 725851000.0,
      "sharesOutstanding": 235622250.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-21"
+     "filed": "2026-04-21",
+     "subIndustry": "Natural Gas-Focused E&P"
     },
     {
      "ticker": "SM",
@@ -2689,7 +2941,8 @@
      "expenses": 1814000000.0,
      "sharesOutstanding": 239748701.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Diversified Mid-Cap E&P"
     }
    ]
   },
@@ -2706,7 +2959,8 @@
      "expenses": 7546000000.0,
      "sharesOutstanding": 682326443.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "Card Networks & Payments"
     },
     {
      "ticker": "BITF",
@@ -2717,7 +2971,8 @@
      "expenses": 182345000.0,
      "sharesOutstanding": 602851137.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
+     "filed": "2026-05-11",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "BTBT",
@@ -2728,7 +2983,8 @@
      "expenses": 174593792.0,
      "sharesOutstanding": 326577219.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-15"
+     "filed": "2026-05-15",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "CIFR",
@@ -2739,7 +2995,8 @@
      "expenses": 149154000.0,
      "sharesOutstanding": 409049197.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "CLSK",
@@ -2748,7 +3005,8 @@
      "profit": -378343000.0,
      "sharesOutstanding": 256608606.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
+     "filed": "2026-05-11",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "COIN",
@@ -2758,7 +3016,8 @@
      "profit": -394117000.0,
      "expenses": 1807099000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Crypto Exchanges & Infrastructure"
     },
     {
      "ticker": "CORZ",
@@ -2769,7 +3028,8 @@
      "expenses": 462432000.0,
      "sharesOutstanding": 317885292.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "CRCL",
@@ -2779,7 +3039,8 @@
      "profit": 55253000.0,
      "expenses": -13628000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
+     "filed": "2026-05-11",
+     "subIndustry": "Crypto Exchanges & Infrastructure"
     },
     {
      "ticker": "HIVE",
@@ -2789,7 +3050,8 @@
      "profit": -91327000.0,
      "expenses": 184438000.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-02-17"
+     "filed": "2026-02-17",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "HUT",
@@ -2800,7 +3062,8 @@
      "expenses": 290866000.0,
      "sharesOutstanding": 112594112.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "IREN",
@@ -2811,7 +3074,8 @@
      "expenses": 392622000.0,
      "sharesOutstanding": 357378674.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "MARA",
@@ -2822,7 +3086,8 @@
      "expenses": 1279810000.0,
      "sharesOutstanding": 381270503.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
+     "filed": "2026-05-11",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "MSTR",
@@ -2832,12 +3097,14 @@
      "profit": -12542670000.0,
      "expenses": 12666970000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Corporate Bitcoin Treasury"
     },
     {
      "ticker": "NU",
      "name": "Nu Holdings Ltd.",
-     "cik": "1691493"
+     "cik": "1691493",
+     "subIndustry": "Consumer Fintech & Neobanks"
     },
     {
      "ticker": "RIOT",
@@ -2848,7 +3115,8 @@
      "expenses": 667696000.0,
      "sharesOutstanding": 378151230.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Bitcoin & Crypto Miners"
     },
     {
      "ticker": "SOFI",
@@ -2859,7 +3127,8 @@
      "expenses": -37227000.0,
      "sharesOutstanding": 1282741200.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Consumer Fintech & Neobanks"
     },
     {
      "ticker": "UPST",
@@ -2870,7 +3139,8 @@
      "expenses": 314860000.0,
      "sharesOutstanding": 95711569.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Consumer Fintech & Neobanks"
     },
     {
      "ticker": "WULF",
@@ -2881,7 +3151,8 @@
      "expenses": 461646000.0,
      "sharesOutstanding": 495532645.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Bitcoin & Crypto Miners"
     }
    ]
   },
@@ -2898,7 +3169,8 @@
      "expenses": 3971000000.0,
      "sharesOutstanding": 89897084.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Traditional Asset & Wealth Managers"
     },
     {
      "ticker": "APO",
@@ -2909,7 +3181,8 @@
      "expenses": 6965000000.0,
      "sharesOutstanding": 576517513.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Alternative Asset Managers (PE/Credit)"
     },
     {
      "ticker": "ARES",
@@ -2919,7 +3192,8 @@
      "profit": 142589000.0,
      "expenses": 1253847000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Alternative Asset Managers (PE/Credit)"
     },
     {
      "ticker": "BEN",
@@ -2930,7 +3204,8 @@
      "expenses": 2026700000.0,
      "sharesOutstanding": 519637162.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Traditional Asset & Wealth Managers"
     },
     {
      "ticker": "BX",
@@ -2941,7 +3216,8 @@
      "expenses": 2967866000.0,
      "sharesOutstanding": 742879807.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Alternative Asset Managers (PE/Credit)"
     },
     {
      "ticker": "CG",
@@ -2952,7 +3228,8 @@
      "expenses": 386200000.0,
      "sharesOutstanding": 359974427.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Alternative Asset Managers (PE/Credit)"
     },
     {
      "ticker": "EVR",
@@ -2962,7 +3239,8 @@
      "profit": 301235000.0,
      "expenses": 1099234000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Advisory & Boutique Investment Banks"
     },
     {
      "ticker": "HLI",
@@ -2972,7 +3250,8 @@
      "profit": 116548000.0,
      "expenses": 600524000.0,
      "periodEnd": "2025-12-31",
-     "filed": "2026-02-03"
+     "filed": "2026-02-03",
+     "subIndustry": "Advisory & Boutique Investment Banks"
     },
     {
      "ticker": "IVZ",
@@ -2983,7 +3262,8 @@
      "expenses": 1525400000.0,
      "sharesOutstanding": 443296629.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Traditional Asset & Wealth Managers"
     },
     {
      "ticker": "KKR",
@@ -2994,7 +3274,8 @@
      "expenses": 3912754000.0,
      "sharesOutstanding": 891550894.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Alternative Asset Managers (PE/Credit)"
     },
     {
      "ticker": "LAZ",
@@ -3005,7 +3286,8 @@
      "expenses": 678483000.0,
      "sharesOutstanding": 111687255.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Advisory & Boutique Investment Banks"
     },
     {
      "ticker": "MC",
@@ -3013,7 +3295,8 @@
      "cik": "1596967",
      "profit": 42295000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-30"
+     "filed": "2026-07-30",
+     "subIndustry": "Advisory & Boutique Investment Banks"
     },
     {
      "ticker": "MORN",
@@ -3024,7 +3307,8 @@
      "expenses": 537700000.0,
      "sharesOutstanding": 38028018.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Investment Research & Data"
     },
     {
      "ticker": "OWL",
@@ -3034,7 +3318,8 @@
      "profit": 15542000.0,
      "expenses": 738269000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Alternative Asset Managers (PE/Credit)"
     },
     {
      "ticker": "PJT",
@@ -3044,7 +3329,8 @@
      "profit": 60501000.0,
      "expenses": 350451000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Advisory & Boutique Investment Banks"
     },
     {
      "ticker": "TPG",
@@ -3054,7 +3340,8 @@
      "profit": -1454000.0,
      "expenses": 621476000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Alternative Asset Managers (PE/Credit)"
     },
     {
      "ticker": "TROW",
@@ -3065,7 +3352,8 @@
      "expenses": 1358800000.0,
      "sharesOutstanding": 214266606.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Traditional Asset & Wealth Managers"
     }
    ]
   },
@@ -3081,12 +3369,14 @@
      "profit": 1205613000.0,
      "expenses": 636836000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Mobile Ad-Tech & Gaming Platforms"
     },
     {
      "ticker": "BIDU",
      "name": "Baidu, Inc.",
-     "cik": "1329099"
+     "cik": "1329099",
+     "subIndustry": "Chinese Internet"
     },
     {
      "ticker": "BMBL",
@@ -3096,7 +3386,8 @@
      "profit": 45211000.0,
      "expenses": 167172000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Dating & Social Apps"
     },
     {
      "ticker": "DJT",
@@ -3107,7 +3398,8 @@
      "expenses": 406755400.0,
      "sharesOutstanding": 276953828.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Alt-Media & Video Platforms"
     },
     {
      "ticker": "FDS",
@@ -3118,7 +3410,8 @@
      "expenses": 477963000.0,
      "sharesOutstanding": 36431127.0,
      "periodEnd": "2026-02-28",
-     "filed": "2026-04-02"
+     "filed": "2026-04-02",
+     "subIndustry": "AI, Data & Research Platforms"
     },
     {
      "ticker": "FLUT",
@@ -3127,7 +3420,8 @@
      "profit": 209000000.0,
      "sharesOutstanding": 173972199.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-08-05"
+     "filed": "2026-08-05",
+     "subIndustry": "Mobile Ad-Tech & Gaming Platforms"
     },
     {
      "ticker": "GOOGL",
@@ -3137,7 +3431,8 @@
      "profit": 62578000000.0,
      "expenses": 47318000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Search, Social & Ad Platforms"
     },
     {
      "ticker": "META",
@@ -3147,7 +3442,8 @@
      "profit": 26773000000.0,
      "expenses": 29538000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Search, Social & Ad Platforms"
     },
     {
      "ticker": "MTCH",
@@ -3158,12 +3454,14 @@
      "expenses": 697097000.0,
      "sharesOutstanding": 233266526.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Dating & Social Apps"
     },
     {
      "ticker": "NBIS",
      "name": "Nebius Group N.V.",
-     "cik": "1513845"
+     "cik": "1513845",
+     "subIndustry": "AI, Data & Research Platforms"
     },
     {
      "ticker": "PINS",
@@ -3173,7 +3471,8 @@
      "profit": -73587000.0,
      "expenses": 1081101000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Search, Social & Ad Platforms"
     },
     {
      "ticker": "RUM",
@@ -3183,7 +3482,8 @@
      "profit": -30270370.0,
      "expenses": 55730166.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-14"
+     "filed": "2026-05-14",
+     "subIndustry": "Alt-Media & Video Platforms"
     },
     {
      "ticker": "SNAP",
@@ -3193,7 +3493,8 @@
      "profit": -88951000.0,
      "expenses": 1617742000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Search, Social & Ad Platforms"
     },
     {
      "ticker": "TEM",
@@ -3203,7 +3504,8 @@
      "profit": -125919000.0,
      "expenses": 474035000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "AI, Data & Research Platforms"
     },
     {
      "ticker": "TRIP",
@@ -3214,7 +3516,8 @@
      "expenses": 414800000.0,
      "sharesOutstanding": 116361169.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Alt-Media & Video Platforms"
     },
     {
      "ticker": "TTD",
@@ -3224,7 +3527,8 @@
      "profit": 39997000.0,
      "expenses": 648860000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Search, Social & Ad Platforms"
     },
     {
      "ticker": "ZM",
@@ -3234,7 +3538,8 @@
      "profit": 425677000.0,
      "expenses": 813329000.0,
      "periodEnd": "2026-04-30",
-     "filed": "2026-05-22"
+     "filed": "2026-05-22",
+     "subIndustry": "Alt-Media & Video Platforms"
     }
    ]
   },
@@ -3251,7 +3556,8 @@
      "expenses": 3474000000.0,
      "sharesOutstanding": 349389588.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Specialty & Reinsurance"
     },
     {
      "ticker": "AIG",
@@ -3262,7 +3568,8 @@
      "expenses": 5887000000.0,
      "sharesOutstanding": 530206221.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Large-Cap P&C & Multi-Line Insurance"
     },
     {
      "ticker": "ALL",
@@ -3273,7 +3580,8 @@
      "expenses": 14484000000.0,
      "sharesOutstanding": 257420930.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Large-Cap P&C & Multi-Line Insurance"
     },
     {
      "ticker": "BRK-B",
@@ -3283,7 +3591,8 @@
      "profit": 10106000000.0,
      "expenses": 53031000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Large-Cap P&C & Multi-Line Insurance"
     },
     {
      "ticker": "CB",
@@ -3294,7 +3603,8 @@
      "expenses": 12453000000.0,
      "sharesOutstanding": 387860106.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Large-Cap P&C & Multi-Line Insurance"
     },
     {
      "ticker": "CINF",
@@ -3305,7 +3615,8 @@
      "expenses": 2589000000.0,
      "sharesOutstanding": 154686742.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-27"
+     "filed": "2026-04-27",
+     "subIndustry": "Specialty & Reinsurance"
     },
     {
      "ticker": "EG",
@@ -3316,7 +3627,8 @@
      "expenses": 3415000000.0,
      "sharesOutstanding": 39571602.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Specialty & Reinsurance"
     },
     {
      "ticker": "HIG",
@@ -3327,7 +3639,8 @@
      "expenses": -464000000.0,
      "sharesOutstanding": 274130820.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "Commercial & Group Insurance"
     },
     {
      "ticker": "KNSL",
@@ -3338,7 +3651,8 @@
      "expenses": 354155000.0,
      "sharesOutstanding": 23062819.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "filed": "2026-04-23",
+     "subIndustry": "Specialty & Reinsurance"
     },
     {
      "ticker": "LMND",
@@ -3349,7 +3663,8 @@
      "expenses": 293800000.0,
      "sharesOutstanding": 76820789.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Insurtech / Direct-to-Consumer"
     },
     {
      "ticker": "MKL",
@@ -3360,7 +3675,8 @@
      "expenses": 3762894000.0,
      "sharesOutstanding": 12513710.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
+     "filed": "2026-04-28",
+     "subIndustry": "Specialty & Reinsurance"
     },
     {
      "ticker": "PGR",
@@ -3371,7 +3687,8 @@
      "expenses": 19370000000.0,
      "sharesOutstanding": 584336464.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
+     "filed": "2026-05-04",
+     "subIndustry": "Large-Cap P&C & Multi-Line Insurance"
     },
     {
      "ticker": "RNR",
@@ -3382,7 +3699,8 @@
      "expenses": 1901537000.0,
      "sharesOutstanding": 42633041.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Specialty & Reinsurance"
     },
     {
      "ticker": "ROOT",
@@ -3392,7 +3710,8 @@
      "profit": 35900000.0,
      "expenses": 357600000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Insurtech / Direct-to-Consumer"
     },
     {
      "ticker": "TRV",
@@ -3403,7 +3722,8 @@
      "expenses": 10213000000.0,
      "sharesOutstanding": 212644693.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-16"
+     "filed": "2026-04-16",
+     "subIndustry": "Large-Cap P&C & Multi-Line Insurance"
     },
     {
      "ticker": "WRB",
@@ -3414,7 +3734,8 @@
      "expenses": 3175118000.0,
      "sharesOutstanding": 372276732.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
+     "filed": "2026-05-01",
+     "subIndustry": "Specialty & Reinsurance"
     }
    ]
   },
@@ -3431,7 +3752,8 @@
      "expenses": 1004019000.0,
      "sharesOutstanding": 85614287.0,
      "periodEnd": "2026-03-29",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Casual Dining"
     },
     {
      "ticker": "CAVA",
@@ -3442,7 +3764,8 @@
      "expenses": 414704000.0,
      "sharesOutstanding": 116473856.0,
      "periodEnd": "2026-04-19",
-     "filed": "2026-05-20"
+     "filed": "2026-05-20",
+     "subIndustry": "Fast Casual"
     },
     {
      "ticker": "CBRL",
@@ -3453,7 +3776,8 @@
      "expenses": 754556000.0,
      "sharesOutstanding": 22351023.0,
      "periodEnd": "2026-05-01",
-     "filed": "2026-06-09"
+     "filed": "2026-06-09",
+     "subIndustry": "Casual Dining"
     },
     {
      "ticker": "CMG",
@@ -3464,7 +3788,8 @@
      "expenses": 2785418000.0,
      "sharesOutstanding": 1282734000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
+     "filed": "2026-04-30",
+     "subIndustry": "Fast Casual"
     },
     {
      "ticker": "DRI",
@@ -3475,7 +3800,8 @@
      "expenses": 3038500000.0,
      "sharesOutstanding": 114535003.0,
      "periodEnd": "2026-02-22",
-     "filed": "2026-03-27"
+     "filed": "2026-03-27",
+     "subIndustry": "Casual Dining"
     },
     {
      "ticker": "EAT",
@@ -3486,7 +3812,8 @@
      "expenses": 1342300000.0,
      "sharesOutstanding": 42887790.0,
      "periodEnd": "2026-03-25",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Casual Dining"
     },
     {
      "ticker": "JACK",
@@ -3497,7 +3824,8 @@
      "expenses": 244019000.0,
      "sharesOutstanding": 19073616.0,
      "periodEnd": "2026-04-12",
-     "filed": "2026-05-13"
+     "filed": "2026-05-13",
+     "subIndustry": "Fast Food / QSR"
     },
     {
      "ticker": "MCD",
@@ -3508,7 +3836,8 @@
      "expenses": 4534000000.0,
      "sharesOutstanding": 710505859.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Fast Food / QSR"
     },
     {
      "ticker": "PTLO",
@@ -3518,7 +3847,8 @@
      "profit": -402000.0,
      "expenses": 183025000.0,
      "periodEnd": "2026-03-29",
-     "filed": "2026-05-05"
+     "filed": "2026-05-05",
+     "subIndustry": "Fast Casual"
     },
     {
      "ticker": "PZZA",
@@ -3529,7 +3859,8 @@
      "expenses": 471354000.0,
      "sharesOutstanding": 32902014.0,
      "periodEnd": "2026-03-29",
-     "filed": "2026-05-07"
+     "filed": "2026-05-07",
+     "subIndustry": "Fast Food / QSR"
     },
     {
      "ticker": "QSR",
@@ -3539,7 +3870,8 @@
      "profit": 445000000.0,
      "expenses": 1819000000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Fast Food / QSR"
     },
     {
      "ticker": "SG",
@@ -3549,7 +3881,8 @@
      "profit": 125809000.0,
      "expenses": 35712000.0,
      "periodEnd": "2026-03-29",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Fast Casual"
     },
     {
      "ticker": "TXRH",
@@ -3560,7 +3893,8 @@
      "expenses": 1507171000.0,
      "sharesOutstanding": 65729615.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
+     "filed": "2026-05-08",
+     "subIndustry": "Casual Dining"
     },
     {
      "ticker": "WING",
@@ -3571,7 +3905,8 @@
      "expenses": 153842000.0,
      "sharesOutstanding": 27232553.0,
      "periodEnd": "2026-03-28",
-     "filed": "2026-04-29"
+     "filed": "2026-04-29",
+     "subIndustry": "Fast Casual"
     },
     {
      "ticker": "YUM",
@@ -3582,7 +3917,8 @@
      "expenses": 1627000000.0,
      "sharesOutstanding": 275621202.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
+     "filed": "2026-05-06",
+     "subIndustry": "Fast Food / QSR"
     }
    ]
   },

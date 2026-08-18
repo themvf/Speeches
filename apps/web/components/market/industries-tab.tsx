@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import type { IndustrySummary, MarketIndustriesData } from "@/lib/server/types";
+import type { IndustryPeerRow, IndustrySummary, MarketIndustriesData } from "@/lib/server/types";
 import { TickerEventChart } from "./ticker-event-chart";
 
 interface Props {
@@ -58,6 +58,132 @@ function usdCompact(value: number | null): string {
   return `${sign}$${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+// Groups peer rows by the hand-curated subIndustry tag (build_industry_config.py's
+// SUB_INDUSTRY_GROUPS), preserving each group's first-seen position in the
+// (already market-cap-sorted) input - so the group containing the biggest
+// company sorts first, same "biggest first" convention as the ungrouped
+// table. Returns a single null-labeled group when no row carries a tag (most
+// industries, since only ~13 SIC buckets are covered), so callers can treat
+// "one group with a null label" as "render flat, no sub-headers".
+function groupPeerRowsBySubIndustry(rows: IndustryPeerRow[]): { label: string | null; rows: IndustryPeerRow[] }[] {
+  if (!rows.some((r) => r.subIndustry)) return [{ label: null, rows }];
+  const order: string[] = [];
+  const byLabel = new Map<string, IndustryPeerRow[]>();
+  const other: IndustryPeerRow[] = [];
+  for (const row of rows) {
+    const key = row.subIndustry;
+    if (!key) {
+      other.push(row);
+      continue;
+    }
+    if (!byLabel.has(key)) {
+      byLabel.set(key, []);
+      order.push(key);
+    }
+    byLabel.get(key)!.push(row);
+  }
+  const groups = order.map((key) => ({ label: key, rows: byLabel.get(key)! }));
+  if (other.length > 0) groups.push({ label: "Other", rows: other });
+  return groups;
+}
+
+// One peer row + its optional expanded event-chart row. Split out of
+// PeerTable so both the flat and subIndustry-grouped renders share it.
+function PeerRow({
+  row,
+  chartTicker,
+  onToggleChart,
+}: {
+  row: IndustryPeerRow;
+  chartTicker: string | null;
+  onToggleChart: (ticker: string) => void;
+}) {
+  const priceColor = (row.pricePct ?? 0) >= 0 ? "#41d39d" : "#f87171";
+  return (
+    <Fragment key={row.ticker}>
+      <tr className="border-b border-[color:var(--line)] text-xs last:border-0">
+        <td className="py-2 pr-2">
+          <button
+            type="button"
+            onClick={() => onToggleChart(row.ticker)}
+            className="font-bold text-[color:var(--accent)] hover:underline"
+            title={`${chartTicker === row.ticker ? "Hide" : "Show"} ${row.ticker} price chart with filing/earnings/attention events`}
+          >
+            {row.ticker}
+          </button>
+        </td>
+        <td className="hidden max-w-[190px] truncate px-2 py-2 text-[color:var(--ink-faint)] lg:table-cell">{row.name}</td>
+        <td className="px-2 py-2 text-right tabular-nums text-[color:var(--ink)]">
+          {row.price == null ? "—" : `$${row.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+        </td>
+        <td className="px-2 py-2 text-right tabular-nums">
+          {row.pricePct == null ? (
+            <span className="text-[color:var(--ink-faint)]">—</span>
+          ) : (
+            <span className="font-semibold" style={{ color: priceColor }}>
+              {row.pricePct >= 0 ? "+" : ""}{row.pricePct.toFixed(2)}%
+            </span>
+          )}
+        </td>
+        <td
+          className="px-2 py-2 text-right tabular-nums text-[color:var(--ink)]"
+          title={row.marketCap == null ? "Missing live price or snapshot share count" : undefined}
+        >
+          {usdCompact(row.marketCap)}
+        </td>
+        <td
+          className="px-2 py-2 text-right tabular-nums text-[color:var(--ink-soft)]"
+          title={row.revenue == null ? "Revenue tag not found in this filer's XBRL for this period" : undefined}
+        >
+          {usdCompact(row.revenue)}
+        </td>
+        {(() => {
+          const filed = filedAgo(row.filed);
+          const stale = filed != null && filed.days > 120;
+          const quarterNote = row.periodEnd ? `Quarter ended ${reportLabel(row.periodEnd)}. ` : "";
+          return (
+            <td
+              className="px-2 py-2 text-right tabular-nums"
+              style={{ color: stale ? "#f0b429" : "var(--ink-faint)" }}
+              title={
+                filed
+                  ? `${quarterNote}Filed ${new Date(`${row.filed}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}`
+                  : "No resolvable filing date for this figure"
+              }
+            >
+              {filed ? filed.label : "—"}
+            </td>
+          );
+        })()}
+        <td
+          className="px-2 py-2 text-right tabular-nums text-[color:var(--ink-faint)]"
+          title={row.expenses == null ? "Derived from revenue − profit; unavailable when either is missing" : undefined}
+        >
+          {usdCompact(row.expenses)}
+        </td>
+        <td
+          className="px-2 py-2 text-right font-semibold tabular-nums"
+          style={{ color: row.profit == null ? undefined : row.profit >= 0 ? "#41d39d" : "#f87171" }}
+          title={row.profit == null ? "Net income tag not found in this filer's XBRL for this period" : undefined}
+        >
+          {usdCompact(row.profit)}
+        </td>
+        <td className="hidden px-2 py-2 text-right tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
+          {row.mentions > 0 ? row.mentions : "—"}
+        </td>
+        <td className="py-2 pl-2 text-right text-[color:var(--ink-soft)]">{reportLabel(row.reportDate) || "—"}</td>
+      </tr>
+      {chartTicker === row.ticker && (
+        <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] last:border-0">
+          <td colSpan={11}>
+            <TickerEventChart ticker={row.ticker} />
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+}
+
 // Peer table for one expanded industry - lazy-fetched so quotes only load
 // for the industry actually being looked at (SEC-53 budget rule).
 function PeerTable({ label }: { label: string }) {
@@ -111,92 +237,32 @@ function PeerTable({ label }: { label: string }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const priceColor = (row.pricePct ?? 0) >= 0 ? "#41d39d" : "#f87171";
-              return (
-                <Fragment key={row.ticker}>
-                <tr className="border-b border-[color:var(--line)] text-xs last:border-0">
-                  <td className="py-2 pr-2">
-                    <button
-                      type="button"
-                      onClick={() => setChartTicker(chartTicker === row.ticker ? null : row.ticker)}
-                      className="font-bold text-[color:var(--accent)] hover:underline"
-                      title={`${chartTicker === row.ticker ? "Hide" : "Show"} ${row.ticker} price chart with filing/earnings/attention events`}
-                    >
-                      {row.ticker}
-                    </button>
-                  </td>
-                  <td className="hidden max-w-[190px] truncate px-2 py-2 text-[color:var(--ink-faint)] lg:table-cell">{row.name}</td>
-                  <td className="px-2 py-2 text-right tabular-nums text-[color:var(--ink)]">
-                    {row.price == null ? "—" : `$${row.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
-                  </td>
-                  <td className="px-2 py-2 text-right tabular-nums">
-                    {row.pricePct == null ? (
-                      <span className="text-[color:var(--ink-faint)]">—</span>
-                    ) : (
-                      <span className="font-semibold" style={{ color: priceColor }}>
-                        {row.pricePct >= 0 ? "+" : ""}{row.pricePct.toFixed(2)}%
-                      </span>
-                    )}
-                  </td>
-                  <td
-                    className="px-2 py-2 text-right tabular-nums text-[color:var(--ink)]"
-                    title={row.marketCap == null ? "Missing live price or snapshot share count" : undefined}
-                  >
-                    {usdCompact(row.marketCap)}
-                  </td>
-                  <td
-                    className="px-2 py-2 text-right tabular-nums text-[color:var(--ink-soft)]"
-                    title={row.revenue == null ? "Revenue tag not found in this filer's XBRL for this period" : undefined}
-                  >
-                    {usdCompact(row.revenue)}
-                  </td>
-                  {(() => {
-                    const filed = filedAgo(row.filed);
-                    const stale = filed != null && filed.days > 120;
-                    const quarterNote = row.periodEnd ? `Quarter ended ${reportLabel(row.periodEnd)}. ` : "";
-                    return (
+            {(() => {
+              const groups = groupPeerRowsBySubIndustry(rows);
+              const showHeaders = groups.length > 1 || groups[0]?.label !== null;
+              return groups.map((group) => (
+                <Fragment key={group.label ?? "__flat__"}>
+                  {showHeaders && (
+                    <tr className="border-b border-[color:var(--line)] bg-[color:rgba(79,213,255,0.03)]">
                       <td
-                        className="px-2 py-2 text-right tabular-nums"
-                        style={{ color: stale ? "#f0b429" : "var(--ink-faint)" }}
-                        title={
-                          filed
-                            ? `${quarterNote}Filed ${new Date(`${row.filed}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}`
-                            : "No resolvable filing date for this figure"
-                        }
+                        colSpan={11}
+                        className="py-1 pl-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--accent)]"
                       >
-                        {filed ? filed.label : "—"}
+                        {group.label} <span className="text-[color:var(--ink-faint)]">({group.rows.length})</span>
                       </td>
-                    );
-                  })()}
-                  <td
-                    className="px-2 py-2 text-right tabular-nums text-[color:var(--ink-faint)]"
-                    title={row.expenses == null ? "Derived from revenue − profit; unavailable when either is missing" : undefined}
-                  >
-                    {usdCompact(row.expenses)}
-                  </td>
-                  <td
-                    className="px-2 py-2 text-right font-semibold tabular-nums"
-                    style={{ color: row.profit == null ? undefined : row.profit >= 0 ? "#41d39d" : "#f87171" }}
-                    title={row.profit == null ? "Net income tag not found in this filer's XBRL for this period" : undefined}
-                  >
-                    {usdCompact(row.profit)}
-                  </td>
-                  <td className="hidden px-2 py-2 text-right tabular-nums text-[color:var(--ink-faint)] sm:table-cell">
-                    {row.mentions > 0 ? row.mentions : "—"}
-                  </td>
-                  <td className="py-2 pl-2 text-right text-[color:var(--ink-soft)]">{reportLabel(row.reportDate) || "—"}</td>
-                </tr>
-                {chartTicker === row.ticker && (
-                  <tr className="border-b border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] last:border-0">
-                    <td colSpan={11}>
-                      <TickerEventChart ticker={row.ticker} />
-                    </td>
-                  </tr>
-                )}
+                    </tr>
+                  )}
+                  {group.rows.map((row) => (
+                    <PeerRow
+                      key={row.ticker}
+                      row={row}
+                      chartTicker={chartTicker}
+                      onToggleChart={(ticker) => setChartTicker(chartTicker === ticker ? null : ticker)}
+                    />
+                  ))}
                 </Fragment>
-              );
-            })}
+              ));
+            })()}
           </tbody>
         </table>
       </div>
@@ -211,7 +277,9 @@ function PeerTable({ label }: { label: string }) {
         since that peer&apos;s last filing this table has data for. Expenses = revenue − profit (total cost including
         tax) — derived rather than taken from a filed cost line, because filers tag those inconsistently and a peer
         column needs one shared definition; a dash means the underlying XBRL tag wasn&apos;t found for that
-        filer/period, not that the value is zero.
+        filer/period, not that the value is zero. In large industries, peers are further split into hand-curated
+        sub-groups (e.g. Cybersecurity vs. Cloud Infrastructure within Software) — SEC&apos;s own industry code
+        doesn&apos;t subdivide that far, so this grouping is layered on top rather than official classification.
       </p>
     </div>
   );
