@@ -3842,18 +3842,30 @@ export type PolymarketMacroWalletStatsRow = {
   archetype: string;
 };
 
+// fed_decision, nonfarm_payrolls, unemployment, headline_cpi, core_cpi, us_gdp, macro_generalist
+// (kept in sync with COHORT_META in polymarket_macro_sync.py and COHORTS in the macro-contracts route).
+const MACRO_COHORT_COUNT = 7;
+
 export async function getPolymarketMacroWalletStats(limit = 100): Promise<PolymarketMacroWalletStatsRow[]> {
   const sql = getSql();
   const cappedLimit = Math.max(1, Math.min(300, limit));
+  // Rank within each cohort rather than globally: fed_decision markets carry PnL swings
+  // (single trades in the six/seven figures) that dwarf the lower-volume, lower-cadence
+  // cohorts (payrolls/unemployment/CPI/GDP), so a global `ORDER BY pnl DESC LIMIT` starved
+  // every non-fed_decision cohort out of the result set entirely, even when it had real rows.
+  const perCohortLimit = Math.max(5, Math.ceil(cappedLimit / MACRO_COHORT_COUNT));
   return (await sql`
     SELECT wallet, cohort, name, events, wins,
            pnl::float AS pnl, cost::float AS cost,
            predictive_cost::float AS predictive_cost,
            timing_cost::float AS timing_cost,
            win_entry_avg::float AS win_entry_avg, archetype
-    FROM polymarket_macro_wallet_stats
-    ORDER BY pnl DESC
-    LIMIT ${cappedLimit}
+    FROM (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY cohort ORDER BY pnl DESC) AS rn
+      FROM polymarket_macro_wallet_stats
+    ) ranked
+    WHERE rn <= ${perCohortLimit}
+    ORDER BY cohort, pnl DESC
   `) as unknown as PolymarketMacroWalletStatsRow[];
 }
 

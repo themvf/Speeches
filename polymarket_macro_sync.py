@@ -25,7 +25,13 @@ import polymarket_pilot as pilot
 from source_health import record_source_health
 
 SOURCE_KEY = "polymarket_macro_sync"
-DISCOVERY_TAGS = ("fed", "cpi-release", "nfp", "gdp")
+# Polymarket has drifted its tag taxonomy since this was first built (2026-07-16):
+# "Unemployment Rate" events dropped the "nfp" tag entirely around May 2026 (now tagged
+# "unemployment" instead), and "How many jobs added" events inconsistently carry "nfp"
+# month to month (now tagged "jobs-report"). "nfp" is kept for older/back-compat events;
+# "jobs-report"/"unemployment" are the tags actually carried by current live events
+# (verified live against gamma-api.polymarket.com 2026-08-17).
+DISCOVERY_TAGS = ("fed", "cpi-release", "nfp", "jobs-report", "unemployment", "gdp")
 COHORT_MIN_EVENTS = 10
 GENERALIST_MIN_EVENTS = 20
 GENERALIST_MIN_COHORTS = 3

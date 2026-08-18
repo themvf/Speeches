@@ -10,12 +10,20 @@ import type {
 const GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events";
 export const POLYMARKET_MACRO_CACHE_SECONDS = 5 * 60;
 
+// Polymarket has drifted its tag taxonomy since this was first built (2026-07-16):
+// "Unemployment Rate" events dropped the "nfp" tag entirely around May 2026 (now tagged
+// "unemployment" instead), and "How many jobs added" events inconsistently carry "nfp"
+// month to month (now tagged "jobs-report"). "nfp" is kept for older/back-compat events;
+// "jobs-report"/"unemployment" are the tags actually carried by current live events
+// (verified live against gamma-api.polymarket.com 2026-08-17).
 const DISCOVERY_TAGS = [
   "fed",
   "cpi-release",
   "inflation",
   "gdp",
   "nfp",
+  "jobs-report",
+  "unemployment",
   "freddie-mac",
   "economic-policy",
 ] as const;
