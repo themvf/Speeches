@@ -29,6 +29,10 @@ const COHORT_LABELS: Record<MacroSharpCohort, string> = {
   headline_cpi: "Headline CPI",
   core_cpi: "Core CPI",
   us_gdp: "GDP",
+  core_pce: "Core PCE",
+  ism_manufacturing: "ISM Manufacturing",
+  ism_services: "ISM Services",
+  ppi: "PPI",
   macro_generalist: "Macro Generalist",
 };
 

@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """Recurring US macro Polymarket ingestion and cohort-specific wallet scoring.
 
-Tracks six repeatable release families: FOMC decisions, nonfarm payrolls,
-unemployment, headline CPI, core CPI, and US GDP. All brackets belonging to
-one release are collapsed to one wallet observation. Entry cost is bucketed
-relative to the scheduled release so post-print scalpers never become macro
-sharps. Public Polymarket APIs only; DATABASE_URL is the sole secret.
+Tracks repeatable release families: FOMC decisions, nonfarm payrolls,
+unemployment, headline CPI, core CPI, US GDP, core PCE, ISM Manufacturing
+PMI, ISM Services PMI, and PPI. All brackets belonging to one release are
+collapsed to one wallet observation. Entry cost is bucketed relative to the
+scheduled release so post-print scalpers never become macro sharps. Public
+Polymarket APIs only; DATABASE_URL is the sole secret.
+
+Note: weekly initial jobless claims was evaluated and deliberately excluded
+(SEC wallet-intelligence OKR, 2026-08-18) - Polymarket ran a "How many
+jobless claims during the week ending X?" bracket series only from Feb-Mar
+2026 before discontinuing it (verified live against gamma-api.polymarket.com;
+zero events of any jobless-claims title format exist after 2026-03-05), so
+there is currently nothing live to track for that cohort.
 """
 
 from __future__ import annotations
@@ -31,7 +39,7 @@ SOURCE_KEY = "polymarket_macro_sync"
 # month to month (now tagged "jobs-report"). "nfp" is kept for older/back-compat events;
 # "jobs-report"/"unemployment" are the tags actually carried by current live events
 # (verified live against gamma-api.polymarket.com 2026-08-17).
-DISCOVERY_TAGS = ("fed", "cpi-release", "nfp", "jobs-report", "unemployment", "gdp")
+DISCOVERY_TAGS = ("fed", "cpi-release", "nfp", "jobs-report", "unemployment", "gdp", "pce", "ism", "ppi")
 COHORT_MIN_EVENTS = 10
 GENERALIST_MIN_EVENTS = 20
 GENERALIST_MIN_COHORTS = 3
@@ -46,6 +54,10 @@ COHORT_META = {
     "headline_cpi": ("Headline CPI Sharp", "monthly"),
     "core_cpi": ("Core CPI Sharp", "monthly"),
     "us_gdp": ("GDP Sharp", "quarterly"),
+    "core_pce": ("Core PCE Sharp", "monthly"),
+    "ism_manufacturing": ("ISM Manufacturing Sharp", "monthly"),
+    "ism_services": ("ISM Services Sharp", "monthly"),
+    "ppi": ("PPI Sharp", "monthly"),
     "macro_generalist": ("Macro Generalist", "cross-cohort"),
 }
 EASTERN = ZoneInfo("America/New_York")
@@ -92,19 +104,36 @@ def classify_macro_event(title: str, release_at: Optional[datetime]) -> Optional
         cohort = "core_cpi"
     elif re.match(r"^US GDP growth in Q[1-4] 20\d{2}\??$", normalized, re.I):
         cohort = "us_gdp"
+    elif re.match(r"^Core PCE (?:MoM|YoY) - .+$", normalized, re.I):
+        cohort = "core_pce"
+    elif re.match(r"^ISM Manufacturing PMI - .+$", normalized, re.I):
+        cohort = "ism_manufacturing"
+    elif re.match(r"^ISM Services PMI - .+$", normalized, re.I):
+        cohort = "ism_services"
+    elif re.match(r"^(?:Producer Price Index \(PPI\)|PPI) YoY - .+$", normalized, re.I):
+        cohort = "ppi"
     if not cohort:
         return None
     event_key = _period_key(cohort, normalized, release_at)
     return (cohort, event_key) if event_key else None
 
 
+_RELEASE_TIME_ET = {
+    "fed_decision": (14, 0),  # FOMC statement
+    "ism_manufacturing": (10, 0),  # ISM Report on Business
+    "ism_services": (10, 0),  # ISM Report on Business
+}
+
+
 def scheduled_release_at(cohort: str, value: Optional[datetime]) -> Optional[datetime]:
     """Gamma endDate is generally date-only midnight. Normalize it to the
     official US release time so entry buckets do not label same-day,
-    pre-release trading as post-release."""
+    pre-release trading as post-release. Default (8:30am ET) covers the BLS/BEA
+    releases (payrolls, unemployment, CPI, PCE, PPI); ISM's own Report on
+    Business goes out at 10:00am ET, not 8:30, so it needs its own entry."""
     if not value:
         return None
-    hour, minute = (14, 0) if cohort == "fed_decision" else (8, 30)
+    hour, minute = _RELEASE_TIME_ET.get(cohort, (8, 30))
     local = datetime(value.year, value.month, value.day, hour, minute, tzinfo=EASTERN)
     return local.astimezone(UTC)
 

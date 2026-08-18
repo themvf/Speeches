@@ -13,6 +13,10 @@ const COHORTS: Array<{ id: MacroSharpCohort; label: string; cadence: string }> =
   { id: "headline_cpi", label: "Headline CPI Sharp", cadence: "monthly" },
   { id: "core_cpi", label: "Core CPI Sharp", cadence: "monthly" },
   { id: "us_gdp", label: "GDP Sharp", cadence: "quarterly" },
+  { id: "core_pce", label: "Core PCE Sharp", cadence: "monthly" },
+  { id: "ism_manufacturing", label: "ISM Manufacturing Sharp", cadence: "monthly" },
+  { id: "ism_services", label: "ISM Services Sharp", cadence: "monthly" },
+  { id: "ppi", label: "PPI Sharp", cadence: "monthly" },
   { id: "macro_generalist", label: "Macro Generalist", cadence: "cross-cohort" },
 ];
 

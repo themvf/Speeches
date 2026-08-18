@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import polymarket_macro_sync as macro
 
 
-def test_classifies_six_recurring_release_families_and_normalizes_keys():
+def test_classifies_ten_recurring_release_families_and_normalizes_keys():
     release = datetime(2026, 8, 7, tzinfo=UTC)
     cases = {
         "Fed Decision in July?": ("fed_decision", "fed_decision:2026-07"),
@@ -12,16 +12,31 @@ def test_classifies_six_recurring_release_families_and_normalizes_keys():
         "July Inflation US - Annual": ("headline_cpi", "headline_cpi:2026-07"),
         "Core CPI MoM - July 2026": ("core_cpi", "core_cpi:2026-07"),
         "US GDP growth in Q2 2026?": ("us_gdp", "us_gdp:2026-Q2"),
+        "Core PCE YoY - July 2026": ("core_pce", "core_pce:2026-07"),
+        "Core PCE MoM - July 2026": ("core_pce", "core_pce:2026-07"),
+        "ISM Manufacturing PMI - July 2026": ("ism_manufacturing", "ism_manufacturing:2026-07"),
+        "ISM Services PMI - July 2026": ("ism_services", "ism_services:2026-07"),
+        "PPI YoY - July 2026": ("ppi", "ppi:2026-07"),
+        "Producer Price Index (PPI) YoY - July 2026": ("ppi", "ppi:2026-07"),
     }
     for title, expected in cases.items():
         assert macro.classify_macro_event(title, release) == expected
     assert macro.classify_macro_event("US recession by end of 2026?", release) is None
+    # Discontinued Feb-Mar 2026 series (verified live 2026-08-18); must never
+    # silently start matching a different, unrelated title shape.
+    assert macro.classify_macro_event("How many jobless claims during the week ending Feb 7?", release) is None
 
 
 def test_release_time_uses_official_eastern_publication_time():
     date_only = datetime(2026, 7, 29, tzinfo=UTC)
     assert macro.scheduled_release_at("fed_decision", date_only) == datetime(2026, 7, 29, 18, 0, tzinfo=UTC)
     assert macro.scheduled_release_at("headline_cpi", date_only) == datetime(2026, 7, 29, 12, 30, tzinfo=UTC)
+    # ISM's Report on Business goes out at 10:00am ET, not the 8:30am ET
+    # default shared by the BLS/BEA releases (payrolls/CPI/PCE/PPI/GDP).
+    assert macro.scheduled_release_at("ism_manufacturing", date_only) == datetime(2026, 7, 29, 14, 0, tzinfo=UTC)
+    assert macro.scheduled_release_at("ism_services", date_only) == datetime(2026, 7, 29, 14, 0, tzinfo=UTC)
+    assert macro.scheduled_release_at("core_pce", date_only) == datetime(2026, 7, 29, 12, 30, tzinfo=UTC)
+    assert macro.scheduled_release_at("ppi", date_only) == datetime(2026, 7, 29, 12, 30, tzinfo=UTC)
 
 
 def _fill(wallet, release, hours_before, outcome="Yes", price=0.5, size=10):

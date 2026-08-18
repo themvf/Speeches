@@ -605,6 +605,10 @@ export type MacroSharpCohort =
   | "headline_cpi"
   | "core_cpi"
   | "us_gdp"
+  | "core_pce"
+  | "ism_manufacturing"
+  | "ism_services"
+  | "ppi"
   | "macro_generalist";
 
 export type MacroSharpArchetype = "early_sharp" | "release_scalper" | "longshot" | "unclassified";
