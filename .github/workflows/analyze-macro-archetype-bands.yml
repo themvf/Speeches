@@ -1,0 +1,43 @@
+name: Analyze Macro Archetype Bands
+
+# Read-only diagnostic, no schedule: reports how the live macro wallet
+# population splits across classify_wallet's named archetypes vs. the
+# "dead zone" (enough sample + timing coverage, matches no named archetype)
+# vs. genuinely-unseasoned wallets. Re-run manually after a backfill or
+# after enough time has passed for cohorts to season further; never writes
+# to the database.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Analyze archetype bands
+        run: |
+          set -euo pipefail
+          python analyze_macro_archetype_bands.py | tee macro_archetype_bands_report.json
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macro-archetype-bands-report-${{ github.run_id }}
+          path: macro_archetype_bands_report.json
+          if-no-files-found: ignore

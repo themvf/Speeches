@@ -272,8 +272,18 @@ def classify_wallet(events: int, wins: int, pnl: float, cost: float, predictive_
     return "unclassified"
 
 
-def recompute_wallet_stats() -> Dict[str, int]:
-    results = neon_feeds.get_polymarket_macro_wallet_results()
+def group_macro_wallet_results(results: List[Dict[str, Any]], include_unqualified_generalist: bool = False) -> List[Dict[str, Any]]:
+    """Aggregate raw per-event settlement rows into one row per (wallet, cohort),
+    plus a synthetic "macro_generalist" row per wallet across cohorts. Shared by
+    the write path (recompute_wallet_stats) and read-only diagnostics (e.g.
+    analyze_macro_archetype_bands.py) so the two can never drift apart on what
+    "a wallet's stats for a cohort" means.
+
+    include_unqualified_generalist=True skips the GENERALIST_MIN_EVENTS/
+    GENERALIST_MIN_COHORTS gate on generalist rows - diagnostics want to see
+    the full population including wallets that don't (yet) qualify as
+    generalists, not just the ones that already do.
+    """
     groups: Dict[Tuple[str, str], Dict[str, Any]] = {}
     cohorts_by_wallet: Dict[str, set] = defaultdict(set)
     for result in results:
@@ -291,11 +301,18 @@ def recompute_wallet_stats() -> Dict[str, int]:
             if result["name"]: row["name"] = str(result["name"])
     rows = []
     for (wallet, cohort), value in groups.items():
-        if cohort == "macro_generalist" and (value["events"] < GENERALIST_MIN_EVENTS or len(cohorts_by_wallet[wallet]) < GENERALIST_MIN_COHORTS):
+        if (cohort == "macro_generalist" and not include_unqualified_generalist
+                and (value["events"] < GENERALIST_MIN_EVENTS or len(cohorts_by_wallet[wallet]) < GENERALIST_MIN_COHORTS)):
             continue
         entry = sum(value["entries"]) / len(value["entries"]) if value["entries"] else None
         archetype = classify_wallet(value["events"], value["wins"], value["pnl"], value["cost"], value["predictive_cost"], value["timing_cost"], entry, cohort)
         rows.append({"wallet": wallet, "cohort": cohort, "name": value["name"], **{k: value[k] for k in ("events", "wins", "pnl", "cost", "predictive_cost", "timing_cost")}, "win_entry_avg": entry, "archetype": archetype})
+    return rows
+
+
+def recompute_wallet_stats() -> Dict[str, int]:
+    results = neon_feeds.get_polymarket_macro_wallet_results()
+    rows = group_macro_wallet_results(results)
     return {"wallets": neon_feeds.upsert_polymarket_macro_wallet_stats(rows), "results": len(results)}
 
 
