@@ -25,6 +25,7 @@ Usage: python build_industry_config.py
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -425,60 +426,153 @@ def group_by_industry(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return industries
 
 
+def classify_ticker(ticker: str, financials: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """One ticker's full record: CIK/SIC lookup + submissions fetch (one
+    request) + the pre-fetched bulk financials merged in. Returns None if the
+    ticker can't be resolved/reached (caller decides whether to skip it or
+    fall back to a last-known-good record). Extracted out of main() so the
+    filing-watch targeted-refresh path (industry_filing_watch.py) can call it
+    for just the handful of tickers that actually filed something new,
+    instead of paying this per-ticker request for the whole universe."""
+    from edgar import Company
+
+    try:
+        company = Company(ticker)
+        cik = int(company.cik)
+    except Exception:
+        return None
+    try:
+        time.sleep(THROTTLE_S)
+        data = _fetch_json(SUBMISSIONS_URL.format(cik=cik))
+    except Exception:
+        return None
+    record: Dict[str, Any] = {
+        "ticker": ticker,
+        "name": str(data.get("name") or company.name or ticker).title(),
+        "cik": str(cik),
+        "sic": str(data.get("sic") or ""),
+        "sic_description": str(data.get("sicDescription") or ""),
+    }
+    sub_industry = SUB_INDUSTRY_BY_TICKER.get(ticker)
+    if sub_industry:
+        record["subIndustry"] = sub_industry
+    record.update(financials.get(str(cik), {}))
+    # Resolve the revenue/profit accession number to an actual filing date
+    # via this same submissions payload (already in hand, zero extra
+    # requests) - "periodEnd" is the quarter the figure covers, "filed" is
+    # when the company actually submitted it, and those can differ by weeks.
+    accn = record.pop("accn", None)
+    filed = resolve_filed_date(data, accn)
+    if filed:
+        record["filed"] = filed
+    # Foreign private issuers (20-F/40-F filers, e.g. TSM) report ORDINARY
+    # shares while the US listing trades as ADRs at a different ratio, so
+    # shares x US price overstates market cap badly (TSM came out at
+    # $10.6T). Only keep the share count for domestic 10-K/10-Q filers;
+    # everyone else shows "-" rather than a wrong number.
+    forms = set(data.get("filings", {}).get("recent", {}).get("form", []))
+    if not ({"10-K", "10-Q"} & forms):
+        record.pop("sharesOutstanding", None)
+    return record
+
+
+def refresh_existing_ticker_financials(entry: Dict[str, Any], financials: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """For a ticker NOT targeted this run: keep its existing sic/name/cik/
+    filed as last-known-good, but opportunistically refresh revenue/profit/
+    expenses/periodEnd from this run's bulk frames fetch - that data is free
+    for every company on every run (the frames endpoint returns everyone at
+    once), so there's no reason to leave it stale just because this ticker
+    didn't file something new. Only overwrites a field when the fresh fetch
+    actually has a value; never regresses a known figure to null just because
+    a given quarter fell outside this run's frame window.
+
+    sharesOutstanding is handled specially: it's only ever refreshed if the
+    entry already carries one, since a foreign-issuer suppression (see
+    classify_ticker) can't be re-derived here without the per-ticker
+    submissions fetch this function exists to avoid."""
+    updated = dict(entry)
+    fin = financials.get(str(entry.get("cik") or ""), {})
+    for key in ("revenue", "profit", "expenses", "periodEnd"):
+        if fin.get(key) is not None:
+            updated[key] = fin[key]
+    if "sharesOutstanding" in entry and fin.get("sharesOutstanding") is not None:
+        updated["sharesOutstanding"] = fin["sharesOutstanding"]
+    sub_industry = SUB_INDUSTRY_BY_TICKER.get(entry["ticker"])
+    if sub_industry:
+        updated["subIndustry"] = sub_industry
+    else:
+        updated.pop("subIndustry", None)
+    return updated
+
+
+def _load_existing_records(config_path: str) -> Dict[str, Dict[str, Any]]:
+    """Flattens the committed, already-grouped industry-config.json back into
+    ticker -> record (re-attaching sic/sic_description from the parent
+    industry, since those live at the group level in the committed shape but
+    group_by_industry expects them per-record)."""
+    with open(config_path, encoding="utf-8") as handle:
+        existing = json.load(handle)
+    out: Dict[str, Dict[str, Any]] = {}
+    for industry in existing.get("industries", []):
+        for t in industry.get("tickers", []):
+            merged = dict(t)
+            merged["sic"] = industry.get("sic", "")
+            merged["sic_description"] = industry.get("label", "")
+            out[t["ticker"]] = merged
+    return out
+
+
 def main() -> int:
-    from edgar import Company, set_identity
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--tickers", default="",
+        help="Comma/space-separated tickers to reclassify via a fresh EDGAR submissions lookup "
+             "(the filing-watch path - a new 10-Q should cost one company's request, not the "
+             "whole universe's). Every OTHER ticker already in the committed config gets its "
+             "revenue/profit/expenses/periodEnd/shares opportunistically refreshed for free from "
+             "this run's bulk XBRL frames fetch, with zero extra requests. Empty (default) = full "
+             "rebuild of the whole UNIVERSE, same as before this flag existed.",
+    )
+    args = parser.parse_args()
+    targeted = [t for t in args.tickers.replace(",", " ").split() if t]
+
+    from edgar import set_identity
     set_identity("joshbandes@gmail.com")
 
     financials = build_financials()
     print(f"financial records from frames: {len(financials)}\n", file=sys.stderr)
 
-    records: List[Dict[str, Any]] = []
     skipped: List[str] = []
-    for i, ticker in enumerate(UNIVERSE, 1):
-        try:
-            company = Company(ticker)
-            cik = int(company.cik)
-        except Exception:
-            skipped.append(ticker)
-            continue
-        try:
-            time.sleep(THROTTLE_S)
-            data = _fetch_json(SUBMISSIONS_URL.format(cik=cik))
-        except Exception:
-            skipped.append(ticker)
-            continue
-        record: Dict[str, Any] = {
-            "ticker": ticker,
-            "name": str(data.get("name") or company.name or ticker).title(),
-            "cik": str(cik),
-            "sic": str(data.get("sic") or ""),
-            "sic_description": str(data.get("sicDescription") or ""),
-        }
-        sub_industry = SUB_INDUSTRY_BY_TICKER.get(ticker)
-        if sub_industry:
-            record["subIndustry"] = sub_industry
-        record.update(financials.get(str(cik), {}))
-        # Resolve the revenue/profit accession number to an actual filing
-        # date via this same submissions payload (already in hand, zero extra
-        # requests) - "periodEnd" is the quarter the figure covers, "filed" is
-        # when the company actually submitted it, and those can differ by
-        # weeks (peers on the same fiscal quarter can still have filed on
-        # very different dates).
-        accn = record.pop("accn", None)
-        filed = resolve_filed_date(data, accn)
-        if filed:
-            record["filed"] = filed
-        # Foreign private issuers (20-F/40-F filers, e.g. TSM) report ORDINARY
-        # shares while the US listing trades as ADRs at a different ratio, so
-        # shares x US price overstates market cap badly (TSM came out at
-        # $10.6T). Only keep the share count for domestic 10-K/10-Q filers;
-        # everyone else shows "-" rather than a wrong number.
-        forms = set(data.get("filings", {}).get("recent", {}).get("form", []))
-        if not ({"10-K", "10-Q"} & forms):
-            record.pop("sharesOutstanding", None)
-        records.append(record)
-        if i % 50 == 0:
-            print(f"  {i}/{len(UNIVERSE)} classified", file=sys.stderr)
+    if targeted and os.path.exists(OUT_PATH):
+        existing_by_ticker = _load_existing_records(OUT_PATH)
+        unknown = [t for t in targeted if t not in existing_by_ticker]
+        if unknown:
+            print(f"ignoring tickers not in the existing config (need a full rebuild first): {unknown}", file=sys.stderr)
+        records = []
+        reclassified = 0
+        for ticker, entry in existing_by_ticker.items():
+            if ticker in targeted:
+                fresh = classify_ticker(ticker, financials)
+                if fresh is None:
+                    skipped.append(ticker)
+                    records.append(entry)  # keep the last-known-good row rather than dropping it
+                    continue
+                records.append(fresh)
+                reclassified += 1
+            else:
+                records.append(refresh_existing_ticker_financials(entry, financials))
+        print(f"reclassified {reclassified}/{len(targeted)} targeted ticker(s); "
+              f"refreshed financials on {len(records) - reclassified} others", file=sys.stderr)
+    else:
+        records = []
+        for i, ticker in enumerate(UNIVERSE, 1):
+            record = classify_ticker(ticker, financials)
+            if record is None:
+                skipped.append(ticker)
+                continue
+            records.append(record)
+            if i % 50 == 0:
+                print(f"  {i}/{len(UNIVERSE)} classified", file=sys.stderr)
 
     industries = group_by_industry(records)
     with_fin = sum(1 for r in records if r.get("revenue") is not None or r.get("profit") is not None)

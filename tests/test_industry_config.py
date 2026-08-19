@@ -109,6 +109,95 @@ def test_committed_config_sub_industry_coverage_is_complete_for_large_sics():
     assert not missing, f"tickers missing a subIndustry tag: {missing}"
 
 
+def test_refresh_existing_ticker_financials_updates_only_present_fields():
+    entry = {
+        "ticker": "ABC", "name": "Abc Co", "cik": "1",
+        "revenue": 100.0, "profit": 20.0, "expenses": 80.0,
+        "periodEnd": "2026-03-31", "filed": "2026-04-15",
+    }
+    # Fresh frames data has a newer quarter for revenue/profit/expenses, but
+    # nothing for periodEnd's underlying concept this particular run.
+    financials = {"1": {"revenue": 110.0, "profit": 25.0, "expenses": 85.0, "periodEnd": None}}
+    updated = builder.refresh_existing_ticker_financials(entry, financials)
+    assert updated["revenue"] == 110.0
+    assert updated["profit"] == 25.0
+    assert updated["expenses"] == 85.0
+    # periodEnd wasn't in this run's frames fetch - keeps the old value,
+    # doesn't regress to null.
+    assert updated["periodEnd"] == "2026-03-31"
+    # filed is never touched by this path (that's the whole point - it's the
+    # signal that a per-ticker submissions refetch actually happened).
+    assert updated["filed"] == "2026-04-15"
+
+
+def test_refresh_existing_ticker_financials_never_reintroduces_suppressed_shares():
+    # ABC never had sharesOutstanding (e.g. a foreign issuer suppressed by a
+    # prior full classify_ticker() run) - a fresh frames hit for its CIK must
+    # not silently re-add it, since that decision needs the per-ticker forms
+    # check this cheap path deliberately skips.
+    entry = {"ticker": "ABC", "name": "Abc Co", "cik": "1", "revenue": 100.0}
+    financials = {"1": {"revenue": 100.0, "sharesOutstanding": 5_000_000.0}}
+    updated = builder.refresh_existing_ticker_financials(entry, financials)
+    assert "sharesOutstanding" not in updated
+
+
+def test_refresh_existing_ticker_financials_updates_shares_when_already_present():
+    entry = {"ticker": "ABC", "name": "Abc Co", "cik": "1", "sharesOutstanding": 4_000_000.0}
+    financials = {"1": {"sharesOutstanding": 4_100_000.0}}
+    updated = builder.refresh_existing_ticker_financials(entry, financials)
+    assert updated["sharesOutstanding"] == 4_100_000.0
+
+
+def test_load_existing_records_reattaches_sic_from_parent_industry(tmp_path):
+    config_path = tmp_path / "industry-config.json"
+    config_path.write_text(json.dumps({
+        "industries": [
+            {"sic": "7372", "label": "Services-Prepackaged Software", "tickers": [
+                {"ticker": "ABC", "name": "Abc Co", "cik": "1"},
+            ]}
+        ]
+    }))
+    records = builder._load_existing_records(str(config_path))
+    assert records["ABC"]["sic"] == "7372"
+    assert records["ABC"]["sic_description"] == "Services-Prepackaged Software"
+
+
+def test_main_targeted_rebuild_reclassifies_only_given_tickers(tmp_path, monkeypatch):
+    config_path = tmp_path / "industry-config.json"
+    config_path.write_text(json.dumps({
+        "generatedAt": "2026-01-01T00:00:00Z",
+        "industries": [
+            {"sic": "7372", "label": "Old Software Label", "tickers": [
+                {"ticker": "CHANGED", "name": "Changed Co", "cik": "1", "revenue": 100.0},
+                {"ticker": "SAME", "name": "Same Co", "cik": "2", "revenue": 200.0},
+            ]}
+        ],
+    }))
+    monkeypatch.setattr(builder, "OUT_PATH", str(config_path))
+    monkeypatch.setattr(builder, "build_financials", lambda: {
+        "1": {"revenue": 150.0, "profit": None, "expenses": None, "sharesOutstanding": None, "periodEnd": None},
+        "2": {"revenue": 210.0, "profit": None, "expenses": None, "sharesOutstanding": None, "periodEnd": None},
+    })
+
+    def fake_classify(ticker, financials):
+        assert ticker == "CHANGED"
+        return {"ticker": "CHANGED", "name": "Changed Co", "cik": "1", "sic": "9999",
+                "sic_description": "New Label After Rename", "revenue": 150.0}
+
+    monkeypatch.setattr(builder, "classify_ticker", fake_classify)
+    monkeypatch.setattr("sys.argv", ["build_industry_config.py", "--tickers", "CHANGED"])
+
+    assert builder.main() == 0
+    written = json.loads(config_path.read_text())
+    by_ticker = {t["ticker"]: (ind["label"], t) for ind in written["industries"] for t in ind["tickers"]}
+    # The targeted ticker got a fresh classification, including a new label.
+    assert by_ticker["CHANGED"][0] == "New Label After Rename"
+    # The untouched ticker kept its old label/SIC but picked up fresh revenue
+    # from the (free, bulk) financials fetch, with no per-ticker request.
+    assert by_ticker["SAME"][0] == "Old Software Label"
+    assert by_ticker["SAME"][1]["revenue"] == 210.0
+
+
 def test_committed_config_integrity():
     with open(CONFIG_PATH, encoding="utf-8") as handle:
         config = json.load(handle)
