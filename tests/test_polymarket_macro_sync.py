@@ -113,12 +113,38 @@ def test_scan_for_unclassified_macro_events_skips_recognized_and_foreign_and_non
     with patch.object(macro.pilot, "_get", side_effect=[events_open, []]) as mock_get, \
          patch.object(macro.neon_feeds, "upsert_macro_unclassified_events", return_value=["price of dozen eggs"]) as mock_upsert:
         result = macro.scan_for_unclassified_macro_events(pages=1)
-    assert result == ["price of dozen eggs"]
+    # Returns the full candidate row for each newly-seen signature (not just
+    # the bare signature) so a caller (e.g. the discovery-issue notifier) has
+    # a human-readable title/volume/tags without a second lookup.
+    assert result == [{
+        "signature": "price of dozen eggs", "sample_title": "Price of Dozen Eggs in July?",
+        "sample_event_id": "1", "sample_volume": 39177.0, "tags": "macro-indicators",
+    }]
     assert mock_get.call_count == 2  # closed=false page 0, closed=true page 0
     upserted = mock_upsert.call_args.args[0]
     assert len(upserted) == 1
     assert upserted[0]["signature"] == "price of dozen eggs"
     assert upserted[0]["sample_title"] == "Price of Dozen Eggs in July?"
+
+
+def test_write_discovery_issue_files_noop_when_nothing_new(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert macro.write_discovery_issue_files([]) is False
+    assert not (tmp_path / macro._DISCOVERY_ISSUE_TITLE_PATH).exists()
+    assert not (tmp_path / macro._DISCOVERY_ISSUE_BODY_PATH).exists()
+
+
+def test_write_discovery_issue_files_writes_title_and_body(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    events = [{"signature": "jolts job openings", "sample_title": "JOLTS Job Openings — July 2026",
+               "sample_event_id": "1", "sample_volume": 27522.0, "tags": "jolts,macro-indicators"}]
+    assert macro.write_discovery_issue_files(events) is True
+    title = (tmp_path / macro._DISCOVERY_ISSUE_TITLE_PATH).read_text(encoding="utf-8")
+    body = (tmp_path / macro._DISCOVERY_ISSUE_BODY_PATH).read_text(encoding="utf-8")
+    assert "1 new unclassified event" in title
+    assert "JOLTS Job Openings — July 2026" in body
+    assert "27,522" in body
+    assert "jolts,macro-indicators" in body
 
 
 def test_scan_for_unclassified_macro_events_noop_when_nothing_new():

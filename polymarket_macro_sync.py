@@ -29,6 +29,7 @@ import re
 import sys
 from collections import defaultdict
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
@@ -204,15 +205,17 @@ def _unclassified_signature(title: str) -> Optional[str]:
     return None
 
 
-def scan_for_unclassified_macro_events(pages: int = 1) -> List[str]:
+def scan_for_unclassified_macro_events(pages: int = 1) -> List[Dict[str, Any]]:
     """Fetch events under the broad "macro-indicators" tag (open and
     recently-closed) and flag any period-shaped, US-relevant title that
     classify_macro_event doesn't recognize - a new indicator family
     Polymarket added, or an existing one whose title format changed (the
     same class of bug that silently broke unemployment/payrolls discovery
     before this OKR). Persists via neon_feeds, deduped by title family so a
-    still-unrecognized series is flagged once, not every run; returns only
-    the newly-seen signatures."""
+    still-unrecognized series is flagged once, not every run; returns the
+    full candidate rows for only the newly-seen signatures (title/volume/
+    tags included, not just the bare signature) so a caller can render a
+    human-readable notification without a second lookup."""
     candidates: Dict[str, Dict[str, Any]] = {}
     for closed in (False, True):
         for page in range(pages):
@@ -243,7 +246,8 @@ def scan_for_unclassified_macro_events(pages: int = 1) -> List[str]:
                 break
     if not candidates:
         return []
-    return neon_feeds.upsert_macro_unclassified_events(list(candidates.values()))
+    newly_seen = neon_feeds.upsert_macro_unclassified_events(list(candidates.values()))
+    return [candidates[signature] for signature in newly_seen if signature in candidates]
 
 
 def fetch_events(closed: bool, pages: int) -> List[Dict[str, Any]]:
@@ -462,6 +466,50 @@ def run_backfill(max_releases: int, summary: Dict[str, Any]) -> None:
     summary["stats"] = recompute_wallet_stats()
 
 
+_DISCOVERY_ISSUE_TITLE_PATH = "macro_discovery_issue_title.txt"
+_DISCOVERY_ISSUE_BODY_PATH = "macro_discovery_issue_body.md"
+
+
+def write_discovery_issue_files(new_events: List[Dict[str, Any]]) -> bool:
+    """Writes title/body files for a GitHub issue when the discovery scan
+    found something new this run - same title.txt/body.md-then-gh-issue-create
+    handoff run_daily_health_check.py already uses, so the workflow step stays
+    a two-line file check instead of embedding report formatting in YAML.
+    Deliberately its own narrow issue post rather than folding into
+    daily-health-check.yml: that workflow's scheduled runs are gated off by
+    ENABLE_GCS_SNAPSHOT_SCHEDULES (SEC-20 GCS-egress cost work) because it
+    reads full GCS corpus snapshots - this scan is 100% Neon-based and has
+    nothing to do with that cost driver, so it shouldn't wait on that gate.
+    Returns whether the files were written (nothing written when there's
+    nothing new, so the workflow step has nothing to post)."""
+    if not new_events:
+        return False
+    title = f"Macro coverage discovery: {len(new_events)} new unclassified event(s)"
+    lines = [
+        "The macro wallet-intelligence coverage-discovery scan "
+        "(`polymarket_macro_sync.py`'s `scan_for_unclassified_macro_events`) "
+        "found recurring-looking events under Polymarket's `macro-indicators` "
+        "tag that aren't a tracked cohort yet.",
+        "",
+        "| Title | Sample volume | Tags |",
+        "|---|---|---|",
+    ]
+    for event in new_events:
+        volume = float(event.get("sample_volume", 0) or 0)
+        lines.append(f"| {event.get('sample_title', '')} | {volume:,.0f} | {event.get('tags', '')} |")
+    lines += [
+        "",
+        "Add one as a tracked cohort via `classify_macro_event`/`COHORT_META` "
+        "in `polymarket_macro_sync.py` (same shape as the core_pce/"
+        "ism_manufacturing/ism_services/ppi/jolts additions), or leave it - "
+        "this won't be flagged again once acknowledged either way, since "
+        "`polymarket_macro_unclassified_events` dedupes by title family.",
+    ]
+    Path(_DISCOVERY_ISSUE_TITLE_PATH).write_text(title, encoding="utf-8")
+    Path(_DISCOVERY_ISSUE_BODY_PATH).write_text("\n".join(lines), encoding="utf-8")
+    return True
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backfill", action="store_true")
@@ -477,6 +525,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     summary["discovered_count"] = summary.get("active_markets", 0)
     summary["failed_count"] = len(summary["errors"])
     record_source_health(summary)
+    try:
+        summary["discovery_issue_written"] = write_discovery_issue_files(summary.get("new_unclassified_macro_events") or [])
+    except Exception as exc:
+        summary["discovery_issue_written"] = False
+        print(f"Discovery issue file write failed: {exc}", flush=True)
     print(json.dumps(summary, indent=2, default=str))
     return 0 if summary["ok"] else 1
 

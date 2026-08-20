@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: polymarket-macro-sync
@@ -48,10 +49,31 @@ jobs:
           args=()
           if [ "${BACKFILL}" = "true" ]; then args+=(--backfill); fi
           python polymarket_macro_sync.py "${args[@]}" | tee polymarket_macro_sync_summary.json
+      - name: Flag new unclassified macro events
+        # Own narrow issue post, not folded into daily-health-check.yml:
+        # that workflow's scheduled runs are gated off by
+        # ENABLE_GCS_SNAPSHOT_SCHEDULES (SEC-20 GCS-egress cost work) since
+        # it reads full GCS corpus snapshots. This scan is 100% Neon-based
+        # and shouldn't wait on that gate. No-op when nothing new was found
+        # (write_discovery_issue_files only writes the title/body files
+        # when there's something to report).
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f macro_discovery_issue_title.txt ]; then
+            gh issue create \
+              --title "$(cat macro_discovery_issue_title.txt)" \
+              --body-file macro_discovery_issue_body.md
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: polymarket-macro-sync-summary-${{ github.run_id }}
-          path: polymarket_macro_sync_summary.json
+          path: |
+            polymarket_macro_sync_summary.json
+            macro_discovery_issue_title.txt
+            macro_discovery_issue_body.md
           if-no-files-found: ignore
