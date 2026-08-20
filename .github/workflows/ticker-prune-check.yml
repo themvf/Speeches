@@ -2,13 +2,27 @@ name: Ticker Prune Check
 
 # SEC-53 upkeep: weekly check for Industries-universe tickers that are no
 # longer public (acquired/merged/taken private, deregistered, or renamed).
-# Check-only - never edits UNIVERSE in build_industry_config.py directly.
-# Flags candidates into a committed data/ticker_prune_review.json (git-as-store
-# review artifact, same pattern as the KPI Tier C review queue) and opens a
-# GitHub issue only when there's something to look at, so a clean week stays
-# silent. Acting on a flagged row (removing or renaming a ticker in UNIVERSE)
-# stays a manual edit + rerun of build_industry_config.py - a human call, on
-# purpose, for the one part of this that's a real judgment case.
+#
+# Detection (check_stale_tickers.py) flags every candidate into a committed
+# data/ticker_prune_review.json (git-as-store review artifact, same pattern
+# as the KPI Tier C review queue). Only the least ambiguous slice actually
+# gets acted on automatically: apply_ticker_removals.py auto-removes
+# candidates the check itself already classified reason=="deregistered" AND
+# confidence=="high" (a Form 15 filing genuinely on record) - no EDGAR
+# refetch needed for a pure removal, so this stays cheap even though the
+# detection step already did the expensive part.
+#
+# Renames and anything below high confidence stay flag-only, on purpose - a
+# rename means picking the right symbol out of possibly several candidates
+# (a preferred-share suffix, a bankruptcy-flagged ticker, a multi-symbol
+# redomiciliation), and that's exactly the kind of judgment call this
+# workflow does not attempt automatically. See apply_ticker_removals.py's
+# docstring and the 2026-08-20 manual cleanup commit for what that judgment
+# actually looks like when a human (or Claude, on request) does it.
+#
+# The issue only opens when there's something worth a look: still-pending
+# candidates, or a summary of what got auto-removed this run. A clean,
+# nothing-happened week stays silent.
 
 on:
   schedule:
@@ -47,21 +61,37 @@ jobs:
           set -euo pipefail
           python check_stale_tickers.py
 
-      - name: Commit review file
+      - name: Apply high-confidence deregistrations
+        id: apply
+        run: |
+          set -euo pipefail
+          APPLIED=$(python3 apply_ticker_removals.py | tail -1)
+          echo "applied=$APPLIED" >> "$GITHUB_OUTPUT"
+          echo "Auto-removed this run: [$APPLIED]"
+
+      - name: Commit changes
         run: |
           set -euo pipefail
           git config user.name "ticker-prune-check[bot]"
           git config user.email "actions@github.com"
-          git add data/ticker_prune_review.json
+          git add data/ticker_prune_review.json build_industry_config.py apps/web/lib/server/industry-config.json industry_state.json
           if git diff --cached --quiet; then
             echo "nothing to commit (no change from last check)"; exit 0
           fi
-          git commit -m "Ticker prune check: weekly Industries-universe scan (SEC-53)"
+          APPLIED="${{ steps.apply.outputs.applied }}"
+          if [ -n "$APPLIED" ]; then
+            MSG="Ticker prune: auto-removed deregistered issuer(s): $APPLIED (SEC-53)"
+          else
+            MSG="Ticker prune check: weekly Industries-universe scan (SEC-53)"
+          fi
+          git commit -m "$MSG"
           git pull --rebase origin main
           git push origin HEAD:main
 
       - name: Build issue summary
         id: summary
+        env:
+          APPLIED: ${{ steps.apply.outputs.applied }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -69,39 +99,55 @@ jobs:
           with open("data/ticker_prune_review.json", encoding="utf-8") as f:
               review = json.load(f)
           candidates = review["candidates"]
+          applied = [t for t in os.environ.get("APPLIED", "").split() if t]
           gh_out = os.environ["GITHUB_OUTPUT"]
-          if not candidates:
+          if not candidates and not applied:
               with open(gh_out, "a", encoding="utf-8") as f:
-                  f.write("has_candidates=false\n")
+                  f.write("has_news=false\n")
               raise SystemExit(0)
-          lines = [
-              f"Checked {review['checkedCount']} tickers, flagged {review['flaggedCount']}.",
-              "",
-              "| Ticker | Reason | Confidence | Suggested action | Evidence |",
-              "|---|---|---|---|---|",
-          ]
-          for c in sorted(candidates, key=lambda c: (c["confidence"] != "high", c["ticker"])):
-              action = f"rename to {c['suggestedNewTicker']}" if c.get("suggestedNewTicker") else (
-                  "remove from UNIVERSE" if c["reason"] in ("deregistered", "cik_not_found") else "review manually"
-              )
-              yahoo = "" if "yahooQuoteAlive" not in c else (" (Yahoo quote dead too)" if not c["yahooQuoteAlive"] else "")
-              lines.append(f"| {c['ticker']} | {c['reason']} | {c['confidence']} | {action} | {c['evidence']}{yahoo} |")
-          lines.append("")
-          lines.append("Full detail in `data/ticker_prune_review.json`. Acting on a row means hand-editing "
-                        "`UNIVERSE` in `build_industry_config.py` (remove, or swap to the suggested ticker for "
-                        "renames), then rerunning `python build_industry_config.py` and committing the refreshed "
-                        "`industry-config.json`.")
+
+          lines = []
+          if applied:
+              lines += [
+                  f"**Auto-removed {len(applied)} deregistered issuer(s) this run** (Form 15 on record, "
+                  "high confidence - no review needed): " + ", ".join(sorted(applied)),
+                  "",
+              ]
+          if candidates:
+              lines += [
+                  f"**{len(candidates)} candidate(s) still need a manual look** "
+                  f"(out of {review['checkedCount']} tickers checked):",
+                  "",
+                  "| Ticker | Reason | Confidence | Suggested action | Evidence |",
+                  "|---|---|---|---|---|",
+              ]
+              for c in sorted(candidates, key=lambda c: (c["confidence"] != "high", c["ticker"])):
+                  action = f"rename to {c['suggestedNewTicker']}" if c.get("suggestedNewTicker") else "review manually"
+                  yahoo = "" if "yahooQuoteAlive" not in c else (" (Yahoo quote dead too)" if not c["yahooQuoteAlive"] else "")
+                  lines.append(f"| {c['ticker']} | {c['reason']} | {c['confidence']} | {action} | {c['evidence']}{yahoo} |")
+              lines += [
+                  "",
+                  "Full detail in `data/ticker_prune_review.json`. Acting on a row means hand-editing "
+                  "`UNIVERSE` (or `SUB_INDUSTRY_GROUPS`, if tagged) in `build_industry_config.py`, then "
+                  "rerunning `python build_industry_config.py` and committing the refreshed "
+                  "`industry-config.json` - renames especially need the target symbol individually verified "
+                  "against EDGAR's `formerNames`/`tickers` fields first (see apply_ticker_removals.py's "
+                  "docstring for why this stays manual).",
+              ]
+          else:
+              lines.append("Nothing else pending - the auto-removal above cleared everything this run.")
+
           with open("ticker_prune_body.md", "w", encoding="utf-8") as f:
               f.write("\n".join(lines))
           with open(gh_out, "a", encoding="utf-8") as f:
-              f.write("has_candidates=true\n")
+              f.write("has_news=true\n")
           PY
 
       - name: Open GitHub issue
-        if: steps.summary.outputs.has_candidates == 'true'
+        if: steps.summary.outputs.has_news == 'true'
         run: |
           gh issue create \
-            --title "Ticker prune check: $(python3 -c "import json; print(json.load(open('data/ticker_prune_review.json'))['flaggedCount'])") candidate(s) flagged" \
+            --title "Ticker prune check: $(python3 -c "import json; print(json.load(open('data/ticker_prune_review.json'))['flaggedCount'])") pending, $(echo "${{ steps.apply.outputs.applied }}" | wc -w) auto-removed" \
             --body-file ticker_prune_body.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
