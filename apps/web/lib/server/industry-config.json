@@ -1,7 +1,7 @@
 {
- "generatedAt": "2026-08-20T15:58:27Z",
+ "generatedAt": "2026-08-20T16:37:35Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
- "tickerCount": 917,
+ "tickerCount": 889,
  "industries": [
   {
    "sic": "7372",
@@ -41,12 +41,6 @@
      "periodEnd": "2026-01-31",
      "filed": "2026-03-11",
      "subIndustry": "AI, Automation & Robotics Software"
-    },
-    {
-     "ticker": "ANSS",
-     "name": "Ansys Inc",
-     "cik": "1013462",
-     "subIndustry": "Design & Engineering Software"
     },
     {
      "ticker": "ASAN",
@@ -132,17 +126,6 @@
      "subIndustry": "Design & Engineering Software"
     },
     {
-     "ticker": "CFLT",
-     "name": "Confluent, Inc.",
-     "cik": "1699838",
-     "revenue": 298524000.0,
-     "profit": -66504000.0,
-     "expenses": 365028000.0,
-     "periodEnd": "2025-09-30",
-     "filed": "2025-10-27",
-     "subIndustry": "Cloud Infrastructure & DevOps"
-    },
-    {
      "ticker": "CHKP",
      "name": "Check Point Software Technologies Ltd",
      "cik": "1015922",
@@ -180,12 +163,6 @@
      "periodEnd": "2026-03-31",
      "filed": "2026-05-08",
      "subIndustry": "Cloud Infrastructure & DevOps"
-    },
-    {
-     "ticker": "CYBR",
-     "name": "Cyberark Software Ltd.",
-     "cik": "1598110",
-     "subIndustry": "Cybersecurity"
     },
     {
      "ticker": "DBX",
@@ -242,18 +219,6 @@
      "expenses": 248507000.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-05-05",
-     "subIndustry": "Gaming & Interactive Media"
-    },
-    {
-     "ticker": "EA",
-     "name": "Electronic Arts Inc.",
-     "cik": "712515",
-     "revenue": 1901000000.0,
-     "profit": 88000000.0,
-     "expenses": 1813000000.0,
-     "sharesOutstanding": 250751484.0,
-     "periodEnd": "2025-12-31",
-     "filed": "2026-02-03",
      "subIndustry": "Gaming & Interactive Media"
     },
     {
@@ -553,23 +518,6 @@
      "periodEnd": "2026-03-31",
      "filed": "2026-05-11",
      "subIndustry": "AI, Automation & Robotics Software"
-    },
-    {
-     "ticker": "SPLK",
-     "name": "Splunk Inc",
-     "cik": "1353283",
-     "subIndustry": "Cloud Infrastructure & DevOps"
-    },
-    {
-     "ticker": "SQ",
-     "name": "Block, Inc.",
-     "cik": "1512673",
-     "revenue": 6056847000.0,
-     "profit": -308681000.0,
-     "expenses": 6365528000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07",
-     "subIndustry": "Ecommerce & Fintech Platforms"
     },
     {
      "ticker": "SSNC",
@@ -2507,6 +2455,216 @@
    ]
   },
   {
+   "sic": "6199",
+   "label": "Finance Services",
+   "tickers": [
+    {
+     "ticker": "AXP",
+     "name": "American Express Co",
+     "cik": "4962",
+     "revenue": 10517000000.0,
+     "profit": 2971000000.0,
+     "expenses": 7546000000.0,
+     "sharesOutstanding": 682326443.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-23",
+     "subIndustry": "Card Networks & Payments"
+    },
+    {
+     "ticker": "BTBT",
+     "name": "Bit Digital, Inc",
+     "cik": "1710350",
+     "revenue": 27924756.0,
+     "profit": -146669036.0,
+     "expenses": 174593792.0,
+     "sharesOutstanding": 326577219.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-15",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "CIFR",
+     "name": "Cipher Digital Inc.",
+     "cik": "1819989",
+     "revenue": 34838000.0,
+     "profit": -114316000.0,
+     "expenses": 149154000.0,
+     "sharesOutstanding": 409049197.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-05",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "CLSK",
+     "name": "Cleanspark, Inc.",
+     "cik": "827876",
+     "profit": -378343000.0,
+     "sharesOutstanding": 256608606.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-11",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "COIN",
+     "name": "Coinbase Global, Inc.",
+     "cik": "1679788",
+     "revenue": 1412982000.0,
+     "profit": -394117000.0,
+     "expenses": 1807099000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07",
+     "subIndustry": "Crypto Exchanges & Infrastructure"
+    },
+    {
+     "ticker": "CORZ",
+     "name": "Core Scientific, Inc./Tx",
+     "cik": "1839341",
+     "revenue": 115244000.0,
+     "profit": -347188000.0,
+     "expenses": 462432000.0,
+     "sharesOutstanding": 317885292.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "CRCL",
+     "name": "Circle Internet Group, Inc.",
+     "cik": "1876042",
+     "revenue": 41625000.0,
+     "profit": 55253000.0,
+     "expenses": -13628000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-11",
+     "subIndustry": "Crypto Exchanges & Infrastructure"
+    },
+    {
+     "ticker": "HIVE",
+     "name": "Hive Digital Technologies Ltd.",
+     "cik": "1720424",
+     "revenue": 93111000.0,
+     "profit": -91327000.0,
+     "expenses": 184438000.0,
+     "periodEnd": "2025-12-31",
+     "filed": "2026-02-17",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "HUT",
+     "name": "Hut 8 Corp.",
+     "cik": "1964789",
+     "revenue": 71017000.0,
+     "profit": -219849000.0,
+     "expenses": 290866000.0,
+     "sharesOutstanding": 112594112.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "IREN",
+     "name": "Iren Ltd",
+     "cik": "1878848",
+     "revenue": 144795000.0,
+     "profit": -247827000.0,
+     "expenses": 392622000.0,
+     "sharesOutstanding": 357378674.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-08",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "KEEL",
+     "name": "Keel Infrastructure Corp.",
+     "cik": "1812477",
+     "revenue": 36992000.0,
+     "profit": -145353000.0,
+     "expenses": 182345000.0,
+     "sharesOutstanding": 602851137.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-11",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "MARA",
+     "name": "Mara Holdings, Inc.",
+     "cik": "1507605",
+     "revenue": 17413000.0,
+     "profit": -1262397000.0,
+     "expenses": 1279810000.0,
+     "sharesOutstanding": 381270503.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-11",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "MSTR",
+     "name": "Strategy Inc",
+     "cik": "1050446",
+     "revenue": 124300000.0,
+     "profit": -12542670000.0,
+     "expenses": 12666970000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06",
+     "subIndustry": "Corporate Bitcoin Treasury"
+    },
+    {
+     "ticker": "NU",
+     "name": "Nu Holdings Ltd.",
+     "cik": "1691493",
+     "subIndustry": "Consumer Fintech & Neobanks"
+    },
+    {
+     "ticker": "RIOT",
+     "name": "Riot Platforms, Inc.",
+     "cik": "1167419",
+     "revenue": 167219000.0,
+     "profit": -500477000.0,
+     "expenses": 667696000.0,
+     "sharesOutstanding": 378151230.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-30",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    },
+    {
+     "ticker": "SOFI",
+     "name": "Sofi Technologies, Inc.",
+     "cik": "1818874",
+     "revenue": 129504000.0,
+     "profit": 166731000.0,
+     "expenses": -37227000.0,
+     "sharesOutstanding": 1282741200.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07",
+     "subIndustry": "Consumer Fintech & Neobanks"
+    },
+    {
+     "ticker": "UPST",
+     "name": "Upstart Holdings, Inc.",
+     "cik": "1647639",
+     "revenue": 308214000.0,
+     "profit": -6646000.0,
+     "expenses": 314860000.0,
+     "sharesOutstanding": 95711569.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-05",
+     "subIndustry": "Consumer Fintech & Neobanks"
+    },
+    {
+     "ticker": "WULF",
+     "name": "Terawulf Inc.",
+     "cik": "1083301",
+     "revenue": 34012000.0,
+     "profit": -427634000.0,
+     "expenses": 461646000.0,
+     "sharesOutstanding": 495532645.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-08",
+     "subIndustry": "Bitcoin & Crypto Miners"
+    }
+   ]
+  },
+  {
    "sic": "6021",
    "label": "National Commercial Banks",
    "tickers": [
@@ -2554,18 +2712,6 @@
      "sharesOutstanding": 62797048.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-30",
-     "subIndustry": "Regional & Community Banks"
-    },
-    {
-     "ticker": "CMA",
-     "name": "Comerica Inc",
-     "cik": "28412",
-     "revenue": 187000000.0,
-     "profit": 176000000.0,
-     "expenses": 11000000.0,
-     "sharesOutstanding": 127742643.0,
-     "periodEnd": "2025-09-30",
-     "filed": "2025-10-28",
      "subIndustry": "Regional & Community Banks"
     },
     {
@@ -2681,16 +2827,6 @@
      "subIndustry": "Super-Regional Banks"
     },
     {
-     "ticker": "SNV",
-     "name": "Synovus Financial Corp",
-     "cik": "18349",
-     "profit": 196994000.0,
-     "sharesOutstanding": 138817293.0,
-     "periodEnd": "2025-09-30",
-     "filed": "2025-11-04",
-     "subIndustry": "Regional & Community Banks"
-    },
-    {
      "ticker": "TFC",
      "name": "Truist Financial Corp",
      "cik": "92230",
@@ -2735,424 +2871,6 @@
      "periodEnd": "2026-03-31",
      "filed": "2026-05-07",
      "subIndustry": "Regional & Community Banks"
-    }
-   ]
-  },
-  {
-   "sic": "1311",
-   "label": "Crude Petroleum & Natural Gas",
-   "tickers": [
-    {
-     "ticker": "APA",
-     "name": "Apa Corp",
-     "cik": "1841666",
-     "profit": 446000000.0,
-     "sharesOutstanding": 353470227.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07",
-     "subIndustry": "Large-Cap Diversified E&P"
-    },
-    {
-     "ticker": "AR",
-     "name": "Antero Resources Corp",
-     "cik": "1433270",
-     "revenue": 1945126000.0,
-     "profit": 548213000.0,
-     "expenses": 1396913000.0,
-     "sharesOutstanding": 309836000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-29",
-     "subIndustry": "Natural Gas-Focused E&P"
-    },
-    {
-     "ticker": "CHRD",
-     "name": "Chord Energy Corp",
-     "cik": "1486159",
-     "revenue": 1665635000.0,
-     "profit": 108608000.0,
-     "expenses": 1557027000.0,
-     "sharesOutstanding": 56299183.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07",
-     "subIndustry": "Diversified Mid-Cap E&P"
-    },
-    {
-     "ticker": "CRC",
-     "name": "California Resources Corp",
-     "cik": "1609253",
-     "revenue": 905000000.0,
-     "profit": -711000000.0,
-     "expenses": 1616000000.0,
-     "sharesOutstanding": 88794901.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06",
-     "subIndustry": "Diversified Mid-Cap E&P"
-    },
-    {
-     "ticker": "CTRA",
-     "name": "Coterra Energy Inc.",
-     "cik": "858470",
-     "revenue": 2381000000.0,
-     "profit": 466000000.0,
-     "expenses": 1915000000.0,
-     "sharesOutstanding": 759356619.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06",
-     "subIndustry": "Diversified Mid-Cap E&P"
-    },
-    {
-     "ticker": "DVN",
-     "name": "Devon Energy Corp/De",
-     "cik": "1090012",
-     "revenue": 4508000000.0,
-     "profit": 120000000.0,
-     "expenses": 4388000000.0,
-     "sharesOutstanding": 621000000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06",
-     "subIndustry": "Large-Cap Diversified E&P"
-    },
-    {
-     "ticker": "EOG",
-     "name": "Eog Resources Inc",
-     "cik": "821189",
-     "revenue": 6921000000.0,
-     "profit": 1980000000.0,
-     "expenses": 4941000000.0,
-     "sharesOutstanding": 532628530.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-05",
-     "subIndustry": "Large-Cap Diversified E&P"
-    },
-    {
-     "ticker": "EQT",
-     "name": "Eqt Corp",
-     "cik": "33213",
-     "revenue": 3378736000.0,
-     "profit": 1487229000.0,
-     "expenses": 1891507000.0,
-     "sharesOutstanding": 625478000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-22",
-     "subIndustry": "Natural Gas-Focused E&P"
-    },
-    {
-     "ticker": "EXE",
-     "name": "Expand Energy Corp",
-     "cik": "895126",
-     "revenue": 4397000000.0,
-     "profit": 1159000000.0,
-     "expenses": 3238000000.0,
-     "sharesOutstanding": 239228849.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-28",
-     "subIndustry": "Natural Gas-Focused E&P"
-    },
-    {
-     "ticker": "FANG",
-     "name": "Diamondback Energy, Inc.",
-     "cik": "1539838",
-     "revenue": 4240000000.0,
-     "profit": 25000000.0,
-     "expenses": 4215000000.0,
-     "sharesOutstanding": 281313297.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06",
-     "subIndustry": "Permian Basin E&P"
-    },
-    {
-     "ticker": "MRO",
-     "name": "Marathon Oil Corp",
-     "cik": "101778",
-     "subIndustry": "Diversified Mid-Cap E&P"
-    },
-    {
-     "ticker": "MTDR",
-     "name": "Matador Resources Co",
-     "cik": "1520006",
-     "revenue": 941604000.0,
-     "profit": -35872000.0,
-     "expenses": 977476000.0,
-     "sharesOutstanding": 124249941.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-08",
-     "subIndustry": "Permian Basin E&P"
-    },
-    {
-     "ticker": "MUR",
-     "name": "Murphy Oil Corp",
-     "cik": "717423",
-     "revenue": 732354000.0,
-     "profit": 52986000.0,
-     "expenses": 679368000.0,
-     "sharesOutstanding": 143349576.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06",
-     "subIndustry": "Diversified Mid-Cap E&P"
-    },
-    {
-     "ticker": "OXY",
-     "name": "Occidental Petroleum Corp /De/",
-     "cik": "797468",
-     "revenue": 5569000000.0,
-     "profit": 3359000000.0,
-     "expenses": 2210000000.0,
-     "sharesOutstanding": 994634701.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-05",
-     "subIndustry": "Large-Cap Diversified E&P"
-    },
-    {
-     "ticker": "PR",
-     "name": "Permian Resources Corp",
-     "cik": "1658566",
-     "revenue": 1388146000.0,
-     "profit": 43620000.0,
-     "expenses": 1344526000.0,
-     "sharesOutstanding": 837288124.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07",
-     "subIndustry": "Permian Basin E&P"
-    },
-    {
-     "ticker": "PXD",
-     "name": "Pioneer Natural Resources Co",
-     "cik": "1038357",
-     "subIndustry": "Permian Basin E&P"
-    },
-    {
-     "ticker": "RRC",
-     "name": "Range Resources Corp",
-     "cik": "315852",
-     "revenue": 1067481000.0,
-     "profit": 341630000.0,
-     "expenses": 725851000.0,
-     "sharesOutstanding": 235622250.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-21",
-     "subIndustry": "Natural Gas-Focused E&P"
-    },
-    {
-     "ticker": "SM",
-     "name": "Sm Energy Co",
-     "cik": "893538",
-     "revenue": 1479000000.0,
-     "profit": -335000000.0,
-     "expenses": 1814000000.0,
-     "sharesOutstanding": 239748701.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07",
-     "subIndustry": "Diversified Mid-Cap E&P"
-    }
-   ]
-  },
-  {
-   "sic": "6199",
-   "label": "Finance Services",
-   "tickers": [
-    {
-     "ticker": "AXP",
-     "name": "American Express Co",
-     "cik": "4962",
-     "revenue": 10517000000.0,
-     "profit": 2971000000.0,
-     "expenses": 7546000000.0,
-     "sharesOutstanding": 682326443.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-23",
-     "subIndustry": "Card Networks & Payments"
-    },
-    {
-     "ticker": "BITF",
-     "name": "Keel Infrastructure Corp.",
-     "cik": "1812477",
-     "revenue": 36992000.0,
-     "profit": -145353000.0,
-     "expenses": 182345000.0,
-     "sharesOutstanding": 602851137.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-11",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "BTBT",
-     "name": "Bit Digital, Inc",
-     "cik": "1710350",
-     "revenue": 27924756.0,
-     "profit": -146669036.0,
-     "expenses": 174593792.0,
-     "sharesOutstanding": 326577219.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-15",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "CIFR",
-     "name": "Cipher Digital Inc.",
-     "cik": "1819989",
-     "revenue": 34838000.0,
-     "profit": -114316000.0,
-     "expenses": 149154000.0,
-     "sharesOutstanding": 409049197.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-05",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "CLSK",
-     "name": "Cleanspark, Inc.",
-     "cik": "827876",
-     "profit": -378343000.0,
-     "sharesOutstanding": 256608606.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-11",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "COIN",
-     "name": "Coinbase Global, Inc.",
-     "cik": "1679788",
-     "revenue": 1412982000.0,
-     "profit": -394117000.0,
-     "expenses": 1807099000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07",
-     "subIndustry": "Crypto Exchanges & Infrastructure"
-    },
-    {
-     "ticker": "CORZ",
-     "name": "Core Scientific, Inc./Tx",
-     "cik": "1839341",
-     "revenue": 115244000.0,
-     "profit": -347188000.0,
-     "expenses": 462432000.0,
-     "sharesOutstanding": 317885292.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "CRCL",
-     "name": "Circle Internet Group, Inc.",
-     "cik": "1876042",
-     "revenue": 41625000.0,
-     "profit": 55253000.0,
-     "expenses": -13628000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-11",
-     "subIndustry": "Crypto Exchanges & Infrastructure"
-    },
-    {
-     "ticker": "HIVE",
-     "name": "Hive Digital Technologies Ltd.",
-     "cik": "1720424",
-     "revenue": 93111000.0,
-     "profit": -91327000.0,
-     "expenses": 184438000.0,
-     "periodEnd": "2025-12-31",
-     "filed": "2026-02-17",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "HUT",
-     "name": "Hut 8 Corp.",
-     "cik": "1964789",
-     "revenue": 71017000.0,
-     "profit": -219849000.0,
-     "expenses": 290866000.0,
-     "sharesOutstanding": 112594112.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "IREN",
-     "name": "Iren Ltd",
-     "cik": "1878848",
-     "revenue": 144795000.0,
-     "profit": -247827000.0,
-     "expenses": 392622000.0,
-     "sharesOutstanding": 357378674.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-08",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "MARA",
-     "name": "Mara Holdings, Inc.",
-     "cik": "1507605",
-     "revenue": 17413000.0,
-     "profit": -1262397000.0,
-     "expenses": 1279810000.0,
-     "sharesOutstanding": 381270503.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-11",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "MSTR",
-     "name": "Strategy Inc",
-     "cik": "1050446",
-     "revenue": 124300000.0,
-     "profit": -12542670000.0,
-     "expenses": 12666970000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06",
-     "subIndustry": "Corporate Bitcoin Treasury"
-    },
-    {
-     "ticker": "NU",
-     "name": "Nu Holdings Ltd.",
-     "cik": "1691493",
-     "subIndustry": "Consumer Fintech & Neobanks"
-    },
-    {
-     "ticker": "RIOT",
-     "name": "Riot Platforms, Inc.",
-     "cik": "1167419",
-     "revenue": 167219000.0,
-     "profit": -500477000.0,
-     "expenses": 667696000.0,
-     "sharesOutstanding": 378151230.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-30",
-     "subIndustry": "Bitcoin & Crypto Miners"
-    },
-    {
-     "ticker": "SOFI",
-     "name": "Sofi Technologies, Inc.",
-     "cik": "1818874",
-     "revenue": 129504000.0,
-     "profit": 166731000.0,
-     "expenses": -37227000.0,
-     "sharesOutstanding": 1282741200.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07",
-     "subIndustry": "Consumer Fintech & Neobanks"
-    },
-    {
-     "ticker": "UPST",
-     "name": "Upstart Holdings, Inc.",
-     "cik": "1647639",
-     "revenue": 308214000.0,
-     "profit": -6646000.0,
-     "expenses": 314860000.0,
-     "sharesOutstanding": 95711569.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-05",
-     "subIndustry": "Consumer Fintech & Neobanks"
-    },
-    {
-     "ticker": "WULF",
-     "name": "Terawulf Inc.",
-     "cik": "1083301",
-     "revenue": 34012000.0,
-     "profit": -427634000.0,
-     "expenses": 461646000.0,
-     "sharesOutstanding": 495532645.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-08",
-     "subIndustry": "Bitcoin & Crypto Miners"
     }
    ]
   },
@@ -3740,6 +3458,190 @@
    ]
   },
   {
+   "sic": "1311",
+   "label": "Crude Petroleum & Natural Gas",
+   "tickers": [
+    {
+     "ticker": "APA",
+     "name": "Apa Corp",
+     "cik": "1841666",
+     "profit": 446000000.0,
+     "sharesOutstanding": 353470227.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07",
+     "subIndustry": "Large-Cap Diversified E&P"
+    },
+    {
+     "ticker": "AR",
+     "name": "Antero Resources Corp",
+     "cik": "1433270",
+     "revenue": 1945126000.0,
+     "profit": 548213000.0,
+     "expenses": 1396913000.0,
+     "sharesOutstanding": 309836000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-29",
+     "subIndustry": "Natural Gas-Focused E&P"
+    },
+    {
+     "ticker": "CHRD",
+     "name": "Chord Energy Corp",
+     "cik": "1486159",
+     "revenue": 1665635000.0,
+     "profit": 108608000.0,
+     "expenses": 1557027000.0,
+     "sharesOutstanding": 56299183.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07",
+     "subIndustry": "Diversified Mid-Cap E&P"
+    },
+    {
+     "ticker": "CRC",
+     "name": "California Resources Corp",
+     "cik": "1609253",
+     "revenue": 905000000.0,
+     "profit": -711000000.0,
+     "expenses": 1616000000.0,
+     "sharesOutstanding": 88794901.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06",
+     "subIndustry": "Diversified Mid-Cap E&P"
+    },
+    {
+     "ticker": "DVN",
+     "name": "Devon Energy Corp/De",
+     "cik": "1090012",
+     "revenue": 4508000000.0,
+     "profit": 120000000.0,
+     "expenses": 4388000000.0,
+     "sharesOutstanding": 621000000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06",
+     "subIndustry": "Large-Cap Diversified E&P"
+    },
+    {
+     "ticker": "EOG",
+     "name": "Eog Resources Inc",
+     "cik": "821189",
+     "revenue": 6921000000.0,
+     "profit": 1980000000.0,
+     "expenses": 4941000000.0,
+     "sharesOutstanding": 532628530.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-05",
+     "subIndustry": "Large-Cap Diversified E&P"
+    },
+    {
+     "ticker": "EQT",
+     "name": "Eqt Corp",
+     "cik": "33213",
+     "revenue": 3378736000.0,
+     "profit": 1487229000.0,
+     "expenses": 1891507000.0,
+     "sharesOutstanding": 625478000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-22",
+     "subIndustry": "Natural Gas-Focused E&P"
+    },
+    {
+     "ticker": "EXE",
+     "name": "Expand Energy Corp",
+     "cik": "895126",
+     "revenue": 4397000000.0,
+     "profit": 1159000000.0,
+     "expenses": 3238000000.0,
+     "sharesOutstanding": 239228849.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-28",
+     "subIndustry": "Natural Gas-Focused E&P"
+    },
+    {
+     "ticker": "FANG",
+     "name": "Diamondback Energy, Inc.",
+     "cik": "1539838",
+     "revenue": 4240000000.0,
+     "profit": 25000000.0,
+     "expenses": 4215000000.0,
+     "sharesOutstanding": 281313297.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06",
+     "subIndustry": "Permian Basin E&P"
+    },
+    {
+     "ticker": "MTDR",
+     "name": "Matador Resources Co",
+     "cik": "1520006",
+     "revenue": 941604000.0,
+     "profit": -35872000.0,
+     "expenses": 977476000.0,
+     "sharesOutstanding": 124249941.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-08",
+     "subIndustry": "Permian Basin E&P"
+    },
+    {
+     "ticker": "MUR",
+     "name": "Murphy Oil Corp",
+     "cik": "717423",
+     "revenue": 732354000.0,
+     "profit": 52986000.0,
+     "expenses": 679368000.0,
+     "sharesOutstanding": 143349576.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06",
+     "subIndustry": "Diversified Mid-Cap E&P"
+    },
+    {
+     "ticker": "OXY",
+     "name": "Occidental Petroleum Corp /De/",
+     "cik": "797468",
+     "revenue": 5569000000.0,
+     "profit": 3359000000.0,
+     "expenses": 2210000000.0,
+     "sharesOutstanding": 994634701.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-05",
+     "subIndustry": "Large-Cap Diversified E&P"
+    },
+    {
+     "ticker": "PR",
+     "name": "Permian Resources Corp",
+     "cik": "1658566",
+     "revenue": 1388146000.0,
+     "profit": 43620000.0,
+     "expenses": 1344526000.0,
+     "sharesOutstanding": 837288124.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07",
+     "subIndustry": "Permian Basin E&P"
+    },
+    {
+     "ticker": "RRC",
+     "name": "Range Resources Corp",
+     "cik": "315852",
+     "revenue": 1067481000.0,
+     "profit": 341630000.0,
+     "expenses": 725851000.0,
+     "sharesOutstanding": 235622250.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-21",
+     "subIndustry": "Natural Gas-Focused E&P"
+    },
+    {
+     "ticker": "SM",
+     "name": "Sm Energy Co",
+     "cik": "893538",
+     "revenue": 1479000000.0,
+     "profit": -335000000.0,
+     "expenses": 1814000000.0,
+     "sharesOutstanding": 239748701.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07",
+     "subIndustry": "Diversified Mid-Cap E&P"
+    }
+   ]
+  },
+  {
    "sic": "5812",
    "label": "Retail-Eating  Places",
    "tickers": [
@@ -3938,7 +3840,7 @@
      "filed": "2026-05-05"
     },
     {
-     "ticker": "BK",
+     "ticker": "BNY",
      "name": "Bank Of New York Mellon Corp",
      "cik": "1390777",
      "profit": 1632000000.0,
@@ -4690,114 +4592,6 @@
    ]
   },
   {
-   "sic": "4512",
-   "label": "Air Transportation, Scheduled",
-   "tickers": [
-    {
-     "ticker": "AAL",
-     "name": "American Airlines Group Inc.",
-     "cik": "6201",
-     "revenue": 13912000000.0,
-     "profit": -382000000.0,
-     "expenses": 14294000000.0,
-     "sharesOutstanding": 661385137.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
-    },
-    {
-     "ticker": "ALGT",
-     "name": "Allegiant Travel Co",
-     "cik": "1362468",
-     "revenue": 671799000.0,
-     "profit": 42478000.0,
-     "expenses": 629321000.0,
-     "sharesOutstanding": 18437290.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
-    },
-    {
-     "ticker": "ALK",
-     "name": "Alaska Air Group, Inc.",
-     "cik": "766421",
-     "revenue": 3300000000.0,
-     "profit": -193000000.0,
-     "expenses": 3493000000.0,
-     "sharesOutstanding": 111428978.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
-    },
-    {
-     "ticker": "DAL",
-     "name": "Delta Air Lines, Inc.",
-     "cik": "27904",
-     "revenue": 15854000000.0,
-     "profit": -289000000.0,
-     "expenses": 16143000000.0,
-     "sharesOutstanding": 656994112.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-08"
-    },
-    {
-     "ticker": "HA",
-     "name": "Hawaiian Holdings Inc",
-     "cik": "1172222"
-    },
-    {
-     "ticker": "JBLU",
-     "name": "Jetblue Airways Corp",
-     "cik": "1158463",
-     "revenue": 2240000000.0,
-     "profit": -319000000.0,
-     "expenses": 2559000000.0,
-     "sharesOutstanding": 372018894.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-28"
-    },
-    {
-     "ticker": "LUV",
-     "name": "Southwest Airlines Co",
-     "cik": "92380",
-     "revenue": 7249000000.0,
-     "profit": 227000000.0,
-     "expenses": 7022000000.0,
-     "sharesOutstanding": 488773713.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
-    },
-    {
-     "ticker": "SAVE",
-     "name": "Spirit Aviation Holdings, Inc.",
-     "cik": "1498710",
-     "revenue": 958524000.0,
-     "profit": -317476000.0,
-     "expenses": 1276000000.0,
-     "sharesOutstanding": 28320815.0,
-     "periodEnd": "2025-09-30",
-     "filed": "2025-11-10"
-    },
-    {
-     "ticker": "SKYW",
-     "name": "Skywest Inc",
-     "cik": "793733",
-     "profit": 101692000.0,
-     "sharesOutstanding": 39660281.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-07-24"
-    },
-    {
-     "ticker": "UAL",
-     "name": "United Airlines Holdings, Inc.",
-     "cik": "100517",
-     "revenue": 14608000000.0,
-     "profit": 699000000.0,
-     "expenses": 13909000000.0,
-     "sharesOutstanding": 324569728.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-22"
-    }
-   ]
-  },
-  {
    "sic": "2836",
    "label": "Biological Products, (No Diagnostic Substances)",
    "tickers": [
@@ -4912,208 +4706,6 @@
    ]
   },
   {
-   "sic": "1531",
-   "label": "Operative Builders",
-   "tickers": [
-    {
-     "ticker": "CCS",
-     "name": "Century Communities, Inc.",
-     "cik": "1576940",
-     "revenue": 789673000.0,
-     "profit": 24409000.0,
-     "expenses": 765264000.0,
-     "sharesOutstanding": 28769306.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
-    },
-    {
-     "ticker": "DHI",
-     "name": "Horton D R Inc /De/",
-     "cik": "882184",
-     "revenue": 7558100000.0,
-     "profit": 647900000.0,
-     "expenses": 6910200000.0,
-     "sharesOutstanding": 283579613.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
-    },
-    {
-     "ticker": "GRBK",
-     "name": "Green Brick Partners, Inc.",
-     "cik": "1373670",
-     "revenue": 465488000.0,
-     "profit": 60946000.0,
-     "expenses": 404542000.0,
-     "sharesOutstanding": 43146283.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
-    },
-    {
-     "ticker": "KBH",
-     "name": "Kb Home",
-     "cik": "795266",
-     "revenue": 1077011000.0,
-     "profit": 33424000.0,
-     "expenses": 1043587000.0,
-     "sharesOutstanding": 62648246.0,
-     "periodEnd": "2026-02-28",
-     "filed": "2026-04-09"
-    },
-    {
-     "ticker": "MTH",
-     "name": "Meritage Homes Corp",
-     "cik": "833079",
-     "profit": 55309000.0,
-     "sharesOutstanding": 66702433.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-07-31"
-    },
-    {
-     "ticker": "NVR",
-     "name": "Nvr Inc",
-     "cik": "906163",
-     "revenue": 1881063000.0,
-     "profit": 198359000.0,
-     "expenses": 1682704000.0,
-     "sharesOutstanding": 2699292.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
-    },
-    {
-     "ticker": "PHM",
-     "name": "Pultegroup Inc/Mi/",
-     "cik": "822416",
-     "revenue": 3408572000.0,
-     "profit": 346996000.0,
-     "expenses": 3061576000.0,
-     "sharesOutstanding": 190486353.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
-    },
-    {
-     "ticker": "TMHC",
-     "name": "Taylor Morrison Home Corp",
-     "cik": "1562476",
-     "revenue": 1387092000.0,
-     "profit": 98625000.0,
-     "expenses": 1288467000.0,
-     "sharesOutstanding": 93427654.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-22"
-    },
-    {
-     "ticker": "TOL",
-     "name": "Toll Brothers, Inc.",
-     "cik": "794170",
-     "profit": 260591000.0,
-     "sharesOutstanding": 94707000.0,
-     "periodEnd": "2026-04-30",
-     "filed": "2026-05-29"
-    },
-    {
-     "ticker": "TPH",
-     "name": "Tri Pointe Homes, Inc.",
-     "cik": "1561680",
-     "revenue": 521389000.0,
-     "profit": 6786000.0,
-     "expenses": 514603000.0,
-     "sharesOutstanding": 85163883.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
-    }
-   ]
-  },
-  {
-   "sic": "2911",
-   "label": "Petroleum Refining",
-   "tickers": [
-    {
-     "ticker": "COP",
-     "name": "Conocophillips",
-     "cik": "1163165",
-     "revenue": 13500000000.0,
-     "profit": 2183000000.0,
-     "expenses": 11317000000.0,
-     "sharesOutstanding": 1218294007.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
-    },
-    {
-     "ticker": "CVX",
-     "name": "Chevron Corp",
-     "cik": "93410",
-     "revenue": 47556000000.0,
-     "profit": 2210000000.0,
-     "expenses": 45346000000.0,
-     "sharesOutstanding": 1991597732.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
-    },
-    {
-     "ticker": "DK",
-     "name": "Delek Us Holdings, Inc.",
-     "cik": "1694426",
-     "revenue": 2653100000.0,
-     "profit": -201300000.0,
-     "expenses": 2854400000.0,
-     "sharesOutstanding": 61287542.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
-    },
-    {
-     "ticker": "HES",
-     "name": "Hess Corp",
-     "cik": "4447"
-    },
-    {
-     "ticker": "MPC",
-     "name": "Marathon Petroleum Corp",
-     "cik": "1510295",
-     "revenue": 34200000000.0,
-     "profit": 511000000.0,
-     "expenses": 33689000000.0,
-     "sharesOutstanding": 291936635.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
-    },
-    {
-     "ticker": "PBF",
-     "name": "Pbf Energy Inc.",
-     "cik": "1534504",
-     "revenue": 7904300000.0,
-     "profit": 198300000.0,
-     "expenses": 7706000000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
-    },
-    {
-     "ticker": "PSX",
-     "name": "Phillips 66",
-     "cik": "1534701",
-     "revenue": 32540000000.0,
-     "profit": 207000000.0,
-     "expenses": 32333000000.0,
-     "sharesOutstanding": 400935020.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
-    },
-    {
-     "ticker": "VLO",
-     "name": "Valero Energy Corp/Tx",
-     "cik": "1035002",
-     "profit": 1263000000.0,
-     "sharesOutstanding": 296932782.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
-    },
-    {
-     "ticker": "XOM",
-     "name": "Exxonmobil Holdings Corp",
-     "cik": "2115436"
-    }
-   ]
-  },
-  {
    "sic": "5500",
    "label": "Retail-Auto Dealers & Gasoline Stations",
    "tickers": [
@@ -5214,6 +4806,98 @@
    ]
   },
   {
+   "sic": "4512",
+   "label": "Air Transportation, Scheduled",
+   "tickers": [
+    {
+     "ticker": "AAL",
+     "name": "American Airlines Group Inc.",
+     "cik": "6201",
+     "revenue": 13912000000.0,
+     "profit": -382000000.0,
+     "expenses": 14294000000.0,
+     "sharesOutstanding": 661385137.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-23"
+    },
+    {
+     "ticker": "ALGT",
+     "name": "Allegiant Travel Co",
+     "cik": "1362468",
+     "revenue": 671799000.0,
+     "profit": 42478000.0,
+     "expenses": 629321000.0,
+     "sharesOutstanding": 18437290.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06"
+    },
+    {
+     "ticker": "ALK",
+     "name": "Alaska Air Group, Inc.",
+     "cik": "766421",
+     "revenue": 3300000000.0,
+     "profit": -193000000.0,
+     "expenses": 3493000000.0,
+     "sharesOutstanding": 111428978.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07"
+    },
+    {
+     "ticker": "DAL",
+     "name": "Delta Air Lines, Inc.",
+     "cik": "27904",
+     "revenue": 15854000000.0,
+     "profit": -289000000.0,
+     "expenses": 16143000000.0,
+     "sharesOutstanding": 656994112.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-08"
+    },
+    {
+     "ticker": "JBLU",
+     "name": "Jetblue Airways Corp",
+     "cik": "1158463",
+     "revenue": 2240000000.0,
+     "profit": -319000000.0,
+     "expenses": 2559000000.0,
+     "sharesOutstanding": 372018894.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-28"
+    },
+    {
+     "ticker": "LUV",
+     "name": "Southwest Airlines Co",
+     "cik": "92380",
+     "revenue": 7249000000.0,
+     "profit": 227000000.0,
+     "expenses": 7022000000.0,
+     "sharesOutstanding": 488773713.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-23"
+    },
+    {
+     "ticker": "SKYW",
+     "name": "Skywest Inc",
+     "cik": "793733",
+     "profit": 101692000.0,
+     "sharesOutstanding": 39660281.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-07-24"
+    },
+    {
+     "ticker": "UAL",
+     "name": "United Airlines Holdings, Inc.",
+     "cik": "100517",
+     "revenue": 14608000000.0,
+     "profit": 699000000.0,
+     "expenses": 13909000000.0,
+     "sharesOutstanding": 324569728.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-22"
+    }
+   ]
+  },
+  {
    "sic": "6324",
    "label": "Hospital & Medical Service Plans",
    "tickers": [
@@ -5302,6 +4986,181 @@
      "sharesOutstanding": 908144404.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-05-05"
+    }
+   ]
+  },
+  {
+   "sic": "1531",
+   "label": "Operative Builders",
+   "tickers": [
+    {
+     "ticker": "CCS",
+     "name": "Century Communities, Inc.",
+     "cik": "1576940",
+     "revenue": 789673000.0,
+     "profit": 24409000.0,
+     "expenses": 765264000.0,
+     "sharesOutstanding": 28769306.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-23"
+    },
+    {
+     "ticker": "DHI",
+     "name": "Horton D R Inc /De/",
+     "cik": "882184",
+     "revenue": 7558100000.0,
+     "profit": 647900000.0,
+     "expenses": 6910200000.0,
+     "sharesOutstanding": 283579613.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-23"
+    },
+    {
+     "ticker": "GRBK",
+     "name": "Green Brick Partners, Inc.",
+     "cik": "1373670",
+     "revenue": 465488000.0,
+     "profit": 60946000.0,
+     "expenses": 404542000.0,
+     "sharesOutstanding": 43146283.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-11"
+    },
+    {
+     "ticker": "KBH",
+     "name": "Kb Home",
+     "cik": "795266",
+     "revenue": 1077011000.0,
+     "profit": 33424000.0,
+     "expenses": 1043587000.0,
+     "sharesOutstanding": 62648246.0,
+     "periodEnd": "2026-02-28",
+     "filed": "2026-04-09"
+    },
+    {
+     "ticker": "MTH",
+     "name": "Meritage Homes Corp",
+     "cik": "833079",
+     "profit": 55309000.0,
+     "sharesOutstanding": 66702433.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-07-31"
+    },
+    {
+     "ticker": "NVR",
+     "name": "Nvr Inc",
+     "cik": "906163",
+     "revenue": 1881063000.0,
+     "profit": 198359000.0,
+     "expenses": 1682704000.0,
+     "sharesOutstanding": 2699292.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06"
+    },
+    {
+     "ticker": "PHM",
+     "name": "Pultegroup Inc/Mi/",
+     "cik": "822416",
+     "revenue": 3408572000.0,
+     "profit": 346996000.0,
+     "expenses": 3061576000.0,
+     "sharesOutstanding": 190486353.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-23"
+    },
+    {
+     "ticker": "TOL",
+     "name": "Toll Brothers, Inc.",
+     "cik": "794170",
+     "profit": 260591000.0,
+     "sharesOutstanding": 94707000.0,
+     "periodEnd": "2026-04-30",
+     "filed": "2026-05-29"
+    }
+   ]
+  },
+  {
+   "sic": "2911",
+   "label": "Petroleum Refining",
+   "tickers": [
+    {
+     "ticker": "COP",
+     "name": "Conocophillips",
+     "cik": "1163165",
+     "revenue": 13500000000.0,
+     "profit": 2183000000.0,
+     "expenses": 11317000000.0,
+     "sharesOutstanding": 1218294007.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-30"
+    },
+    {
+     "ticker": "CVX",
+     "name": "Chevron Corp",
+     "cik": "93410",
+     "revenue": 47556000000.0,
+     "profit": 2210000000.0,
+     "expenses": 45346000000.0,
+     "sharesOutstanding": 1991597732.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07"
+    },
+    {
+     "ticker": "DK",
+     "name": "Delek Us Holdings, Inc.",
+     "cik": "1694426",
+     "revenue": 2653100000.0,
+     "profit": -201300000.0,
+     "expenses": 2854400000.0,
+     "sharesOutstanding": 61287542.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-29"
+    },
+    {
+     "ticker": "MPC",
+     "name": "Marathon Petroleum Corp",
+     "cik": "1510295",
+     "revenue": 34200000000.0,
+     "profit": 511000000.0,
+     "expenses": 33689000000.0,
+     "sharesOutstanding": 291936635.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-05"
+    },
+    {
+     "ticker": "PBF",
+     "name": "Pbf Energy Inc.",
+     "cik": "1534504",
+     "revenue": 7904300000.0,
+     "profit": 198300000.0,
+     "expenses": 7706000000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-30"
+    },
+    {
+     "ticker": "PSX",
+     "name": "Phillips 66",
+     "cik": "1534701",
+     "revenue": 32540000000.0,
+     "profit": 207000000.0,
+     "expenses": 32333000000.0,
+     "sharesOutstanding": 400935020.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-29"
+    },
+    {
+     "ticker": "VLO",
+     "name": "Valero Energy Corp/Tx",
+     "cik": "1035002",
+     "profit": 1263000000.0,
+     "sharesOutstanding": 296932782.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-30"
+    },
+    {
+     "ticker": "XOM",
+     "name": "Exxonmobil Holdings Corp",
+     "cik": "2115436"
     }
    ]
   },
@@ -5739,95 +5598,9 @@
    ]
   },
   {
-   "sic": "5651",
-   "label": "Retail-Family Clothing Stores",
-   "tickers": [
-    {
-     "ticker": "AEO",
-     "name": "American Eagle Outfitters Inc",
-     "cik": "919012",
-     "revenue": 1195285000.0,
-     "profit": 23525000.0,
-     "expenses": 1171760000.0,
-     "sharesOutstanding": 166674664.0,
-     "periodEnd": "2026-05-02",
-     "filed": "2026-06-03"
-    },
-    {
-     "ticker": "ANF",
-     "name": "Abercrombie & Fitch Co /De/",
-     "cik": "1018840",
-     "revenue": 1113821000.0,
-     "profit": 67134000.0,
-     "expenses": 1046687000.0,
-     "sharesOutstanding": 44924473.0,
-     "periodEnd": "2026-05-02",
-     "filed": "2026-06-05"
-    },
-    {
-     "ticker": "GPS",
-     "name": "Gap Inc",
-     "cik": "39911",
-     "revenue": 3497000000.0,
-     "profit": 339000000.0,
-     "expenses": 3158000000.0,
-     "sharesOutstanding": 372562512.0,
-     "periodEnd": "2026-05-02",
-     "filed": "2026-05-29"
-    },
-    {
-     "ticker": "JWN",
-     "name": "Nordstrom Inc",
-     "cik": "72333"
-    },
-    {
-     "ticker": "ROST",
-     "name": "Ross Stores, Inc.",
-     "cik": "745732",
-     "revenue": 6010476000.0,
-     "profit": 649964000.0,
-     "expenses": 5360512000.0,
-     "sharesOutstanding": 322356795.0,
-     "periodEnd": "2026-05-02",
-     "filed": "2026-06-02"
-    },
-    {
-     "ticker": "TJX",
-     "name": "Tjx Companies Inc /De/",
-     "cik": "109198",
-     "profit": 1332000000.0,
-     "sharesOutstanding": 1106810654.0,
-     "periodEnd": "2026-05-02",
-     "filed": "2026-05-29"
-    },
-    {
-     "ticker": "URBN",
-     "name": "Urban Outfitters Inc",
-     "cik": "912615",
-     "revenue": 1481345000.0,
-     "profit": 115705000.0,
-     "expenses": 1365640000.0,
-     "sharesOutstanding": 85601280.0,
-     "periodEnd": "2026-04-30",
-     "filed": "2026-06-09"
-    }
-   ]
-  },
-  {
    "sic": "4841",
    "label": "Cable & Other Pay Television Services",
    "tickers": [
-    {
-     "ticker": "ATUS",
-     "name": "Optimum Communications, Inc.",
-     "cik": "1702780",
-     "revenue": 2065368000.0,
-     "profit": -2884071000.0,
-     "expenses": 4949439000.0,
-     "sharesOutstanding": 476472207.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
-    },
     {
      "ticker": "CABO",
      "name": "Cable One, Inc.",
@@ -5856,6 +5629,17 @@
      "expenses": 29283000000.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-23"
+    },
+    {
+     "ticker": "OPTU",
+     "name": "Optimum Communications, Inc.",
+     "cik": "1702780",
+     "revenue": 2065368000.0,
+     "profit": -2884071000.0,
+     "expenses": 4949439000.0,
+     "sharesOutstanding": 476472207.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07"
     },
     {
      "ticker": "ROKU",
@@ -5949,6 +5733,76 @@
      "sharesOutstanding": 90666315.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-05-07"
+    }
+   ]
+  },
+  {
+   "sic": "5651",
+   "label": "Retail-Family Clothing Stores",
+   "tickers": [
+    {
+     "ticker": "AEO",
+     "name": "American Eagle Outfitters Inc",
+     "cik": "919012",
+     "revenue": 1195285000.0,
+     "profit": 23525000.0,
+     "expenses": 1171760000.0,
+     "sharesOutstanding": 166674664.0,
+     "periodEnd": "2026-05-02",
+     "filed": "2026-06-03"
+    },
+    {
+     "ticker": "ANF",
+     "name": "Abercrombie & Fitch Co /De/",
+     "cik": "1018840",
+     "revenue": 1113821000.0,
+     "profit": 67134000.0,
+     "expenses": 1046687000.0,
+     "sharesOutstanding": 44924473.0,
+     "periodEnd": "2026-05-02",
+     "filed": "2026-06-05"
+    },
+    {
+     "ticker": "GAP",
+     "name": "Gap Inc",
+     "cik": "39911",
+     "revenue": 3497000000.0,
+     "profit": 339000000.0,
+     "expenses": 3158000000.0,
+     "sharesOutstanding": 372562512.0,
+     "periodEnd": "2026-05-02",
+     "filed": "2026-05-29"
+    },
+    {
+     "ticker": "ROST",
+     "name": "Ross Stores, Inc.",
+     "cik": "745732",
+     "revenue": 6010476000.0,
+     "profit": 649964000.0,
+     "expenses": 5360512000.0,
+     "sharesOutstanding": 322356795.0,
+     "periodEnd": "2026-05-02",
+     "filed": "2026-06-02"
+    },
+    {
+     "ticker": "TJX",
+     "name": "Tjx Companies Inc /De/",
+     "cik": "109198",
+     "profit": 1332000000.0,
+     "sharesOutstanding": 1106810654.0,
+     "periodEnd": "2026-05-02",
+     "filed": "2026-05-29"
+    },
+    {
+     "ticker": "URBN",
+     "name": "Urban Outfitters Inc",
+     "cik": "912615",
+     "revenue": 1481345000.0,
+     "profit": 115705000.0,
+     "expenses": 1365640000.0,
+     "sharesOutstanding": 85601280.0,
+     "periodEnd": "2026-04-30",
+     "filed": "2026-06-09"
     }
    ]
   },
@@ -6158,6 +6012,16 @@
      "filed": "2026-05-11"
     },
     {
+     "ticker": "ECHO",
+     "name": "Echostar Corp",
+     "cik": "1415404",
+     "revenue": 3667489000.0,
+     "profit": -146885000.0,
+     "expenses": 3814374000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-11"
+    },
+    {
      "ticker": "GSAT",
      "name": "Globalstar, Inc.",
      "cik": "1366868",
@@ -6177,16 +6041,6 @@
      "sharesOutstanding": 105727744.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-23"
-    },
-    {
-     "ticker": "SATS",
-     "name": "Echostar Corp",
-     "cik": "1415404",
-     "revenue": 3667489000.0,
-     "profit": -146885000.0,
-     "expenses": 3814374000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-11"
     },
     {
      "ticker": "VSAT",
@@ -6263,67 +6117,6 @@
    ]
   },
   {
-   "sic": "2040",
-   "label": "Grain Mill Products",
-   "tickers": [
-    {
-     "ticker": "FRPT",
-     "name": "Freshpet, Inc.",
-     "cik": "1611647",
-     "revenue": 297644000.0,
-     "profit": 48508000.0,
-     "expenses": 249136000.0,
-     "sharesOutstanding": 49142791.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
-    },
-    {
-     "ticker": "GIS",
-     "name": "General Mills Inc",
-     "cik": "40704",
-     "revenue": 4436700000.0,
-     "profit": 303100000.0,
-     "expenses": 4133600000.0,
-     "sharesOutstanding": 533681218.0,
-     "periodEnd": "2026-02-22",
-     "filed": "2026-07-01"
-    },
-    {
-     "ticker": "INGR",
-     "name": "Ingredion Inc",
-     "cik": "1046257",
-     "revenue": 1792000000.0,
-     "profit": 142000000.0,
-     "expenses": 1650000000.0,
-     "sharesOutstanding": 63059061.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
-    },
-    {
-     "ticker": "K",
-     "name": "Kellanova",
-     "cik": "55067",
-     "revenue": 3260000000.0,
-     "profit": 309000000.0,
-     "expenses": 2951000000.0,
-     "sharesOutstanding": 347932629.0,
-     "periodEnd": "2025-09-27",
-     "filed": "2025-10-30"
-    },
-    {
-     "ticker": "POST",
-     "name": "Post Holdings, Inc.",
-     "cik": "1530950",
-     "revenue": 2042900000.0,
-     "profit": 81900000.0,
-     "expenses": 1961000000.0,
-     "sharesOutstanding": 45322586.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
-    }
-   ]
-  },
-  {
    "sic": "6411",
    "label": "Insurance Agents, Brokers & Service",
    "tickers": [
@@ -6361,7 +6154,7 @@
      "filed": "2026-04-27"
     },
     {
-     "ticker": "MMC",
+     "ticker": "MRSH",
      "name": "Marsh & Mclennan Companies, Inc.",
      "cik": "62709",
      "revenue": 7597000000.0,
@@ -6627,6 +6420,11 @@
    "label": "Services-Miscellaneous Amusement & Recreation",
    "tickers": [
     {
+     "ticker": "BRSL",
+     "name": "Brightstar Lottery Plc",
+     "cik": "1619762"
+    },
+    {
      "ticker": "DIS",
      "name": "Walt Disney Co",
      "cik": "1744489",
@@ -6653,11 +6451,6 @@
      "cik": "1834489"
     },
     {
-     "ticker": "IGT",
-     "name": "Brightstar Lottery Plc",
-     "cik": "1619762"
-    },
-    {
      "ticker": "RSI",
      "name": "Rush Street Interactive, Inc.",
      "cik": "1793659",
@@ -6666,59 +6459,6 @@
      "expenses": 361291000.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-29"
-    }
-   ]
-  },
-  {
-   "sic": "3312",
-   "label": "Steel Works, Blast Furnaces & Rolling Mills (Coke Ovens)",
-   "tickers": [
-    {
-     "ticker": "CMC",
-     "name": "Commercial Metals Co",
-     "cik": "22444",
-     "profit": 93032000.0,
-     "sharesOutstanding": 110887384.0,
-     "periodEnd": "2026-02-28",
-     "filed": "2026-03-31"
-    },
-    {
-     "ticker": "CRS",
-     "name": "Carpenter Technology Corp",
-     "cik": "17843",
-     "revenue": 811500000.0,
-     "profit": 139600000.0,
-     "expenses": 671900000.0,
-     "sharesOutstanding": 49685612.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-08-12"
-    },
-    {
-     "ticker": "NUE",
-     "name": "Nucor Corp",
-     "cik": "73309",
-     "revenue": 9496000000.0,
-     "profit": 743000000.0,
-     "expenses": 8753000000.0,
-     "sharesOutstanding": 227740950.0,
-     "periodEnd": "2026-04-04",
-     "filed": "2026-05-13"
-    },
-    {
-     "ticker": "STLD",
-     "name": "Steel Dynamics Inc",
-     "cik": "1022671",
-     "revenue": 5204858000.0,
-     "profit": 403436000.0,
-     "expenses": 4801422000.0,
-     "sharesOutstanding": 144212781.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-27"
-    },
-    {
-     "ticker": "X",
-     "name": "United States Steel Corp",
-     "cik": "1163302"
     }
    ]
   },
@@ -6788,7 +6528,7 @@
      "filed": "2026-02-26"
     },
     {
-     "ticker": "PSTG",
+     "ticker": "P",
      "name": "Everpure, Inc.",
      "cik": "1474432",
      "revenue": 1052896000.0,
@@ -6919,6 +6659,56 @@
      "sharesOutstanding": 1283649766.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-28"
+    }
+   ]
+  },
+  {
+   "sic": "2040",
+   "label": "Grain Mill Products",
+   "tickers": [
+    {
+     "ticker": "FRPT",
+     "name": "Freshpet, Inc.",
+     "cik": "1611647",
+     "revenue": 297644000.0,
+     "profit": 48508000.0,
+     "expenses": 249136000.0,
+     "sharesOutstanding": 49142791.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06"
+    },
+    {
+     "ticker": "GIS",
+     "name": "General Mills Inc",
+     "cik": "40704",
+     "revenue": 4436700000.0,
+     "profit": 303100000.0,
+     "expenses": 4133600000.0,
+     "sharesOutstanding": 533681218.0,
+     "periodEnd": "2026-02-22",
+     "filed": "2026-07-01"
+    },
+    {
+     "ticker": "INGR",
+     "name": "Ingredion Inc",
+     "cik": "1046257",
+     "revenue": 1792000000.0,
+     "profit": 142000000.0,
+     "expenses": 1650000000.0,
+     "sharesOutstanding": 63059061.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-08"
+    },
+    {
+     "ticker": "POST",
+     "name": "Post Holdings, Inc.",
+     "cik": "1530950",
+     "revenue": 2042900000.0,
+     "profit": 81900000.0,
+     "expenses": 1961000000.0,
+     "sharesOutstanding": 45322586.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07"
     }
    ]
   },
@@ -7361,6 +7151,54 @@
    ]
   },
   {
+   "sic": "3312",
+   "label": "Steel Works, Blast Furnaces & Rolling Mills (Coke Ovens)",
+   "tickers": [
+    {
+     "ticker": "CMC",
+     "name": "Commercial Metals Co",
+     "cik": "22444",
+     "profit": 93032000.0,
+     "sharesOutstanding": 110887384.0,
+     "periodEnd": "2026-02-28",
+     "filed": "2026-03-31"
+    },
+    {
+     "ticker": "CRS",
+     "name": "Carpenter Technology Corp",
+     "cik": "17843",
+     "revenue": 811500000.0,
+     "profit": 139600000.0,
+     "expenses": 671900000.0,
+     "sharesOutstanding": 49685612.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-08-12"
+    },
+    {
+     "ticker": "NUE",
+     "name": "Nucor Corp",
+     "cik": "73309",
+     "revenue": 9496000000.0,
+     "profit": 743000000.0,
+     "expenses": 8753000000.0,
+     "sharesOutstanding": 227740950.0,
+     "periodEnd": "2026-04-04",
+     "filed": "2026-05-13"
+    },
+    {
+     "ticker": "STLD",
+     "name": "Steel Dynamics Inc",
+     "cik": "1022671",
+     "revenue": 5204858000.0,
+     "profit": 403436000.0,
+     "expenses": 4801422000.0,
+     "sharesOutstanding": 144212781.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-27"
+    }
+   ]
+  },
+  {
    "sic": "4813",
    "label": "Telephone Communications (No Radiotelephone)",
    "tickers": [
@@ -7645,39 +7483,6 @@
      "sharesOutstanding": 939885280.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-23"
-    }
-   ]
-  },
-  {
-   "sic": "3576",
-   "label": "Computer Communications Equipment",
-   "tickers": [
-    {
-     "ticker": "ANET",
-     "name": "Arista Networks, Inc.",
-     "cik": "1596532",
-     "revenue": 2709000000.0,
-     "profit": 1022900000.0,
-     "expenses": 1686100000.0,
-     "sharesOutstanding": 1259202593.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
-    },
-    {
-     "ticker": "CSCO",
-     "name": "Cisco Systems, Inc.",
-     "cik": "858877",
-     "revenue": 15841000000.0,
-     "profit": 3373000000.0,
-     "expenses": 12468000000.0,
-     "sharesOutstanding": 3941434665.0,
-     "periodEnd": "2026-04-25",
-     "filed": "2026-05-19"
-    },
-    {
-     "ticker": "JNPR",
-     "name": "Juniper Networks Inc",
-     "cik": "1043604"
     }
    ]
   },
@@ -8593,45 +8398,6 @@
    ]
   },
   {
-   "sic": "8071",
-   "label": "Services-Medical Laboratories",
-   "tickers": [
-    {
-     "ticker": "DGX",
-     "name": "Quest Diagnostics Inc",
-     "cik": "1022079",
-     "revenue": 2895000000.0,
-     "profit": 252000000.0,
-     "expenses": 2643000000.0,
-     "sharesOutstanding": 110696429.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-22"
-    },
-    {
-     "ticker": "EXAS",
-     "name": "Exact Sciences Corp",
-     "cik": "1124140",
-     "revenue": 850739000.0,
-     "profit": -19594000.0,
-     "expenses": 870333000.0,
-     "sharesOutstanding": 190888211.0,
-     "periodEnd": "2025-09-30",
-     "filed": "2025-11-03"
-    },
-    {
-     "ticker": "LH",
-     "name": "Labcorp Holdings Inc.",
-     "cik": "920148",
-     "revenue": 3537600000.0,
-     "profit": 277800000.0,
-     "expenses": 3259800000.0,
-     "sharesOutstanding": 82000000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-04"
-    }
-   ]
-  },
-  {
    "sic": "2840",
    "label": "Soap, Detergents, Cleang Preparations, Perfumes, Cosmetics",
    "tickers": [
@@ -8810,34 +8576,6 @@
    ]
   },
   {
-   "sic": "3728",
-   "label": "Aircraft Parts & Auxiliary Equipment, NEC",
-   "tickers": [
-    {
-     "ticker": "SPR",
-     "name": "Spirit Aerosystems Holdings, Inc.",
-     "cik": "1364885",
-     "revenue": 1585400000.0,
-     "profit": -724300000.0,
-     "expenses": 2309700000.0,
-     "sharesOutstanding": 117523217.0,
-     "periodEnd": "2025-10-02",
-     "filed": "2025-10-31"
-    },
-    {
-     "ticker": "TDG",
-     "name": "Transdigm Group Inc",
-     "cik": "1260221",
-     "revenue": 2544000000.0,
-     "profit": 535000000.0,
-     "expenses": 2009000000.0,
-     "sharesOutstanding": 55933583.0,
-     "periodEnd": "2026-03-28",
-     "filed": "2026-05-05"
-    }
-   ]
-  },
-  {
    "sic": "4731",
    "label": "Arrangement of  Transportation of  Freight & Cargo",
    "tickers": [
@@ -8918,24 +8656,30 @@
    ]
   },
   {
-   "sic": "3530",
-   "label": "Construction, Mining & Materials Handling Machinery & Equip",
+   "sic": "3576",
+   "label": "Computer Communications Equipment",
    "tickers": [
     {
-     "ticker": "CHX",
-     "name": "Championx Corp",
-     "cik": "1723089"
+     "ticker": "ANET",
+     "name": "Arista Networks, Inc.",
+     "cik": "1596532",
+     "revenue": 2709000000.0,
+     "profit": 1022900000.0,
+     "expenses": 1686100000.0,
+     "sharesOutstanding": 1259202593.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06"
     },
     {
-     "ticker": "DOV",
-     "name": "Dover Corp",
-     "cik": "29905",
-     "revenue": 2053623000.0,
-     "profit": 238433000.0,
-     "expenses": 1815190000.0,
-     "sharesOutstanding": 134661414.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
+     "ticker": "CSCO",
+     "name": "Cisco Systems, Inc.",
+     "cik": "858877",
+     "revenue": 15841000000.0,
+     "profit": 3373000000.0,
+     "expenses": 12468000000.0,
+     "sharesOutstanding": 3941434665.0,
+     "periodEnd": "2026-04-25",
+     "filed": "2026-05-19"
     }
    ]
   },
@@ -8964,50 +8708,6 @@
      "sharesOutstanding": 331940357.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-28"
-    }
-   ]
-  },
-  {
-   "sic": "3845",
-   "label": "Electromedical & Electrotherapeutic Apparatus",
-   "tickers": [
-    {
-     "ticker": "MASI",
-     "name": "Masimo Corp",
-     "cik": "937556",
-     "revenue": 403600000.0,
-     "profit": 57100000.0,
-     "expenses": 346500000.0,
-     "sharesOutstanding": 52365808.0,
-     "periodEnd": "2026-04-04",
-     "filed": "2026-05-05"
-    },
-    {
-     "ticker": "MDT",
-     "name": "Medtronic Plc",
-     "cik": "1613103",
-     "revenue": 9017000000.0,
-     "profit": 1143000000.0,
-     "expenses": 7874000000.0,
-     "sharesOutstanding": 1283884964.0,
-     "periodEnd": "2026-01-23",
-     "filed": "2026-02-24"
-    }
-   ]
-  },
-  {
-   "sic": "3140",
-   "label": "Footwear, (No Rubber)",
-   "tickers": [
-    {
-     "ticker": "BIRK",
-     "name": "Birkenstock Holding Plc",
-     "cik": "1977102"
-    },
-    {
-     "ticker": "SKX",
-     "name": "Skechers Usa Inc",
-     "cik": "1065837"
     }
    ]
   },
@@ -9436,6 +9136,16 @@
    "label": "Radiotelephone Communications",
    "tickers": [
     {
+     "ticker": "AD",
+     "name": "Array Digital Infrastructure, Inc.",
+     "cik": "821130",
+     "revenue": 52012000.0,
+     "profit": 177795000.0,
+     "expenses": -125783000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-08"
+    },
+    {
      "ticker": "TMUS",
      "name": "T-Mobile Us, Inc.",
      "cik": "1283699",
@@ -9445,16 +9155,6 @@
      "sharesOutstanding": 1082204717.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-28"
-    },
-    {
-     "ticker": "USM",
-     "name": "Array Digital Infrastructure, Inc.",
-     "cik": "821130",
-     "revenue": 52012000.0,
-     "profit": 177795000.0,
-     "expenses": -125783000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-08"
     }
    ]
   },
@@ -9542,34 +9242,6 @@
    ]
   },
   {
-   "sic": "7311",
-   "label": "Services-Advertising Agencies",
-   "tickers": [
-    {
-     "ticker": "IPG",
-     "name": "Interpublic Group Of Companies, Inc.",
-     "cik": "51644",
-     "revenue": 2135600000.0,
-     "profit": 124200000.0,
-     "expenses": 2011400000.0,
-     "sharesOutstanding": 363328974.0,
-     "periodEnd": "2025-09-30",
-     "filed": "2025-11-10"
-    },
-    {
-     "ticker": "OMC",
-     "name": "Omnicom Group Inc.",
-     "cik": "29989",
-     "revenue": 6242900000.0,
-     "profit": 405200000.0,
-     "expenses": 5837700000.0,
-     "sharesOutstanding": 285006196.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
-    }
-   ]
-  },
-  {
    "sic": "7510",
    "label": "Services-Auto Rental & Leasing (No Drivers)",
    "tickers": [
@@ -9649,6 +9321,34 @@
      "sharesOutstanding": 169506510.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-05-08"
+    }
+   ]
+  },
+  {
+   "sic": "8071",
+   "label": "Services-Medical Laboratories",
+   "tickers": [
+    {
+     "ticker": "DGX",
+     "name": "Quest Diagnostics Inc",
+     "cik": "1022079",
+     "revenue": 2895000000.0,
+     "profit": 252000000.0,
+     "expenses": 2643000000.0,
+     "sharesOutstanding": 110696429.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-22"
+    },
+    {
+     "ticker": "LH",
+     "name": "Labcorp Holdings Inc.",
+     "cik": "920148",
+     "revenue": 3537600000.0,
+     "profit": 277800000.0,
+     "expenses": 3259800000.0,
+     "sharesOutstanding": 82000000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-04"
     }
    ]
   },
@@ -9762,34 +9462,6 @@
    ]
   },
   {
-   "sic": "3844",
-   "label": "X-Ray Apparatus & Tubes & Related Irradiation Apparatus",
-   "tickers": [
-    {
-     "ticker": "GEHC",
-     "name": "Ge Healthcare Technologies Inc.",
-     "cik": "1932393",
-     "revenue": 5131000000.0,
-     "profit": 389000000.0,
-     "expenses": 4742000000.0,
-     "sharesOutstanding": 454891786.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-29"
-    },
-    {
-     "ticker": "HOLX",
-     "name": "Hologic Inc",
-     "cik": "859737",
-     "revenue": 1047800000.0,
-     "profit": 179100000.0,
-     "expenses": 868700000.0,
-     "sharesOutstanding": 223244905.0,
-     "periodEnd": "2025-12-27",
-     "filed": "2026-01-29"
-    }
-   ]
-  },
-  {
    "sic": "3290",
    "label": "Abrasive, Asbestos & Misc Nonmetallic Mineral Prods",
    "tickers": [
@@ -9854,6 +9526,23 @@
      "sharesOutstanding": 173888981.0,
      "periodEnd": "2026-04-04",
      "filed": "2026-04-30"
+    }
+   ]
+  },
+  {
+   "sic": "3728",
+   "label": "Aircraft Parts & Auxiliary Equipment, NEC",
+   "tickers": [
+    {
+     "ticker": "TDG",
+     "name": "Transdigm Group Inc",
+     "cik": "1260221",
+     "revenue": 2544000000.0,
+     "profit": 535000000.0,
+     "expenses": 2009000000.0,
+     "sharesOutstanding": 55933583.0,
+     "periodEnd": "2026-03-28",
+     "filed": "2026-05-05"
     }
    ]
   },
@@ -9956,6 +9645,23 @@
    ]
   },
   {
+   "sic": "3530",
+   "label": "Construction, Mining & Materials Handling Machinery & Equip",
+   "tickers": [
+    {
+     "ticker": "DOV",
+     "name": "Dover Corp",
+     "cik": "29905",
+     "revenue": 2053623000.0,
+     "profit": 238433000.0,
+     "expenses": 1815190000.0,
+     "sharesOutstanding": 134661414.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-23"
+    }
+   ]
+  },
+  {
    "sic": "3420",
    "label": "Cutlery, Handtools & General Hardware",
    "tickers": [
@@ -9986,6 +9692,23 @@
      "sharesOutstanding": 860637825.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-05-01"
+    }
+   ]
+  },
+  {
+   "sic": "3845",
+   "label": "Electromedical & Electrotherapeutic Apparatus",
+   "tickers": [
+    {
+     "ticker": "MDT",
+     "name": "Medtronic Plc",
+     "cik": "1613103",
+     "revenue": 9017000000.0,
+     "profit": 1143000000.0,
+     "expenses": 7874000000.0,
+     "sharesOutstanding": 1283884964.0,
+     "periodEnd": "2026-01-23",
+     "filed": "2026-02-24"
     }
    ]
   },
@@ -10070,6 +9793,17 @@
      "sharesOutstanding": 269937425.0,
      "periodEnd": "2026-05-03",
      "filed": "2026-05-28"
+    }
+   ]
+  },
+  {
+   "sic": "3140",
+   "label": "Footwear, (No Rubber)",
+   "tickers": [
+    {
+     "ticker": "BIRK",
+     "name": "Birkenstock Holding Plc",
+     "cik": "1977102"
     }
    ]
   },
@@ -10577,23 +10311,6 @@
    ]
   },
   {
-   "sic": "5600",
-   "label": "Retail-Apparel & Accessory Stores",
-   "tickers": [
-    {
-     "ticker": "HBI",
-     "name": "Hanesbrands Inc.",
-     "cik": "1359841",
-     "revenue": 891683000.0,
-     "profit": 270736000.0,
-     "expenses": 620947000.0,
-     "sharesOutstanding": 353802157.0,
-     "periodEnd": "2025-09-27",
-     "filed": "2025-11-06"
-    }
-   ]
-  },
-  {
    "sic": "5734",
    "label": "Retail-Computer & Computer Software Stores",
    "tickers": [
@@ -10713,13 +10430,30 @@
    "label": "Savings Institutions, Not Federally Chartered",
    "tickers": [
     {
-     "ticker": "NYCB",
+     "ticker": "FLG",
      "name": "Flagstar Bank, National Association",
      "cik": "910073",
      "profit": 21000000.0,
      "sharesOutstanding": 416815122.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-05-07"
+    }
+   ]
+  },
+  {
+   "sic": "7311",
+   "label": "Services-Advertising Agencies",
+   "tickers": [
+    {
+     "ticker": "OMC",
+     "name": "Omnicom Group Inc.",
+     "cik": "29989",
+     "revenue": 6242900000.0,
+     "profit": 405200000.0,
+     "expenses": 5837700000.0,
+     "sharesOutstanding": 285006196.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-29"
     }
    ]
   },
@@ -11166,6 +10900,23 @@
      "sharesOutstanding": 254790835.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-04-30"
+    }
+   ]
+  },
+  {
+   "sic": "3844",
+   "label": "X-Ray Apparatus & Tubes & Related Irradiation Apparatus",
+   "tickers": [
+    {
+     "ticker": "GEHC",
+     "name": "Ge Healthcare Technologies Inc.",
+     "cik": "1932393",
+     "revenue": 5131000000.0,
+     "profit": 389000000.0,
+     "expenses": 4742000000.0,
+     "sharesOutstanding": 454891786.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-29"
     }
    ]
   }
