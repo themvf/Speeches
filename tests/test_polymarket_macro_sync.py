@@ -19,6 +19,8 @@ def test_classifies_ten_recurring_release_families_and_normalizes_keys():
         "ISM Services PMI - July 2026": ("ism_services", "ism_services:2026-07"),
         "PPI YoY - July 2026": ("ppi", "ppi:2026-07"),
         "Producer Price Index (PPI) YoY - July 2026": ("ppi", "ppi:2026-07"),
+        "JOLTS Job Openings — July 2026": ("jolts", "jolts:2026-07"),
+        "JOLTS Job Openings - July 2026": ("jolts", "jolts:2026-07"),
     }
     for title, expected in cases.items():
         assert macro.classify_macro_event(title, release) == expected
@@ -38,6 +40,8 @@ def test_release_time_uses_official_eastern_publication_time():
     assert macro.scheduled_release_at("ism_services", date_only) == datetime(2026, 7, 29, 14, 0, tzinfo=UTC)
     assert macro.scheduled_release_at("core_pce", date_only) == datetime(2026, 7, 29, 12, 30, tzinfo=UTC)
     assert macro.scheduled_release_at("ppi", date_only) == datetime(2026, 7, 29, 12, 30, tzinfo=UTC)
+    # JOLTS (BLS) also publishes at 10:00am ET, same slot as ISM.
+    assert macro.scheduled_release_at("jolts", date_only) == datetime(2026, 7, 29, 14, 0, tzinfo=UTC)
 
 
 def _fill(wallet, release, hours_before, outcome="Yes", price=0.5, size=10):
@@ -97,24 +101,24 @@ def test_unclassified_signature_strips_period_suffix_and_rejects_non_recurring_t
 
 def test_scan_for_unclassified_macro_events_skips_recognized_and_foreign_and_nonrecurring():
     events_open = [
-        {"id": "1", "title": "JOLTS Job Openings — July 2026", "volume": "27522",
-         "endDate": "2026-09-09T13:30:00Z", "tags": [{"slug": "jolts"}, {"slug": "macro-indicators"}]},
-        {"id": "2", "title": "ISM Manufacturing PMI - August 2026", "volume": "24586",
-         "endDate": "2026-09-01T06:00:00Z", "tags": [{"slug": "ism"}]},  # already classified
+        {"id": "1", "title": "Price of Dozen Eggs in July?", "volume": "39177",
+         "endDate": "2026-08-12T00:00:00Z", "tags": [{"slug": "macro-indicators"}]},
+        {"id": "2", "title": "JOLTS Job Openings — August 2026", "volume": "24586",
+         "endDate": "2026-10-01T08:00:00Z", "tags": [{"slug": "jolts"}]},  # already classified
         {"id": "3", "title": "China Annual GDP Growth 2026", "volume": "879899",
          "endDate": "2027-01-31T00:00:00Z", "tags": [{"slug": "macro-indicators"}]},  # foreign
         {"id": "4", "title": "Negative GDP growth in 2026?", "volume": "32234",
          "endDate": "2027-01-29T00:00:00Z", "tags": [{"slug": "macro-indicators"}]},  # not period-shaped
     ]
     with patch.object(macro.pilot, "_get", side_effect=[events_open, []]) as mock_get, \
-         patch.object(macro.neon_feeds, "upsert_macro_unclassified_events", return_value=["jolts job openings"]) as mock_upsert:
+         patch.object(macro.neon_feeds, "upsert_macro_unclassified_events", return_value=["price of dozen eggs"]) as mock_upsert:
         result = macro.scan_for_unclassified_macro_events(pages=1)
-    assert result == ["jolts job openings"]
+    assert result == ["price of dozen eggs"]
     assert mock_get.call_count == 2  # closed=false page 0, closed=true page 0
     upserted = mock_upsert.call_args.args[0]
     assert len(upserted) == 1
-    assert upserted[0]["signature"] == "jolts job openings"
-    assert upserted[0]["sample_title"] == "JOLTS Job Openings — July 2026"
+    assert upserted[0]["signature"] == "price of dozen eggs"
+    assert upserted[0]["sample_title"] == "Price of Dozen Eggs in July?"
 
 
 def test_scan_for_unclassified_macro_events_noop_when_nothing_new():

@@ -25,6 +25,7 @@ const COHORTS: Array<{ id: MacroSharpCohort; label: string; cadence: string; min
   { id: "ism_manufacturing", label: "ISM Manufacturing Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
   { id: "ism_services", label: "ISM Services Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
   { id: "ppi", label: "PPI Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
+  { id: "jolts", label: "JOLTS Sharp", cadence: "monthly", minEvents: DEFAULT_MIN_EVENTS },
   { id: "macro_generalist", label: "Macro Generalist", cadence: "cross-cohort", minEvents: DEFAULT_MIN_EVENTS },
 ];
 

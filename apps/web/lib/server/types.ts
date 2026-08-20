@@ -609,6 +609,7 @@ export type MacroSharpCohort =
   | "ism_manufacturing"
   | "ism_services"
   | "ppi"
+  | "jolts"
   | "macro_generalist";
 
 export type MacroSharpArchetype = "early_sharp" | "release_scalper" | "longshot" | "unclassified";

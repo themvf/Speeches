@@ -3,10 +3,15 @@
 
 Tracks repeatable release families: FOMC decisions, nonfarm payrolls,
 unemployment, headline CPI, core CPI, US GDP, core PCE, ISM Manufacturing
-PMI, ISM Services PMI, and PPI. All brackets belonging to one release are
-collapsed to one wallet observation. Entry cost is bucketed relative to the
-scheduled release so post-print scalpers never become macro sharps. Public
-Polymarket APIs only; DATABASE_URL is the sole secret.
+PMI, ISM Services PMI, PPI, and JOLTS job openings. All brackets belonging
+to one release are collapsed to one wallet observation. Entry cost is
+bucketed relative to the scheduled release so post-print scalpers never
+become macro sharps. Public Polymarket APIs only; DATABASE_URL is the sole
+secret.
+
+JOLTS was added 2026-08-19 via scan_for_unclassified_macro_events() below -
+the coverage-discovery scan's first real catch in production, not a manual
+tag check.
 
 Note: weekly initial jobless claims was evaluated and deliberately excluded
 (SEC wallet-intelligence OKR, 2026-08-18) - Polymarket ran a "How many
@@ -39,7 +44,7 @@ SOURCE_KEY = "polymarket_macro_sync"
 # month to month (now tagged "jobs-report"). "nfp" is kept for older/back-compat events;
 # "jobs-report"/"unemployment" are the tags actually carried by current live events
 # (verified live against gamma-api.polymarket.com 2026-08-17).
-DISCOVERY_TAGS = ("fed", "cpi-release", "nfp", "jobs-report", "unemployment", "gdp", "pce", "ism", "ppi")
+DISCOVERY_TAGS = ("fed", "cpi-release", "nfp", "jobs-report", "unemployment", "gdp", "pce", "ism", "ppi", "jolts")
 # Default assumes ~monthly-or-better cadence: 10 events seasons in <=15 months
 # even for fed_decision's ~8/year rate. Quarterly cohorts get their own,
 # lower bar (see COHORT_MIN_EVENTS_OVERRIDES) so they season on a comparable
@@ -69,6 +74,7 @@ COHORT_META = {
     "ism_manufacturing": ("ISM Manufacturing Sharp", "monthly"),
     "ism_services": ("ISM Services Sharp", "monthly"),
     "ppi": ("PPI Sharp", "monthly"),
+    "jolts": ("JOLTS Sharp", "monthly"),
     "macro_generalist": ("Macro Generalist", "cross-cohort"),
 }
 EASTERN = ZoneInfo("America/New_York")
@@ -123,6 +129,8 @@ def classify_macro_event(title: str, release_at: Optional[datetime]) -> Optional
         cohort = "ism_services"
     elif re.match(r"^(?:Producer Price Index \(PPI\)|PPI) YoY - .+$", normalized, re.I):
         cohort = "ppi"
+    elif re.match(r"^JOLTS Job Openings\s*[-—]\s*.+$", normalized, re.I):
+        cohort = "jolts"
     if not cohort:
         return None
     event_key = _period_key(cohort, normalized, release_at)
@@ -133,6 +141,7 @@ _RELEASE_TIME_ET = {
     "fed_decision": (14, 0),  # FOMC statement
     "ism_manufacturing": (10, 0),  # ISM Report on Business
     "ism_services": (10, 0),  # ISM Report on Business
+    "jolts": (10, 0),  # BLS JOLTS report
 }
 
 
@@ -140,8 +149,9 @@ def scheduled_release_at(cohort: str, value: Optional[datetime]) -> Optional[dat
     """Gamma endDate is generally date-only midnight. Normalize it to the
     official US release time so entry buckets do not label same-day,
     pre-release trading as post-release. Default (8:30am ET) covers the BLS/BEA
-    releases (payrolls, unemployment, CPI, PCE, PPI); ISM's own Report on
-    Business goes out at 10:00am ET, not 8:30, so it needs its own entry."""
+    releases (payrolls, unemployment, CPI, PCE, PPI); ISM's Report on Business
+    and BLS's JOLTS report both go out at 10:00am ET, not 8:30, so they need
+    their own entries."""
     if not value:
         return None
     hour, minute = _RELEASE_TIME_ET.get(cohort, (8, 30))

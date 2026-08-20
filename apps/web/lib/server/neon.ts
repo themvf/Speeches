@@ -3843,9 +3843,9 @@ export type PolymarketMacroWalletStatsRow = {
 };
 
 // fed_decision, nonfarm_payrolls, unemployment, headline_cpi, core_cpi, us_gdp,
-// core_pce, ism_manufacturing, ism_services, ppi, macro_generalist
+// core_pce, ism_manufacturing, ism_services, ppi, jolts, macro_generalist
 // (kept in sync with COHORT_META in polymarket_macro_sync.py and COHORTS in the macro-contracts route).
-const MACRO_COHORT_COUNT = 11;
+const MACRO_COHORT_COUNT = 12;
 
 export async function getPolymarketMacroWalletStats(limit = 100): Promise<PolymarketMacroWalletStatsRow[]> {
   const sql = getSql();

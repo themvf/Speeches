@@ -33,6 +33,7 @@ const COHORT_LABELS: Record<MacroSharpCohort, string> = {
   ism_manufacturing: "ISM Manufacturing",
   ism_services: "ISM Services",
   ppi: "PPI",
+  jolts: "JOLTS",
   macro_generalist: "Macro Generalist",
 };
 
