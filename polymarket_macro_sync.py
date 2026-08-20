@@ -159,6 +159,83 @@ def _winning_outcome(market: Dict[str, Any]) -> Optional[str]:
     return str(winners[0]) if len(winners) == 1 else None
 
 
+_MONTH_PATTERN = "|".join(m.title() for m in MONTHS)
+
+# Countries/foreign central banks the discovery scan below should NOT flag -
+# this project's macro wallet intelligence is deliberately scoped to US
+# releases only (markets/economics OKR, 2026-08-18). The broad
+# "macro-indicators" tag also carries dozens of foreign-economy markets (ECB
+# rate decisions, China GDP, etc.) that would otherwise flood the discovery
+# signal with correctly-out-of-scope noise.
+_FOREIGN_MARKERS = re.compile(
+    r"\b(China|ECB|Eurozone|Euro area|Bank of England|Bank of Brazil|Bank of Russia|"
+    r"Bank of Mexico|Bank of Japan|People'?s Bank|UK|U\.K\.|Japan|Mexico|Brazil|Russia|"
+    r"Canada|South Korea|South Africa|Argentina|India|Germany|World GDP)\b",
+    re.I,
+)
+
+
+def _unclassified_signature(title: str) -> Optional[str]:
+    """Collapse a title to a stable family signature by stripping its
+    variable date/period suffix, so a still-unrecognized monthly/quarterly
+    series is flagged once, not on every sync run. Returns None if the title
+    isn't period-shaped at all (not a recurring-release candidate - e.g. a
+    one-off event market that happens to carry the same broad tag)."""
+    normalized = " ".join(title.split())
+    candidate = re.sub(r"\?\s*$", "", normalized)
+    for pattern in (
+        rf"\s+in\s+(?:{_MONTH_PATTERN})\s*\d*$",
+        rf"\s*[-—]?\s*(?:{_MONTH_PATTERN})\s+20\d{{2}}$",
+        r"(?:\s+in)?\s+Q[1-4]\s+20\d{2}$",
+    ):
+        stripped = re.sub(pattern, "", candidate, flags=re.I)
+        if stripped != candidate:
+            return stripped.strip().lower() or None
+    return None
+
+
+def scan_for_unclassified_macro_events(pages: int = 1) -> List[str]:
+    """Fetch events under the broad "macro-indicators" tag (open and
+    recently-closed) and flag any period-shaped, US-relevant title that
+    classify_macro_event doesn't recognize - a new indicator family
+    Polymarket added, or an existing one whose title format changed (the
+    same class of bug that silently broke unemployment/payrolls discovery
+    before this OKR). Persists via neon_feeds, deduped by title family so a
+    still-unrecognized series is flagged once, not every run; returns only
+    the newly-seen signatures."""
+    candidates: Dict[str, Dict[str, Any]] = {}
+    for closed in (False, True):
+        for page in range(pages):
+            events = pilot._get(f"{pilot.GAMMA}/events", {
+                "tag_slug": "macro-indicators", "closed": str(closed).lower(),
+                "order": "volume", "ascending": "false", "limit": 100, "offset": page * 100,
+            })
+            for event in events or []:
+                title = str(event.get("title") or "")
+                if not title or _FOREIGN_MARKERS.search(title):
+                    continue
+                release_at = parse_dt(event.get("endDate"))
+                if classify_macro_event(title, release_at):
+                    continue  # already a recognized cohort
+                signature = _unclassified_signature(title)
+                if not signature:
+                    continue  # not period-shaped - not a recurring-release candidate
+                volume = float(event.get("volume") or 0)
+                existing = candidates.get(signature)
+                if not existing or volume > existing["sample_volume"]:
+                    candidates[signature] = {
+                        "signature": signature, "sample_title": title,
+                        "sample_event_id": str(event.get("id") or event.get("slug") or ""),
+                        "sample_volume": volume,
+                        "tags": ",".join(str(t.get("slug")) for t in (event.get("tags") or []) if t.get("slug")),
+                    }
+            if len(events or []) < 100:
+                break
+    if not candidates:
+        return []
+    return neon_feeds.upsert_macro_unclassified_events(list(candidates.values()))
+
+
 def fetch_events(closed: bool, pages: int) -> List[Dict[str, Any]]:
     unique: Dict[str, Dict[str, Any]] = {}
     for tag in DISCOVERY_TAGS:
@@ -353,6 +430,13 @@ def run_sync(summary: Dict[str, Any]) -> None:
     summary["settled_releases"] = settle_groups(unsettled_resolved, True)
     summary["stats"] = recompute_wallet_stats()
     summary["fills_pruned"] = neon_feeds.prune_settled_polymarket_fills(earnings.PRUNE_DAYS_AFTER_SETTLEMENT)
+    try:
+        summary["new_unclassified_macro_events"] = scan_for_unclassified_macro_events()
+    except Exception as exc:
+        # Coverage-discovery is a diagnostic bonus, not the sync's job - a
+        # failure here must never take down settlement/stats above.
+        summary["new_unclassified_macro_events"] = []
+        summary["discovery_scan_error"] = str(exc)
 
 
 def run_backfill(max_releases: int, summary: Dict[str, Any]) -> None:

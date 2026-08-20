@@ -1720,6 +1720,27 @@ def _ensure_polymarket_schema() -> None:
                 )
                 """
             )
+            # Coverage-drift early warning: a recurring-looking event under the
+            # broad "macro-indicators" umbrella tag that classify_macro_event
+            # doesn't recognize (a new indicator family Polymarket added, or an
+            # existing one whose title format changed). One row per normalized
+            # title family (month/year/quarter stripped), not per event, so a
+            # still-unrecognized monthly series doesn't re-flag every run -
+            # only genuinely new families do (see upsert_macro_unclassified_events).
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS polymarket_macro_unclassified_events (
+                  signature      TEXT PRIMARY KEY,
+                  sample_title   TEXT NOT NULL DEFAULT '',
+                  sample_event_id TEXT NOT NULL DEFAULT '',
+                  sample_volume  NUMERIC NOT NULL DEFAULT 0,
+                  tags           TEXT NOT NULL DEFAULT '',
+                  times_seen     INTEGER NOT NULL DEFAULT 1,
+                  first_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
             conn.commit()
     _POLYMARKET_SCHEMA_ENSURED = True
 
@@ -2137,6 +2158,63 @@ def upsert_polymarket_macro_wallet_stats(rows: List[Dict[str, Any]]) -> int:
             )
             conn.commit()
     return len(prepared)
+
+
+def upsert_macro_unclassified_events(rows: List[Dict[str, Any]]) -> List[str]:
+    """Records unrecognized recurring-looking macro events, one row per
+    normalized title family. Returns the signatures that were seen for the
+    very first time (a real INSERT, not just a last_seen_at bump on a
+    conflict) - callers should surface only those, so a still-unrecognized
+    series is flagged once, not on every sync run."""
+    prepared = []
+    for row in rows:
+        signature = _strip_nul_bytes(str(row.get("signature", "") or "").strip())
+        if not signature:
+            continue
+        prepared.append((
+            signature, _strip_nul_bytes(str(row.get("sample_title", "") or "")),
+            _strip_nul_bytes(str(row.get("sample_event_id", "") or "")),
+            round(float(row.get("sample_volume", 0) or 0), 2),
+            _strip_nul_bytes(str(row.get("tags", "") or "")),
+        ))
+    if not prepared:
+        return []
+    _ensure_polymarket_schema()
+    newly_seen = []
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            for signature, sample_title, sample_event_id, sample_volume, tags in prepared:
+                cur.execute(
+                    """
+                    INSERT INTO polymarket_macro_unclassified_events
+                      (signature, sample_title, sample_event_id, sample_volume, tags)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (signature) DO UPDATE SET
+                      times_seen = polymarket_macro_unclassified_events.times_seen + 1,
+                      last_seen_at = now()
+                    RETURNING (xmax = 0) AS inserted
+                    """,
+                    (signature, sample_title, sample_event_id, sample_volume, tags),
+                )
+                if cur.fetchone()["inserted"]:
+                    newly_seen.append(signature)
+            conn.commit()
+    return newly_seen
+
+
+def get_macro_unclassified_events() -> List[Dict[str, Any]]:
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT signature, sample_title, sample_event_id, sample_volume,
+                       tags, times_seen, first_seen_at, last_seen_at
+                FROM polymarket_macro_unclassified_events
+                ORDER BY last_seen_at DESC
+                """
+            )
+            return [dict(row) for row in cur.fetchall()]
 
 
 # ─── Filing catalyst events (SEC-50) ────────────────────────────────────────
