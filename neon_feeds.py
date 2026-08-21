@@ -1741,6 +1741,20 @@ def _ensure_polymarket_schema() -> None:
                 )
                 """
             )
+            # Order-aware columns (wallet_trajectory.py). Every other statistic
+            # here is a lifetime aggregate and therefore blind to sequence;
+            # these read the tail of a wallet's history so an early bad run
+            # cannot permanently bury a wallet that now trades differently.
+            # watchlist_status is explicitly NOT a skill verdict - see the
+            # module docstring.
+            for table in ("polymarket_wallet_stats", "polymarket_macro_wallet_stats"):
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS recent_events INTEGER NOT NULL DEFAULT 0")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS recent_wins INTEGER NOT NULL DEFAULT 0")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS recent_pnl NUMERIC NOT NULL DEFAULT 0")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS recent_cost NUMERIC NOT NULL DEFAULT 0")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS chases_losses BOOLEAN NOT NULL DEFAULT false")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS chase_ratio NUMERIC")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS watchlist_status TEXT NOT NULL DEFAULT 'none'")
             conn.commit()
     _POLYMARKET_SCHEMA_ENSURED = True
 
@@ -2012,7 +2026,8 @@ def get_polymarket_wallet_results() -> List[Dict[str, Any]]:
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT wallet, name, pnl, cost, win_entry_avg, correct FROM polymarket_wallet_market_results"
+                "SELECT wallet, name, pnl, cost, win_entry_avg, correct, resolved_date "
+                "FROM polymarket_wallet_market_results"
             )
             return [dict(row) for row in cur.fetchall()]
 
@@ -2032,6 +2047,11 @@ def upsert_polymarket_wallet_stats(rows: List[Dict[str, Any]]) -> int:
             round(float(row.get("cost", 0) or 0), 4),
             row.get("win_entry_avg"),
             str(row.get("archetype", "unclassified") or "unclassified"),
+            int(row.get("recent_events", 0) or 0), int(row.get("recent_wins", 0) or 0),
+            round(float(row.get("recent_pnl", 0) or 0), 4),
+            round(float(row.get("recent_cost", 0) or 0), 4),
+            bool(row.get("chases_losses", False)), row.get("chase_ratio"),
+            str(row.get("watchlist_status", "none") or "none"),
         ))
     if not prepared:
         return 0
@@ -2042,11 +2062,17 @@ def upsert_polymarket_wallet_stats(rows: List[Dict[str, Any]]) -> int:
                 cur,
                 """
                 INSERT INTO polymarket_wallet_stats
-                  (wallet, name, markets, wins, pnl, cost, win_entry_avg, archetype)
+                  (wallet, name, markets, wins, pnl, cost, win_entry_avg, archetype,
+                   recent_events, recent_wins, recent_pnl, recent_cost,
+                   chases_losses, chase_ratio, watchlist_status)
                 VALUES %s
                 ON CONFLICT (wallet) DO UPDATE SET
                   name = EXCLUDED.name, markets = EXCLUDED.markets, wins = EXCLUDED.wins,
                   pnl = EXCLUDED.pnl, cost = EXCLUDED.cost, win_entry_avg = EXCLUDED.win_entry_avg,
+                  recent_events = EXCLUDED.recent_events, recent_wins = EXCLUDED.recent_wins,
+                  recent_pnl = EXCLUDED.recent_pnl, recent_cost = EXCLUDED.recent_cost,
+                  chases_losses = EXCLUDED.chases_losses, chase_ratio = EXCLUDED.chase_ratio,
+                  watchlist_status = EXCLUDED.watchlist_status,
                   archetype = EXCLUDED.archetype, refreshed_at = now()
                 """,
                 prepared,
@@ -2115,7 +2141,7 @@ def get_polymarket_macro_wallet_results() -> List[Dict[str, Any]]:
                 """
                 SELECT event_key, wallet, name, cohort, pnl, cost, early_cost,
                        pre_release_cost, late_cost, post_release_cost,
-                       win_entry_avg, correct
+                       win_entry_avg, correct, resolved_date
                 FROM polymarket_macro_wallet_event_results
                 """
             )
@@ -2138,6 +2164,11 @@ def upsert_polymarket_macro_wallet_stats(rows: List[Dict[str, Any]]) -> int:
             round(float(row.get("timing_cost", 0) or 0), 4),
             row.get("win_entry_avg"),
             str(row.get("archetype", "unclassified") or "unclassified"),
+            int(row.get("recent_events", 0) or 0), int(row.get("recent_wins", 0) or 0),
+            round(float(row.get("recent_pnl", 0) or 0), 4),
+            round(float(row.get("recent_cost", 0) or 0), 4),
+            bool(row.get("chases_losses", False)), row.get("chase_ratio"),
+            str(row.get("watchlist_status", "none") or "none"),
         ))
     if not prepared:
         return 0
@@ -2149,7 +2180,9 @@ def upsert_polymarket_macro_wallet_stats(rows: List[Dict[str, Any]]) -> int:
                 """
                 INSERT INTO polymarket_macro_wallet_stats
                   (wallet, cohort, name, events, wins, pnl, cost,
-                   predictive_cost, timing_cost, win_entry_avg, archetype)
+                   predictive_cost, timing_cost, win_entry_avg, archetype,
+                   recent_events, recent_wins, recent_pnl, recent_cost,
+                   chases_losses, chase_ratio, watchlist_status)
                 VALUES %s
                 ON CONFLICT (wallet, cohort) DO UPDATE SET
                   name = EXCLUDED.name, events = EXCLUDED.events, wins = EXCLUDED.wins,
@@ -2157,6 +2190,10 @@ def upsert_polymarket_macro_wallet_stats(rows: List[Dict[str, Any]]) -> int:
                   predictive_cost = EXCLUDED.predictive_cost,
                   timing_cost = EXCLUDED.timing_cost,
                   win_entry_avg = EXCLUDED.win_entry_avg,
+                  recent_events = EXCLUDED.recent_events, recent_wins = EXCLUDED.recent_wins,
+                  recent_pnl = EXCLUDED.recent_pnl, recent_cost = EXCLUDED.recent_cost,
+                  chases_losses = EXCLUDED.chases_losses, chase_ratio = EXCLUDED.chase_ratio,
+                  watchlist_status = EXCLUDED.watchlist_status,
                   archetype = EXCLUDED.archetype, refreshed_at = now()
                 """,
                 prepared,

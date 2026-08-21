@@ -15,6 +15,10 @@ on:
         required: false
         type: boolean
         default: false
+      backfill_releases:
+        description: "How many releases to re-settle (default 120). Correctness flags are only fixed for releases this run re-settles."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -27,10 +31,11 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       BACKFILL: ${{ github.event.inputs.backfill || 'false' }}
+      BACKFILL_RELEASES: ${{ github.event.inputs.backfill_releases }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +52,10 @@ jobs:
         run: |
           set -euo pipefail
           args=()
-          if [ "${BACKFILL}" = "true" ]; then args+=(--backfill); fi
+          if [ "${BACKFILL}" = "true" ]; then
+            args+=(--backfill)
+            if [ -n "${BACKFILL_RELEASES}" ]; then args+=(--backfill-releases "${BACKFILL_RELEASES}"); fi
+          fi
           python polymarket_macro_sync.py "${args[@]}" | tee polymarket_macro_sync_summary.json
       - name: Flag new unclassified macro events
         # Own narrow issue post, not folded into daily-health-check.yml:

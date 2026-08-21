@@ -1,5 +1,6 @@
 import type {
   MacroSharpArchetype,
+  WalletTrajectory,
   MacroSharpCohort,
   PredictionArchetype,
   PredictionWallet,
@@ -8,7 +9,37 @@ import type {
 
 export type BasePredictionWallet = Omit<PredictionWallet, "specialties" | "qualifiedSpecialties">;
 
-export interface MacroWalletStatInput {
+/** Raw trajectory columns as they arrive from either stats table. All
+ *  optional: they are Python-owned and absent for one deploy cycle. */
+export interface WalletTrajectoryInput {
+  recent_events?: number;
+  recent_wins?: number;
+  recent_pnl?: number;
+  recent_cost?: number;
+  chases_losses?: boolean;
+  chase_ratio?: number | null;
+  watchlist_status?: string;
+}
+
+export function toTrajectory(row: WalletTrajectoryInput): WalletTrajectory | undefined {
+  const status = row.watchlist_status;
+  if (!status || row.recent_events === undefined) return undefined;
+  const events = row.recent_events ?? 0;
+  const wins = row.recent_wins ?? 0;
+  const cost = row.recent_cost ?? 0;
+  return {
+    status: (["proven", "developing", "watching", "none"].includes(status)
+      ? status : "none") as WalletTrajectory["status"],
+    recentEvents: events,
+    recentWins: wins,
+    recentWinRate: events > 0 ? round(wins / events) : null,
+    recentRoi: cost > 0 ? round((row.recent_pnl ?? 0) / cost) : null,
+    chasesLosses: Boolean(row.chases_losses),
+    chaseRatio: row.chase_ratio ?? null,
+  };
+}
+
+export interface MacroWalletStatInput extends WalletTrajectoryInput {
   wallet: string;
   cohort: string;
   name: string;
@@ -165,6 +196,11 @@ export function mergeWalletIntelligence(
       if (duplicate >= 0) existing.specialties[duplicate] = specialty;
       else existing.specialties.push(specialty);
       if ((!existing.wallet.name || existing.wallet.name.startsWith("0x")) && row.name) existing.wallet.name = row.name;
+      // macro_generalist spans every cohort, so it is the best cross-cohort
+      // read; otherwise take the first macro row that carries one.
+      if (!existing.wallet.trajectory || row.cohort === "macro_generalist") {
+        existing.wallet.trajectory = toTrajectory(row) ?? existing.wallet.trajectory;
+      }
       continue;
     }
     const wallet: BasePredictionWallet = {
@@ -178,6 +214,7 @@ export function mergeWalletIntelligence(
       roi: null,
       avgWinnerEntry: null,
       openPositions: [],
+      trajectory: toTrajectory(row),
     };
     byWallet.set(normalized, { wallet, specialties: [specialty], hasEarnings: false });
   }

@@ -89,6 +89,28 @@ def test_recompute_wallet_stats_aggregates_durable_results_and_classifies():
     assert summary["wallets"] == 2
 
 
+def test_recompute_carries_order_aware_trajectory_fields_into_the_stats_row():
+    """A wallet whose early history is bad and whose recent history is good has
+    a mediocre lifetime record - the case that would otherwise bury it forever.
+    The stats row must carry the order-aware fields so it stays findable."""
+    from datetime import date
+    results = []
+    for i in range(10):   # early: all losses
+        results.append({"wallet": "0xlate", "name": "late bloomer", "pnl": -100, "cost": 100,
+                        "win_entry_avg": None, "correct": False, "resolved_date": date(2026, 1, 1 + i)})
+    for i in range(10):   # recent: all wins
+        results.append({"wallet": "0xlate", "name": "late bloomer", "pnl": 100, "cost": 100,
+                        "win_entry_avg": 0.4, "correct": True, "resolved_date": date(2026, 2, 1 + i)})
+    with patch.object(sync.neon_feeds, "get_polymarket_wallet_results", return_value=results):
+        with patch.object(sync.neon_feeds, "upsert_polymarket_wallet_stats", return_value=1) as mock_upsert:
+            sync.recompute_wallet_stats()
+    row = mock_upsert.call_args.args[0][0]
+    assert row["wins"] == 10 and row["markets"] == 20, "lifetime record is an unremarkable 50%"
+    assert row["recent_events"] == 10 and row["recent_wins"] == 10, "recent window is all wins"
+    assert row["watchlist_status"] == "developing", "must not be lost behind the lifetime average"
+    assert row["chases_losses"] is False
+
+
 def test_run_sync_settles_before_pruning_and_only_after_resolution():
     """The retention guarantee: settlement of a newly-resolved market happens
     BEFORE any prune call, and open markets are never settled."""

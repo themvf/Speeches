@@ -19,6 +19,7 @@ import {
 } from "@/lib/server/neon";
 import {
   mergeWalletIntelligence,
+  toTrajectory,
   type BasePredictionWallet,
   type MacroWalletStatInput,
 } from "@/lib/server/prediction-wallet-intelligence";
@@ -150,6 +151,7 @@ async function buildLive(): Promise<BaseMarketPredictionsData> {
     roi: s.cost > 0 ? Math.round((s.pnl / s.cost) * 1000) / 1000 : null,
     avgWinnerEntry: s.win_entry_avg,
     openPositions: positionsByWallet.get(s.wallet) ?? [],
+    trajectory: toTrajectory(s),
   }));
 
   return {

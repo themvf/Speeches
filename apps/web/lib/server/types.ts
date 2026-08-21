@@ -1049,7 +1049,29 @@ export interface PredictionWalletSpecialty {
   avgWinnerEntry: number | null;
 }
 
+/** Order-aware view of a wallet's history (wallet_trajectory.py).
+ *  "developing" is deliberately NOT a skill verdict - it means the recent
+ *  window looks better than the lifetime record, on a sample too small to
+ *  conclude anything. It exists so a wallet whose early history drags its
+ *  lifetime average is not permanently buried by data that no longer
+ *  describes how it trades. Never present it as proof of skill. */
+export type WalletWatchlistStatus = "proven" | "developing" | "watching" | "none";
+
+export interface WalletTrajectory {
+  status: WalletWatchlistStatus;
+  recentEvents: number;
+  recentWins: number;
+  recentWinRate: number | null;
+  recentRoi: number | null;
+  /** Bets bigger after LOSING. A rising size curve alone is ambiguous
+   *  (scaling a real edge vs. chasing losses); this reading conditions on
+   *  what preceded the increase, and it is a warning, not a compliment. */
+  chasesLosses: boolean;
+  chaseRatio: number | null;
+}
+
 export interface PredictionWallet {
+  trajectory?: WalletTrajectory;
   wallet: string;
   name: string;
   archetype: PredictionArchetype;

@@ -16,6 +16,10 @@ on:
         required: false
         type: boolean
         default: false
+      backfill_markets:
+        description: "How many resolved markets to re-settle (default 120). Correctness flags can only be fixed for markets this run actually re-settles - net_win is not stored, so it cannot be re-derived from existing rows."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -27,10 +31,11 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       BACKFILL: ${{ github.event.inputs.backfill || 'false' }}
+      BACKFILL_MARKETS: ${{ github.event.inputs.backfill_markets }}
 
     steps:
       - name: Checkout
@@ -53,6 +58,7 @@ jobs:
           args=()
           if [ "${BACKFILL}" = "true" ]; then
             args+=(--backfill)
+            if [ -n "${BACKFILL_MARKETS}" ]; then args+=(--backfill-markets "${BACKFILL_MARKETS}"); fi
           fi
           python polymarket_earnings_sync.py "${args[@]}" | tee polymarket_sync_summary.json
 

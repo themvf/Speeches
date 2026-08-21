@@ -3738,18 +3738,45 @@ export type PolymarketWalletStatsRow = {
   cost: number;
   win_entry_avg: number | null;
   archetype: string;
+  /** Order-aware fields (wallet_trajectory.py). Optional because they are
+   *  Python-owned ALTER-added columns that may not exist yet when this reader
+   *  deploys - see the old-schema fallbacks below. */
+  recent_events?: number;
+  recent_wins?: number;
+  recent_pnl?: number;
+  recent_cost?: number;
+  chases_losses?: boolean;
+  chase_ratio?: number | null;
+  watchlist_status?: string;
 };
 
 export async function getPolymarketWalletStats(limit = 60): Promise<PolymarketWalletStatsRow[]> {
   const sql = getSql();
   const cappedLimit = Math.max(1, Math.min(200, limit));
-  return (await sql`
-    SELECT wallet, name, markets, wins, pnl::float AS pnl, cost::float AS cost,
-           win_entry_avg::float AS win_entry_avg, archetype
-    FROM polymarket_wallet_stats
-    ORDER BY pnl DESC
-    LIMIT ${cappedLimit}
-  `) as unknown as PolymarketWalletStatsRow[];
+  try {
+    return (await sql`
+      SELECT wallet, name, markets, wins, pnl::float AS pnl, cost::float AS cost,
+             win_entry_avg::float AS win_entry_avg, archetype,
+             recent_events, recent_wins, recent_pnl::float AS recent_pnl,
+             recent_cost::float AS recent_cost, chases_losses,
+             chase_ratio::float AS chase_ratio, watchlist_status
+      FROM polymarket_wallet_stats
+      ORDER BY pnl DESC
+      LIMIT ${cappedLimit}
+    `) as unknown as PolymarketWalletStatsRow[];
+  } catch (err) {
+    // Old-schema tolerance (deploy-order rule in CLAUDE.md): the trajectory
+    // columns are added by the Python sync's ALTERs, which may not have run
+    // yet when this reader deploys. Serve the base columns for that one cycle.
+    if (!/recent_events|recent_wins|recent_pnl|recent_cost|chases_losses|chase_ratio|watchlist_status/.test(String(err))) throw err;
+    return (await sql`
+      SELECT wallet, name, markets, wins, pnl::float AS pnl, cost::float AS cost,
+             win_entry_avg::float AS win_entry_avg, archetype
+      FROM polymarket_wallet_stats
+      ORDER BY pnl DESC
+      LIMIT ${cappedLimit}
+    `) as unknown as PolymarketWalletStatsRow[];
+  }
 }
 
 export type PolymarketWalletResultRow = {
@@ -3840,6 +3867,14 @@ export type PolymarketMacroWalletStatsRow = {
   timing_cost: number;
   win_entry_avg: number | null;
   archetype: string;
+  // Order-aware fields; optional - Python-owned columns, see the fallback below.
+  recent_events?: number;
+  recent_wins?: number;
+  recent_pnl?: number;
+  recent_cost?: number;
+  chases_losses?: boolean;
+  chase_ratio?: number | null;
+  watchlist_status?: string;
 };
 
 // fed_decision, nonfarm_payrolls, unemployment, headline_cpi, core_cpi, us_gdp,
@@ -3855,8 +3890,30 @@ export async function getPolymarketMacroWalletStats(limit = 100): Promise<Polyma
   // cohorts (payrolls/unemployment/CPI/GDP), so a global `ORDER BY pnl DESC LIMIT` starved
   // every non-fed_decision cohort out of the result set entirely, even when it had real rows.
   const perCohortLimit = Math.max(5, Math.ceil(cappedLimit / MACRO_COHORT_COUNT));
-  return (await sql`
-    SELECT wallet, cohort, name, events, wins,
+  try {
+    return (await sql`
+      SELECT wallet, cohort, name, events, wins,
+           pnl::float AS pnl, cost::float AS cost,
+           predictive_cost::float AS predictive_cost,
+           timing_cost::float AS timing_cost,
+           win_entry_avg::float AS win_entry_avg, archetype,
+           recent_events, recent_wins, recent_pnl::float AS recent_pnl,
+           recent_cost::float AS recent_cost, chases_losses,
+           chase_ratio::float AS chase_ratio, watchlist_status
+    FROM (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY cohort ORDER BY pnl DESC) AS rn
+      FROM polymarket_macro_wallet_stats
+    ) ranked
+    WHERE rn <= ${perCohortLimit}
+    ORDER BY cohort, pnl DESC
+  `) as unknown as PolymarketMacroWalletStatsRow[];
+  } catch (err) {
+    // Old-schema tolerance (deploy-order rule in CLAUDE.md): the trajectory
+    // columns come from the Python sync's ALTERs and may not exist yet when
+    // this reader deploys. Serve the base columns for that one cycle.
+    if (!/recent_events|recent_wins|recent_pnl|recent_cost|chases_losses|chase_ratio|watchlist_status/.test(String(err))) throw err;
+    return (await sql`
+      SELECT wallet, cohort, name, events, wins,
            pnl::float AS pnl, cost::float AS cost,
            predictive_cost::float AS predictive_cost,
            timing_cost::float AS timing_cost,
@@ -3868,6 +3925,7 @@ export async function getPolymarketMacroWalletStats(limit = 100): Promise<Polyma
     WHERE rn <= ${perCohortLimit}
     ORDER BY cohort, pnl DESC
   `) as unknown as PolymarketMacroWalletStatsRow[];
+  }
 }
 
 export type AttentionAlert = {
