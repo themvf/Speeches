@@ -62,12 +62,21 @@ jobs:
           gh issue create --title "Polymarket invariants: $COUNT violation(s)" --body-file invariants_body.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Distribution report
+        # Reports rather than fails: unlike a bound, a shifted distribution can
+        # move for legitimate reasons and needs judgement.
+        if: always()
+        run: |
+          set -euo pipefail
+          python report_polymarket_distributions.py | tee polymarket_distributions.json
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: polymarket-invariants-${{ github.run_id }}
-          path: polymarket_invariants.json
+          path: |
+            polymarket_invariants.json
+            polymarket_distributions.json
           if-no-files-found: ignore
       - name: Fail on violations
         if: steps.audit.outcome == 'failure'
