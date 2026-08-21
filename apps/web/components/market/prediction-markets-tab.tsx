@@ -45,7 +45,7 @@ const ARCHETYPE_STYLES: Record<PredictionArchetype, { label: string; color: stri
   },
 };
 
-type WalletFilter = PredictionArchetype | "macro" | "all";
+type WalletFilter = PredictionArchetype | "macro" | "developing" | "all";
 
 const FILTERS: { id: WalletFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -53,6 +53,7 @@ const FILTERS: { id: WalletFilter; label: string }[] = [
   { id: "early_sharp", label: "Early sharps" },
   { id: "news_scalper", label: "News scalpers" },
   { id: "longshot", label: "Longshots" },
+  { id: "developing", label: "Developing" },
 ];
 
 function ArchetypeBadge({ archetype }: { archetype: PredictionArchetype }) {
@@ -274,7 +275,13 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
       ? wallets
       : filter === "macro"
         ? wallets.filter((w) => w.specialties.some((specialty) => specialty.family === "macro" && specialty.qualified))
-        : wallets.filter((w) => w.archetype === filter),
+        : filter === "developing"
+          // Sorted by how much recent evidence there is, NOT by profit. A list
+          // of unproven wallets ranked by P&L reads as a leaderboard and gets
+          // followed like one; this is a watchlist and must not.
+          ? wallets.filter((w) => w.trajectory?.status === "developing")
+              .sort((a, b) => (b.trajectory?.recentEvents ?? 0) - (a.trajectory?.recentEvents ?? 0))
+          : wallets.filter((w) => w.archetype === filter),
     [wallets, filter]
   );
 
@@ -292,6 +299,17 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
           </button>
         ))}
       </div>
+
+      {filter === "developing" && (
+        <p className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] p-3 text-[11px] leading-relaxed text-[color:var(--ink-faint)]">
+          <strong className="text-[color:var(--ink-soft)]">Not a skill ranking.</strong>{" "}
+          These wallets have <em>not</em> qualified. Their recent results look better than their own
+          lifetime record, on a sample too small to conclude anything - shown so a wallet whose early
+          history drags its average is not permanently buried. Ordered by how much recent evidence
+          exists, not by profit. Regression to the mean, market-wide shifts, and wallets that quit
+          after a bad run all produce this pattern without anyone improving.
+        </p>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
         <table className="w-full">
@@ -320,6 +338,24 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
                         {w.specialties.filter((specialty) => specialty.qualified).slice(0, 3).map((specialty) => <SpecialtyBadge key={specialty.id} specialty={specialty} />)}
                         {w.qualifiedSpecialties > 3 && <span className="text-[10px] text-[color:var(--ink-faint)]">+{w.qualifiedSpecialties - 3}</span>}
                         {w.qualifiedSpecialties === 0 && <span className="text-[10px] text-[color:var(--ink-faint)]" title="Qualification is per specialty, not on the wallet's combined total.">Building sample{buildProgress(w) && ` · best ${buildProgress(w)}`}</span>}
+                        {w.trajectory?.status === "developing" && (
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#fbbf24]"
+                            style={{ backgroundColor: "color-mix(in srgb, #fbbf24 12%, transparent)" }}
+                            title={`Last ${w.trajectory.recentEvents} events: ${w.trajectory.recentWinRate === null ? "-" : Math.round(w.trajectory.recentWinRate * 100) + "% win"}${w.trajectory.recentRoi === null ? "" : ", " + Math.round(w.trajectory.recentRoi * 100) + "% ROI"}. Recent form only - not a skill verdict.`}
+                          >
+                            Developing
+                          </span>
+                        )}
+                        {w.trajectory?.chasesLosses && (
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#f87171]"
+                            style={{ backgroundColor: "color-mix(in srgb, #f87171 12%, transparent)" }}
+                            title={`Bets roughly ${w.trajectory.chaseRatio}x bigger after a loss than after a win. Loss-chasing looks identical to a skilled run until it ends.`}
+                          >
+                            Chases losses
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">{w.markets}</td>

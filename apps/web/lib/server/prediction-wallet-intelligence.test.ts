@@ -107,3 +107,34 @@ test("the earnings specialty carries the earnings gate, not the macro one", () =
   assert.ok(specialty.events > specialty.minEvents);
   assert.equal(specialty.qualified, false);
 });
+
+test("trajectory is absent rather than fabricated when the Python columns have not shipped yet", () => {
+  // Deploy-order: this reader goes live on Vercel instantly, but the
+  // trajectory columns only exist after the next Python sync runs its ALTERs.
+  // A row without them must yield no trajectory at all - never a default that
+  // would render as a real (and wrong) "developing" verdict.
+  const [wallet] = mergeWalletIntelligence([], [macro({ archetype: "unclassified" })], 8);
+  assert.equal(wallet.trajectory, undefined);
+});
+
+test("developing status and loss-chasing survive the merge", () => {
+  const [wallet] = mergeWalletIntelligence([], [macro({
+    archetype: "unclassified",
+    recent_events: 10, recent_wins: 8, recent_pnl: 400, recent_cost: 1000,
+    chases_losses: true, chase_ratio: 2.4, watchlist_status: "developing",
+  })], 8);
+  assert.equal(wallet.trajectory?.status, "developing");
+  assert.equal(wallet.trajectory?.recentWinRate, 0.8);
+  assert.equal(wallet.trajectory?.recentRoi, 0.4);
+  assert.equal(wallet.trajectory?.chasesLosses, true);
+  // Still not qualified - the watchlist must never manufacture a verdict.
+  assert.equal(wallet.qualifiedSpecialties, 0);
+  assert.equal(wallet.archetype, "unclassified");
+});
+
+test("an unrecognised status string degrades to none instead of leaking through", () => {
+  const [wallet] = mergeWalletIntelligence([], [macro({
+    recent_events: 5, watchlist_status: "totally-made-up",
+  })], 8);
+  assert.equal(wallet.trajectory?.status, "none");
+});
