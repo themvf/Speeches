@@ -392,10 +392,18 @@ def group_macro_wallet_results(results: List[Dict[str, Any]], include_unqualifie
         events_by_group[(wallet, "macro_generalist")].append(result)
         for key in ((wallet, cohort), (wallet, "macro_generalist")):
             row = groups.setdefault(key, {"events": 0, "wins": 0, "pnl": 0.0, "cost": 0.0,
-                "predictive_cost": 0.0, "timing_cost": 0.0, "buy_size": 0.0, "entries": [], "name": ""})
+                "predictive_cost": 0.0, "timing_cost": 0.0, "buy_size": 0.0, "entry_cost": 0.0, "entries": [], "name": ""})
             row["events"] += 1; row["wins"] += int(bool(result["correct"]))
             row["pnl"] += float(result["pnl"] or 0); row["cost"] += float(result["cost"] or 0)
-            row["buy_size"] += float(result.get("buy_size") or 0)
+            # entry_cost counts cost ONLY from rows that recorded buy_size.
+            # Rows settled before buy_size existed default it to 0 while
+            # keeping a real cost, so summing both blindly divides full cost by
+            # partial size - producing entry prices above $1, impossible for a
+            # 0-1 contract.
+            result_size = float(result.get("buy_size") or 0)
+            if result_size > 0:
+                row["buy_size"] += result_size
+                row["entry_cost"] += float(result["cost"] or 0)
             predictive = float(result["early_cost"] or 0) + float(result["pre_release_cost"] or 0)
             timing = predictive + float(result["late_cost"] or 0) + float(result["post_release_cost"] or 0)
             row["predictive_cost"] += predictive; row["timing_cost"] += timing
@@ -412,7 +420,7 @@ def group_macro_wallet_results(results: List[Dict[str, Any]], include_unqualifie
         # cost is total buy CASH and buy_size total shares, so this is the
         # all-trades average entry price - the number a win rate has to beat
         # before it counts as edge.
-        entry_avg = (value["cost"] / value["buy_size"]) if value["buy_size"] > 0 else None
+        entry_avg = (value["entry_cost"] / value["buy_size"]) if value["buy_size"] > 0 else None
         trajectory = wallet_trajectory.summarize(
             events_by_group.get((wallet, cohort), []),
             qualified=archetype != "unclassified", lifetime_roi=lifetime_roi)

@@ -168,13 +168,20 @@ def recompute_wallet_stats() -> Dict[str, int]:
     events_by_wallet: Dict[str, List[Dict[str, Any]]] = {}
     for r in results:
         a = agg.setdefault(str(r["wallet"]), {
-            "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "buy_size": 0.0, "entries": [], "name": "",
+            "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "buy_size": 0.0, "entry_cost": 0.0, "entries": [], "name": "",
         })
         events_by_wallet.setdefault(str(r["wallet"]), []).append(r)
         a["markets"] += 1
         a["pnl"] += float(r["pnl"] or 0)
         a["cost"] += float(r["cost"] or 0)
-        a["buy_size"] += float(r.get("buy_size") or 0)
+        # entry_cost tracks cost ONLY from rows that recorded buy_size. Rows
+        # settled before buy_size existed default it to 0 while keeping a real
+        # cost, so summing both blindly divides full cost by partial size and
+        # yields entry prices above $1 - impossible for a 0-1 contract.
+        row_size = float(r.get("buy_size") or 0)
+        if row_size > 0:
+            a["buy_size"] += row_size
+            a["entry_cost"] += float(r["cost"] or 0)
         if r["correct"]:
             a["wins"] += 1
         if r["win_entry_avg"] is not None:
@@ -206,7 +213,7 @@ def recompute_wallet_stats() -> Dict[str, int]:
             # All-trades average entry: cost is total buy cash, buy_size total
             # shares. Unlike win_entry_avg this includes losing trades, so it
             # is what a win rate must beat to count as edge.
-            "entry_avg": (a["cost"] / a["buy_size"]) if a["buy_size"] > 0 else None,
+            "entry_avg": (a["entry_cost"] / a["buy_size"]) if a["buy_size"] > 0 else None,
             **trajectory,
         })
     written = neon_feeds.upsert_polymarket_wallet_stats(rows)

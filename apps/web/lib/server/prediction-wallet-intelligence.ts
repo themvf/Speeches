@@ -22,7 +22,17 @@ export interface WalletTrajectoryInput {
   entry_avg?: number | null;
 }
 
-export function toTrajectory(row: WalletTrajectoryInput, lifetimeWinRate?: number): WalletTrajectory | undefined {
+/** Below this many settled events an edge figure is noise, not a measurement:
+ *  one winning 1c longshot computes to +99 points and would otherwise outrank
+ *  every genuine trader in the dataset. A proper confidence interval is the
+ *  real answer; this is the floor until then. */
+const EDGE_MIN_EVENTS = 8;
+
+export function toTrajectory(
+  row: WalletTrajectoryInput,
+  lifetimeWinRate?: number,
+  lifetimeEvents = 0,
+): WalletTrajectory | undefined {
   const status = row.watchlist_status;
   if (!status || row.recent_events === undefined) return undefined;
   const events = row.recent_events ?? 0;
@@ -41,7 +51,7 @@ export function toTrajectory(row: WalletTrajectoryInput, lifetimeWinRate?: numbe
     // A win rate is only skill to the extent it exceeds the price paid: buy at
     // 0.90, win 90% of the time, and the edge is zero. Compared against the
     // LIFETIME win rate, since entry_avg is a lifetime figure too.
-    edge: row.entry_avg != null && lifetimeWinRate != null
+    edge: row.entry_avg != null && lifetimeWinRate != null && lifetimeEvents >= EDGE_MIN_EVENTS
       ? round(lifetimeWinRate - row.entry_avg) : null,
   };
 }
@@ -206,7 +216,7 @@ export function mergeWalletIntelligence(
       // macro_generalist spans every cohort, so it is the best cross-cohort
       // read; otherwise take the first macro row that carries one.
       if (!existing.wallet.trajectory || row.cohort === "macro_generalist") {
-        existing.wallet.trajectory = toTrajectory(row, row.events > 0 ? row.wins / row.events : undefined)
+        existing.wallet.trajectory = toTrajectory(row, row.events > 0 ? row.wins / row.events : undefined, row.events)
           ?? existing.wallet.trajectory;
       }
       continue;
@@ -222,7 +232,7 @@ export function mergeWalletIntelligence(
       roi: null,
       avgWinnerEntry: null,
       openPositions: [],
-      trajectory: toTrajectory(row, row.events > 0 ? row.wins / row.events : undefined),
+      trajectory: toTrajectory(row, row.events > 0 ? row.wins / row.events : undefined, row.events),
     };
     byWallet.set(normalized, { wallet, specialties: [specialty], hasEarnings: false });
   }

@@ -151,7 +151,7 @@ async function buildLive(): Promise<BaseMarketPredictionsData> {
     roi: s.cost > 0 ? Math.round((s.pnl / s.cost) * 1000) / 1000 : null,
     avgWinnerEntry: s.win_entry_avg,
     openPositions: positionsByWallet.get(s.wallet) ?? [],
-    trajectory: toTrajectory(s, s.markets > 0 ? s.wins / s.markets : undefined),
+    trajectory: toTrajectory(s, s.markets > 0 ? s.wins / s.markets : undefined, s.markets),
   }));
 
   return {

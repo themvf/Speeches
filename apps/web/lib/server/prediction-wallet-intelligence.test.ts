@@ -168,3 +168,14 @@ test("edge is null rather than guessed when entry price is not yet available", (
   assert.equal(w.trajectory?.edge, null);
   assert.equal(w.trajectory?.entryAvg, null);
 });
+
+test("a single lucky longshot does not produce an edge figure", () => {
+  // One market, bought at 1c, won. The arithmetic says +99 points, which would
+  // outrank every genuine trader; the sample says nothing at all.
+  const [lucky] = mergeWalletIntelligence([], [macro({
+    wallet: "0xlucky", events: 1, wins: 1,
+    recent_events: 1, watchlist_status: "none", entry_avg: 0.01,
+  })], 8);
+  assert.equal(lucky.trajectory?.edge, null, "no edge below the sample floor");
+  assert.equal(lucky.trajectory?.entryAvg, 0.01, "the price paid is still reported");
+});
