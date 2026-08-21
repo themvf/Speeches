@@ -1,0 +1,74 @@
+name: Polymarket Invariants
+
+# Bounds check on every derived figure we store. These assert facts about the
+# quantities themselves - a probability is in [0,1], wins cannot exceed events -
+# rather than intent, which is why they catch what 601 unit tests did not: a
+# fixture can encode the same wrong assumption as the code, a physical bound
+# cannot.
+#
+# Daily, and after every sync via workflow_dispatch. Fails the run on any
+# violation: a bound is never legitimately broken, so there is nothing to
+# triage - it is always a bug.
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: polymarket-invariants
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Check invariants
+        id: audit
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python audit_polymarket_invariants.py | tee polymarket_invariants.json
+      - name: Open an issue on violations
+        if: steps.audit.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          COUNT=$(python -c "import json;print(json.load(open('polymarket_invariants.json')).get('total_violations','?'))" 2>/dev/null || echo "?")
+          {
+            echo "A stored figure violated a physical bound - a probability outside [0,1], more wins than events, or similar. These are never legitimate, so this is a bug rather than something to triage."
+            echo
+            echo '```json'
+            head -c 8000 polymarket_invariants.json
+            echo
+            echo '```'
+          } > invariants_body.md
+          gh issue create --title "Polymarket invariants: $COUNT violation(s)" --body-file invariants_body.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: polymarket-invariants-${{ github.run_id }}
+          path: polymarket_invariants.json
+          if-no-files-found: ignore
+      - name: Fail on violations
+        if: steps.audit.outcome == 'failure'
+        run: exit 1

@@ -2307,6 +2307,40 @@ def get_macro_wallet_stats_freshness() -> Dict[str, Any]:
             return dict(cur.fetchone())
 
 
+def get_polymarket_macro_wallet_stats_rows() -> List[Dict[str, Any]]:
+    """Every macro stats row, unranked and unfiltered - for auditing. The
+    product reader ranks per cohort and caps the result, which is exactly what
+    an audit must not do: a bad row is most likely to be one nobody looks at."""
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT wallet, cohort, events, wins, pnl, cost, buy_size,
+                       entry_avg, win_entry_avg, recent_events, recent_wins,
+                       archetype, watchlist_status
+                FROM polymarket_macro_wallet_stats
+                """
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def get_polymarket_wallet_stats_rows() -> List[Dict[str, Any]]:
+    """Every earnings stats row, unranked and unfiltered - see above."""
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT wallet, markets, wins, pnl, cost, buy_size, entry_avg,
+                       win_entry_avg, recent_events, recent_wins, archetype,
+                       watchlist_status
+                FROM polymarket_wallet_stats
+                """
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
 # ─── Filing catalyst events (SEC-50) ────────────────────────────────────────
 # 8-K and Form 4 filings for the tracked (industry-config) universe, written
 # by filing_catalyst_sync.py and read by the movers/attention routes for
