@@ -125,5 +125,14 @@ def test_committed_state_file_has_sane_coverage_and_shape():
     latest = state["latest"]
     assert set(latest).issubset(tracked), "state has entries for tickers no longer in the universe"
     assert len(latest) / len(tracked) > 0.9, "state coverage dropped well below the ~96% bootstrap baseline"
-    for info in latest.values():
-        assert info["form"] in ("10-Q", "10-K") and info["accession"] and info["filed"]
+    # Two legitimate entry shapes, by design: the --full submissions path
+    # records a "filed" date, the hourly --detect atom path does not (the
+    # shared differ in kpi_filing_watch only captures form + accession from
+    # the feed). Change detection keys entirely on "accession", so "filed" is
+    # informational - assert the load-bearing fields always, and "filed" only
+    # when the submissions path was what wrote the entry.
+    for ticker, info in latest.items():
+        assert info["form"] in ("10-Q", "10-K"), ticker
+        assert info["accession"], ticker
+        if "filed" in info:
+            assert info["filed"], ticker
