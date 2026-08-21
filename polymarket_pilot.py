@@ -235,25 +235,51 @@ def fetch_wallet_open_positions(wallet: str, open_markets: Dict[str, Dict[str, s
 ARCH_MIN_MARKETS = 8
 
 
+MIN_EDGE = 0.05
+
+
 def classify_archetype(row: Dict[str, Any]) -> str:
-    """Map a ranked-wallet row to one of: early_sharp / news_scalper /
-    longshot / unclassified. Mutually exclusive by construction (win-rate and
-    entry-price bands don't overlap). entry-price is the pilot-proven proxy
-    for earliness; SEC-27 upgrades it to hours-before-report."""
+    """Map a ranked-wallet row to early_sharp / news_scalper / longshot /
+    unclassified.
+
+    Gated on EDGE - win rate minus the all-trades average entry price - rather
+    than on win rate and entry price as separate conditions. In a prediction
+    market the price IS a probability: buy at 0.90 and win 90% of the time and
+    you have added nothing. Testing the two separately let a wallet paying 0.98
+    and winning 91% (edge -7 points) qualify as a "news scalper", implying a
+    skill it did not have, while a wallet paying 0.18 and winning 42% (edge +22)
+    stayed unclassified because its win rate looked poor. Both were real,
+    observed live before this change.
+
+    So: first decide whether there is edge at all, then describe WHERE it comes
+    from. Style is read off entry price, which is the same signal as before -
+    only now it labels a kind of edge rather than standing in for edge itself.
+    """
     if row["markets"] < ARCH_MIN_MARKETS:
         return "unclassified"
-    entry = row.get("avg_winner_entry_price")
+    # All-trades average entry, NOT avg_winner_entry_price: the latter is
+    # conditioned on winners and cannot say what was paid for the losses.
+    entry = row.get("entry_avg")
     if entry is None:
         return "unclassified"
     win = row["win_rate"]
     roi = row.get("roi")
-    if entry <= 0.60 and win >= 0.55 and row["pnl_usd"] > 0:
-        return "early_sharp"
-    if entry >= 0.80 and win >= 0.90:
-        return "news_scalper"
-    if entry <= 0.35 and win < 0.40 and roi is not None and roi > 1:
+    edge = win - entry
+    # Beating the prices paid AND actually making money. ROI is the same claim
+    # denominated in dollars, so requiring both guards against a wallet whose
+    # edge is real per-contract but destroyed by position sizing.
+    if edge < MIN_EDGE or (roi is not None and roi <= 0):
+        return "unclassified"
+    # "Longshot" must keep meaning what it says: rare wins at long odds. Cheap
+    # entries that win MORE often than not are not longshots - that is simply
+    # buying cheap and being right, which is what early_sharp describes.
+    if entry <= 0.35 and win < 0.50:
         return "longshot"
-    return "unclassified"
+    # Edge earned at near-certainty prices is a speed edge, not a forecasting
+    # one: the outcome was public, they were faster to it.
+    if entry >= 0.80:
+        return "news_scalper"
+    return "early_sharp"
 
 
 def analyze_resolved_markets(markets: List[Dict[str, Any]], capture_per_market: bool = False) -> tuple:

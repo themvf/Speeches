@@ -355,17 +355,37 @@ def aggregate_release(markets: List[Dict[str, Any]], fills_by_market: Dict[str, 
     return dict(aggregate)
 
 
-def classify_wallet(events: int, wins: int, pnl: float, cost: float, predictive_cost: float, timing_cost: float, entry: Optional[float], cohort: str = "") -> str:
+def classify_wallet(events: int, wins: int, pnl: float, cost: float, predictive_cost: float,
+                    timing_cost: float, entry: Optional[float], cohort: str = "",
+                    entry_avg: Optional[float] = None) -> str:
+    """early_sharp / release_scalper / longshot / unclassified.
+
+    Gated on EDGE - win rate minus the all-trades average entry price - not on
+    win rate alone. In a prediction market the price is a probability, so a 90%
+    win rate bought at 0.90 is worth exactly nothing; testing win rate on its
+    own credited wallets for buying favourites (observed live on the earnings
+    side, where a 91%-win wallet paying 0.98 carried a skill badge).
+
+    Timing still decides the STYLE for macro, which earnings cannot do: the
+    pre-release share of a wallet's cost says whether its edge came from
+    forecasting the number or from being fast once it was public.
+    """
     if events < cohort_min_events(cohort) or cost <= 0 or timing_cost / cost < 0.5:
         return "unclassified"
-    win_rate, roi, predictive_share = wins / events, pnl / cost, predictive_cost / timing_cost
-    if predictive_share < 0.25 and win_rate >= 0.60:
+    if entry_avg is None:
+        return "unclassified"
+    win_rate = wins / events
+    edge = win_rate - entry_avg
+    if edge < pilot.MIN_EDGE or pnl <= 0:
+        return "unclassified"
+    predictive_share = predictive_cost / timing_cost
+    # Almost all the money went in AFTER the release: the answer was already
+    # public, so this is execution speed rather than prediction.
+    if predictive_share < 0.25:
         return "release_scalper"
-    if predictive_share >= 0.60 and win_rate >= 0.55 and pnl > 0:
-        return "early_sharp"
-    if entry is not None and entry <= 0.35 and win_rate < 0.40 and roi > 1:
+    if entry_avg <= 0.35 and win_rate < 0.50:
         return "longshot"
-    return "unclassified"
+    return "early_sharp"
 
 
 def group_macro_wallet_results(results: List[Dict[str, Any]], include_unqualified_generalist: bool = False) -> List[Dict[str, Any]]:
@@ -415,12 +435,13 @@ def group_macro_wallet_results(results: List[Dict[str, Any]], include_unqualifie
                 and (value["events"] < GENERALIST_MIN_EVENTS or len(cohorts_by_wallet[wallet]) < GENERALIST_MIN_COHORTS)):
             continue
         entry = sum(value["entries"]) / len(value["entries"]) if value["entries"] else None
-        archetype = classify_wallet(value["events"], value["wins"], value["pnl"], value["cost"], value["predictive_cost"], value["timing_cost"], entry, cohort)
+        entry_avg_for_class = (value["entry_cost"] / value["buy_size"]) if value["buy_size"] > 0 else None
+        archetype = classify_wallet(value["events"], value["wins"], value["pnl"], value["cost"], value["predictive_cost"], value["timing_cost"], entry, cohort, entry_avg_for_class)
         lifetime_roi = (value["pnl"] / value["cost"]) if value["cost"] > 0 else None
         # cost is total buy CASH and buy_size total shares, so this is the
         # all-trades average entry price - the number a win rate has to beat
         # before it counts as edge.
-        entry_avg = (value["entry_cost"] / value["buy_size"]) if value["buy_size"] > 0 else None
+        entry_avg = entry_avg_for_class
         trajectory = wallet_trajectory.summarize(
             events_by_group.get((wallet, cohort), []),
             qualified=archetype != "unclassified", lifetime_roi=lifetime_roi)

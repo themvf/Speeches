@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Read-only diagnostic: is classify_wallet's threshold scheme actually
-separating the real macro wallet population, or is a chunk of it falling
-into "unclassified" for a reason that isn't "not enough sample"?
+"""Read-only diagnostic: why does a wallet fail to qualify?
 
-classify_wallet's named archetypes only cover three narrow bands of
-predictive_share (< 0.25 for release_scalper, >= 0.60 for early_sharp, plus
-longshot's separate entry/win-rate/ROI band). Everything from 0.25-0.60
-predictive_share falls through to "unclassified" unless it happens to also
-match longshot - indistinguishable in the UI from a wallet that genuinely
-doesn't have enough history yet. This script buckets every wallet-cohort
-pair (regardless of whether it meets the cohort's event-count bar) into a
-named "band" so that dead zone is visible and measurable instead of assumed.
+"Unclassified" collapses several very different situations into one verdict,
+and they call for opposite responses. This buckets every wallet-cohort pair
+into the specific reason: not enough sample yet (wait), not enough pre-release
+timing coverage, no entry price recorded yet (re-settle it), a win rate that
+does not beat the price paid (correctly excluded - the wallet has no edge), or
+a well-sampled wallet that matches no named archetype (a real gap in the
+scheme, worth acting on).
+
+That last case is the one worth watching. When classification ran on win rate
+and entry price as separate conditions, it was substantial; since both moved
+onto EDGE it should be close to empty, and this is how that stays checked
+rather than assumed.
 
 Never writes to the database. DATABASE_URL is the sole secret (same as
 polymarket_macro_sync.py).
@@ -26,6 +28,7 @@ from typing import Any, Dict, List, Optional
 
 import neon_feeds
 import polymarket_macro_sync as macro
+import polymarket_pilot as pilot
 
 SOURCE_KEY = "analyze_macro_archetype_bands"
 
@@ -37,28 +40,36 @@ BAND_RELEASE_SCALPER = "release_scalper"
 BAND_EARLY_SHARP = "early_sharp"
 BAND_LONGSHOT = "longshot"
 BAND_DEAD_ZONE = "dead_zone"  # enough sample + timing coverage, matches no named archetype
+# Since classification moved onto edge, these are the two ways a well-sampled
+# wallet now fails to qualify: no entry price recorded yet, or a win rate that
+# does not beat the price paid.
+BAND_NO_ENTRY_PRICE = "no_entry_price"
+BAND_NO_EDGE = "no_edge"
 
 
 def band_for(events: int, wins: int, pnl: float, cost: float, predictive_cost: float,
-             timing_cost: float, entry: Optional[float], cohort: str) -> str:
-    """Same decision tree as classify_wallet, but with the two implicit
-    "unclassified" reasons (not enough sample; not enough pre-release timing
-    coverage) split out from the "sample is fine, just doesn't match a named
-    archetype" case, so the three can be told apart."""
+             timing_cost: float, entry: Optional[float], cohort: str,
+             entry_avg: Optional[float] = None) -> str:
+    """Same decision tree as classify_wallet, with the reasons for an
+    "unclassified" verdict split apart so they can be told from one another:
+    not enough sample, not enough pre-release timing coverage, no measurable
+    edge, or a sample that is fine and simply matches no named archetype."""
     if events < macro.cohort_min_events(cohort):
         return BAND_INSUFFICIENT_EVENTS
     if cost <= 0 or timing_cost / cost < 0.5:
         return BAND_LOW_TIMING_COVERAGE
+    if entry_avg is None:
+        return BAND_NO_ENTRY_PRICE
     win_rate = wins / events
-    roi = pnl / cost
+    edge = win_rate - entry_avg
+    if edge < pilot.MIN_EDGE or pnl <= 0:
+        return BAND_NO_EDGE
     predictive_share = predictive_cost / timing_cost if timing_cost > 0 else 0.0
-    if predictive_share < 0.25 and win_rate >= 0.60:
+    if predictive_share < 0.25:
         return BAND_RELEASE_SCALPER
-    if predictive_share >= 0.60 and win_rate >= 0.55 and pnl > 0:
-        return BAND_EARLY_SHARP
-    if entry is not None and entry <= 0.35 and win_rate < 0.40 and roi > 1:
+    if entry_avg <= 0.35 and win_rate < 0.50:
         return BAND_LONGSHOT
-    return BAND_DEAD_ZONE
+    return BAND_EARLY_SHARP
 
 
 def _stats(values: List[float]) -> Dict[str, Optional[float]]:
@@ -96,7 +107,8 @@ def analyze(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         events, wins, pnl, cost = row["events"], row["wins"], row["pnl"], row["cost"]
         predictive_cost, timing_cost = row["predictive_cost"], row["timing_cost"]
         entry = row.get("win_entry_avg")
-        band = band_for(events, wins, pnl, cost, predictive_cost, timing_cost, entry, cohort)
+        band = band_for(events, wins, pnl, cost, predictive_cost, timing_cost, entry, cohort,
+                        row.get("entry_avg"))
 
         overall_bands[band] = overall_bands.get(band, 0) + 1
         cohort_bucket = per_cohort.setdefault(cohort, {})

@@ -67,12 +67,27 @@ def test_aggregate_release_counts_brackets_once_and_buckets_entry_timing():
     assert result["scalper"]["post_release_cost"] == 5
 
 
-def test_wallet_classifier_requires_sample_and_timing_coverage():
-    assert macro.classify_wallet(9, 9, 100, 100, 90, 100, 0.5) == "unclassified"
-    assert macro.classify_wallet(10, 7, 100, 100, 70, 100, 0.5) == "early_sharp"
-    assert macro.classify_wallet(10, 8, 100, 100, 10, 100, 0.8) == "release_scalper"
-    assert macro.classify_wallet(10, 3, 150, 100, 80, 100, 0.2) == "longshot"
-    assert macro.classify_wallet(10, 8, 100, 100, 10, 40, 0.8) == "unclassified"
+def test_wallet_classifier_requires_sample_timing_coverage_and_edge():
+    # (events, wins, pnl, cost, predictive_cost, timing_cost, entry, cohort, entry_avg)
+    assert macro.classify_wallet(9, 9, 100, 100, 90, 100, 0.5, "", 0.4) == "unclassified", "sample gate"
+    assert macro.classify_wallet(10, 8, 100, 100, 10, 40, 0.8, "", 0.4) == "unclassified", "timing coverage gate"
+    assert macro.classify_wallet(10, 7, 100, 100, 70, 100, 0.5, "", 0.40) == "early_sharp"
+    # Most of the money went in after the release: speed, not forecasting.
+    assert macro.classify_wallet(10, 8, 100, 100, 10, 100, 0.8, "", 0.60) == "release_scalper"
+    # Rare wins at long odds.
+    assert macro.classify_wallet(10, 4, 150, 100, 80, 100, 0.2, "", 0.20) == "longshot"
+
+
+def test_macro_classifier_rejects_a_win_rate_that_only_reflects_the_price_paid():
+    """Same correction as the earnings side: wins 80% of the time but paid 0.85
+    for it, so the win rate was already priced in and there is no edge."""
+    assert macro.classify_wallet(20, 16, 100, 100, 90, 100, 0.85, "", 0.85) == "unclassified"
+    # Identical record, bought at 0.60 instead: +20 points, and it qualifies.
+    assert macro.classify_wallet(20, 16, 100, 100, 90, 100, 0.60, "", 0.60) == "early_sharp"
+
+
+def test_macro_classifier_needs_an_entry_price_to_judge_against():
+    assert macro.classify_wallet(20, 16, 100, 100, 90, 100, 0.5, "", None) == "unclassified"
 
 
 def test_wallet_classifier_uses_a_lower_bar_for_quarterly_cohorts():
@@ -82,10 +97,10 @@ def test_wallet_classifier_uses_a_lower_bar_for_quarterly_cohorts():
     assert macro.cohort_min_events("us_gdp") == 5
     assert macro.cohort_min_events("fed_decision") == macro.COHORT_MIN_EVENTS
     assert macro.cohort_min_events("core_pce") == macro.COHORT_MIN_EVENTS
-    assert macro.classify_wallet(4, 4, 100, 100, 90, 100, 0.5, cohort="us_gdp") == "unclassified"
-    assert macro.classify_wallet(5, 4, 100, 100, 70, 100, 0.5, cohort="us_gdp") == "early_sharp"
-    # Same raw numbers fail to qualify for a monthly-cadence cohort at 5 events.
-    assert macro.classify_wallet(5, 4, 100, 100, 70, 100, 0.5, cohort="headline_cpi") == "unclassified"
+    assert macro.classify_wallet(4, 4, 100, 100, 90, 100, 0.5, "us_gdp", 0.4) == "unclassified"
+    assert macro.classify_wallet(5, 4, 100, 100, 70, 100, 0.5, "us_gdp", 0.4) == "early_sharp"
+    # Same numbers fail for a monthly-cadence cohort at 5 events.
+    assert macro.classify_wallet(5, 4, 100, 100, 70, 100, 0.5, "headline_cpi", 0.4) == "unclassified"
 
 
 def test_unclassified_signature_strips_period_suffix_and_rejects_non_recurring_titles():

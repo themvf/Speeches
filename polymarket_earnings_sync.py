@@ -193,12 +193,18 @@ def recompute_wallet_stats() -> Dict[str, int]:
     archetype_counts: Dict[str, int] = {}
     for wallet, a in agg.items():
         entry_avg = round(sum(a["entries"]) / len(a["entries"]), 4) if a["entries"] else None
+        # All-trades average entry (cost paid / shares bought). This is the
+        # classifier's denominator now - avg_winner_entry_price is kept only
+        # for display, since being conditioned on winners it cannot say what
+        # the wallet paid for the outcomes it got wrong.
+        all_trades_entry = (a["entry_cost"] / a["buy_size"]) if a["buy_size"] > 0 else None
         classify_row = {
             "markets": a["markets"],
             "win_rate": a["wins"] / a["markets"],
             "pnl_usd": a["pnl"],
             "roi": (a["pnl"] / a["cost"]) if a["cost"] > 0 else None,
             "avg_winner_entry_price": entry_avg,
+            "entry_avg": all_trades_entry,
         }
         archetype = pilot.classify_archetype(classify_row)
         archetype_counts[archetype] = archetype_counts.get(archetype, 0) + 1
@@ -213,7 +219,7 @@ def recompute_wallet_stats() -> Dict[str, int]:
             # All-trades average entry: cost is total buy cash, buy_size total
             # shares. Unlike win_entry_avg this includes losing trades, so it
             # is what a win rate must beat to count as edge.
-            "entry_avg": (a["entry_cost"] / a["buy_size"]) if a["buy_size"] > 0 else None,
+            "entry_avg": all_trades_entry,
             **trajectory,
         })
     written = neon_feeds.upsert_polymarket_wallet_stats(rows)

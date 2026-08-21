@@ -71,20 +71,24 @@ def test_fetch_new_fills_no_cursor_pages_until_short_page():
 
 def test_recompute_wallet_stats_aggregates_durable_results_and_classifies():
     results = []
-    # 10 markets for a sharp: 7 wins, cheap entries.
+    # 10 markets for a sharp: 7 wins on contracts costing ~0.40, so a 70% win
+    # rate against a 0.40 price is +30 points of edge. buy_size is what makes
+    # that price computable (cost / buy_size).
     for i in range(10):
         results.append({"wallet": "0xsharp", "name": "sharpie", "pnl": 50 if i < 7 else -20,
-                        "cost": 100, "win_entry_avg": 0.5 if i < 7 else None, "correct": i < 7})
+                        "cost": 100, "buy_size": 250, "win_entry_avg": 0.5 if i < 7 else None,
+                        "correct": i < 7})
     # 2 markets only: below the archetype gate.
     for i in range(2):
         results.append({"wallet": "0xnew", "name": "newbie", "pnl": 10, "cost": 10,
-                        "win_entry_avg": 0.3, "correct": True})
+                        "buy_size": 25, "win_entry_avg": 0.3, "correct": True})
     with patch.object(sync.neon_feeds, "get_polymarket_wallet_results", return_value=results):
         with patch.object(sync.neon_feeds, "upsert_polymarket_wallet_stats", return_value=2) as mock_upsert:
             summary = sync.recompute_wallet_stats()
     rows = {r["wallet"]: r for r in mock_upsert.call_args.args[0]}
     assert rows["0xsharp"]["markets"] == 10 and rows["0xsharp"]["wins"] == 7
     assert rows["0xsharp"]["archetype"] == "early_sharp"
+    assert rows["0xsharp"]["entry_avg"] == 0.4, "all-trades entry drives classification"
     assert rows["0xnew"]["archetype"] == "unclassified"  # sample-size gate
     assert summary["wallets"] == 2
 

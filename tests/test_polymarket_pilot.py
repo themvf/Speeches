@@ -39,45 +39,66 @@ def test_settle_market_sell_realizes_cash_and_clamps_negative_net():
     assert round(out["A"]["pnl"], 4) == 2.0  # flat position, pure trading cash
 
 
-def _row(markets=10, win_rate=0.6, pnl=100.0, roi=0.5, entry=0.5):
+def _row(markets=10, win_rate=0.6, pnl=100.0, roi=0.5, entry=0.5, entry_avg=None):
+    """entry_avg (all-trades) is what the classifier gates on; entry
+    (winners-only) is retained for display and deliberately ignored by it."""
     return {"markets": markets, "win_rate": win_rate, "pnl_usd": pnl,
-            "roi": roi, "avg_winner_entry_price": entry}
+            "roi": roi, "avg_winner_entry_price": entry,
+            "entry_avg": entry if entry_avg is None else entry_avg}
 
 
 def test_classify_early_sharp():
-    assert pilot.classify_archetype(_row(entry=0.55, win_rate=0.66, pnl=20000)) == "early_sharp"
+    # Wins 66% of the time on contracts costing 0.55: +11 points of edge.
+    assert pilot.classify_archetype(_row(entry_avg=0.55, win_rate=0.66, pnl=20000)) == "early_sharp"
 
 
 def test_classify_news_scalper():
-    assert pilot.classify_archetype(_row(entry=0.90, win_rate=1.0, pnl=14000)) == "news_scalper"
+    # Edge earned at near-certainty prices - speed, not forecasting.
+    assert pilot.classify_archetype(_row(entry_avg=0.85, win_rate=0.97, pnl=14000)) == "news_scalper"
 
 
 def test_classify_longshot():
-    assert pilot.classify_archetype(_row(entry=0.13, win_rate=0.25, roi=2.6, pnl=3700)) == "longshot"
+    # Rare wins at long odds: 25% at 0.13 is +12 points.
+    assert pilot.classify_archetype(_row(entry_avg=0.13, win_rate=0.25, roi=2.6, pnl=3700)) == "longshot"
+
+
+def test_cheap_entries_that_win_often_are_sharps_not_longshots():
+    # 60% at 0.26 is a large edge, but winning more often than not is simply
+    # buying cheap and being right - "longshot" has to keep meaning long odds.
+    assert pilot.classify_archetype(_row(entry_avg=0.26, win_rate=0.60, roi=0.9, pnl=9000)) == "early_sharp"
+
+
+def test_a_high_win_rate_bought_at_near_certainty_is_not_skill():
+    """The case that motivated moving classification onto edge. Observed live:
+    a wallet winning 91% of its markets while paying 0.98 for them - two points
+    WORSE than the price implied - carried a "news scalper" badge asserting a
+    skill it did not have."""
+    assert pilot.classify_archetype(
+        _row(markets=75, entry_avg=0.98, win_rate=0.91, roi=0.03, pnl=500)) == "unclassified"
+
+
+def test_a_low_win_rate_bought_cheaply_is_skill():
+    """The mirror case: a wallet winning only 42% while paying 0.18 has +24
+    points of edge and was previously left unclassified because its win rate
+    looked poor."""
+    assert pilot.classify_archetype(
+        _row(markets=195, entry_avg=0.18, win_rate=0.42, roi=1.2, pnl=5000)) == "longshot"
 
 
 def test_classify_sample_size_gate():
-    # Same shape as an early sharp but only 5 markets -> not badged.
-    assert pilot.classify_archetype(_row(markets=5, entry=0.55, win_rate=0.66)) == "unclassified"
+    assert pilot.classify_archetype(_row(markets=5, entry_avg=0.55, win_rate=0.66)) == "unclassified"
 
 
 def test_classify_none_entry_is_unclassified():
-    assert pilot.classify_archetype(_row(entry=None)) == "unclassified"
+    # No entry price recorded means there is nothing to judge the win rate
+    # against - unclassified rather than assumed.
+    assert pilot.classify_archetype(_row(entry_avg=0.5) | {"entry_avg": None}) == "unclassified"
 
 
-def test_classify_midband_is_unclassified():
-    # entry 0.70, win 0.50: falls in the gap between every band.
-    assert pilot.classify_archetype(_row(entry=0.70, win_rate=0.50)) == "unclassified"
-
-
-def test_classify_bands_are_mutually_exclusive():
-    # A wallet can never satisfy two archetypes: exercise the boundaries.
-    early = _row(entry=0.60, win_rate=0.55, pnl=1)
-    scalp = _row(entry=0.80, win_rate=0.90)
-    assert pilot.classify_archetype(early) == "early_sharp"
-    assert pilot.classify_archetype(scalp) == "news_scalper"
-    # early's win-rate floor (0.55) excludes the longshot band (< 0.40).
-    assert pilot.classify_archetype(_row(entry=0.30, win_rate=0.55, roi=2.0)) != "longshot"
+def test_edge_alone_is_not_enough_if_the_wallet_lost_money():
+    # Positive per-contract edge destroyed by position sizing.
+    assert pilot.classify_archetype(
+        _row(entry_avg=0.50, win_rate=0.70, roi=-0.1, pnl=-100)) == "unclassified"
 
 
 def test_correctness_scores_position_direction_not_clamped_pnl():
