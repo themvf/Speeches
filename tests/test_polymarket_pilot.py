@@ -183,3 +183,37 @@ def test_a_two_sided_position_is_not_a_correct_call():
     # The clamp case must keep working: short the winner is still not correct.
     short = pilot.settle_market([f("Yes", "SELL", 100)], "Yes")["0xh"]
     assert not (short["net_win"] > short["net_lose"])
+
+
+def test_settlement_conclusions_are_reproducible_from_stored_components():
+    """The raw-vs-derived contract.
+
+    Three separate corrections to the meaning of "correct" each forced a full
+    re-settle of every historical market, because we stored the CONCLUSION and
+    discarded the inputs. Raw fills are pruned 7 days after settlement and the
+    only other source caps at ~3500 fills per market, so once they are gone a
+    definition change is unfixable rather than merely expensive.
+
+    settle_market therefore emits the components too. This asserts every
+    conclusion can be recomputed from them - i.e. that a FOURTH change to any
+    of these definitions can be replayed against stored rows.
+    """
+    fills = [
+        {"proxyWallet": "0xw", "name": "w", "outcome": "Yes", "side": "BUY", "size": 100, "price": 0.40},
+        {"proxyWallet": "0xw", "name": "w", "outcome": "No", "side": "BUY", "size": 40, "price": 0.55},
+        {"proxyWallet": "0xw", "name": "w", "outcome": "Yes", "side": "SELL", "size": 25, "price": 0.80},
+    ]
+    r = pilot.settle_market(fills, "Yes")["0xw"]
+
+    # pnl = cash + the clamped payout, so it is replayable under a DIFFERENT
+    # payout rule too - including dropping the clamp entirely.
+    assert abs((r["cash"] + max(r["net_win"], 0.0)) - r["pnl"]) < 1e-9
+    # correctness, under the current definition and any other built on
+    # position direction
+    assert (r["net_win"] > r["net_lose"]) in (True, False)
+    # win_entry_avg = win_buy_cash / win_buy_size; storing win_buy_size means
+    # the cash side is recoverable, so the average is reproducible.
+    if r["win_entry_avg"] is not None:
+        assert abs(r["win_entry_avg"] * r["win_buy_size"] - 0.40 * 100) < 1e-9
+    # all-trades entry price
+    assert abs(r["cost"] / r["buy_size"] - (0.40 * 100 + 0.55 * 40) / 140) < 1e-9

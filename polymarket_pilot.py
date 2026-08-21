@@ -171,8 +171,19 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
         out[wallet] = {
             "pnl": pos["cash"] + payout,
             "cost": pos["cost"],
+            # The settlement COMPONENTS, persisted alongside the conclusions
+            # they produce. cash + net positions reconstruct pnl under any
+            # payout rule (clamped or not); net_win/net_lose reconstruct
+            # correctness under any definition of it; win_buy_size recovers
+            # win_entry_avg. Three separate corrections to the meaning of
+            # "correct" each forced a full re-settle purely because these were
+            # thrown away - and raw fills are pruned 7 days after settlement,
+            # so once they are gone the only source is a third-party API that
+            # caps at ~3500 fills per market.
+            "cash": pos["cash"],
             "net_win": pos["net_win"],
             "net_lose": pos["net_lose"],
+            "win_buy_size": pos["win_buy_size"],
             "buy_size": pos["buy_size"],
             # Winners-only: what they paid on the trades that happened to win.
             # Cannot answer "did they beat the price they paid" - that needs

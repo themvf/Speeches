@@ -1741,6 +1741,17 @@ def _ensure_polymarket_schema() -> None:
                 )
                 """
             )
+            # Settlement COMPONENTS. Everything above them is a conclusion we
+            # computed; these are the inputs those conclusions came from, kept
+            # so a change to any definition can be replayed against stored
+            # rows instead of re-fetching fills that no longer exist. Raw
+            # fills are pruned 7 days after settlement, so this is the only
+            # durable record of how a wallet was actually positioned.
+            for table in ("polymarket_wallet_market_results", "polymarket_macro_wallet_event_results"):
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS cash NUMERIC NOT NULL DEFAULT 0")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS net_win NUMERIC NOT NULL DEFAULT 0")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS net_lose NUMERIC NOT NULL DEFAULT 0")
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS win_buy_size NUMERIC NOT NULL DEFAULT 0")
             # Total shares bought per market/release. With cost (already total
             # buy CASH) this yields the ALL-TRADES average entry price,
             # cost / buy_size - the denominator any calibration measure needs.
@@ -1999,6 +2010,10 @@ def save_polymarket_settlement(condition_id: str, ticker: str, resolved_date: An
             round(float(stats.get("pnl", 0) or 0), 4),
             round(float(stats.get("cost", 0) or 0), 4),
             round(float(stats.get("buy_size", 0) or 0), 4),
+            round(float(stats.get("cash", 0) or 0), 4),
+            round(float(stats.get("net_win", 0) or 0), 4),
+            round(float(stats.get("net_lose", 0) or 0), 4),
+            round(float(stats.get("win_buy_size", 0) or 0), 4),
             stats.get("win_entry_avg"),
             # Leaned toward the winner MORE than the losers. Two things this
             # guards against: settle_market clamps away a net short's
@@ -2016,11 +2031,14 @@ def save_polymarket_settlement(condition_id: str, ticker: str, resolved_date: An
                     cur,
                     """
                     INSERT INTO polymarket_wallet_market_results
-                      (condition_id, wallet, name, ticker, resolved_date, pnl, cost, buy_size, win_entry_avg, correct)
+                      (condition_id, wallet, name, ticker, resolved_date, pnl, cost, buy_size,
+                       cash, net_win, net_lose, win_buy_size, win_entry_avg, correct)
                     VALUES %s
                     ON CONFLICT (condition_id, wallet) DO UPDATE SET
                       name = EXCLUDED.name, pnl = EXCLUDED.pnl, cost = EXCLUDED.cost,
                       buy_size = EXCLUDED.buy_size,
+                      cash = EXCLUDED.cash, net_win = EXCLUDED.net_win,
+                      net_lose = EXCLUDED.net_lose, win_buy_size = EXCLUDED.win_buy_size,
                       win_entry_avg = EXCLUDED.win_entry_avg, correct = EXCLUDED.correct,
                       resolved_date = EXCLUDED.resolved_date
                     """,
@@ -2117,6 +2135,10 @@ def save_polymarket_macro_event_settlement(
             round(float(stats.get("late_cost", 0) or 0), 4),
             round(float(stats.get("post_release_cost", 0) or 0), 4),
             round(float(stats.get("buy_size", 0) or 0), 4),
+            round(float(stats.get("cash", 0) or 0), 4),
+            round(float(stats.get("net_win", 0) or 0), 4),
+            round(float(stats.get("net_lose", 0) or 0), 4),
+            round(float(stats.get("win_buy_size", 0) or 0), 4),
             stats.get("win_entry_avg"),
             # See the note on the earnings path above - net direction, which a
             # two-sided position cannot satisfy by construction.
@@ -2132,7 +2154,8 @@ def save_polymarket_macro_event_settlement(
                     INSERT INTO polymarket_macro_wallet_event_results
                       (event_key, wallet, name, cohort, resolved_date, pnl, cost,
                        early_cost, pre_release_cost, late_cost, post_release_cost,
-                       buy_size, win_entry_avg, correct)
+                       buy_size, cash, net_win, net_lose, win_buy_size,
+                       win_entry_avg, correct)
                     VALUES %s
                     ON CONFLICT (event_key, wallet) DO UPDATE SET
                       name = EXCLUDED.name, cohort = EXCLUDED.cohort,
@@ -2142,6 +2165,8 @@ def save_polymarket_macro_event_settlement(
                       late_cost = EXCLUDED.late_cost,
                       post_release_cost = EXCLUDED.post_release_cost,
                       buy_size = EXCLUDED.buy_size,
+                      cash = EXCLUDED.cash, net_win = EXCLUDED.net_win,
+                      net_lose = EXCLUDED.net_lose, win_buy_size = EXCLUDED.win_buy_size,
                       win_entry_avg = EXCLUDED.win_entry_avg, correct = EXCLUDED.correct
                     """,
                     rows,
