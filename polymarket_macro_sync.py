@@ -313,7 +313,7 @@ def aggregate_release(markets: List[Dict[str, Any]], fills_by_market: Dict[str, 
     aggregate: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "pnl": 0.0, "cost": 0.0, "early_cost": 0.0, "pre_release_cost": 0.0,
         "late_cost": 0.0, "post_release_cost": 0.0, "winner_cash": 0.0,
-        "winner_size": 0.0, "name": "",
+        "winner_size": 0.0, "net_win": 0.0, "name": "",
     })
     for market in markets:
         fills = fills_by_market.get(market["condition_id"], [])
@@ -323,6 +323,9 @@ def aggregate_release(markets: List[Dict[str, Any]], fills_by_market: Dict[str, 
             row = aggregate[wallet]
             row["pnl"] += float(result.get("pnl") or 0)
             row["cost"] += float(result.get("cost") or 0)
+            # Summed across every bracket in the release: positive means the
+            # wallet ended net long the outcomes that actually won.
+            row["net_win"] += float(result.get("net_win") or 0)
             row["name"] = result.get("name") or row["name"]
         for fill in fills:
             if str(fill.get("side") or "").upper() != "BUY" or not release_at:

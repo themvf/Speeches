@@ -149,10 +149,18 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
                 pos["win_buy_cash"] += size * price
     out: Dict[str, Dict[str, float]] = {}
     for wallet, pos in positions.items():
+        # The clamp keeps a wallet that acquired shares off-tape (on-chain
+        # split/merge never appears in the trades feed) from being charged a
+        # phantom settlement liability. It stays - but it must not be allowed
+        # to decide CORRECTNESS, because it silently turns a net short of the
+        # winning outcome into a positive number. net_win is therefore exported
+        # so callers score direction from the position itself rather than from
+        # the sign of a deliberately-conservative P&L figure.
         payout = max(pos["net_win"], 0.0)
         out[wallet] = {
             "pnl": pos["cash"] + payout,
             "cost": pos["cost"],
+            "net_win": pos["net_win"],
             "win_entry_avg": (pos["win_buy_cash"] / pos["win_buy_size"]) if pos["win_buy_size"] > 0 else None,
             "name": names.get(wallet, ""),
         }
@@ -267,7 +275,7 @@ def analyze_resolved_markets(markets: List[Dict[str, Any]], capture_per_market: 
             agg["markets"] += 1
             agg["pnl"] += stats["pnl"]
             agg["cost"] += stats["cost"]
-            if stats["pnl"] > 0:
+            if stats.get("net_win", 0) > 0:
                 agg["wins"] += 1
             if stats["win_entry_avg"] is not None:
                 agg["win_entries"].append(stats["win_entry_avg"])

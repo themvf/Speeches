@@ -78,3 +78,30 @@ def test_classify_bands_are_mutually_exclusive():
     assert pilot.classify_archetype(scalp) == "news_scalper"
     # early's win-rate floor (0.55) excludes the longshot band (< 0.40).
     assert pilot.classify_archetype(_row(entry=0.30, win_rate=0.55, roi=2.0)) != "longshot"
+
+
+def test_correctness_scores_position_direction_not_clamped_pnl():
+    """settle_market clamps a negative net position's payout to zero so that a
+    wallet which acquired shares off-tape (on-chain split/merge never reaches
+    the trades feed) is not charged a phantom liability. That clamp is
+    deliberate, but it means a wallet NET SHORT the winning outcome keeps its
+    sale proceeds and shows a PROFIT - so scoring correctness off the sign of
+    P&L marked being wrong as a win, and inflated win rates toward 100%.
+    Correctness is therefore taken from net_win, which the clamp cannot touch.
+    """
+    def one(outcome, side):
+        fills = [{"proxyWallet": "0xw", "name": "w", "outcome": outcome,
+                  "side": side, "size": 100, "price": 0.40}]
+        return pilot.settle_market(fills, "Yes")["0xw"]
+
+    short_the_winner = one("Yes", "SELL")
+    assert short_the_winner["net_win"] < 0, "net short the winning outcome"
+    assert short_the_winner["pnl"] > 0, "clamp still leaves P&L positive - that is the trap"
+    assert not (short_the_winner["net_win"] > 0), "must NOT count as correct"
+
+    held_the_winner = one("Yes", "BUY")
+    assert held_the_winner["net_win"] > 0
+
+    bought_the_loser = one("No", "BUY")
+    assert bought_the_loser["net_win"] == 0
+    assert bought_the_loser["pnl"] < 0

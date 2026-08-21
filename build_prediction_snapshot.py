@@ -173,8 +173,10 @@ def build(max_markets: int, min_markets: int, leaderboard_n: int, consensus_pool
 
     # Closed-markets retrospective: how the tracked sharp cohort (leaderboard
     # early_sharp + longshot wallets) actually did on each resolved market.
-    # "correct" = the wallet booked positive P&L on that market (i.e. was net
-    # on the winning side). Excludes scalpers, same cohort rule as consensus.
+    # "correct" = the wallet ended net long the winning outcome. NOT "booked
+    # positive P&L": settle_market deliberately clamps away the settlement
+    # liability of a net short, so P&L sign reads a short of the winner as a
+    # profit. Excludes scalpers, same cohort rule as consensus.
     sharp_cohort = {r["wallet"]: r for r in leaderboard if r["archetype"] in ("early_sharp", "longshot")}
     closed = []
     for market in markets:
@@ -189,7 +191,7 @@ def build(max_markets: int, min_markets: int, leaderboard_n: int, consensus_pool
                 "wallet": wallet,
                 "archetype": r["archetype"],
                 "pnlUsd": round(s["pnl"], 2),
-                "correct": s["pnl"] > 0,
+                "correct": s.get("net_win", 0) > 0,
             })
         closed.append({
             "conditionId": market["condition_id"],
