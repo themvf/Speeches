@@ -122,3 +122,120 @@ def test_main_no_candidates_is_a_clean_noop(tmp_path, monkeypatch):
     review_path.write_text(json.dumps({"candidates": [{"ticker": "A", "reason": "renamed", "confidence": "high"}]}))
     monkeypatch.setattr("sys.argv", ["apply_ticker_removals.py", "--review", str(review_path)])
     assert apply_mod.main() == 0
+
+
+# ---------------------------------------------------------------------------
+# Safety guards. These matter more than the happy path: the workflow runs this
+# unattended and pushes to main, and build_industry_config.py is also what the
+# hourly filing watch rebuilds from, so a bad edit has blast radius beyond the
+# weekly job.
+# ---------------------------------------------------------------------------
+
+BUILDER_SRC = (
+    'UNIVERSE: List[str] = [\n'
+    '    "AAA", "BBB", "CCC",\n'
+    ']\n'
+    '\n'
+    'SUB_INDUSTRY_GROUPS: Dict[str, List[str]] = {\n'
+    '    "Some Group": ["AAA", "DDD"],\n'
+    '}\n'
+)
+
+
+def _fixture(tmp_path, candidates):
+    builder = tmp_path / "build_industry_config.py"
+    builder.write_text(BUILDER_SRC)
+    config = tmp_path / "industry-config.json"
+    config.write_text(json.dumps({
+        "tickerCount": 3,
+        "industries": [{"sic": "1", "label": "L", "tickers": [
+            {"ticker": "AAA", "name": "A", "cik": "1"},
+            {"ticker": "BBB", "name": "B", "cik": "2"},
+            {"ticker": "CCC", "name": "C", "cik": "3"},
+        ]}],
+    }))
+    state = tmp_path / "industry_state.json"
+    state.write_text(json.dumps({"latest": {"AAA": {"form": "10-Q", "accession": "x"}}}))
+    review = tmp_path / "review.json"
+    review.write_text(json.dumps({"flaggedCount": len(candidates), "candidates": candidates}))
+    return builder, config, state, review
+
+
+def _argv(builder, config, state, review):
+    return ["apply_ticker_removals.py", "--review", str(review), "--builder", str(builder),
+            "--config", str(config), "--state", str(state)]
+
+
+def test_extract_universe_tickers_parses_list_via_ast():
+    assert apply_mod.extract_universe_tickers(BUILDER_SRC) == ["AAA", "BBB", "CCC"]
+
+
+def test_extract_universe_tickers_raises_on_corrupted_source():
+    import pytest
+    with pytest.raises(SyntaxError):
+        apply_mod.extract_universe_tickers('UNIVERSE: List[str] = [\n    "AAA",\n')  # unclosed
+
+
+def test_mass_removal_over_cap_applies_nothing(tmp_path, monkeypatch):
+    many = [{"ticker": f"T{i}", "reason": "deregistered", "confidence": "high"} for i in range(30)]
+    builder, config, state, review = _fixture(tmp_path, many)
+    before = builder.read_text(), config.read_text(), state.read_text(), review.read_text()
+
+    monkeypatch.setattr(apply_mod, "MAX_AUTO_REMOVALS", 25)
+    monkeypatch.setattr("sys.argv", _argv(builder, config, state, review))
+    assert apply_mod.main() == 0  # degrades to flag-only, does not fail the workflow
+
+    # Nothing touched - the whole batch stays flagged for a human.
+    assert (builder.read_text(), config.read_text(), state.read_text(), review.read_text()) == before
+
+
+def test_validation_failure_restores_every_file(tmp_path, monkeypatch):
+    candidates = [{"ticker": "AAA", "reason": "deregistered", "confidence": "high"}]
+    builder, config, state, review = _fixture(tmp_path, candidates)
+    before = builder.read_text(), config.read_text(), state.read_text(), review.read_text()
+
+    # Simulate exactly the failure mode the List[str] bracket bug would have
+    # produced: the edit silently corrupts the builder source.
+    def corrupting_edit(path, tickers):
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("UNIVERSE: List[str] = [\n    'AAA',\n")  # unclosed -> unparseable
+        return {"universe": ["AAA"], "sub_industry_groups": []}
+
+    monkeypatch.setattr(apply_mod, "remove_from_builder_source", corrupting_edit)
+    monkeypatch.setattr("sys.argv", _argv(builder, config, state, review))
+
+    assert apply_mod.main() == 1  # non-zero so the workflow step fails loudly
+    # Every file byte-for-byte as it started - no partial application.
+    assert (builder.read_text(), config.read_text(), state.read_text(), review.read_text()) == before
+
+
+def test_validation_catches_collateral_ticker_removal(tmp_path, monkeypatch):
+    """A greedy pattern that removes MORE than intended must be caught, not
+    committed - the review file said one ticker, so exactly one must go."""
+    candidates = [{"ticker": "AAA", "reason": "deregistered", "confidence": "high"}]
+    builder, config, state, review = _fixture(tmp_path, candidates)
+    before_builder = builder.read_text()
+
+    def over_removing_edit(path, tickers):
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write('UNIVERSE: List[str] = [\n    "CCC",\n]\n')  # also ate BBB
+        return {"universe": ["AAA"], "sub_industry_groups": []}
+
+    monkeypatch.setattr(apply_mod, "remove_from_builder_source", over_removing_edit)
+    monkeypatch.setattr("sys.argv", _argv(builder, config, state, review))
+
+    assert apply_mod.main() == 1
+    assert builder.read_text() == before_builder
+
+
+def test_happy_path_still_applies_and_validates(tmp_path, monkeypatch):
+    candidates = [{"ticker": "AAA", "reason": "deregistered", "confidence": "high"}]
+    builder, config, state, review = _fixture(tmp_path, candidates)
+    monkeypatch.setattr("sys.argv", _argv(builder, config, state, review))
+
+    assert apply_mod.main() == 0
+    assert apply_mod.extract_universe_tickers(builder.read_text()) == ["BBB", "CCC"]
+    written_config = json.loads(config.read_text())
+    assert written_config["tickerCount"] == 2
+    assert "AAA" not in json.loads(state.read_text())["latest"]
+    assert json.loads(review.read_text())["candidates"] == []

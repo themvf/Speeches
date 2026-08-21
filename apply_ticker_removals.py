@@ -27,12 +27,26 @@ already-committed artifacts directly:
      "candidates" so next week's GitHub issue (and human eyes) only ever
      see what's still actually pending
 
+Two guards, because the workflow pushes the result straight to main
+unattended and build_industry_config.py is also what the HOURLY filing
+watch rebuilds from - a bad edit here would break that too, not just
+this weekly job:
+
+  - A run proposing more than MAX_AUTO_REMOVALS removals applies nothing
+    and leaves the batch flagged (anomaly circuit breaker).
+  - Every edit is validated afterwards (builder source still parses as
+    Python, UNIVERSE lost exactly the intended tickers and nothing else,
+    config JSON still self-consistent). Any failure restores all four
+    files byte-for-byte and exits non-zero, so the workflow commits
+    nothing rather than committing damage.
+
 Usage: python apply_ticker_removals.py [--review PATH] [--dry-run]
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
@@ -42,6 +56,15 @@ REVIEW_PATH_DEFAULT = "data/ticker_prune_review.json"
 BUILDER_PATH = "build_industry_config.py"
 CONFIG_PATH = "apps/web/lib/server/industry-config.json"
 STATE_PATH = "industry_state.json"
+
+# Circuit breaker. Steady state should be 0-5 deregistrations a week for an
+# ~890-company universe; the one genuinely large batch (26) was the initial
+# backlog, cleared by hand. A run proposing more than this is anomalous
+# (bad upstream data, a classification regression), so it auto-applies
+# nothing and leaves the whole batch flagged for a human instead - the
+# weekly issue still reports it, so refusing degrades to the old
+# flag-only behavior rather than breaking the pipeline.
+MAX_AUTO_REMOVALS = 25
 
 
 def high_confidence_deregistrations(review: Dict[str, Any]) -> List[str]:
@@ -154,6 +177,56 @@ def update_review_file(path: str, review: Dict[str, Any], applied: List[str]) ->
         json.dump(review, handle, indent=1)
 
 
+def extract_universe_tickers(source_text: str) -> List[str]:
+    """UNIVERSE's contents, parsed out of the builder source via AST.
+
+    Uses ast.parse rather than exec/import on purpose: it validates that the
+    file is still syntactically valid Python AND reads the list, in one step,
+    without running any of the module's code. This is the check that catches
+    a text-surgery bug corrupting the file - the exact failure mode that the
+    List[str] bracket bug would have produced if it hadn't been caught in
+    testing first."""
+    tree = ast.parse(source_text)
+    for node in tree.body:
+        target = None
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            target = node.target.id
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            target = node.targets[0].id
+        if target == "UNIVERSE":
+            if not isinstance(node.value, ast.List):
+                raise ValueError("UNIVERSE is no longer a list literal")
+            return [e.value for e in node.value.elts if isinstance(e, ast.Constant)]
+    raise ValueError("UNIVERSE assignment not found in builder source")
+
+
+def validate_edits(builder_path: str, config_path: str, before_universe: List[str], expected_removed: List[str]) -> None:
+    """Post-edit sanity check on the two artifacts a bad text edit could
+    actually corrupt. Raises with a specific message on any mismatch; main()
+    turns that into a full restore of every touched file, so a failed run
+    leaves the repo exactly as it found it rather than committing damage."""
+    with open(builder_path, encoding="utf-8") as handle:
+        after_universe = extract_universe_tickers(handle.read())  # also re-parses the whole file
+
+    expected = [t for t in before_universe if t not in set(expected_removed)]
+    if after_universe != expected:
+        unexpectedly_gone = sorted(set(expected) - set(after_universe))
+        unexpectedly_kept = sorted(set(after_universe) - set(expected))
+        raise ValueError(
+            f"UNIVERSE mismatch after edit - unexpectedly removed: {unexpectedly_gone}, "
+            f"unexpectedly still present: {unexpectedly_kept}"
+        )
+
+    with open(config_path, encoding="utf-8") as handle:
+        config = json.load(handle)  # re-parses; catches a corrupted JSON write
+    actual = sum(len(i["tickers"]) for i in config.get("industries", []))
+    if config.get("tickerCount") != actual:
+        raise ValueError(f"config tickerCount ({config.get('tickerCount')}) disagrees with actual rows ({actual})")
+    for industry in config.get("industries", []):
+        if not industry.get("tickers"):
+            raise ValueError(f"industry {industry.get('label')!r} left with zero members")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--review", default=REVIEW_PATH_DEFAULT)
@@ -172,16 +245,54 @@ def main() -> int:
         print("")
         return 0
 
+    if len(candidates) > MAX_AUTO_REMOVALS:
+        # Anomalous batch - apply nothing, leave everything flagged. The
+        # weekly issue still lists them all, so this degrades to the old
+        # flag-only behavior instead of either auto-applying a suspicious
+        # mass removal or failing the workflow outright.
+        print(
+            f"REFUSING to auto-apply {len(candidates)} removals (cap is {MAX_AUTO_REMOVALS}) - "
+            "leaving the whole batch flagged for manual review",
+            file=sys.stderr,
+        )
+        print("")
+        return 0
+
     print(f"applying {len(candidates)} high-confidence deregistration(s): {candidates}", file=sys.stderr)
     if args.dry_run:
         print("(dry run - no files written)", file=sys.stderr)
         print(" ".join(candidates))
         return 0
 
-    source_result = remove_from_builder_source(args.builder, candidates)
-    config_removed = remove_from_committed_config(args.config, candidates)
-    state_removed = remove_from_state(args.state, candidates)
-    update_review_file(args.review, review, candidates)
+    # Snapshot every file we are about to touch. These edits span four files
+    # and the workflow pushes the result straight to main, so a partial
+    # application is the thing to avoid: any failure below restores all of
+    # them and reports nothing applied.
+    touched = [args.builder, args.config, args.state, args.review]
+    originals: Dict[str, bytes] = {}
+    for path in touched:
+        try:
+            with open(path, "rb") as handle:
+                originals[path] = handle.read()
+        except FileNotFoundError:
+            pass  # remove_from_state tolerates a missing state file
+
+    with open(args.builder, encoding="utf-8") as handle:
+        before_universe = extract_universe_tickers(handle.read())
+
+    try:
+        source_result = remove_from_builder_source(args.builder, candidates)
+        config_removed = remove_from_committed_config(args.config, candidates)
+        state_removed = remove_from_state(args.state, candidates)
+        update_review_file(args.review, review, candidates)
+        validate_edits(args.builder, args.config, before_universe, source_result["universe"])
+    except Exception as exc:
+        for path, blob in originals.items():
+            with open(path, "wb") as handle:
+                handle.write(blob)
+        print(f"VALIDATION FAILED, restored all files unchanged: {exc}", file=sys.stderr)
+        print("")
+        return 1
 
     missing_from_universe = [t for t in candidates if t not in source_result["universe"]]
     if missing_from_universe:
@@ -194,6 +305,7 @@ def main() -> int:
     print(f"  SUB_INDUSTRY_GROUPS: removed {len(source_result['sub_industry_groups'])}", file=sys.stderr)
     print(f"  committed config: removed {len(config_removed)}", file=sys.stderr)
     print(f"  filing-watch state: removed {len(state_removed)}", file=sys.stderr)
+    print("  validated: builder still parses, UNIVERSE matches, config self-consistent", file=sys.stderr)
 
     print(" ".join(candidates))
     return 0
