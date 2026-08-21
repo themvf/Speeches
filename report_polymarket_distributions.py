@@ -35,10 +35,13 @@ import neon_feeds
 
 SOURCE_KEY = "polymarket_distributions"
 
-# A win rate this high, on this many settled markets, should be vanishingly
-# rare in a market that prices efficiently. Several wallets sat here while the
-# clamp bug was live.
-IMPLAUSIBLE_WIN_RATE = 0.95
+# A high win rate is NOT by itself suspicious: buying at 0.999 and winning
+# every time is a real strategy earning a tenth of a cent, and several wallets
+# do exactly that. What cannot be explained is a large EDGE sustained over a
+# large sample - beating the price you paid, repeatedly, in a liquid market.
+# The first version of this check flagged win rate alone and buried the one
+# genuine case among a dozen legitimate chalk buyers.
+IMPLAUSIBLE_EDGE = 0.20
 IMPLAUSIBLE_MIN_EVENTS = 30
 # Mean edge beyond this is treated as a measurement-bias signal rather than
 # a population of unusually good traders.
@@ -84,10 +87,12 @@ def analyze(rows: List[Dict[str, Any]], events_key: str) -> Dict[str, Any]:
             # the population figure.
             weighted_edge_num += edge * events
             weighted_edge_den += events
-        if win_rate >= IMPLAUSIBLE_WIN_RATE and events >= IMPLAUSIBLE_MIN_EVENTS:
+        if (entry is not None and events >= IMPLAUSIBLE_MIN_EVENTS
+                and (win_rate - entry) >= IMPLAUSIBLE_EDGE):
             implausible.append({"wallet": row.get("wallet"), "cohort": row.get("cohort"),
                                 "events": events, "win_rate": round(win_rate, 4),
-                                "entry_avg": entry})
+                                "entry_avg": round(entry, 4),
+                                "edge": round(win_rate - entry, 4)})
 
     weighted_edge = (weighted_edge_num / weighted_edge_den) if weighted_edge_den else None
     return {
@@ -95,10 +100,10 @@ def analyze(rows: List[Dict[str, Any]], events_key: str) -> Dict[str, Any]:
         "win_rate": {**_describe(win_rates), "histogram": _histogram(win_rates)},
         "entry_avg": _describe(entries),
         "edge": {**_describe(edges), "sample_weighted_mean": round(weighted_edge, 4) if weighted_edge is not None else None},
-        "implausible_win_rates": {
-            "threshold": f">={IMPLAUSIBLE_WIN_RATE:.0%} win over >={IMPLAUSIBLE_MIN_EVENTS} events",
+        "implausible_edges": {
+            "threshold": f"edge >=+{IMPLAUSIBLE_EDGE:.0%} over >={IMPLAUSIBLE_MIN_EVENTS} events",
             "count": len(implausible),
-            "sample": sorted(implausible, key=lambda r: -r["events"])[:10],
+            "sample": sorted(implausible, key=lambda r: -r["edge"])[:10],
         },
         "population_edge_suspicious": (
             weighted_edge is not None and weighted_edge > POPULATION_EDGE_TOLERANCE),
