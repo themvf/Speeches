@@ -36,6 +36,7 @@ from zoneinfo import ZoneInfo
 import neon_feeds
 import polymarket_earnings_sync as earnings
 import polymarket_pilot as pilot
+import wallet_trajectory
 from source_health import record_source_health
 
 SOURCE_KEY = "polymarket_macro_sync"
@@ -380,9 +381,14 @@ def group_macro_wallet_results(results: List[Dict[str, Any]], include_unqualifie
     """
     groups: Dict[Tuple[str, str], Dict[str, Any]] = {}
     cohorts_by_wallet: Dict[str, set] = defaultdict(set)
+    # Raw per-event rows kept per group so wallet_trajectory can read the tail
+    # of the history in order; every other figure here is a lifetime aggregate.
+    events_by_group: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
     for result in results:
         wallet, cohort = str(result["wallet"]), str(result["cohort"])
         cohorts_by_wallet[wallet].add(cohort)
+        events_by_group[(wallet, cohort)].append(result)
+        events_by_group[(wallet, "macro_generalist")].append(result)
         for key in ((wallet, cohort), (wallet, "macro_generalist")):
             row = groups.setdefault(key, {"events": 0, "wins": 0, "pnl": 0.0, "cost": 0.0,
                 "predictive_cost": 0.0, "timing_cost": 0.0, "entries": [], "name": ""})
@@ -400,7 +406,11 @@ def group_macro_wallet_results(results: List[Dict[str, Any]], include_unqualifie
             continue
         entry = sum(value["entries"]) / len(value["entries"]) if value["entries"] else None
         archetype = classify_wallet(value["events"], value["wins"], value["pnl"], value["cost"], value["predictive_cost"], value["timing_cost"], entry, cohort)
-        rows.append({"wallet": wallet, "cohort": cohort, "name": value["name"], **{k: value[k] for k in ("events", "wins", "pnl", "cost", "predictive_cost", "timing_cost")}, "win_entry_avg": entry, "archetype": archetype})
+        lifetime_roi = (value["pnl"] / value["cost"]) if value["cost"] > 0 else None
+        trajectory = wallet_trajectory.summarize(
+            events_by_group.get((wallet, cohort), []),
+            qualified=archetype != "unclassified", lifetime_roi=lifetime_roi)
+        rows.append({"wallet": wallet, "cohort": cohort, "name": value["name"], **{k: value[k] for k in ("events", "wins", "pnl", "cost", "predictive_cost", "timing_cost")}, "win_entry_avg": entry, "archetype": archetype, **trajectory})
     return rows
 
 

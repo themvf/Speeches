@@ -43,6 +43,7 @@ import requests
 
 import neon_feeds
 import polymarket_pilot as pilot
+import wallet_trajectory
 from build_prediction_snapshot import fetch_open_earnings_detailed
 from source_health import record_source_health
 
@@ -162,10 +163,14 @@ def recompute_wallet_stats() -> Dict[str, int]:
     (never raw fills), reusing the pilot's archetype classifier."""
     results = neon_feeds.get_polymarket_wallet_results()
     agg: Dict[str, Dict[str, Any]] = {}
+    # Raw per-market rows retained per wallet so wallet_trajectory can read the
+    # tail of the history in order; the aggregate above is order-blind.
+    events_by_wallet: Dict[str, List[Dict[str, Any]]] = {}
     for r in results:
         a = agg.setdefault(str(r["wallet"]), {
             "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "entries": [], "name": "",
         })
+        events_by_wallet.setdefault(str(r["wallet"]), []).append(r)
         a["markets"] += 1
         a["pnl"] += float(r["pnl"] or 0)
         a["cost"] += float(r["cost"] or 0)
@@ -189,10 +194,13 @@ def recompute_wallet_stats() -> Dict[str, int]:
         }
         archetype = pilot.classify_archetype(classify_row)
         archetype_counts[archetype] = archetype_counts.get(archetype, 0) + 1
+        trajectory = wallet_trajectory.summarize(
+            events_by_wallet.get(wallet, []),
+            qualified=archetype != "unclassified", lifetime_roi=classify_row["roi"])
         rows.append({
             "wallet": wallet, "name": a["name"], "markets": a["markets"],
             "wins": a["wins"], "pnl": a["pnl"], "cost": a["cost"],
-            "win_entry_avg": entry_avg, "archetype": archetype,
+            "win_entry_avg": entry_avg, "archetype": archetype, **trajectory,
         })
     written = neon_feeds.upsert_polymarket_wallet_stats(rows)
     return {"wallets": written, **{f"arch_{k}": v for k, v in archetype_counts.items()}}
