@@ -1975,7 +1975,10 @@ def save_polymarket_settlement(condition_id: str, ticker: str, resolved_date: An
             round(float(stats.get("pnl", 0) or 0), 4),
             round(float(stats.get("cost", 0) or 0), 4),
             stats.get("win_entry_avg"),
-            bool(float(stats.get("pnl", 0) or 0) > 0),
+            # Held the winning outcome, NOT "booked positive P&L": settle_market
+            # clamps away the settlement liability of a net short, so a wallet
+            # short the winner shows a profit. Scoring on direction is immune.
+            bool(float(stats.get("net_win", 0) or 0) > 0),
         ))
     _ensure_polymarket_schema()
     with _get_conn() as conn:
@@ -2069,7 +2072,9 @@ def save_polymarket_macro_event_settlement(
             round(float(stats.get("pre_release_cost", 0) or 0), 4),
             round(float(stats.get("late_cost", 0) or 0), 4),
             round(float(stats.get("post_release_cost", 0) or 0), 4),
-            stats.get("win_entry_avg"), bool(float(stats.get("pnl", 0) or 0) > 0),
+            stats.get("win_entry_avg"),
+            # See the note on the earnings path above - direction, not P&L sign.
+            bool(float(stats.get("net_win", 0) or 0) > 0),
         ))
     _ensure_polymarket_schema()
     with _get_conn() as conn:

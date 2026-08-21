@@ -70,13 +70,26 @@ function ArchetypeBadge({ archetype }: { archetype: PredictionArchetype }) {
   );
 }
 
+/** The closest any single specialty is to its own qualifying bar, e.g. "7/10".
+ *  The wallet-level event count is a SUM across specialties while qualification
+ *  is per specialty, so a wallet can show 18 events and still be short of every
+ *  individual bar - this makes that visible instead of looking like a bug.
+ *  macro_generalist is excluded: it is a cross-cohort rollup, not a specialty
+ *  anyone qualifies in on its own. */
+function buildProgress(wallet: PredictionWallet): string | null {
+  const real = wallet.specialties.filter((item) => item.id !== "macro_generalist");
+  if (!real.length) return null;
+  const best = real.reduce((a, b) => (b.events / b.minEvents > a.events / a.minEvents ? b : a));
+  return `${best.events}/${best.minEvents}`;
+}
+
 function SpecialtyBadge({ specialty }: { specialty: PredictionWalletSpecialty }) {
   const color = specialty.family === "macro" ? "#4fd5ff" : "#41d39d";
   return (
     <span
       className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
       style={{ color, backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)` }}
-      title={`${specialty.classLabel} · ${specialty.events} observations`}
+      title={`${specialty.classLabel} · ${specialty.events}/${specialty.minEvents} observations toward qualifying`}
     >
       {specialty.label}
     </span>
@@ -306,7 +319,7 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
                       <div className="flex flex-wrap gap-1">
                         {w.specialties.filter((specialty) => specialty.qualified).slice(0, 3).map((specialty) => <SpecialtyBadge key={specialty.id} specialty={specialty} />)}
                         {w.qualifiedSpecialties > 3 && <span className="text-[10px] text-[color:var(--ink-faint)]">+{w.qualifiedSpecialties - 3}</span>}
-                        {w.qualifiedSpecialties === 0 && <span className="text-[10px] text-[color:var(--ink-faint)]">Building sample</span>}
+                        {w.qualifiedSpecialties === 0 && <span className="text-[10px] text-[color:var(--ink-faint)]" title="Qualification is per specialty, not on the wallet's combined total.">Building sample{buildProgress(w) && ` · best ${buildProgress(w)}`}</span>}
                       </div>
                     </td>
                     <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">{w.markets}</td>
@@ -336,7 +349,7 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
                               </div>
                               <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]">{specialty.classLabel}</p>
                               <div className="mt-2 grid grid-cols-4 gap-2 text-[10px] text-[color:var(--ink-faint)]">
-                                <span><strong className="block text-xs text-[color:var(--ink)]">{specialty.events}</strong>events</span>
+                                <span><strong className="block text-xs text-[color:var(--ink)]">{specialty.qualified ? specialty.events : `${specialty.events}/${specialty.minEvents}`}</strong>events</span>
                                 <span><strong className="block text-xs text-[color:var(--ink)]">{Math.round(specialty.winRate * 100)}%</strong>win</span>
                                 <span><strong className="block text-xs" style={{ color: specialty.pnlUsd >= 0 ? "#41d39d" : "#f87171" }}>{usd(specialty.pnlUsd)}</strong>P&amp;L</span>
                                 <span><strong className="block text-xs text-[color:var(--ink)]">{specialty.roi == null ? "—" : `${Math.round(specialty.roi * 100)}%`}</strong>ROI</span>
