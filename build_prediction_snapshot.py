@@ -191,7 +191,7 @@ def build(max_markets: int, min_markets: int, leaderboard_n: int, consensus_pool
                 "wallet": wallet,
                 "archetype": r["archetype"],
                 "pnlUsd": round(s["pnl"], 2),
-                "correct": s.get("net_win", 0) > 0,
+                "correct": s.get("net_win", 0) > s.get("net_lose", 0),
             })
         closed.append({
             "conditionId": market["condition_id"],

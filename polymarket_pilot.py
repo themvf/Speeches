@@ -120,7 +120,7 @@ def fetch_market_fills(condition_id: str) -> List[Dict[str, Any]]:
 
 def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[str, float]]:
     """Per-wallet P&L for one resolved market. Returns wallet -> stats."""
-    positions: Dict[str, Dict[str, float]] = defaultdict(lambda: {"cash": 0.0, "cost": 0.0, "net_win": 0.0, "win_buy_size": 0.0, "win_buy_cash": 0.0, "buy_size": 0.0})
+    positions: Dict[str, Dict[str, float]] = defaultdict(lambda: {"cash": 0.0, "cost": 0.0, "net_win": 0.0, "net_lose": 0.0, "win_buy_size": 0.0, "win_buy_cash": 0.0, "buy_size": 0.0})
     names: Dict[str, str] = {}
     for fill in fills:
         wallet = str(fill.get("proxyWallet") or "")
@@ -152,6 +152,12 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
             if side == "BUY":
                 pos["win_buy_size"] += size
                 pos["win_buy_cash"] += size * price
+        else:
+            # Net position across every LOSING outcome. Needed because holding
+            # the winner is not by itself a correct call: a wallet that buys
+            # both sides holds the winning outcome in every market it touches,
+            # whatever the result.
+            pos["net_lose"] += signed
     out: Dict[str, Dict[str, float]] = {}
     for wallet, pos in positions.items():
         # The clamp keeps a wallet that acquired shares off-tape (on-chain
@@ -166,6 +172,7 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
             "pnl": pos["cash"] + payout,
             "cost": pos["cost"],
             "net_win": pos["net_win"],
+            "net_lose": pos["net_lose"],
             "buy_size": pos["buy_size"],
             # Winners-only: what they paid on the trades that happened to win.
             # Cannot answer "did they beat the price they paid" - that needs
@@ -310,7 +317,7 @@ def analyze_resolved_markets(markets: List[Dict[str, Any]], capture_per_market: 
             agg["markets"] += 1
             agg["pnl"] += stats["pnl"]
             agg["cost"] += stats["cost"]
-            if stats.get("net_win", 0) > 0:
+            if stats.get("net_win", 0) > stats.get("net_lose", 0):
                 agg["wins"] += 1
             if stats["win_entry_avg"] is not None:
                 agg["win_entries"].append(stats["win_entry_avg"])

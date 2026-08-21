@@ -155,3 +155,31 @@ def test_buy_size_ignores_sells_so_entry_price_is_not_diluted():
     r = pilot.settle_market(fills, "Yes")["0xs"]
     assert r["buy_size"] == 100.0, "sells must not count toward shares bought"
     assert r["cost"] / r["buy_size"] == 0.40
+
+
+def test_a_two_sided_position_is_not_a_correct_call():
+    """Holding the winning outcome is not enough. A wallet that buys BOTH
+    sides holds the winner in every market it touches, whatever happens - so
+    scoring on net_win alone marked hedgers and market makers correct 100% of
+    the time. Found in production by the distribution report: 18 wallets with
+    >=95% win rates over >=30 events, entry prices near 0.45 (the blend of both
+    sides) and negligible P&L.
+
+    Note this is a regression the earlier clamp fix introduced: the original
+    pnl > 0 rule happened to score hedgers correctly, since their P&L is flat.
+    Comparing the two sides handles both cases at once.
+    """
+    def f(outcome, side, size):
+        return {"proxyWallet": "0xh", "name": "h", "outcome": outcome,
+                "side": side, "size": size, "price": 0.5}
+
+    hedged = pilot.settle_market([f("Yes", "BUY", 100), f("No", "BUY", 100)], "Yes")["0xh"]
+    assert hedged["net_win"] > 0, "they do hold the winner - that is the trap"
+    assert not (hedged["net_win"] > hedged["net_lose"]), "but made no directional call"
+
+    leaning = pilot.settle_market([f("Yes", "BUY", 100), f("No", "BUY", 30)], "Yes")["0xh"]
+    assert leaning["net_win"] > leaning["net_lose"], "a real lean toward the winner still counts"
+
+    # The clamp case must keep working: short the winner is still not correct.
+    short = pilot.settle_market([f("Yes", "SELL", 100)], "Yes")["0xh"]
+    assert not (short["net_win"] > short["net_lose"])
