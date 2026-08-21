@@ -174,10 +174,29 @@ function macroOnlyArchetype(specialties: PredictionWalletSpecialty[]): Predictio
 }
 
 function finalize(wallet: BasePredictionWallet, specialties: PredictionWalletSpecialty[]): PredictionWallet {
-  const distinct = specialties.filter((item) => item.id !== "macro_generalist");
-  const events = distinct.reduce((total, item) => total + item.events, 0);
-  const wins = distinct.reduce((total, item) => total + item.wins, 0);
-  const pnl = distinct.reduce((total, item) => total + item.pnlUsd, 0);
+  const shown = specialties.filter((item) => item.id !== "macro_generalist");
+  const generalist = specialties.find((item) => item.id === "macro_generalist");
+  const earnings = shown.filter((item) => item.family === "earnings");
+  const macro = shown.filter((item) => item.family === "macro");
+
+  // The macro stats query ranks WITHIN each cohort, so a wallet's smaller
+  // cohorts may never reach the payload - one wallet showed 4 visible cohorts
+  // totalling 7 events against a generalist row of 27. macro_generalist spans
+  // every cohort, so when it is present it IS the wallet's macro record and is
+  // used wholesale; summing the visible cohorts instead would undercount, and
+  // adding it on top would double-count. Fall back to the visible cohorts when
+  // there is no generalist row (it is only emitted past its own gate).
+  const macroTotals = generalist
+    ? { events: generalist.events, wins: generalist.wins, pnl: generalist.pnlUsd }
+    : {
+        events: macro.reduce((t, i) => t + i.events, 0),
+        wins: macro.reduce((t, i) => t + i.wins, 0),
+        pnl: macro.reduce((t, i) => t + i.pnlUsd, 0),
+      };
+
+  const events = earnings.reduce((t, i) => t + i.events, 0) + macroTotals.events;
+  const wins = earnings.reduce((t, i) => t + i.wins, 0) + macroTotals.wins;
+  const pnl = earnings.reduce((t, i) => t + i.pnlUsd, 0) + macroTotals.pnl;
   const sorted = [...specialties].sort((left, right) =>
     Number(right.qualified) - Number(left.qualified) || right.pnlUsd - left.pnlUsd || right.events - left.events
   );
