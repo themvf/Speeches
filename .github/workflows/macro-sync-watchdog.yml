@@ -1,0 +1,88 @@
+name: Macro Sync Watchdog
+
+# Liveness check for the Polymarket macro wallet-intelligence pipeline. Reads
+# one number from Neon - MAX(polymarket_macro_wallet_stats.refreshed_at) - and
+# opens a GitHub issue if the macro sync has stopped completing successfully.
+#
+# Its own workflow on its own schedule, on purpose: a check living inside
+# polymarket-macro-sync.yml could never detect that workflow failing to run.
+#
+# Runs at 15:30 UTC daily - comfortably after the 13:45 UTC weekday sync has
+# had time to finish (~5-9 min), and offset from the :00/:05/:10/:15 crons the
+# other workflows in this repo cluster around.
+#
+# Cheap by construction: no pip-installed heavy deps beyond what requirements
+# already pins, one tiny query, ~30s/run. A healthy run posts nothing.
+on:
+  schedule:
+    - cron: "30 15 * * *"
+  workflow_dispatch:
+    inputs:
+      max_age_hours:
+        description: "Hours before wallet stats count as stale (default 36 - must exceed the 24h weekend gap)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: macro-sync-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      MAX_AGE_HOURS: ${{ github.event.inputs.max_age_hours }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Check macro sync freshness
+        id: check
+        # continue-on-error so the issue-posting step below still runs on an
+        # unhealthy result; the final step then re-fails the job, keeping the
+        # red run as a second signal alongside the issue (and feeding GitHub's
+        # own built-in scheduled-workflow-failure notification).
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "${MAX_AGE_HOURS}" ]; then args+=(--max-age-hours "${MAX_AGE_HOURS}"); fi
+          python check_macro_sync_freshness.py "${args[@]}" | tee macro_watchdog_summary.json
+      - name: Open GitHub issue
+        # Only written when unhealthy, so a healthy run posts nothing.
+        if: always() && hashFiles('macro_watchdog_issue_title.txt') != ''
+        run: |
+          set -euo pipefail
+          gh issue create \
+            --title "$(cat macro_watchdog_issue_title.txt)" \
+            --body-file macro_watchdog_issue_body.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macro-watchdog-summary-${{ github.run_id }}
+          path: |
+            macro_watchdog_summary.json
+            macro_watchdog_issue_body.md
+          if-no-files-found: ignore
+      - name: Fail the run if unhealthy
+        if: steps.check.outcome == 'failure'
+        run: |
+          echo "Macro sync watchdog reported an unhealthy pipeline - see the issue it opened."
+          exit 1

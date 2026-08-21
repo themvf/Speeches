@@ -2217,6 +2217,34 @@ def get_macro_unclassified_events() -> List[Dict[str, Any]]:
             return [dict(row) for row in cur.fetchall()]
 
 
+def get_macro_wallet_stats_freshness() -> Dict[str, Any]:
+    """Liveness probe for the whole macro pipeline: when did a sync last
+    successfully finish recomputing wallet stats, and how many rows are there?
+
+    upsert_polymarket_macro_wallet_stats sets refreshed_at = now() on every
+    row it writes, and that upsert is the last meaningful step of a healthy
+    sync - so a stale MAX(refreshed_at) is a single signal covering every way
+    the pipeline can stop producing (cron never fired, DATABASE_URL invalid so
+    every run fails, sync crashing mid-way, upstream Polymarket outage). See
+    check_macro_sync_freshness.py, which is the only caller.
+
+    Deliberately does NOT swallow connection errors - unlike the read paths
+    the web app uses, a watchdog that fails soft when the database is
+    unreachable would hide the exact failure it exists to catch.
+    """
+    _ensure_polymarket_schema()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT MAX(refreshed_at) AS latest_refresh,
+                       COUNT(*) AS row_count
+                FROM polymarket_macro_wallet_stats
+                """
+            )
+            return dict(cur.fetchone())
+
+
 # ─── Filing catalyst events (SEC-50) ────────────────────────────────────────
 # 8-K and Form 4 filings for the tracked (industry-config) universe, written
 # by filing_catalyst_sync.py and read by the movers/attention routes for
