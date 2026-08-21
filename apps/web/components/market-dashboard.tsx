@@ -10,6 +10,7 @@ import type {
   MarketExchangesData,
   MarketIndustriesData,
   MarketKpiData,
+  MarketMacroCalendarData,
   MarketMacroData,
   MarketMacroPredictionsData,
   MarketMoversData,
@@ -103,6 +104,9 @@ export function MarketDashboard() {
   const bonds       = useTabData<MarketBondsData>      ("overview", tab, "/api/market/bonds",       3_600_000);
   const macro       = useTabData<MarketMacroData>      ("macro",    tab, "/api/market/macro",       900_000);
   const macroPredictions = useTabData<MarketMacroPredictionsData>(["macro", "predictions"], tab, "/api/market/macro-contracts", 300_000);
+  // Release schedules change on the order of months; the long poll matches
+  // the route's 6-hour revalidate rather than re-asking FRED every minute.
+  const macroCalendar = useTabData<MarketMacroCalendarData>("macro", tab, "/api/market/macro-calendar", 21_600_000);
 
   const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors",   300_000);
   // Industry list is config + one cheap DB join; peer quotes load lazily per
@@ -152,7 +156,7 @@ export function MarketDashboard() {
       </div>
 
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
-      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} />}
+      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} calendar={macroCalendar} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "industries" && <IndustriesTab {...industries} expandRequest={industryExpandRequest} />}
       {tab === "movers"    && <MoversTab    {...movers} />}

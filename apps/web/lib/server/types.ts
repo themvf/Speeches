@@ -551,6 +551,33 @@ export interface MarketMacroData {
   source: "FRED";
 }
 
+export interface MacroCalendarIndicatorRef {
+  id: MarketMacroIndicatorId;
+  label: string;
+  seriesId: string;
+  group: MarketMacroGroup;
+}
+
+export interface MacroCalendarEntry {
+  /** Scheduled release date, YYYY-MM-DD. FRED publishes no time of day. */
+  date: string;
+  releaseId: number;
+  releaseName: string;
+  releaseUrl: string;
+  /** The tracked macro indicators this release updates. */
+  indicators: MacroCalendarIndicatorRef[];
+}
+
+export interface MarketMacroCalendarData {
+  entries: MacroCalendarEntry[];
+  horizonDays: number;
+  generatedAt: string;
+  cacheSeconds: number;
+  source: "FRED";
+  /** Releases whose schedule could not be fetched; surfaced rather than hidden. */
+  warnings?: string[];
+}
+
 export type MacroPredictionTheme =
   | "fed_policy"
   | "growth"

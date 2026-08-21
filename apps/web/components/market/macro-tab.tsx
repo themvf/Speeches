@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  MarketMacroCalendarData,
   MarketMacroData,
   MarketMacroGroup,
   MarketMacroIndicator,
@@ -10,6 +11,14 @@ import type {
   MacroPredictionEvent,
 } from "@/lib/server/types";
 import { MacroPredictionInline } from "./macro-prediction-panel";
+import { MacroCalendar } from "./macro-calendar";
+import {
+  daysUntil,
+  formatCalendarDate,
+  localIsoDate,
+  nextReleaseByIndicator,
+  relativeDayLabel,
+} from "@/lib/macro-calendar-display";
 
 interface Props {
   data: MarketMacroData | null;
@@ -17,6 +26,11 @@ interface Props {
   error: string | null;
   predictions: {
     data: MarketMacroPredictionsData | null;
+    loading: boolean;
+    error: string | null;
+  };
+  calendar: {
+    data: MarketMacroCalendarData | null;
     loading: boolean;
     error: string | null;
   };
@@ -121,7 +135,24 @@ function MacroSparkline({ points }: { points: MarketMacroPoint[] }) {
   );
 }
 
-function MacroCard({ indicator, contracts }: { indicator: MarketMacroIndicator; contracts: MacroPredictionEvent[] }) {
+function NextReleaseLine({ date, today }: { date: string | undefined; today: string }) {
+  if (!date) return null;
+  const formatted = formatCalendarDate(date, { month: "short", day: "numeric" });
+  return (
+    <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]">
+      Next release <span className="font-semibold text-[color:var(--ink-soft)]">{formatted}</span>
+      {" · "}
+      {relativeDayLabel(daysUntil(date, today)).toLowerCase()}
+    </p>
+  );
+}
+
+function MacroCard({ indicator, contracts, nextRelease, today }: {
+  indicator: MarketMacroIndicator;
+  contracts: MacroPredictionEvent[];
+  nextRelease: string | undefined;
+  today: string;
+}) {
   const signal = SIGNALS[indicator.id](indicator);
   return (
     <article className="flex min-h-[280px] flex-col rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.5)] p-4">
@@ -151,6 +182,7 @@ function MacroCard({ indicator, contracts }: { indicator: MarketMacroIndicator; 
 
       <div className="mt-3"><MacroSparkline points={indicator.points} /></div>
       <p className="mt-2 flex-1 text-xs leading-5 text-[color:var(--ink-faint)]">{indicator.description}</p>
+      <NextReleaseLine date={nextRelease} today={today} />
       <MacroPredictionInline events={contracts} />
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-[color:var(--line)] pt-3 text-[10px] text-[color:var(--ink-faint)]">
         <span>{indicator.lastUpdated ? `FRED updated ${formatFredUpdatedAt(indicator.lastUpdated)}` : "FRED update time unavailable"}</span>
@@ -160,17 +192,30 @@ function MacroCard({ indicator, contracts }: { indicator: MarketMacroIndicator; 
   );
 }
 
-function IndicatorGrid({ indicators, contracts }: { indicators: MarketMacroIndicator[]; contracts: MacroPredictionEvent[] }) {
+function IndicatorGrid({ indicators, contracts, nextReleases, today }: {
+  indicators: MarketMacroIndicator[];
+  contracts: MacroPredictionEvent[];
+  nextReleases: Map<MarketMacroIndicatorId, string>;
+  today: string;
+}) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {[...indicators]
         .sort((left, right) => left.priority - right.priority)
-        .map((indicator) => <MacroCard key={indicator.id} indicator={indicator} contracts={contracts.filter((contract) => contract.indicatorIds.includes(indicator.id))} />)}
+        .map((indicator) => (
+          <MacroCard
+            key={indicator.id}
+            indicator={indicator}
+            contracts={contracts.filter((contract) => contract.indicatorIds.includes(indicator.id))}
+            nextRelease={nextReleases.get(indicator.id)}
+            today={today}
+          />
+        ))}
     </div>
   );
 }
 
-export function MacroTab({ data, loading, error, predictions }: Props) {
+export function MacroTab({ data, loading, error, predictions, calendar }: Props) {
   if (loading && !data) {
     return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading FRED macro indicators…</div>;
   }
@@ -186,6 +231,8 @@ export function MacroTab({ data, loading, error, predictions }: Props) {
 
   const headline = data.indicators.filter((indicator) => indicator.group === "headline");
   const contracts = predictions.data?.events ?? [];
+  const today = localIsoDate(new Date());
+  const nextReleases = nextReleaseByIndicator(calendar.data?.entries ?? [], today);
 
   return (
     <div className="space-y-5">
@@ -205,7 +252,9 @@ export function MacroTab({ data, loading, error, predictions }: Props) {
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">Market expectations are temporarily unavailable: {predictions.error}</div>
       )}
 
-      <IndicatorGrid indicators={headline} contracts={contracts} />
+      <MacroCalendar {...calendar} contracts={contracts} />
+
+      <IndicatorGrid indicators={headline} contracts={contracts} nextReleases={nextReleases} today={today} />
 
       <div className="space-y-3">
         {GROUPS.map((group) => {
@@ -224,7 +273,7 @@ export function MacroTab({ data, loading, error, predictions }: Props) {
                 </span>
               </summary>
               <div className="border-t border-[color:var(--line)] p-4">
-                <IndicatorGrid indicators={indicators} contracts={contracts} />
+                <IndicatorGrid indicators={indicators} contracts={contracts} nextReleases={nextReleases} today={today} />
               </div>
             </details>
           );

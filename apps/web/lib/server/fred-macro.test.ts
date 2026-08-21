@@ -19,7 +19,7 @@ test("defines the complete grouped market macro catalog", () => {
     "INDPRO",
     "PCEPILFE",
     "T10YIE",
-    "WPSFD4",
+    "PPIFIS",
     "ICSA",
     "CES0500000003",
     "CIVPART",
