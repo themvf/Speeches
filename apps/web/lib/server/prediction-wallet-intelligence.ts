@@ -59,6 +59,16 @@ function round(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
+// Mirrors cohort_min_events()/COHORT_MIN_EVENTS_OVERRIDES in
+// polymarket_macro_sync.py and MIN_EVENTS_OVERRIDES in the macro-contracts
+// route: 10 for ~monthly-or-better cadence, 5 for quarterly us_gdp.
+const MACRO_DEFAULT_MIN_EVENTS = 10;
+const MACRO_MIN_EVENTS: Partial<Record<MacroSharpCohort, number>> = { us_gdp: 5 };
+
+function macroMinEvents(cohort: MacroSharpCohort): number {
+  return MACRO_MIN_EVENTS[cohort] ?? MACRO_DEFAULT_MIN_EVENTS;
+}
+
 function macroArchetype(value: string): MacroSharpArchetype {
   if (value === "early_sharp" || value === "release_scalper" || value === "longshot") return value;
   return "unclassified";
@@ -76,6 +86,7 @@ function earningsSpecialty(wallet: BasePredictionWallet, minMarkets: number): Pr
     qualified: wallet.markets >= minMarkets && wallet.archetype !== "unclassified",
     classLabel: EARNINGS_CLASS_LABELS[wallet.archetype],
     events: wallet.markets,
+    minEvents: minMarkets,
     wins: wallet.wins,
     winRate: wallet.winRate,
     pnlUsd: wallet.pnlUsd,
@@ -96,6 +107,7 @@ function macroSpecialty(row: MacroWalletStatInput): PredictionWalletSpecialty | 
     qualified: archetype !== "unclassified",
     classLabel: MACRO_CLASS_LABELS[archetype],
     events: row.events,
+    minEvents: macroMinEvents(cohort),
     wins: row.wins,
     winRate: row.events > 0 ? round(row.wins / row.events) : 0,
     pnlUsd: round(row.pnl),

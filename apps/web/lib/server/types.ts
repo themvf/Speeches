@@ -1003,6 +1003,11 @@ export interface PredictionWalletSpecialty {
   qualified: boolean;
   classLabel: string;
   events: number;
+  /** Events this specialty needs before it can qualify. Lets the UI explain
+   *  WHY a wallet is still "building sample" - the wallet-level event count
+   *  is a sum across specialties, but qualification is per specialty, so a
+   *  wallet showing 18 events can still be short of every individual bar. */
+  minEvents: number;
   wins: number;
   winRate: number;
   pnlUsd: number;

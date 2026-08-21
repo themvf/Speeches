@@ -73,3 +73,37 @@ test("orders proven multi-specialists before higher-PnL single-specialists", () 
   const wallets = mergeWalletIntelligence([], rows, 8);
   assert.equal(wallets[0].wallet, "0xmulti");
 });
+
+test("each specialty carries its own qualifying bar, so a high combined total cannot masquerade as depth", () => {
+  // A wallet spread thin across four cohorts: 18 events in total, but the
+  // deepest single cohort is 7 against a 10-event bar. The combined figure
+  // shown on the row is a sum; qualification is per specialty. Without a
+  // per-specialty bar the UI reads as if 18 events should already qualify.
+  const rows = [
+    macro({ wallet: "0xspread", cohort: "unemployment", events: 7, wins: 7, archetype: "unclassified" }),
+    macro({ wallet: "0xspread", cohort: "nonfarm_payrolls", events: 5, wins: 5, archetype: "unclassified" }),
+    macro({ wallet: "0xspread", cohort: "us_gdp", events: 5, wins: 5, archetype: "unclassified" }),
+    macro({ wallet: "0xspread", cohort: "headline_cpi", events: 1, wins: 1, archetype: "unclassified" }),
+  ];
+  const [wallet] = mergeWalletIntelligence([], rows, 8);
+  assert.equal(wallet.markets, 18);
+  assert.equal(wallet.qualifiedSpecialties, 0);
+
+  const bar = (id: string) => wallet.specialties.find((s) => s.id === id)!.minEvents;
+  assert.equal(bar("unemployment"), 10, "monthly cohorts use the default 10-event bar");
+  // us_gdp is quarterly and gets a lower bar - mirrors
+  // COHORT_MIN_EVENTS_OVERRIDES in polymarket_macro_sync.py.
+  assert.equal(bar("us_gdp"), 5);
+});
+
+test("the earnings specialty carries the earnings gate, not the macro one", () => {
+  const [wallet] = mergeWalletIntelligence(
+    [{ ...earnings, markets: 261, wins: 149, archetype: "unclassified" }], [], 8);
+  const specialty = wallet.specialties.find((s) => s.id === "earnings")!;
+  assert.equal(specialty.minEvents, 8);
+  // 261 markets is far past the gate, so "Building sample" here is a
+  // classifier verdict, not a sample-size one - the two must stay tellable
+  // apart.
+  assert.ok(specialty.events > specialty.minEvents);
+  assert.equal(specialty.qualified, false);
+});
