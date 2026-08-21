@@ -3748,6 +3748,10 @@ export type PolymarketWalletStatsRow = {
   chases_losses?: boolean;
   chase_ratio?: number | null;
   watchlist_status?: string;
+  /** All-trades average entry price (cost / buy_size). Unlike win_entry_avg
+   *  this includes losing trades, so it is what a win rate must beat before it
+   *  counts as edge. */
+  entry_avg?: number | null;
 };
 
 export async function getPolymarketWalletStats(limit = 60): Promise<PolymarketWalletStatsRow[]> {
@@ -3759,7 +3763,8 @@ export async function getPolymarketWalletStats(limit = 60): Promise<PolymarketWa
              win_entry_avg::float AS win_entry_avg, archetype,
              recent_events, recent_wins, recent_pnl::float AS recent_pnl,
              recent_cost::float AS recent_cost, chases_losses,
-             chase_ratio::float AS chase_ratio, watchlist_status
+             chase_ratio::float AS chase_ratio, watchlist_status,
+             entry_avg::float AS entry_avg
       FROM polymarket_wallet_stats
       ORDER BY pnl DESC
       LIMIT ${cappedLimit}
@@ -3768,7 +3773,7 @@ export async function getPolymarketWalletStats(limit = 60): Promise<PolymarketWa
     // Old-schema tolerance (deploy-order rule in CLAUDE.md): the trajectory
     // columns are added by the Python sync's ALTERs, which may not have run
     // yet when this reader deploys. Serve the base columns for that one cycle.
-    if (!/recent_events|recent_wins|recent_pnl|recent_cost|chases_losses|chase_ratio|watchlist_status/.test(String(err))) throw err;
+    if (!/recent_events|recent_wins|recent_pnl|recent_cost|chases_losses|chase_ratio|watchlist_status|entry_avg/.test(String(err))) throw err;
     return (await sql`
       SELECT wallet, name, markets, wins, pnl::float AS pnl, cost::float AS cost,
              win_entry_avg::float AS win_entry_avg, archetype
@@ -3875,6 +3880,10 @@ export type PolymarketMacroWalletStatsRow = {
   chases_losses?: boolean;
   chase_ratio?: number | null;
   watchlist_status?: string;
+  /** All-trades average entry price (cost / buy_size). Unlike win_entry_avg
+   *  this includes losing trades, so it is what a win rate must beat before it
+   *  counts as edge. */
+  entry_avg?: number | null;
 };
 
 // fed_decision, nonfarm_payrolls, unemployment, headline_cpi, core_cpi, us_gdp,
@@ -3899,7 +3908,8 @@ export async function getPolymarketMacroWalletStats(limit = 100): Promise<Polyma
            win_entry_avg::float AS win_entry_avg, archetype,
            recent_events, recent_wins, recent_pnl::float AS recent_pnl,
            recent_cost::float AS recent_cost, chases_losses,
-           chase_ratio::float AS chase_ratio, watchlist_status
+           chase_ratio::float AS chase_ratio, watchlist_status,
+             entry_avg::float AS entry_avg
     FROM (
       SELECT *, ROW_NUMBER() OVER (PARTITION BY cohort ORDER BY pnl DESC) AS rn
       FROM polymarket_macro_wallet_stats
@@ -3911,7 +3921,7 @@ export async function getPolymarketMacroWalletStats(limit = 100): Promise<Polyma
     // Old-schema tolerance (deploy-order rule in CLAUDE.md): the trajectory
     // columns come from the Python sync's ALTERs and may not exist yet when
     // this reader deploys. Serve the base columns for that one cycle.
-    if (!/recent_events|recent_wins|recent_pnl|recent_cost|chases_losses|chase_ratio|watchlist_status/.test(String(err))) throw err;
+    if (!/recent_events|recent_wins|recent_pnl|recent_cost|chases_losses|chase_ratio|watchlist_status|entry_avg/.test(String(err))) throw err;
     return (await sql`
       SELECT wallet, cohort, name, events, wins,
            pnl::float AS pnl, cost::float AS cost,

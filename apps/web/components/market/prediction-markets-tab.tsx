@@ -319,6 +319,7 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
               <th className="px-2 py-2 text-left font-semibold">Proven specialties</th>
               <th className="px-2 py-2 text-right font-semibold">Obs</th>
               <th className="px-2 py-2 text-right font-semibold">Win</th>
+              <th className="px-2 py-2 text-right font-semibold" title="Win rate minus the average price actually paid, losing trades included. Buy at 0.90 and win 90% of the time and the edge is zero - the win rate was already priced in.">Edge</th>
               <th className="px-2 py-2 text-right font-semibold">PnL</th>
               <th className="hidden py-2 pl-2 pr-4 text-right font-semibold sm:table-cell">Areas</th>
             </tr>
@@ -360,6 +361,13 @@ function WalletsView({ wallets }: { wallets: PredictionWallet[] }) {
                     </td>
                     <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink-faint)]">{w.markets}</td>
                     <td className="px-2 py-2 text-right text-xs tabular-nums text-[color:var(--ink)]">{Math.round(w.winRate * 100)}%</td>
+                    <td
+                      className="px-2 py-2 text-right text-xs tabular-nums"
+                      style={{ color: w.trajectory?.edge == null ? "var(--ink-faint)" : w.trajectory.edge > 0.05 ? "#41d39d" : w.trajectory.edge < 0.01 ? "#f87171" : "var(--ink-soft)" }}
+                      title={w.trajectory?.entryAvg == null ? "Needs a re-settled history to compute." : `Paid ${w.trajectory.entryAvg.toFixed(2)} on average across all trades; won ${Math.round(w.winRate * 100)}% of the time.`}
+                    >
+                      {w.trajectory?.edge == null ? "—" : `${w.trajectory.edge > 0 ? "+" : ""}${Math.round(w.trajectory.edge * 100)}`}
+                    </td>
                     <td className="px-2 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: w.pnlUsd >= 0 ? "#41d39d" : "#f87171" }}>
                       {usd(w.pnlUsd)}
                     </td>

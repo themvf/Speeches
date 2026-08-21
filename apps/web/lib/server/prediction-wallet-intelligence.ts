@@ -19,9 +19,10 @@ export interface WalletTrajectoryInput {
   chases_losses?: boolean;
   chase_ratio?: number | null;
   watchlist_status?: string;
+  entry_avg?: number | null;
 }
 
-export function toTrajectory(row: WalletTrajectoryInput): WalletTrajectory | undefined {
+export function toTrajectory(row: WalletTrajectoryInput, lifetimeWinRate?: number): WalletTrajectory | undefined {
   const status = row.watchlist_status;
   if (!status || row.recent_events === undefined) return undefined;
   const events = row.recent_events ?? 0;
@@ -36,6 +37,12 @@ export function toTrajectory(row: WalletTrajectoryInput): WalletTrajectory | und
     recentRoi: cost > 0 ? round((row.recent_pnl ?? 0) / cost) : null,
     chasesLosses: Boolean(row.chases_losses),
     chaseRatio: row.chase_ratio ?? null,
+    entryAvg: row.entry_avg ?? null,
+    // A win rate is only skill to the extent it exceeds the price paid: buy at
+    // 0.90, win 90% of the time, and the edge is zero. Compared against the
+    // LIFETIME win rate, since entry_avg is a lifetime figure too.
+    edge: row.entry_avg != null && lifetimeWinRate != null
+      ? round(lifetimeWinRate - row.entry_avg) : null,
   };
 }
 
@@ -199,7 +206,8 @@ export function mergeWalletIntelligence(
       // macro_generalist spans every cohort, so it is the best cross-cohort
       // read; otherwise take the first macro row that carries one.
       if (!existing.wallet.trajectory || row.cohort === "macro_generalist") {
-        existing.wallet.trajectory = toTrajectory(row) ?? existing.wallet.trajectory;
+        existing.wallet.trajectory = toTrajectory(row, row.events > 0 ? row.wins / row.events : undefined)
+          ?? existing.wallet.trajectory;
       }
       continue;
     }
@@ -214,7 +222,7 @@ export function mergeWalletIntelligence(
       roi: null,
       avgWinnerEntry: null,
       openPositions: [],
-      trajectory: toTrajectory(row),
+      trajectory: toTrajectory(row, row.events > 0 ? row.wins / row.events : undefined),
     };
     byWallet.set(normalized, { wallet, specialties: [specialty], hasEarnings: false });
   }

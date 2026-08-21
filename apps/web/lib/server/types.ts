@@ -1068,6 +1068,12 @@ export interface WalletTrajectory {
    *  what preceded the increase, and it is a warning, not a compliment. */
   chasesLosses: boolean;
   chaseRatio: number | null;
+  /** All-trades average entry price - what the wallet actually paid, losing
+   *  trades included. A win rate only represents skill insofar as it exceeds
+   *  this: buy at 0.90 and win 90% of the time and you have added nothing. */
+  entryAvg: number | null;
+  /** winRate - entryAvg, in probability points. The honest scoreboard. */
+  edge: number | null;
 }
 
 export interface PredictionWallet {

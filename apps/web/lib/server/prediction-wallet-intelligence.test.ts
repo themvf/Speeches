@@ -138,3 +138,33 @@ test("an unrecognised status string degrades to none instead of leaking through"
   })], 8);
   assert.equal(wallet.trajectory?.status, "none");
 });
+
+test("edge measures the win rate against the price actually paid", () => {
+  // Buying at 0.90 and winning 90% of the time is zero edge - the win rate was
+  // already priced in. This is the case a raw win-rate leaderboard gets wrong.
+  const [chalk] = mergeWalletIntelligence([], [macro({
+    wallet: "0xchalk", events: 100, wins: 90,
+    recent_events: 10, watchlist_status: "none", entry_avg: 0.90,
+  })], 8);
+  assert.equal(chalk.trajectory?.edge, 0);
+
+  // Winning only 40% but buying at 0.15 is a large edge.
+  const [tail] = mergeWalletIntelligence([], [macro({
+    wallet: "0xtail", events: 100, wins: 40,
+    recent_events: 10, watchlist_status: "none", entry_avg: 0.15,
+  })], 8);
+  assert.equal(tail.trajectory?.edge, 0.25);
+
+  // Paying MORE than you win is negative edge, however high the win rate.
+  const [overpay] = mergeWalletIntelligence([], [macro({
+    wallet: "0xover", events: 100, wins: 80,
+    recent_events: 10, watchlist_status: "none", entry_avg: 0.95,
+  })], 8);
+  assert.ok((overpay.trajectory?.edge ?? 0) < 0);
+});
+
+test("edge is null rather than guessed when entry price is not yet available", () => {
+  const [w] = mergeWalletIntelligence([], [macro({ recent_events: 5, watchlist_status: "none" })], 8);
+  assert.equal(w.trajectory?.edge, null);
+  assert.equal(w.trajectory?.entryAvg, null);
+});

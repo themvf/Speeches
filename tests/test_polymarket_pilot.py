@@ -105,3 +105,32 @@ def test_correctness_scores_position_direction_not_clamped_pnl():
     bought_the_loser = one("No", "BUY")
     assert bought_the_loser["net_win"] == 0
     assert bought_the_loser["pnl"] < 0
+
+
+def test_all_trades_entry_price_includes_losing_trades_unlike_win_entry_avg():
+    """The calibration denominator. win_entry_avg is conditioned on winners, so
+    it cannot say what a wallet paid for the outcomes it got WRONG - which is
+    exactly what a win rate has to be judged against.
+
+    A wallet buying both sides at 0.30 and 0.70 paid 0.50 on average and has no
+    edge whatsoever, but win_entry_avg reports 0.30 and makes it look like a
+    cheap-entry sharp. cost / buy_size reports the truth.
+    """
+    fills = [
+        {"proxyWallet": "0xh", "name": "h", "outcome": "Yes", "side": "BUY", "size": 100, "price": 0.30},
+        {"proxyWallet": "0xh", "name": "h", "outcome": "No", "side": "BUY", "size": 100, "price": 0.70},
+    ]
+    r = pilot.settle_market(fills, "Yes")["0xh"]
+    assert r["cost"] == 100.0 and r["buy_size"] == 200.0
+    assert r["cost"] / r["buy_size"] == 0.50, "all-trades entry"
+    assert r["win_entry_avg"] == 0.30, "winners-only entry - flattering and wrong for calibration"
+
+
+def test_buy_size_ignores_sells_so_entry_price_is_not_diluted():
+    fills = [
+        {"proxyWallet": "0xs", "name": "s", "outcome": "Yes", "side": "BUY", "size": 100, "price": 0.40},
+        {"proxyWallet": "0xs", "name": "s", "outcome": "Yes", "side": "SELL", "size": 50, "price": 0.90},
+    ]
+    r = pilot.settle_market(fills, "Yes")["0xs"]
+    assert r["buy_size"] == 100.0, "sells must not count toward shares bought"
+    assert r["cost"] / r["buy_size"] == 0.40

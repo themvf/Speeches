@@ -120,7 +120,7 @@ def fetch_market_fills(condition_id: str) -> List[Dict[str, Any]]:
 
 def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[str, float]]:
     """Per-wallet P&L for one resolved market. Returns wallet -> stats."""
-    positions: Dict[str, Dict[str, float]] = defaultdict(lambda: {"cash": 0.0, "cost": 0.0, "net_win": 0.0, "win_buy_size": 0.0, "win_buy_cash": 0.0})
+    positions: Dict[str, Dict[str, float]] = defaultdict(lambda: {"cash": 0.0, "cost": 0.0, "net_win": 0.0, "win_buy_size": 0.0, "win_buy_cash": 0.0, "buy_size": 0.0})
     names: Dict[str, str] = {}
     for fill in fills:
         wallet = str(fill.get("proxyWallet") or "")
@@ -142,6 +142,11 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
         pos["cash"] += cash
         if side == "BUY":
             pos["cost"] += size * price
+            # Shares bought across BOTH outcomes. Paired with cost (which is
+            # already total buy CASH), this gives the all-trades average entry
+            # price - cost / buy_size - and both terms sum across markets, so
+            # the wallet-level average stays correctly cost-weighted.
+            pos["buy_size"] += size
         if outcome == winner:
             pos["net_win"] += signed
             if side == "BUY":
@@ -161,6 +166,10 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
             "pnl": pos["cash"] + payout,
             "cost": pos["cost"],
             "net_win": pos["net_win"],
+            "buy_size": pos["buy_size"],
+            # Winners-only: what they paid on the trades that happened to win.
+            # Cannot answer "did they beat the price they paid" - that needs
+            # entry across ALL trades, which is cost / buy_size above.
             "win_entry_avg": (pos["win_buy_cash"] / pos["win_buy_size"]) if pos["win_buy_size"] > 0 else None,
             "name": names.get(wallet, ""),
         }

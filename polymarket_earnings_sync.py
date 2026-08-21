@@ -168,12 +168,13 @@ def recompute_wallet_stats() -> Dict[str, int]:
     events_by_wallet: Dict[str, List[Dict[str, Any]]] = {}
     for r in results:
         a = agg.setdefault(str(r["wallet"]), {
-            "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "entries": [], "name": "",
+            "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "buy_size": 0.0, "entries": [], "name": "",
         })
         events_by_wallet.setdefault(str(r["wallet"]), []).append(r)
         a["markets"] += 1
         a["pnl"] += float(r["pnl"] or 0)
         a["cost"] += float(r["cost"] or 0)
+        a["buy_size"] += float(r.get("buy_size") or 0)
         if r["correct"]:
             a["wins"] += 1
         if r["win_entry_avg"] is not None:
@@ -200,7 +201,13 @@ def recompute_wallet_stats() -> Dict[str, int]:
         rows.append({
             "wallet": wallet, "name": a["name"], "markets": a["markets"],
             "wins": a["wins"], "pnl": a["pnl"], "cost": a["cost"],
-            "win_entry_avg": entry_avg, "archetype": archetype, **trajectory,
+            "win_entry_avg": entry_avg, "archetype": archetype,
+            "buy_size": a["buy_size"],
+            # All-trades average entry: cost is total buy cash, buy_size total
+            # shares. Unlike win_entry_avg this includes losing trades, so it
+            # is what a win rate must beat to count as edge.
+            "entry_avg": (a["cost"] / a["buy_size"]) if a["buy_size"] > 0 else None,
+            **trajectory,
         })
     written = neon_feeds.upsert_polymarket_wallet_stats(rows)
     return {"wallets": written, **{f"arch_{k}": v for k, v in archetype_counts.items()}}
