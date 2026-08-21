@@ -15,9 +15,11 @@ import { MacroCalendar } from "./macro-calendar";
 import {
   daysUntil,
   formatCalendarDate,
+  formatReleaseTime,
   localIsoDate,
   nextReleaseByIndicator,
   relativeDayLabel,
+  type NextRelease,
 } from "@/lib/macro-calendar-display";
 
 interface Props {
@@ -135,14 +137,16 @@ function MacroSparkline({ points }: { points: MarketMacroPoint[] }) {
   );
 }
 
-function NextReleaseLine({ date, today }: { date: string | undefined; today: string }) {
-  if (!date) return null;
-  const formatted = formatCalendarDate(date, { month: "short", day: "numeric" });
+function NextReleaseLine({ next, today }: { next: NextRelease | undefined; today: string }) {
+  if (!next) return null;
+  const formatted = formatCalendarDate(next.date, { month: "short", day: "numeric" });
+  const time = formatReleaseTime(next.timeEt);
   return (
     <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]">
       Next release <span className="font-semibold text-[color:var(--ink-soft)]">{formatted}</span>
+      {time ? ` at ${time}` : ""}
       {" · "}
-      {relativeDayLabel(daysUntil(date, today)).toLowerCase()}
+      {relativeDayLabel(daysUntil(next.date, today)).toLowerCase()}
     </p>
   );
 }
@@ -150,7 +154,7 @@ function NextReleaseLine({ date, today }: { date: string | undefined; today: str
 function MacroCard({ indicator, contracts, nextRelease, today }: {
   indicator: MarketMacroIndicator;
   contracts: MacroPredictionEvent[];
-  nextRelease: string | undefined;
+  nextRelease: NextRelease | undefined;
   today: string;
 }) {
   const signal = SIGNALS[indicator.id](indicator);
@@ -182,7 +186,7 @@ function MacroCard({ indicator, contracts, nextRelease, today }: {
 
       <div className="mt-3"><MacroSparkline points={indicator.points} /></div>
       <p className="mt-2 flex-1 text-xs leading-5 text-[color:var(--ink-faint)]">{indicator.description}</p>
-      <NextReleaseLine date={nextRelease} today={today} />
+      <NextReleaseLine next={nextRelease} today={today} />
       <MacroPredictionInline events={contracts} />
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-[color:var(--line)] pt-3 text-[10px] text-[color:var(--ink-faint)]">
         <span>{indicator.lastUpdated ? `FRED updated ${formatFredUpdatedAt(indicator.lastUpdated)}` : "FRED update time unavailable"}</span>
@@ -195,7 +199,7 @@ function MacroCard({ indicator, contracts, nextRelease, today }: {
 function IndicatorGrid({ indicators, contracts, nextReleases, today }: {
   indicators: MarketMacroIndicator[];
   contracts: MacroPredictionEvent[];
-  nextReleases: Map<MarketMacroIndicatorId, string>;
+  nextReleases: Map<MarketMacroIndicatorId, NextRelease>;
   today: string;
 }) {
   return (

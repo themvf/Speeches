@@ -8,6 +8,7 @@ import type {
 import {
   daysUntil,
   formatCalendarDate,
+  formatReleaseTime,
   localIsoDate,
   matchContract,
   relativeDayLabel,
@@ -34,10 +35,12 @@ function CalendarRow({ entry, today, contract }: {
 }) {
   const days = daysUntil(entry.date, today);
   const imminent = days <= 1;
+  const time = formatReleaseTime(entry.timeEt);
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-[color:var(--line)] px-4 py-3 first:border-t-0">
-      <div className="w-[120px] shrink-0">
+      <div className="w-[132px] shrink-0">
         <p className="text-xs font-semibold tabular-nums text-[color:var(--ink)]">{formatCalendarDate(entry.date, { weekday: "short", month: "short", day: "numeric" })}</p>
+        {time && <p className="text-[11px] tabular-nums text-[color:var(--ink-soft)]">{time}</p>}
         <p className={`text-[10px] ${imminent ? "font-semibold text-[color:var(--accent)]" : "text-[color:var(--ink-faint)]"}`}>
           {relativeDayLabel(days)}
         </p>
@@ -151,8 +154,9 @@ export function MacroCalendar({ data, loading, error, contracts }: Props) {
       )}
 
       <p className="border-t border-[color:var(--line)] px-4 py-2 text-[10px] leading-4 text-[color:var(--ink-faint)]">
-        Dates only — FRED does not publish a release time of day. Dates come from the source agencies and do not
-        necessarily reflect when the data lands in FRED. Daily interest-rate and exchange-rate refreshes are excluded.
+        Dates come from FRED and reflect the source agencies&rsquo; schedules, not when data lands in FRED. Times are the
+        publishing agency&rsquo;s stated release time in Eastern; a release with no published time shows the date only.
+        Daily interest-rate and exchange-rate refreshes are excluded.
       </p>
     </section>
   );

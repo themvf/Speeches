@@ -36,6 +36,23 @@ export function formatCalendarDate(date: string, options: Intl.DateTimeFormatOpt
 }
 
 /**
+ * "08:30" -> "8:30 AM ET". Rendered in Eastern deliberately, matching how the
+ * agencies state their own schedules: the label carries the zone, so nothing
+ * has to convert and DST can never shift a printed time.
+ */
+export function formatReleaseTime(timeEt: string | null): string | null {
+  if (!timeEt) return null;
+  const match = /^(\d{2}):(\d{2})$/.exec(timeEt);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  if (!Number.isInteger(hours) || hours < 0 || hours > 23) return null;
+  const suffix = hours < 12 ? "AM" : "PM";
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hour12}:${minutes} ${suffix} ET`;
+}
+
+/**
  * The one contract whose indicators overlap this release, preferring an exact
  * series match over a related signal so a CPI row shows the CPI bracket market
  * rather than an adjacent inflation contract.
@@ -58,16 +75,23 @@ export function matchContract(
  * release (all four Employment Situation series, for instance), so this maps
  * the calendar's release-shaped rows back onto individual indicator cards.
  */
+export interface NextRelease {
+  date: string;
+  timeEt: string | null;
+}
+
 export function nextReleaseByIndicator(
   entries: MacroCalendarEntry[],
   today: string,
-): Map<MarketMacroIndicatorId, string> {
-  const next = new Map<MarketMacroIndicatorId, string>();
+): Map<MarketMacroIndicatorId, NextRelease> {
+  const next = new Map<MarketMacroIndicatorId, NextRelease>();
   for (const entry of entries) {
     if (entry.date < today) continue;
     for (const indicator of entry.indicators) {
       const existing = next.get(indicator.id);
-      if (!existing || entry.date < existing) next.set(indicator.id, entry.date);
+      if (!existing || entry.date < existing.date) {
+        next.set(indicator.id, { date: entry.date, timeEt: entry.timeEt });
+      }
     }
   }
   return next;

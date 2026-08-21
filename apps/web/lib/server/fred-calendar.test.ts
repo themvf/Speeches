@@ -5,11 +5,13 @@ import { FRED_MACRO_DEFINITIONS } from "./fred-macro.ts";
 import {
   addDays,
   buildCalendarEntries,
+  CALENDAR_TIME_UNKNOWN_RELEASE_IDS,
   calendarReleaseDefinitions,
   DAILY_REFRESH_RELEASE_IDS,
   fetchFredReleaseCalendar,
   parseReleaseDates,
   releaseName,
+  releaseTimeEt,
   toIsoDate,
 } from "./fred-calendar.ts";
 
@@ -187,4 +189,45 @@ test("refuses to call FRED without an API key", async () => {
     () => fetchFredReleaseCalendar(90, "", new Date("2026-08-20T12:00:00Z")),
     /FRED_API_KEY is not configured/,
   );
+});
+
+test("every calendar release either has a pinned time or is a known gap", () => {
+  for (const releaseId of calendarReleaseDefinitions().keys()) {
+    const time = releaseTimeEt(releaseId);
+    const knownGap = CALENDAR_TIME_UNKNOWN_RELEASE_IDS.has(releaseId);
+    assert.equal(
+      time !== null || knownGap,
+      true,
+      `release ${releaseId} (${releaseName(releaseId)}) has no time and is not a declared gap`,
+    );
+    // A declared gap must not also carry a time -- that would be contradictory.
+    assert.equal(knownGap && time !== null, false, `release ${releaseId} is both a gap and timed`);
+    if (time !== null) assert.match(time, /^([01]\d|2[0-3]):[0-5]\d$/);
+  }
+});
+
+test("pins the times read off each publisher's schedule", () => {
+  assert.equal(releaseTimeEt(10), "08:30"); // CPI -- BLS
+  assert.equal(releaseTimeEt(50), "08:30"); // Employment Situation -- BLS
+  assert.equal(releaseTimeEt(192), "10:00"); // JOLTS -- BLS
+  assert.equal(releaseTimeEt(13), "09:15"); // G.17 -- Federal Reserve
+  assert.equal(releaseTimeEt(21), "13:00"); // H.6 -- Federal Reserve
+  assert.equal(releaseTimeEt(20), "16:30"); // H.4.1 -- Federal Reserve
+  assert.equal(releaseTimeEt(190), "12:00"); // PMMS -- Freddie Mac
+  assert.equal(releaseTimeEt(187), null); // St. Louis Fed FSI -- no published time
+});
+
+test("orders same-day releases by publication time, untimed last", () => {
+  const entries = buildCalendarEntries(
+    [
+      { releaseId: 20, dates: ["2026-09-10"] }, // 16:30
+      { releaseId: 187, dates: ["2026-09-10"] }, // no time
+      { releaseId: 10, dates: ["2026-09-10"] }, // 08:30
+      { releaseId: 192, dates: ["2026-09-10"] }, // 10:00
+    ],
+    calendarReleaseDefinitions(),
+    "2026-08-20",
+    "2026-11-18",
+  );
+  assert.deepEqual(entries.map((entry) => entry.timeEt), ["08:30", "10:00", "16:30", null]);
 });

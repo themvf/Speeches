@@ -561,6 +561,12 @@ export interface MacroCalendarIndicatorRef {
 export interface MacroCalendarEntry {
   /** Scheduled release date, YYYY-MM-DD. FRED publishes no time of day. */
   date: string;
+  /**
+   * Scheduled publication time as Eastern wall-clock "HH:MM", sourced from the
+   * publishing agency rather than FRED. Null when the publisher does not state
+   * one, in which case the row renders date-only.
+   */
+  timeEt: string | null;
   releaseId: number;
   releaseName: string;
   releaseUrl: string;

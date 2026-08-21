@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   daysUntil,
+  formatReleaseTime,
   localIsoDate,
   matchContract,
   nextReleaseByIndicator,
@@ -10,9 +11,15 @@ import {
 } from "./macro-calendar-display.ts";
 import type { MacroCalendarEntry, MacroPredictionEvent } from "./server/types.ts";
 
-function entry(date: string, releaseId: number, indicatorIds: string[]): MacroCalendarEntry {
+function entry(
+  date: string,
+  releaseId: number,
+  indicatorIds: string[],
+  timeEt: string | null = "08:30",
+): MacroCalendarEntry {
   return {
     date,
+    timeEt,
     releaseId,
     releaseName: `Release ${releaseId}`,
     releaseUrl: `https://fred.stlouisfed.org/release?rid=${releaseId}`,
@@ -112,8 +119,28 @@ test("maps the earliest upcoming release onto each indicator it updates", () => 
     "2026-08-20",
   );
 
-  assert.equal(next.get("nonfarm_payrolls"), "2026-09-04");
-  assert.equal(next.get("unemployment_rate"), "2026-09-04");
-  assert.equal(next.get("cpi_inflation"), "2026-09-10");
+  assert.deepEqual(next.get("nonfarm_payrolls"), { date: "2026-09-04", timeEt: "08:30" });
+  assert.deepEqual(next.get("unemployment_rate"), { date: "2026-09-04", timeEt: "08:30" });
+  assert.deepEqual(next.get("cpi_inflation"), { date: "2026-09-10", timeEt: "08:30" });
   assert.equal(next.get("housing_starts"), undefined);
+});
+
+test("carries a missing release time through as null", () => {
+  const next = nextReleaseByIndicator([entry("2026-09-04", 187, ["financial_stress"], null)], "2026-08-20");
+  assert.deepEqual(next.get("financial_stress"), { date: "2026-09-04", timeEt: null });
+});
+
+test("formats Eastern wall-clock times, and refuses malformed ones", () => {
+  assert.equal(formatReleaseTime("08:30"), "8:30 AM ET");
+  assert.equal(formatReleaseTime("10:00"), "10:00 AM ET");
+  assert.equal(formatReleaseTime("09:15"), "9:15 AM ET");
+  assert.equal(formatReleaseTime("12:00"), "12:00 PM ET");
+  assert.equal(formatReleaseTime("13:00"), "1:00 PM ET");
+  assert.equal(formatReleaseTime("16:30"), "4:30 PM ET");
+  assert.equal(formatReleaseTime("00:15"), "12:15 AM ET");
+
+  assert.equal(formatReleaseTime(null), null);
+  assert.equal(formatReleaseTime("8:30"), null);
+  assert.equal(formatReleaseTime("24:00"), null);
+  assert.equal(formatReleaseTime("nonsense"), null);
 });

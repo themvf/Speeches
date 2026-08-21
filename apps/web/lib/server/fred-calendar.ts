@@ -46,6 +46,59 @@ const RELEASE_NAMES: Readonly<Record<number, string>> = {
 };
 
 /**
+ * Scheduled publication time per release, as Eastern wall-clock "HH:MM".
+ *
+ * FRED serves dates with no time of day, and the eight publishers behind these
+ * releases have no common schedule feed -- so these are pinned constants. They
+ * are safe as constants because the values move on the order of decades (CPI
+ * has been 8:30 ET for as long as anyone has cared), and each was read off the
+ * publisher's own live schedule on 2026-08-21 rather than recalled:
+ *
+ *   BLS     bls.gov/schedule/2026/MM_sched.htm              (10, 46, 50, 192)
+ *   Census  census.gov/economic-indicators/calendar-listview.html  (9, 27)
+ *   BEA     bea.gov/news/schedule                           (53, 54)
+ *   Fed     federalreserve.gov/releases/{g17,h6}/current/, feeds/h41.xml
+ *
+ * Deliberately Eastern wall clock, NOT a UTC offset: the same 8:30 ET release
+ * is 12:30Z in summer and 13:30Z in winter. Times are rendered labelled "ET",
+ * so no timezone conversion is needed anywhere and DST cannot skew them.
+ *
+ * Releases absent from this map render date-only, which is the correct
+ * behaviour rather than a guess -- see CALENDAR_TIME_UNKNOWN_RELEASE_IDS.
+ */
+const RELEASE_TIMES_ET: Readonly<Record<number, string>> = {
+  9: "08:30", // Advance Monthly Retail Sales -- Census
+  10: "08:30", // Consumer Price Index -- BLS
+  13: "09:15", // G.17 Industrial Production -- Federal Reserve
+  20: "16:30", // H.4.1 Reserve Balances -- Federal Reserve
+  21: "13:00", // H.6 Money Stock -- Federal Reserve
+  27: "08:30", // New Residential Construction -- Census
+  46: "08:30", // Producer Price Index -- BLS
+  50: "08:30", // Employment Situation -- BLS
+  53: "08:30", // Gross Domestic Product -- BEA
+  54: "08:30", // Personal Income and Outlays -- BEA
+  // DOL publishes the weekly claims schedule only as a PDF and blocks the ETA
+  // press index, so this one is corroborated rather than read off a schedule:
+  // FRED ingests ICSA at ~08:34 ET, consistent with the long-standing 8:30.
+  180: "08:30", // Unemployment Insurance Weekly Claims -- DOL/ETA
+  190: "12:00", // Primary Mortgage Market Survey -- Freddie Mac ("Thursdays at 12 p.m. ET")
+  192: "10:00", // Job Openings and Labor Turnover Survey -- BLS
+  221: "08:30", // Chicago Fed NFCI ("8:30 a.m. ET on Wednesday")
+};
+
+/**
+ * Releases with no published time. STLFSI's page states no release time, and
+ * the Sahm Rule is a FRED-computed series with no press release of its own
+ * (it lands with the Employment Situation). Asserting a time for either would
+ * be a guess dressed as data.
+ */
+export const CALENDAR_TIME_UNKNOWN_RELEASE_IDS: ReadonlySet<number> = new Set([187, 456]);
+
+export function releaseTimeEt(releaseId: number): string | null {
+  return RELEASE_TIMES_ET[releaseId] ?? null;
+}
+
+/**
  * Releases that are a daily market-rate refresh rather than a scheduled
  * economic event. Each publishes every business day, so including them would
  * add ~65 rows per quarter apiece and bury CPI/payrolls in the noise. Their
@@ -122,6 +175,7 @@ export function buildCalendarEntries(
       if (date < startDate || date > endDate) continue;
       entries.push({
         date,
+        timeEt: releaseTimeEt(releaseId),
         releaseId,
         releaseName: releaseName(releaseId),
         releaseUrl: releaseUrl(releaseId),
@@ -129,11 +183,18 @@ export function buildCalendarEntries(
       });
     }
   }
-  return entries.sort((left, right) =>
-    left.date === right.date
-      ? left.releaseName.localeCompare(right.releaseName)
-      : left.date.localeCompare(right.date),
-  );
+  // Within a day, order by publication time so the morning prints lead;
+  // releases with no known time sort last rather than pretending to be at
+  // midnight.
+  return entries.sort((left, right) => {
+    if (left.date !== right.date) return left.date.localeCompare(right.date);
+    if (left.timeEt !== right.timeEt) {
+      if (!left.timeEt) return 1;
+      if (!right.timeEt) return -1;
+      return left.timeEt.localeCompare(right.timeEt);
+    }
+    return left.releaseName.localeCompare(right.releaseName);
+  });
 }
 
 export function parseReleaseDates(payload: FredReleaseDatesPayload, releaseId: number): string[] {
