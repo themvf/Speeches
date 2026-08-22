@@ -6,6 +6,14 @@ Live market intelligence dashboard at `/market`, providing real-time financial d
 
 ## Tabs
 
+### Market Groups (Beta)
+- Experimental combined discovery experience; the existing Sectors and Industries tabs remain available for comparison
+- Opens with a story-led sector ranking and dedicated sector detail instead of nested table accordions
+- Universal search spans sectors, representative companies/tickers, and all SEC SIC industries/tickers
+- A separate industry directory keeps SIC and ETF/GICS-like classifications honest while the crosswalk is validated
+- Industry peer quotes load only after the user selects a group; groups with more than 25 peers use progressive disclosure
+- Sector returns are explicitly labeled as ETF proxy returns, while representative-company and peer moves are labeled as daily quote changes
+
 ### Overview
 - **US Indices** — 2×2 card grid showing S&P 500, Dow Jones, NASDAQ, and Russell 2000 with current price, absolute change, % change, and open/closed status
 - **VIX / Fear & Greed Meter** — volatility index value with a gradient bar from Greed (green) → Calm (cyan) → Panic (red), labeled dynamically based on VIX level
@@ -165,6 +173,7 @@ Caching is handled via Next.js `fetch` cache with `{ next: { revalidate: N } }` 
 app/market/page.tsx                         Server Component (metadata + shell)
 └── components/market-dashboard.tsx         "use client" — tab state, lazy fetch, polling
     ├── components/market/overview-tab.tsx  IndexCard × 4, VixMeter, GlobalIndexTable
+    ├── components/market/market-groups-tab.tsx  Beta combined discovery + master-detail views
     ├── components/market/sectors-tab.tsx   SectorRow (collapsible) → StockRow
     ├── components/market/movers-tab.tsx    MoversList × 2 (gainers / losers)
     ├── components/market/crypto-tab.tsx    CryptoTable with column headers
@@ -176,6 +185,7 @@ app/market/page.tsx                         Server Component (metadata + shell)
 | Tab | Poll interval |
 |---|---|
 | Overview | 60s |
+| Market Groups | 300s for sectors; 600s for industry directory; peers on selection |
 | Sectors | 300s for prices; 900s per opened company for news |
 | Movers | 120s |
 | Crypto | 120s |
