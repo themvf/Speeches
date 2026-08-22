@@ -19,6 +19,40 @@ export interface CorpusEventInput {
 
 export const MAX_CHIPS_PER_TICKER = 2;
 
+const MONTHS: Readonly<Record<string, string>> = {
+  january: "01", february: "02", march: "03", april: "04", may: "05", june: "06",
+  july: "07", august: "08", september: "09", october: "10", november: "11", december: "12",
+};
+
+/**
+ * documents.published_date is TEXT and holds at least two shapes, both live in
+ * the corpus today: "2026-08-19T02:07:24Z" from Bloomberg-style ingests and
+ * "August 18, 2026" from newsapi ones.
+ *
+ * They cannot be compared as strings. "August 18, 2026" >= "2026-07-22" is
+ * true only because "A" sorts above "2", which passes every such row through a
+ * lower bound regardless of its year while failing every upper bound - so the
+ * newsapi half of the corpus, its largest source at ~6,000 documents, was
+ * silently dropped from chips. Normalize to YYYY-MM-DD, then compare.
+ *
+ * Returns null for anything unrecognized, which the caller drops rather than
+ * guesses at.
+ */
+export function normalizePublishedDate(value: string): string | null {
+  const raw = (value ?? "").trim();
+  if (!raw) return null;
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const written = /^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$/.exec(raw);
+  if (written) {
+    const month = MONTHS[written[1].toLowerCase()];
+    if (month) return `${written[3]}-${month}-${written[2].padStart(2, "0")}`;
+  }
+  return null;
+}
+
 /** Title-match confidence written by index_document_tickers.py. */
 export const SUBJECT_CONFIDENCE = 1.0;
 
@@ -55,6 +89,11 @@ const SOURCE_LABELS: Readonly<Record<string, string>> = {
   cfpb_newsroom: "CFPB release",
   nydfs_press_release: "NYDFS release",
   rule_comment: "Rule comment",
+  newsapi_article: "News",
+  bloomberg_public_article: "Bloomberg",
+  wsj_dow_jones: "WSJ",
+  substack_public_article: "Substack",
+  dark_reading_article: "Dark Reading",
 };
 
 export function sourceLabel(sourceKind: string): string {
@@ -64,12 +103,29 @@ export function sourceLabel(sourceKind: string): string {
 }
 
 /**
- * Group rows into per-ticker chips. Rows must arrive newest-first; the cap is
- * applied in arrival order so the freshest documents win.
+ * Group rows into per-ticker chips, newest first.
+ *
+ * Windowing and ordering happen here rather than in SQL because
+ * published_date cannot be range-filtered as text (see
+ * normalizePublishedDate). The query is a permissive prefilter; this is where
+ * the window actually holds.
  */
-export function buildCorpusChips(rows: CorpusEventInput[]): Map<string, CorpusEventChip[]> {
+export function buildCorpusChips(
+  rows: CorpusEventInput[],
+  window?: { since: string; until: string },
+): Map<string, CorpusEventChip[]> {
   const byTicker = new Map<string, CorpusEventChip[]>();
-  for (const row of rows) {
+
+  const dated = rows
+    .flatMap((row) => {
+      const date = normalizePublishedDate(row.published_date);
+      if (!date) return [];
+      if (window && (date < window.since || date > window.until)) return [];
+      return [{ row, date }];
+    })
+    .sort((left, right) => right.date.localeCompare(left.date));
+
+  for (const { row, date } of dated) {
     const subject = Number(row.confidence) >= SUBJECT_CONFIDENCE;
     // A mention is not a subject: an enforcement chip on a company merely
     // named in the body would read as an accusation we cannot support.
@@ -83,7 +139,7 @@ export function buildCorpusChips(rows: CorpusEventInput[]): Map<string, CorpusEv
       title: row.title,
       sourceKind: row.source_kind,
       sourceLabel: sourceLabel(row.source_kind),
-      publishedDate: row.published_date,
+      publishedDate: date,
       url: row.url,
       subject,
     });

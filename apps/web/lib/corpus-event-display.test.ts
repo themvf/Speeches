@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   ACCUSATORY_SOURCE_KINDS,
   buildCorpusChips,
+  normalizePublishedDate,
   MAX_CHIPS_PER_TICKER,
   sourceLabel,
   type CorpusEventInput,
@@ -102,4 +103,56 @@ test("groups independently per ticker", () => {
 
 test("an empty result is an empty map, not a throw", () => {
   assert.equal(buildCorpusChips([]).size, 0);
+});
+
+
+// ── published_date is TEXT and holds two shapes ──────────────────────────────
+
+test("normalizes both date shapes the corpus actually contains", () => {
+  assert.equal(normalizePublishedDate("2026-08-19T02:07:24Z"), "2026-08-19");
+  assert.equal(normalizePublishedDate("August 18, 2026"), "2026-08-18");
+  assert.equal(normalizePublishedDate("2026-08-19"), "2026-08-19");
+  assert.equal(normalizePublishedDate("December 1, 2025"), "2025-12-01");
+  assert.equal(normalizePublishedDate("  March 7, 2024  "), "2024-03-07");
+});
+
+test("returns null for anything it does not recognize", () => {
+  assert.equal(normalizePublishedDate(""), null);
+  assert.equal(normalizePublishedDate("   "), null);
+  assert.equal(normalizePublishedDate("Smarch 40, 2026"), null);
+  assert.equal(normalizePublishedDate("last Tuesday"), null);
+});
+
+test("the written form is windowed correctly, not silently dropped", () => {
+  // The bug this replaced: "August 18, 2026" >= "2026-07-22" is true only
+  // because "A" sorts above "2", so string comparison passed every such row
+  // through a lower bound and failed every upper bound - dropping the whole
+  // newsapi half of the corpus.
+  const window = { since: "2026-07-22", until: "2026-08-22" };
+  const inWindow = buildCorpusChips([row({ published_date: "August 18, 2026" })], window);
+  assert.equal(inWindow.get("NVDA")?.[0].publishedDate, "2026-08-18");
+
+  const oldWrittenDate = buildCorpusChips([row({ published_date: "August 18, 2019" })], window);
+  assert.equal(oldWrittenDate.size, 0, "an old written-form date must not slip through");
+});
+
+test("windows ISO dates at both ends", () => {
+  const window = { since: "2026-07-22", until: "2026-08-22" };
+  assert.equal(buildCorpusChips([row({ published_date: "2026-08-19T02:07:24Z" })], window).size, 1);
+  assert.equal(buildCorpusChips([row({ published_date: "2026-07-01T00:00:00Z" })], window).size, 0);
+  assert.equal(buildCorpusChips([row({ published_date: "2026-09-01T00:00:00Z" })], window).size, 0);
+});
+
+test("orders newest first across mixed formats, not by raw string", () => {
+  const rows = [
+    row({ document_id: "a", url: "https://e.test/a", published_date: "August 1, 2026", title: "older written" }),
+    row({ document_id: "b", url: "https://e.test/b", published_date: "2026-08-20T00:00:00Z", title: "newest iso" }),
+    row({ document_id: "c", url: "https://e.test/c", published_date: "August 15, 2026", title: "middle written" }),
+  ];
+  const chips = buildCorpusChips(rows, { since: "2026-07-01", until: "2026-08-31" });
+  assert.deepEqual(chips.get("NVDA")?.map((c) => c.title), ["newest iso", "middle written"]);
+});
+
+test("an unparseable date is dropped rather than guessed at", () => {
+  assert.equal(buildCorpusChips([row({ published_date: "last Tuesday" })]).size, 0);
 });

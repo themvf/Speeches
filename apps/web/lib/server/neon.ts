@@ -3646,25 +3646,22 @@ export type CorpusEventRow = {
 };
 
 /**
- * Corpus documents naming a tracked ticker, newest first.
+ * Corpus documents naming a tracked ticker.
  *
  * `minConfidence` selects how the ticker was matched: index_document_tickers.py
  * stores 1.0 for a title match (the company is almost certainly the document's
- * subject) and 0.6 for an unambiguous body-only mention. Callers showing
- * accusatory source kinds should demand 1.0.
+ * subject) and 0.6 for an unambiguous body-only mention.
  *
- * published_date is TEXT in this table, so the lower bound is a string compare
- * - and empty strings sort before every real date, which is exactly why the
- * range is bounded at both ends rather than left open.
+ * Deliberately does NOT range-filter on published_date. That column is TEXT and
+ * holds at least two shapes - "2026-08-19T02:07:24Z" and "August 18, 2026" -
+ * which cannot be compared as strings: the written form sorts above every ISO
+ * date, so it passes any lower bound regardless of year and fails every upper
+ * bound. An earlier version did filter here and silently dropped the newsapi
+ * half of the corpus. The window is applied in buildCorpusChips, where the
+ * dates are parsed and the logic is testable.
  */
-export async function getRecentCorpusEvents(
-  daysBack = 30,
-  minConfidence = 0.6,
-): Promise<CorpusEventRow[]> {
+export async function getRecentCorpusEvents(minConfidence = 0.6): Promise<CorpusEventRow[]> {
   const sql = getSql();
-  const cappedDays = Math.max(1, Math.min(365, daysBack));
-  const since = new Date(Date.now() - cappedDays * 86_400_000).toISOString().slice(0, 10);
-  const until = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
   return (await sql`
     SELECT m.normalized_value AS ticker,
            d.document_id,
@@ -3678,10 +3675,10 @@ export async function getRecentCorpusEvents(
      WHERE m.mention_type = 'ticker'
        AND m.source_type = 'document'
        AND m.confidence >= ${minConfidence}
-       AND d.published_date >= ${since}
-       AND d.published_date <= ${until}
-     ORDER BY d.published_date DESC
-     LIMIT 2000
+       AND d.published_date <> ''
+       AND d.url <> ''
+     ORDER BY d.updated_at DESC
+     LIMIT 5000
   `) as unknown as CorpusEventRow[];
 }
 

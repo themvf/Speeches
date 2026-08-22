@@ -10,9 +10,14 @@ import type { CorpusEventChip } from "@/lib/server/types";
 import { buildCorpusChips } from "@/lib/corpus-event-display";
 import { getRecentCorpusEvents } from "@/lib/server/neon";
 
+function isoDay(offsetDays: number): string {
+  return new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+}
+
 export async function loadCorpusEventChips(daysBack = 30): Promise<Map<string, CorpusEventChip[]>> {
   try {
-    return buildCorpusChips(await getRecentCorpusEvents(daysBack));
+    const rows = await getRecentCorpusEvents();
+    return buildCorpusChips(rows, { since: isoDay(-Math.abs(daysBack)), until: isoDay(1) });
   } catch {
     // fail-soft by design
     return new Map();
