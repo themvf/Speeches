@@ -30,6 +30,7 @@ def _doc(document_id="doc-1", title="", full_text="", source_kind="sec_speech"):
 def _args(**overrides):
     defaults = dict(
         backfill=True, since_days=3, dry_run=False, limit=0, batch_size=200, sample_size=15,
+        include_body=False, no_scope=True,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -43,12 +44,20 @@ def test_title_match_outranks_a_body_match():
 
 
 def test_unambiguous_body_match_is_recorded_at_the_lower_confidence():
-    resolved = indexer.resolve_document("Quarterly market commentary", "Shares of $NVDA moved.")
+    resolved = indexer.resolve_document(
+        "Quarterly market commentary", "Shares of $NVDA moved.", include_body=True
+    )
     assert resolved == {"NVDA": indexer.BODY_CONFIDENCE}
 
 
+def test_the_body_tier_is_off_unless_asked_for():
+    """The first dry run showed it was ~90% of rows and mostly acronyms that
+    are also tickers - DAO, RSI, ASIC, ASA, ADV. Opt-in only."""
+    assert indexer.resolve_document("Quarterly market commentary", "Shares of $NVDA moved.") == {}
+
+
 def test_a_title_hit_is_not_downgraded_by_also_appearing_in_the_body():
-    resolved = indexer.resolve_document("NVDA under review", "More about $NVDA here.")
+    resolved = indexer.resolve_document("NVDA under review", "More about $NVDA here.", include_body=True)
     assert resolved == {"NVDA": indexer.TITLE_CONFIDENCE}
 
 
@@ -58,13 +67,15 @@ def test_company_name_tier_never_qualifies_on_body_alone():
     with mock.patch.object(indexer.ticker_resolver, "resolve_tickers") as resolve:
         # Title resolves to nothing; body resolves at the name tier only.
         resolve.side_effect = [{}, {"AAPL": 0.7}]
-        assert indexer.resolve_document("A speech about competition policy", "... Apple ...") == {}
+        assert indexer.resolve_document(
+            "A speech about competition policy", "... Apple ...", include_body=True
+        ) == {}
 
 
 def test_body_is_truncated_before_resolution():
     long_body = "x" * (indexer.MAX_BODY_CHARS + 5_000)
     with mock.patch.object(indexer.ticker_resolver, "resolve_tickers", return_value={}) as resolve:
-        indexer.resolve_document("t", long_body)
+        indexer.resolve_document("t", long_body, include_body=True)
     assert len(resolve.call_args_list[1].args[0]) == indexer.MAX_BODY_CHARS
 
 
@@ -144,3 +155,43 @@ def test_samples_are_capped_for_eyeballing():
 def test_summary_names_the_mode(mode, expected):
     with mock.patch.object(indexer.neon_feeds, "iter_documents_for_ticker_index", return_value=iter([])):
         assert indexer._run(_args(backfill=mode))["mode"] == expected
+
+
+# ── tracked-universe scoping ─────────────────────────────────────────────────
+
+def test_scoping_drops_tickers_no_board_can_show():
+    """Chips only ever render for tickers on the Movers or Industries boards,
+    so anything outside that set is noise that can never be displayed."""
+    with mock.patch.object(indexer.ticker_resolver, "resolve_tickers",
+                           return_value={"NVDA": 1.0, "DAO": 1.0, "ASIC": 1.0}):
+        resolved = indexer.resolve_document("headline", "", tracked={"NVDA", "AAPL"})
+    assert resolved == {"NVDA": indexer.TITLE_CONFIDENCE}
+
+
+def test_an_empty_tracked_set_means_no_scoping_not_no_results():
+    """A failed config read must degrade to the previous behaviour, never
+    silently index nothing."""
+    with mock.patch.object(indexer.ticker_resolver, "resolve_tickers", return_value={"NVDA": 1.0}):
+        assert indexer.resolve_document("headline", "", tracked=set()) == {"NVDA": 1.0}
+        assert indexer.resolve_document("headline", "", tracked=None) == {"NVDA": 1.0}
+
+
+def test_the_real_tracked_universe_covers_boards_and_excludes_the_known_noise():
+    tracked = indexer.load_tracked_tickers()
+    assert len(tracked) > 500
+    for symbol in ["NVDA", "AAPL", "MSFT", "MARA"]:
+        assert symbol in tracked, f"{symbol} should be indexable"
+    # Every false positive the first dry run surfaced, except RSI - which is a
+    # real tracked ticker (Rush Street Interactive) and therefore genuine
+    # ambiguity rather than a resolver bug.
+    for symbol in ["DAO", "ASIC", "WSE", "ASA", "ADV", "SBS", "FUFU", "LITS"]:
+        assert symbol not in tracked, f"{symbol} was a known false positive"
+
+
+def test_the_summary_reports_the_scope_it_ran_under():
+    with mock.patch.object(indexer.neon_feeds, "iter_documents_for_ticker_index", return_value=iter([])):
+        unscoped = indexer._run(_args(no_scope=True))
+        scoped = indexer._run(_args(no_scope=False))
+    assert unscoped["tracked_universe"] == "unscoped"
+    assert unscoped["include_body"] is False
+    assert isinstance(scoped["tracked_universe"], int) and scoped["tracked_universe"] > 500

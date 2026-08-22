@@ -26,6 +26,11 @@ on:
         description: "Stop after N documents (0 = no limit). Use a small value for the first look."
         required: false
         default: "0"
+      include_body:
+        description: "Also index body mentions. Off by default - the first dry run showed the body tier was ~90% of rows and mostly acronyms that are also tickers."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -43,6 +48,7 @@ jobs:
       BACKFILL: ${{ github.event.inputs.backfill || 'false' }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       LIMIT: ${{ github.event.inputs.limit || '0' }}
+      INCLUDE_BODY: ${{ github.event.inputs.include_body || 'false' }}
 
     steps:
       - name: Checkout
@@ -71,6 +77,9 @@ jobs:
           fi
           if [ "${LIMIT}" != "0" ]; then
             args+=(--limit "${LIMIT}")
+          fi
+          if [ "${INCLUDE_BODY}" = "true" ]; then
+            args+=(--include-body)
           fi
           python index_document_tickers.py "${args[@]}" | tee document_ticker_index_summary.json
 

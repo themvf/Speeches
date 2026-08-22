@@ -27,6 +27,27 @@ Two defences, both here rather than in the UI:
    never the 0.7 curated-company-name tier, which is the tier that fires on
    ordinary prose.
 
+## What the first dry run changed
+
+Run 32546850389 scanned 200 documents and produced 155 rows, and reading them
+forced two corrections:
+
+- The body tier was ~90% of rows and mostly junk. Financial and regulatory
+  prose is dense with uppercase acronyms that are also real tickers: DAO
+  (decentralized autonomous organization), RSI (relative strength index),
+  ASIC (a chip type), WSE (Cerebras' wafer-scale engine), ASA (a Norwegian
+  corporate suffix), ADV (Form ADV, matched inside an adviser enforcement
+  action). It is now opt-in behind --include-body.
+- The index covered all 9,304 symbols, but chips only ever render for tickers
+  on the Movers or Industries boards. Everything outside that set was noise
+  that could never be displayed and could only be wrong when it was. The
+  index is now scoped to the tracked universe by default.
+
+Even the title tier missed: "Hub Group, Inc. Investor Alert: Contact SBS by
+August 28" resolved to SBS, a law firm's initials, for a document about HUBG.
+Scoping to tracked tickers removes that particular one; the general case is
+why accusatory source kinds stay title-only at render time.
+
 Deliberately no new table and no new columns: reusing `intelligence_mentions`
 keeps this clear of the deploy-order trap in CLAUDE.md, where a Vercel deploy
 ships a reader before the Python migration that creates what it reads.
@@ -35,7 +56,10 @@ ships a reader before the Python migration that creates what it reads.
 from __future__ import annotations
 
 import argparse
+import io
 import json
+import os
+import re
 import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List
@@ -60,34 +84,91 @@ MAX_BODY_CHARS = 40_000
 
 SOURCE_TYPE = "document"
 
+# The boards a chip can render on. Anything outside this set is noise that can
+# never be displayed, so indexing it only creates chances to be wrong.
+INDUSTRY_CONFIG_PATH = os.path.join("apps", "web", "lib", "server", "industry-config.json")
+MOVERS_ROUTE_PATH = os.path.join("apps", "web", "app", "api", "market", "movers", "route.ts")
 
-def resolve_document(title: str, body: str) -> Dict[str, float]:
+
+def load_tracked_tickers() -> set:
+    """Tickers that can appear on the Market page: the Industries universe plus
+    the Movers watchlist.
+
+    Fail-soft to an empty set, which the caller reads as "do not scope" and
+    reports in the summary - a missing config should be visible, not silently
+    turn the scope off or halt a run.
+    """
+    tracked: set = set()
+    try:
+        with io.open(INDUSTRY_CONFIG_PATH, encoding="utf-8") as handle:
+            config = json.load(handle)
+        for industry in config.get("industries", []):
+            for member in industry.get("tickers", []):
+                symbol = str(member.get("ticker", "") or "").strip().upper()
+                if symbol:
+                    tracked.add(symbol)
+    except Exception as exc:  # noqa: BLE001
+        print(f"warning: could not read {INDUSTRY_CONFIG_PATH}: {exc}", file=sys.stderr)
+
+    try:
+        with io.open(MOVERS_ROUTE_PATH, encoding="utf-8") as handle:
+            tracked.update(re.findall(r'symbol: "([A-Z.\-]+)"', handle.read()))
+    except Exception as exc:  # noqa: BLE001
+        print(f"warning: could not read {MOVERS_ROUTE_PATH}: {exc}", file=sys.stderr)
+
+    return tracked
+
+
+def resolve_document(
+    title: str,
+    body: str,
+    tracked: set | None = None,
+    include_body: bool = False,
+) -> Dict[str, float]:
     """Ticker mentions for one document, as {symbol: stored confidence}.
 
-    A title match wins outright; a body-only match has to clear the
-    unambiguous bar to be recorded at all.
+    A title match wins outright. The body tier is off unless asked for: the
+    first dry run showed it was ~90% of rows and mostly acronyms that happen
+    to be tickers.
+
+    `tracked`, when given, restricts results to tickers that can actually
+    appear on a board. An empty set means no scoping, so a failed config read
+    degrades to the old behaviour rather than silently indexing nothing.
     """
     mentions: Dict[str, float] = {}
 
     for symbol in ticker_resolver.resolve_tickers(title or ""):
         mentions[symbol] = TITLE_CONFIDENCE
 
-    body_hits = ticker_resolver.resolve_tickers((body or "")[:MAX_BODY_CHARS])
-    for symbol, resolver_confidence in body_hits.items():
-        if symbol in mentions:
-            continue
-        if resolver_confidence >= MIN_BODY_RESOLVER_CONFIDENCE:
-            mentions[symbol] = BODY_CONFIDENCE
+    if include_body:
+        body_hits = ticker_resolver.resolve_tickers((body or "")[:MAX_BODY_CHARS])
+        for symbol, resolver_confidence in body_hits.items():
+            if symbol in mentions:
+                continue
+            if resolver_confidence >= MIN_BODY_RESOLVER_CONFIDENCE:
+                mentions[symbol] = BODY_CONFIDENCE
+
+    if tracked:
+        mentions = {symbol: confidence for symbol, confidence in mentions.items() if symbol in tracked}
 
     return mentions
 
 
-def build_mention_rows(document: Dict[str, Any]) -> List[Dict[str, Any]]:
+def build_mention_rows(
+    document: Dict[str, Any],
+    tracked: set | None = None,
+    include_body: bool = False,
+) -> List[Dict[str, Any]]:
     """Rows for `neon_feeds.insert_ticker_mentions`, one per resolved ticker."""
     document_id = str(document.get("document_id") or "").strip()
     if not document_id:
         return []
-    resolved = resolve_document(str(document.get("title") or ""), str(document.get("full_text") or ""))
+    resolved = resolve_document(
+        str(document.get("title") or ""),
+        str(document.get("full_text") or ""),
+        tracked=tracked,
+        include_body=include_body,
+    )
     return [
         {
             "source_type": SOURCE_TYPE,
@@ -106,6 +187,7 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
     if not args.backfill:
         since = (datetime.now(UTC) - timedelta(days=args.since_days)).isoformat()
 
+    tracked = set() if args.no_scope else load_tracked_tickers()
     documents_scanned = 0
     documents_with_tickers = 0
     mention_rows = 0
@@ -119,7 +201,7 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
         rows: List[Dict[str, Any]] = []
         for document in batch:
             documents_scanned += 1
-            document_rows = build_mention_rows(document)
+            document_rows = build_mention_rows(document, tracked=tracked, include_body=args.include_body)
             if not document_rows:
                 continue
             documents_with_tickers += 1
@@ -145,6 +227,8 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
         "mode": "backfill" if args.backfill else "incremental",
         "dry_run": bool(args.dry_run),
         "since": since,
+        "tracked_universe": len(tracked) or "unscoped",
+        "include_body": bool(args.include_body),
         "documents_scanned": documents_scanned,
         "documents_with_tickers": documents_with_tickers,
         "mention_rows": mention_rows,
@@ -162,6 +246,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="Resolve and report, write nothing.")
     parser.add_argument("--limit", type=int, default=0, help="Stop after N documents (0 = no limit).")
     parser.add_argument("--batch-size", type=int, default=200)
+    parser.add_argument(
+        "--include-body", action="store_true",
+        help="Also index unambiguous body mentions. Off by default: the first dry run showed the "
+             "body tier was ~90% of rows and mostly acronyms that are also tickers (DAO, RSI, ASIC).",
+    )
+    parser.add_argument(
+        "--no-scope", action="store_true",
+        help="Index every symbol rather than only tickers that can appear on a board.",
+    )
     parser.add_argument(
         "--sample-size", type=int, default=15,
         help="How many resolved documents to echo in the summary, for eyeballing false positives.",
