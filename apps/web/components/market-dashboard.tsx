@@ -28,12 +28,14 @@ import { PredictionMarketsTab } from "./market/prediction-markets-tab";
 import { MacroTab } from "./market/macro-tab";
 import { IndustriesTab } from "./market/industries-tab";
 import { EarningsTab } from "./market/earnings-tab";
+import { MarketGroupsTab } from "./market/market-groups-tab";
 
-type TabId = "overview" | "macro" | "sectors" | "industries" | "movers" | "attention" | "cboe" | "earnings" | "predictions" | "crypto" | "exchanges";
+type TabId = "overview" | "macro" | "groups" | "sectors" | "industries" | "movers" | "attention" | "cboe" | "earnings" | "predictions" | "crypto" | "exchanges";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview",    label: "Overview" },
   { id: "macro",       label: "Macro" },
+  { id: "groups",      label: "Market Groups" },
   { id: "sectors",     label: "Sectors" },
   { id: "industries",  label: "Industries" },
   { id: "movers",      label: "Movers" },
@@ -96,10 +98,10 @@ export function MarketDashboard() {
   const macro       = useTabData<MarketMacroData>      ("macro",    tab, "/api/market/macro",       900_000);
   const macroPredictions = useTabData<MarketMacroPredictionsData>(["macro", "predictions"], tab, "/api/market/macro-contracts", 300_000);
 
-  const sectors   = useTabData<MarketSectorsData>  ("sectors",   tab, "/api/market/sectors",   300_000);
+  const sectors   = useTabData<MarketSectorsData>  (["groups", "sectors"], tab, "/api/market/sectors", 300_000);
   // Industry list is config + one cheap DB join; peer quotes load lazily per
   // expanded industry inside the tab, so a long poll here is fine.
-  const industries = useTabData<MarketIndustriesData>("industries", tab, "/api/market/industries", 600_000);
+  const industries = useTabData<MarketIndustriesData>(["groups", "industries"], tab, "/api/market/industries", 600_000);
   const movers    = useTabData<MarketMoversData>   ("movers",    tab, "/api/market/movers",    120_000);
   const attention = useTabData<MarketAttentionData>("attention", tab, "/api/market/attention", 300_000);
   // Static snapshot (SEC-17/19) - long poll interval since the route never
@@ -134,6 +136,7 @@ export function MarketDashboard() {
 
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
       {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} />}
+      {tab === "groups"    && <MarketGroupsTab sectors={sectors} industries={industries} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "industries" && <IndustriesTab {...industries} />}
       {tab === "movers"    && <MoversTab    {...movers} />}
