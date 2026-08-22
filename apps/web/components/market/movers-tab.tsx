@@ -2,6 +2,7 @@
 
 import type { MarketMoversData, MoverQuote } from "@/lib/server/types";
 import { FilingChips } from "./filing-chip";
+import { CorpusChips } from "./corpus-chip";
 
 interface Props {
   data: MarketMoversData | null;
@@ -23,6 +24,7 @@ function MoverRow({ q, maxAbs }: { q: MoverQuote; maxAbs: number }) {
       <td className="px-2 py-2.5 text-xs text-[color:var(--ink-faint)]">
         <span className="mr-1.5 inline-block max-w-[160px] truncate align-middle">{q.name}</span>
         <FilingChips filings={q.filings} />
+        <CorpusChips events={q.corpus} />
       </td>
       <td className="px-2 py-2.5 tabular-nums text-xs text-right text-[color:var(--ink)]">
         ${q.price.toFixed(2)}

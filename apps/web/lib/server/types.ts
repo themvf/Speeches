@@ -756,6 +756,24 @@ export interface MarketCompanyNewsData {
 // rows - "why is this moving?". Populated fail-soft from filing_events
 // (Python-owned, filing_catalyst_sync.py); absent when the DB is
 // unreachable or the ticker has no recent filings.
+/**
+ * A corpus document that names a ticker, rendered beside it on the market
+ * boards. `subject` is true when the company was named in the document's
+ * TITLE rather than only in its body - being mentioned is not the same as
+ * being the subject, and only title matches are strong enough to imply one.
+ */
+export interface CorpusEventChip {
+  documentId: string;
+  /** The document's own title, verbatim - never a synthesized characterization. */
+  title: string;
+  sourceKind: string;
+  /** Human label for the source kind, e.g. "SEC enforcement". */
+  sourceLabel: string;
+  publishedDate: string;
+  url: string;
+  subject: boolean;
+}
+
 export interface FilingEventChip {
   form: string;      // '8-K' | '4'
   filedAt: string;   // ISO
@@ -833,6 +851,7 @@ export interface MoverQuote {
   change: number;
   up: boolean;
   filings?: FilingEventChip[];
+  corpus?: CorpusEventChip[];
 }
 
 export interface MarketMoversData {

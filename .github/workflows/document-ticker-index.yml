@@ -1,0 +1,83 @@
+name: Document Ticker Index
+
+# Indexes tracked tickers against the Neon documents corpus so the Market page
+# can surface corpus events beside a ticker. Daily is plenty - the corpus is a
+# document archive, not a live tape.
+#
+# First run must be a manual dispatch with backfill=true and dry_run=true, to
+# eyeball the resolved samples for false positives before anything is written.
+
+on:
+  schedule:
+    - cron: "45 5 * * *"   # after the 05:40 ET KPI reconcile, before the day's traffic
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "Scan the whole corpus instead of the recent window"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Resolve and report; write nothing"
+        required: false
+        type: boolean
+        default: true
+      limit:
+        description: "Stop after N documents (0 = no limit). Use a small value for the first look."
+        required: false
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: document-ticker-index
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BACKFILL: ${{ github.event.inputs.backfill || 'false' }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+      LIMIT: ${{ github.event.inputs.limit || '0' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Index document tickers
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "${BACKFILL}" = "true" ]; then
+            args+=(--backfill)
+          fi
+          if [ "${DRY_RUN}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          if [ "${LIMIT}" != "0" ]; then
+            args+=(--limit "${LIMIT}")
+          fi
+          python index_document_tickers.py "${args[@]}" | tee document_ticker_index_summary.json
+
+      - name: Upload Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: document-ticker-index-${{ github.run_id }}
+          path: document_ticker_index_summary.json
+          if-no-files-found: ignore

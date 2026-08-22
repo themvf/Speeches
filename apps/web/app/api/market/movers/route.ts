@@ -2,6 +2,7 @@ import { createRequestId, ok } from "@/lib/server/api-utils";
 import type { MarketMoversData, MoverQuote } from "@/lib/server/types";
 import { fetchYahooQuote } from "@/lib/server/yahoo";
 import { loadFilingChips } from "@/lib/server/filing-chips";
+import { loadCorpusEventChips } from "@/lib/server/corpus-events";
 
 export const runtime = "nodejs";
 export const revalidate = 120;
@@ -47,10 +48,12 @@ const WATCHLIST: { symbol: string; name: string }[] = [
 export async function GET() {
   const requestId = createRequestId();
 
-  // Quotes and catalyst chips load in parallel; chips are fail-soft (SEC-50).
-  const [settled, filingChips] = await Promise.all([
+  // Quotes and both chip sources load in parallel. Both chip loaders are
+  // fail-soft (SEC-50 filings; corpus events) - neither can break the board.
+  const [settled, filingChips, corpusChips] = await Promise.all([
     Promise.allSettled(WATCHLIST.map(({ symbol }) => fetchYahooQuote(symbol, 120))),
     loadFilingChips(72),
+    loadCorpusEventChips(30),
   ]);
 
   const quoted = settled
@@ -67,6 +70,7 @@ export async function GET() {
       change: item.q!.change,
       up: item.q!.change >= 0,
       ...(filingChips.has(item.symbol!) ? { filings: filingChips.get(item.symbol!) } : {}),
+      ...(corpusChips.has(item.symbol!) ? { corpus: corpusChips.get(item.symbol!) } : {}),
     }));
 
   const byPct = [...quoted].sort((a, b) => b.pct - a.pct);

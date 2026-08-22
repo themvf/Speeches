@@ -23,6 +23,7 @@
     "test:url-extractor": "node --experimental-strip-types --test lib/server/url-article-extractor.test.ts",
     "test:finra-member-firm-rss": "node --experimental-strip-types --test lib/server/finra-member-firm-rss.test.ts",
     "test:companyfacts": "node --experimental-strip-types --test lib/server/companyfacts.test.ts",
+    "test:corpus-events": "node --experimental-strip-types --test lib/corpus-event-display.test.ts",
     "test:aml-evidence-endpoint": "node --experimental-strip-types scripts/check-aml-evidence-endpoint.ts",
     "test:app-endpoints": "node --experimental-strip-types scripts/check-app-endpoints.ts",
     "test:gdelt-evidence-live": "node --experimental-strip-types scripts/check-gdelt-evidence-live.ts",

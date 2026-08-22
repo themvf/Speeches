@@ -494,6 +494,53 @@ def count_documents() -> int:
             return int(row["count"]) if row else 0
 
 
+def iter_documents_for_ticker_index(
+    batch_size: int = 200,
+    since: Optional[str] = None,
+    limit: int = 0,
+):
+    """Yield batches of documents for `index_document_tickers.py`.
+
+    Keyset pagination on `document_id` rather than OFFSET: the corpus is tens
+    of thousands of rows and OFFSET re-scans everything it skips, so a full
+    backfill would get quadratically slower as it progressed.
+
+    `since` filters on `updated_at` for the incremental pass. Only the columns
+    the resolver needs are selected - `full_text` is the largest column in the
+    table and there is no reason to pull `metadata` alongside it.
+    """
+    _ensure_documents_schema()
+    cursor_id = ""
+    fetched = 0
+    while True:
+        take = batch_size if limit <= 0 else min(batch_size, limit - fetched)
+        if take <= 0:
+            return
+        clauses = ["document_id > %(cursor_id)s"]
+        params: Dict[str, Any] = {"cursor_id": cursor_id, "take": take}
+        if since:
+            clauses.append("updated_at >= %(since)s")
+            params["since"] = since
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT document_id, title, source_kind, url, published_date, full_text
+                      FROM documents
+                     WHERE {' AND '.join(clauses)}
+                     ORDER BY document_id
+                     LIMIT %(take)s
+                    """,
+                    params,
+                )
+                rows = [dict(row) for row in cur.fetchall()]
+        if not rows:
+            return
+        fetched += len(rows)
+        cursor_id = rows[-1]["document_id"]
+        yield rows
+
+
 def get_document(document_id: str) -> Optional[Dict[str, Any]]:
     """Fetch one row from the Neon `documents` table by id - used by the
     backfill script's spot-check verification."""

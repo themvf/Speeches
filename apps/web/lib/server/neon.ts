@@ -3635,6 +3635,56 @@ export type FilingEventRow = {
   url: string;
 };
 
+export type CorpusEventRow = {
+  ticker: string;
+  document_id: string;
+  title: string;
+  source_kind: string;
+  published_date: string;
+  url: string;
+  confidence: number;
+};
+
+/**
+ * Corpus documents naming a tracked ticker, newest first.
+ *
+ * `minConfidence` selects how the ticker was matched: index_document_tickers.py
+ * stores 1.0 for a title match (the company is almost certainly the document's
+ * subject) and 0.6 for an unambiguous body-only mention. Callers showing
+ * accusatory source kinds should demand 1.0.
+ *
+ * published_date is TEXT in this table, so the lower bound is a string compare
+ * - and empty strings sort before every real date, which is exactly why the
+ * range is bounded at both ends rather than left open.
+ */
+export async function getRecentCorpusEvents(
+  daysBack = 30,
+  minConfidence = 0.6,
+): Promise<CorpusEventRow[]> {
+  const sql = getSql();
+  const cappedDays = Math.max(1, Math.min(365, daysBack));
+  const since = new Date(Date.now() - cappedDays * 86_400_000).toISOString().slice(0, 10);
+  const until = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  return (await sql`
+    SELECT m.normalized_value AS ticker,
+           d.document_id,
+           d.title,
+           d.source_kind,
+           d.published_date,
+           d.url,
+           m.confidence
+      FROM intelligence_mentions m
+      JOIN documents d ON d.document_id = m.source_id
+     WHERE m.mention_type = 'ticker'
+       AND m.source_type = 'document'
+       AND m.confidence >= ${minConfidence}
+       AND d.published_date >= ${since}
+       AND d.published_date <= ${until}
+     ORDER BY d.published_date DESC
+     LIMIT 2000
+  `) as unknown as CorpusEventRow[];
+}
+
 export async function getRecentFilingEvents(hoursBack = 72): Promise<FilingEventRow[]> {
   const sql = getSql();
   const cappedHours = Math.max(1, Math.min(24 * 14, hoursBack));
