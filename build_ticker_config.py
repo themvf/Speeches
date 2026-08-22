@@ -48,6 +48,19 @@ CURATED_AMBIGUOUS_SEED: Set[str] = {
     "BDC", "CC", "ES", "WTI", "CAN", "HAS", "BIG", "GAIN", "LOSS", "MOON",
     "PUMP", "DUMP", "HOLD", "BUY", "SELL", "CALL", "PUTS", "PLAY", "REAL",
     "NEXT", "EDIT", "POST", "LINK", "TRX",
+    # Domain acronyms that collide with real tickers, found by reading the
+    # document-corpus indexer's dry runs (2026-08-21). Each is far more often
+    # the term than the company in financial and regulatory prose:
+    #   DAO  decentralized autonomous organization
+    #   RSI  relative strength index      (ticker: Rush Street Interactive)
+    #   TDS  traffic distribution system  (ticker: Telephone and Data Systems)
+    #   ASIC application-specific integrated circuit
+    #   WSE  wafer-scale engine
+    #   ASA  Norwegian corporate suffix, e.g. "Transocean ASA"
+    #   ADV  Form ADV
+    # Gating only affects BARE uppercase matches - cashtags ($TDS) still
+    # resolve, so a genuine mention of the company is not lost.
+    "DAO", "RSI", "TDS", "ASIC", "WSE", "ASA", "ADV",
 }
 
 # Symbols the common-words list catches (e.g. "amd" appears in web-corpus

@@ -3657,11 +3657,22 @@ export type CorpusEventRow = {
  * which cannot be compared as strings: the written form sorts above every ISO
  * date, so it passes any lower bound regardless of year and fails every upper
  * bound. An earlier version did filter here and silently dropped the newsapi
- * half of the corpus. The window is applied in buildCorpusChips, where the
- * dates are parsed and the logic is testable.
+ * half of the corpus. The display window is applied in buildCorpusChips, where
+ * the dates are parsed and the logic is testable.
+ *
+ * `updated_at` IS a real timestamptz, so it is safe to compare and is what
+ * bounds this query. Without it the LIMIT below would start truncating: the
+ * index grows ~50 rows/day and nothing prunes it, so a fixed 5,000-row cap
+ * would silently begin dropping documents about ten weeks after the backfill.
+ * The mirror sets updated_at when it writes a document, so a generous multiple
+ * of the display window keeps late-mirrored older documents in reach.
  */
-export async function getRecentCorpusEvents(minConfidence = 0.6): Promise<CorpusEventRow[]> {
+export async function getRecentCorpusEvents(
+  minConfidence = 0.6,
+  updatedWithinDays = 120,
+): Promise<CorpusEventRow[]> {
   const sql = getSql();
+  const cappedDays = Math.max(1, Math.min(730, updatedWithinDays));
   return (await sql`
     SELECT m.normalized_value AS ticker,
            d.document_id,
@@ -3677,6 +3688,7 @@ export async function getRecentCorpusEvents(minConfidence = 0.6): Promise<Corpus
        AND m.confidence >= ${minConfidence}
        AND d.published_date <> ''
        AND d.url <> ''
+       AND d.updated_at >= now() - (${cappedDays} * INTERVAL '1 day')
      ORDER BY d.updated_at DESC
      LIMIT 5000
   `) as unknown as CorpusEventRow[];
