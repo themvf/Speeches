@@ -12,6 +12,7 @@ import type {
   VixQuote,
 } from "@/lib/server/types";
 import { InlineChart } from "./price-chart";
+import { YieldCurve } from "./yield-curve";
 
 type IndexRange = "d1" | "w1" | "m1" | "ytd";
 
@@ -269,10 +270,13 @@ function CommodityBox({ title, items }: { title: string; items: CommodityQuote[]
 /* ── BondsBox ───────────────────────────────────────────────────────── */
 
 function BondsBox({ yields, dxy }: { yields: TreasuryYield[]; dxy: MarketBondsData["dxy"] }) {
-  const allPcts = [...yields.map((y) => Math.abs(y.pct)), Math.abs(dxy?.pct ?? 0)].filter(Boolean);
+  // The full thirteen-tenor curve lives in the YieldCurve plot; this compact
+  // list stays at the four benchmarks so the box keeps its place in the grid.
+  const benchmarks = yields.filter((y) => y.benchmark);
+  const allPcts = [...benchmarks.map((y) => Math.abs(y.pct)), Math.abs(dxy?.pct ?? 0)].filter(Boolean);
   const maxAbs = Math.max(...allPcts, 1);
   const rows = [
-    ...yields.map((y) => ({
+    ...benchmarks.map((y) => ({
       key: y.label, name: y.label, value: y.rate.toFixed(2) + "%",
       pct: fmtPct(y.pct), up: y.up, absPct: Math.abs(y.pct), symbol: null,
     })),
@@ -439,6 +443,8 @@ export function OverviewTab({ data, loading, error, commodities, bonds }: Props)
         {agriculture.length > 0 && <CommodityBox title="Agriculture" items={agriculture} />}
         {hasBonds               && <BondsBox yields={bonds.data!.yields} dxy={bonds.data!.dxy} />}
       </div>
+
+      {bonds.data && bonds.data.yields.length >= 3 && <YieldCurve yields={bonds.data.yields} />}
 
       {commodities.loading && !commodities.data && (
         <div className="py-4 text-center text-xs text-[color:var(--ink-faint)]">Loading commodities…</div>

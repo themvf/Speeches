@@ -149,6 +149,21 @@ export const FRED_MACRO_DEFINITIONS: readonly FredMacroDefinition[] = [
     unit: "percent", group: "financial", priority: 5, units: "lin", limit: 365,
   },
   {
+    id: "credit_spread_baa", seriesId: "BAA10Y", releaseId: 304, label: "Baa Credit Spread",
+    description: "Moody's Baa corporate bond yield over the 10-year Treasury; widens as credit risk is repriced.",
+    unit: "percentage_points", group: "financial", priority: 7, units: "lin", limit: 365,
+  },
+  {
+    id: "credit_conditions", seriesId: "NFCICREDIT", releaseId: 221, label: "Credit Conditions",
+    description: "Chicago Fed credit subindex; positive values indicate tighter-than-average credit conditions.",
+    unit: "index", group: "financial", priority: 8, units: "lin", limit: 156,
+  },
+  {
+    id: "real_yield_10y", seriesId: "DFII10", releaseId: 18, label: "10Y Real Yield",
+    description: "Inflation-protected 10-year Treasury yield - the rate through which policy actually transmits.",
+    unit: "percent", group: "financial", priority: 9, units: "lin", limit: 365,
+  },
+  {
     id: "trade_weighted_dollar", seriesId: "DTWEXBGS", releaseId: 17, label: "Trade-Weighted US Dollar",
     description: "Broad index of the US dollar against currencies of major trading partners.",
     unit: "index", group: "financial", priority: 6, units: "lin", limit: 365,

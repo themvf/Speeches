@@ -503,7 +503,10 @@ export type MarketMacroIndicatorId =
   | "sahm_rule"
   | "producer_price_inflation"
   | "financial_stress"
-  | "trade_weighted_dollar";
+  | "trade_weighted_dollar"
+  | "credit_spread_baa"
+  | "credit_conditions"
+  | "real_yield_10y";
 
 export type MarketMacroUnit =
   | "percent"
@@ -1310,6 +1313,12 @@ export interface MarketCommoditiesData {
 
 export interface TreasuryYield {
   label: string;
+  /** Short axis label for the curve plot, e.g. "3M", "10Y". */
+  tenor: string;
+  /** Maturity in months, so the curve can be plotted on a real x-axis. */
+  months: number;
+  /** Whether this tenor belongs in the compact benchmark list. */
+  benchmark: boolean;
   rate: number;
   change: number;
   pct: number;
