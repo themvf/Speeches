@@ -165,6 +165,15 @@ function macroSpecialty(row: MacroWalletStatInput): PredictionWalletSpecialty | 
   };
 }
 
+/** Does this wallet's macro record show it deploying only AFTER the number is
+ *  public? Pre-release share is a direct measurement of when capital moves
+ *  relative to information; the earnings side has no such signal and leans on
+ *  entry price as a proxy for it. When the two disagree the measurement wins. */
+function tradesOnlyAfterTheRelease(specialties: PredictionWalletSpecialty[]): boolean {
+  return specialties.some((item) =>
+    item.family === "macro" && item.qualified && item.classLabel === "Release scalper");
+}
+
 function macroOnlyArchetype(specialties: PredictionWalletSpecialty[]): PredictionArchetype {
   const qualified = specialties.filter((item) => item.qualified && item.id !== "macro_generalist");
   if (qualified.some((item) => item.classLabel === "Early sharp")) return "early_sharp";
@@ -232,9 +241,20 @@ export function mergeWalletIntelligence(
       if (duplicate >= 0) existing.specialties[duplicate] = specialty;
       else existing.specialties.push(specialty);
       if ((!existing.wallet.name || existing.wallet.name.startsWith("0x")) && row.name) existing.wallet.name = row.name;
-      // macro_generalist spans every cohort, so it is the best cross-cohort
-      // read; otherwise take the first macro row that carries one.
-      if (!existing.wallet.trajectory || row.cohort === "macro_generalist") {
+      // Only fill a trajectory the earnings side did not already provide. A
+      // wallet with earnings takes its archetype from earnings, so taking its
+      // entry price and edge from a macro row would put a number beside a
+      // badge that describes a different specialty - observed live, where a
+      // wallet badged from its earnings record displayed the entry price of
+      // its macro one. macro_generalist still wins among macro rows, being the
+      // only cross-cohort view.
+      // A wallet with earnings takes its badge from earnings, so it must take
+      // its entry price and edge from there too - even when earnings supplies
+      // none. Showing nothing is right; showing a macro row's number beside an
+      // earnings badge describes a different specialty than the label does.
+      const macroMaySupply = !existing.hasEarnings
+        && (!existing.wallet.trajectory || row.cohort === "macro_generalist");
+      if (macroMaySupply) {
         existing.wallet.trajectory = toTrajectory(row, row.events > 0 ? row.wins / row.events : undefined, row.events)
           ?? existing.wallet.trajectory;
       }
@@ -258,6 +278,15 @@ export function mergeWalletIntelligence(
 
   return [...byWallet.values()]
     .map(({ wallet, specialties, hasEarnings }) => {
+      if (hasEarnings && wallet.archetype === "early_sharp" && tradesOnlyAfterTheRelease(specialties)) {
+        // The earnings classifier called this forecasting skill on entry price
+        // alone, while the wallet's macro record shows it putting almost
+        // nothing in before the release. Both labels were qualified and shown
+        // together, asserting contradictory things about the same trader.
+        // news_scalper is the earnings-family name for the behaviour the macro
+        // side measured directly.
+        wallet.archetype = "news_scalper";
+      }
       if (!hasEarnings) {
         wallet.archetype = macroOnlyArchetype(specialties);
         const primary = specialties.find((item) => item.qualified) ?? specialties[0];

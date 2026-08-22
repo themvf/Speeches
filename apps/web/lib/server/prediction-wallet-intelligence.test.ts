@@ -203,3 +203,39 @@ test("sample size counts cohorts that fell outside the per-cohort ranking limit"
   assert.equal(w.wins, 20);
   assert.equal(w.winRate, round3(20 / 27));
 });
+
+test("direct timing evidence overrides the entry-price proxy", () => {
+  // Observed live on prediction1997: badged "Early sharp" from its earnings
+  // record while its macro record showed 9% pre-release share and a qualified
+  // "Release scalper" label. Both were shown, asserting contradictory things
+  // about one trader. Pre-release share MEASURES when capital moves relative
+  // to public information; earnings has no such signal and infers it from
+  // entry price, so the measurement wins.
+  const [wallet] = mergeWalletIntelligence(
+    [{ ...earnings, wallet: "0xboth", archetype: "early_sharp" }],
+    [macro({ wallet: "0xboth", cohort: "macro_generalist", archetype: "release_scalper",
+             events: 25, wins: 24, predictive_cost: 9, timing_cost: 100 })],
+    8);
+  assert.equal(wallet.archetype, "news_scalper",
+    "the earnings-family name for the behaviour macro measured directly");
+});
+
+test("a wallet with no contradicting macro record keeps its earnings verdict", () => {
+  const [wallet] = mergeWalletIntelligence(
+    [{ ...earnings, wallet: "0xclean", archetype: "early_sharp" }],
+    [macro({ wallet: "0xclean", cohort: "fed_decision", archetype: "early_sharp", events: 12 })],
+    8);
+  assert.equal(wallet.archetype, "early_sharp");
+});
+
+test("the edge figure comes from the same family as the badge", () => {
+  // The Edge column was reading a macro row's entry price while the badge came
+  // from earnings - a number describing a different specialty than its label.
+  const [wallet] = mergeWalletIntelligence(
+    [{ ...earnings, wallet: "0xmix", archetype: "early_sharp" }],
+    [macro({ wallet: "0xmix", cohort: "macro_generalist", events: 25, wins: 12,
+             recent_events: 10, watchlist_status: "none", entry_avg: 0.95 })],
+    8);
+  assert.notEqual(wallet.trajectory?.entryAvg, 0.95,
+    "must not take its entry price from the macro row");
+});
