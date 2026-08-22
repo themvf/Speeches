@@ -103,7 +103,9 @@ export function MarketDashboard() {
   // Overview sub-feeds (all keyed to "overview" tab)
   const overview    = useTabData<MarketOverviewData>   ("overview", tab, "/api/market/overview",    60_000);
   const commodities = useTabData<MarketCommoditiesData>("overview", tab, "/api/market/commodities", 120_000);
-  const bonds       = useTabData<MarketBondsData>      ("overview", tab, "/api/market/bonds",       3_600_000);
+  // Bonds feeds two surfaces: the compact benchmark box on Overview and the
+  // full curve on Macro, beside credit and the real yield.
+  const bonds       = useTabData<MarketBondsData>      (["overview", "macro"], tab, "/api/market/bonds", 3_600_000);
   const macro       = useTabData<MarketMacroData>      ("macro",    tab, "/api/market/macro",       900_000);
   const macroPredictions = useTabData<MarketMacroPredictionsData>(["macro", "predictions"], tab, "/api/market/macro-contracts", 300_000);
   // Release schedules change on the order of months; the long poll matches
@@ -158,7 +160,7 @@ export function MarketDashboard() {
       </div>
 
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
-      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} calendar={macroCalendar} />}
+      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} calendar={macroCalendar} bonds={bonds} />}
       {tab === "groups"    && <MarketGroupsTab sectors={sectors} industries={industries} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "industries" && <IndustriesTab {...industries} expandRequest={industryExpandRequest} />}

@@ -12,7 +12,18 @@ import type { TreasuryYield } from "@/lib/server/types";
  * it deserves while stretching the 20Y-to-30Y segment across a third of the
  * plot. Hand-rolled SVG, matching every other chart in this app.
  */
-export function YieldCurve({ yields }: { yields: TreasuryYield[] }) {
+export function YieldCurve({ yields, spread, spreadLabel }: {
+  yields: TreasuryYield[];
+  /**
+   * The canonical 10Y-2Y value. Passed in rather than derived here: FRED's
+   * T10Y2Y already owns that number on the Macro card, and this plot is built
+   * from Treasury XML, so computing a second one invites two figures on the
+   * same screen disagreeing by a day. Shape comes from these points; the
+   * number comes from one source.
+   */
+  spread?: number | null;
+  spreadLabel?: string;
+}) {
   const points = [...yields].sort((left, right) => left.months - right.months);
   if (points.length < 3) return null;
 
@@ -51,23 +62,20 @@ export function YieldCurve({ yields }: { yields: TreasuryYield[] }) {
   // collide with itself at the short end.
   const labelled = new Set(["1M", "3M", "1Y", "2Y", "5Y", "10Y", "30Y"]);
 
-  const spread = points.find((p) => p.tenor === "10Y") && points.find((p) => p.tenor === "2Y")
-    ? (points.find((p) => p.tenor === "10Y")!.rate - points.find((p) => p.tenor === "2Y")!.rate)
-    : null;
-
   return (
     <div className="overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)]">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[color:var(--line)] px-4 py-2.5">
         <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-soft)]">
           Treasury Yield Curve
         </h3>
-        {spread !== null && (
+        {typeof spread === "number" && (
           <p className="text-[11px] tabular-nums text-[color:var(--ink-faint)]">
             10Y&minus;2Y{" "}
             <strong className={spread < 0 ? "text-red-300" : "text-[color:var(--ink-soft)]"}>
               {spread >= 0 ? "+" : ""}{spread.toFixed(2)} pp
             </strong>
             {spread < 0 && " · inverted"}
+            {spreadLabel && <span className="ml-1 text-[color:var(--ink-faint)]">· {spreadLabel}</span>}
           </p>
         )}
       </div>

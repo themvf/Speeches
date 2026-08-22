@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  MarketBondsData,
   MarketMacroCalendarData,
   MarketMacroData,
   MarketMacroGroup,
@@ -15,6 +16,7 @@ import { percentileContext } from "@/lib/macro-context";
 import { MacroConditions } from "./macro-conditions";
 import { MacroPredictionInline } from "./macro-prediction-panel";
 import { MacroCalendar } from "./macro-calendar";
+import { YieldCurve } from "./yield-curve";
 import {
   daysUntil,
   formatCalendarDate,
@@ -39,13 +41,18 @@ interface Props {
     loading: boolean;
     error: string | null;
   };
+  bonds: {
+    data: MarketBondsData | null;
+    loading: boolean;
+    error: string | null;
+  };
 }
 
 const GROUPS: Array<{ id: Exclude<MarketMacroGroup, "headline">; label: string; description: string }> = [
   { id: "activity", label: "Leading Activity", description: "Early reads on household demand and real-economy output." },
   { id: "inflation", label: "Inflation & Expectations", description: "Underlying prices, producer pressure, and market-implied inflation." },
   { id: "labor", label: "Labor Detail", description: "Layoffs, wages, participation, openings, and recession risk." },
-  { id: "financial", label: "Financial Conditions & Liquidity", description: "Stress, funding, money, central-bank liquidity, and the dollar." },
+  { id: "financial", label: "Financial Conditions & Liquidity", description: "The Treasury curve, credit spreads, real rates, funding, liquidity, and the dollar." },
   { id: "housing", label: "Housing", description: "Construction pipeline and household borrowing costs." },
 ];
 
@@ -192,7 +199,7 @@ function IndicatorGrid({ indicators, contracts, nextReleases, today }: {
   );
 }
 
-export function MacroTab({ data, loading, error, predictions, calendar }: Props) {
+export function MacroTab({ data, loading, error, predictions, calendar, bonds }: Props) {
   if (loading && !data) {
     return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading FRED macro indicators…</div>;
   }
@@ -209,6 +216,11 @@ export function MacroTab({ data, loading, error, predictions, calendar }: Props)
   const headline = data.indicators.filter((indicator) => indicator.group === "headline");
   const contracts = predictions.data?.events ?? [];
   const today = localIsoDate(new Date());
+  // The curve renders inside the financial group so shape, credit and the real
+  // yield are read together. Its 10Y-2Y figure is FRED's T10Y2Y - the same
+  // number the card below shows - rather than one recomputed from Treasury XML.
+  const curveYields = bonds.data?.yields ?? [];
+  const curveSpread = data.indicators.find((indicator) => indicator.id === "yield_curve_10y2y")?.value ?? null;
   const nextReleases = nextReleaseByIndicator(calendar.data?.entries ?? [], today);
 
   return (
@@ -251,7 +263,10 @@ export function MacroTab({ data, loading, error, predictions, calendar }: Props)
                   <span aria-hidden="true" className="text-base transition-transform group-open:rotate-180">⌄</span>
                 </span>
               </summary>
-              <div className="border-t border-[color:var(--line)] p-4">
+              <div className="space-y-4 border-t border-[color:var(--line)] p-4">
+                {group.id === "financial" && curveYields.length >= 3 && (
+                  <YieldCurve yields={curveYields} spread={curveSpread} spreadLabel="FRED T10Y2Y" />
+                )}
                 <IndicatorGrid indicators={indicators} contracts={contracts} nextReleases={nextReleases} today={today} />
               </div>
             </details>

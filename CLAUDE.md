@@ -33,7 +33,9 @@ Four things the dry runs caught that reasoning would not have:
 
 **Also**: `ticker_config.json` regenerated 2026-08-22 (first refresh since 11 July) — 9,304 → 10,403 tickers, +1,309/−210. All six symbols that left the ambiguous list (EA, ELSE, GV, INT, LC, WTO) left the universe entirely, so nothing became newly resolvable as a bare symbol.
 
-**Open**: no JIRA tickets; `TDS`-class collisions are gated but the general problem recurs with any new tracked ticker that is also an acronym; the corpus index is deliberately sparse (~5% of documents chip) since title-only + tracked-scope trades recall for precision; the curve lives on Overview while credit spreads live on Macro (flagged as "decide before you build" and then built without deciding); 2s10s now exists twice (`T10Y2Y` on the Macro card vs computed from Treasury XML) and can disagree by a day.
+**Open**: no JIRA tickets; `TDS`-class collisions are gated but the general problem recurs with any new tracked ticker that is also an acronym; the corpus index is deliberately sparse (~5% of documents chip) since title-only + tracked-scope trades recall for precision; the corpus index is sparse by design.
+
+**Resolved 2026-08-22**: the curve/credit split. `YieldCurve` moved from Overview into the Macro tab's Financial Conditions group, so shape, credit spreads and the real yield are read together; Overview keeps the compact four-benchmark Bonds & Rates box. The duplicate 2s10s is gone by construction rather than by luck - the plot no longer computes its own spread from Treasury XML but takes FRED's `T10Y2Y` as a prop, labelled with its source, which is the same number the headline card shows. `bonds` is now fetched for both tabs via `useTabData(["overview", "macro"], ...)`.
 
 ## Tier C operational KPIs (SEC-13, 2026-07-18) — CODE SHIPPED, LIVE RUN BLOCKED ON LLM CREDIT
 
