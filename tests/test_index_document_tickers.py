@@ -195,3 +195,18 @@ def test_the_summary_reports_the_scope_it_ran_under():
     assert unscoped["tracked_universe"] == "unscoped"
     assert unscoped["include_body"] is False
     assert isinstance(scoped["tracked_universe"], int) and scoped["tracked_universe"] > 500
+
+
+def test_full_text_is_only_fetched_when_the_body_tier_will_use_it():
+    """full_text is the largest column in the documents table. With the body
+    tier off, a full-corpus pass would drag tens of thousands of document
+    bodies out of Neon and resolve against none of them."""
+    with mock.patch.object(indexer.neon_feeds, "iter_documents_for_ticker_index",
+                           return_value=iter([])) as it:
+        indexer._run(_args(include_body=False))
+    assert it.call_args.kwargs["include_full_text"] is False
+
+    with mock.patch.object(indexer.neon_feeds, "iter_documents_for_ticker_index",
+                           return_value=iter([])) as it:
+        indexer._run(_args(include_body=True))
+    assert it.call_args.kwargs["include_full_text"] is True

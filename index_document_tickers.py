@@ -220,7 +220,10 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
     samples: List[Dict[str, Any]] = []
 
     for batch in neon_feeds.iter_documents_for_ticker_index(
-        batch_size=args.batch_size, since=since, limit=args.limit
+        batch_size=args.batch_size,
+        since=since,
+        limit=args.limit,
+        include_full_text=bool(args.include_body),
     ):
         rows: List[Dict[str, Any]] = []
         for document in batch:

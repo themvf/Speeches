@@ -498,6 +498,7 @@ def iter_documents_for_ticker_index(
     batch_size: int = 200,
     since: Optional[str] = None,
     limit: int = 0,
+    include_full_text: bool = True,
 ):
     """Yield batches of documents for `index_document_tickers.py`.
 
@@ -505,9 +506,13 @@ def iter_documents_for_ticker_index(
     of thousands of rows and OFFSET re-scans everything it skips, so a full
     backfill would get quadratically slower as it progressed.
 
-    `since` filters on `updated_at` for the incremental pass. Only the columns
-    the resolver needs are selected - `full_text` is the largest column in the
-    table and there is no reason to pull `metadata` alongside it.
+    `since` filters on `updated_at` for the incremental pass.
+
+    `full_text` is by far the largest column in the table, so it is only
+    selected when the caller will actually resolve against it. With the body
+    tier off - the default since the first dry run - a full-corpus pass would
+    otherwise drag tens of thousands of document bodies out of Neon and use
+    none of them.
     """
     _ensure_documents_schema()
     cursor_id = ""
@@ -525,7 +530,8 @@ def iter_documents_for_ticker_index(
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT document_id, title, source_kind, url, published_date, full_text
+                    SELECT document_id, title, source_kind, url, published_date
+                           {', full_text' if include_full_text else ''}
                       FROM documents
                      WHERE {' AND '.join(clauses)}
                      ORDER BY document_id
