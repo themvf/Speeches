@@ -182,7 +182,31 @@ def build_mention_rows(
     ]
 
 
+def _apply_symbol_overrides() -> Dict[str, int]:
+    """Reuse the admin-managed force-ambiguous list the Reddit sweep already
+    honours, so a symbol that turns out to be a word is killed from the admin
+    panel in one place rather than needing a deploy here.
+
+    Fail-soft: an unreachable config leaves the resolver's built-in gating in
+    place, which is the behaviour every run before this had anyway.
+    """
+    try:
+        overrides = (neon_feeds.get_attention_sweep_config() or {}).get("symbol_overrides") or {}
+    except Exception as exc:  # noqa: BLE001
+        print(f"warning: could not load symbol overrides: {exc}", file=sys.stderr)
+        return {"force_ambiguous": 0, "force_unambiguous": 0}
+
+    force_ambiguous = overrides.get("force_ambiguous") or []
+    force_unambiguous = overrides.get("force_unambiguous") or []
+    ticker_resolver.set_runtime_overrides(
+        force_ambiguous=force_ambiguous,
+        force_unambiguous=force_unambiguous,
+    )
+    return {"force_ambiguous": len(force_ambiguous), "force_unambiguous": len(force_unambiguous)}
+
+
 def _run(args: argparse.Namespace) -> Dict[str, Any]:
+    symbol_overrides = _apply_symbol_overrides()
     since = None
     if not args.backfill:
         since = (datetime.now(UTC) - timedelta(days=args.since_days)).isoformat()
@@ -228,6 +252,7 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
         "dry_run": bool(args.dry_run),
         "since": since,
         "tracked_universe": len(tracked) or "unscoped",
+        "symbol_overrides": symbol_overrides,
         "include_body": bool(args.include_body),
         "documents_scanned": documents_scanned,
         "documents_with_tickers": documents_with_tickers,

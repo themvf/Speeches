@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ACCUSATORY_SOURCE_KINDS,
   buildCorpusChips,
   MAX_CHIPS_PER_TICKER,
   sourceLabel,
@@ -21,9 +22,20 @@ function row(overrides: Partial<CorpusEventInput> = {}): CorpusEventInput {
   };
 }
 
+test("gates the corpus's real enforcement kinds, including the biggest one", () => {
+  // The first version of this set was guessed and missed doj_usao_press_release,
+  // which is the largest enforcement source in the corpus.
+  for (const kind of ["doj_usao_press_release", "sec_enforcement_litigation", "finra_awc"]) {
+    assert.equal(ACCUSATORY_SOURCE_KINDS.has(kind), true, `${kind} must be gated`);
+    assert.equal(buildCorpusChips([row({ source_kind: kind, confidence: 0.6 })]).size, 0);
+    assert.equal(buildCorpusChips([row({ source_kind: kind, confidence: 1.0 })]).size, 1);
+  }
+});
+
 test("names known source kinds the way a reader would", () => {
   assert.equal(sourceLabel("sec_enforcement_litigation"), "SEC enforcement");
   assert.equal(sourceLabel("finra_awc"), "FINRA action");
+  assert.equal(sourceLabel("doj_usao_press_release"), "DOJ charge");
   assert.equal(sourceLabel("cfpb_newsroom"), "CFPB release");
 });
 

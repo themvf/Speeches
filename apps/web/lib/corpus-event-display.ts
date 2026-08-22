@@ -26,12 +26,18 @@ export const SUBJECT_CONFIDENCE = 1.0;
  * Source kinds where a chip carries an accusation about a real company. These
  * show only when the company was named in the document's TITLE - the signal
  * that it is the subject, rather than one name among many in the body.
+ *
+ * Taken from the corpus's actual source_kind values (/api/metrics
+ * by_source_kind, checked 2026-08-21), not from what the kinds ought to be
+ * called. The first version of this list was guessed: it named
+ * `doj_press_release` and `cftc_enforcement`, neither of which exists, while
+ * missing `doj_usao_press_release` - at 1,667 documents the single largest
+ * enforcement source in the corpus, and therefore ungated.
  */
 export const ACCUSATORY_SOURCE_KINDS: ReadonlySet<string> = new Set([
-  "sec_enforcement_litigation",
-  "finra_awc",
-  "doj_press_release",
-  "cftc_enforcement",
+  "doj_usao_press_release", // 1,667 documents
+  "sec_enforcement_litigation", // 1,276
+  "finra_awc", // 869
 ]);
 
 const SOURCE_LABELS: Readonly<Record<string, string>> = {
@@ -41,7 +47,7 @@ const SOURCE_LABELS: Readonly<Record<string, string>> = {
   finra_awc: "FINRA action",
   finra_regulatory_notice: "FINRA notice",
   cftc_enforcement: "CFTC enforcement",
-  doj_press_release: "DOJ release",
+  doj_usao_press_release: "DOJ charge",
   pcaob_update: "PCAOB update",
   msrb_press_release: "MSRB release",
   occ_news_release: "OCC release",
