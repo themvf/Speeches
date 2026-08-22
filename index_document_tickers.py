@@ -238,6 +238,10 @@ def _run(args: argparse.Namespace) -> Dict[str, Any]:
                     "document_id": document["document_id"],
                     "title": str(document.get("title") or "")[:110],
                     "source_kind": document.get("source_kind"),
+                    # Raw, unparsed: the TS reader range-filters this column as
+                    # text, so its actual format decides whether a chip ever
+                    # renders. Worth seeing in every summary.
+                    "published_date": document.get("published_date"),
                     "tickers": {row["value"]: row["confidence"] for row in document_rows},
                 })
 
