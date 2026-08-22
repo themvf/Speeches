@@ -11,6 +11,8 @@ import type {
   MacroPredictionEvent,
 } from "@/lib/server/types";
 import { signalFor } from "@/lib/macro-signals";
+import { percentileContext } from "@/lib/macro-context";
+import { MacroConditions } from "./macro-conditions";
 import { MacroPredictionInline } from "./macro-prediction-panel";
 import { MacroCalendar } from "./macro-calendar";
 import {
@@ -122,6 +124,7 @@ function MacroCard({ indicator, contracts, nextRelease, today }: {
   today: string;
 }) {
   const signal = signalFor(indicator);
+  const context = percentileContext(indicator);
   return (
     <article className="flex min-h-[280px] flex-col rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.5)] p-4">
       <div className="flex items-start justify-between gap-3">
@@ -147,6 +150,12 @@ function MacroCard({ indicator, contracts, nextRelease, today }: {
           Observation<br />{formatObservationDate(indicator.observationDate)}
         </p>
       </div>
+
+      {context && (
+        <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]" title={`Percentile of ${context.sampleSize} observations ${context.window}`}>
+          {context.summary}
+        </p>
+      )}
 
       <div className="mt-3"><MacroSparkline points={indicator.points} /></div>
       <p className="mt-2 flex-1 text-xs leading-5 text-[color:var(--ink-faint)]">{indicator.description}</p>
@@ -219,6 +228,8 @@ export function MacroTab({ data, loading, error, predictions, calendar }: Props)
       {predictions.error && !predictions.data && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">Market expectations are temporarily unavailable: {predictions.error}</div>
       )}
+
+      <MacroConditions indicators={data.indicators} />
 
       <MacroCalendar {...calendar} contracts={contracts} />
 
