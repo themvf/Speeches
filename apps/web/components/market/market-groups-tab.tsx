@@ -242,7 +242,7 @@ function SnapshotMetric({ label, value, detail, color }: { label: string; value:
 }
 
 function PeerComparison({ industry, rows, loading, error }: { industry: IndustrySummary; rows: IndustryPeerRow[]; loading: boolean; error: string | null }) {
-  const [preset, setPreset] = useState<PeerPreset>("essentials");
+  const [preset, setPreset] = useState<PeerPreset>("all");
   const [sort, setSort] = useState<PeerSort>("marketCap");
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
