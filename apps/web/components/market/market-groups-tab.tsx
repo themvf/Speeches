@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type {
+  IndustryPeerRow,
   IndustrySummary,
   MarketIndustriesData,
   MarketSectorsData,
@@ -11,6 +12,8 @@ import type {
 
 type RangeId = "d1" | "w1" | "m1" | "m3" | "ytd";
 type ViewId = "moving" | "industries";
+type PeerPreset = "essentials" | "financials" | "signals" | "all";
+type PeerSort = "marketCap" | "move" | "revenue" | "profit" | "mentions" | "company";
 
 interface DataState<T> {
   data: T | null;
@@ -66,6 +69,15 @@ function dateTimeLabel(value: string): string {
     hour: "numeric",
     minute: "2-digit",
     timeZoneName: "short",
+  });
+}
+
+function reportDateLabel(value: string | null): string {
+  if (!value) return "—";
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -141,18 +153,22 @@ function SectorDetail({ sector, range, highlightedTicker }: { sector: SectorData
   );
 }
 
-function IndustryDetail({ industry }: { industry: IndustrySummary }) {
+function useIndustryPeers(industry: IndustrySummary | null) {
   const [data, setData] = useState<MarketIndustriesData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAllPeers, setShowAllPeers] = useState(false);
 
   useEffect(() => {
+    if (!industry) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     const controller = new AbortController();
     setData(null);
     setLoading(true);
     setError(null);
-    setShowAllPeers(false);
     fetch(`/api/market/industries?industry=${encodeURIComponent(industry.label)}`, { signal: controller.signal })
       .then((response) => response.json().then((body) => ({ response, body })))
       .then(({ response, body }) => {
@@ -164,15 +180,35 @@ function IndustryDetail({ industry }: { industry: IndustrySummary }) {
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
-      });
+    });
     return () => controller.abort();
-  }, [industry.label]);
+  }, [industry]);
 
-  const rows = data?.peers?.rows ?? [];
-  const visibleRows = showAllPeers ? rows : rows.slice(0, 25);
+  return { rows: data?.peers?.rows ?? [], loading, error };
+}
+
+function IndustrySnapshot({
+  industry,
+  rows,
+  loading,
+  error,
+}: {
+  industry: IndustrySummary;
+  rows: IndustryPeerRow[];
+  loading: boolean;
+  error: string | null;
+}) {
+  const moves = rows.flatMap((row) => row.pricePct == null ? [] : [row.pricePct]).sort((a, b) => a - b);
+  const middle = Math.floor(moves.length / 2);
+  const median = moves.length === 0 ? null : moves.length % 2 === 0 ? (moves[middle - 1] + moves[middle]) / 2 : moves[middle];
+  const ranked = rows.filter((row) => row.pricePct != null).sort((a, b) => (b.pricePct ?? 0) - (a.pricePct ?? 0));
+  const leader = ranked[0] ?? null;
+  const laggard = ranked.at(-1) ?? null;
+  const advancers = moves.filter((move) => move > 0).length;
+  const decliners = moves.filter((move) => move < 0).length;
 
   return (
-    <section aria-labelledby="selected-industry-title" className="rounded-2xl border border-[color:var(--line-strong)] bg-[color:rgba(9,21,34,0.72)] p-4 sm:p-5">
+    <section aria-labelledby="selected-industry-title" className="self-start rounded-2xl border border-[color:var(--line-strong)] bg-[color:rgba(9,21,34,0.72)] p-4 sm:p-5">
       <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--accent)]">Selected industry</p>
       <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -190,49 +226,118 @@ function IndustryDetail({ industry }: { industry: IndustrySummary }) {
       {!loading && !error && rows.length === 0 && <p className="mt-5 text-xs text-[color:var(--ink-faint)]">No peer data is available.</p>}
 
       {rows.length > 0 && (
-        <div className="mt-4 overflow-hidden rounded-xl border border-[color:var(--line)]">
-          <div className="hidden grid-cols-[76px_1fr_repeat(3,minmax(76px,auto))] gap-3 border-b border-[color:var(--line)] px-3 py-2 text-[10px] uppercase tracking-[0.08em] text-[color:var(--ink-faint)] sm:grid">
-            <span>Ticker</span><span>Company</span><span className="text-right">Today</span><span className="text-right">Market cap</span><span className="text-right">Profit</span>
-          </div>
-          {visibleRows.map((row) => (
-            <div key={row.ticker} className="border-b border-[color:var(--line)] px-3 py-3 last:border-0 sm:grid sm:grid-cols-[76px_1fr_repeat(3,minmax(76px,auto))] sm:items-center sm:gap-3 sm:py-2.5">
-              <div className="flex items-center justify-between sm:block">
-                <span className="font-bold text-[color:var(--accent)]">{row.ticker}</span>
-                <span className="font-semibold tabular-nums sm:hidden" style={{ color: moveColor(row.pricePct ?? 0) }}>
-                  {row.pricePct == null ? "—" : `${row.pricePct >= 0 ? "▲ " : "▼ "}${fmtPct(row.pricePct)}`}
-                </span>
-              </div>
-              <p className="mt-0.5 truncate text-xs text-[color:var(--ink-soft)] sm:mt-0">{row.name}</p>
-              <span className="hidden text-right text-xs font-semibold tabular-nums sm:block" style={{ color: moveColor(row.pricePct ?? 0) }}>
-                {row.pricePct == null ? "—" : `${row.pricePct >= 0 ? "▲ " : "▼ "}${fmtPct(row.pricePct)}`}
-              </span>
-              <div className="mt-2 flex justify-between text-[10px] text-[color:var(--ink-faint)] sm:mt-0 sm:block sm:text-right sm:text-xs">
-                <span className="sm:hidden">Market cap</span><span className="tabular-nums text-[color:var(--ink-soft)]">{money(row.marketCap)}</span>
-              </div>
-              <div className="mt-1 flex justify-between text-[10px] text-[color:var(--ink-faint)] sm:mt-0 sm:block sm:text-right sm:text-xs">
-                <span className="sm:hidden">Latest-quarter profit</span><span className="tabular-nums" style={{ color: row.profit == null ? undefined : moveColor(row.profit) }}>{money(row.profit)}</span>
-              </div>
-            </div>
-          ))}
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <SnapshotMetric label="Median company move" value={median == null ? "—" : `${median >= 0 ? "▲ " : "▼ "}${fmtPct(median)}`} color={median == null ? undefined : moveColor(median)} detail={`${moves.length} priced companies`} />
+          <SnapshotMetric label="Market breadth" value={`${advancers} up · ${decliners} down`} detail={`${moves.length - advancers - decliners} unchanged`} />
+          <SnapshotMetric label="Leading company" value={leader ? `${leader.ticker} ${fmtPct(leader.pricePct!)}` : "—"} color={leader?.pricePct == null ? undefined : moveColor(leader.pricePct)} detail={leader?.name ?? "No quote available"} />
+          <SnapshotMetric label="Lagging company" value={laggard ? `${laggard.ticker} ${fmtPct(laggard.pricePct!)}` : "—"} color={laggard?.pricePct == null ? undefined : moveColor(laggard.pricePct)} detail={laggard?.name ?? "No quote available"} />
         </div>
       )}
-
-      {rows.length > 25 && (
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <p className="text-[10px] text-[color:var(--ink-faint)]">
-            Showing {showAllPeers ? "all" : "the 25 largest"} of {rows.length} peers by available market cap.
-          </p>
-          <button type="button" onClick={() => setShowAllPeers((current) => !current)} className="rounded-lg border border-[color:var(--line)] px-2.5 py-1.5 text-[10px] font-semibold text-[color:var(--accent)] hover:bg-[color:rgba(79,213,255,0.08)]">
-            {showAllPeers ? "Show top 25" : `Show all ${rows.length}`}
-          </button>
-        </div>
-      )}
-
-      <p className="mt-3 text-[10px] leading-relaxed text-[color:var(--ink-faint)]">
-        Today is the live quote change. Market cap uses shares outstanding × current price. Profit is the latest SEC XBRL quarter and may cover different fiscal periods across peers.
-      </p>
     </section>
   );
+}
+
+function SnapshotMetric({ label, value, detail, color }: { label: string; value: string; detail: string; color?: string }) {
+  return <div className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(5,15,25,0.34)] p-3"><p className="text-[9px] uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">{label}</p><p className="mt-1 truncate text-sm font-semibold text-[color:var(--ink)]" style={{ color }}>{value}</p><p className="mt-0.5 truncate text-[10px] text-[color:var(--ink-faint)]">{detail}</p></div>;
+}
+
+function PeerComparison({ industry, rows, loading, error }: { industry: IndustrySummary; rows: IndustryPeerRow[]; loading: boolean; error: string | null }) {
+  const [preset, setPreset] = useState<PeerPreset>("essentials");
+  const [sort, setSort] = useState<PeerSort>("marketCap");
+  const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredRows = useMemo(() => {
+    const matching = rows.filter((row) => !normalizedSearch || row.ticker.toLowerCase().includes(normalizedSearch) || row.name.toLowerCase().includes(normalizedSearch));
+    return matching.sort((a, b) => {
+      if (sort === "company") return a.name.localeCompare(b.name);
+      if (sort === "move") return (b.pricePct ?? -Infinity) - (a.pricePct ?? -Infinity);
+      if (sort === "revenue") return (b.revenue ?? -Infinity) - (a.revenue ?? -Infinity);
+      if (sort === "profit") return (b.profit ?? -Infinity) - (a.profit ?? -Infinity);
+      if (sort === "mentions") return b.mentions - a.mentions;
+      return (b.marketCap ?? -Infinity) - (a.marketCap ?? -Infinity);
+    });
+  }, [normalizedSearch, rows, sort]);
+  const visibleRows = showAll ? filteredRows : filteredRows.slice(0, 25);
+  const showMarket = preset === "essentials" || preset === "all";
+  const showFinancials = preset === "financials" || preset === "all";
+  const showSignals = preset === "signals" || preset === "all";
+  const presets: { id: PeerPreset; label: string }[] = [
+    { id: "essentials", label: "Essentials" },
+    { id: "financials", label: "Financials" },
+    { id: "signals", label: "Signals" },
+    { id: "all", label: "All columns" },
+  ];
+
+  return (
+    <section aria-labelledby="peer-comparison-title" className="rounded-2xl border border-[color:var(--line-strong)] bg-[color:rgba(9,21,34,0.58)]">
+      <div className="space-y-3 border-b border-[color:var(--line)] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--accent)]">Full peer comparison</p><h3 id="peer-comparison-title" className="mt-1 text-base font-semibold text-[color:var(--ink)]">{industry.label}</h3></div>
+          <p className="text-[10px] text-[color:var(--ink-faint)]">{filteredRows.length} matching companies</p>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex max-w-full overflow-x-auto rounded-xl border border-[color:var(--line)] bg-[color:rgba(5,15,25,0.45)] p-1" aria-label="Peer table column preset">
+            {presets.map((item) => <button key={item.id} type="button" onClick={() => setPreset(item.id)} aria-pressed={preset === item.id} className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[10px] font-semibold ${preset === item.id ? "bg-[color:rgba(79,213,255,0.16)] text-[color:var(--ink)]" : "text-[color:var(--ink-faint)] hover:text-[color:var(--ink)]"}`}>{item.label}</button>)}
+          </div>
+          <div className="flex flex-1 flex-wrap justify-end gap-2">
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setShowAll(false); }} placeholder="Filter peers" aria-label="Filter industry peers" className="min-w-36 rounded-lg border border-[color:var(--line)] bg-[color:rgba(5,15,25,0.5)] px-2.5 py-1.5 text-xs text-[color:var(--ink)] outline-none focus:border-[color:var(--accent)]" />
+            <select value={sort} onChange={(event) => setSort(event.target.value as PeerSort)} aria-label="Sort industry peers" className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(5,15,25,0.5)] px-2.5 py-1.5 text-xs text-[color:var(--ink)]">
+              <option value="marketCap">Market cap</option><option value="move">Today&apos;s move</option><option value="revenue">Revenue</option><option value="profit">Profit</option><option value="mentions">Mentions</option><option value="company">Company name</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {loading && <div className="space-y-2 p-5" aria-label="Loading full peer comparison">{[0, 1, 2, 3, 4].map((item) => <div key={item} className="h-10 animate-pulse rounded-lg bg-[color:rgba(79,213,255,0.06)]" />)}</div>}
+      {error && <p className="m-5 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{error}</p>}
+      {!loading && !error && filteredRows.length === 0 && <p className="p-8 text-center text-xs text-[color:var(--ink-faint)]">No companies match this view.</p>}
+
+      {visibleRows.length > 0 && (
+        <>
+          <div className="divide-y divide-[color:var(--line)] sm:hidden">
+            {visibleRows.map((row) => <PeerMobileCard key={row.ticker} row={row} preset={preset} />)}
+          </div>
+          <div className="hidden overflow-x-auto sm:block">
+            <table className={`w-full ${preset === "all" ? "min-w-[1180px]" : "min-w-[760px]"}`}>
+              <thead><tr className="border-b border-[color:var(--line)] text-[10px] uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">
+                <th className="sticky left-0 z-20 w-[84px] bg-[#091522] px-4 py-2.5 text-left font-semibold">Ticker</th>
+                <th className="sticky left-[84px] z-20 min-w-[210px] bg-[#091522] px-3 py-2.5 text-left font-semibold">Company</th>
+                {showMarket && <><th className="px-3 py-2.5 text-right font-semibold">Price</th><th className="px-3 py-2.5 text-right font-semibold">Today</th><th className="px-3 py-2.5 text-right font-semibold">Market cap</th></>}
+                {showFinancials && <><th className="px-3 py-2.5 text-right font-semibold">Revenue</th><th className="px-3 py-2.5 text-right font-semibold">Expenses</th><th className="px-3 py-2.5 text-right font-semibold">Profit</th></>}
+                {showSignals && <><th className="px-3 py-2.5 text-right font-semibold">Mentions</th><th className="px-4 py-2.5 text-right font-semibold">Reports</th></>}
+              </tr></thead>
+              <tbody>{visibleRows.map((row) => <tr key={row.ticker} className="border-b border-[color:var(--line)] text-xs last:border-0 hover:bg-[color:rgba(79,213,255,0.035)]">
+                <td className="sticky left-0 z-10 bg-[#091522] px-4 py-3 font-bold text-[color:var(--accent)]">{row.ticker}</td>
+                <td className="sticky left-[84px] z-10 max-w-[240px] truncate bg-[#091522] px-3 py-3 text-[color:var(--ink-soft)]">{row.name}</td>
+                {showMarket && <><td className="px-3 py-3 text-right tabular-nums text-[color:var(--ink-soft)]">{row.price == null ? "—" : `$${row.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</td><td className="px-3 py-3 text-right font-semibold tabular-nums" style={{ color: row.pricePct == null ? undefined : moveColor(row.pricePct) }}>{row.pricePct == null ? "—" : `${row.pricePct >= 0 ? "▲ " : "▼ "}${fmtPct(row.pricePct)}`}</td><td className="px-3 py-3 text-right tabular-nums text-[color:var(--ink-soft)]">{money(row.marketCap)}</td></>}
+                {showFinancials && <><td className="px-3 py-3 text-right tabular-nums text-[color:var(--ink-soft)]">{money(row.revenue)}</td><td className="px-3 py-3 text-right tabular-nums text-[color:var(--ink-faint)]">{money(row.expenses)}</td><td className="px-3 py-3 text-right font-semibold tabular-nums" style={{ color: row.profit == null ? undefined : moveColor(row.profit) }}>{money(row.profit)}</td></>}
+                {showSignals && <><td className="px-3 py-3 text-right tabular-nums text-[color:var(--ink-soft)]">{row.mentions || "—"}</td><td className="px-4 py-3 text-right text-[color:var(--ink-soft)]">{reportDateLabel(row.reportDate)}</td></>}
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {filteredRows.length > 25 && <div className="flex items-center justify-between gap-3 border-t border-[color:var(--line)] px-4 py-3"><p className="text-[10px] text-[color:var(--ink-faint)]">Showing {showAll ? "all" : "the first 25"} of {filteredRows.length} companies.</p><button type="button" onClick={() => setShowAll((current) => !current)} className="rounded-lg border border-[color:var(--line)] px-2.5 py-1.5 text-[10px] font-semibold text-[color:var(--accent)] hover:bg-[color:rgba(79,213,255,0.08)]">{showAll ? "Show first 25" : `Show all ${filteredRows.length}`}</button></div>}
+      <p className="border-t border-[color:var(--line)] px-4 py-3 text-[10px] leading-relaxed text-[color:var(--ink-faint)]">Today is the live quote change. Market cap uses shares outstanding × current price. Revenue, expenses, and profit use the latest SEC XBRL quarter; fiscal periods may differ across peers.</p>
+    </section>
+  );
+}
+
+function PeerMobileCard({ row, preset }: { row: IndustryPeerRow; preset: PeerPreset }) {
+  const showMarket = preset === "essentials" || preset === "all";
+  const showFinancials = preset === "financials" || preset === "all";
+  const showSignals = preset === "signals" || preset === "all";
+  return <div className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-bold text-[color:var(--accent)]">{row.ticker}</p><p className="truncate text-xs text-[color:var(--ink-soft)]">{row.name}</p></div><p className="shrink-0 text-xs font-semibold" style={{ color: row.pricePct == null ? undefined : moveColor(row.pricePct) }}>{row.pricePct == null ? "—" : `${row.pricePct >= 0 ? "▲ " : "▼ "}${fmtPct(row.pricePct)}`}</p></div><div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-2 text-[10px]">
+    {showMarket && <><MobileMetric label="Price" value={row.price == null ? "—" : `$${row.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} /><MobileMetric label="Market cap" value={money(row.marketCap)} /></>}
+    {showFinancials && <><MobileMetric label="Revenue" value={money(row.revenue)} /><MobileMetric label="Expenses" value={money(row.expenses)} /><MobileMetric label="Profit" value={money(row.profit)} /></>}
+    {showSignals && <><MobileMetric label="Mentions" value={row.mentions ? String(row.mentions) : "—"} /><MobileMetric label="Reports" value={reportDateLabel(row.reportDate)} /></>}
+  </div></div>;
+}
+
+function MobileMetric({ label, value }: { label: string; value: string }) {
+  return <div className="flex justify-between gap-2 border-b border-[color:var(--line)] pb-1"><span className="text-[color:var(--ink-faint)]">{label}</span><span className="tabular-nums text-[color:var(--ink-soft)]">{value}</span></div>;
 }
 
 export function MarketGroupsTab({ sectors, industries }: Props) {
@@ -256,6 +361,7 @@ export function MarketGroupsTab({ sectors, industries }: Props) {
     return groups;
   }, [industries.data]);
   const selectedIndustry = sortedIndustries.find((industry) => industry.sic === selectedIndustrySic) ?? null;
+  const industryPeers = useIndustryPeers(selectedIndustry);
 
   const normalizedQuery = query.trim().toLowerCase();
   const searchResults = useMemo(() => {
@@ -394,14 +500,14 @@ export function MarketGroupsTab({ sectors, industries }: Props) {
               </div>
               {industries.error && <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">Industry data warning: {industries.error}</p>}
               <div className="grid gap-4 lg:grid-cols-[minmax(300px,0.78fr)_minmax(0,1.22fr)]">
-                <section aria-label="Industry directory" className="max-h-[720px] overflow-y-auto rounded-2xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.42)]">
+                <section aria-label="Industry directory" className="max-h-[360px] overflow-y-auto rounded-2xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.42)]">
                   {visibleIndustries.map((industry) => {
                     const selected = selectedIndustry?.sic === industry.sic;
                     return <button key={industry.sic} type="button" onClick={() => chooseIndustry(industry)} aria-pressed={selected} className={`grid w-full grid-cols-[1fr_auto] gap-3 border-b border-[color:var(--line)] px-4 py-3 text-left last:border-0 hover:bg-[color:rgba(79,213,255,0.05)] ${selected ? "bg-[color:rgba(79,213,255,0.08)]" : ""}`}><span className="min-w-0"><span className="block truncate text-xs font-semibold text-[color:var(--ink)]">{industry.label}</span><span className="mt-0.5 block text-[10px] text-[color:var(--ink-faint)]">SIC {industry.sic} · {industry.tickers.length} companies</span></span><span className="self-center text-[10px] tabular-nums text-[color:var(--ink-faint)]">{industry.attentionTotal > 0 ? `${industry.attentionTotal} mentions` : ""}</span></button>;
                   })}
                 </section>
                 {selectedIndustry ? (
-                  <IndustryDetail industry={selectedIndustry} />
+                  <IndustrySnapshot industry={selectedIndustry} {...industryPeers} />
                 ) : (
                   <section className="flex min-h-52 items-center justify-center rounded-2xl border border-dashed border-[color:var(--line)] bg-[color:rgba(9,21,34,0.3)] p-6 text-center">
                     <div><p className="text-sm font-semibold text-[color:var(--ink)]">Select an industry</p><p className="mt-1 max-w-sm text-xs leading-5 text-[color:var(--ink-faint)]">Choose a peer group to load its current prices, market caps, and latest-quarter profit.</p></div>
@@ -409,6 +515,7 @@ export function MarketGroupsTab({ sectors, industries }: Props) {
                 )}
               </div>
               {visibleIndustries.length < sortedIndustries.filter((industry) => !multiCompanyOnly || industry.tickers.length > 1).length && <p className="text-right text-[10px] text-[color:var(--ink-faint)]">Showing the first 100 groups. Use search to find any industry or ticker.</p>}
+              {selectedIndustry && <PeerComparison key={selectedIndustry.sic} industry={selectedIndustry} {...industryPeers} />}
             </>
           )}
         </>

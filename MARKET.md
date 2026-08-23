@@ -12,6 +12,7 @@ Live market intelligence dashboard at `/market`, providing real-time financial d
 - Universal search spans sectors, representative companies/tickers, and all SEC SIC industries/tickers
 - A separate industry directory keeps SIC and ETF/GICS-like classifications honest while the crosswalk is validated
 - Industry peer quotes load only after the user selects a group; groups with more than 25 peers use progressive disclosure
+- The selected-industry snapshot summarizes median move, breadth, leaders, and laggards; a full-width table below restores Market, Financials, Signals, and All-columns comparison presets
 - Sector returns are explicitly labeled as ETF proxy returns, while representative-company and peer moves are labeled as daily quote changes
 
 ### Overview
