@@ -1,17 +1,8 @@
 {
- "generatedAt": "2026-08-20T16:38:07Z",
+ "generatedAt": "2026-08-24T11:48:12Z",
  "checkedCount": 889,
- "flaggedCount": 2,
+ "flaggedCount": 1,
  "candidates": [
-  {
-   "ticker": "AEP",
-   "name": "American Electric Power Co Inc",
-   "cik": "0000004904",
-   "reason": "uncertain",
-   "confidence": "low",
-   "evidence": "Missing from SEC's bulk ticker file, but the CIK's own feed still lists AEP with no deregistration filing - possibly a data lag",
-   "yahooQuoteAlive": true
-  },
   {
    "ticker": "LNW",
    "name": "Light & Wonder, Inc.",
