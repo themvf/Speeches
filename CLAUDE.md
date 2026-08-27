@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Rates & Credit Intelligence
+
+The implementation strategy for the Market → Macro rates and credit workspace lives in [`docs/rates-credit-intelligence-strategy.md`](docs/rates-credit-intelligence-strategy.md). Follow its phased architecture, source hierarchy, interpretability requirements, and data-quality rules when extending rates, corporate credit, ratings, mortgages, or CDS coverage.
+
 ## ⚠️ Both LLM provider accounts are OUT OF FUNDS (verified live 2026-07-18)
 
 DeepSeek returns `402 Payment Required` (balance exhausted) and OpenAI returns instant `429`s (insufficient quota — the same state the July smoke-fix section documents). Verified via two `kpi-tier-c-extract.yml` dispatches (runs 29639254810/29639319939). **Every LLM surface is affected**: all enrichment workflows (currently mostly paused by the SEC-20 gate, so it's been invisible), RSS feed analysis on Vercel, recap generation, sentiment. Separately, the **Webshare proxy account is also unfunded** (`402` on the proxy tunnel — SEC-45; credential rotation was tried 2026-07-17 and did NOT fix it, because a 402 is a billing state, not a 407 auth failure). User action required: top up DeepSeek (or OpenAI) and Webshare. Until then, don't burn time debugging LLM/proxy call failures — check this first.

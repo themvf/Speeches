@@ -12,6 +12,7 @@ import type {
   MarketKpiData,
   MarketMacroData,
   MarketMacroPredictionsData,
+  MarketRatesCreditData,
   MarketMoversData,
   MarketOverviewData,
   MarketPredictionsData,
@@ -96,6 +97,7 @@ export function MarketDashboard() {
   const commodities = useTabData<MarketCommoditiesData>("overview", tab, "/api/market/commodities", 120_000);
   const bonds       = useTabData<MarketBondsData>      ("overview", tab, "/api/market/bonds",       3_600_000);
   const macro       = useTabData<MarketMacroData>      ("macro",    tab, "/api/market/macro",       900_000);
+  const ratesCredit = useTabData<MarketRatesCreditData>("macro",    tab, "/api/market/rates-credit", 900_000);
   const macroPredictions = useTabData<MarketMacroPredictionsData>(["macro", "predictions"], tab, "/api/market/macro-contracts", 300_000);
 
   const sectors   = useTabData<MarketSectorsData>  (["groups", "sectors"], tab, "/api/market/sectors", 300_000);
@@ -135,7 +137,7 @@ export function MarketDashboard() {
       </div>
 
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
-      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} />}
+      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} ratesCredit={ratesCredit} />}
       {tab === "groups"    && <MarketGroupsTab sectors={sectors} industries={industries} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "industries" && <IndustriesTab {...industries} />}

@@ -549,6 +549,61 @@ export interface MarketMacroData {
   source: "FRED";
 }
 
+export type MarketRatesCreditGroup = "treasury" | "real_yield" | "credit_ig" | "credit_hy";
+
+export interface MarketRatesCreditPoint {
+  date: string;
+  value: number;
+}
+
+export interface MarketRatesCreditMetric {
+  id: string;
+  fredSeriesId: string;
+  label: string;
+  shortLabel: string;
+  group: MarketRatesCreditGroup;
+  tenorYears: number | null;
+  value: number;
+  change1d: number | null;
+  change1w: number | null;
+  change1m: number | null;
+  percentile: number | null;
+  zScore: number | null;
+  observationDate: string;
+  points: MarketRatesCreditPoint[];
+  sourceUrl: string;
+}
+
+export type MarketRatesCreditTone = "positive" | "neutral" | "negative";
+
+export interface MarketRatesCreditSignal {
+  id: "rates" | "curve" | "credit" | "composite";
+  label: string;
+  state: string;
+  tone: MarketRatesCreditTone;
+  summary: string;
+}
+
+export interface MarketRatesCreditDriver {
+  label: string;
+  detail: string;
+  tone: MarketRatesCreditTone;
+}
+
+export interface MarketRatesCreditData {
+  treasuryCurve: MarketRatesCreditMetric[];
+  realYields: MarketRatesCreditMetric[];
+  investmentGrade: MarketRatesCreditMetric[];
+  highYield: MarketRatesCreditMetric[];
+  signals: MarketRatesCreditSignal[];
+  drivers: MarketRatesCreditDriver[];
+  generatedAt: string;
+  cacheSeconds: number;
+  source: "FRED";
+  creditDataStatus: "enabled" | "license_required";
+  warnings: string[];
+}
+
 export type MacroPredictionTheme =
   | "fed_policy"
   | "growth"

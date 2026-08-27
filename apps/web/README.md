@@ -22,6 +22,7 @@ Primary config lives in `.env.local`.
 - `OPENAI_CHAT_MODEL`: optional, defaults to `gpt-5.1`
 - `OPENAI_BASE_URL`: optional, defaults to `https://api.openai.com/v1`
 - `FRED_API_KEY`: required for the server-cached `Market → Macro` dashboard
+- `RATES_CREDIT_ICE_DATA_ENABLED`: set to `true` only when this deployment is authorized to display ICE BofA index data distributed through FRED; defaults to disabled because FRED access does not grant public redistribution rights
 - `GITHUB_ACTIONS_*`: dispatch and status for ingest/enrich/extract workflows
 - `JOB_EXECUTION_MODE`: `github_actions` (default) or `local` for direct Python extraction
 - `PYTHON_BIN`: python executable for local extraction mode (`python` by default)
