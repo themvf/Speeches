@@ -13,6 +13,7 @@ import type {
   MarketMacroCalendarData,
   MarketMacroData,
   MarketMacroPredictionsData,
+  MarketRatesCreditData,
   MarketMoversData,
   MarketOverviewData,
   MarketPredictionsData,
@@ -107,6 +108,7 @@ export function MarketDashboard() {
   // full curve on Macro, beside credit and the real yield.
   const bonds       = useTabData<MarketBondsData>      (["overview", "macro"], tab, "/api/market/bonds", 3_600_000);
   const macro       = useTabData<MarketMacroData>      ("macro",    tab, "/api/market/macro",       900_000);
+  const ratesCredit = useTabData<MarketRatesCreditData>("macro",    tab, "/api/market/rates-credit", 900_000);
   const macroPredictions = useTabData<MarketMacroPredictionsData>(["macro", "predictions"], tab, "/api/market/macro-contracts", 300_000);
   // Release schedules change on the order of months; the long poll matches
   // the route's 6-hour revalidate rather than re-asking FRED every minute.
@@ -160,7 +162,7 @@ export function MarketDashboard() {
       </div>
 
       {tab === "overview"  && <OverviewTab  {...overview} commodities={commodities} bonds={bonds} />}
-      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} calendar={macroCalendar} bonds={bonds} />}
+      {tab === "macro"     && <MacroTab     {...macro} predictions={macroPredictions} calendar={macroCalendar} bonds={bonds} ratesCredit={ratesCredit} />}
       {tab === "groups"    && <MarketGroupsTab sectors={sectors} industries={industries} />}
       {tab === "sectors"   && <SectorsTab   {...sectors} />}
       {tab === "industries" && <IndustriesTab {...industries} expandRequest={industryExpandRequest} />}

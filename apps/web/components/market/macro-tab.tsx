@@ -9,6 +9,7 @@ import type {
   MarketMacroIndicatorId,
   MarketMacroPredictionsData,
   MarketMacroPoint,
+  MarketRatesCreditData,
   MacroPredictionEvent,
 } from "@/lib/server/types";
 import { signalFor } from "@/lib/macro-signals";
@@ -26,6 +27,7 @@ import {
   relativeDayLabel,
   type NextRelease,
 } from "@/lib/macro-calendar-display";
+import { RatesCreditSection } from "./rates-credit-section";
 
 interface Props {
   data: MarketMacroData | null;
@@ -43,6 +45,11 @@ interface Props {
   };
   bonds: {
     data: MarketBondsData | null;
+    loading: boolean;
+    error: string | null;
+  };
+  ratesCredit: {
+    data: MarketRatesCreditData | null;
     loading: boolean;
     error: string | null;
   };
@@ -199,7 +206,7 @@ function IndicatorGrid({ indicators, contracts, nextReleases, today }: {
   );
 }
 
-export function MacroTab({ data, loading, error, predictions, calendar, bonds }: Props) {
+export function MacroTab({ data, loading, error, predictions, calendar, bonds, ratesCredit }: Props) {
   if (loading && !data) {
     return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading FRED macro indicators…</div>;
   }
@@ -240,6 +247,8 @@ export function MacroTab({ data, loading, error, predictions, calendar, bonds }:
       {predictions.error && !predictions.data && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">Market expectations are temporarily unavailable: {predictions.error}</div>
       )}
+
+      <RatesCreditSection {...ratesCredit} />
 
       <MacroConditions indicators={data.indicators} />
 

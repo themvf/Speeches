@@ -1,0 +1,41 @@
+name: Rates And Credit Daily Snapshot
+
+on:
+  schedule:
+    - cron: "30 1 * * 2-6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rates-credit-daily
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      RATES_CREDIT_ICE_DATA_ENABLED: ${{ vars.RATES_CREDIT_ICE_DATA_ENABLED || 'false' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Snapshot rates and credit observations
+        working-directory: apps/web
+        run: npm run snapshot:rates-credit
