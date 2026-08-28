@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-08-27T09:38:53Z",
+ "generatedAt": "2026-08-28T20:59:10Z",
  "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
  "companies": {
   "AAPL": {
@@ -2727,11 +2727,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-08-03",
-       "value": 2.57,
-       "derived": false
-      },
-      {
        "end": "2024-11-02",
        "value": 1.85,
        "derived": false
@@ -2765,6 +2760,11 @@
        "end": "2026-05-02",
        "value": 1.71,
        "derived": false
+      },
+      {
+       "end": "2026-08-01",
+       "value": 4.11,
+       "derived": false
       }
      ]
     },
@@ -2772,11 +2772,6 @@
      "label": "Revenue",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-08-03",
-       "value": 25452000000.0,
-       "derived": false
-      },
       {
        "end": "2024-11-02",
        "value": 25668000000.0,
@@ -2811,6 +2806,11 @@
        "end": "2026-05-02",
        "value": 25443000000.0,
        "derived": false
+      },
+      {
+       "end": "2026-08-01",
+       "value": 26539000000.0,
+       "derived": false
       }
      ]
     },
@@ -2818,11 +2818,6 @@
      "label": "Net income",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-08-03",
-       "value": 1192000000.0,
-       "derived": false
-      },
       {
        "end": "2024-11-02",
        "value": 854000000.0,
@@ -2857,189 +2852,10 @@
        "end": "2026-05-02",
        "value": 781000000.0,
        "derived": false
-      }
-     ]
-    },
-    "food_beverage": {
-     "label": "Food and beverage",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-08-03",
-       "value": 5538000000.0,
-       "derived": false
       },
       {
-       "end": "2024-11-02",
-       "value": 5917000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-02-01",
-       "value": 6520000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-05-03",
-       "value": 5902000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-08-02",
-       "value": 5588000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-11-01",
-       "value": 6008000000.0,
-       "derived": false
-      },
-      {
-       "end": "2026-01-31",
-       "value": 6638000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-05-02",
-       "value": 6263000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "beauty": {
-     "label": "Beauty",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-08-03",
-       "value": 3384000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-11-02",
-       "value": 3226000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-02-01",
-       "value": 3444000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-05-03",
-       "value": 3101000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-08-02",
-       "value": 3396000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-11-01",
-       "value": 3232000000.0,
-       "derived": false
-      },
-      {
-       "end": "2026-01-31",
-       "value": 3485000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-05-02",
-       "value": 3398000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "household_essentials": {
-     "label": "Household essentials",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-08-03",
-       "value": 4564000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-11-02",
-       "value": 4715000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-02-01",
-       "value": 4786000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-05-03",
-       "value": 4357000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-08-02",
-       "value": 4422000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-11-01",
-       "value": 4542000000.0,
-       "derived": false
-      },
-      {
-       "end": "2026-01-31",
-       "value": 4696000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-05-02",
-       "value": 4570000000.0,
-       "derived": false
-      }
-     ]
-    },
-    "hardlines": {
-     "label": "Hardlines",
-     "unit": "usd",
-     "series": [
-      {
-       "end": "2024-08-03",
-       "value": 3322000000.0,
-       "derived": false
-      },
-      {
-       "end": "2024-11-02",
-       "value": 3152000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-02-01",
-       "value": 6150000000.0,
-       "derived": true
-      },
-      {
-       "end": "2025-05-03",
-       "value": 3074000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-08-02",
-       "value": 3522000000.0,
-       "derived": false
-      },
-      {
-       "end": "2025-11-01",
-       "value": 3190000000.0,
-       "derived": false
-      },
-      {
-       "end": "2026-01-31",
-       "value": 6014000000.0,
-       "derived": true
-      },
-      {
-       "end": "2026-05-02",
-       "value": 3522000000.0,
+       "end": "2026-08-01",
+       "value": 1877000000.0,
        "derived": false
       }
      ]
