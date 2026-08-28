@@ -1,3 +1,5 @@
+import type { MarketBreadth } from "@/lib/market-breadth";
+
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export interface ApiErrorPayload {
@@ -475,8 +477,12 @@ export interface MarketOverviewData {
   indices: MarketIndexQuote[];
   vix: VixQuote | null;
   globalIndices: MarketIndexQuote[];
+  /** Equal-weight vs cap-weight participation. Null when quotes are unavailable. */
+  breadth: MarketBreadth | null;
   generatedAt: string;
 }
+
+export type { BreadthPair, BreadthTone, MarketBreadth } from "@/lib/market-breadth";
 
 export type MarketMacroIndicatorId =
   | "real_gdp_growth"

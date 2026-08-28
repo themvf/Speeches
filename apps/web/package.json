@@ -15,6 +15,7 @@
     "test:fred-macro": "node --experimental-strip-types --test lib/server/fred-macro.test.ts",
     "test:macro-signals": "node --experimental-strip-types --test lib/macro-signals.test.ts",
     "test:macro-context": "node --experimental-strip-types --test lib/macro-context.test.ts",
+    "test:market-breadth": "node --experimental-strip-types --test lib/market-breadth.test.ts",
     "test:fred-calendar": "node --experimental-strip-types --test lib/server/fred-calendar.test.ts lib/macro-calendar-display.test.ts",
     "test:rates-credit": "node --experimental-strip-types --test lib/server/rates-credit.test.ts",
     "snapshot:rates-credit": "node --experimental-strip-types scripts/snapshot-rates-credit.ts",

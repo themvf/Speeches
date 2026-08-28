@@ -12,6 +12,7 @@ import type {
   VixQuote,
 } from "@/lib/server/types";
 import { InlineChart } from "./price-chart";
+import { MarketBreadth } from "./market-breadth";
 
 type IndexRange = "d1" | "w1" | "m1" | "ytd";
 
@@ -434,6 +435,8 @@ export function OverviewTab({ data, loading, error, commodities, bonds }: Props)
         {data.vix && <FearGauge vix={data.vix} />}
         {data.globalIndices.length > 0 && <GlobalIndicesBox indices={data.globalIndices} />}
       </div>
+
+      <MarketBreadth breadth={data.breadth} />
 
       {/* ── 2×2: Metals | Energy / Agriculture | Bonds ──────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

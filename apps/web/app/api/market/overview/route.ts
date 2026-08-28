@@ -7,6 +7,7 @@ import type {
   VixQuote,
 } from "@/lib/server/types";
 import { fetchYahooCandles, fetchYahooQuote } from "@/lib/server/yahoo";
+import { buildBreadthPair, summarizeBreadth } from "@/lib/market-breadth";
 
 export const runtime = "nodejs";
 export const revalidate = 60;
@@ -17,6 +18,17 @@ const US_INDICES = [
   { symbol: "^IXIC", name: "NASDAQ" },
   { symbol: "^RUT",  name: "Russell 2000" },
 ];
+
+/**
+ * Equal-weight vs cap-weight ETF pairs. Compared ETF-to-ETF rather than against
+ * ^GSPC/^IXIC deliberately: ^IXIC is the Nasdaq COMPOSITE (~3,000 names) while
+ * QQQE is equal-weight Nasdaq-100, so that comparison would be between two
+ * different universes rather than two weightings of one.
+ */
+const BREADTH_PAIRS = [
+  { id: "sp500", label: "S&P 500", capSymbol: "SPY", equalSymbol: "RSP" },
+  { id: "nasdaq100", label: "Nasdaq 100", capSymbol: "QQQ", equalSymbol: "QQQE" },
+] as const;
 
 const GLOBAL_INDICES = [
   { symbol: "^FTSE",  name: "FTSE 100" },
@@ -61,11 +73,14 @@ function fearGreedLabel(vix: number): FearGreedLabel {
 export async function GET() {
   const requestId = createRequestId();
 
-  const [usQuotes, usCandles, vixQuote, globalQuotes] = await Promise.all([
+  const breadthSymbols = BREADTH_PAIRS.flatMap((pair) => [pair.capSymbol, pair.equalSymbol]);
+
+  const [usQuotes, usCandles, vixQuote, globalQuotes, breadthQuotes] = await Promise.all([
     Promise.allSettled(US_INDICES.map(({ symbol }) => fetchYahooQuote(symbol, 60))),
     Promise.allSettled(US_INDICES.map(({ symbol }) => fetchYahooCandles(symbol))),
     fetchYahooQuote("^VIX", 60),
     Promise.allSettled(GLOBAL_INDICES.map(({ symbol }) => fetchYahooQuote(symbol, 60))),
+    Promise.allSettled(breadthSymbols.map((symbol) => fetchYahooQuote(symbol, 60))),
   ]);
 
   const indices = US_INDICES.map(({ symbol, name }, i) => {
@@ -113,6 +128,39 @@ export async function GET() {
     };
   }).filter((q): q is MarketIndexQuote => q !== null && q.price > 0);
 
-  const data: MarketOverviewData = { indices, vix, globalIndices, generatedAt: new Date().toISOString() };
+  // Breadth: a pair is dropped entirely if either leg failed, rather than
+  // shown half-computed - half a spread is not a spread.
+  const breadthPct = new Map<string, number>();
+  breadthSymbols.forEach((symbol, index) => {
+    const settled = breadthQuotes[index];
+    const quote = settled.status === "fulfilled" ? settled.value : null;
+    if (quote && Number.isFinite(quote.pct)) breadthPct.set(symbol, quote.pct);
+  });
+
+  const pairs = BREADTH_PAIRS.flatMap((pair) => {
+    const built = buildBreadthPair({
+      id: pair.id,
+      label: pair.label,
+      capSymbol: pair.capSymbol,
+      capPct: breadthPct.get(pair.capSymbol),
+      equalSymbol: pair.equalSymbol,
+      equalPct: breadthPct.get(pair.equalSymbol),
+    });
+    return built ? [built] : [];
+  });
+
+  // Small vs large rides on indices already fetched above - no extra request.
+  const largePct = indices.find((index) => index.symbol === "^GSPC")?.pct;
+  const smallPct = indices.find((index) => index.symbol === "^RUT")?.pct;
+  const smallVsLarge =
+    typeof largePct === "number" && typeof smallPct === "number"
+      ? { smallPct, largePct, spreadPp: smallPct - largePct }
+      : null;
+
+  const breadth = pairs.length
+    ? { pairs, summary: summarizeBreadth(pairs), smallVsLarge }
+    : null;
+
+  const data: MarketOverviewData = { indices, vix, globalIndices, breadth, generatedAt: new Date().toISOString() };
   return ok(data, requestId);
 }
