@@ -1,6 +1,6 @@
 # Rate Transmission: spreads → mortgage rates and corporate bonds (and back)
 
-Status: **plan only**, 2026-08-26. No code written. Target surface: `/market` → Macro tab.
+Status: **Phase 1 implemented**, 2026-08-28. Target surface: `/market` → Macro tab.
 
 ## 1. The question
 
@@ -46,7 +46,7 @@ FRED already serves, without adding a database table or an LLM call.
 Optional later: `MORTGAGE15US`; `OBMMIC30YF` (Optimal Blue, **daily** mortgage
 rate — would fix the PMMS timing problem in §5.2, licence unverified).
 
-### 2.2 Licensing — check before adding anything
+### 2.2 Licensing — verified 2026-08-28
 
 CLAUDE.md's rule stands and nothing in the code enforces it: `/api/market/*` is
 public with no auth, so a *pre-approval required* series cannot ship here. Known
@@ -56,19 +56,19 @@ domain**, and ICE BofA OAS (`BAMLH0A0HYM2`, `BAMLC0A0CM`) is **pre-approval
 required and unusable** — which is why this design routes around index OAS
 entirely and uses Moody's Baa/Aaa instead.
 
-Expected but **not verified in this session** (fred.stlouisfed.org is
-unreachable from the sandbox — every request to both the series pages and
-`fredgraph.csv` timed out or returned an empty reply):
+The series pages were checked directly:
 
-- `DGS*`, `T10Y3M` — Federal Reserve / FRED-computed, expected public domain.
-- `DBAA`, `DAAA`, `AAA10Y` — Moody's-derived, expected *citation required*
-  like `BAA10Y`.
-- `OBMMIC30YF` — unknown, treat as blocked until checked.
-
-**Do this first, from a machine that can reach FRED:** open each series page and
-read the copyright box. A *pre-approval required* tag on any of them drops that
-series from the design; the panel is built to degrade series-by-series (§4.4),
-so losing one costs one row, not the panel.
+- `DGS10`, `DGS2`, `DGS3MO`, and `DGS30` are **Public Domain: Citation
+  Requested** and are approved for the public route.
+- `T10Y3M` is **Copyrighted: Citation Required** and is approved with a source
+  link, though Phase 1 computes its requested curve segments from Treasury
+  levels rather than fetching this series.
+- `DBAA`, `DAAA`, and `AAA10Y` display **Copyrighted: Citation Required**, but
+  their notes separately state that Moody's information may not be reproduced,
+  stored, or redistributed without prior written consent. They are therefore
+  **blocked** for the public route. Phase 1 renders the corporate rows as
+  unavailable pending a licensed corporate-yield source.
+- `OBMMIC30YF` remains unknown and blocked until checked.
 
 ### 2.3 Why these series do NOT go into `FRED_MACRO_DEFINITIONS`
 

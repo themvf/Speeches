@@ -17,6 +17,7 @@
     "test:macro-context": "node --experimental-strip-types --test lib/macro-context.test.ts",
     "test:fred-calendar": "node --experimental-strip-types --test lib/server/fred-calendar.test.ts lib/macro-calendar-display.test.ts",
     "test:rates-credit": "node --experimental-strip-types --test lib/server/rates-credit.test.ts",
+    "test:rate-transmission": "node --experimental-strip-types --test lib/rate-transmission.test.ts",
     "snapshot:rates-credit": "node --experimental-strip-types scripts/snapshot-rates-credit.ts",
     "test:polymarket-macro": "node --experimental-strip-types --test lib/server/polymarket-macro.test.ts",
     "test:wallet-intelligence": "node --experimental-strip-types --test lib/server/prediction-wallet-intelligence.test.ts",

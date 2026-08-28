@@ -9,7 +9,7 @@ import type {
 const FRED_API_BASE = "https://api.stlouisfed.org/fred";
 export const FRED_MACRO_CACHE_SECONDS = 15 * 60;
 
-type FredUnits = "lin" | "chg" | "pch" | "pc1";
+export type FredUnits = "lin" | "chg" | "pch" | "pc1";
 
 export interface FredMacroDefinition {
   id: MarketMacroIndicatorId;
@@ -212,6 +212,24 @@ export function parseFredObservations(payload: FredObservationPayload): MarketMa
       return observation.date && Number.isFinite(value) ? [{ date: observation.date, value }] : [];
     })
     .sort((left, right) => left.date.localeCompare(right.date));
+}
+
+/** Fetch a raw FRED series through the shared authentication, parsing, and cache path. */
+export async function fetchFredSeriesPoints(
+  seriesId: string,
+  options: { units?: FredUnits; limit?: number } = {},
+  apiKey = String(process.env.FRED_API_KEY ?? "").trim(),
+): Promise<MarketMacroPoint[]> {
+  if (!apiKey) throw new Error("FRED_API_KEY is not configured.");
+  const payload = await fetchFredJson<FredObservationPayload>(fredUrl("series/observations", apiKey, {
+    series_id: seriesId,
+    units: options.units ?? "lin",
+    sort_order: "desc",
+    limit: options.limit ?? 1_500,
+  }));
+  const points = parseFredObservations(payload);
+  if (!points.length) throw new Error(`FRED returned no observations for ${seriesId}`);
+  return points;
 }
 
 export function buildMacroIndicator(

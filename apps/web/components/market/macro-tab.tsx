@@ -12,6 +12,7 @@ import type {
   MarketRatesCreditData,
   MacroPredictionEvent,
 } from "@/lib/server/types";
+import type { RateTransmissionData } from "@/lib/rate-transmission";
 import { signalFor } from "@/lib/macro-signals";
 import { percentileContext } from "@/lib/macro-context";
 import { MacroConditions } from "./macro-conditions";
@@ -28,6 +29,7 @@ import {
   type NextRelease,
 } from "@/lib/macro-calendar-display";
 import { RatesCreditSection } from "./rates-credit-section";
+import { RateTransmissionSection } from "./rate-transmission";
 
 interface Props {
   data: MarketMacroData | null;
@@ -50,6 +52,11 @@ interface Props {
   };
   ratesCredit: {
     data: MarketRatesCreditData | null;
+    loading: boolean;
+    error: string | null;
+  };
+  rateTransmission: {
+    data: RateTransmissionData | null;
     loading: boolean;
     error: string | null;
   };
@@ -206,7 +213,7 @@ function IndicatorGrid({ indicators, contracts, nextReleases, today }: {
   );
 }
 
-export function MacroTab({ data, loading, error, predictions, calendar, bonds, ratesCredit }: Props) {
+export function MacroTab({ data, loading, error, predictions, calendar, bonds, ratesCredit, rateTransmission }: Props) {
   if (loading && !data) {
     return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading FRED macro indicators…</div>;
   }
@@ -261,7 +268,8 @@ export function MacroTab({ data, loading, error, predictions, calendar, bonds, r
           const indicators = data.indicators.filter((indicator) => indicator.group === group.id);
           if (!indicators.length) return null;
           return (
-            <details key={group.id} className="group rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.3)]">
+            <div key={group.id} className="contents">
+            <details className="group rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.3)]">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 [&::-webkit-details-marker]:hidden">
                 <span>
                   <span className="text-sm font-semibold text-[color:var(--ink)]">{group.label}</span>
@@ -279,6 +287,8 @@ export function MacroTab({ data, loading, error, predictions, calendar, bonds, r
                 <IndicatorGrid indicators={indicators} contracts={contracts} nextReleases={nextReleases} today={today} />
               </div>
             </details>
+            {group.id === "financial" && <RateTransmissionSection {...rateTransmission} />}
+            </div>
           );
         })}
       </div>
