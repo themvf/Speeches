@@ -1,11 +1,16 @@
 import { createRequestId, fail, ok } from "@/lib/server/api-utils";
 import { fetchFredSeriesPoints } from "@/lib/server/fred-macro";
+import { fetchFedCreditResearch, FED_CREDIT_RESEARCH_SOURCE_URL } from "@/lib/server/fed-credit-research";
 import {
   alignAsOf,
   attributeWindow,
+  attributeYearToDate,
+  buildCreditResearch,
+  crossCorrelate,
   decompose,
   latestDifference,
   RATE_TRANSMISSION_SERIES,
+  rollingOls,
   type RateTransmissionData,
 } from "@/lib/rate-transmission";
 import type { MarketMacroPoint } from "@/lib/server/types";
@@ -18,9 +23,10 @@ const WINDOW_DAYS = { "1M": 30, "3M": 91, "6M": 182, "12M": 365 } as const;
 export async function GET() {
   const requestId = createRequestId();
   try {
-    const settled = await Promise.allSettled(
-      RATE_TRANSMISSION_SERIES.map((series) => fetchFredSeriesPoints(series.id, { limit: 1_500 })),
-    );
+    const [settled, creditResearchResult] = await Promise.all([
+      Promise.allSettled(RATE_TRANSMISSION_SERIES.map((series) => fetchFredSeriesPoints(series.id, { limit: 1_500 }))),
+      Promise.allSettled([fetchFedCreditResearch()]),
+    ]);
     const series = new Map<string, MarketMacroPoint[]>();
     const warnings: string[] = [];
     settled.forEach((result, index) => {
@@ -28,7 +34,11 @@ export async function GET() {
       if (result.status === "fulfilled") series.set(definition.id, result.value);
       else warnings.push(`${definition.label} (${definition.id}) unavailable: ${result.reason instanceof Error ? result.reason.message : "upstream request failed"}`);
     });
-    if (!series.size) {
+    const creditResearchPoints = creditResearchResult[0].status === "fulfilled" ? creditResearchResult[0].value : [];
+    if (creditResearchResult[0].status === "rejected") {
+      warnings.push(`Federal Reserve corporate-credit research unavailable: ${creditResearchResult[0].reason instanceof Error ? creditResearchResult[0].reason.message : "upstream request failed"}`);
+    }
+    if (!series.size && !creditResearchPoints.length) {
       const firstFailure = settled.find((result) => result.status === "rejected");
       throw firstFailure?.status === "rejected"
         ? firstFailure.reason
@@ -36,7 +46,19 @@ export async function GET() {
     }
 
     const mortgage = alignAsOf(series.get("DGS10") ?? [], series.get("MORTGAGE30US") ?? []);
-    const dates = [...series.values()].flatMap((points) => points.at(-1)?.date ?? []).sort();
+    const dates = [...series.values()].flatMap((points) => points.at(-1)?.date ?? []).concat(creditResearchPoints.at(-1)?.date ?? []).sort();
+    const sources: RateTransmissionData["sources"] = RATE_TRANSMISSION_SERIES
+      .filter((definition) => series.has(definition.id))
+      .map((definition) => ({
+        seriesId: definition.id,
+        label: definition.label,
+        url: `https://fred.stlouisfed.org/series/${definition.id}`,
+      }));
+    if (creditResearchPoints.length) sources.push({
+      seriesId: "FED_EBP",
+      label: "Federal Reserve corporate-credit research",
+      url: FED_CREDIT_RESEARCH_SOURCE_URL,
+    });
     const data: RateTransmissionData = {
       asOf: decompose(mortgage)?.observationDate ?? dates.at(-1) ?? "",
       generatedAt: new Date().toISOString(),
@@ -44,7 +66,7 @@ export async function GET() {
         mortgage: decompose(mortgage),
         corporate: {
           available: false,
-          reason: "Moody's-derived corporate yield series are omitted because their FRED notes prohibit redistribution without prior written consent.",
+          reason: "Moody's Aaa/Baa series and ICE BofA rating-specific and High Yield OAS are omitted because this public deployment does not hold redistribution rights.",
         },
       },
       curve: {
@@ -53,18 +75,18 @@ export async function GET() {
         longTail: latestDifference(series.get("DGS10") ?? [], series.get("DGS30") ?? []),
         policyGap: latestDifference(series.get("DFF") ?? [], series.get("DGS2") ?? []),
       },
-      attribution: Object.entries(WINDOW_DAYS).map(([window, days]) => ({
-        window: window as keyof typeof WINDOW_DAYS,
-        mortgage: attributeWindow(mortgage, days),
-      })),
-      warnings,
-      sources: RATE_TRANSMISSION_SERIES
-        .filter((definition) => series.has(definition.id))
-        .map((definition) => ({
-          seriesId: definition.id,
-          label: definition.label,
-          url: `https://fred.stlouisfed.org/series/${definition.id}`,
+      attribution: [
+        ...Object.entries(WINDOW_DAYS).map(([window, days]) => ({
+          window: window as keyof typeof WINDOW_DAYS,
+          mortgage: attributeWindow(mortgage, days),
         })),
+        { window: "YTD" as const, mortgage: attributeYearToDate(mortgage) },
+      ],
+      passThrough: { mortgage: rollingOls(mortgage, 52, 30) },
+      leadLag: { mortgageTreasury: crossCorrelate(mortgage, 4, 30) },
+      creditResearch: buildCreditResearch(creditResearchPoints, series.get("DGS10") ?? []),
+      warnings,
+      sources,
     };
     return ok(data, requestId);
   } catch (error) {

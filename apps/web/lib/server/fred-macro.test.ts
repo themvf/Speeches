@@ -30,7 +30,6 @@ test("defines the complete grouped market macro catalog", () => {
     "WALCL",
     "M2SL",
     "SOFR",
-    "BAA10Y",
     "NFCICREDIT",
     "DFII10",
     "DTWEXBGS",
@@ -38,7 +37,7 @@ test("defines the complete grouped market macro catalog", () => {
     "PERMIT",
     "MORTGAGE30US",
   ]);
-  assert.equal(new Set(FRED_MACRO_DEFINITIONS.map((definition) => definition.id)).size, 28);
+  assert.equal(new Set(FRED_MACRO_DEFINITIONS.map((definition) => definition.id)).size, 27);
   assert.deepEqual(new Set(FRED_MACRO_DEFINITIONS.map((definition) => definition.group)), new Set([
     "headline", "activity", "inflation", "labor", "financial", "housing",
   ]));

@@ -1,6 +1,6 @@
 # Rate Transmission: spreads → mortgage rates and corporate bonds (and back)
 
-Status: **Phase 1 implemented**, 2026-08-28. Target surface: `/market` → Macro tab.
+Status: **Public-data phases implemented**, 2026-08-29. Phase 1 attribution is complete; mortgage Phase 2/3 analytics and the Federal Reserve corporate-credit research layer are live. Rating-specific IG/HY and CDS remain license-gated. Target surface: `/market` → Macro tab.
 
 ## 1. The question
 
@@ -42,6 +42,7 @@ FRED already serves, without adding a database table or an LLM call.
 | `AAA10Y` | Aaa spread over 10Y, daily | FRED-computed | no |
 | `T10Y2Y` | 10Y−2Y, daily | FRED-computed | yes (`yield_curve_10y2y`) |
 | `T10Y3M` | 10Y−3M, daily | FRED-computed | no |
+| Fed GZ/EBP CSV | Corporate spread, excess bond premium, default-risk component, monthly | Federal Reserve Board research data | yes (`rate-transmission`) |
 
 Optional later: `MORTGAGE15US`; `OBMMIC30YF` (Optimal Blue, **daily** mortgage
 rate — would fix the PMMS timing problem in §5.2, licence unverified).
@@ -69,6 +70,16 @@ The series pages were checked directly:
   **blocked** for the public route. Phase 1 renders the corporate rows as
   unavailable pending a licensed corporate-yield source.
 - `OBMMIC30YF` remains unknown and blocked until checked.
+
+The Federal Reserve Board's GZ/EBP research CSV is fetched directly from the
+Board with source attribution. It supplies a monthly aggregate spread for
+senior unsecured nonfinancial corporate bonds, the excess bond premium, and a
+model-implied recession probability. It is public research context, not a
+replacement for rating-specific IG/HY OAS or security-level corporate debt.
+
+The previously displayed `BAA10Y` Macro indicator was removed after this audit;
+retaining a license-blocked series elsewhere on the same public page would have
+undercut the route-level restriction.
 
 ### 2.3 Why these series do NOT go into `FRED_MACRO_DEFINITIONS`
 
@@ -349,8 +360,8 @@ Keep the existing "research context only" posture.
 |---|---|---|
 | 0 | Verify licences (§2.2) from a machine that can reach FRED | a go/no-go per series |
 | 1 | Route + `lib/rate-transmission.ts` + §3.1 attribution + levels/curve-tail panel | the headline answer, zero estimation risk |
-| 2 | §3.2 pass-through betas | "does a Treasury move reach borrowers" |
-| 3 | §3.3 lead/lag | the "vice versa" |
+| 2 | §3.2 pass-through betas | Mortgage shipped with β, standard error, R², n, and n<30 suppression; corporate remains license-gated |
+| 3 | §3.3 lead/lag | Mortgage↔10Y shipped with ±4-week guardrails; corporate remains license-gated |
 | 4 | Optional: daily mortgage series if licensing allows; 15Y mortgage; a spread-history chart with recession shading | |
 
 Phase 1 is worth shipping alone. Phases 2 and 3 are the ones that can be subtly

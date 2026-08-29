@@ -9,7 +9,7 @@ interface Props {
   error: string | null;
 }
 
-const WINDOW_LABELS = ["1M", "3M", "6M", "12M"] as const;
+const WINDOW_LABELS = ["1M", "3M", "6M", "12M", "YTD"] as const;
 
 function pct(value: number): string {
   return `${value.toFixed(2)}%`;
@@ -17,6 +17,26 @@ function pct(value: number): string {
 
 function bp(value: number): string {
   return `${value >= 0 ? "+" : ""}${Math.round(value)} bp`;
+}
+
+function regimeLabel(regime: NonNullable<RateTransmissionData["creditResearch"]>["regime"]): string {
+  return ({
+    restrictive_financing: "Rates and risk premium both tightening",
+    rates_led_tightening: "Rates-led tightening",
+    flight_to_quality: "Flight-to-quality pattern",
+    broad_easing: "Rates and risk premium both easing",
+    mixed: "Mixed cross-asset signal",
+  } as const)[regime];
+}
+
+function appetiteLabel(appetite: NonNullable<RateTransmissionData["creditResearch"]>["appetite"]): string {
+  return appetite === "risk_averse" ? "Below-average risk appetite" : appetite === "supportive" ? "Above-average risk appetite" : "Near-average risk appetite";
+}
+
+function leadLagCopy(result: NonNullable<RateTransmissionData["leadLag"]["mortgageTreasury"]>): string {
+  if (result.verdict === "no_clear_lead") return "No clear lead: the strongest lag does not materially improve on contemporaneous correlation.";
+  const leader = result.verdict === "treasury_leads" ? "Treasury" : "Mortgage";
+  return `${leader} changes led by ${Math.abs(result.bestLag)} ${Math.abs(result.bestLag) === 1 ? "week" : "weeks"} in this sample.`;
 }
 
 function CurveCard({ label, description, value }: { label: string; description: string; value: number | null }) {
@@ -49,6 +69,8 @@ export function RateTransmissionSection({ data, loading, error }: Props) {
   const [window, setWindow] = useState<(typeof WINDOW_LABELS)[number]>("3M");
   const attribution = data?.attribution.find((entry) => entry.window === window)?.mortgage ?? null;
   const mortgage = data?.levels.mortgage ?? null;
+  const passThrough = data?.passThrough?.mortgage ?? null;
+  const leadLag = data?.leadLag?.mortgageTreasury ?? null;
   return (
     <details className="group rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.3)]">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 [&::-webkit-details-marker]:hidden">
@@ -79,11 +101,39 @@ export function RateTransmissionSection({ data, loading, error }: Props) {
                   )}
                 </div>
                 <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
-                  <p className="text-sm font-semibold text-amber-200">Corporate Aaa / Baa</p>
+                  <p className="text-sm font-semibold text-amber-200">Rating-specific corporate debt and High Yield</p>
                   <p className="mt-2 text-xs leading-5 text-amber-100/70">Unavailable pending a licensed corporate-yield source. {data.levels.corporate.reason}</p>
                 </div>
               </div>
             </div>
+
+            {data.creditResearch && (
+              <div>
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Public corporate-credit context</p>
+                    <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">Federal Reserve research series · senior unsecured nonfinancial corporate bonds · monthly and revisable</p>
+                  </div>
+                  <p className="text-[10px] text-[color:var(--ink-faint)]">Observation {data.creditResearch.observationDate}</p>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <CurveCard label="Corporate spread" description="Gilchrist–Zakrajšek aggregate" value={data.creditResearch.corporateSpread} />
+                  <CurveCard label="Default-risk component" description="Spread less excess premium" value={data.creditResearch.defaultRiskComponent} />
+                  <CurveCard label="Excess bond premium" description={appetiteLabel(data.creditResearch.appetite)} value={data.creditResearch.excessBondPremium} />
+                  <div className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Fed research model</p>
+                    <p className="mt-1 text-xl font-bold tabular-nums text-[color:var(--ink)]">{(data.creditResearch.recessionProbability * 100).toFixed(1)}%</p>
+                    <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">Model-implied 12-month recession probability</p>
+                  </div>
+                </div>
+                <div className="mt-3 rounded-lg border border-[color:rgba(79,213,255,0.25)] bg-[color:rgba(79,213,255,0.06)] p-3">
+                  <p className="text-sm font-semibold text-[color:var(--ink)]">{regimeLabel(data.creditResearch.regime)}</p>
+                  <p className="mt-1 text-xs text-[color:var(--ink-faint)]">
+                    Three-month move: 10Y Treasury {data.creditResearch.treasuryChange3mBp === null ? "n/a" : bp(data.creditResearch.treasuryChange3mBp)}; excess bond premium {data.creditResearch.ebpChange3mBp === null ? "n/a" : bp(data.creditResearch.ebpChange3mBp)}. EBP is at the {Math.round(data.creditResearch.ebpPercentile)}th percentile of its history.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Curve transmission</p>
@@ -92,6 +142,32 @@ export function RateTransmissionSection({ data, loading, error }: Props) {
                 <CurveCard label="Belly" description="10Y − 2Y" value={data.curve.belly?.value ?? null} />
                 <CurveCard label="Long tail" description="30Y − 10Y" value={data.curve.longTail?.value ?? null} />
                 <CurveCard label="Policy gap" description="2Y − effective fed funds" value={data.curve.policyGap?.value ?? null} />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Pass-through and timing</p>
+              <div className="mt-2 grid gap-3 lg:grid-cols-2">
+                <div className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-4">
+                  <p className="text-sm font-semibold text-[color:var(--ink)]">Mortgage pass-through</p>
+                  {passThrough ? (
+                    <>
+                      <p className="mt-2 text-xl font-bold tabular-nums text-[color:var(--ink)]">β {passThrough.beta.toFixed(2)} <span className="text-sm font-medium text-[color:var(--ink-faint)]">± {passThrough.standardError.toFixed(2)}</span></p>
+                      <p className="mt-1 text-xs text-[color:var(--ink-faint)]">R² {passThrough.rSquared.toFixed(2)} · n={passThrough.n} weekly changes · rolling {passThrough.window}-week window</p>
+                      <p className="mt-2 text-[10px] leading-4 text-[color:var(--ink-faint)]">A 100 bp weekly 10Y Treasury move was associated with approximately {Math.round(passThrough.beta * 100)} bp in the mortgage rate within this window. Association, not a structural causal estimate.</p>
+                    </>
+                  ) : <p className="mt-2 text-xs text-[color:var(--ink-faint)]">Suppressed: fewer than 30 usable weekly changes or insufficient variation.</p>}
+                </div>
+                <div className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-4">
+                  <p className="text-sm font-semibold text-[color:var(--ink)]">Treasury ↔ mortgage timing</p>
+                  {leadLag ? (
+                    <>
+                      <p className="mt-2 text-xl font-bold tabular-nums text-[color:var(--ink)]">r {leadLag.correlation.toFixed(2)}</p>
+                      <p className="mt-1 text-xs text-[color:var(--ink-faint)]">{leadLagCopy(leadLag)}</p>
+                      <p className="mt-2 text-[10px] leading-4 text-[color:var(--ink-faint)]">Weekly yield-level changes, ±4-week search, n={leadLag.n}. A lead is named only when |r|≥0.20 and exceeds lag zero by at least 0.05; correlation does not identify the mechanism.</p>
+                    </>
+                  ) : <p className="mt-2 text-xs text-[color:var(--ink-faint)]">Insufficient aligned history for guarded lead/lag analysis.</p>}
+                </div>
               </div>
             </div>
 
