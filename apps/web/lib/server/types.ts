@@ -593,7 +593,7 @@ export interface MarketMacroCalendarData {
   warnings?: string[];
 }
 
-export type MarketRatesCreditGroup = "treasury" | "real_yield" | "credit_ig" | "credit_hy";
+export type MarketRatesCreditGroup = "treasury" | "real_yield" | "credit_ig" | "credit_hy" | "borrowing";
 
 export interface MarketRatesCreditPoint {
   date: string;
@@ -634,11 +634,103 @@ export interface MarketRatesCreditDriver {
   tone: MarketRatesCreditTone;
 }
 
+// ── Rate transmission ────────────────────────────────────────────────────────
+// What borrowers pay, split into the Treasury yield underneath and the spread
+// on top. Computed inside the rates-credit payload so every figure on the
+// workspace comes from one fetch, on one observation date.
+
+/** Where a value sits in its own history. The window is always named. */
+export interface RatesPercentileContext {
+  percentile: number;
+  sampleSize: number;
+  /** e.g. "since Aug 2021" - depth varies enormously by series. */
+  window: string;
+  summary: string;
+}
+
+export interface RateDecomposition {
+  observationDate: string;
+  /** As-of date of the Treasury base, which trails for a weekly rate. */
+  baseObservationDate: string;
+  rate: number;
+  base: number;
+  spread: number;
+  spreadPercentile: number | null;
+  spreadContext: RatesPercentileContext | null;
+  sampleSize: number;
+  historyStart: string | null;
+}
+
+export interface RateAttribution {
+  startDate: string;
+  endDate: string;
+  /** Whole basis points, with totalBp === baseBp + spreadBp exactly. */
+  totalBp: number;
+  baseBp: number;
+  spreadBp: number;
+}
+
+export interface RateCurveReading {
+  value: number;
+  observationDate: string;
+  baseObservationDate: string;
+}
+
+/** How much of a Treasury move reaches this borrower. An estimate, not arithmetic. */
+export interface RatePassThrough {
+  /** Share of each Treasury move that reached the borrower, e.g. 0.82. */
+  beta: number;
+  /** Standard error of that share. A wide band means the number is not a finding. */
+  stdError: number;
+  /** Share of the borrower's variation the Treasury move explains, 0-1. */
+  rSquared: number;
+  observations: number;
+  /** e.g. "52 weekly changes" - so the reader knows what it rests on. */
+  windowLabel: string;
+  /** Periods the base is shifted back by. Non-zero needs the note below. */
+  lagPeriods: number;
+  /** Why the comparison is lagged, when it is. */
+  lagNote: string | null;
+}
+
+export interface RateLeadLag {
+  /** Observation periods by which the first series leads; negative means it trails. */
+  bestLagPeriods: number;
+  correlation: number;
+  observations: number;
+  periodLabel: string;
+  /** Plain statement, including "no clear lead" when nothing stands out. */
+  verdict: string;
+}
+
+export interface RateTransmissionTargetBlock {
+  id: string;
+  label: string;
+  level: RateDecomposition | null;
+  attribution: Array<{ window: string; value: RateAttribution | null }>;
+  passThrough: RatePassThrough | null;
+  leadLag: RateLeadLag | null;
+  /** Why no timing comparison is shown, when one is not possible. */
+  leadLagNote: string | null;
+  /** Present when the target could not be built at all. */
+  unavailableReason: string | null;
+}
+
+export interface MarketRateTransmission {
+  baseLabel: string;
+  targets: RateTransmissionTargetBlock[];
+  curve: Array<{ id: string; label: string; description: string; reading: RateCurveReading | null }>;
+  windows: string[];
+  notes: string[];
+}
+
 export interface MarketRatesCreditData {
   treasuryCurve: MarketRatesCreditMetric[];
   realYields: MarketRatesCreditMetric[];
   investmentGrade: MarketRatesCreditMetric[];
   highYield: MarketRatesCreditMetric[];
+  borrowing: MarketRatesCreditMetric[];
+  transmission: MarketRateTransmission | null;
   signals: MarketRatesCreditSignal[];
   drivers: MarketRatesCreditDriver[];
   generatedAt: string;

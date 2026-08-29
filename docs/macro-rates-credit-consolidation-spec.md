@@ -1,8 +1,9 @@
 # Making the Macro page tell one story about rates and credit
 
-Written 2026-08-28. **Proposal only — no code changes.** Plain language throughout;
-there is a short glossary at the end, and an appendix with the exact file and
-series names for whoever builds it.
+Written 2026-08-28. **All five stages implemented 2026-08-29.** What actually
+happened, including where the result fell short of the estimate, is recorded in
+section 9 at the end. Plain language throughout; there is a short glossary, and
+an appendix with the exact file and series names.
 
 ---
 
@@ -305,6 +306,50 @@ separately, so the visible numbers sometimes did not add up.
    the data provider and the Treasury's own file. They differ slightly in timing
    and in which maturities they carry. Picking one is a small decision with a
    long tail, and I would rather you made it than inherited it.
+
+---
+
+## 9. What actually happened
+
+All five stages shipped. Three things are worth recording because they differ
+from what this document predicted.
+
+**The request count came down far less than estimated.** Stage 1 predicted a
+drop from 85 requests toward roughly 30. The real figure is **81**. Removing the
+duplicate panel's route saved seven series; folding what borrowers pay into the
+workspace added three back. The remaining bulk is not duplication at all — it is
+the twenty-eight indicator cards, which each cost two requests (one for the
+numbers, one for the publication date shown on the card) and account for 56 of
+the 81. Getting to 30 means consolidating that card route, which is a separate
+piece of work and was not attempted here.
+
+**The skew problem, which was the actual point, is fixed.** Four routes fed the
+Macro tab; now two do. Both read FRED, both hold their copy for the same fifteen
+minutes, and the hourly-cached Treasury file no longer feeds this tab at all. So
+two figures on the page can no longer be an hour apart, and can no longer come
+from different sources. Series still fetched twice fell from eight to four, all
+four now on identical refresh cycles.
+
+**Stage 4 nearly shipped a false conclusion, and real data caught it.** The
+first working version measured pass-through within the same week and reported
+that about **25%** of each Treasury move reached mortgage borrowers, explaining
+8% of the variation — which reads as "Treasury moves barely reach homeowners".
+That is wrong. Freddie Mac surveys lenders about quotes made *before* it
+publishes, so the mortgage rate responds to the *previous* week's Treasury move.
+Comparing the same week measures mostly noise. Lagging by one week gives **56%**,
+explaining 44% — more than double the estimate and five times the explanatory
+power. The correction was written into this document's own §7 rule about never
+guessing a date, and was still missed until the numbers were run against real
+observations. The lag is now applied, labelled on screen, and covered by a test.
+
+A fourth item, discovered while building stage 5: the corporate row cannot
+answer "who moves first" at all. FRED publishes the Baa *spread*, so the yield
+level is rebuilt as spread plus Treasury and therefore contains the Treasury by
+construction — it would correlate with it near-perfectly for arithmetic reasons.
+Answering it honestly needs an independently observed corporate yield whose
+licence has not been checked. The panel says so rather than showing a number.
+Mortgages are unaffected: Freddie Mac surveys lenders directly, so that
+comparison is real, and it finds the Treasury leading by about a week.
 
 ---
 

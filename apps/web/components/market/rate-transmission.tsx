@@ -1,182 +1,220 @@
 "use client";
 
 import { useState } from "react";
-import type { AttributionResult, RateTransmissionData } from "@/lib/rate-transmission";
-
-interface Props {
-  data: RateTransmissionData | null;
-  loading: boolean;
-  error: string | null;
-}
-
-const WINDOW_LABELS = ["1M", "3M", "6M", "12M"] as const;
+import type {
+  MarketRateTransmission,
+  RateAttribution,
+  RateTransmissionTargetBlock,
+} from "@/lib/server/types";
 
 /**
- * Leg colours, shared by the bars and their legend so the two cannot disagree.
+ * The transmission subsection of the Rates & Credit workspace.
  *
- * These are literals rather than `text-amber-300` because every numbered amber
- * utility in this app is dead: tailwind.config.ts sets `colors.amber` to the
- * string "var(--amber)", which replaces Tailwind's amber scale instead of
- * extending it, so `amber-300` matches no rule and the swatch silently
- * inherited the ink colour while its bar rendered orange.
+ * What borrowers pay, split into the Treasury yield underneath and the spread
+ * on top; then how much of the recent move came from each, whether moves are
+ * reaching borrowers, and which side moves first.
+ *
+ * Its data arrives inside the workspace payload rather than from a route of its
+ * own, so every figure here shares an observation date with the curve above it.
+ *
+ * Leg colours are literals shared by the bars and their legend so the two
+ * cannot disagree, and are kept off the page's semantic palette - cyan, green,
+ * red and amber all already mean something on this tab.
  */
-const LEG_COLORS = { base: "#4fd5ff", spread: "#f59e0b" } as const;
+const LEG = { base: "#7c93ff", spread: "#f0609e" } as const;
 
-function pct(value: number): string {
-  return `${value.toFixed(2)}%`;
+/** Never scale the bars off a move so small the rounding dominates. */
+const MIN_BAR_SCALE_BP = 25;
+
+const pct = (value: number) => `${value.toFixed(2)}%`;
+/** A spread is a difference between two yields: percentage points, not percent. */
+const pp = (value: number) => `${value.toFixed(2)} pp`;
+const bp = (value: number) => `${value >= 0 ? "+" : "−"}${Math.abs(Math.round(value))} bp`;
+
+function formatDate(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
 /**
- * A spread is a difference between two yields, so it is percentage points, not
- * a percentage. Rendering 10Y-2Y of 0.62 as "0.62%" reads as a yield.
+ * One leg as a bar either side of zero. Deliberately not stacked: the legs
+ * routinely carry opposite signs - a Treasury selloff met by a narrowing
+ * spread is the ordinary case - and stacking would hide exactly that.
  */
-function pp(value: number): string {
-  return `${value.toFixed(2)} pp`;
-}
-
-function bp(value: number): string {
-  return `${value >= 0 ? "+" : ""}${Math.round(value)} bp`;
-}
-
-function CurveCard({ label, description, value }: { label: string; description: string; value: number | null }) {
+function LegBar({ valueBp, scaleBp, color, label }: { valueBp: number; scaleBp: number; color: string; label: string }) {
+  const half = 50;
+  const width = Math.min(Math.abs(valueBp) / scaleBp, 1) * half;
   return (
-    <div className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">{label}</p>
-      <p className="mt-1 text-xl font-bold tabular-nums text-[color:var(--ink)]">{value === null ? "—" : pp(value)}</p>
-      <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">{description}</p>
+    <div className="flex items-center gap-3">
+      <span className="w-[92px] shrink-0 text-[10px] text-[color:var(--ink-faint)]">{label}</span>
+      <span className="relative h-3 flex-1 rounded-sm bg-[color:rgba(15,32,50,0.7)]">
+        <span aria-hidden="true" className="absolute inset-y-0 left-1/2 w-px bg-[color:var(--line)]" />
+        <span
+          className="absolute inset-y-0 rounded-sm"
+          style={{ left: `${valueBp >= 0 ? half : half - width}%`, width: `${Math.max(width, 0.4)}%`, backgroundColor: color }}
+        />
+      </span>
+      <span className="w-[64px] shrink-0 text-right text-[11px] font-semibold tabular-nums text-[color:var(--ink-soft)]">
+        {bp(valueBp)}
+      </span>
     </div>
   );
 }
 
-function AttributionBars({ value }: { value: AttributionResult }) {
-  const max = Math.max(Math.abs(value.baseBp), Math.abs(value.spreadBp), 1);
-  const bar = (amount: number, color: string, y: number) => {
-    const width = 45 * Math.abs(amount) / max;
-    const x = amount >= 0 ? 50 : 50 - width;
-    return <rect x={x} y={y} width={width} height="7" rx="2" fill={color} />;
-  };
+function Attribution({ value }: { value: RateAttribution }) {
+  const scale = Math.max(Math.abs(value.baseBp), Math.abs(value.spreadBp), MIN_BAR_SCALE_BP);
   return (
-    <svg viewBox="0 0 100 30" className="h-20 w-full" role="img" aria-label="Mortgage rate change attributed to Treasury yield and spread changes">
-      <line x1="50" y1="1" x2="50" y2="29" stroke="rgba(255,255,255,0.28)" strokeWidth="0.6" />
-      {bar(value.baseBp, LEG_COLORS.base, 5)}
-      {bar(value.spreadBp, LEG_COLORS.spread, 18)}
-    </svg>
+    <div className="mt-3 flex flex-col gap-2 border-t border-[color:var(--line)] pt-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[10px] text-[color:var(--ink-faint)]">
+          {formatDate(value.startDate)} to {formatDate(value.endDate)}
+        </span>
+        <span className="text-sm font-semibold tabular-nums text-[color:var(--ink)]">{bp(value.totalBp)}</span>
+      </div>
+      <LegBar valueBp={value.baseBp} scaleBp={scale} color={LEG.base} label="Treasury" />
+      <LegBar valueBp={value.spreadBp} scaleBp={scale} color={LEG.spread} label="Spread" />
+      <p className="text-[10px] text-[color:var(--ink-faint)]">Components sum to the total by construction.</p>
+    </div>
   );
 }
 
-export function RateTransmissionSection({ data, loading, error }: Props) {
-  const [window, setWindow] = useState<(typeof WINDOW_LABELS)[number]>("3M");
-  const windowEntry = data?.attribution.find((entry) => entry.window === window) ?? null;
-  const attribution = windowEntry?.mortgage ?? null;
-  const corporateAttribution = windowEntry?.corporate ?? null;
-  const mortgage = data?.levels.mortgage ?? null;
-  // Tolerates a payload from the build that predates the corporate row.
-  const corporate = data?.levels.corporate?.available ? data.levels.corporate.level : null;
+/** An estimate, so it always shows the sample it rests on. */
+function Estimates({ target }: { target: RateTransmissionTargetBlock }) {
+  if (!target.passThrough && !target.leadLag && !target.leadLagNote) return null;
+  const reach = target.passThrough;
   return (
-    <details className="group rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.3)]">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 [&::-webkit-details-marker]:hidden">
-        <span>
-          <span className="text-sm font-semibold text-[color:var(--ink)]">Rate Transmission</span>
-          <span className="ml-2 text-xs text-[color:var(--ink-faint)]">What is moving borrowing costs: benchmarks or spreads?</span>
-        </span>
-        <span aria-hidden="true" className="text-base text-[color:var(--ink-faint)] transition-transform group-open:rotate-180">⌄</span>
-      </summary>
-      <div className="space-y-5 border-t border-[color:var(--line)] p-4">
-        {loading && !data && <p className="text-xs text-[color:var(--ink-faint)]">Loading rate transmission…</p>}
-        {error && !data && <p className="text-xs text-red-300">Rate transmission is unavailable: {error}</p>}
-        {data && (
-          <>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Levels decomposition</p>
-              <div className="mt-2 grid gap-3 lg:grid-cols-2">
-                <div className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-4">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-sm font-semibold text-[color:var(--ink)]">30Y mortgage</p>
-                    <p className="text-lg font-bold tabular-nums text-[color:var(--ink)]">{mortgage ? pct(mortgage.rate) : "—"}</p>
-                  </div>
-                  <p className="mt-2 text-xs tabular-nums text-[color:var(--ink-soft)]">
-                    {mortgage ? `${pct(mortgage.base)} 10Y Treasury + ${pp(mortgage.spread)} mortgage spread` : "Mortgage or Treasury input unavailable"}
-                  </p>
-                  {mortgage?.spreadContext && (
-                    <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]" title={`Percentile of ${mortgage.sampleSize} aligned observations`}>
-                      Spread: {mortgage.spreadContext.summary}
-                    </p>
-                  )}
-                </div>
-                {corporate ? (
-                  <div className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-4">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <p className="text-sm font-semibold text-[color:var(--ink)]">Baa corporate</p>
-                      <p className="text-lg font-bold tabular-nums text-[color:var(--ink)]">{pct(corporate.rate)}</p>
-                    </div>
-                    <p className="mt-2 text-xs tabular-nums text-[color:var(--ink-soft)]">
-                      {`${pct(corporate.base)} 10Y Treasury + ${pp(corporate.spread)} Baa spread`}
-                    </p>
-                    {corporate.spreadContext && (
-                      <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]" title={`Percentile of ${corporate.sampleSize} aligned observations`}>
-                        Spread: {corporate.spreadContext.summary}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
-                    <p className="text-sm font-semibold text-amber-200">Baa corporate</p>
-                    <p className="mt-2 text-xs leading-5 text-amber-100/70">{data.levels.corporate.reason}</p>
-                  </div>
-                )}
-              </div>
-            </div>
+    <div className="mt-3 flex flex-col gap-2 border-t border-[color:var(--line)] pt-3">
+      {reach && (
+        <div>
+          <p className="text-[11px] text-[color:var(--ink-soft)]">
+            About <span className="font-semibold tabular-nums text-[color:var(--ink)]">{Math.round(reach.beta * 100)}%</span>{" "}
+            of each Treasury move has reached this borrower.
+          </p>
+          <p className="text-[10px] tabular-nums text-[color:var(--ink-faint)]">
+            ± {Math.round(reach.stdError * 100)} pts · explains {Math.round(reach.rSquared * 100)}% of the variation · {reach.windowLabel}
+          </p>
+          {reach.lagNote && <p className="text-[10px] leading-4 text-[color:var(--ink-faint)]">{reach.lagNote}</p>}
+        </div>
+      )}
+      {!target.leadLag && target.leadLagNote && (
+        <p className="text-[10px] leading-4 text-[color:var(--ink-faint)]">{target.leadLagNote}</p>
+      )}
+      {target.leadLag && (
+        <div>
+          <p className="text-[11px] text-[color:var(--ink-soft)]">{target.leadLag.verdict}</p>
+          <p className="text-[10px] tabular-nums text-[color:var(--ink-faint)]">
+            Timing only, not cause · correlation {target.leadLag.correlation.toFixed(2)} over {target.leadLag.observations} {target.leadLag.periodLabel}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Curve transmission</p>
-              <div className="mt-2 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <CurveCard label="Short tail" description="2Y − 3M" value={data.curve.shortTail?.value ?? null} />
-                <CurveCard label="Belly" description="10Y − 2Y" value={data.curve.belly?.value ?? null} />
-                <CurveCard label="Long tail" description="30Y − 10Y" value={data.curve.longTail?.value ?? null} />
-                <CurveCard label="Policy gap" description="2Y − effective fed funds" value={data.curve.policyGap?.value ?? null} />
-              </div>
-            </div>
+function TargetCard({ target, baseLabel, windowLabel }: {
+  target: RateTransmissionTargetBlock;
+  baseLabel: string;
+  windowLabel: string;
+}) {
+  const level = target.level;
+  const attributed = target.attribution.find((entry) => entry.window === windowLabel)?.value ?? null;
 
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">Change attribution</p>
-                <div className="flex gap-1">
-                  {WINDOW_LABELS.map((label) => (
-                    <button key={label} type="button" onClick={() => setWindow(label)} className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${window === label ? "border-[color:var(--accent)] bg-[color:rgba(79,213,255,0.12)] text-[color:var(--accent)]" : "border-[color:var(--line)] text-[color:var(--ink-faint)]"}`}>{label}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-2 grid gap-3 lg:grid-cols-2">
-                {([["30Y mortgage", attribution], ["Baa corporate", corporateAttribution]] as const).map(([label, value]) => (
-                  <div key={label} className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-4">
-                    {value ? (
-                      <>
-                        <p className="text-sm text-[color:var(--ink-soft)]">{label} change: <span className="font-bold tabular-nums text-[color:var(--ink)]">{bp(value.totalBp)}</span></p>
-                        <AttributionBars value={value} />
-                        <div className="flex flex-wrap gap-4 text-xs tabular-nums text-[color:var(--ink-soft)]">
-                          <span><span aria-hidden="true" style={{ color: LEG_COLORS.base }}>■</span> Treasury {bp(value.baseBp)}</span>
-                          <span><span aria-hidden="true" style={{ color: LEG_COLORS.spread }}>■</span> Spread {bp(value.spreadBp)}</span>
-                        </div>
-                        <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]">{value.startDate} to {value.endDate}. Components sum to the total by construction.</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm text-[color:var(--ink-soft)]">{label}</p>
-                        <p className="mt-2 text-xs text-[color:var(--ink-faint)]">Not enough aligned history for this window.</p>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {data.warnings.length > 0 && <p className="text-xs text-amber-300">Partial data: {data.warnings.join(" · ")}</p>}
-            <p className="text-[10px] leading-4 text-[color:var(--ink-faint)]">
-              Descriptive accounting decomposition, not a causal estimate. Sources: {data.sources.map((source, index) => <span key={source.seriesId}>{index ? ", " : ""}<a className="text-[color:var(--accent)] hover:underline" href={source.url} target="_blank" rel="noreferrer">{source.seriesId}</a></span>)}.
-            </p>
-          </>
-        )}
+  if (!level) {
+    return (
+      <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4">
+        <p className="text-sm font-semibold text-amber-200">{target.label}</p>
+        <p className="mt-2 text-xs leading-5 text-amber-100/80">{target.unavailableReason}</p>
       </div>
-    </details>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold text-[color:var(--ink)]">{target.label}</p>
+        <p className="text-lg font-bold tabular-nums text-[color:var(--ink)]">{pct(level.rate)}</p>
+      </div>
+      <p className="mt-1 text-xs tabular-nums text-[color:var(--ink-soft)]">
+        <span style={{ color: LEG.base }}>{pct(level.base)}</span> {baseLabel}
+        {" + "}
+        <span style={{ color: LEG.spread }}>{pp(level.spread)}</span> spread
+      </p>
+      <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">
+        {formatDate(level.observationDate)}
+        {level.baseObservationDate !== level.observationDate ? ` · Treasury as of ${formatDate(level.baseObservationDate)}` : ""}
+      </p>
+      {level.spreadContext && (
+        <p className="mt-2 text-[10px] text-[color:var(--ink-faint)]" title={`Percentile of ${level.sampleSize} aligned observations`}>
+          Spread: {level.spreadContext.summary}
+        </p>
+      )}
+      {attributed ? <Attribution value={attributed} /> : (
+        <p className="mt-3 border-t border-[color:var(--line)] pt-3 text-[10px] text-[color:var(--ink-faint)]">
+          Not enough aligned history for this window.
+        </p>
+      )}
+      <Estimates target={target} />
+    </div>
+  );
+}
+
+export function RateTransmissionPanel({ transmission }: { transmission: MarketRateTransmission | null }) {
+  // Tolerates a payload from a build either side of this one.
+  const windows = transmission?.windows ?? [];
+  const [windowLabel, setWindowLabel] = useState<string>("3M");
+  if (!transmission) return null;
+  const active = windows.includes(windowLabel) ? windowLabel : windows[0] ?? "";
+
+  return (
+    <div className="space-y-4 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.45)] p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[color:var(--ink)]">What borrowers pay</h3>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-[color:var(--ink-faint)]">
+            Each borrowing rate split into the Treasury yield underneath it and the spread on top, then what moved it.
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          {windows.map((label) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setWindowLabel(label)}
+              className={`rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                label === active
+                  ? "border-[color:rgba(79,213,255,0.35)] bg-[color:rgba(79,213,255,0.12)] text-[color:var(--accent)]"
+                  : "border-[color:var(--line)] text-[color:var(--ink-faint)] hover:text-[color:var(--ink-soft)]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {transmission.targets.map((target) => (
+          <TargetCard key={target.id} target={target} baseLabel={transmission.baseLabel} windowLabel={active} />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {transmission.curve.map((tail) => (
+          <div key={tail.id} className="rounded-lg border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--ink-faint)]">{tail.label}</p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-[color:var(--ink)]">
+              {tail.reading ? pp(tail.reading.value) : "—"}
+            </p>
+            <p className="mt-1 text-[10px] text-[color:var(--ink-faint)]">{tail.description}</p>
+          </div>
+        ))}
+      </div>
+
+      {transmission.notes.map((note) => (
+        <p key={note} className="text-[10px] leading-4 text-[color:var(--ink-faint)]">{note}</p>
+      ))}
+    </div>
   );
 }

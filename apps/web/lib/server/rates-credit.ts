@@ -1,4 +1,15 @@
+import {
+  alignAsOf,
+  attributeWindow,
+  decompose,
+  latestDifference,
+  leadLag,
+  levelFromSpread,
+  passThrough,
+} from "../rate-transmission.ts";
+import { fetchFredSeriesPoints } from "./fred-macro.ts";
 import type {
+  MarketRateTransmission,
   MarketRatesCreditData,
   MarketRatesCreditDriver,
   MarketRatesCreditGroup,
@@ -6,10 +17,13 @@ import type {
   MarketRatesCreditPoint,
   MarketRatesCreditSignal,
   MarketRatesCreditTone,
+  RateTransmissionTargetBlock,
 } from "./types.ts";
 
-const FRED_API_BASE = "https://api.stlouisfed.org/fred";
 export const RATES_CREDIT_CACHE_SECONDS = 15 * 60;
+
+/** Observations per series. Deep enough that a percentile means something. */
+const SERIES_LIMIT = 1_500;
 
 export interface RatesCreditDefinition {
   id: string;
@@ -18,10 +32,6 @@ export interface RatesCreditDefinition {
   shortLabel: string;
   group: MarketRatesCreditGroup;
   tenorYears?: number;
-}
-
-interface FredObservationPayload {
-  observations?: Array<{ date?: string; value?: string }>;
 }
 
 export const RATES_CREDIT_DEFINITIONS: readonly RatesCreditDefinition[] = [
@@ -47,16 +57,25 @@ export const RATES_CREDIT_DEFINITIONS: readonly RatesCreditDefinition[] = [
   { id: "hy_bb", seriesId: "BAMLH0A1HYBB", label: "BB High Yield OAS", shortLabel: "BB", group: "credit_hy" },
   { id: "hy_b", seriesId: "BAMLH0A2HYB", label: "B High Yield OAS", shortLabel: "B", group: "credit_hy" },
   { id: "hy_ccc", seriesId: "BAMLH0A3HYC", label: "CCC & Lower High Yield OAS", shortLabel: "CCC", group: "credit_hy" },
+  // What borrowers actually pay, plus the policy rate the front end is measured
+  // against. These feed the transmission block below; the Treasury legs it needs
+  // are already in this list, so nothing is fetched twice.
+  { id: "mortgage_30y", seriesId: "MORTGAGE30US", label: "30-Year Fixed Mortgage", shortLabel: "30Y mortgage", group: "borrowing" },
+  { id: "baa_spread", seriesId: "BAA10Y", label: "Baa Corporate Spread over 10Y", shortLabel: "Baa spread", group: "borrowing" },
+  { id: "fed_funds", seriesId: "DFF", label: "Effective Fed Funds Rate", shortLabel: "Fed funds", group: "borrowing" },
 ];
 
-function parseObservations(payload: FredObservationPayload): MarketRatesCreditPoint[] {
-  return (payload.observations ?? [])
-    .flatMap((observation) => {
-      const value = Number(observation.value);
-      return observation.date && Number.isFinite(value) ? [{ date: observation.date, value }] : [];
-    })
-    .sort((left, right) => left.date.localeCompare(right.date));
-}
+/**
+ * Lookback windows for the change attribution. Calendar days rather than
+ * observation counts, so a window means the same elapsed time for the weekly
+ * mortgage series and the daily corporate one.
+ */
+const ATTRIBUTION_WINDOWS: ReadonlyArray<{ label: string; days: number }> = [
+  { label: "1M", days: 30 },
+  { label: "3M", days: 91 },
+  { label: "6M", days: 182 },
+  { label: "12M", days: 365 },
+];
 
 function changeFrom(points: MarketRatesCreditPoint[], observationsBack: number): number | null {
   if (points.length <= observationsBack) return null;
@@ -239,23 +258,123 @@ function buildDrivers(metrics: MarketRatesCreditMetric[]): MarketRatesCreditDriv
     });
 }
 
+
+/**
+ * The transmission block: what borrowers pay, split into the Treasury yield
+ * underneath and the spread on top.
+ *
+ * Built from the metrics this route already fetched, so every figure here
+ * shares an observation date with the curve above it. Nothing is requested
+ * twice and nothing can be an hour out of step with its neighbour.
+ */
+function buildTransmission(metrics: MarketRatesCreditMetric[]): MarketRateTransmission | null {
+  const points = (id: string) => metrics.find((metric) => metric.id === id)?.points ?? [];
+  const treasury10y = points("treasury_10y");
+  if (!treasury10y.length) return null;
+
+  const mortgage = alignAsOf(treasury10y, points("mortgage_30y"));
+  // The Baa yield level is rebuilt from FRED's published spread rather than
+  // fetched separately and re-spread here, so the spread shown is the exact
+  // number FRED serves and the Baa card renders.
+  const baaSpread = points("baa_spread");
+  const baaLevel = alignAsOf(treasury10y, levelFromSpread(baaSpread, treasury10y));
+
+  const targets: RateTransmissionTargetBlock[] = [
+    {
+      id: "mortgage_30y",
+      label: "30Y mortgage",
+      aligned: mortgage,
+      // Weekly survey: a year is 52 observations, and ten weeks either side is
+      // a generous window for a series that only prints once a week.
+      passThroughWindow: 52,
+      passThroughLabel: "weekly changes",
+      // The survey covers quotes from earlier in its week, so the Treasury
+      // change it responds to is the previous week's.
+      passThroughLag: 1,
+      passThroughLagNote: "Treasury change taken one week earlier, because the survey covers quotes made before it was published.",
+      leadLagMax: 4,
+      leadLagPeriod: "weeks",
+      // Freddie Mac surveys lenders directly, so this rate is observed
+      // independently of the Treasury yield it is compared against.
+      independentOfBase: true,
+      leadLagNote: null,
+      missing: "The mortgage survey or the 10-year Treasury is unavailable.",
+    },
+    {
+      id: "baa_corporate",
+      label: "Baa corporate",
+      aligned: baaLevel,
+      passThroughWindow: 120,
+      passThroughLabel: "daily changes",
+      passThroughLag: 0,
+      passThroughLagNote: null,
+      leadLagMax: 10,
+      leadLagPeriod: "days",
+      // FRED publishes the Baa SPREAD, so the yield level here is rebuilt as
+      // spread + 10Y and therefore contains the 10Y by construction. Comparing
+      // the two would return a strong positive correlation that is arithmetic,
+      // not timing. Answering this properly needs an independently observed Baa
+      // yield (DBAA), whose FRED licence tag has not been checked - and this
+      // route is public, so it is not added on an assumption.
+      independentOfBase: false,
+      leadLagNote: "Timing needs a corporate yield observed independently of the Treasury; the published series here is a spread, so comparing it would only restate the arithmetic.",
+      missing: "The Baa spread or the 10-year Treasury is unavailable.",
+    },
+  ].map((target) => {
+    const level = decompose(target.aligned);
+    // Lead/lag runs on the two yield LEVELS, never on a spread against the
+    // yield it was derived from - that comparison carries a mechanical -1.
+    const levels = target.aligned.map((point) => ({ date: point.date, value: point.target }));
+    return {
+      id: target.id,
+      label: target.label,
+      level,
+      attribution: ATTRIBUTION_WINDOWS.map((window) => ({
+        window: window.label,
+        value: attributeWindow(target.aligned, window.days),
+      })),
+      passThrough: passThrough(target.aligned, target.passThroughWindow, target.passThroughLabel, target.passThroughLag, target.passThroughLagNote),
+      leadLag: target.independentOfBase
+        ? leadLag(treasury10y, levels, target.leadLagMax, target.leadLagPeriod, "The 10-year Treasury", target.label)
+        : null,
+      leadLagNote: target.leadLagNote,
+      unavailableReason: level ? null : target.missing,
+    } satisfies RateTransmissionTargetBlock;
+  });
+
+  return {
+    baseLabel: "10Y Treasury",
+    targets,
+    curve: [
+      { id: "short_tail", label: "Short tail", description: "2Y − 3M", reading: latestDifference(points("treasury_3m"), points("treasury_2y")) },
+      { id: "belly", label: "Belly", description: "10Y − 2Y", reading: latestDifference(points("treasury_2y"), treasury10y) },
+      { id: "long_tail", label: "Long tail", description: "30Y − 10Y", reading: latestDifference(treasury10y, points("treasury_30y")) },
+      { id: "policy_gap", label: "Policy gap", description: "2Y − effective fed funds", reading: latestDifference(points("fed_funds"), points("treasury_2y")) },
+    ],
+    windows: ATTRIBUTION_WINDOWS.map((window) => window.label),
+    notes: [
+      "The mortgage rate is a weekly survey covering quotes from earlier in its week, so it is paired with the Treasury yield as of the survey date.",
+      "Level splits and change attribution are arithmetic on published yields. Pass-through and timing are estimates, shown with the sample they rest on.",
+    ],
+  };
+}
+
 async function fetchMetric(
   definition: RatesCreditDefinition,
   apiKey: string,
   historicalPoints: MarketRatesCreditPoint[] = [],
 ): Promise<MarketRatesCreditMetric> {
-  const url = new URL(`${FRED_API_BASE}/series/observations`);
-  url.searchParams.set("api_key", apiKey);
-  url.searchParams.set("file_type", "json");
-  url.searchParams.set("series_id", definition.seriesId);
-  url.searchParams.set("sort_order", "desc");
-  url.searchParams.set("limit", "800");
-
-  const response = await fetch(url, { next: { revalidate: RATES_CREDIT_CACHE_SECONDS }, signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error(`FRED ${definition.seriesId} returned HTTP ${response.status}`);
-  const payload = await response.json() as FredObservationPayload;
+  // Shared FRED client rather than a third copy of the URL, key and error
+  // handling. One series id plus one limit means one upstream request, so the
+  // Treasury legs this route and the transmission block both need are fetched
+  // exactly once.
+  const observations = await fetchFredSeriesPoints(
+    definition.seriesId,
+    { limit: SERIES_LIMIT, revalidate: RATES_CREDIT_CACHE_SECONDS },
+    apiKey,
+  );
   const merged = new Map(historicalPoints.map((point) => [point.date, point]));
-  for (const point of parseObservations(payload)) merged.set(point.date, point);
+  for (const point of observations) merged.set(point.date, point);
   return buildRatesCreditMetric(definition, [...merged.values()]);
 }
 
@@ -288,11 +407,21 @@ export async function fetchRatesCreditData(
     }
   }
 
+  // Computed while the observation history is still in hand, then dropped from
+  // the response: nothing on the client reads `points`, and shipping 1,500
+  // observations per series was ~350KB per visitor for no rendered pixel.
+  const transmission = buildTransmission(metrics);
+  const shipped = metrics.map((metric) => ({ ...metric, points: [] }));
+  const inGroup = (group: MarketRatesCreditGroup) => shipped.filter((metric) => metric.group === group);
+  const byTenor = (left: MarketRatesCreditMetric, right: MarketRatesCreditMetric) => (left.tenorYears ?? 0) - (right.tenorYears ?? 0);
+
   return {
-    treasuryCurve: metrics.filter((metric) => metric.group === "treasury").sort((left, right) => (left.tenorYears ?? 0) - (right.tenorYears ?? 0)),
-    realYields: metrics.filter((metric) => metric.group === "real_yield").sort((left, right) => (left.tenorYears ?? 0) - (right.tenorYears ?? 0)),
-    investmentGrade: metrics.filter((metric) => metric.group === "credit_ig"),
-    highYield: metrics.filter((metric) => metric.group === "credit_hy"),
+    treasuryCurve: inGroup("treasury").sort(byTenor),
+    realYields: inGroup("real_yield").sort(byTenor),
+    investmentGrade: inGroup("credit_ig"),
+    highYield: inGroup("credit_hy"),
+    borrowing: inGroup("borrowing"),
+    transmission,
     signals: buildRatesCreditSignals(metrics),
     drivers: buildDrivers(metrics),
     generatedAt: new Date().toISOString(),

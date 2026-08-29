@@ -1,5 +1,6 @@
 "use client";
 
+import { RateTransmissionPanel } from "./rate-transmission";
 import type {
   MarketRatesCreditData,
   MarketRatesCreditMetric,
@@ -210,8 +211,13 @@ export function RatesCreditSection({ data, loading, error }: Props) {
         </div>
       </div>
 
+      {/* Sits outside the ICE gate on purpose: this panel is built from FRED's
+          BAA10Y, which is citation-required and already shown on this page. Only
+          the ICE BofA matrix below is licence-blocked. */}
+      <RateTransmissionPanel transmission={data.transmission ?? null} />
+
       {data.creditDataStatus === "enabled" ? (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           <CreditTable title="Investment grade spreads" metrics={data.investmentGrade} />
           <CreditTable title="High yield spreads" metrics={data.highYield} />
         </div>

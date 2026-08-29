@@ -1,8 +1,14 @@
 # Rate Transmission: spreads → mortgage rates and corporate bonds (and back)
 
-Status: **phase 1 shipped**, including the Baa corporate row (added 2026-08-28 after the
-Moody's licensing block was found to be incorrect — see CLAUDE.md). Phases 2-3
-(pass-through betas, lead/lag) remain plan only.
+Status: **all phases shipped 2026-08-29.** Phase 1 (levels, curve tails,
+attribution) shipped 2026-08-28; phases 2-3 (pass-through, lead/lag) and the
+consolidation into one workspace shipped the next day - see
+`docs/macro-rates-credit-consolidation-spec.md` for what changed and where the
+result differed from the estimate. Two corrections this document did not
+anticipate: pass-through must lag the Treasury change by one week for the
+mortgage survey (§5.2 called for it and the first build still missed it), and
+corporate lead/lag is impossible from a published spread because the rebuilt
+level contains its own base.
 
 ## 1. The question
 

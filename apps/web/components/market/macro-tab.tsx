@@ -1,7 +1,6 @@
 "use client";
 
 import type {
-  MarketBondsData,
   MarketMacroCalendarData,
   MarketMacroData,
   MarketMacroGroup,
@@ -12,13 +11,11 @@ import type {
   MarketRatesCreditData,
   MacroPredictionEvent,
 } from "@/lib/server/types";
-import type { RateTransmissionData } from "@/lib/rate-transmission";
 import { signalFor } from "@/lib/macro-signals";
 import { percentileContext } from "@/lib/macro-context";
 import { MacroConditions } from "./macro-conditions";
 import { MacroPredictionInline } from "./macro-prediction-panel";
 import { MacroCalendar } from "./macro-calendar";
-import { YieldCurve } from "./yield-curve";
 import {
   daysUntil,
   formatCalendarDate,
@@ -29,7 +26,6 @@ import {
   type NextRelease,
 } from "@/lib/macro-calendar-display";
 import { RatesCreditSection } from "./rates-credit-section";
-import { RateTransmissionSection } from "./rate-transmission";
 
 interface Props {
   data: MarketMacroData | null;
@@ -45,18 +41,8 @@ interface Props {
     loading: boolean;
     error: string | null;
   };
-  bonds: {
-    data: MarketBondsData | null;
-    loading: boolean;
-    error: string | null;
-  };
   ratesCredit: {
     data: MarketRatesCreditData | null;
-    loading: boolean;
-    error: string | null;
-  };
-  rateTransmission: {
-    data: RateTransmissionData | null;
     loading: boolean;
     error: string | null;
   };
@@ -66,7 +52,7 @@ const GROUPS: Array<{ id: Exclude<MarketMacroGroup, "headline">; label: string; 
   { id: "activity", label: "Leading Activity", description: "Early reads on household demand and real-economy output." },
   { id: "inflation", label: "Inflation & Expectations", description: "Underlying prices, producer pressure, and market-implied inflation." },
   { id: "labor", label: "Labor Detail", description: "Layoffs, wages, participation, openings, and recession risk." },
-  { id: "financial", label: "Financial Conditions & Liquidity", description: "The Treasury curve, credit spreads, real rates, funding, liquidity, and the dollar." },
+  { id: "financial", label: "Financial Conditions & Liquidity", description: "Funding, liquidity, stress indices, and the dollar. The curve and borrowing costs are in the workspace above." },
   { id: "housing", label: "Housing", description: "Construction pipeline and household borrowing costs." },
 ];
 
@@ -213,7 +199,7 @@ function IndicatorGrid({ indicators, contracts, nextReleases, today }: {
   );
 }
 
-export function MacroTab({ data, loading, error, predictions, calendar, bonds, ratesCredit, rateTransmission }: Props) {
+export function MacroTab({ data, loading, error, predictions, calendar, ratesCredit }: Props) {
   if (loading && !data) {
     return <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">Loading FRED macro indicators…</div>;
   }
@@ -230,11 +216,6 @@ export function MacroTab({ data, loading, error, predictions, calendar, bonds, r
   const headline = data.indicators.filter((indicator) => indicator.group === "headline");
   const contracts = predictions.data?.events ?? [];
   const today = localIsoDate(new Date());
-  // The curve renders inside the financial group so shape, credit and the real
-  // yield are read together. Its 10Y-2Y figure is FRED's T10Y2Y - the same
-  // number the card below shows - rather than one recomputed from Treasury XML.
-  const curveYields = bonds.data?.yields ?? [];
-  const curveSpread = data.indicators.find((indicator) => indicator.id === "yield_curve_10y2y")?.value ?? null;
   const nextReleases = nextReleaseByIndicator(calendar.data?.entries ?? [], today);
 
   return (
@@ -281,13 +262,9 @@ export function MacroTab({ data, loading, error, predictions, calendar, bonds, r
                 </span>
               </summary>
               <div className="space-y-4 border-t border-[color:var(--line)] p-4">
-                {group.id === "financial" && curveYields.length >= 3 && (
-                  <YieldCurve yields={curveYields} spread={curveSpread} spreadLabel="FRED T10Y2Y" />
-                )}
                 <IndicatorGrid indicators={indicators} contracts={contracts} nextReleases={nextReleases} today={today} />
               </div>
             </details>
-            {group.id === "financial" && <RateTransmissionSection {...rateTransmission} />}
             </div>
           );
         })}

@@ -193,10 +193,10 @@ function fredUrl(path: string, apiKey: string, params: Record<string, string | n
   return url.toString();
 }
 
-async function fetchFredJson<T>(url: string): Promise<T> {
+async function fetchFredJson<T>(url: string, revalidate = FRED_MACRO_CACHE_SECONDS): Promise<T> {
   const response = await fetch(url, {
     headers: { Accept: "application/json" },
-    next: { revalidate: FRED_MACRO_CACHE_SECONDS },
+    next: { revalidate },
   });
   if (!response.ok) {
     const body = await response.text();
@@ -217,7 +217,7 @@ export function parseFredObservations(payload: FredObservationPayload): MarketMa
 /** Fetch a raw FRED series through the shared authentication, parsing, and cache path. */
 export async function fetchFredSeriesPoints(
   seriesId: string,
-  options: { units?: FredUnits; limit?: number } = {},
+  options: { units?: FredUnits; limit?: number; revalidate?: number } = {},
   apiKey = String(process.env.FRED_API_KEY ?? "").trim(),
 ): Promise<MarketMacroPoint[]> {
   if (!apiKey) throw new Error("FRED_API_KEY is not configured.");
@@ -226,7 +226,7 @@ export async function fetchFredSeriesPoints(
     units: options.units ?? "lin",
     sort_order: "desc",
     limit: options.limit ?? 1_500,
-  }));
+  }), options.revalidate);
   const points = parseFredObservations(payload);
   if (!points.length) throw new Error(`FRED returned no observations for ${seriesId}`);
   return points;
