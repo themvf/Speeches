@@ -27,6 +27,16 @@ Plain-language proposal and outcome: [docs/macro-rates-credit-consolidation-spec
 
 **Measured, not asserted.** Four routes feeding the tab became two, both FRED, both on the same 900-second lifetime — so two figures on screen can no longer be an hour apart or come from different sources, which was the actual problem. Series fetched twice fell 8 → 4. **Request count only fell 85 → 81**, well short of the "toward 30" the spec estimated: removing the duplicate route saved seven series, folding in borrowing costs added three back. The remaining bulk is the 28 indicator cards at two requests each (56 of 81); consolidating that card route is separate work, deliberately not attempted.
 
+**FRED call volume cut 61% (2026-08-29, follow-up).** Two corrections to the figures above first: the "81 per Macro tab load" was wrong twice over. Next caches both the route response and the underlying fetches, so a visitor inside the window costs **zero** upstream calls — the unit is calls per revalidation, not per visitor — and the nine ICE series are gated off in production, so the workspace fetches 16 of its 25 definitions. The real baseline was **72 calls per 15-minute cycle, 6,912/day.**
+
+The waste was cadence, not duplication. Only **7 of 28** macro indicators publish daily; 14 are monthly, 6 weekly, 1 quarterly — and every one was refetched every 15 minutes, so a quarterly series was asked 96 times a day for a number that changes four times a year. Each indicator also made a **second** request for metadata on the same cycle, fetching a `frequency` that never changes and an ingest time that moves a few times a day.
+
+Fixes: `FredMacroDefinition` gained a pinned `cadence`, mapping to a cache lifetime (daily 900s, everything slower 3600s); metadata moved to a 24-hour lifetime and is now **best-effort** — it was inside a `Promise.all`, so one flaky metadata response took the whole card down, which a day-long cache would have made a long outage for a line of decorative text. `frequency` falls back to the pinned cadence, so a missing metadata response costs only the ingest time. The workspace route tiers the same way; its mortgage survey is weekly.
+
+Result: **6,912 → 2,668 calls/day, and 72 → 22 per 15-minute cycle** (only the daily series stay on the fast path). Worst-case staleness for a new monthly print is one hour — the deliberate trade for a research dashboard that also carries a release calendar; tighten `CADENCE_REFRESH_SECONDS` if CPI needs to land faster. `fred-macro.test.ts` pins every series' cadence against the frequencies FRED reported live on 2026-08-29, because a wrong pin makes a card quietly stale rather than throwing.
+
+**Still fetched twice** (4 series, macro and workspace): `DFF`, `BAA10Y`, `DFII10`, `MORTGAGE30US`. Their URLs differ only by `limit`, so aligning them would let Next's data cache dedupe — but matching the workspace's 1,500 would add ~130KB of unread points to the macro payload. Not worth 3 calls per cycle.
+
 **The payload also lost ~350KB.** `rates-credit` shipped 1,500 observations per series in `points` and **nothing on the client ever read them**. History is used server-side for percentiles and the transmission block, then dropped before the response.
 
 Four things worth not relearning:

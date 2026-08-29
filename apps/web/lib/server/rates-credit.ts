@@ -7,7 +7,7 @@ import {
   levelFromSpread,
   passThrough,
 } from "../rate-transmission.ts";
-import { fetchFredSeriesPoints } from "./fred-macro.ts";
+import { fetchFredSeriesPoints, seriesRefreshSeconds, type FredCadence } from "./fred-macro.ts";
 import type {
   MarketRateTransmission,
   MarketRatesCreditData,
@@ -32,6 +32,12 @@ export interface RatesCreditDefinition {
   shortLabel: string;
   group: MarketRatesCreditGroup;
   tenorYears?: number;
+  /**
+   * How often the source publishes. Everything here is a daily market rate
+   * except the mortgage survey, which prints once a week and does not need
+   * asking 96 times a day.
+   */
+  cadence?: FredCadence;
 }
 
 export const RATES_CREDIT_DEFINITIONS: readonly RatesCreditDefinition[] = [
@@ -60,7 +66,7 @@ export const RATES_CREDIT_DEFINITIONS: readonly RatesCreditDefinition[] = [
   // What borrowers actually pay, plus the policy rate the front end is measured
   // against. These feed the transmission block below; the Treasury legs it needs
   // are already in this list, so nothing is fetched twice.
-  { id: "mortgage_30y", seriesId: "MORTGAGE30US", label: "30-Year Fixed Mortgage", shortLabel: "30Y mortgage", group: "borrowing" },
+  { id: "mortgage_30y", seriesId: "MORTGAGE30US", label: "30-Year Fixed Mortgage", shortLabel: "30Y mortgage", group: "borrowing", cadence: "weekly" },
   { id: "baa_spread", seriesId: "BAA10Y", label: "Baa Corporate Spread over 10Y", shortLabel: "Baa spread", group: "borrowing" },
   { id: "fed_funds", seriesId: "DFF", label: "Effective Fed Funds Rate", shortLabel: "Fed funds", group: "borrowing" },
 ];
@@ -370,7 +376,7 @@ async function fetchMetric(
   // exactly once.
   const observations = await fetchFredSeriesPoints(
     definition.seriesId,
-    { limit: SERIES_LIMIT, revalidate: RATES_CREDIT_CACHE_SECONDS },
+    { limit: SERIES_LIMIT, revalidate: seriesRefreshSeconds(definition.cadence ?? "daily") },
     apiKey,
   );
   const merged = new Map(historicalPoints.map((point) => [point.date, point]));
