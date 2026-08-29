@@ -66,12 +66,26 @@ function monthYear(date: string): string {
  * series that only goes back to last spring would be the easy mistake here.
  */
 export function percentileContext(indicator: MarketMacroIndicator): PercentileContext | null {
-  const points: MarketMacroPoint[] = indicator.points ?? [];
+  return percentileOfPoints(indicator.points ?? [], indicator.value);
+}
+
+/**
+ * The same placement over a bare series, for values that are not indicators.
+ *
+ * Derived spreads - the primary mortgage spread, the curve tails - have no
+ * FRED series of their own but need exactly this context, including the named
+ * window. Reimplementing it beside them would be two copies of one convention
+ * waiting to drift, and the copy that omits the window is the one that ends up
+ * calling a 73-observation sample "the lowest on record".
+ */
+export function percentileOfPoints(
+  points: readonly MarketMacroPoint[],
+  current: number,
+): PercentileContext | null {
   // Below this a percentile is noise dressed as precision.
   if (points.length < 12) return null;
 
   const values = points.map((point) => point.value);
-  const current = indicator.value;
   const atOrBelow = values.filter((value) => value <= current).length;
   const percentile = Math.round((atOrBelow / values.length) * 100);
   const window = `since ${monthYear(points[0].date)}`;

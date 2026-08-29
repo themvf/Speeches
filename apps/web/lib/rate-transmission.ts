@@ -1,4 +1,13 @@
 import type { MarketMacroPoint } from "./server/types.ts";
+import { percentileOfPoints, type PercentileContext } from "./macro-context.ts";
+
+/**
+ * A base observation this far before the target observation is a data gap
+ * rather than a holiday. Treasury series skip weekends and federal holidays,
+ * so gaps up to four days are ordinary; beyond a week, carrying the last
+ * value forward invents a spread rather than reporting one.
+ */
+export const MAX_BASE_STALENESS_DAYS = 7;
 
 export const RATE_TRANSMISSION_SERIES = [
   { id: "DGS3MO", label: "3M Treasury", license: "public-domain-citation-requested" },
@@ -7,6 +16,12 @@ export const RATE_TRANSMISSION_SERIES = [
   { id: "DGS30", label: "30Y Treasury", license: "public-domain-citation-requested" },
   { id: "DFF", label: "Effective fed funds", license: "public-domain" },
   { id: "MORTGAGE30US", label: "30Y mortgage", license: "existing-project-source" },
+  // Moody's Baa over the 10Y. FRED tags this *citation required* - satisfied by
+  // the tab's existing FRED attribution - not pre-approval required, which is
+  // the ICE BofA OAS tag that genuinely blocks a public route. It already
+  // renders as the Financial Conditions "Baa Credit Spread" card on this same
+  // page, so omitting it here was the stricter reading of the wrong licence.
+  { id: "BAA10Y", label: "Baa corporate spread over 10Y", license: "citation-required" },
 ] as const;
 
 export interface AlignedRatePoint {
@@ -24,6 +39,8 @@ export interface RateDecomposition {
   base: number;
   spread: number;
   spreadPercentile: number | null;
+  /** Full sentence naming the window, e.g. "Higher than 71% of readings since Aug 2021". */
+  spreadContext: PercentileContext | null;
   sampleSize: number;
   historyStart: string | null;
 }
@@ -31,6 +48,15 @@ export interface RateDecomposition {
 export interface AttributionResult {
   startDate: string;
   endDate: string;
+  /**
+   * Whole basis points, with `totalBp === baseBp + spreadBp` exactly.
+   *
+   * Rounding happens here rather than at render because the panel states the
+   * identity in words. Rounding each leg independently at the last moment lets
+   * a 12.5 / 8.4 / 4.1 split display as 13 = 8 + 4, and a caption that claims
+   * the components sum to the total while the pixels disagree is worse than no
+   * caption. The spread leg absorbs the rounding as the remainder.
+   */
   totalBp: number;
   baseBp: number;
   spreadBp: number;
@@ -48,8 +74,9 @@ export interface RateTransmissionData {
   levels: {
     mortgage: RateDecomposition | null;
     corporate: {
-      available: false;
+      available: boolean;
       reason: string;
+      level: RateDecomposition | null;
     };
   };
   curve: {
@@ -61,6 +88,7 @@ export interface RateTransmissionData {
   attribution: Array<{
     window: "1M" | "3M" | "6M" | "12M";
     mortgage: AttributionResult | null;
+    corporate: AttributionResult | null;
   }>;
   warnings: string[];
   sources: Array<{ seriesId: string; label: string; url: string }>;
@@ -71,7 +99,15 @@ function ordered(points: MarketMacroPoint[]): MarketMacroPoint[] {
 }
 
 /** Align each target observation with the latest base observation available on or before it. */
-export function alignAsOf(basePoints: MarketMacroPoint[], targetPoints: MarketMacroPoint[]): AlignedRatePoint[] {
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+export function alignAsOf(
+  basePoints: MarketMacroPoint[],
+  targetPoints: MarketMacroPoint[],
+  maxStalenessDays = MAX_BASE_STALENESS_DAYS,
+): AlignedRatePoint[] {
   const base = ordered(basePoints);
   const target = ordered(targetPoints);
   const aligned: AlignedRatePoint[] = [];
@@ -84,6 +120,7 @@ export function alignAsOf(basePoints: MarketMacroPoint[], targetPoints: MarketMa
       baseIndex += 1;
     }
     if (!latestBase) continue;
+    if (daysBetween(latestBase.date, point.date) > maxStalenessDays) continue;
     aligned.push({
       date: point.date,
       target: point.value,
@@ -98,18 +135,23 @@ export function alignAsOf(basePoints: MarketMacroPoint[], targetPoints: MarketMa
 export function decompose(points: AlignedRatePoint[]): RateDecomposition | null {
   const current = points.at(-1);
   if (!current) return null;
-  const spreads = points.map((point) => point.spread).filter(Number.isFinite);
-  const spreadPercentile = spreads.length >= 12
-    ? 100 * spreads.filter((value) => value <= current.spread).length / spreads.length
-    : null;
+  // One implementation of "where does this sit in its own history", shared with
+  // the indicator cards. It always names the window, which matters most exactly
+  // where this panel is weakest: the aligned sample is only as deep as the
+  // shorter of the two series.
+  const spreadPoints = points
+    .filter((point) => Number.isFinite(point.spread))
+    .map((point) => ({ date: point.date, value: point.spread }));
+  const spreadContext = percentileOfPoints(spreadPoints, current.spread);
   return {
     observationDate: current.date,
     baseObservationDate: current.baseDate,
     rate: current.target,
     base: current.base,
     spread: current.spread,
-    spreadPercentile,
-    sampleSize: spreads.length,
+    spreadPercentile: spreadContext?.percentile ?? null,
+    spreadContext,
+    sampleSize: spreadPoints.length,
     historyStart: points[0]?.date ?? null,
   };
 }
@@ -122,12 +164,14 @@ export function attributeWindow(points: AlignedRatePoint[], days: number): Attri
   const cutoffDate = cutoff.toISOString().slice(0, 10);
   const start = points.filter((point) => point.date <= cutoffDate).at(-1);
   if (!start) return null;
+  const totalBp = Math.round((end.target - start.target) * 100);
+  const baseBp = Math.round((end.base - start.base) * 100);
   return {
     startDate: start.date,
     endDate: end.date,
-    totalBp: (end.target - start.target) * 100,
-    baseBp: (end.base - start.base) * 100,
-    spreadBp: (end.spread - start.spread) * 100,
+    totalBp,
+    baseBp,
+    spreadBp: totalBp - baseBp,
   };
 }
 

@@ -4,7 +4,20 @@
 
 The implementation strategy for the Market → Macro rates and credit workspace lives in [`docs/rates-credit-intelligence-strategy.md`](docs/rates-credit-intelligence-strategy.md). Follow its phased architecture, source hierarchy, interpretability requirements, and data-quality rules when extending rates, corporate credit, ratings, mortgages, or CDS coverage.
 
-The detailed implementation and validation contract for the Macro tab's Rate Transmission panel lives in [`apps/web/docs/rate-transmission-spec.md`](apps/web/docs/rate-transmission-spec.md). Its licensing dispositions are mandatory: Moody's-derived corporate series remain blocked from public routes until a redistribution license is secured.
+The detailed implementation and validation contract for the Macro tab's Rate Transmission panel lives in [`apps/web/docs/rate-transmission-spec.md`](apps/web/docs/rate-transmission-spec.md).
+
+**Corrected 2026-08-28 — the licensing line above previously read "Moody's-derived corporate series remain blocked from public routes until a redistribution license is secured." That was wrong, and it cost the panel its corporate half.** The pre-approval-required tag that genuinely blocks a public route belongs to **ICE BofA OAS** (`BAMLH0A0HYM2`, `BAMLC0A0CM`, and the rest of the BAML family), not to Moody's. `BAA10Y` is tagged *citation required*, satisfied by the tab's existing FRED attribution — which is why it has been rendering as the Financial Conditions "Baa Credit Spread" card all along. The corporate row now ships, sourced from `BAA10Y`. High yield stays absent, correctly, because ICE is the only source for it. Do not re-block Moody's series without re-reading the licence tag.
+
+Four fixes applied to the shipped panel the same day, each with a regression test:
+
+- **The attribution identity did not survive rounding.** The caption says "Components sum to the total by construction" while the component rounded each leg independently at render, so 12.5 / 8.4 / 4.1 displayed as 13 = 8 + 4. Rounding now happens in `attributeWindow`, with the spread leg taken as the remainder, so the on-screen numbers add up. A caption asserting an identity the pixels contradict is worse than no caption.
+- **`alignAsOf` carried the last base observation forward indefinitely.** A target date months past the end of the base series paired with a stale yield rather than being dropped. Now bounded by `MAX_BASE_STALENESS_DAYS = 7` — long enough for any holiday, short enough to catch a real gap.
+- **The percentile was a second implementation** that never named its window. `percentileContext` in `macro-context.ts` was split so `percentileOfPoints(points, value)` works on derived spreads, and the panel now delegates to it. The window matters most exactly here: the aligned sample is only as deep as the shorter of the two series.
+- **Curve tails were labelled `%`.** A 10Y−2Y of 0.62 is 0.62 percentage points, not 0.62%. Note `formatValue` in `macro-tab.tsx` still renders `percentage_points` indicators with a `%` suffix, so the T10Y2Y card has the same issue — not changed here, but it is the same error.
+
+**Repo-wide finding, NOT fixed — every numbered amber utility in the app is dead.** `tailwind.config.ts` sets `colors.amber: "var(--amber)"`, a string, which *replaces* Tailwind 3's amber scale rather than extending it. So `text-amber-300`, `bg-amber-500/5`, `border-amber-500/20` and friends match no rule: verified by computed style (`text-amber-300` resolves to the inherited ink colour) and by grepping the built CSS, which contains zero amber utilities. **18 files use them**, mostly for warning affordances that therefore do not look like warnings. The one-line fix is to make it a scale (`amber: { ...colors.amber, DEFAULT: "var(--amber)" }`) or rename the token, but that turns amber on across all 18 files at once, so it is a deliberate visual change for the user to make, not a drive-by. The rate-transmission legend was fixed locally instead, by tying its swatches to the same literals the bars use — the swatch was rendering ink-coloured beside an orange bar.
+
+
 
 ## ⚠️ Both LLM provider accounts are OUT OF FUNDS (verified live 2026-07-18)
 

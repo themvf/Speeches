@@ -1,6 +1,8 @@
 # Rate Transmission: spreads → mortgage rates and corporate bonds (and back)
 
-Status: **Phase 1 implemented**, 2026-08-28. Target surface: `/market` → Macro tab.
+Status: **phase 1 shipped**, including the Baa corporate row (added 2026-08-28 after the
+Moody's licensing block was found to be incorrect — see CLAUDE.md). Phases 2-3
+(pass-through betas, lead/lag) remain plan only.
 
 ## 1. The question
 
