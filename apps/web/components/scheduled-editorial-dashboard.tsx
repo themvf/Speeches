@@ -26,6 +26,21 @@ type Source = {
   published_at: string | null;
 };
 
+type CandidateDraft = {
+  id: number;
+  output_id: number;
+  candidate_id: string;
+  provider: "openai" | "deepseek";
+  model: string;
+  status: "completed" | "failed";
+  article: string;
+  latency_ms: number;
+  usage: Record<string, unknown>;
+  error: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type Output = {
   id: number;
   provider: "openai" | "deepseek";
@@ -35,6 +50,7 @@ type Output = {
   usage: Record<string, unknown>;
   package: Record<string, unknown> | null;
   error: string;
+  candidate_drafts: CandidateDraft[];
 };
 
 type Run = {
@@ -113,7 +129,23 @@ function StatusChip({ status }: { status: Run["status"] | Output["status"] }) {
   return <span className={`status-chip ${tone}`}>{status}</span>;
 }
 
-function OutputView({ output, label, revealProvider }: { output: Output; label: string; revealProvider: boolean }) {
+function OutputView({
+  output,
+  label,
+  revealProvider,
+  activeCandidateId,
+  generatingCandidateId,
+  onSelectArticle,
+  onGenerateArticle,
+}: {
+  output: Output;
+  label: string;
+  revealProvider: boolean;
+  activeCandidateId?: string;
+  generatingCandidateId?: string;
+  onSelectArticle: (candidateId: string) => void;
+  onGenerateArticle: (candidateId: string) => void;
+}) {
   if (output.status === "failed" || !output.package) {
     return (
       <section className="panel p-5">
@@ -128,6 +160,17 @@ function OutputView({ output, label, revealProvider }: { output: Output; label: 
   const selected = record(pkg.selected_package);
   const selectedId = String(recommendation.selected_candidate_id || "");
   const draft = typeof pkg.draft === "string" ? pkg.draft : "";
+  const completedDrafts = (output.candidate_drafts || []).filter((candidateDraft) => candidateDraft.status === "completed" && candidateDraft.article);
+  const availableCandidateIds = new Set([
+    ...(draft && selectedId ? [selectedId] : []),
+    ...completedDrafts.map((candidateDraft) => candidateDraft.candidate_id),
+  ]);
+  const shownCandidateId = activeCandidateId && availableCandidateIds.has(activeCandidateId)
+    ? activeCandidateId
+    : draft && selectedId ? selectedId : completedDrafts[0]?.candidate_id || "";
+  const storedDraft = completedDrafts.find((candidateDraft) => candidateDraft.candidate_id === shownCandidateId);
+  const article = shownCandidateId === selectedId && draft ? draft : storedDraft?.article || "";
+  const articleCandidate = candidates.find((candidate) => String(candidate.candidate_id || "") === shownCandidateId);
   return (
     <div className="space-y-4">
       <section className="panel p-5">
@@ -150,27 +193,49 @@ function OutputView({ output, label, revealProvider }: { output: Output; label: 
       <section className="panel p-5">
         <h2 className="text-lg font-semibold text-[color:var(--ink)]">Candidate angles</h2>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
-          {candidates.map((candidate, index) => (
-            <article key={String(candidate.candidate_id || index)} className={`rounded-xl border p-4 ${String(candidate.candidate_id) === selectedId ? "border-[color:rgba(79,213,255,0.6)] bg-[color:rgba(79,213,255,0.08)]" : "border-[color:var(--line-soft)]"}`}>
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-semibold text-[color:var(--ink)]">{String(candidate.working_title || "Untitled angle")}</h3>
-                {String(candidate.candidate_id) === selectedId ? <span className="status-chip status-success">selected</span> : null}
-              </div>
-              <p className="mt-2 text-xs italic leading-5 text-[color:var(--ink-faint)]">{String(candidate.subtitle || "")}</p>
-              <p className="mt-3 text-sm leading-6 text-[color:var(--ink-soft)]">{String(candidate.thesis || "")}</p>
-              <p className="mt-3 text-xs text-[color:var(--ink-faint)]">Support {String(candidate.support_score || "–")}/5 · Originality {String(candidate.originality_score || "–")}/5 · Recap risk {String(candidate.recap_risk || "–")}</p>
-            </article>
-          ))}
+          {candidates.map((candidate, index) => {
+            const candidateId = String(candidate.candidate_id || index);
+            const hasArticle = availableCandidateIds.has(candidateId);
+            const isGenerating = generatingCandidateId === candidateId;
+            return (
+              <article key={candidateId} className={`flex flex-col rounded-xl border p-4 ${candidateId === selectedId ? "border-[color:rgba(79,213,255,0.6)] bg-[color:rgba(79,213,255,0.08)]" : "border-[color:var(--line-soft)]"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-semibold text-[color:var(--ink)]">{String(candidate.working_title || "Untitled angle")}</h3>
+                  {candidateId === selectedId ? <span className="status-chip status-success">selected</span> : null}
+                </div>
+                <p className="mt-2 text-xs italic leading-5 text-[color:var(--ink-faint)]">{String(candidate.subtitle || "")}</p>
+                <p className="mt-3 text-sm leading-6 text-[color:var(--ink-soft)]">{String(candidate.thesis || "")}</p>
+                <p className="mt-3 text-xs text-[color:var(--ink-faint)]">Support {String(candidate.support_score || "–")}/5 · Originality {String(candidate.originality_score || "–")}/5 · Recap risk {String(candidate.recap_risk || "–")}</p>
+                <button
+                  type="button"
+                  disabled={Boolean(generatingCandidateId)}
+                  onClick={() => hasArticle ? onSelectArticle(candidateId) : onGenerateArticle(candidateId)}
+                  className={`${hasArticle ? "btn-muted" : "btn-accent"} mt-4 w-full px-3 py-2 text-sm disabled:opacity-50`}
+                >
+                  {isGenerating ? "Generating article…" : hasArticle ? "View article" : "Generate article"}
+                </button>
+              </article>
+            );
+          })}
         </div>
       </section>
 
-      {draft ? (
+      {article ? (
         <section className="panel p-5 md:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><p className="kicker">Editable rough draft</p><h2 className="mt-4 text-xl font-semibold">Medium-style article</h2></div>
-            <button type="button" className="btn-muted px-3 py-2 text-sm" onClick={() => navigator.clipboard.writeText(draft)}>Copy draft</button>
+            <div><p className="kicker">Editable rough draft</p><h2 className="mt-4 text-xl font-semibold">{String(articleCandidate?.working_title || "Medium-style article")}</h2></div>
+            <button type="button" className="btn-muted px-3 py-2 text-sm" onClick={() => navigator.clipboard.writeText(article)}>Copy draft</button>
           </div>
-          <div className="mt-6 whitespace-pre-wrap text-[15px] leading-7 text-[color:var(--ink-soft)]">{draft}</div>
+          {availableCandidateIds.size > 1 ? (
+            <div className="mt-5 flex flex-wrap gap-2 border-b border-[color:var(--line-soft)] pb-4">
+              {candidates.filter((candidate) => availableCandidateIds.has(String(candidate.candidate_id || ""))).map((candidate) => {
+                const candidateId = String(candidate.candidate_id || "");
+                const candidateNumber = candidates.findIndex((item) => String(item.candidate_id || "") === candidateId) + 1;
+                return <button key={candidateId} type="button" onClick={() => onSelectArticle(candidateId)} className={shownCandidateId === candidateId ? "btn-solid px-3 py-2 text-sm" : "btn-muted px-3 py-2 text-sm"}>{candidateId === selectedId ? "Selected article" : `Candidate ${candidateNumber}`}</button>;
+              })}
+            </div>
+          ) : null}
+          <div className="mt-6 whitespace-pre-wrap text-[15px] leading-7 text-[color:var(--ink-soft)]">{article}</div>
         </section>
       ) : null}
 
@@ -211,6 +276,8 @@ export function ScheduledEditorialDashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [generatingArticle, setGeneratingArticle] = useState<string | null>(null);
+  const [articleSelections, setArticleSelections] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -267,6 +334,40 @@ export function ScheduledEditorialDashboard() {
     } catch (runError) {
       setError(runError instanceof Error ? runError.message : String(runError));
     } finally { setRunning(false); }
+  };
+
+  const generateArticle = async (runId: number, outputId: number, candidateId: string) => {
+    const generationKey = `${outputId}:${candidateId}`;
+    setGeneratingArticle(generationKey);
+    setError(null);
+    setNotice("Generating and storing this candidate article…");
+    try {
+      const response = await fetch("/api/admin/briefings/scheduled/candidate-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId, outputId, candidateId }),
+      });
+      const body = await apiBody(response);
+      if (!response.ok || !body.ok) throw new Error(String(body.error || "Unable to generate the candidate article."));
+      const candidateDraft = record(record(body.data).draft) as CandidateDraft;
+      setRuns((current) => current.map((run) => run.id !== runId ? run : {
+        ...run,
+        outputs: run.outputs.map((output) => output.id !== outputId ? output : {
+          ...output,
+          candidate_drafts: [
+            ...(output.candidate_drafts || []).filter((draft) => draft.candidate_id !== candidateId),
+            candidateDraft,
+          ],
+        }),
+      }));
+      setArticleSelections((current) => ({ ...current, [outputId]: candidateId }));
+      setNotice("Candidate article generated and stored.");
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : String(generationError));
+      setNotice(null);
+    } finally {
+      setGeneratingArticle(null);
+    }
   };
 
   if (loading) return <section className="panel p-6 text-sm text-[color:var(--ink-faint)]">Loading scheduled editorial workspace…</section>;
@@ -329,7 +430,15 @@ export function ScheduledEditorialDashboard() {
         <section className="panel p-4">
           <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{selectedRun.outputs.map((output, index) => <button key={output.id} type="button" onClick={() => setSelectedOutput(index)} className={selectedOutput === index ? "btn-solid px-4 py-2 text-sm" : "btn-muted px-4 py-2 text-sm"}>{outputLabels[index]}</button>)}</div><p className="text-xs text-[color:var(--ink-faint)]">Snapshot {selectedRun.snapshot_hash.slice(0, 12)} · {selectedRun.source_count} sources</p></div>
         </section>
-        {selectedRun.outputs[selectedOutput] ? <OutputView output={selectedRun.outputs[selectedOutput]} label={outputLabels[selectedOutput] || "Draft"} revealProvider={!selectedRun.settings_snapshot.blind_comparison} /> : null}
+        {selectedRun.outputs[selectedOutput] ? <OutputView
+          output={selectedRun.outputs[selectedOutput]}
+          label={outputLabels[selectedOutput] || "Draft"}
+          revealProvider={!selectedRun.settings_snapshot.blind_comparison}
+          activeCandidateId={articleSelections[selectedRun.outputs[selectedOutput].id]}
+          generatingCandidateId={generatingArticle?.startsWith(`${selectedRun.outputs[selectedOutput].id}:`) ? generatingArticle.slice(generatingArticle.indexOf(":") + 1) : undefined}
+          onSelectArticle={(candidateId) => setArticleSelections((current) => ({ ...current, [selectedRun.outputs[selectedOutput].id]: candidateId }))}
+          onGenerateArticle={(candidateId) => void generateArticle(selectedRun.id, selectedRun.outputs[selectedOutput].id, candidateId)}
+        /> : null}
         <section className="panel p-5"><details><summary className="cursor-pointer text-sm font-semibold">Frozen source snapshot ({selectedRun.source_count})</summary><div className="mt-4 grid gap-3 md:grid-cols-2">{selectedRun.source_snapshot.map((source) => <a key={source.source_id} href={source.url} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-[color:var(--line-soft)] p-3 hover:border-[color:var(--line-strong)]"><p className="text-sm font-semibold">{source.title}</p><p className="mt-1 text-xs text-[color:var(--ink-faint)]">{source.source_id} · {source.publisher}</p><p className="mt-2 line-clamp-3 text-xs leading-5 text-[color:var(--ink-soft)]">{source.description}</p></a>)}</div></details></section>
       </> : null}
     </div>

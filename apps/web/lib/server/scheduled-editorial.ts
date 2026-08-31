@@ -26,6 +26,21 @@ export type EditorialSource = {
   published_at: string | null;
 };
 
+export type EditorialCandidateDraft = {
+  id: number;
+  output_id: number;
+  candidate_id: string;
+  provider: EditorialProvider;
+  model: string;
+  status: "completed" | "failed";
+  article: string;
+  latency_ms: number;
+  usage: Record<string, unknown>;
+  error: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type EditorialOutput = {
   id: number;
   run_id: number;
@@ -37,6 +52,7 @@ export type EditorialOutput = {
   package: Record<string, unknown> | null;
   error: string;
   created_at: string;
+  candidate_drafts: EditorialCandidateDraft[];
 };
 
 export type EditorialRun = {
@@ -217,6 +233,24 @@ async function ensureScheduledEditorialSchema(): Promise<void> {
           UNIQUE (run_id, provider)
         )
       `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS scheduled_editorial_candidate_drafts (
+          id            BIGSERIAL PRIMARY KEY,
+          output_id     BIGINT NOT NULL REFERENCES scheduled_editorial_outputs(id) ON DELETE CASCADE,
+          candidate_id  TEXT NOT NULL,
+          provider      TEXT NOT NULL CHECK (provider IN ('openai', 'deepseek')),
+          model         TEXT NOT NULL,
+          status        TEXT NOT NULL CHECK (status IN ('completed', 'failed')),
+          article       TEXT NOT NULL DEFAULT '',
+          latency_ms    INTEGER NOT NULL DEFAULT 0,
+          usage         JSONB NOT NULL DEFAULT '{}'::jsonb,
+          error         TEXT NOT NULL DEFAULT '',
+          created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+          UNIQUE (output_id, candidate_id)
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS scheduled_editorial_candidate_drafts_output_id ON scheduled_editorial_candidate_drafts (output_id)`;
     })().catch((error) => {
       schemaPromise = null;
       throw error;
@@ -466,6 +500,84 @@ async function runDeepSeek(messages: Array<{ role: string; content: string }>, m
   return { model: String(response.raw.model || model), latency_ms: Date.now() - started, usage: (response.raw.usage || {}) as Record<string, unknown>, package: packageValue };
 }
 
+function articlePrompt(candidate: Record<string, unknown>, sources: EditorialSource[]) {
+  const supportedIds = Array.isArray(candidate.supporting_source_ids)
+    ? candidate.supporting_source_ids.map(String)
+    : [];
+  const candidateSources = sources.filter((source) => supportedIds.includes(source.source_id));
+  const frozenSources = candidateSources.length ? candidateSources : sources;
+  return [
+    {
+      role: "developer",
+      content: [
+        "You are the Daily AI Column Editor for a financial and regulatory intelligence publication.",
+        "Write a polished but explicitly editable Medium-style article of 900-1,400 words for the supplied candidate angle.",
+        "Use only the supplied frozen headlines and descriptions. Never imply that you read the full articles.",
+        "Never invent facts, quotations, statistics, first-person experience, or the human author's opinion.",
+        "Every factual claim must include one or more supplied source_id values in square brackets.",
+        "Clearly signal inference, prediction, and recommendation as such. Do not include a bibliography or cite IDs that were not supplied.",
+        "Use a strong headline, optional subtitle, short paragraphs, useful section headings, and an analytical conclusion.",
+        "Return only the article as clean plain text, with headings on their own lines and no Markdown symbols. Do not add notes about these instructions.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: `Expand this candidate angle into the article.\n\nCandidate: ${JSON.stringify(candidate, null, 2)}\n\nFrozen sources: ${JSON.stringify(frozenSources, null, 2)}`,
+    },
+  ];
+}
+
+function openAiText(raw: Record<string, unknown>): string {
+  if (typeof raw.output_text === "string") return raw.output_text.trim();
+  const output = Array.isArray(raw.output) ? raw.output as Array<Record<string, unknown>> : [];
+  return output.flatMap((item) => Array.isArray(item.content) ? item.content as Array<Record<string, unknown>> : [])
+    .map((item) => String(item.text || ""))
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+async function runOpenAiArticle(messages: Array<{ role: string; content: string }>, model: string) {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
+  const started = Date.now();
+  const response = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, input: messages, reasoning: { effort: "medium" }, max_output_tokens: 7_000, store: false }),
+  });
+  const raw = await response.json() as Record<string, unknown>;
+  if (!response.ok) {
+    const error = raw.error as Record<string, unknown> | undefined;
+    throw new Error(`OpenAI ${response.status}: ${String(error?.code || error?.message || "request failed")}`);
+  }
+  const article = openAiText(raw);
+  if (!article) throw new Error("OpenAI returned an empty article.");
+  return { model: String(raw.model || model), latency_ms: Date.now() - started, usage: (raw.usage || {}) as Record<string, unknown>, article };
+}
+
+async function runDeepSeekArticle(messages: Array<{ role: string; content: string }>, model: string) {
+  const apiKey = (process.env.DEEPSEEK_API || process.env.DEEPSEEK_API_KEY || "").trim();
+  if (!apiKey) throw new Error("DEEPSEEK_API is not configured.");
+  const started = Date.now();
+  const compatible = messages.map((message) => ({ ...message, role: message.role === "developer" ? "system" : message.role }));
+  const response = await fetchWithTimeout(`${(process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, messages: compatible, thinking: { type: "enabled" }, reasoning_effort: "high", max_tokens: 7_000 }),
+  });
+  const raw = await response.json() as Record<string, unknown>;
+  if (!response.ok) {
+    const error = raw.error as Record<string, unknown> | undefined;
+    throw new Error(`DeepSeek ${response.status}: ${String(error?.code || error?.message || "request failed")}`);
+  }
+  const choices = Array.isArray(raw.choices) ? raw.choices as Array<Record<string, unknown>> : [];
+  const message = choices[0]?.message as Record<string, unknown> | undefined;
+  const article = String(message?.content || "").trim();
+  if (!article) throw new Error("DeepSeek returned an empty article.");
+  return { model: String(raw.model || model), latency_ms: Date.now() - started, usage: (raw.usage || {}) as Record<string, unknown>, article };
+}
+
 function localDateParts(date: Date, timezone: string): { date: string; hour: number; minute: number } {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
@@ -487,7 +599,24 @@ function normalizeJson<T>(value: unknown, fallback: T): T {
   return (value ?? fallback) as T;
 }
 
-function normalizeOutput(row: Record<string, unknown>): EditorialOutput {
+function normalizeCandidateDraft(row: Record<string, unknown>): EditorialCandidateDraft {
+  return {
+    id: Number(row.id),
+    output_id: Number(row.output_id),
+    candidate_id: String(row.candidate_id || ""),
+    provider: String(row.provider) as EditorialProvider,
+    model: String(row.model || ""),
+    status: String(row.status) as EditorialCandidateDraft["status"],
+    article: String(row.article || ""),
+    latency_ms: Number(row.latency_ms || 0),
+    usage: normalizeJson(row.usage, {}),
+    error: String(row.error || ""),
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+function normalizeOutput(row: Record<string, unknown>, candidateDrafts: EditorialCandidateDraft[] = []): EditorialOutput {
   return {
     id: Number(row.id),
     run_id: Number(row.run_id),
@@ -499,6 +628,7 @@ function normalizeOutput(row: Record<string, unknown>): EditorialOutput {
     package: row.package == null ? null : normalizeJson(row.package, {}),
     error: String(row.error || ""),
     created_at: String(row.created_at),
+    candidate_drafts: candidateDrafts.filter((draft) => draft.output_id === Number(row.id)),
   };
 }
 
@@ -527,8 +657,100 @@ export async function listEditorialRuns(limit = 20): Promise<EditorialRun[]> {
   if (!runRows.length) return [];
   const ids = runRows.map((row) => Number(row.id));
   const outputRows = await sql`SELECT * FROM scheduled_editorial_outputs WHERE run_id = ANY(${ids}::bigint[]) ORDER BY provider ASC` as unknown as Record<string, unknown>[];
-  const outputs = outputRows.map(normalizeOutput);
+  const outputIds = outputRows.map((row) => Number(row.id));
+  const draftRows = outputIds.length
+    ? await sql`SELECT * FROM scheduled_editorial_candidate_drafts WHERE output_id = ANY(${outputIds}::bigint[]) ORDER BY created_at ASC` as unknown as Record<string, unknown>[]
+    : [];
+  const candidateDrafts = draftRows.map(normalizeCandidateDraft);
+  const outputs = outputRows.map((row) => normalizeOutput(row, candidateDrafts));
   return runRows.map((row) => normalizeRun(row, outputs.filter((output) => output.run_id === Number(row.id))));
+}
+
+export async function generateCandidateArticle(input: {
+  runId: number;
+  outputId: number;
+  candidateId: string;
+  regenerate?: boolean;
+}): Promise<EditorialCandidateDraft> {
+  await ensureScheduledEditorialSchema();
+  const runId = Math.round(Number(input.runId));
+  const outputId = Math.round(Number(input.outputId));
+  const candidateId = String(input.candidateId || "").trim();
+  if (!Number.isSafeInteger(runId) || runId < 1 || !Number.isSafeInteger(outputId) || outputId < 1 || !/^[a-zA-Z0-9._:-]{1,100}$/.test(candidateId)) {
+    throw new Error("A valid run, output, and candidate are required.");
+  }
+
+  const sql = getSql();
+  if (!input.regenerate) {
+    const existingRows = await sql`
+      SELECT * FROM scheduled_editorial_candidate_drafts
+      WHERE output_id = ${outputId} AND candidate_id = ${candidateId} AND status = 'completed'
+      LIMIT 1
+    ` as unknown as Record<string, unknown>[];
+    if (existingRows[0]) return normalizeCandidateDraft(existingRows[0]);
+  }
+
+  const rows = await sql`
+    SELECT o.*, r.source_snapshot
+    FROM scheduled_editorial_outputs o
+    JOIN scheduled_editorial_runs r ON r.id = o.run_id
+    WHERE o.id = ${outputId} AND o.run_id = ${runId} AND o.status = 'completed'
+    LIMIT 1
+  ` as unknown as Record<string, unknown>[];
+  const row = rows[0];
+  if (!row) throw new Error("The requested completed editorial output was not found.");
+  const packageValue = normalizeJson<Record<string, unknown> | null>(row.package, null);
+  if (!packageValue) throw new Error("The editorial output does not contain a candidate package.");
+  const candidates = Array.isArray(packageValue.candidates)
+    ? packageValue.candidates.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value))
+    : [];
+  const candidate = candidates.find((value) => String(value.candidate_id || "") === candidateId);
+  if (!candidate) throw new Error("That candidate angle is not part of this editorial output.");
+
+  const provider = String(row.provider) as EditorialProvider;
+  if (provider !== "openai" && provider !== "deepseek") throw new Error("The editorial provider is not supported.");
+  const model = String(row.model || (provider === "openai" ? DEFAULT_SETTINGS.openai_model : DEFAULT_SETTINGS.deepseek_model));
+  const sources = normalizeJson<EditorialSource[]>(row.source_snapshot, []);
+  const messages = articlePrompt(candidate, sources);
+
+  try {
+    const result = provider === "openai"
+      ? await runOpenAiArticle(messages, model)
+      : await runDeepSeekArticle(messages, model);
+    const usage = JSON.stringify(result.usage);
+    const saved = await sql`
+      INSERT INTO scheduled_editorial_candidate_drafts (output_id, candidate_id, provider, model, status, article, latency_ms, usage, error)
+      VALUES (${outputId}, ${candidateId}, ${provider}, ${result.model}, 'completed', ${result.article}, ${result.latency_ms}, ${usage}::jsonb, '')
+      ON CONFLICT (output_id, candidate_id) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        model = EXCLUDED.model,
+        status = EXCLUDED.status,
+        article = EXCLUDED.article,
+        latency_ms = EXCLUDED.latency_ms,
+        usage = EXCLUDED.usage,
+        error = '',
+        updated_at = now()
+      RETURNING *
+    ` as unknown as Record<string, unknown>[];
+    return normalizeCandidateDraft(saved[0]);
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : String(error)).slice(0, 1000);
+    const usage = JSON.stringify({});
+    await sql`
+      INSERT INTO scheduled_editorial_candidate_drafts (output_id, candidate_id, provider, model, status, article, latency_ms, usage, error)
+      VALUES (${outputId}, ${candidateId}, ${provider}, ${model}, 'failed', '', 0, ${usage}::jsonb, ${message})
+      ON CONFLICT (output_id, candidate_id) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        model = EXCLUDED.model,
+        status = 'failed',
+        article = '',
+        latency_ms = 0,
+        usage = EXCLUDED.usage,
+        error = EXCLUDED.error,
+        updated_at = now()
+    `;
+    throw error;
+  }
 }
 
 async function saveOutput(runId: number, provider: EditorialProvider, result: Awaited<ReturnType<typeof runOpenAi>> | null, error: string) {

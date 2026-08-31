@@ -9,6 +9,9 @@
     "app/api/admin/briefings/scheduled/route.ts": {
       "maxDuration": 300
     },
+    "app/api/admin/briefings/scheduled/candidate-draft/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/briefings/scheduled/run/route.ts": {
       "maxDuration": 300
     },
