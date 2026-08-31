@@ -3405,6 +3405,25 @@ export default function AdminPage() {
       <p className="mb-1 text-xs font-bold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Admin</p>
       <h1 className="mb-10 text-2xl font-bold text-[color:var(--ink)]">Pipeline Controls</h1>
 
+      <SectionDivider label="Editorial Briefings" />
+      <section className="mb-8">
+        <a
+          href="/briefings/scheduled"
+          className="group block rounded-xl border border-[color:rgba(79,213,255,0.36)] bg-[linear-gradient(135deg,rgba(79,213,255,0.12),rgba(9,22,36,0.88))] p-5 transition hover:border-[color:rgba(79,213,255,0.62)]"
+        >
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-[color:var(--accent)]">Nightly editorial desk</p>
+              <h2 className="mt-2 text-lg font-semibold text-[color:var(--ink)]">Daily AI Editorial</h2>
+              <p className="mt-1 max-w-xl text-sm leading-6 text-[color:var(--ink-soft)]">
+                Configure the 9 PM briefing, choose Luna or DeepSeek, run it manually, and review stored article drafts.
+              </p>
+            </div>
+            <span className="btn-solid shrink-0 px-4 py-2 text-center text-sm">Open editorial workspace →</span>
+          </div>
+        </a>
+      </section>
+
       {/* ── Add article to the news feed (kept at the top for quick access) ── */}
       <SectionDivider label="Add Article to Feed" />
       <UrlIngestSection />
