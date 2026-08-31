@@ -144,7 +144,7 @@ function OutputView({
   activeCandidateId?: string;
   generatingCandidateId?: string;
   onSelectArticle: (candidateId: string) => void;
-  onGenerateArticle: (candidateId: string) => void;
+  onGenerateArticle: (candidateId: string, regenerate?: boolean) => void;
 }) {
   if (output.status === "failed" || !output.package) {
     return (
@@ -169,7 +169,7 @@ function OutputView({
     ? activeCandidateId
     : draft && selectedId ? selectedId : completedDrafts[0]?.candidate_id || "";
   const storedDraft = completedDrafts.find((candidateDraft) => candidateDraft.candidate_id === shownCandidateId);
-  const article = shownCandidateId === selectedId && draft ? draft : storedDraft?.article || "";
+  const article = storedDraft?.article || (shownCandidateId === selectedId ? draft : "");
   const articleCandidate = candidates.find((candidate) => String(candidate.candidate_id || "") === shownCandidateId);
   return (
     <div className="space-y-4">
@@ -195,7 +195,8 @@ function OutputView({
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {candidates.map((candidate, index) => {
             const candidateId = String(candidate.candidate_id || index);
-            const hasArticle = availableCandidateIds.has(candidateId);
+            const hasStoredArticle = completedDrafts.some((candidateDraft) => candidateDraft.candidate_id === candidateId);
+            const hasNightlyDraft = candidateId === selectedId && Boolean(draft);
             const isGenerating = generatingCandidateId === candidateId;
             return (
               <article key={candidateId} className={`flex flex-col rounded-xl border p-4 ${candidateId === selectedId ? "border-[color:rgba(79,213,255,0.6)] bg-[color:rgba(79,213,255,0.08)]" : "border-[color:var(--line-soft)]"}`}>
@@ -209,10 +210,10 @@ function OutputView({
                 <button
                   type="button"
                   disabled={Boolean(generatingCandidateId)}
-                  onClick={() => hasArticle ? onSelectArticle(candidateId) : onGenerateArticle(candidateId)}
-                  className={`${hasArticle ? "btn-muted" : "btn-accent"} mt-4 w-full px-3 py-2 text-sm disabled:opacity-50`}
+                  onClick={() => hasStoredArticle ? onSelectArticle(candidateId) : onGenerateArticle(candidateId)}
+                  className={`${hasStoredArticle ? "btn-muted" : "btn-accent"} mt-4 w-full px-3 py-2 text-sm disabled:opacity-50`}
                 >
-                  {isGenerating ? "Generating article…" : hasArticle ? "View article" : "Generate article"}
+                  {isGenerating ? "Generating article…" : hasStoredArticle ? "View article" : hasNightlyDraft ? "Rewrite with full snapshot" : "Generate article"}
                 </button>
               </article>
             );
@@ -224,7 +225,10 @@ function OutputView({
         <section className="panel p-5 md:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><p className="kicker">Editable rough draft</p><h2 className="mt-4 text-xl font-semibold">{String(articleCandidate?.working_title || "Medium-style article")}</h2></div>
-            <button type="button" className="btn-muted px-3 py-2 text-sm" onClick={() => navigator.clipboard.writeText(article)}>Copy draft</button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={Boolean(generatingCandidateId)} className="btn-muted px-3 py-2 text-sm disabled:opacity-50" onClick={() => onGenerateArticle(shownCandidateId, true)}>{generatingCandidateId === shownCandidateId ? "Regenerating…" : "Regenerate from full snapshot"}</button>
+              <button type="button" className="btn-muted px-3 py-2 text-sm" onClick={() => navigator.clipboard.writeText(article)}>Copy draft</button>
+            </div>
           </div>
           {availableCandidateIds.size > 1 ? (
             <div className="mt-5 flex flex-wrap gap-2 border-b border-[color:var(--line-soft)] pb-4">
@@ -336,7 +340,7 @@ export function ScheduledEditorialDashboard() {
     } finally { setRunning(false); }
   };
 
-  const generateArticle = async (runId: number, outputId: number, candidateId: string) => {
+  const generateArticle = async (runId: number, outputId: number, candidateId: string, regenerate = false) => {
     const generationKey = `${outputId}:${candidateId}`;
     setGeneratingArticle(generationKey);
     setError(null);
@@ -345,7 +349,7 @@ export function ScheduledEditorialDashboard() {
       const response = await fetch("/api/admin/briefings/scheduled/candidate-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId, outputId, candidateId }),
+        body: JSON.stringify({ runId, outputId, candidateId, regenerate }),
       });
       const body = await apiBody(response);
       if (!response.ok || !body.ok) throw new Error(String(body.error || "Unable to generate the candidate article."));
@@ -437,7 +441,7 @@ export function ScheduledEditorialDashboard() {
           activeCandidateId={articleSelections[selectedRun.outputs[selectedOutput].id]}
           generatingCandidateId={generatingArticle?.startsWith(`${selectedRun.outputs[selectedOutput].id}:`) ? generatingArticle.slice(generatingArticle.indexOf(":") + 1) : undefined}
           onSelectArticle={(candidateId) => setArticleSelections((current) => ({ ...current, [selectedRun.outputs[selectedOutput].id]: candidateId }))}
-          onGenerateArticle={(candidateId) => void generateArticle(selectedRun.id, selectedRun.outputs[selectedOutput].id, candidateId)}
+          onGenerateArticle={(candidateId, regenerate) => void generateArticle(selectedRun.id, selectedRun.outputs[selectedOutput].id, candidateId, regenerate)}
         /> : null}
         <section className="panel p-5"><details><summary className="cursor-pointer text-sm font-semibold">Frozen source snapshot ({selectedRun.source_count})</summary><div className="mt-4 grid gap-3 md:grid-cols-2">{selectedRun.source_snapshot.map((source) => <a key={source.source_id} href={source.url} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-[color:var(--line-soft)] p-3 hover:border-[color:var(--line-strong)]"><p className="text-sm font-semibold">{source.title}</p><p className="mt-1 text-xs text-[color:var(--ink-faint)]">{source.source_id} · {source.publisher}</p><p className="mt-2 line-clamp-3 text-xs leading-5 text-[color:var(--ink-soft)]">{source.description}</p></a>)}</div></details></section>
       </> : null}

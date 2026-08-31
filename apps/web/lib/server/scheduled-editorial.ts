@@ -396,8 +396,9 @@ function promptMessages(sources: EditorialSource[], settings: ScheduledEditorial
     "Never imply that you read the full articles. Never invent facts, quotations, first-person experience, or the author's opinion.",
     "Every factual claim must cite one or more source_id values in square brackets. Distinguish fact, inference, prediction, and recommendation.",
     "Prefer a coherent, non-obvious thesis for professionals following AI, markets, regulation, governance, and enterprise risk.",
+    "For each candidate, identify every materially relevant source_id rather than only the first supporting pair. Favor angles that can synthesize several independent sources.",
     settings.rough_draft
-      ? "Also produce a 900-1,400 word Medium-style rough draft. It must remain source-bounded, use inline [source_id] citations, and leave personal judgments to the human editor."
+      ? "Also produce a 900-1,400 word Medium-style rough draft. It must remain source-bounded, use inline [source_id] citations, and leave personal judgments to the human editor. Synthesize at least four distinct sources when four are materially relevant, but never add an unrelated citation merely to reach a quota."
       : "Set draft to null. The human author has disabled rough-draft generation.",
     "A no_publish decision is valid when evidence is weak. Return JSON only and conform exactly to the schema.",
   ].join(" ");
@@ -504,8 +505,6 @@ function articlePrompt(candidate: Record<string, unknown>, sources: EditorialSou
   const supportedIds = Array.isArray(candidate.supporting_source_ids)
     ? candidate.supporting_source_ids.map(String)
     : [];
-  const candidateSources = sources.filter((source) => supportedIds.includes(source.source_id));
-  const frozenSources = candidateSources.length ? candidateSources : sources;
   return [
     {
       role: "developer",
@@ -516,13 +515,15 @@ function articlePrompt(candidate: Record<string, unknown>, sources: EditorialSou
         "Never invent facts, quotations, statistics, first-person experience, or the human author's opinion.",
         "Every factual claim must include one or more supplied source_id values in square brackets.",
         "Clearly signal inference, prediction, and recommendation as such. Do not include a bibliography or cite IDs that were not supplied.",
+        "Treat the candidate's supporting_source_ids as a starting point, then review the entire frozen snapshot for corroboration, tension, examples, and implications.",
+        "Synthesize at least four distinct sources when four are materially relevant. Prefer 4-8 substantive sources, but never force an unrelated source into the article to satisfy a count.",
         "Use a strong headline, optional subtitle, short paragraphs, useful section headings, and an analytical conclusion.",
         "Return only the article as clean plain text, with headings on their own lines and no Markdown symbols. Do not add notes about these instructions.",
       ].join(" "),
     },
     {
       role: "user",
-      content: `Expand this candidate angle into the article.\n\nCandidate: ${JSON.stringify(candidate, null, 2)}\n\nFrozen sources: ${JSON.stringify(frozenSources, null, 2)}`,
+      content: `Expand this candidate angle into the article.\n\nInitial supporting source IDs: ${JSON.stringify(supportedIds)}\n\nCandidate: ${JSON.stringify(candidate, null, 2)}\n\nComplete frozen source snapshot: ${JSON.stringify(sources, null, 2)}`,
     },
   ];
 }
