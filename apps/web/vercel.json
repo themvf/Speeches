@@ -6,11 +6,18 @@
     "app/api/intel/recap/generate/route.ts": {
       "maxDuration": 60
     },
+    "app/api/admin/briefings/scheduled/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/briefings/scheduled/run/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/notices-comments/route.ts": {
       "maxDuration": 30
     }
   },
   "crons": [
-    { "path": "/api/intel/rss-refresh", "schedule": "*/30 * * * *" }
+    { "path": "/api/intel/rss-refresh", "schedule": "*/30 * * * *" },
+    { "path": "/api/briefings/scheduled/run", "schedule": "0 1,2 * * *" }
   ]
 }

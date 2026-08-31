@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BriefingDashboard } from "@/components/briefing-dashboard";
+import { BriefingsSubnav } from "@/components/briefings-subnav";
 import { buildDocumentListItems, buildDocumentsFacets, loadCorpusDocuments, loadEnrichmentState } from "@/lib/server/data-store";
 import type { DocumentsFacets } from "@/lib/server/types";
 
@@ -31,6 +32,7 @@ export default async function BriefingsPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8">
+      <BriefingsSubnav />
       <BriefingDashboard facets={facets} />
     </main>
   );
