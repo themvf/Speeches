@@ -172,7 +172,7 @@ UNIVERSE: List[str] = [
     "CHTR", "OPTU", "CABO", "IRDM", "ECHO", "VSAT", "GSAT",
     # ── REITs & real estate ──
     "AMT", "PLD", "CCI", "EQIX", "DLR", "SPG", "O", "PSA", "WELL", "VTR",
-    "AVB", "EQR", "MAA", "ESS", "INVH", "ARE", "BXP", "VNO", "IRM", "WY", "CBRE", "Z", "OPEN",
+    "EQR", "MAA", "ESS", "INVH", "ARE", "BXP", "VNO", "IRM", "WY", "CBRE", "Z", "OPEN",
     "VICI", "GLPI", "EXR", "CUBE", "REXR", "STAG", "KIM", "REG", "FRT", "NNN",
     "ADC", "WPC", "HST", "CPT", "UDR", "ELS", "SUI", "AMH", "SBAC", "OHI", "DOC", "COLD",
     # ── Materials & chemicals ──
@@ -217,7 +217,7 @@ SUB_INDUSTRY_GROUPS: Dict[str, List[str]] = {
     "Ecommerce & Fintech Platforms": ["SHOP", "XYZ"],
 
     # SIC 6798 - Real Estate Investment Trusts (41)
-    "Residential REITs": ["AMH", "AVB", "CPT", "ELS", "EQR", "ESS", "MAA", "SUI", "UDR"],
+    "Residential REITs": ["AMH", "CPT", "ELS", "EQR", "ESS", "MAA", "SUI", "UDR"],
     "Office REITs": ["ARE", "BXP", "VNO"],
     "Retail REITs": ["FRT", "KIM", "REG", "SPG"],
     "Net Lease REITs": ["ADC", "NNN", "O", "WPC"],

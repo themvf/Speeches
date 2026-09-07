@@ -1,7 +1,7 @@
 {
  "generatedAt": "2026-09-04T21:37:46Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
- "tickerCount": 889,
+ "tickerCount": 888,
  "industries": [
   {
    "sic": "7372",
@@ -683,18 +683,6 @@
      "periodEnd": "2026-03-31",
      "filed": "2026-04-27",
      "subIndustry": "Office REITs"
-    },
-    {
-     "ticker": "AVB",
-     "name": "Avalonbay Communities Inc",
-     "cik": "915912",
-     "revenue": 1833000.0,
-     "profit": 325730000.0,
-     "expenses": -323897000.0,
-     "sharesOutstanding": 139112069.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07",
-     "subIndustry": "Residential REITs"
     },
     {
      "ticker": "BXP",

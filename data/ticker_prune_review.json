@@ -1,7 +1,7 @@
 {
- "generatedAt": "2026-08-31T18:02:31Z",
+ "generatedAt": "2026-09-07T16:32:13Z",
  "checkedCount": 889,
- "flaggedCount": 2,
+ "flaggedCount": 3,
  "candidates": [
   {
    "ticker": "EQR",
@@ -21,6 +21,15 @@
    "evidence": "CIK's own submissions now list ['LAWIL', 'LNWO'] instead of LNW",
    "suggestedNewTicker": "LAWIL",
    "yahooQuoteAlive": false
+  },
+  {
+   "ticker": "SE",
+   "name": "Sea Ltd",
+   "cik": "0001703399",
+   "reason": "no_active_ticker",
+   "confidence": "medium",
+   "evidence": "CIK is active in EDGAR but currently lists no ticker symbols",
+   "yahooQuoteAlive": true
   }
  ]
 }
