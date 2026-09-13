@@ -1,0 +1,40 @@
+name: Crypto Social Research Pilot (Manual)
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: 'Make paid calls and save to Neon (false prints plan only)'
+        type: boolean
+        default: false
+      max_requests:
+        description: 'Maximum requests this run (14 reserves at most 4,200 credits)'
+        type: choice
+        options: ['14', '56', '112']
+        default: '14'
+permissions:
+  contents: read
+concurrency:
+  group: crypto-social-pilot
+  cancel-in-progress: false
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TWITTERAPI_IO_API_KEY: ${{ secrets.TWITTERAPI_IO_API_KEY }}
+      EXECUTE: ${{ inputs.execute }}
+      MAX_REQUESTS: ${{ inputs.max_requests }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - name: Run bounded pilot
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--max-requests "$MAX_REQUESTS")
+          if [ "$EXECUTE" = "true" ]; then args+=(--execute); fi
+          python crypto_social_pilot.py "${args[@]}"
