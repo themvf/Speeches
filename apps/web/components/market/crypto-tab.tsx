@@ -1,5 +1,6 @@
 "use client";
 
+import { CryptoSocialPanel } from "./crypto-social-panel";
 import { useState } from "react";
 import type { CryptoCoin, MarketCryptoData } from "@/lib/server/types";
 import { InlineChart } from "./price-chart";
@@ -94,26 +95,11 @@ export function CryptoTab({ data, loading, error }: Props) {
   const [range, setRange] = useState<CryptoRange>("24h");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (loading && !data) {
-    return (
-      <div className="flex items-center justify-center py-16 text-sm text-[color:var(--ink-faint)]">
-        Loading crypto markets…
-      </div>
-    );
-  }
-
-  if (error && !data) {
-    return (
-      <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
-        {error}
-      </div>
-    );
-  }
-
-  if (!data) return null;
+  if (!data) return <><CryptoSocialPanel /><p className="p-4 text-sm">{error ?? (loading ? "Loading crypto markets…" : "Market prices unavailable.")}</p></>;
 
   return (
     <div className="space-y-4">
+      <CryptoSocialPanel />
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
           Crypto Markets
