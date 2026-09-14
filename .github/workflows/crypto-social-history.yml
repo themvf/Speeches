@@ -40,6 +40,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          args=(--max-requests 8)
+          args=(--max-requests 80)
           if [ "$EXECUTE" = "true" ]; then args+=(--execute); fi
           python crypto_social_history.py "${args[@]}"
