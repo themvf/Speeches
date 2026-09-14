@@ -1,6 +1,6 @@
 -- Immutable fetches and observations preserve earlier history and provider revisions.
 CREATE TABLE IF NOT EXISTS crypto_market_sources (
- id text PRIMARY KEY, coin text NOT NULL CHECK(coin IN ('ZCAT','ZEC')),
+ id text PRIMARY KEY, coin text NOT NULL CHECK(coin IN ('ZCAT','ZEC','PONS')),
  provider text NOT NULL, source_url text NOT NULL, metadata jsonb NOT NULL,
  is_default boolean NOT NULL DEFAULT false
 );
@@ -23,3 +23,6 @@ CREATE OR REPLACE VIEW crypto_market_latest AS
  SELECT DISTINCT ON (f.source_id,o.day) f.source_id,f.retrieved_at,o.*
  FROM crypto_market_observations o JOIN crypto_market_fetches f ON f.id=o.fetch_id
  ORDER BY f.source_id,o.day,f.retrieved_at DESC,f.id DESC;
+
+ALTER TABLE crypto_market_sources DROP CONSTRAINT IF EXISTS crypto_market_sources_coin_check;
+ALTER TABLE crypto_market_sources ADD CONSTRAINT crypto_market_sources_coin_check CHECK(coin IN ('ZCAT','ZEC','PONS'));

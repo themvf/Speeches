@@ -3,7 +3,7 @@ import re
 import unicodedata
 from crypto_social_pilot import count, identity, ADDRESS
 
-TERMS = {'ZCAT': ['zcat', 'anonymous cat'], 'ZEC': ['zcash', 'zec']}
+TERMS = {'ZCAT': ['zcat', 'anonymous cat'], 'ZEC': ['zcash', 'zec'], 'PONS': ['pons', 'ponsdotfamily']}
 
 
 def matches(text):

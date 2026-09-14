@@ -145,3 +145,34 @@ def test_db_upgrade_preserves_spend_and_coverage(db):
     reserve(db)
     with db,db.cursor() as c:
         c.execute('SELECT reserved_credits FROM crypto_social_history_campaign');assert c.fetchone()[0]==38700
+
+
+def test_db_pons_budget_scope_and_restarts_are_independent(db):
+    from crypto_social_history import settings
+    setup(db)
+    with db,db.cursor() as c:
+        c.execute("UPDATE crypto_social_history_campaign SET reserved_credits=150000 WHERE id='zcat-july-2026'")
+    campaign,start,end,_=settings('PONS')
+    setup(db,'PONS',now=end);setup(db,'PONS',now=end)
+    with db,db.cursor() as c:
+        c.execute('SELECT count(*) FROM crypto_social_history_windows WHERE campaign_id=%s',(campaign,));assert c.fetchone()[0]==304
+        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign WHERE id=%s',(campaign,));assert c.fetchone()[0]==0
+    assert reserve(db) is None
+    rid,window=reserve(db,coin='PONS')
+    assert window[1]==start and '$PONS' in window[3] and '$ZCAT' not in window[3]
+    with db,db.cursor() as c:
+        c.execute('SELECT parameters FROM crypto_social_requests WHERE id=%s',(rid,));assert c.fetchone()[0]['campaign']==campaign
+        c.execute("UPDATE crypto_social_requests SET status='saved' WHERE id=%s",(rid,))
+        c.execute('SELECT reserved_credits FROM crypto_social_pilot');assert c.fetchone()[0]==0
+        c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=150000 WHERE id=%s',(campaign,))
+    setup(db,'PONS',now=end)
+    assert reserve(db,coin='PONS') is None
+
+
+def test_db_pons_does_not_search_future_intervals(db):
+    from crypto_social_history import settings
+    _,start,_,_=settings('PONS')
+    setup(db,'PONS',now=start+timedelta(hours=14))
+    with db,db.cursor() as c:
+        c.execute("SELECT count(*),max(end_at) FROM crypto_social_windows WHERE coin='PONS'")
+        assert c.fetchone()==(2,start+timedelta(hours=12))

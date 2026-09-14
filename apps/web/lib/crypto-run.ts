@@ -40,6 +40,7 @@ export function priceLabel(n:number){return n>=100?'$'+n.toLocaleString(undefine
 
 export function filterEvidence(posts:RunPost[],coin:string,mode:string){
  if(mode==='all')return posts;
+ if(coin==='PONS')return posts.filter(p=>p.text.toLowerCase().includes('0x39dbed3a2bd333467115de45665cc57f813c4571')||(mode!=='contract'&&(/[$#]pons(?![a-z0-9_])/i.test(p.text)||(/\bpons\b/i.test(p.text)&&/robinhood|ponsdotfamily/i.test(p.text)))));
  const contract='HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR';
  return posts.filter(p=>coin==='ZCAT'?(p.text.includes(contract)||(mode!=='contract'&&/(^|[^a-z0-9_])zcat(?![a-z0-9_])|anonymous\s+cat/i.test(p.text))):/(^|[^a-z0-9_])zcash(?![a-z0-9_])|[$#]zec(?![a-z0-9_])/i.test(p.text));
 }
