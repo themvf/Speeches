@@ -27,7 +27,7 @@ export async function GET(request: Request) {
         count(DISTINCT w.id) FILTER (WHERE w.pages>0)::int AS searched,
         count(DISTINCT w.id)::int AS windows
         FROM crypto_social_windows w LEFT JOIN crypto_social_matches m ON m.window_id=w.id
-        LEFT JOIN crypto_social_posts p ON p.id=m.post_id WHERE w.coin=${coin}
+        LEFT JOIN crypto_social_posts p ON p.id=m.post_id WHERE w.coin=${coin} AND w.query<>'timeline text match'
         GROUP BY 1 ORDER BY 1`,
       sql`WITH matched AS (
         SELECT DISTINCT p.* FROM crypto_social_posts p JOIN crypto_social_matches m ON m.post_id=p.id
@@ -60,7 +60,39 @@ export async function GET(request: Request) {
         JOIN crypto_social_windows w ON w.id=m.window_id WHERE w.coin=${coin}
         ORDER BY p.posted_at DESC,p.id LIMIT 20`,
     ]);
-    return ok({ status: pilot.length ? "ready" : "not_started", coin, pilot: pilot[0], daily, accounts, edges, posts });
+    const trackingSchema = await sql`SELECT to_regclass('public.crypto_social_account_metrics') AS relation`;
+    let tracking = null;
+    if (trackingSchema[0]?.relation) {
+      const [campaign, candidates, history, bioChanges, coverage, ledger, bioMatches] = await Promise.all([
+        sql`SELECT * FROM crypto_social_tracking WHERE id='zcat-zec-v1'`,
+        sql`SELECT * FROM crypto_social_account_metrics WHERE coin=${coin} ORDER BY tracked DESC,participants DESC,id`,
+        sql`SELECT h.account_id,h.observed_at,h.followers,h.available FROM crypto_social_profile_history h
+          JOIN crypto_social_candidates c ON c.account_id=h.account_id AND c.coin=${coin}
+          WHERE c.tracked AND h.source IN ('daily_profile','daily_profile_missing')
+          AND h.observed_at>=now()-interval '31 days' ORDER BY h.observed_at,h.account_id`,
+        sql`WITH versions AS (
+          SELECT h.account_id,h.bio,h.observed_at,
+            lag(h.bio) OVER(PARTITION BY h.account_id ORDER BY h.observed_at,h.request_id) AS previous_bio
+          FROM crypto_social_profile_history h JOIN crypto_social_candidates c
+          ON c.account_id=h.account_id AND c.coin=${coin} WHERE h.bio IS NOT NULL AND h.available
+        ) SELECT v.*,a.handle FROM versions v JOIN crypto_social_accounts a ON a.id=v.account_id
+          WHERE previous_bio IS NOT NULL AND bio IS DISTINCT FROM previous_bio
+          ORDER BY observed_at DESC LIMIT 30`,
+        sql`SELECT v.*,a.handle FROM crypto_social_account_coverage v JOIN crypto_social_accounts a ON a.id=v.account_id
+          JOIN crypto_social_candidates c ON c.account_id=v.account_id AND c.coin=${coin}
+          ORDER BY end_at DESC,request_id DESC LIMIT 40`,
+        sql`SELECT coalesce(parameters->>'allocation','initial_search') AS allocation,
+          sum(reserved_credits)::int AS reserved_credits,sum(estimated_credits)::int AS estimated_credits,
+          count(*)::int AS requests FROM crypto_social_requests GROUP BY 1 ORDER BY 1`,
+        sql`SELECT m.* FROM crypto_social_profile_matches m JOIN (
+          SELECT DISTINCT ON(account_id) account_id,request_id FROM crypto_social_profile_history
+          ORDER BY account_id,observed_at DESC,request_id DESC
+        ) h USING(account_id,request_id) WHERE m.coin=${coin}`,
+      ]);
+      tracking = { campaign: campaign[0] ?? null, accounts: candidates, history, bioChanges, coverage, ledger, bioMatches,
+        keywordSearchStatus: 'pending_provider_page_bound', lookbackDays: 28 };
+    }
+    return ok({ tracking, status: pilot.length ? "ready" : "not_started", coin, pilot: pilot[0], daily, accounts, edges, posts });
   } catch {
     return fail("Crypto research data is temporarily unavailable", "SOCIAL_READ_FAILED", 503);
   }

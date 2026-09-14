@@ -100,6 +100,7 @@ def build_windows(start, end):
 def initialize(conn, end):
     with conn, conn.cursor() as cur:
         cur.execute(Path(__file__).with_name('sql').joinpath('crypto_social.sql').read_text())
+        cur.execute(Path(__file__).with_name('sql').joinpath('crypto_social_metrics.sql').read_text())
         cur.execute('INSERT INTO crypto_social_pilot(id,start_at,end_at) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',
                     (PILOT, end-timedelta(days=7), end))
         cur.execute('SELECT start_at,end_at FROM crypto_social_pilot WHERE id=%s', (PILOT,))
@@ -110,7 +111,7 @@ def initialize(conn, end):
         for row in build_windows(start,end):
             cur.execute('INSERT INTO crypto_social_windows(coin,start_at,end_at,query) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING', row)
 
-def reserve(conn):
+def reserve(conn, max_pages=2):
     """Atomic reservation serializes collectors even when launched outside Actions."""
     with conn, conn.cursor() as cur:
         cur.execute('SELECT reserved_credits,credit_limit FROM crypto_social_pilot WHERE id=%s FOR UPDATE', (PILOT,))
@@ -120,8 +121,11 @@ def reserve(conn):
             raise RuntimeError('Outstanding or uncertain request; review ledger before continuing')
         if spent + PAGE_RESERVE > min(limit,LIMIT):
             return None
-        # One page per window before any second page; equal effort across coins/days.
-        cur.execute("SELECT id,start_at,end_at,query,cursor FROM crypto_social_windows WHERE status IN ('pending','partial') AND pages<2 ORDER BY pages,start_at,coin LIMIT 1 FOR UPDATE")
+        cur.execute("SELECT coalesce(sum(reserved_credits),0) FROM crypto_social_requests WHERE endpoint='search'")
+        if cur.fetchone()[0] + PAGE_RESERVE > 16800:
+            return None
+        # Preserve the initial discovery allocation for profile tracking.
+        cur.execute("SELECT id,start_at,end_at,query,cursor FROM crypto_social_windows WHERE status IN ('pending','partial') AND pages<%s ORDER BY pages,start_at,coin LIMIT 1 FOR UPDATE", (max_pages,))
         window = cur.fetchone()
         if not window:
             return None
@@ -132,7 +136,14 @@ def reserve(conn):
 def save_page(conn, request_id, window, data):
     wid,start,end,_,cursor = window
     posts,next_cursor,more = validate_page(data,start,end,cursor)
+    from crypto_social_profiles import save_profile
     with conn, conn.cursor() as cur:
+        for raw in data['tweets']:
+            save_profile(cur, raw['author'], request_id, 'search_author')
+            for field in ('quoted_tweet','retweeted_tweet'):
+                nested = raw.get(field)
+                if isinstance(nested, dict) and identity((nested.get('author') or {}).get('id')):
+                    save_profile(cur, nested['author'], request_id, 'embedded_target')
         for p in posts:
             cur.execute('''INSERT INTO crypto_social_accounts(id,handle,name,followers) VALUES (%s,%s,%s,%s)
                 ON CONFLICT(id) DO UPDATE SET handle=EXCLUDED.handle,name=EXCLUDED.name,
@@ -152,12 +163,12 @@ def save_page(conn, request_id, window, data):
         cur.execute("UPDATE crypto_social_requests SET status='saved',estimated_credits=%s,returned_count=%s,accepted_count=%s WHERE id=%s",
                     (max(1,len(posts))*15,len(posts),len(posts),request_id))
 
-def collect(conn, key, max_requests, fetch=None):
+def collect(conn, key, max_requests, fetch=None, max_pages=2):
     import requests
     fetch = fetch or requests.get
     calls = 0
     while calls < max_requests:
-        item = reserve(conn)
+        item = reserve(conn, max_pages)
         if item is None:
             break
         rid, window = item

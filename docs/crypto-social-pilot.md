@@ -98,3 +98,12 @@ cd apps/web && npm run typecheck
 
 Three optional Postgres integration tests use CRYPTO_SOCIAL_TEST_DATABASE_URL.
 Use only a disposable test database: they recreate the crypto_test schema.
+
+## September 2026 tracking extension
+
+The original manual-only description above records phase one. The extension in
+[crypto-social-tracking.md](crypto-social-tracking.md) adds a finite 30-day daily
+schedule, profile/bio history, an expanded candidate cohort, and separate
+leaderboards. Initial search reservations are now limited to 16,800 credits;
+all endpoints still share the original 50,000-credit singleton. This supersedes
+the original two-page/full-budget baseline and manual-only next-phase notes.

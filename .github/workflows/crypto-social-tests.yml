@@ -2,10 +2,13 @@ name: Crypto Social Pilot Tests
 on:
   pull_request:
     paths:
-      - 'crypto_social_pilot.py'
-      - 'sql/crypto_social.sql'
-      - 'tests/test_crypto_social_pilot.py'
+      - 'crypto_social*.py'
+      - 'sql/crypto_social*.sql'
+      - 'tests/test_crypto_social*.py'
       - '.github/workflows/crypto-social*.yml'
+      - 'apps/web/lib/crypto-social*'
+      - 'apps/web/components/market/crypto*'
+      - 'apps/web/app/api/market/crypto/social/route.ts'
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,6 +35,11 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install pytest 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
-      - run: python -m pytest tests/test_crypto_social_pilot.py -q
+      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_tracking.py -q
         env:
           CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@localhost:5432/crypto_test
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --experimental-strip-types --test apps/web/lib/crypto-social.test.ts

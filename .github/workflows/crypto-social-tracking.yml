@@ -1,0 +1,36 @@
+name: Crypto Social Tracking (30-day pilot)
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: 'Collect within the existing 50,000-credit ceiling'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: crypto-social-pilot
+  cancel-in-progress: false
+jobs:
+  tracking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TWITTERAPI_IO_API_KEY: ${{ secrets.TWITTERAPI_IO_API_KEY }}
+      EXECUTE: ${{ github.event_name == 'schedule' || inputs.execute }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - name: Collect profiles, bios, and bounded activity
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$EXECUTE" = "true" ]; then args+=(--execute); fi
+          python crypto_social_tracking.py "${args[@]}"

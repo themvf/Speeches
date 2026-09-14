@@ -1,0 +1,136 @@
+# ZCAT and Zcash: profile, bio, and influence tracking
+
+This implements the next bounded research phase in Market → Crypto. The existing
+GitHub `DATABASE_URL` and `TWITTERAPI_IO_API_KEY` secrets are reused. No provider
+key is needed in Vercel, and dashboard reads never call TwitterAPI.io.
+
+## Activation and lifetime
+
+`Crypto Social Tracking (30-day pilot)` runs at 07:17 UTC daily once merged into
+main. GitHub scheduled jobs may run later than their nominal time. It can also
+be run manually with `execute=true`; the default manual run only prints a plan.
+The first executed run creates additive tables/views and fixes a 30-day end
+instant. Later executions never extend that end time or reset credit usage.
+The schedule checks the end date and exits without paid calls after the pilot.
+
+The first run completes up to one page per original six-hour search window.
+It then selects up to 20 accounts per coin, including interaction targets whose
+own posts were not collected. This is an automatically selected **provisional**
+cohort ranked by distinct amplifiers, distinct incoming participants, and post
+volume. Roles default to unreviewed. No account is called an official affiliate
+or authenticated influencer merely because it appears in search or a bio.
+
+## Collection allocations
+
+All calls atomically reserve against the existing `zcat-zec-v1` ledger. Outstanding
+or uncertain calls stop all endpoints. No automatic retries or reservation refunds.
+
+| Allocation | Maximum credits | Behavior |
+| --- | ---: | --- |
+| Original coin searches | 16,800 | Includes existing pilot usage; first-page coverage is prioritized |
+| Profile snapshots | 21,600 | Up to 40 unique IDs, once per UTC day, 18 credits each |
+| Activity enrichment | 9,000 | One 300-credit page per day, up to 30 date slots |
+| Optional keyword discovery | 2,600 | Requires verified provider page-size bound; otherwise retained |
+| Total | 50,000 | Existing reservations included; never resets on rerun |
+
+Activity slots rotate: five of each seven slots search one coin over the previous
+UTC day (alternating coins), one samples an account timeline with replies, and
+one attempts a refresh of up to 20 saved posts aged 24–30 hours. A refresh with
+no eligible posts costs nothing. This is deliberately sparse: it is not daily
+complete coverage of either coin or every account timeline. Initial searches
+and these later samples are not equally intensive. Missing collection days
+must not be treated as zero volume. Timeline samples are also retained but do
+not count as complete coin-search coverage.
+
+Sources checked September 14, 2026:
+- https://twitterapi.io/pricing (15 credits/post; 18/profile; 100,000 credits/USD)
+- https://docs.twitterapi.io/api-reference/endpoint/batch_get_user_by_userids
+- https://docs.twitterapi.io/api-reference/endpoint/get_user_last_tweets (20/page)
+- https://docs.twitterapi.io/api-reference/endpoint/get_tweet_by_ids
+- https://docs.twitterapi.io/api-reference/endpoint/search_user
+
+## Bio discovery and changes
+
+All returned author/profile descriptions are scanned without additional provider
+calls. Matching is case-insensitive with Unicode normalization and word boundaries.
+ZCAT/Anonymous Cat and Zcash/ZEC accept hashtags or cashtags; the supplied token
+address is matched exactly. Bio, name, and handle matches are stored separately.
+The dashboard bio board includes only actual bio matches in the latest observation.
+
+Profile history stores stable ID, handle, name, bio, follower/following count,
+availability, source endpoint/request, and observation time. Empty bio differs
+from missing bio. Renames keep the same account history. Missing/unavailable
+profiles have unknown counts, never fabricated zeros. The bio-change view compares
+known bios and says when the change was first observed, not when it was edited.
+Older known bios remain in history even if the current profile is unavailable.
+
+The keyword user-search adapter is implemented but **not automatically enabled**.
+The public docs do not promise a maximum page size or bio-only/complete matching.
+Once the provider confirms the maximum returned profiles per call, an operator
+can run `python crypto_social_tracking.py --execute --mode discover
+--verified-user-search-max N`, replacing N with that verified bound (1–144).
+This reserves N×18 per query, inside the existing 2,600-credit allocation. It
+queries zcat, zcash, and Anonymous Cat at most once per ISO week, first page only.
+Do not invent a page-size bound to activate this path. A changed response contract
+halts collection; provider-side billing ultimately depends on their contract.
+
+New discoveries enter the candidate queue. Existing tracked members are retained;
+we do not silently replace the baseline cohort with whichever accounts are popular
+this week. Initial selection fills only vacant cohort slots, up to 20 per coin.
+
+## Metrics and interpretation
+
+The dashboard offers six separate views:
+- Attention: distinct incoming participants across all saved coin edges in 28 days.
+- Follower growth: positive net seven-day gains; percentage shown alongside gain.
+- Emerging: positive follower growth and more distinct incoming participants this
+  week than the previous week. Provisional because collection coverage can differ.
+- Posting: observed coin-related posts, separate from overall account timelines.
+- Connections: distinct incoming/outgoing partners; not a community-bridge claim.
+- Bio matches: observed self-description terms; not evidence of holdings/endorsement.
+
+Growth requires a real snapshot on the corresponding UTC baseline date. Missing
+baseline means no growth result. Acceleration compares per-day net gain over two
+seven-calendar-day spans using their actual elapsed seconds; 14-day history is
+required. No historical counts are backdated from newly retrieved profiles.
+
+Account detail provides bio, profile time, discovery reason, observed posts/active
+days, median total engagement, eligible engagement sample count, separate 24–30h
+engagement median/count, repeat participants (two or more interaction dates),
+reciprocal partners, and top-five participant concentration. Concentration caps
+one source/target pair at one contribution per day before summing; raw evidence
+is preserved. Fewer than 10 eligible engagement posts or five active days is
+explicitly provisional. Age-matched metrics remain empty without qualifying
+snapshots. We do not reconstruct historical 24h engagement or extrapolate total
+posting volume from one page. No opaque composite score or bot classification.
+
+Network calculations use the full saved coin graph, before the 20-node/60-edge
+visual limit. Typed edges point actor → target and retain supporting post URLs.
+Likes remain counts only; identities are not available from those counts.
+Interactions do not prove endorsement, coordination, shared control, or price
+causation. Community detection/PageRank and price-impact attribution remain
+research extensions requiring sufficient coverage, not launch features.
+
+## Database and operational notes
+
+Additive SQL creates profile history, candidate memberships/tracking dates, bio
+matches, account timeline coverage, a fixed campaign lifetime, and a read-only
+metrics view. Endpoint metadata and idempotency keys extend the original request
+ledger. Existing content remains; no production data is deleted by migration.
+An older deployment without the new view continues using the original panel.
+All displayed new metrics are computed from Neon; browser refreshes cost no
+TwitterAPI.io credits. The original pilot endpoint displays a shared budget;
+its legacy estimated total includes all requests because the ledger is shared.
+
+Tests use fake provider responses and a disposable Postgres schema only:
+
+```bash
+python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_tracking.py -q
+cd apps/web
+npm run typecheck
+node --experimental-strip-types --test lib/crypto-social.test.ts
+```
+
+Set `CRYPTO_SOCIAL_TEST_DATABASE_URL` only to a disposable local/test database;
+the integration fixture recreates `crypto_test`. The PR's dedicated CI job runs
+these tests against PostgreSQL 16. No tests require a live provider key.
