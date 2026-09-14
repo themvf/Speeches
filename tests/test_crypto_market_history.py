@@ -57,8 +57,38 @@ def test_db_refresh_partial_failure_preserves_saved_sources_and_pins_default(db)
         calls.append(url)
         if 'coingecko.com' in url:raise ValueError('provider unavailable')
         return Response(catalog() if url.endswith('/pools') else candles())
-    result=refresh(db,fetch=fetch,now=NOW)
+    result=refresh(db,fetch=fetch,now=NOW,wait=lambda _:None)
     assert len(result['saved'])==1 and len(result['errors'])==1 and len(calls)==3
     with db,db.cursor() as c:
         c.execute('SELECT id FROM crypto_market_sources WHERE is_default');assert c.fetchone()[0]==source()['id']
         c.execute('SELECT count(*) FROM crypto_market_latest');assert c.fetchone()[0]==1
+
+
+def test_db_market_rate_limit_has_one_bounded_retry_without_x_calls(db):
+    calls=[];delays=[]
+    class Response:
+        headers={'Retry-After':'20'}
+        def __init__(self,status,data=None):self.status_code=status;self.data=data
+        def json(self):return self.data
+    def fetch(url,**kwargs):
+        calls.append(url)
+        if calls.count(url)==1:return Response(429)
+        if 'coingecko.com' in url:
+            t=int(NOW.timestamp()*1000)
+            return Response(200,{'prices':[[t,2]],'total_volumes':[[t,100]]})
+        return Response(200,catalog() if url.endswith('/pools') else candles())
+    result=refresh(db,fetch=fetch,now=NOW,wait=delays.append)
+    assert not result['errors'] and len(result['saved'])==2
+    assert len(calls)==6 and max(delays)==20
+    assert all('twitter' not in url for url in calls)
+
+
+def test_db_long_provider_cooldown_is_not_shortened(db):
+    calls=[]
+    class Response:
+        status_code=429
+        headers={'Retry-After':'999'}
+    def fetch(url,**kwargs):calls.append(url);return Response()
+    result=refresh(db,fetch=fetch,now=NOW,wait=lambda _:None)
+    assert len(calls)==2 and len(set(calls))==2
+    assert len(result['errors'])==2 and not result['saved']

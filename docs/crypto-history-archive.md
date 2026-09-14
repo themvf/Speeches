@@ -45,8 +45,11 @@ incomplete and only a later fetch can supply a completed-day observation. Incomp
 prices are excluded from largest-gain insights and priority selection.
 
 The archive workflow runs every six hours (02:23, 08:23, 14:23, 20:23 UTC), on relevant
-main pushes and on manual dispatch. It makes at most eight public market requests per
-run, with no X requests or provider retry loops. Independent source failures retain
+main pushes and on manual dispatch. It requests at most eight public market resources per
+run, spaced by three seconds. A 429 response permits one bounded retry per resource
+(up to 16 attempts total), honoring numeric Retry-After values up to 30 seconds. Longer cooldowns stop
+that resource until a future run.
+There are no X requests or unbounded retries. Independent source failures retain
 successful saves and previous history; the workflow reports a failure for inspection.
 The database advisory lock prevents overlapping archive execution outside Actions.
 

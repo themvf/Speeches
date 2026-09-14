@@ -80,8 +80,10 @@ def save(conn,source,data,points,url,now):
     return fid
 
 
-def refresh(conn,fetch=None,now=None):
+def refresh(conn,fetch=None,now=None,wait=None):
     import requests
+    import time
+    wait=wait or time.sleep
     fetch=fetch or requests.get;now=now or datetime.now(timezone.utc);setup(conn)
     saved=[];errors=[]
     # Database lock also serializes invocations outside GitHub Actions.
@@ -89,9 +91,19 @@ def refresh(conn,fetch=None,now=None):
         cur.execute("SELECT pg_try_advisory_lock(hashtext('crypto-market-history'))")
         if not cur.fetchone()[0]:return {'saved':[],'errors':['refresh_already_running']}
     def get(url):
-        response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
-        if response.status_code!=200:raise ValueError('Market HTTP '+str(response.status_code))
-        return response.json()
+        for attempt in range(2):
+            wait(3)  # Public market APIs are shared and rate-limited; never burst requests.
+            response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
+            if response.status_code==429 and attempt==0:
+                try:delay=float(getattr(response,'headers',{}).get('Retry-After','15'))
+                except (ValueError,TypeError):delay=15
+                if not math.isfinite(delay):delay=15
+                if delay>30:raise ValueError('Market cooldown exceeds retry bound; retain saved history')
+                wait(max(3,delay))
+                continue
+            if response.status_code!=200:raise ValueError('Market HTTP '+str(response.status_code))
+            return response.json()
+        raise ValueError('Market rate limit')
     try:
         try:
             catalog=get(BASE+'/tokens/'+ADDRESS+'/pools');selected=pools(catalog)
@@ -107,7 +119,7 @@ def refresh(conn,fetch=None,now=None):
                     source=dict(id='geckoterminal:'+pool['id'],coin='ZCAT',provider='GeckoTerminal',url='https://www.geckoterminal.com/solana/pools/'+pool['id'],metadata=pool)
                     fid=save(conn,source,{'catalog':catalog,'ohlcv':raw},points,url,now)
                     saved.append({'source':source['id'],'fetch_id':fid,'points':len(points)})
-                except (ValueError,requests.RequestException) as exc:errors.append('ZCAT pool: '+type(exc).__name__)
+                except (ValueError,requests.RequestException) as exc:errors.append('ZCAT pool '+pool['id']+': '+type(exc).__name__+' '+str(exc)[:160])
         except (ValueError,requests.RequestException) as exc:errors.append('ZCAT catalog: '+type(exc).__name__)
         try:
             raw=get(ZEC_URL);points=normalize(raw,'price_observation',now)
@@ -129,7 +141,7 @@ def refresh(conn,fetch=None,now=None):
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--execute',action='store_true');args=parser.parse_args()
     if not args.execute:
-        print(json.dumps({'mode':'plan_only','max_public_requests':8,'twitter_credits':0,'database_writes':0}));return
+        print(json.dumps({'mode':'plan_only','max_public_requests':16,'twitter_credits':0,'database_writes':0}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
