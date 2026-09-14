@@ -1,0 +1,41 @@
+name: ZCAT Historical Investigation (July 25)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crypto_social_history.py'
+      - '.github/workflows/crypto-social-history.yml'
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: 'Collect ZCAT history within the separate 75,000-credit allowance'
+        type: boolean
+        default: false
+  schedule:
+    - cron: '43 8 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: crypto-social-pilot
+  cancel-in-progress: false
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TWITTERAPI_IO_API_KEY: ${{ secrets.TWITTERAPI_IO_API_KEY }}
+      EXECUTE: ${{ github.event_name == 'schedule' || github.event_name == 'push' || inputs.execute }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - name: Resume bounded historical scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--max-requests 40)
+          if [ "$EXECUTE" = "true" ]; then args+=(--execute); fi
+          python crypto_social_history.py "${args[@]}"

@@ -125,7 +125,7 @@ def reserve(conn, max_pages=2):
         if cur.fetchone()[0] + PAGE_RESERVE > 16800:
             return None
         # Preserve the initial discovery allocation for profile tracking.
-        cur.execute("SELECT id,start_at,end_at,query,cursor FROM crypto_social_windows WHERE status IN ('pending','partial') AND pages<%s ORDER BY pages,start_at,coin LIMIT 1 FOR UPDATE", (max_pages,))
+        cur.execute("SELECT id,start_at,end_at,query,cursor FROM crypto_social_windows WHERE status IN ('pending','partial') AND start_at>=(SELECT start_at FROM crypto_social_pilot WHERE id='zcat-zec-v1') AND end_at<=(SELECT end_at FROM crypto_social_pilot WHERE id='zcat-zec-v1') AND pages<%s ORDER BY pages,start_at,coin LIMIT 1 FOR UPDATE", (max_pages,))
         window = cur.fetchone()
         if not window:
             return None
