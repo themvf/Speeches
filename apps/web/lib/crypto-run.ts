@@ -1,5 +1,5 @@
 export type RunEdge={target_id:string;target:string;kind:string};
-export type RunPost={id:string;author_id:string;handle:string;text:string;url:string;posted_at:string;kind:string;edges:RunEdge[]};
+export type RunPost={id:string;author_id:string;handle:string;text:string;url:string;posted_at:string;kind:string;edges:RunEdge[];followers?:number|null;followers_observed_at?:string|null;likes?:number|null;quotes?:number|null;reposts?:number|null;metrics_observed_at?:string|null};
 export type RunDay={day:string;searched:number;windows:number;exhausted:number};
 export type RunData={status:string;posts:RunPost[];days:RunDay[];total:number;limit:number;start:string;end:string};
 export type MarketPoint={day:string;close:number;volume:number;complete?:boolean;observedAt?:string;fetchId?:string};

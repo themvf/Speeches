@@ -13,3 +13,16 @@ test('candles reject malformed values, deduplicate days and leave gaps unfilled'
 test('evidence filter separates contract, bounded coin words and unrelated search results',()=>{const sample=[{...post,text:'$ZCAT rising'},{...post,id:'2',text:ZCAT_ADDRESS},{...post,id:'3',text:'unrelated'},{...post,id:'4',text:'zcatfish'}];assert.equal(filterEvidence(sample,'ZCAT','words').length,2);assert.equal(filterEvidence(sample,'ZCAT','contract').length,1);assert.equal(filterEvidence(sample,'ZCAT','all').length,4);assert.equal(filterEvidence([{...post,text:'Zcash and $ZEC'}],'ZEC','words').length,1);});
 test('incomplete daily candles never produce a largest-gain insight',()=>{assert.equal(largestDailyGain([{day:'2026-09-13',close:1,volume:1,complete:true},{day:'2026-09-14',close:50,volume:1,complete:false}]),null);});
 test('PONS evidence accepts checksum addresses and contextual mentions, not unrelated names',()=>{const sample=[{...post,text:'0x39dBED3a2bd333467115dE45665cC57F813C4571'},{...post,id:'2',text:'$PONS news'},{...post,id:'3',text:'Pons dictionary'},{...post,id:'4',text:'PONS on Robinhood'}];assert.equal(filterEvidence(sample,'PONS','contract').length,1);assert.equal(filterEvidence(sample,'PONS','words').length,3);assert.equal(filterEvidence(sample,'PONS','all').length,4);});
+
+test('large accounts rank current audiences and keep missing metrics distinct from zero',async()=>{
+ const {largeAccounts}=await import('./crypto-run-reach.ts');
+ const sample=[{...post,followers:100000,followers_observed_at:'2026-09-14',likes:0,quotes:0,reposts:0},
+ {...post,id:'2',posted_at:'2026-08-02T00:00:00Z',followers:100000,followers_observed_at:'2026-09-14',likes:10,quotes:2,reposts:3},
+ {...post,id:'3',author_id:'b',handle:'bob',followers:1000000,followers_observed_at:'2026-09-14'},
+ {...post,id:'4',author_id:'c',handle:'carol',followers:null}];
+ const rows=largeAccounts([...sample,sample[0]],'2026-08-02');
+ assert.deepEqual(rows.map(r=>r.id),['b','a','c']);
+ const a=rows[1];assert.equal(a.posts,2);assert.equal(a.before,1);assert.equal(a.medianLikes,5);assert.equal(a.amplification,5);
+ assert.equal(rows[0].medianLikes,null);assert.equal(rows[0].amplification,null);assert.equal(rows[2].followers,null);
+ assert.equal(largeAccounts(sample,'')[0].before,null);
+});
