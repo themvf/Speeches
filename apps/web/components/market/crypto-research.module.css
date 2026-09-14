@@ -177,3 +177,17 @@
  .postResults header time { margin-left:0; width:100%; }
  .postResults footer a { margin-left:0; }
 }
+
+.roleBadges { margin-top:12px; }
+.roleBadges>div { display:flex; gap:8px; flex-wrap:wrap; }
+.roleBadges details { background:color-mix(in srgb,#38bdf8 10%,var(--bg-elev)); padding:5px 10px; border-radius:8px; font-size:11px; max-width:100%; }
+.roleBadges p,.sentimentExplanation p { max-width:70ch; line-height:1.6; }
+.sentimentExplanation { margin:10px 0; font-size:12px; }
+.sentimentLegend { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.sentimentLegend span { padding:4px 8px; border-radius:5px; color:#081421; font-size:11px; }
+.bullish { background:#4ade80; }.bearish { background:#fb7185; }.neutral { background:#94a3b8; }.mixed { background:#c4b5fd; }.unclear { background:#fcd34d; }.unclassified { background:#cbd5e1; }
+.sentimentTimeline { max-height:360px; overflow:auto; padding:8px 0; }
+.sentimentDay { display:grid; grid-template-columns:95px minmax(100px,1fr); gap:6px 12px; padding:8px 0; border-bottom:1px solid var(--line-soft); }
+.sentimentDay>span { grid-column:1/-1; }
+.sentimentBar { display:flex; gap:2px; height:26px; border-radius:5px; overflow:hidden; }
+.sentimentBar button { flex-basis:0; min-width:4px; }
