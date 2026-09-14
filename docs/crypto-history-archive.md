@@ -72,3 +72,16 @@ Provider references:
 - https://apiguide.geckoterminal.com/faq
 - https://docs.coingecko.com/reference/coins-id-market-chart
 - https://docs.twitterapi.io/api-reference/endpoint/tweet_advanced_search
+
+## September 14 catch-up
+
+`crypto_social_catchup.py --execute` collects only ZCAT on September 14, 2026 UTC,
+through the earlier of execution time or September 15 midnight. It uses the
+existing live pilot's 50,000-credit total and 16,800-credit search sublimit; the
+fully reserved 150,000-credit historical campaign is unchanged. At most 40 calls
+and eight pages per window are allowed, reserving at most 12,000 credits per run.
+Reruns append intervals after the previous cutoff and resume partial windows.
+A same-day cutoff does not represent a completed day or exhaustive search.
+The dedicated workflow runs on relevant main pushes or manual dispatch.
+The timeline API now returns up to 10,000 saved posts, enough to include the
+existing archive and this bounded catch-up; its total still reports all stored matches.

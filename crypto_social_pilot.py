@@ -111,7 +111,7 @@ def initialize(conn, end):
         for row in build_windows(start,end):
             cur.execute('INSERT INTO crypto_social_windows(coin,start_at,end_at,query) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING', row)
 
-def reserve(conn, max_pages=2):
+def reserve(conn, max_pages=2, scope=None):
     """Atomic reservation serializes collectors even when launched outside Actions."""
     with conn, conn.cursor() as cur:
         cur.execute('SELECT reserved_credits,credit_limit FROM crypto_social_pilot WHERE id=%s FOR UPDATE', (PILOT,))
@@ -125,7 +125,11 @@ def reserve(conn, max_pages=2):
         if cur.fetchone()[0] + PAGE_RESERVE > 16800:
             return None
         # Preserve the initial discovery allocation for profile tracking.
-        cur.execute("SELECT id,start_at,end_at,query,cursor FROM crypto_social_windows WHERE status IN ('pending','partial') AND start_at>=(SELECT start_at FROM crypto_social_pilot WHERE id='zcat-zec-v1') AND end_at<=(SELECT end_at FROM crypto_social_pilot WHERE id='zcat-zec-v1') AND pages<%s ORDER BY pages,start_at,coin LIMIT 1 FOR UPDATE", (max_pages,))
+        if scope is None:
+            cur.execute("SELECT id,start_at,end_at,query,cursor FROM crypto_social_windows WHERE status IN ('pending','partial') AND start_at>=(SELECT start_at FROM crypto_social_pilot WHERE id='zcat-zec-v1') AND end_at<=(SELECT end_at FROM crypto_social_pilot WHERE id='zcat-zec-v1') AND pages<%s ORDER BY pages,start_at,coin LIMIT 1 FOR UPDATE", (max_pages,))
+        else:
+            start,end,coin=scope
+            cur.execute("SELECT id,start_at,end_at,query,cursor FROM crypto_social_windows WHERE status IN ('pending','partial') AND coin=%s AND start_at>=%s AND end_at<=%s AND query<>'timeline text match' AND pages<%s ORDER BY pages,start_at,id LIMIT 1 FOR UPDATE", (coin,start,end,max_pages))
         window = cur.fetchone()
         if not window:
             return None
@@ -163,12 +167,12 @@ def save_page(conn, request_id, window, data):
         cur.execute("UPDATE crypto_social_requests SET status='saved',estimated_credits=%s,returned_count=%s,accepted_count=%s WHERE id=%s",
                     (max(1,len(posts))*15,len(posts),len(posts),request_id))
 
-def collect(conn, key, max_requests, fetch=None, max_pages=2):
+def collect(conn, key, max_requests, fetch=None, max_pages=2, scope=None):
     import requests
     fetch = fetch or requests.get
     calls = 0
     while calls < max_requests:
-        item = reserve(conn, max_pages)
+        item = reserve(conn, max_pages, scope)
         if item is None:
             break
         rid, window = item
@@ -177,7 +181,14 @@ def collect(conn, key, max_requests, fetch=None, max_pages=2):
                              headers={'X-API-Key':key},timeout=30,allow_redirects=False)
             if response.status_code != 200:
                 raise ValueError(f'Provider HTTP {response.status_code}')
-            save_page(conn,rid,window,response.json())
+            data=response.json()
+            if scope is not None and isinstance(data,dict):
+                ids=[str(t.get('id','')) for t in data.get('tweets',[])]
+                if ids:
+                    with conn,conn.cursor() as cur:
+                        cur.execute('SELECT count(*) FROM crypto_social_matches WHERE window_id=%s AND post_id=ANY(%s)',(window[0],ids))
+                        if cur.fetchone()[0]==len(ids):raise ValueError('Repeated search page')
+            save_page(conn,rid,window,data)
         except Exception as exc:
             # Never retry automatically or refund a possibly billed request.
             with conn, conn.cursor() as cur:
@@ -185,6 +196,7 @@ def collect(conn, key, max_requests, fetch=None, max_pages=2):
                             (type(exc).__name__,rid))
             raise RuntimeError(f'Request {rid} stopped; reservation retained. Inspect provider and ledger.') from None
         calls += 1
+        if scope is not None:print(json.dumps({'requests_saved':calls,'window_start':str(window[1])}),flush=True)
     return calls
 
 def main():
