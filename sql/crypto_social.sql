@@ -49,3 +49,49 @@ CREATE TABLE IF NOT EXISTS crypto_social_edges (
 );
 CREATE INDEX IF NOT EXISTS crypto_social_matches_window ON crypto_social_matches(window_id);
 CREATE INDEX IF NOT EXISTS crypto_social_edges_target ON crypto_social_edges(target_id);
+
+-- Shared ledger for every endpoint. Existing search rows/budget are preserved.
+ALTER TABLE crypto_social_requests ALTER COLUMN window_id DROP NOT NULL;
+ALTER TABLE crypto_social_requests ADD COLUMN IF NOT EXISTS endpoint text NOT NULL DEFAULT 'search';
+ALTER TABLE crypto_social_requests ADD COLUMN IF NOT EXISTS request_key text;
+ALTER TABLE crypto_social_requests ADD COLUMN IF NOT EXISTS parameters jsonb;
+CREATE UNIQUE INDEX IF NOT EXISTS crypto_social_request_key ON crypto_social_requests(request_key);
+CREATE TABLE IF NOT EXISTS crypto_social_tracking (
+ id text PRIMARY KEY CHECK(id='zcat-zec-v1'),
+ started_at timestamptz NOT NULL DEFAULT now(),
+ end_at timestamptz NOT NULL DEFAULT now()+interval '30 days'
+);
+CREATE TABLE IF NOT EXISTS crypto_social_profile_history (
+ account_id text NOT NULL REFERENCES crypto_social_accounts(id),
+ request_id bigint NOT NULL REFERENCES crypto_social_requests(id),
+ observed_at timestamptz NOT NULL DEFAULT now(),
+ handle text NOT NULL, name text NOT NULL DEFAULT '', bio text,
+ followers bigint, following bigint, available boolean NOT NULL DEFAULT true,
+ source text NOT NULL,
+ PRIMARY KEY(account_id,request_id)
+);
+CREATE INDEX IF NOT EXISTS crypto_social_profile_history_time ON crypto_social_profile_history(account_id,observed_at DESC);
+CREATE TABLE IF NOT EXISTS crypto_social_candidates (
+ coin text NOT NULL REFERENCES crypto_social_coins(symbol),
+ account_id text NOT NULL REFERENCES crypto_social_accounts(id),
+ first_seen_at timestamptz NOT NULL DEFAULT now(),
+ reason text NOT NULL, tracked boolean NOT NULL DEFAULT false,
+ tracked_since timestamptz,
+ category text NOT NULL DEFAULT 'unreviewed',
+ PRIMARY KEY(coin,account_id)
+);
+CREATE TABLE IF NOT EXISTS crypto_social_profile_matches (
+ account_id text NOT NULL, request_id bigint NOT NULL,
+ coin text NOT NULL REFERENCES crypto_social_coins(symbol),
+ field text NOT NULL CHECK(field IN ('bio','name','handle')), term text NOT NULL,
+ PRIMARY KEY(account_id,request_id,coin,field,term),
+ FOREIGN KEY(account_id,request_id) REFERENCES crypto_social_profile_history(account_id,request_id)
+);
+CREATE TABLE IF NOT EXISTS crypto_social_account_coverage (
+ request_id bigint PRIMARY KEY REFERENCES crypto_social_requests(id),
+ account_id text NOT NULL REFERENCES crypto_social_accounts(id),
+ start_at timestamptz NOT NULL, end_at timestamptz NOT NULL,
+ oldest_returned_at timestamptz, returned_posts integer NOT NULL,
+ in_window_posts integer NOT NULL, has_more boolean NOT NULL,
+ status text NOT NULL CHECK(status IN ('capped','window_reached','search_exhausted'))
+);
