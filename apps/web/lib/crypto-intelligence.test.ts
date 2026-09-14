@@ -18,3 +18,7 @@ test('roles distinguish observed audience from holdings and require sufficient c
  assert.ok(accountRoles(corpus).get('a')!.some(r=>r.label==='Early observed voice'));
  assert.ok(![...accountRoles(corpus).values()].flat().some(r=>/whale/i.test(r.label)));
 });
+test('excluded review records do not enter daily denominators',()=>{
+ const days=sentimentDays([post('a'),post('b')],[{...sentiment('a','unclear'),excluded:true},sentiment('b','bullish')],'PONS',false);
+ assert.equal(days[0].total,1);assert.equal(days[0].classified,1);assert.equal(days[0].bullish,100);
+});

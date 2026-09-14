@@ -1,6 +1,6 @@
 import type {RunPost} from './crypto-run';
 export type Role={label:string;reason:string;confidence:string};
-export type Sentiment={post_id:string;coin:string;label:string;confidence:number;explanation:string;model:string;version:string;observed_at:string};
+export type Sentiment={post_id:string;coin:string;label:string;confidence:number|null;confidence_label?:string;excluded?:boolean;explanation:string;model:string;version:string;observed_at:string};
 export const sentimentLabels=['bullish','bearish','neutral','mixed','unclear'];
 export function accountRoles(posts:RunPost[]):Map<string,Role[]>{
  const unique=[...new Map(posts.map(p=>[p.id,p])).values()].sort((a,b)=>a.posted_at.localeCompare(b.posted_at));
@@ -23,6 +23,6 @@ export function accountRoles(posts:RunPost[]):Map<string,Role[]>{
 export function sentimentDays(posts:RunPost[],annotations:Sentiment[],coin:string,balanced:boolean){
  const map=new Map(annotations.filter(a=>a.coin===coin).map(a=>[a.post_id,a]));
  const groups=new Map<string,Map<string,Sentiment[]>>();
- for(const p of [...new Map(posts.map(p=>[p.id,p])).values()]){const day=p.posted_at.slice(0,10);if(!groups.has(day))groups.set(day,new Map());const authors=groups.get(day)!;const key=balanced?p.author_id:p.id;const list=authors.get(key)??[];const a=map.get(p.id);if(a)list.push(a);authors.set(key,list);}
+ for(const p of [...new Map(posts.map(p=>[p.id,p])).values()]){if(map.get(p.id)?.excluded)continue;const day=p.posted_at.slice(0,10);if(!groups.has(day))groups.set(day,new Map());const authors=groups.get(day)!;const key=balanced?p.author_id:p.id;const list=authors.get(key)??[];const a=map.get(p.id);if(a)list.push(a);authors.set(key,list);}
  return [...groups].sort(([a],[b])=>a.localeCompare(b)).map(([day,groups])=>{const counts:Record<string,number>={bullish:0,bearish:0,neutral:0,mixed:0,unclear:0,unclassified:0};for(const list of groups.values()){if(!list.length){counts.unclassified++;continue;}const labels=new Set(list.map(a=>a.label));counts[labels.size===1?list[0].label:'mixed']++;}const classified=groups.size-counts.unclassified;return {day,counts,total:groups.size,classified,bullish:classified?counts.bullish/classified*100:null,bearish:classified?counts.bearish/classified*100:null};});
 }
