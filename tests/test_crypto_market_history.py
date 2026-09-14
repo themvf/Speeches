@@ -92,3 +92,14 @@ def test_db_long_provider_cooldown_is_not_shortened(db):
     result=refresh(db,fetch=fetch,now=NOW,wait=lambda _:None)
     assert len(calls)==2 and len(set(calls))==2
     assert len(result['errors'])==2 and not result['saved']
+
+
+def test_pons_pool_requires_network_contract_and_accepts_v4_ids():
+    from crypto_market_history import pools
+    from crypto_social_history import PONS_ADDRESS
+    item={'attributes':{'address':'0x'+'a'*64,'pool_created_at':'2026-07-17T00:00:00Z','reserve_in_usd':'20'},
+          'relationships':{'base_token':{'data':{'id':'robinhood_'+PONS_ADDRESS.upper()}}}}
+    assert len(pools({'data':[item]},PONS_ADDRESS,'robinhood'))==1
+    assert pools({'data':[item]})==[]
+    item['relationships']['base_token']['data']['id']='ethereum_'+PONS_ADDRESS
+    assert pools({'data':[item]},PONS_ADDRESS,'robinhood')==[]

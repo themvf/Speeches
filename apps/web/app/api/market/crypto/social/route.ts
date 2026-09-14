@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 // Read-only: opening the dashboard never calls TwitterAPI.io.
 export async function GET(request: Request) {
   const coin = new URL(request.url).searchParams.get("coin") ?? "ZCAT";
-  if (!["ZCAT", "ZEC"].includes(coin)) return fail("Unknown coin", "INVALID_COIN", 400);
+  if (!["ZCAT", "ZEC", "PONS"].includes(coin)) return fail("Unknown coin", "INVALID_COIN", 400);
   if (!process.env.DATABASE_URL) return ok({ status: "not_configured" });
   const sql = neon(process.env.DATABASE_URL);
   try {
@@ -94,20 +94,21 @@ export async function GET(request: Request) {
     }
     let history = null;
     const historySchema = await sql`SELECT to_regclass('public.crypto_social_history_campaign') AS relation`;
-    if (coin === "ZCAT" && historySchema[0]?.relation) {
+    if (["ZCAT","PONS"].includes(coin) && historySchema[0]?.relation) {
+      const campaignId=coin==='PONS'?'pons-july-2026':'zcat-july-2026';
       const [campaign, earliest, coverage] = await Promise.all([
         sql`SELECT h.*,(SELECT sum(r.estimated_credits) FROM crypto_social_requests r
-          WHERE r.endpoint='historical_search') AS estimated_credits FROM crypto_social_history_campaign h`,
+          WHERE r.endpoint='historical_search' AND r.parameters->>'campaign'=h.id) AS estimated_credits FROM crypto_social_history_campaign h WHERE h.id=${campaignId}`,
         sql`SELECT DISTINCT p.id,p.text,p.url,p.posted_at,a.handle FROM crypto_social_history_windows h
           JOIN crypto_social_matches m ON m.window_id=h.window_id JOIN crypto_social_posts p ON p.id=m.post_id
-          JOIN crypto_social_accounts a ON a.id=p.author_id WHERE h.campaign_id='zcat-july-2026'
+          JOIN crypto_social_accounts a ON a.id=p.author_id WHERE h.campaign_id=${campaignId}
           ORDER BY p.posted_at,p.id LIMIT 30`,
         sql`SELECT count(*)::int AS windows,count(*) FILTER(WHERE w.pages>0)::int AS searched,
           count(*) FILTER(WHERE w.status='search_exhausted')::int AS exhausted
           FROM crypto_social_history_windows h JOIN crypto_social_windows w ON w.id=h.window_id
-          WHERE h.campaign_id='zcat-july-2026'`,
+          WHERE h.campaign_id=${campaignId}`,
       ]);
-      history = { campaign: campaign[0], earliest, coverage: coverage[0] };
+      history = campaign.length ? { campaign: campaign[0], earliest, coverage: coverage[0] } : null;
     }
     return ok({ history, tracking, status: pilot.length ? "ready" : "not_started", coin, pilot: pilot[0], daily, accounts, edges, posts });
   } catch {

@@ -85,3 +85,21 @@ A same-day cutoff does not represent a completed day or exhaustive search.
 The dedicated workflow runs on relevant main pushes or manual dispatch.
 The timeline API now returns up to 10,000 saved posts, enough to include the
 existing archive and this bounded catch-up; its total still reports all stored matches.
+
+## PONS investigation
+
+PONS has a separate 150,000-credit campaign, `pons-july-2026`, authorized September
+14. The intended range is July 1 through September 14 inclusive (UTC). The collector
+only creates closed six-hour intervals; the final interval becomes available after
+September 14 ends. A complete first pass reserves at most 91,200 credits (304 pages).
+Each daily batch allows 80 calls, with eight pages per window and existing uncertainty
+stops. Campaign-specific ledger queries prevent PONS and ZCAT totals from mixing.
+
+The PONS workflow saves public pool history before collecting posts, including exact
+Robinhood Chain contract checks and support for Uniswap v4 pool identifiers. One
+pool is pinned and its raw responses are archived; absent price dates stay blank.
+Searches use the contract, cashtag, PONS with Robinhood context, and the listed project
+account ponsdotfamily. Bio/name matches from returned profiles are unreviewed leads.
+Search-author snapshots supply a present-day baseline, not historical follower counts.
+The initial campaign does not automatically enroll PONS accounts in the separately
+budgeted daily profile tracker.

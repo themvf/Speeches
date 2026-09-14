@@ -1,0 +1,31 @@
+name: PONS Historical Investigation
+on:
+  push:
+    branches: [main]
+    paths: ['crypto_market_pons.py', '.github/workflows/crypto-social-pons.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '13 9 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: crypto-social-pilot
+  cancel-in-progress: false
+jobs:
+  pons:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TWITTERAPI_IO_API_KEY: ${{ secrets.TWITTERAPI_IO_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - name: Archive PONS market history
+        continue-on-error: true
+        run: python crypto_market_pons.py --execute
+      - name: Collect PONS evidence within its separate allowance
+        run: python crypto_social_history.py --coin PONS --execute --max-requests 80

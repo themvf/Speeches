@@ -22,24 +22,26 @@ def finite(value):
     return isinstance(value,(float,int)) and not isinstance(value,bool) and math.isfinite(value)
 
 
-def pools(data):
+def pools(data,address=ADDRESS,network='solana'):
     result=[]
     for p in data.get('data',[]):
         a=p.get('attributes') or {};r=p.get('relationships') or {}
         base=(r.get('base_token') or {}).get('data',{}).get('id')
         quote=(r.get('quote_token') or {}).get('data',{}).get('id')
-        side='base' if base=='solana_'+ADDRESS else 'quote' if quote=='solana_'+ADDRESS else None
+        expected=network+'_'+address
+        if network!='solana':base=str(base).lower();quote=str(quote).lower();expected=expected.lower()
+        side='base' if base==expected else 'quote' if quote==expected else None
         try:
             created=datetime.fromisoformat(a['pool_created_at'].replace('Z','+00:00'))
             liquidity=float(a.get('reserve_in_usd') or 0)
         except (KeyError,TypeError,ValueError):continue
-        if not side or not re.fullmatch(r'[1-9A-HJ-NP-Za-km-z]{32,44}',a.get('address','')) or not created.tzinfo:continue
+        if not side or not re.fullmatch(r'[1-9A-HJ-NP-Za-km-z]{32,44}' if network=='solana' else r'0x(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})',a.get('address','')) or not created.tzinfo:continue
         result.append(dict(id=a['address'],name=a.get('name',a['address']),created=created.isoformat(),
-            liquidity=liquidity if math.isfinite(liquidity) else 0,side=side,contract=ADDRESS))
+            liquidity=liquidity if math.isfinite(liquidity) else 0,side=side,contract=address))
     return sorted(result,key=lambda p:(-p['liquidity'],p['id']))[:5]
 
 
-def normalize(data,kind,now):
+def normalize(data,kind,now,start=START):
     points={}
     if kind=='ohlcv':
         rows=data.get('data',{}).get('attributes',{}).get('ohlcv_list')
@@ -56,7 +58,7 @@ def normalize(data,kind,now):
         if kind=='ohlcv' and (not all(finite(row[i]) and row[i]>0 for i in [1,2,3]) or row[2]<max(row[1],row[3],row[4]) or row[3]>min(row[1],row[2],row[4])):continue
         try:stamp=datetime.fromtimestamp(row[0],timezone.utc)
         except (ValueError,OverflowError,OSError):continue
-        if stamp>now or stamp.date()<START:continue
+        if stamp>now or stamp.date()<start:continue
         day=stamp.date()
         point=dict(day=day,sample_at=stamp,close=row[4],volume=row[5],open=row[1],high=row[2],low=row[3],
                    complete=day<now.date(),kind=kind)
