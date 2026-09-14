@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       execute:
-        description: 'Collect ZCAT history within the separate 75,000-credit allowance'
+        description: 'Collect ZCAT history within the separate 150,000-credit allowance'
         type: boolean
         default: false
   schedule:
