@@ -191,3 +191,43 @@
 .sentimentDay>span { grid-column:1/-1; }
 .sentimentBar { display:flex; gap:2px; height:26px; border-radius:5px; overflow:hidden; }
 .sentimentBar button { flex-basis:0; min-width:4px; }
+
+.feedActions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0; }
+.feedActions select { min-width:0; flex:1; }
+.feedActions button[aria-pressed=true] { background:color-mix(in srgb,#38bdf8 20%,var(--bg-elev)); border-color:#38bdf8; }
+.activeFilterChips { display:flex; gap:6px; flex-wrap:wrap; }
+.activeFilterChips button { padding:6px 10px; border-radius:20px; background:var(--bg-elev-strong); border:1px solid var(--line); font-size:11px; }
+.filterSheet { color:var(--ink); background:var(--bg-elev); border:1px solid var(--line); border-radius:18px; width:min(760px,95vw); max-height:90dvh; padding:0; }
+.filterSheet::backdrop { background:#0009; }
+.filterSheetBody { padding:22px; }
+.filterSheetFooter { position:sticky; bottom:0; background:var(--bg-elev); border-top:1px solid var(--line); padding:16px; display:flex; gap:12px; justify-content:space-between; padding-bottom:max(16px,env(safe-area-inset-bottom)); }
+.filterSheetFooter button:last-child { background:#155e75; color:white; flex:1; }
+.postPreview { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:4; overflow:hidden; }
+.readMore { color:#7dd3fc; min-height:44px; font-size:13px; }
+.postStance { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.postStance span { color:#102030; padding:3px 8px; border-radius:6px; font-size:11px; }
+.postDetails { font-size:12px; margin:10px 0; }
+.loadMore { display:grid; justify-items:center; gap:12px; margin:22px 0; }
+.loadMore button { min-height:48px; width:min(100%,360px); }
+.feedInsights { margin-top:24px; }
+@media(max-width:760px) {
+ .feedHeading { display:none; }
+ .postSearchRow { grid-template-columns:minmax(0,1fr) 120px; gap:8px; }
+ .postSearchRow input,.postSearchRow select { font-size:16px; min-height:44px; }
+ .feedActions button,.feedActions select { min-height:44px; font-size:12px; }
+ .feedActions select { width:120px; }
+ .filterSheet { margin:auto 0 0; width:100%; max-width:100%; max-height:90dvh; border-radius:20px 20px 0 0; }
+ .filterSheetBody { padding:18px; }
+ .filterSheet input,.filterSheet select { font-size:16px; }
+ .postResults { gap:10px; margin-top:8px; }
+ .postResults article { padding:14px; }
+ .postResults header { gap:5px 10px; }
+ .postResults header time { width:auto; margin-left:auto; }
+ .postFullText { font-size:15px; line-height:1.55; margin:10px 0 4px; }
+ .postResults footer { gap:8px 12px; padding-top:10px; margin-bottom:0; }
+ .postDetails summary { min-height:36px; display:flex; align-items:center; }
+ .explorerHeader { margin-bottom:12px; }
+ .explorerHeader h2 { font-size:22px; }
+ .explorerHeader .label,.explorerHeader .muted { display:none; }
+ .viewTabs { margin-top:12px; }
+}
