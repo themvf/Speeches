@@ -1,84 +1,58 @@
 "use client";
-import { useEffect, useState } from "react";
-import { CryptoInfluencerPanel } from "./crypto-influencer-panel";
-import styles from "./crypto-research.module.css";
-import type { Tracking } from "@/lib/crypto-social";
-
-type Edge = {source_id:string;target_id:string;source:string;target:string;kind:string;weight:number;evidence:string};
-type Research = {
- status:string;
- history?:{campaign:{start_at:string;end_at:string;reserved_credits:number;credit_limit:number};
-  earliest:{id:string;text:string;url:string;posted_at:string;handle:string}[];
-  coverage:{windows:number;searched:number;exhausted:number}}|null;
- tracking?:Tracking|null;
- pilot?:{reserved_credits:number;credit_limit:number;estimated_credits:number|null;start_at:string;end_at:string;outstanding:number};
- daily?:{day:string;posts:number;authors:number;originals:number;replies:number;quotes:number;reposts:number;exhausted:number;searched:number;windows:number}[];
- accounts?:{id:string;handle:string;posts:number;active_days:number;posts_per_day:number;median_likes:number|null;amplifiers:number}[];
- edges?:Edge[];
- posts?:{id:string;text:string;url:string;handle:string}[];
-};
-
-export function CryptoSocialPanel() {
- const [coin,setCoin]=useState("ZCAT");
- const [data,setData]=useState<Research|null>(null);
- const [error,setError]=useState("");
- const [kind,setKind]=useState("all");
- const [selected,setSelected]=useState<Edge|null>(null);
- useEffect(()=>{
-  const controller=new AbortController();
-  setData(null);setError("");setSelected(null);
-  fetch(`/api/market/crypto/social?coin=${coin}`,{signal:controller.signal})
-   .then(async r=>{const body=await r.json();if(!r.ok||!body.ok)throw new Error();setData(body.data);})
-   .catch(()=>{if(!controller.signal.aborted)setError("Could not load saved research. Try reloading.");});
-  return ()=>controller.abort();
- },[coin]);
- const edges=(data?.edges??[]).filter(e=>kind==="all"||e.kind===kind);
- const ids=Array.from(new Set(edges.flatMap(e=>[e.source_id,e.target_id]))).slice(0,20);
- const visible=edges.filter(e=>ids.includes(e.source_id)&&ids.includes(e.target_id));
- const positions=new Map(ids.map((id,i)=>[id,{x:300+210*Math.cos(2*Math.PI*i/ids.length),y:230+165*Math.sin(2*Math.PI*i/ids.length)}]));
- const names=new Map(edges.flatMap(e=>[[e.source_id,e.source],[e.target_id,e.target]]));
- const panel=`${styles.panel} space-y-4`;
- return <section className={panel} aria-label="Crypto social research">
-  <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">Community radar</h2>
-   <select aria-label="Research coin" value={coin} onChange={e=>setCoin(e.target.value)} className="rounded bg-slate-900 p-2 text-sm"><option value="ZCAT">Anonymous Cat (ZCAT)</option><option value="ZEC">Zcash (ZEC)</option></select>
-  </div>
-  <p className="text-xs text-[color:var(--ink-faint)]">Who is getting attention, who is growing, and who mentions the coin. Based on saved X samples.</p>
-  {error?<p role="alert">{error}</p>:!data?<p>Loading saved research…</p>:data.status!=="ready"?<p>Collection is getting started. Saved results will appear here after the first successful run.</p>:<>
-   {Number(data.pilot?.outstanding)>0&&<p role="status" className="text-amber-400">Collection is paused for an outstanding or uncertain request. Its credit reservation is retained.</p>}
-   {data.tracking?<CryptoInfluencerPanel key={coin} data={data.tracking}/>:<div className="overflow-x-auto"><table className="w-full text-left text-xs"><caption className="text-left py-2 font-semibold">Candidate influencers · sampled coin activity</caption>
-    <thead><tr>{["Account","Posts","Observed/day¹","Active days","Median likes²","Distinct amplifiers³"].map(h=><th className="p-2" key={h}>{h}</th>)}</tr></thead>
-    <tbody>{data.accounts?.map(a=><tr key={a.id} className="border-t border-[color:var(--line)]"><td className="p-2"><a href={`https://x.com/${encodeURIComponent(a.handle)}`} target="_blank" rel="noreferrer">@{a.handle}</a></td><td>{a.posts}</td><td>{a.posts_per_day}</td><td>{a.active_days}</td><td>{a.median_likes??"—"}</td><td>{a.amplifiers}</td></tr>)}</tbody>
-   </table><p className="text-xs text-[color:var(--ink-faint)]">¹ Sampled coin posts ÷ 7 calendar days, not all account posts. ² Counts at collection time; post ages differ. ³ Distinct observed quoting/reposting accounts. A quote may be critical. This is a candidate ranking, not verified influence.</p></div>}
-   {data.history&&<details><summary>Before the run · July 25 onward</summary>
-    <p className={styles.insight}>Earliest posts found in our historical sample. These are leads to investigate, not proof of who started the run.</p>
-    <p className={`${styles.muted} my-3`}>{data.history.coverage.searched} / {data.history.coverage.windows} time windows searched · {data.history.campaign.reserved_credits.toLocaleString()} / {data.history.campaign.credit_limit.toLocaleString()} history credits reserved. Empty or capped searches may miss posts. Profile names are current observations.</p>
-    <ol className="space-y-4 border-l border-[color:var(--line)] pl-4">{data.history.earliest.map(p=><li key={p.id}><p className={styles.muted}>{p.posted_at.slice(0,16).replace('T',' ')} UTC</p><a className={styles.link} href={p.url} target="_blank" rel="noreferrer">@{p.handle} · open post ↗</a><p className="text-sm whitespace-pre-wrap break-words">{p.text}</p></li>)}</ol>
-    {!data.history.earliest.length&&<p className={styles.muted}>No historical posts saved yet.</p>}
-    <p className={`${styles.muted} mt-3`}>Price, liquidity and volume alignment is the next analysis step; no cause of the price move is inferred here.</p>
-   </details>}
-   <details><summary>Daily conversation · saved sample</summary>
-    <p className={`${styles.muted} mb-3`}>Compare observed activity alongside search coverage. An unsearched day is unknown, not zero.</p>
-    <div className={styles.table}><table><thead><tr><th className="text-left">UTC day</th><th>Posts found</th><th>Authors</th><th>Coverage</th></tr></thead><tbody>{data.daily?.map(d=><tr key={d.day}><td>{d.day}</td><td>{d.searched?d.posts:"—"}</td><td>{d.searched?d.authors:"—"}</td><td><span className={styles.badge}>{!d.searched?"Not searched":d.exhausted===d.windows?"Search exhausted":"Limited sample"}</span></td></tr>)}</tbody></table></div>
-    <p className={`${styles.muted} mt-2`}>Even an exhausted search does not establish total X volume.</p>
-   </details>
-   <details><summary>Explore the interaction network</summary><label className="text-sm">Show <select className="ml-2 rounded bg-slate-900 p-2" value={kind} onChange={e=>{setKind(e.target.value);setSelected(null);}}>{["all","reply","quote","repost","mention"].map(k=><option key={k}>{k}</option>)}</select></label>
-    <p className="text-xs text-[color:var(--ink-faint)]">Up to 20 accounts from the 60 strongest saved connections. Arrows point from actor to target. No liker identities or inferred coordination.</p>
-    {!visible.length?<p className="py-4 text-sm">No observed connections for this filter yet.</p>:<svg viewBox="0 0 600 460" className="w-full max-w-3xl" role="img" aria-label="Observed account interaction network">
-     <defs><marker id="social-arrow" markerWidth="8" markerHeight="8" refX="17" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#67e8f9"/></marker></defs>
-     {visible.map(e=>{const a=positions.get(e.source_id)!,b=positions.get(e.target_id)!;return <line key={`${e.source_id}-${e.target_id}-${e.kind}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#67e8f9" strokeOpacity={0.45} strokeWidth={Math.min(6,1+Math.log2(e.weight+1))} markerEnd="url(#social-arrow)" onClick={()=>setSelected(e)}><title>{e.source} → {e.target}: {e.kind} ({e.weight})</title></line>;})}
-     {ids.map(id=>{const p=positions.get(id)!;const n=new Set(visible.filter(e=>e.target_id===id&&["quote","repost"].includes(e.kind)).map(e=>e.source_id)).size;return <g key={id}><circle cx={p.x} cy={p.y} r={6+Math.min(10,n)} fill="#67e8f9"/><text x={p.x} y={p.y-18} textAnchor="middle" fill="currentColor" fontSize="10">{names.get(id)}</text></g>;})}
-    </svg>}
-    {selected&&<p className="text-sm"><a className="underline" href={selected.evidence} target="_blank" rel="noreferrer">{selected.source} → {selected.target}: {selected.kind} · open example post</a></p>}
-    <details><summary className="cursor-pointer text-sm">Connections and source posts</summary><ul className="text-xs space-y-2 mt-2">{edges.map(e=><li key={`${e.source_id}-${e.target_id}-${e.kind}`}><a className="underline" href={e.evidence} target="_blank" rel="noreferrer">{e.source} → {e.target} · {e.kind} × {e.weight}</a></li>)}</ul></details>
-   </details>
-   <details><summary className="cursor-pointer text-sm">Recent saved posts</summary><ul className="space-y-3 mt-3 text-sm">{data.posts?.map(p=><li key={p.id}><a className="underline" href={p.url} target="_blank" rel="noreferrer">@{p.handle}</a><p className="whitespace-pre-wrap break-words">{p.text}</p></li>)}</ul></details>
-   <details><summary>Collection & budget</summary>
-    <p className={styles.muted}>Viewing this dashboard uses no X API credits. Counts are observed samples, not platform totals.</p>
-    <p className="my-2 text-sm">{Number(data.pilot?.reserved_credits??0).toLocaleString()} / {Number(data.pilot?.credit_limit??50000).toLocaleString()} credits reserved · {Number(data.pilot?.estimated_credits??0).toLocaleString()} estimated used.</p>
-    <p className={styles.muted}>{data.tracking?.campaign?`Tracking ends ${data.tracking.campaign.end_at.slice(0,10)}. Profiles are checked daily; activity collection rotates between searches and account samples.`:'Daily profile tracking starts with its first collection run.'}</p>
-    <p className={styles.muted}>Bio scanning is included. Broader keyword user search awaits a verified provider page-size limit.</p>
-    {coin==="ZCAT"&&<p className={`${styles.muted} break-all mt-2`}>ZCAT address supplied for research: HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR. Independent token verification pending.</p>}
-   </details>
+import {useEffect,useMemo,useState} from 'react';
+import {daysBetween,scopePosts,peopleIn,networkEdges,layoutNetwork,largestDailyGain,type RunData,type RunMarket} from '@/lib/crypto-run';
+import type {Tracking} from '@/lib/crypto-social';
+import {CryptoInfluencerPanel} from './crypto-influencer-panel';
+import {CryptoRunChart} from './crypto-run-chart';
+import {CryptoAccountDrawer} from './crypto-account-drawer';
+import styles from './crypto-research.module.css';
+type Meta={tracking?:Tracking|null;pilot?:{reserved_credits:number;credit_limit:number;outstanding:number};history?:{campaign:{reserved_credits:number;credit_limit:number}}|null};
+export function CryptoSocialPanel(){
+ const [coin,setCoin]=useState('ZCAT'),[tab,setTab]=useState('run'),[pool,setPool]=useState('');
+ const [run,setRun]=useState<RunData|null>(null),[market,setMarket]=useState<RunMarket|null>(null),[meta,setMeta]=useState<Meta|null>(null);
+ const [error,setError]=useState(''),[marketLoading,setMarketLoading]=useState(true);
+ const [from,setFrom]=useState('2026-07-25'),[to,setTo]=useState(new Date().toISOString().slice(0,10));
+ const [selected,setSelected]=useState<string|null>(null),[kind,setKind]=useState('all'),[search,setSearch]=useState(''),[edgeSelection,setEdgeSelection]=useState<string|null>(null);
+ useEffect(()=>{const c=new AbortController();setRun(null);setMeta(null);setError('');setSelected(null);setFrom('2026-07-25');setTo(new Date().toISOString().slice(0,10));
+  const load=async(path:string)=>{const r=await fetch(path,{signal:c.signal});const b=await r.json();if(!r.ok||!b.ok)throw new Error();return b.data;};
+  load(`/api/market/crypto/run?coin=${coin}`).then(setRun).catch(()=>{if(!c.signal.aborted)setError('Saved research could not be loaded. Please reload to try again.');});
+  load(`/api/market/crypto/social?coin=${coin}`).then(setMeta).catch(()=>{});return()=>c.abort();},[coin]);
+ useEffect(()=>{const c=new AbortController();setMarketLoading(true);fetch(`/api/market/crypto/history?coin=${coin}${pool?'&pool='+encodeURIComponent(pool):''}`,{signal:c.signal})
+  .then(async r=>{const b=await r.json();if(!r.ok||!b.ok)throw new Error();if(!c.signal.aborted){setMarket(b.data);setMarketLoading(false);}})
+  .catch(()=>{if(!c.signal.aborted){setMarket(null);setMarketLoading(false);}});return()=>c.abort();},[coin,pool]);
+ const days=useMemo(()=>daysBetween(run?.start??'2026-07-25',run?.end??new Date().toISOString().slice(0,10)),[run?.start,run?.end]);
+ const posts=useMemo(()=>scopePosts(run?.posts??[],from,to),[run,from,to]);const people=useMemo(()=>peopleIn(posts),[posts]);
+ const authors=people.filter(p=>p.posts.length>0).sort((a,b)=>a.posts[0].posted_at.localeCompare(b.posts[0].posted_at)||a.id.localeCompare(b.id));
+ const series=marketLoading?[]:market?.points??[],gain=largestDailyGain(series.filter(p=>p.day>=from&&p.day<=to));
+ const edges=useMemo(()=>networkEdges(posts,kind),[posts,kind]),graph=useMemo(()=>layoutNetwork(edges),[edges]);
+ const positions=new Map(graph.nodes.map(n=>[n.id,n])),names=new Map(people.map(p=>[p.id,p.handle]));const person=people.find(p=>p.id===selected);
+ const searchedDays=(run?.days??[]).filter(d=>d.day>=from&&d.day<=to&&d.searched>0).length,first=authors[0]?.posts[0];
+ const range=(a:string,b:string)=>{setFrom(a);setTo(b);setSelected(null);setEdgeSelection(null);};
+ const chosenEdge=graph.links.find(e=>`${e.source}:${e.target}:${e.kind}`===edgeSelection);
+ return <section className={`${styles.panel} ${styles.explorer}`} aria-label="Crypto run explorer">
+  <header className={styles.explorerHeader}><div><p className={styles.label}>Community intelligence</p><h2>How the run unfolded</h2><p className={styles.muted}>Follow the price. Find the early voices. Inspect the evidence.</p></div><select aria-label="Research coin" value={coin} onChange={e=>{setPool('');setCoin(e.target.value);}}><option value="ZCAT">ZCAT · Anonymous Cat</option><option value="ZEC">ZEC · Zcash</option></select></header>
+  <nav className={styles.viewTabs} aria-label="Research views">{[['run','The Run'],['voices','Early Voices'],['network','The Network']].map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</nav>
+  <div className={styles.rangeBar}><div className="flex flex-wrap items-end gap-2"><label>From (UTC)<input type="date" aria-label="Selection start" value={from} min={days[0]} max={to} onChange={e=>{if(e.target.value>=days[0]&&e.target.value<=to)range(e.target.value,to);}}/></label><span className="pb-3">→</span><label>Through (UTC)<input type="date" aria-label="Selection end" value={to} min={from} max={days.at(-1)} onChange={e=>{if(e.target.value>=from&&e.target.value<=days[days.length-1])range(from,e.target.value);}}/></label><button className={styles.control} onClick={()=>range(days[0],days[days.length-1])}>Full period</button></div><p className={styles.muted}>{posts.length.toLocaleString()} saved posts · {authors.length} authors in selection</p></div>
+  {error?<p className={styles.empty} role="alert">{error}</p>:!run?<p className={styles.empty}>Loading the saved timeline…</p>:<>
+   {run.total>run.limit&&<p className={styles.coverageNote}>Showing the earliest {run.limit.toLocaleString()} of {run.total.toLocaleString()} saved posts. Social charts and rankings use this limited set.</p>}
+   {tab==='run'&&<>
+    <div className={styles.takeaways}><button disabled={!first} onClick={()=>{if(first)setSelected(first.author_id);}}><span>Earliest author found</span><strong>{first?'@'+first.handle:'No posts in selection'}</strong><small>{first?first.posted_at.slice(0,10)+' · open evidence':'Collection is still building the picture.'}</small></button><button disabled={!gain} onClick={()=>{if(gain)range(gain.day,gain.day);}}><span>Largest daily price gain</span><strong className={styles.positive}>{gain?'+'+gain.percent.toLocaleString(undefined,{maximumFractionDigits:1})+'%':'Awaiting comparable prices'}</strong><small>{gain?gain.day+' · inspect this day':'Requires observations on consecutive days.'}</small></button><div><span>Search coverage</span><strong>{searchedDays} / {daysBetween(from,to).length} days sampled</strong><small>Unequal coverage limits comparisons.</small></div></div>
+    <div className={styles.chartCard}><div className={styles.toolbar}><h3>Price & attention</h3><div className={styles.legend}><span style={{color:'#7dd3fc'}}>● Market</span><span style={{color:'#c4b5fd'}}>● Social</span><span style={{color:'#fbbf24'}}>● Missing coverage</span></div></div>
+     {marketLoading&&<p className={styles.muted}>Loading historical market data…</p>}
+     <CryptoRunChart days={days} market={series} posts={run.posts??[]} coverage={run.days??[]} from={from} to={to} onRange={range}/>
+     <div className={styles.marketSource}>{!marketLoading&&market?.selected&&<label>Market source<select aria-label="Trading pool" value={market.selected.id} onChange={e=>setPool(e.target.value)}>{market.pools.map(p=><option key={p.id} value={p.id}>{p.name} · {p.created.slice(0,10)} · {p.id.slice(0,6)}</option>)}</select></label>}<div><a className={styles.link} href={market?.sourceUrl??'https://www.geckoterminal.com/'} target="_blank" rel="noreferrer">{market?.source??'Market source'} ↗</a><p className={styles.muted}>{market?.note??'Market history is unavailable; saved social evidence remains accessible.'}</p></div></div>
+     {!marketLoading&&market?.selected&&<p className={styles.coverageNote}>Selected pool created {market.selected.created.slice(0,10)}. Earlier dates have no price history from this pool. This is not a verified token launch date.</p>}
+    </div>
+    {coin==='ZCAT'&&<p className={styles.coverageNote}>Early name and ticker matches may refer to a different token. Check the contract in source posts before treating them as launch evidence.</p>}<div className={styles.toolbar}><h3>Evidence in this period</h3><button className={styles.control} onClick={()=>setTab('voices')}>Explore early voices →</button></div>
+    {posts.length?<div className={styles.eventList}>{posts.slice(0,8).map(p=><article key={p.id}><time>{p.posted_at.slice(0,16).replace('T',' ')} UTC</time><div className="flex justify-between gap-3"><button className={styles.link} onClick={()=>setSelected(p.author_id)}>@{p.handle}</button><a className={styles.muted} href={p.url} target="_blank" rel="noreferrer">Source ↗</a></div><p className={styles.postExcerpt}>{p.text}</p><span className={styles.badge}>{p.kind}</span></article>)}</div>:<p className={styles.empty}>No saved posts in this period. Unsampled periods do not establish that nobody was discussing the coin.</p>}
+    {posts.length>8&&<p className={`${styles.muted} mt-3`}>Earliest eight posts in the selection. Open an account for more evidence.</p>}
+   </>}
+   {tab==='voices'&&<><div className={styles.toolbar}><div><h3>Who appeared early?</h3><p className={styles.muted}>Ordered by first saved post within your selected dates.</p></div><input type="search" aria-label="Search early voices" placeholder="Find an account…" value={search} onChange={e=>setSearch(e.target.value)}/></div><div className={styles.table}><table><thead><tr><th className="text-left">Account</th><th>First saved post</th><th>Posts</th><th>People interacting</th></tr></thead><tbody>{authors.filter(p=>p.handle.toLowerCase().includes(search.toLowerCase())).slice(0,100).map(p=><tr key={p.id}><td><button className={styles.link} onClick={()=>setSelected(p.id)}>@{p.handle}</button></td><td>{p.posts[0].posted_at.slice(0,10)}</td><td>{p.posts.length}</td><td>{p.participants}</td></tr>)}</tbody></table></div>{!authors.length&&<p className={styles.empty}>No authors found in this period.</p>}<p className={`${styles.muted} mt-3`}>Up to 100 matching authors. First found is not first ever. Select the buildup dates on The Run to focus on pre-breakout posts.</p>{meta?.tracking&&<details><summary>Current follower growth, bio matches & tracking</summary><p className={styles.coverageNote}>These ongoing profile measurements use their own recent observation periods, independently of the historical date selection above.</p><CryptoInfluencerPanel data={meta.tracking}/></details>}</>}
+   {tab==='network'&&<><div className={styles.toolbar}><div><h3>How attention connected</h3><p className={styles.muted}>Arrows point from the person posting to the account they referenced.</p></div><select aria-label="Network interaction type" value={kind} onChange={e=>{setKind(e.target.value);setEdgeSelection(null);}}>{['all','quote','repost','reply','mention'].map(k=><option key={k} value={k}>{k==='all'?'All interactions':k}</option>)}</select></div><p className={styles.muted}>{graph.nodes.length} of {graph.total} connected accounts · {graph.links.length} connections shown. Click an account to inspect evidence.</p>
+    {!graph.nodes.length?<p className={styles.empty}>No connections captured in this date range.</p>:<svg viewBox="0 0 860 470" role="img" aria-label="Account network arranged by observed connections" className="w-full my-4"><defs><marker id="run-arrow" markerWidth="8" markerHeight="8" refX="16" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3z" fill="#a78bfa"/></marker></defs>{graph.links.map(e=>{const a=positions.get(e.source)!,b=positions.get(e.target)!,key=`${e.source}:${e.target}:${e.kind}`;return <g key={key}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={edgeSelection===key?'#fbbf24':'#a78bfa'} strokeOpacity={edgeSelection===key?1:.3} strokeWidth={1+Math.min(4,Math.log2(e.weight+1))} markerEnd="url(#run-arrow)"/><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth="12" style={{cursor:'pointer'}} onClick={()=>setEdgeSelection(key)}><title>{names.get(e.source)} → {names.get(e.target)}: {e.kind}</title></line></g>;})}{graph.nodes.map(n=><g key={n.id} tabIndex={0} role="button" aria-label={`Open ${names.get(n.id)}`} onClick={()=>setSelected(n.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(n.id);}}} style={{cursor:'pointer'}}><circle cx={n.x} cy={n.y} r={7+Math.min(9,Math.log2(n.weight+1))} fill="#7dd3fc" stroke="var(--bg-elev)" strokeWidth="3"/><text x={n.x} y={n.y-20} textAnchor="middle" fill="var(--ink)" fontSize="10" paintOrder="stroke" stroke="var(--bg-elev)" strokeWidth="4">{names.get(n.id)?.slice(0,22)}</text></g>)}</svg>}
+    {chosenEdge&&<p className={styles.insight}><a href={chosenEdge.evidence} target="_blank" rel="noreferrer">@{names.get(chosenEdge.source)} → @{names.get(chosenEdge.target)} · {chosenEdge.kind} × {chosenEdge.weight} · open source ↗</a></p>}<p className={styles.muted}>Interactions can include criticism. Position reflects displayed links, not verified communities or coordination. Liker identities are not available.</p><details><summary>Connections & source posts</summary><div className={styles.table}><table><thead><tr><th className="text-left">From → to</th><th>Type</th><th>Posts</th></tr></thead><tbody>{graph.links.map(e=><tr key={`${e.source}:${e.target}:${e.kind}`}><td><a href={e.evidence} target="_blank" rel="noreferrer">@{names.get(e.source)} → @{names.get(e.target)} ↗</a></td><td>{e.kind}</td><td>{e.weight}</td></tr>)}</tbody></table></div></details></>}
   </>}
+  <details className="mt-6"><summary>Sources, coverage & collection</summary><p className={styles.muted}>Social evidence comes from saved records. Market data uses cached public APIs. Viewing and filtering spend no TwitterAPI.io credits. Search results are incomplete; temporal alignment does not establish causation.</p>{meta?.pilot&&<p className={styles.muted}>Live pilot: {meta.pilot.reserved_credits.toLocaleString()} / {meta.pilot.credit_limit.toLocaleString()} credits reserved. {meta.pilot.outstanding>0?'Collection is paused for an outstanding or uncertain request.':''}</p>}{meta?.history&&<p className={styles.muted}>History: {meta.history.campaign.reserved_credits.toLocaleString()} / {meta.history.campaign.credit_limit.toLocaleString()} reserved.</p>}{coin==='ZCAT'&&<p className={`${styles.muted} break-words`}>Contract HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR is matched against pool token relationships and <a className="underline" href="https://bigone.zendesk.com/hc/en-us/articles/62063867754777-BigONE-Alpha-Lists-ZCAT-Anonymous-Cat" target="_blank" rel="noreferrer">BigONE’s September 9 listing announcement</a>. Default pool: oldest among the five currently most liquid returned pools. Historical liquidity is not in these candles; pool prices and volume are not token-wide aggregates.</p>}</details>
+  {person&&<CryptoAccountDrawer key={person.id} person={person} tracking={meta?.tracking??null} onClose={()=>setSelected(null)}/>}
  </section>;
 }
