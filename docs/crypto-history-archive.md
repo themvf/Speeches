@@ -4,20 +4,21 @@
 
 The existing July 25–September 13, 2026 UTC campaign retains its non-resetting
 75,000-credit reservation ceiling. The separate live pilot keeps its own limit.
-Each execution now permits eight searches at most: 2,400 reserved credits using
+Each execution now permits 80 searches at most: 24,000 reserved credits using
 the existing 300-credit worst-case reservation per page. Failed/uncertain calls
 retain reservations and block further paid calls. Re-running never resets spend.
 
 Priorities come from the pinned ZCAT pool's archived, completed daily candles.
 The first pair of consecutive observed days with a gain of at least 50% anchors
-a focus period: seven preceding days, the anchor day, and two following days.
+a focus period: five preceding days, the anchor day, and two following days.
 This is a collection heuristic, not a validated breakout or causal explanation.
 Missing days are never bridged. Each batch saves its period, reason, market source,
 and anchor fetch ID so the priority decision can be reconstructed.
 
-Three request slots prioritize this period, then one prioritizes broader gaps
-chronologically from July 25. Within either group, less-sampled windows come first.
-Completed searches are skipped; no window receives more than three pages. If the
+Unsearched windows are covered first, with the focus period ahead of other gaps
+chronologically from July 25. After the first pass, additional pages are collected
+in rounds with the same focus priority. Completed searches are skipped; no window
+receives more than eight pages. If the
 focus is exhausted, slots fall back to broader coverage. Without qualifying saved
 prices the batch continues chronological gap filling. Partial windows at the page
 limit remain marked partial, not complete. This budget cannot guarantee exhaustive

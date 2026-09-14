@@ -57,7 +57,7 @@ def test_db_history_saves_evidence_and_skips_completed_coverage(db):
     assert w[1]==START+timedelta(hours=6)
 
 
-def test_db_targeted_slots_keep_baseline_coverage_and_page_limit(db):
+def test_db_expanded_priority_fills_focus_then_other_gaps_and_respects_page_limit(db):
     setup(db)
     focus={'start':START+timedelta(days=30),'end':START+timedelta(days=32)}
     calls=[]
@@ -67,11 +67,14 @@ def test_db_targeted_slots_keep_baseline_coverage_and_page_limit(db):
     def fetch(url,params,**kwargs):calls.append(params['query']);return Response()
     assert collect_history(db,'fake',8,fetch,focus=focus)==8
     assert f'since_time:{int(focus["start"].timestamp())}' in calls[0]
-    assert f'since_time:{int(START.timestamp())}' in calls[3]
-    assert f'since_time:{int((START+timedelta(hours=6)).timestamp())}' in calls[7]
+    assert f'since_time:{int((focus["start"]+timedelta(hours=18)).timestamp())}' in calls[3]
+    assert f'since_time:{int((focus["start"]+timedelta(hours=42)).timestamp())}' in calls[7]
+    _,window=reserve(db,focus=focus)
+    assert window[1]==START
+    with db,db.cursor() as c:c.execute("UPDATE crypto_social_requests SET status='saved' WHERE status='reserved'")
     with db,db.cursor() as c:
-        c.execute('UPDATE crypto_social_windows SET pages=3')
-        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign');assert c.fetchone()[0]==2400
+        c.execute('UPDATE crypto_social_windows SET pages=8')
+        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign');assert c.fetchone()[0]==2700
     assert reserve(db,focus=focus) is None
 
 
@@ -88,10 +91,30 @@ def test_db_focus_uses_complete_consecutive_prices_and_keeps_market_reference(db
     raw=candles('2026-09-02',2)
     fid=save(db,source(),raw,normalize(raw,'ohlcv',NOW),'https://example.test',NOW)
     focus=choose_focus(db)
-    assert focus['start'].isoformat().startswith('2026-08-26')
+    assert focus['start'].isoformat().startswith('2026-08-28')
     assert focus['end'].isoformat().startswith('2026-09-05')
     assert focus['fetch_id']==fid
     batch=start_batch(db,focus,8)
     with db,db.cursor() as c:
         c.execute('SELECT market_fetch_id,max_requests FROM crypto_social_history_batches WHERE id=%s',(batch,))
         assert c.fetchone()==(fid,8)
+
+
+def test_db_unsearched_periods_precede_deeper_focus_pages(db):
+    setup(db)
+    focus={'start':START+timedelta(days=30),'end':START+timedelta(days=32)}
+    with db,db.cursor() as c:
+        c.execute("UPDATE crypto_social_windows SET pages=1,status='partial' WHERE start_at>=%s AND start_at<%s",(focus['start'],focus['end']))
+    _,window=reserve(db,focus=focus)
+    assert window[1]==START
+
+
+def test_db_expanded_batch_stops_at_existing_campaign_ceiling(db):
+    setup(db)
+    with db,db.cursor() as c:c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=74700')
+    class Response:
+        status_code=200
+        def json(self):return {'tweets':[],'has_next_page':False}
+    assert collect_history(db,'fake',80,lambda *a,**k:Response())==1
+    with db,db.cursor() as c:
+        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign');assert c.fetchone()[0]==75000

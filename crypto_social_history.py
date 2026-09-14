@@ -13,8 +13,8 @@ START=datetime(2026,7,25,tzinfo=timezone.utc)
 END=datetime(2026,9,14,tzinfo=timezone.utc)
 HISTORY='zcat-july-2026'
 LIMIT=75000
-BATCH_REQUESTS=8
-MAX_WINDOW_PAGES=3
+BATCH_REQUESTS=80
+MAX_WINDOW_PAGES=8
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS crypto_social_history_campaign (
  id text PRIMARY KEY CHECK(id='zcat-july-2026'), start_at timestamptz NOT NULL,
@@ -65,8 +65,8 @@ def choose_focus(conn):
     for previous,current in zip(rows,rows[1:]):
         if current[0]-previous[0]==timedelta(days=1) and previous[1]>0 and current[1]/previous[1]>=1.5:
             anchor=datetime.combine(current[0],datetime.min.time(),tzinfo=timezone.utc)
-            return {'start':max(START,anchor-timedelta(days=7)),'end':min(END,anchor+timedelta(days=3)),
-                'reason':f'First saved complete daily gain >=50% on {current[0]}; seven preceding days and two following days. Not a causal claim.',
+            return {'start':max(START,anchor-timedelta(days=5)),'end':min(END,anchor+timedelta(days=3)),
+                'reason':f'First saved complete daily gain >=50% on {current[0]}; five preceding days and two following days. Not a causal claim.',
                 'source':current[2],'fetch_id':current[3]}
     return None
 
@@ -90,12 +90,12 @@ def reserve(conn,focus=None,baseline=False,batch_id=None):
         cur.execute('SELECT reserved_credits,credit_limit FROM crypto_social_history_campaign WHERE id=%s FOR UPDATE',(HISTORY,))
         spent,limit=cur.fetchone()
         if spent+PAGE_RESERVE>min(limit,LIMIT):return None
-        # Three targeted slots followed by a broad gap-filling slot; max three pages per window.
+        # Cover unsearched windows first, prioritizing the buildup; then deepen in rounds.
         cur.execute('''SELECT w.id,w.start_at,w.end_at,w.query,w.cursor FROM crypto_social_windows w
             JOIN crypto_social_history_windows h ON h.window_id=w.id
             WHERE h.campaign_id=%s AND w.status IN ('pending','partial') AND w.pages<%s
-            ORDER BY CASE WHEN %s AND w.start_at>=%s AND w.start_at<%s THEN 0 ELSE 1 END,
-            w.pages,w.start_at,w.id LIMIT 1 FOR UPDATE OF w''',
+            ORDER BY w.pages,CASE WHEN %s AND w.start_at>=%s AND w.start_at<%s THEN 0 ELSE 1 END,
+            w.start_at,w.id LIMIT 1 FOR UPDATE OF w''',
             (HISTORY,MAX_WINDOW_PAGES,bool(focus) and not baseline,focus['start'] if focus else START,focus['end'] if focus else END))
         window=cur.fetchone()
         if not window:return None
@@ -109,7 +109,7 @@ def collect_history(conn,key,max_requests=BATCH_REQUESTS,fetch=None,focus=None,b
     import requests
     calls=0
     while calls<max_requests:
-        item=reserve(conn,focus,calls%4==3,batch_id)
+        item=reserve(conn,focus,False,batch_id)
         if item is None:break
         rid,window=item
         try:
@@ -129,6 +129,10 @@ def collect_history(conn,key,max_requests=BATCH_REQUESTS,fetch=None,focus=None,b
                 cur.execute("UPDATE crypto_social_requests SET status='uncertain',error=%s WHERE id=%s",(type(exc).__name__,rid))
             raise RuntimeError(f'History request {rid} stopped; reservation retained. Review provider and ledger.') from None
         calls+=1
+        if batch_id is not None:
+            with conn,conn.cursor() as cur:
+                cur.execute('UPDATE crypto_social_history_batches SET requests_saved=%s WHERE id=%s',(calls,batch_id))
+        print(json.dumps({'progress_requests_saved':calls,'max_requests':max_requests,'window_start':str(window[1])}),flush=True)
     return calls
 
 def main():
@@ -136,7 +140,7 @@ def main():
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--max-requests',type=int,default=BATCH_REQUESTS)
     args=parser.parse_args()
-    if not 1<=args.max_requests<=BATCH_REQUESTS:parser.error('Request bound must be 1–8')
+    if not 1<=args.max_requests<=BATCH_REQUESTS:parser.error('Request bound must be 1–80')
     if not args.execute:
         print(json.dumps({'mode':'plan_only','coin':'ZCAT','start':str(START),'end_exclusive':str(END),
             'history_credit_ceiling':LIMIT,'first_pass_before_reuse':int((END-START).days)*4*PAGE_RESERVE,
