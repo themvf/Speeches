@@ -1,0 +1,29 @@
+name: Archive crypto market history
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crypto_market_history.py'
+      - 'sql/crypto_market_history.sql'
+      - '.github/workflows/crypto-market-history.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '23 2,8,14,20 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: crypto-social-pilot
+  cancel-in-progress: false
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - run: python crypto_market_history.py --execute

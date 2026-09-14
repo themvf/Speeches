@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - 'crypto_social*.py'
+      - 'crypto_market_history.py'
+      - 'sql/crypto_market_history.sql'
+      - 'tests/test_crypto_market_history.py'
+      - '.github/workflows/crypto-market-history.yml'
       - 'sql/crypto_social*.sql'
       - 'tests/test_crypto_social*.py'
       - '.github/workflows/crypto-social*.yml'
@@ -37,7 +41,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install pytest 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
-      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_tracking.py tests/test_crypto_social_history.py -q
+      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_tracking.py tests/test_crypto_social_history.py tests/test_crypto_market_history.py -q
         env:
           CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@localhost:5432/crypto_test
 

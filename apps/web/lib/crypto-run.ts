@@ -2,9 +2,9 @@ export type RunEdge={target_id:string;target:string;kind:string};
 export type RunPost={id:string;author_id:string;handle:string;text:string;url:string;posted_at:string;kind:string;edges:RunEdge[]};
 export type RunDay={day:string;searched:number;windows:number;exhausted:number};
 export type RunData={status:string;posts:RunPost[];days:RunDay[];total:number;limit:number;start:string;end:string};
-export type MarketPoint={day:string;close:number;volume:number};
+export type MarketPoint={day:string;close:number;volume:number;complete?:boolean;observedAt?:string;fetchId?:string};
 export type Pool={id:string;name:string;created:string;liquidity:number;side:'base'|'quote'};
-export type RunMarket={status:string;points:MarketPoint[];pools:Pool[];selected:Pool|null;source:string;sourceUrl:string;note:string;observedAt:string};
+export type RunMarket={status:string;points:MarketPoint[];pools:Pool[];selected:Pool|null;source:string;sourceUrl:string;note:string;observedAt:string;storage?:string;archiveRevisions?:number;investigation?:{focus_start:string|null;focus_end:string|null;focus_reason:string;started_at:string;status:string;max_requests:number;requests_saved:number}};
 export type Person={id:string;handle:string;first:string;posts:RunPost[];incoming:RunPost[];participants:number};
 export type NetworkEdge={source:string;target:string;kind:string;weight:number;evidence:string};
 export function peopleIn(posts:RunPost[]):Person[]{
@@ -35,7 +35,7 @@ export function layoutNetwork(edges:NetworkEdge[],limit=32){
 }
 export function daysBetween(start:string,end:string){const days:string[]=[];for(let t=Date.parse(start+'T00:00:00Z');t<=Date.parse(end+'T00:00:00Z');t+=86400000)days.push(new Date(t).toISOString().slice(0,10));return days;}
 export function scopePosts(posts:RunPost[],start:string,end:string){return posts.filter(p=>p.posted_at.slice(0,10)>=start&&p.posted_at.slice(0,10)<=end);}
-export function largestDailyGain(points:MarketPoint[]){let best:{day:string;percent:number}|null=null;const sorted=[...points].sort((a,b)=>a.day.localeCompare(b.day));for(let i=1;i<sorted.length;i++){const a=sorted[i-1],b=sorted[i];if(a.close<=0||Date.parse(b.day)-Date.parse(a.day)!==86400000)continue;const percent=(b.close/a.close-1)*100;if(percent>0&&(!best||percent>best.percent))best={day:b.day,percent};}return best;}
+export function largestDailyGain(points:MarketPoint[]){let best:{day:string;percent:number}|null=null;const sorted=points.filter(p=>p.complete!==false).sort((a,b)=>a.day.localeCompare(b.day));for(let i=1;i<sorted.length;i++){const a=sorted[i-1],b=sorted[i];if(a.close<=0||Date.parse(b.day)-Date.parse(a.day)!==86400000)continue;const percent=(b.close/a.close-1)*100;if(percent>0&&(!best||percent>best.percent))best={day:b.day,percent};}return best;}
 export function priceLabel(n:number){return n>=100?'$'+n.toLocaleString(undefined,{maximumFractionDigits:0}):n>=.01?'$'+n.toFixed(3):'$'+n.toPrecision(3);}
 
 export function filterEvidence(posts:RunPost[],coin:string,mode:string){
