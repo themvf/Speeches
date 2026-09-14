@@ -1,34 +1,41 @@
+import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
-import {verifiedPools,candles} from '@/lib/server/crypto-run-market';
-import type {RunMarket} from '@/lib/crypto-run';
-export const revalidate=3600;
+import type {RunMarket,Pool} from '@/lib/crypto-run';
+export const dynamic='force-dynamic';
 export const runtime='nodejs';
-const base='https://api.geckoterminal.com/api/v2/networks/solana';
-async function get(url:string){const r=await fetch(url,{next:{revalidate:3600},signal:AbortSignal.timeout(10000),headers:{Accept:'application/json;version=20230302'}});if(!r.ok)throw new Error('Market provider unavailable');return r.json();}
+// Read-only: a page visit never fetches providers or mutates the archive.
 export async function GET(request:Request){
- const params=new URL(request.url).searchParams;const coin=params.get('coin')??'ZCAT';
+ const params=new URL(request.url).searchParams,coin=params.get('coin')??'ZCAT';
  if(!['ZCAT','ZEC'].includes(coin))return fail('Unknown coin','INVALID_COIN',400);
- const result:RunMarket={status:'unavailable',points:[],pools:[],selected:null,source:'GeckoTerminal',sourceUrl:'https://www.geckoterminal.com/',note:'Historical market data is unavailable. Gaps are not zero prices.',observedAt:new Date().toISOString()};
+ const result:RunMarket={status:'unavailable',points:[],pools:[],selected:null,source:coin==='ZCAT'?'GeckoTerminal':'CoinGecko',
+  sourceUrl:coin==='ZCAT'?'https://www.geckoterminal.com/':'https://www.coingecko.com/en/coins/zcash',
+  note:'No archived market history yet. Collection saves public observations to Postgres; missing prices remain blank.',observedAt:'',storage:'postgres'};
+ if(!process.env.DATABASE_URL)return ok(result);
+ const sql=neon(process.env.DATABASE_URL);
  try{
-  if(coin==='ZEC'){
-   result.source='CoinGecko';result.sourceUrl='https://www.coingecko.com/en/coins/zcash';
-   const data=await get('https://api.coingecko.com/api/v3/coins/zcash/market_chart?vs_currency=usd&days=90&interval=daily');
-   if(!Array.isArray(data.prices)||!Array.isArray(data.total_volumes))throw new Error('Invalid history');
-   const volumes=new Map<number,number>(data.total_volumes);result.points=data.prices.flatMap((p:number[])=>{
-    if(!Array.isArray(p)||!Number.isFinite(p[0])||!Number.isFinite(new Date(p[0]).getTime()))return [];const day=new Date(p[0]).toISOString().slice(0,10),v=volumes.get(p[0]);return day>='2026-07-25'&&day<=result.observedAt.slice(0,10)&&Number.isFinite(p[1])&&p[1]>0&&v!=null&&Number.isFinite(v)&&v>=0?[{day,close:p[1],volume:v}]:[];
-   });result.points=Array.from(new Map(result.points.map(p=>[p.day,p])).values()).sort((a,b)=>a.day.localeCompare(b.day));result.status=result.points.length?'ready':'unavailable';result.note='CoinGecko daily price observations and rolling 24-hour volume; not exchange closing prices.';return ok(result);
-  }
-  const data=await get(base+'/tokens/HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR/pools');
-  result.pools=verifiedPools(data.data??[]);
+  const exists=await sql`SELECT to_regclass('public.crypto_market_latest') AS relation`;
+  if(!exists[0]?.relation)return ok(result);
+  const sources=await sql`SELECT id,provider,source_url,metadata,is_default FROM crypto_market_sources WHERE coin=${coin} ORDER BY is_default DESC,id`;
+  result.pools=coin==='ZCAT'?sources.map(s=>s.metadata as Pool):[];
   const requested=params.get('pool');
-  // Prefer the oldest of the five currently most liquid returned pools. Never splice pools.
-  const candidates=[...result.pools].sort((a,b)=>b.liquidity-a.liquidity).slice(0,5).sort((a,b)=>a.created.localeCompare(b.created));
-  const selected=requested?result.pools.find(p=>p.id===requested):candidates[0];
-  if(!selected){if(requested)return fail('Pool does not match this token','INVALID_POOL',400);return ok(result);}
-  result.selected=selected;result.sourceUrl='https://www.geckoterminal.com/solana/pools/'+selected.id;
-  const ohlcv=await get(base+'/pools/'+selected.id+'/ohlcv/day?aggregate=1&limit=100&currency=usd&include_empty_intervals=false&token='+selected.side);
-  result.points=candles(ohlcv.data?.attributes?.ohlcv_list);result.status=result.points.length?'ready':'unavailable';
-  result.note='USD daily close and trading volume for the selected pool only. Current-day candle is incomplete. No prices are filled before available history.';
+  const selected=requested?sources.find(s=>s.metadata.id===requested):sources.find(s=>s.is_default);
+  if(!selected){if(requested)return fail('Pool has no saved history for this coin','INVALID_POOL',400);return ok(result);}
+  const rows=await sql`SELECT day::text,close,volume,open,high,low,complete,kind,sample_at,retrieved_at,fetch_id::text
+   FROM crypto_market_latest WHERE source_id=${selected.id} AND day>='2026-07-25'::date AND day<=(now() AT TIME ZONE 'UTC')::date ORDER BY day`;
+  const fetched=await sql`SELECT max(retrieved_at) AS last_saved,count(*)::int AS revisions FROM crypto_market_fetches WHERE source_id=${selected.id}`;
+  result.points=rows.map(p=>({day:p.day,close:Number(p.close),volume:Number(p.volume),complete:p.complete,observedAt:p.retrieved_at,fetchId:p.fetch_id}));
+  result.status=rows.length?'ready':'unavailable';result.source=selected.provider;result.sourceUrl=selected.source_url;
+  result.selected=coin==='ZCAT'?selected.metadata as Pool:null;
+  result.observedAt=fetched[0]?.last_saved??'';
+  result.note=coin==='ZCAT'?'Archived USD daily close and volume for this pool only. Incomplete candles are labeled; earlier gaps remain blank. Default pool is pinned.':'Archived CoinGecko daily price observations and rolling 24-hour volume, not exchange closing prices.';
+  result.archiveRevisions=fetched[0]?.revisions??0;
+  if(coin==='ZCAT'){
+   const batches=await sql`SELECT to_regclass('public.crypto_social_history_batches') AS relation`;
+   if(batches[0]?.relation){
+    const latest=await sql`SELECT focus_start,focus_end,focus_reason,started_at,status,max_requests,requests_saved FROM crypto_social_history_batches ORDER BY id DESC LIMIT 1`;
+    result.investigation=latest[0] as RunMarket['investigation'];
+   }
+  }
   return ok(result);
- }catch{return ok(result);}
+ }catch{return fail('Archived market history is temporarily unavailable','MARKET_ARCHIVE_READ_FAILED',503);}
 }

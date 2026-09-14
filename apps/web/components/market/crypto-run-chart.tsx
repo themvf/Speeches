@@ -20,7 +20,7 @@ export function CryptoRunChart({days,market,posts,coverage,from,to,onRange}:{day
    {days.map((d,i)=>!prices.has(d)?<rect key={d} x={66+i*bw} y="26" width={bw} height="150" fill="#fbbf24" opacity=".075"/>:null)}
    {lo>=0&&hi>=0&&<rect x={66+lo*bw} y="26" width={Math.max(bw,(hi-lo+1)*bw)} height="329" fill="#7dd3fc" fillOpacity=".04" stroke="#7dd3fc" strokeOpacity=".4"/>}
    <text x="66" y="17" fill="#7dd3fc" fontSize="12">Price · USD</text><text x="58" y="46" textAnchor="end" fill="var(--ink-faint)" fontSize="10">{values.length?priceLabel(max):'—'}</text><text x="58" y="175" textAnchor="end" fill="var(--ink-faint)" fontSize="10">{values.length?log?priceLabel(min):'$0':'—'}</text>
-   <path d={path} fill="none" stroke="#7dd3fc" strokeWidth="2.5"/>
+   <path d={path} fill="none" stroke="#7dd3fc" strokeWidth="2.5"/>{days.map((d,i)=>{const p=prices.get(d);return p?.complete===false?<circle key={d} cx={x(i)} cy={y(p.close)} r="4" fill="#fbbf24"><title>Incomplete day: {d}</title></circle>:null;})}
    {values.length===0&&<text x="498" y="104" textAnchor="middle" fill="#fcd34d" fontSize="13">No market history available for this source</text>}
    <text x="66" y="199" fill="#7dd3fc" fontSize="12">Trading volume · USD</text>
    {days.map((d,i)=>{const p=prices.get(d);return p?<rect key={d} x={66+i*bw+1} y={264-p.volume/maxVolume*52} width={Math.max(1,bw-2)} height={p.volume/maxVolume*52} fill="#38bdf8" opacity=".55"/>:null;})}
@@ -36,6 +36,6 @@ export function CryptoRunChart({days,market,posts,coverage,from,to,onRange}:{day
     onPointerCancel={()=>{setAnchor(null);setHover(null);}}
     onPointerUp={e=>{if(anchor!=null){const i=index(e);onRange(days[Math.min(i,anchor)],days[Math.max(i,anchor)]);setAnchor(null);}}}/>
   </svg></div>
-  <p className="min-h-5 text-xs text-[color:var(--ink-faint)]">{selected?`${selected} UTC · Price ${point?priceLabel(point.close):'unavailable'} · ${counts.has(selected)?counts.get(selected)+' observed posts':searched.has(selected)?'0 returned posts':'Social activity not searched'}`:'Daily UTC observations. Missing history remains blank; unequal search coverage limits comparisons.'}</p>
+  <p className="min-h-5 text-xs text-[color:var(--ink-faint)]">{selected?`${selected} UTC · Price ${point?priceLabel(point.close)+(point.complete===false?' (incomplete day)':''):'unavailable'} · ${counts.has(selected)?counts.get(selected)+' observed posts':searched.has(selected)?'0 returned posts':'Social activity not searched'}`:'Daily UTC observations. Missing history remains blank; unequal search coverage limits comparisons.'}</p>
  </div>;
 }
