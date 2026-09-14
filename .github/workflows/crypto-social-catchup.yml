@@ -1,0 +1,25 @@
+name: ZCAT September 14 Catch-up
+on:
+  push:
+    branches: [main]
+    paths: ['crypto_social_catchup.py', '.github/workflows/crypto-social-catchup.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: crypto-social-pilot
+  cancel-in-progress: false
+jobs:
+  catchup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TWITTERAPI_IO_API_KEY: ${{ secrets.TWITTERAPI_IO_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - run: python crypto_social_catchup.py --execute
