@@ -24,7 +24,7 @@ def test_db_history_keeps_live_budget_and_reuses_windows(db):
 
 def test_db_history_budget_survives_restart(db):
     setup(db)
-    with db,db.cursor() as c:c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=75000')
+    with db,db.cursor() as c:c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=150000')
     setup(db)
     assert reserve(db) is None
 
@@ -111,10 +111,37 @@ def test_db_unsearched_periods_precede_deeper_focus_pages(db):
 
 def test_db_expanded_batch_stops_at_existing_campaign_ceiling(db):
     setup(db)
-    with db,db.cursor() as c:c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=74700')
+    with db,db.cursor() as c:c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=149700')
     class Response:
         status_code=200
         def json(self):return {'tweets':[],'has_next_page':False}
     assert collect_history(db,'fake',80,lambda *a,**k:Response())==1
     with db,db.cursor() as c:
-        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign');assert c.fetchone()[0]==75000
+        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign');assert c.fetchone()[0]==150000
+
+
+def test_db_upgrade_preserves_spend_and_coverage(db):
+    setup(db)
+    with db,db.cursor() as c:
+        c.execute("""ALTER TABLE crypto_social_history_campaign
+            DROP CONSTRAINT crypto_social_history_campaign_credit_limit_check,
+            DROP CONSTRAINT crypto_social_history_campaign_reserved_credits_check;
+            UPDATE crypto_social_history_campaign SET credit_limit=75000,reserved_credits=38400;
+            ALTER TABLE crypto_social_history_campaign ALTER COLUMN credit_limit SET DEFAULT 75000;
+            ALTER TABLE crypto_social_history_campaign
+            ADD CONSTRAINT crypto_social_history_campaign_credit_limit_check CHECK(credit_limit=75000),
+            ADD CONSTRAINT crypto_social_history_campaign_reserved_credits_check CHECK(reserved_credits BETWEEN 0 AND 75000);
+            UPDATE crypto_social_windows SET pages=2,cursor='saved-cursor',status='partial';""")
+    setup(db);setup(db)
+    with db,db.cursor() as c:
+        c.execute('SELECT credit_limit,reserved_credits FROM crypto_social_history_campaign')
+        assert c.fetchone()==(150000,38400)
+        c.execute("SELECT count(*) FROM crypto_social_history_windows h JOIN crypto_social_windows w ON w.id=h.window_id WHERE w.pages=2 AND w.cursor='saved-cursor'")
+        assert c.fetchone()[0]==204
+        c.execute('SELECT reserved_credits FROM crypto_social_pilot');assert c.fetchone()[0]==0
+    import psycopg2
+    with pytest.raises(psycopg2.IntegrityError):
+        with db,db.cursor() as c:c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=150001')
+    reserve(db)
+    with db,db.cursor() as c:
+        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign');assert c.fetchone()[0]==38700

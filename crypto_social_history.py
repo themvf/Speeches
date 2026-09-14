@@ -1,6 +1,6 @@
 """ZCAT historical investigation: July 25–September 13, 2026 (UTC).
 
-A separate, non-resetting 75,000-credit allowance. The live tracking pilot keeps
+A separate, non-resetting 150,000-credit allowance. The live tracking pilot keeps
 its original 50,000-credit limit. Default execution is a no-network plan.
 """
 import argparse
@@ -12,14 +12,14 @@ from crypto_social_pilot import PILOT, COINS, PAGE_RESERVE, ENDPOINT, initialize
 START=datetime(2026,7,25,tzinfo=timezone.utc)
 END=datetime(2026,9,14,tzinfo=timezone.utc)
 HISTORY='zcat-july-2026'
-LIMIT=75000
+LIMIT=150000
 BATCH_REQUESTS=80
 MAX_WINDOW_PAGES=8
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS crypto_social_history_campaign (
  id text PRIMARY KEY CHECK(id='zcat-july-2026'), start_at timestamptz NOT NULL,
- end_at timestamptz NOT NULL, credit_limit integer NOT NULL DEFAULT 75000 CHECK(credit_limit=75000),
- reserved_credits integer NOT NULL DEFAULT 0 CHECK(reserved_credits BETWEEN 0 AND 75000),
+ end_at timestamptz NOT NULL, credit_limit integer NOT NULL DEFAULT 150000 CHECK(credit_limit=150000),
+ reserved_credits integer NOT NULL DEFAULT 0 CHECK(reserved_credits BETWEEN 0 AND 150000),
  created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS crypto_social_history_windows (
@@ -40,6 +40,16 @@ def setup(conn):
     initialize(conn,END)
     with conn,conn.cursor() as cur:
         cur.execute(SCHEMA)
+        # Upgrade the existing allowance transactionally; never reset reservations.
+        cur.execute('''ALTER TABLE crypto_social_history_campaign
+            DROP CONSTRAINT IF EXISTS crypto_social_history_campaign_credit_limit_check,
+            DROP CONSTRAINT IF EXISTS crypto_social_history_campaign_reserved_credits_check;
+            ALTER TABLE crypto_social_history_campaign ALTER COLUMN credit_limit SET DEFAULT 150000;
+            UPDATE crypto_social_history_campaign SET credit_limit=150000;
+            ALTER TABLE crypto_social_history_campaign
+            ADD CONSTRAINT crypto_social_history_campaign_credit_limit_check CHECK(credit_limit=150000),
+            ADD CONSTRAINT crypto_social_history_campaign_reserved_credits_check
+                CHECK(reserved_credits BETWEEN 0 AND credit_limit);''')
         cur.execute('INSERT INTO crypto_social_history_campaign(id,start_at,end_at) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',(HISTORY,START,END))
         current=START
         while current<END:

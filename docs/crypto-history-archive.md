@@ -3,7 +3,9 @@
 ## Historical ZCAT collection
 
 The existing July 25–September 13, 2026 UTC campaign retains its non-resetting
-75,000-credit reservation ceiling. The separate live pilot keeps its own limit.
+150,000-credit reservation ceiling. The separate live pilot keeps its own limit.
+The September 14 authorization raises the total ceiling, not an additional allowance.
+The database migration preserves all prior reservations, saved posts and cursors.
 Each execution now permits 80 searches at most: 24,000 reserved credits using
 the existing 300-credit worst-case reservation per page. Failed/uncertain calls
 retain reservations and block further paid calls. Re-running never resets spend.
