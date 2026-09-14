@@ -37,3 +37,9 @@ export function daysBetween(start:string,end:string){const days:string[]=[];for(
 export function scopePosts(posts:RunPost[],start:string,end:string){return posts.filter(p=>p.posted_at.slice(0,10)>=start&&p.posted_at.slice(0,10)<=end);}
 export function largestDailyGain(points:MarketPoint[]){let best:{day:string;percent:number}|null=null;const sorted=[...points].sort((a,b)=>a.day.localeCompare(b.day));for(let i=1;i<sorted.length;i++){const a=sorted[i-1],b=sorted[i];if(a.close<=0||Date.parse(b.day)-Date.parse(a.day)!==86400000)continue;const percent=(b.close/a.close-1)*100;if(percent>0&&(!best||percent>best.percent))best={day:b.day,percent};}return best;}
 export function priceLabel(n:number){return n>=100?'$'+n.toLocaleString(undefined,{maximumFractionDigits:0}):n>=.01?'$'+n.toFixed(3):'$'+n.toPrecision(3);}
+
+export function filterEvidence(posts:RunPost[],coin:string,mode:string){
+ if(mode==='all')return posts;
+ const contract='HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR';
+ return posts.filter(p=>coin==='ZCAT'?(p.text.includes(contract)||(mode!=='contract'&&/(^|[^a-z0-9_])zcat(?![a-z0-9_])|anonymous\s+cat/i.test(p.text))):/(^|[^a-z0-9_])zcash(?![a-z0-9_])|[$#]zec(?![a-z0-9_])/i.test(p.text));
+}

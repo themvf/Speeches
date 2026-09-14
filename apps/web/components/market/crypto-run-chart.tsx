@@ -15,7 +15,7 @@ export function CryptoRunChart({days,market,posts,coverage,from,to,onRange}:{day
  const selected=hover==null?null:days[hover],point=selected?prices.get(selected):null;
  return <div>
   <div className="flex flex-wrap items-center justify-between gap-2 mb-2"><p className="text-xs text-[color:var(--ink-faint)]">Drag across the chart to explore a period. Tap to select a day.</p><button className="rounded-lg border border-[color:var(--line)] px-3 py-2 text-xs" aria-pressed={log} onClick={()=>setLog(!log)}>{log?'Log price scale':'Linear price scale'}</button></div>
-  <svg viewBox="0 0 960 400" className="w-full touch-pan-y" role="img" aria-label="Aligned daily price, trading volume and observed social posts. Amber marks missing market history; dashes mark unsearched social days.">
+  <div className="overflow-x-auto"><svg style={{minWidth:640}} viewBox="0 0 960 400" className="w-full touch-pan-y" role="img" aria-label="Aligned daily price, trading volume and observed social posts. Amber marks missing market history; dashes mark unsearched social days.">
    <rect x="66" y="26" width="864" height="150" fill="var(--bg-elev-strong)" rx="5"/>
    {days.map((d,i)=>!prices.has(d)?<rect key={d} x={66+i*bw} y="26" width={bw} height="150" fill="#fbbf24" opacity=".075"/>:null)}
    {lo>=0&&hi>=0&&<rect x={66+lo*bw} y="26" width={Math.max(bw,(hi-lo+1)*bw)} height="329" fill="#7dd3fc" fillOpacity=".04" stroke="#7dd3fc" strokeOpacity=".4"/>}
@@ -35,7 +35,7 @@ export function CryptoRunChart({days,market,posts,coverage,from,to,onRange}:{day
     onPointerMove={e=>setHover(index(e))} onPointerLeave={()=>{if(anchor==null)setHover(null);}}
     onPointerCancel={()=>{setAnchor(null);setHover(null);}}
     onPointerUp={e=>{if(anchor!=null){const i=index(e);onRange(days[Math.min(i,anchor)],days[Math.max(i,anchor)]);setAnchor(null);}}}/>
-  </svg>
+  </svg></div>
   <p className="min-h-5 text-xs text-[color:var(--ink-faint)]">{selected?`${selected} UTC · Price ${point?priceLabel(point.close):'unavailable'} · ${counts.has(selected)?counts.get(selected)+' observed posts':searched.has(selected)?'0 returned posts':'Social activity not searched'}`:'Daily UTC observations. Missing history remains blank; unequal search coverage limits comparisons.'}</p>
  </div>;
 }

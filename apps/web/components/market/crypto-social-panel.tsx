@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useMemo,useState} from 'react';
-import {daysBetween,scopePosts,peopleIn,networkEdges,layoutNetwork,largestDailyGain,type RunData,type RunMarket} from '@/lib/crypto-run';
+import {filterEvidence,daysBetween,scopePosts,peopleIn,networkEdges,layoutNetwork,largestDailyGain,type RunData,type RunMarket} from '@/lib/crypto-run';
 import type {Tracking} from '@/lib/crypto-social';
 import {CryptoInfluencerPanel} from './crypto-influencer-panel';
 import {CryptoRunChart} from './crypto-run-chart';
@@ -8,6 +8,7 @@ import {CryptoAccountDrawer} from './crypto-account-drawer';
 import styles from './crypto-research.module.css';
 type Meta={tracking?:Tracking|null;pilot?:{reserved_credits:number;credit_limit:number;outstanding:number};history?:{campaign:{reserved_credits:number;credit_limit:number}}|null};
 export function CryptoSocialPanel(){
+ const [evidenceMode,setEvidenceMode]=useState('words');
  const [coin,setCoin]=useState('ZCAT'),[tab,setTab]=useState('run'),[pool,setPool]=useState('');
  const [run,setRun]=useState<RunData|null>(null),[market,setMarket]=useState<RunMarket|null>(null),[meta,setMeta]=useState<Meta|null>(null);
  const [error,setError]=useState(''),[marketLoading,setMarketLoading]=useState(true);
@@ -21,7 +22,8 @@ export function CryptoSocialPanel(){
   .then(async r=>{const b=await r.json();if(!r.ok||!b.ok)throw new Error();if(!c.signal.aborted){setMarket(b.data);setMarketLoading(false);}})
   .catch(()=>{if(!c.signal.aborted){setMarket(null);setMarketLoading(false);}});return()=>c.abort();},[coin,pool]);
  const days=useMemo(()=>daysBetween(run?.start??'2026-07-25',run?.end??new Date().toISOString().slice(0,10)),[run?.start,run?.end]);
- const posts=useMemo(()=>scopePosts(run?.posts??[],from,to),[run,from,to]);const people=useMemo(()=>peopleIn(posts),[posts]);
+ const eligible=useMemo(()=>filterEvidence(run?.posts??[],coin,evidenceMode),[run,coin,evidenceMode]);
+ const posts=useMemo(()=>scopePosts(eligible,from,to),[eligible,from,to]);const people=useMemo(()=>peopleIn(posts),[posts]);
  const authors=people.filter(p=>p.posts.length>0).sort((a,b)=>a.posts[0].posted_at.localeCompare(b.posts[0].posted_at)||a.id.localeCompare(b.id));
  const series=marketLoading?[]:market?.points??[],gain=largestDailyGain(series.filter(p=>p.day>=from&&p.day<=to));
  const edges=useMemo(()=>networkEdges(posts,kind),[posts,kind]),graph=useMemo(()=>layoutNetwork(edges),[edges]);
@@ -30,16 +32,17 @@ export function CryptoSocialPanel(){
  const range=(a:string,b:string)=>{setFrom(a);setTo(b);setSelected(null);setEdgeSelection(null);};
  const chosenEdge=graph.links.find(e=>`${e.source}:${e.target}:${e.kind}`===edgeSelection);
  return <section className={`${styles.panel} ${styles.explorer}`} aria-label="Crypto run explorer">
-  <header className={styles.explorerHeader}><div><p className={styles.label}>Community intelligence</p><h2>How the run unfolded</h2><p className={styles.muted}>Follow the price. Find the early voices. Inspect the evidence.</p></div><select aria-label="Research coin" value={coin} onChange={e=>{setPool('');setCoin(e.target.value);}}><option value="ZCAT">ZCAT · Anonymous Cat</option><option value="ZEC">ZEC · Zcash</option></select></header>
+  <header className={styles.explorerHeader}><div><p className={styles.label}>Community intelligence</p><h2>How the run unfolded</h2><p className={styles.muted}>Follow the price. Find the early voices. Inspect the evidence.</p></div><select aria-label="Research coin" value={coin} onChange={e=>{setPool('');setEvidenceMode('words');setCoin(e.target.value);}}><option value="ZCAT">ZCAT · Anonymous Cat</option><option value="ZEC">ZEC · Zcash</option></select></header>
   <nav className={styles.viewTabs} aria-label="Research views">{[['run','The Run'],['voices','Early Voices'],['network','The Network']].map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</nav>
-  <div className={styles.rangeBar}><div className="flex flex-wrap items-end gap-2"><label>From (UTC)<input type="date" aria-label="Selection start" value={from} min={days[0]} max={to} onChange={e=>{if(e.target.value>=days[0]&&e.target.value<=to)range(e.target.value,to);}}/></label><span className="pb-3">→</span><label>Through (UTC)<input type="date" aria-label="Selection end" value={to} min={from} max={days.at(-1)} onChange={e=>{if(e.target.value>=from&&e.target.value<=days[days.length-1])range(from,e.target.value);}}/></label><button className={styles.control} onClick={()=>range(days[0],days[days.length-1])}>Full period</button></div><p className={styles.muted}>{posts.length.toLocaleString()} saved posts · {authors.length} authors in selection</p></div>
+  <div className={styles.rangeBar}><div className="flex flex-wrap items-end gap-2"><label>From (UTC)<input type="date" aria-label="Selection start" value={from} min={days[0]} max={to} onInput={e=>{const value=e.currentTarget.value;if(value>=days[0]&&value<=to)range(value,to);}} onChange={e=>{if(e.target.value>=days[0]&&e.target.value<=to)range(e.target.value,to);}}/></label><span className="pb-3">→</span><label>Through (UTC)<input type="date" aria-label="Selection end" value={to} min={from} max={days.at(-1)} onInput={e=>{const value=e.currentTarget.value;if(value>=from&&value<=days[days.length-1])range(from,value);}} onChange={e=>{if(e.target.value>=from&&e.target.value<=days[days.length-1])range(from,e.target.value);}}/></label><button className={styles.control} onClick={()=>range(days[0],days[days.length-1])}>Full period</button></div><p className={styles.muted}>{posts.length.toLocaleString()} saved posts · {authors.length} authors in selection</p></div>
+  <div className={styles.toolbar}><label className={styles.muted}>Evidence filter <select aria-label="Evidence filter" value={evidenceMode} onChange={e=>{setEvidenceMode(e.target.value);setSelected(null);setEdgeSelection(null);}}><option value="words">Coin words in post</option>{coin==='ZCAT'&&<option value="contract">Exact contract in post</option>}<option value="all">All saved search results</option></select></label><p className={styles.muted}>{eligible.length} / {run?.posts.length??0} loaded posts match · text matching does not verify endorsement</p></div>
   {error?<p className={styles.empty} role="alert">{error}</p>:!run?<p className={styles.empty}>Loading the saved timeline…</p>:<>
    {run.total>run.limit&&<p className={styles.coverageNote}>Showing the earliest {run.limit.toLocaleString()} of {run.total.toLocaleString()} saved posts. Social charts and rankings use this limited set.</p>}
    {tab==='run'&&<>
     <div className={styles.takeaways}><button disabled={!first} onClick={()=>{if(first)setSelected(first.author_id);}}><span>Earliest author found</span><strong>{first?'@'+first.handle:'No posts in selection'}</strong><small>{first?first.posted_at.slice(0,10)+' · open evidence':'Collection is still building the picture.'}</small></button><button disabled={!gain} onClick={()=>{if(gain)range(gain.day,gain.day);}}><span>Largest daily price gain</span><strong className={styles.positive}>{gain?'+'+gain.percent.toLocaleString(undefined,{maximumFractionDigits:1})+'%':'Awaiting comparable prices'}</strong><small>{gain?gain.day+' · inspect this day':'Requires observations on consecutive days.'}</small></button><div><span>Search coverage</span><strong>{searchedDays} / {daysBetween(from,to).length} days sampled</strong><small>Unequal coverage limits comparisons.</small></div></div>
     <div className={styles.chartCard}><div className={styles.toolbar}><h3>Price & attention</h3><div className={styles.legend}><span style={{color:'#7dd3fc'}}>● Market</span><span style={{color:'#c4b5fd'}}>● Social</span><span style={{color:'#fbbf24'}}>● Missing coverage</span></div></div>
      {marketLoading&&<p className={styles.muted}>Loading historical market data…</p>}
-     <CryptoRunChart days={days} market={series} posts={run.posts??[]} coverage={run.days??[]} from={from} to={to} onRange={range}/>
+     <CryptoRunChart days={days} market={series} posts={eligible} coverage={run.days??[]} from={from} to={to} onRange={range}/>
      <div className={styles.marketSource}>{!marketLoading&&market?.selected&&<label>Market source<select aria-label="Trading pool" value={market.selected.id} onChange={e=>setPool(e.target.value)}>{market.pools.map(p=><option key={p.id} value={p.id}>{p.name} · {p.created.slice(0,10)} · {p.id.slice(0,6)}</option>)}</select></label>}<div><a className={styles.link} href={market?.sourceUrl??'https://www.geckoterminal.com/'} target="_blank" rel="noreferrer">{market?.source??'Market source'} ↗</a><p className={styles.muted}>{market?.note??'Market history is unavailable; saved social evidence remains accessible.'}</p></div></div>
      {!marketLoading&&market?.selected&&<p className={styles.coverageNote}>Selected pool created {market.selected.created.slice(0,10)}. Earlier dates have no price history from this pool. This is not a verified token launch date.</p>}
     </div>
