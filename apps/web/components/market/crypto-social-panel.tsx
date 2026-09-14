@@ -7,6 +7,9 @@ import type { Tracking } from "@/lib/crypto-social";
 type Edge = {source_id:string;target_id:string;source:string;target:string;kind:string;weight:number;evidence:string};
 type Research = {
  status:string;
+ history?:{campaign:{start_at:string;end_at:string;reserved_credits:number;credit_limit:number};
+  earliest:{id:string;text:string;url:string;posted_at:string;handle:string}[];
+  coverage:{windows:number;searched:number;exhausted:number}}|null;
  tracking?:Tracking|null;
  pilot?:{reserved_credits:number;credit_limit:number;estimated_credits:number|null;start_at:string;end_at:string;outstanding:number};
  daily?:{day:string;posts:number;authors:number;originals:number;replies:number;quotes:number;reposts:number;exhausted:number;searched:number;windows:number}[];
@@ -46,6 +49,13 @@ export function CryptoSocialPanel() {
     <thead><tr>{["Account","Posts","Observed/day¹","Active days","Median likes²","Distinct amplifiers³"].map(h=><th className="p-2" key={h}>{h}</th>)}</tr></thead>
     <tbody>{data.accounts?.map(a=><tr key={a.id} className="border-t border-[color:var(--line)]"><td className="p-2"><a href={`https://x.com/${encodeURIComponent(a.handle)}`} target="_blank" rel="noreferrer">@{a.handle}</a></td><td>{a.posts}</td><td>{a.posts_per_day}</td><td>{a.active_days}</td><td>{a.median_likes??"—"}</td><td>{a.amplifiers}</td></tr>)}</tbody>
    </table><p className="text-xs text-[color:var(--ink-faint)]">¹ Sampled coin posts ÷ 7 calendar days, not all account posts. ² Counts at collection time; post ages differ. ³ Distinct observed quoting/reposting accounts. A quote may be critical. This is a candidate ranking, not verified influence.</p></div>}
+   {data.history&&<details><summary>Before the run · July 25 onward</summary>
+    <p className={styles.insight}>Earliest posts found in our historical sample. These are leads to investigate, not proof of who started the run.</p>
+    <p className={`${styles.muted} my-3`}>{data.history.coverage.searched} / {data.history.coverage.windows} time windows searched · {data.history.campaign.reserved_credits.toLocaleString()} / {data.history.campaign.credit_limit.toLocaleString()} history credits reserved. Empty or capped searches may miss posts. Profile names are current observations.</p>
+    <ol className="space-y-4 border-l border-[color:var(--line)] pl-4">{data.history.earliest.map(p=><li key={p.id}><p className={styles.muted}>{p.posted_at.slice(0,16).replace('T',' ')} UTC</p><a className={styles.link} href={p.url} target="_blank" rel="noreferrer">@{p.handle} · open post ↗</a><p className="text-sm whitespace-pre-wrap break-words">{p.text}</p></li>)}</ol>
+    {!data.history.earliest.length&&<p className={styles.muted}>No historical posts saved yet.</p>}
+    <p className={`${styles.muted} mt-3`}>Price, liquidity and volume alignment is the next analysis step; no cause of the price move is inferred here.</p>
+   </details>}
    <details><summary>Daily conversation · saved sample</summary>
     <p className={`${styles.muted} mb-3`}>Compare observed activity alongside search coverage. An unsearched day is unknown, not zero.</p>
     <div className={styles.table}><table><thead><tr><th className="text-left">UTC day</th><th>Posts found</th><th>Authors</th><th>Coverage</th></tr></thead><tbody>{data.daily?.map(d=><tr key={d.day}><td>{d.day}</td><td>{d.searched?d.posts:"—"}</td><td>{d.searched?d.authors:"—"}</td><td><span className={styles.badge}>{!d.searched?"Not searched":d.exhausted===d.windows?"Search exhausted":"Limited sample"}</span></td></tr>)}</tbody></table></div>

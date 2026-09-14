@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const exists = await sql`SELECT to_regclass('public.crypto_social_pilot') AS relation`;
     if (!exists[0]?.relation) return ok({ status: "not_started" });
     const [pilot, daily, accounts, edges, posts] = await Promise.all([
-      sql`SELECT p.*, (SELECT sum(estimated_credits) FROM crypto_social_requests) AS estimated_credits,
+      sql`SELECT p.*, (SELECT sum(estimated_credits) FROM crypto_social_requests r WHERE to_jsonb(r)->>'endpoint' IS DISTINCT FROM 'historical_search') AS estimated_credits,
         (SELECT count(*) FROM crypto_social_requests WHERE status IN ('reserved','uncertain')) AS outstanding
         FROM crypto_social_pilot p WHERE id='zcat-zec-v1'`,
       sql`SELECT (w.start_at AT TIME ZONE 'UTC')::date::text AS day,
@@ -92,7 +92,24 @@ export async function GET(request: Request) {
       tracking = { campaign: campaign[0] ?? null, accounts: candidates, history, bioChanges, coverage, ledger, bioMatches,
         keywordSearchStatus: 'pending_provider_page_bound', lookbackDays: 28 };
     }
-    return ok({ tracking, status: pilot.length ? "ready" : "not_started", coin, pilot: pilot[0], daily, accounts, edges, posts });
+    let history = null;
+    const historySchema = await sql`SELECT to_regclass('public.crypto_social_history_campaign') AS relation`;
+    if (coin === "ZCAT" && historySchema[0]?.relation) {
+      const [campaign, earliest, coverage] = await Promise.all([
+        sql`SELECT h.*,(SELECT sum(r.estimated_credits) FROM crypto_social_requests r
+          WHERE r.endpoint='historical_search') AS estimated_credits FROM crypto_social_history_campaign h`,
+        sql`SELECT DISTINCT p.id,p.text,p.url,p.posted_at,a.handle FROM crypto_social_history_windows h
+          JOIN crypto_social_matches m ON m.window_id=h.window_id JOIN crypto_social_posts p ON p.id=m.post_id
+          JOIN crypto_social_accounts a ON a.id=p.author_id WHERE h.campaign_id='zcat-july-2026'
+          ORDER BY p.posted_at,p.id LIMIT 30`,
+        sql`SELECT count(*)::int AS windows,count(*) FILTER(WHERE w.pages>0)::int AS searched,
+          count(*) FILTER(WHERE w.status='search_exhausted')::int AS exhausted
+          FROM crypto_social_history_windows h JOIN crypto_social_windows w ON w.id=h.window_id
+          WHERE h.campaign_id='zcat-july-2026'`,
+      ]);
+      history = { campaign: campaign[0], earliest, coverage: coverage[0] };
+    }
+    return ok({ history, tracking, status: pilot.length ? "ready" : "not_started", coin, pilot: pilot[0], daily, accounts, edges, posts });
   } catch {
     return fail("Crypto research data is temporarily unavailable", "SOCIAL_READ_FAILED", 503);
   }
