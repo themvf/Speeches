@@ -12,3 +12,5 @@ test('sales and launches have separate action counts',()=>{const r=discoverCoins
 
 test('token quantities do not become dollar amounts and mixed actions stay unclassified',()=>{assert.equal(extractCoins('bought 500 $CAT')[0].amount,null);assert.equal(extractCoins('bought $5K of $CAT then sold $2K of $CAT')[0].action,'Mention');});
 test('dex paid token labels are extracted without treating the quote currency as target',()=>{const r=extractCoins('Dex paid: Launch Express (LE) / ETH CA: 0x'+'a'.repeat(40));assert.equal(r.length,1);assert.equal(r[0].symbol,'LE');assert.equal(r[0].action,'Launch');});
+
+test('database Date timestamps normalize before daily aggregation',()=>{const r=discoverCoins([{...p,posted_at:new Date(p.posted_at)}]);assert.equal(r[0].daily[0].day,'2026-09-15');assert.equal(typeof r[0].examples[0].posted_at,'string');});
