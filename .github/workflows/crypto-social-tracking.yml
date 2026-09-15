@@ -1,7 +1,6 @@
 name: Crypto Social Tracking (30-day pilot)
 on:
-  schedule:
-    - cron: '17 7 * * *'
+  # Daily snapshots are now owned by crypto-social-rolling.yml.
   workflow_dispatch:
     inputs:
       execute:

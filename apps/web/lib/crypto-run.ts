@@ -40,6 +40,7 @@ export function priceLabel(n:number){return n>=100?'$'+n.toLocaleString(undefine
 
 export function filterEvidence(posts:RunPost[],coin:string,mode:string){
  if(mode==='all')return posts;
+ if(coin==='STANDARD')return posts.filter(p=>p.text.toLowerCase().includes('0x88ad8ddf1e3898412146a534538d418c6f8a9062')||(mode!=='contract'&&(/[$#]standard(?![a-z0-9_])/i.test(p.text)||/\bthe\s+standard\s+reserve\b|\bstandard_rsv\b/i.test(p.text))));
  if(coin==='DPONS')return posts.filter(p=>p.text.toLowerCase().includes('0x0e6d1ebb33f3b8f2d09bacf3b1a1d5c581110c33')||(mode!=='contract'&&/(^|[^a-z0-9_])dpons(?![a-z0-9_])|\bdiamond\s*pons\b/i.test(p.text)));
  if(coin==='PONS')return posts.filter(p=>p.text.toLowerCase().includes('0x39dbed3a2bd333467115de45665cc57f813c4571')||(mode!=='contract'&&(/[$#]pons(?![a-z0-9_])/i.test(p.text)||(/\bpons\b/i.test(p.text)&&/robinhood|ponsdotfamily/i.test(p.text)))));
  const contract='HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR';

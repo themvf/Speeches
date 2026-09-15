@@ -28,3 +28,5 @@ test('large accounts rank current audiences and keep missing metrics distinct fr
 });
 
 test('DPONS evidence is distinct from PONS and accepts contract casing',()=>{const texts=['0x0E6D1EBB33F3B8F2D09BACF3B1A1D5C581110C33','$DPONS news','Diamond Pons news','$PONS news','dponsfake'];const sample=texts.map((text,i)=>({...post,id:String(i),text}));assert.deepEqual(filterEvidence(sample,'DPONS','words').map(p=>p.id),['0','1','2']);assert.deepEqual(filterEvidence(sample,'DPONS','contract').map(p=>p.id),['0']);});
+
+test('STANDARD excludes ordinary words while matching project and checksum contract',()=>{const texts=['standard procedure','gold standard','The Standard Reserve','$STANDARD','0x88ad8DdF1E3898412146a534538d418c6F8A9062','standard_rsv'];const sample=texts.map((text,i)=>({...post,id:String(i),text}));assert.deepEqual(filterEvidence(sample,'STANDARD','words').map(p=>p.id),['2','3','4','5']);assert.deepEqual(filterEvidence(sample,'STANDARD','contract').map(p=>p.id),['4']);});

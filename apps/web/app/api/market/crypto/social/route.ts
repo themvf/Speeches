@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 // Read-only: opening the dashboard never calls TwitterAPI.io.
 export async function GET(request: Request) {
   const coin = new URL(request.url).searchParams.get("coin") ?? "ZCAT";
-  if (!["ZCAT", "ZEC", "PONS", "DPONS"].includes(coin)) return fail("Unknown coin", "INVALID_COIN", 400);
+  if (!["ZCAT", "ZEC", "PONS", "DPONS", "STANDARD"].includes(coin)) return fail("Unknown coin", "INVALID_COIN", 400);
   if (!process.env.DATABASE_URL) return ok({ status: "not_configured" });
   const sql = neon(process.env.DATABASE_URL);
   try {
@@ -110,7 +110,19 @@ export async function GET(request: Request) {
       ]);
       history = campaign.length ? { campaign: campaign[0], earliest, coverage: coverage[0] } : null;
     }
-    return ok({ history, tracking, status: pilot.length ? "ready" : "not_started", coin, pilot: pilot[0], daily, accounts, edges, posts });
+    let rolling = null;
+    const rollingSchema = await sql`SELECT to_regclass('public.crypto_rolling_coins') AS relation`;
+    if (rollingSchema[0]?.relation) {
+      const rows = await sql`SELECT c.used_credits,c.credit_limit,p.end_at,
+        (SELECT max(r.requested_at) FROM crypto_rolling_calls k JOIN crypto_social_requests r ON r.id=k.request_id
+         WHERE k.campaign_id=c.campaign_id AND k.coin=c.coin AND r.status='saved') AS last_saved,
+        (SELECT count(*)::int FROM crypto_rolling_windows k JOIN crypto_social_windows w ON w.id=k.window_id
+         WHERE k.campaign_id=c.campaign_id AND w.coin=c.coin AND w.status IN ('pending','partial')) AS unfinished
+        FROM crypto_rolling_coins c JOIN crypto_rolling_campaign p ON p.id=c.campaign_id
+        WHERE c.coin=${coin} ORDER BY p.started_at DESC LIMIT 1`;
+      rolling = rows[0] ?? null;
+    }
+    return ok({ rolling, history, tracking, status: pilot.length ? "ready" : "not_started", coin, pilot: pilot[0], daily, accounts, edges, posts });
   } catch {
     return fail("Crypto research data is temporarily unavailable", "SOCIAL_READ_FAILED", 503);
   }
