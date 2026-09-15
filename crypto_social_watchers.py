@@ -90,7 +90,7 @@ def collect_one(conn,key,account,now,fetch=None):
             if posts:
                 cur.execute('SELECT count(*) FROM crypto_watcher_posts WHERE window_id=%s AND post_id=ANY(%s)',(w[0],[p['id'] for p in posts]))
                 if cur.fetchone()[0]==len(posts):raise ValueError('Repeated watcher page')
-            returned,accepted,estimated=save_posts(cur,rid,data,w[1],w[2],account=account)
+            returned,accepted,estimated=save_posts(cur,rid,data,w[1],w[2],account=account if posts else None)
             if estimated>300:raise ValueError('Charge exceeds reservation')
             for p in posts:cur.execute('INSERT INTO crypto_watcher_posts VALUES (%s,%s) ON CONFLICT DO NOTHING',(p['id'],w[0]))
             cur.execute('UPDATE crypto_watcher_windows SET pages=pages+1,cursor=%s,status=%s WHERE id=%s',(cursor,'partial' if more else 'search_exhausted',w[0]))
