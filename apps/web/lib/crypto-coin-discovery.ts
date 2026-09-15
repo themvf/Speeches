@@ -46,9 +46,9 @@ export function extractCoins(text:string):Reference[]{
  return result;
 }
 export type CoinFinding={key:string;symbol:string;address:string|null;network:string;identity:string;tracked:boolean;posts:number;accounts:number;buys:number;sells:number;accumulation:number;volume:number;launches:number;context:number;repeatedReports:number;first:string;last:string;daily:{day:string;posts:number}[];examples:(DiscoveryPost&{action:string;role:string;amount:string|null})[]};
-export function discoverCoins(raw:DiscoveryPost[]):CoinFinding[]{
+export function discoverCoins(raw:(Omit<DiscoveryPost,'posted_at'>&{posted_at:string|Date})[]):CoinFinding[]{
  const rows=new Map<string,CoinFinding>();const authors=new Map<string,Set<string>>(),events=new Map<string,Set<string>>(),days=new Map<string,Map<string,number>>();const ids=new Set<string>();
- for(const p of raw){if(ids.has(p.id)||p.kind==='repost')continue;ids.add(p.id);
+ for(const source of raw){const p={...source,posted_at:new Date(source.posted_at).toISOString()};if(ids.has(p.id)||p.kind==='repost')continue;ids.add(p.id);
   for(const r of extractCoins(p.text)){
    // Ticker-only mentions remain candidate groups, never joined to resolved contracts.
    let c=rows.get(r.key);if(!c){c={...r,posts:0,accounts:0,buys:0,sells:0,accumulation:0,volume:0,launches:0,context:0,repeatedReports:0,first:p.posted_at,last:p.posted_at,daily:[],examples:[]};rows.set(r.key,c);authors.set(r.key,new Set());events.set(r.key,new Set());days.set(r.key,new Map());}
