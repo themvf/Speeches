@@ -6,7 +6,7 @@ import {accountRoles,type Sentiment,sentimentLabels} from '@/lib/crypto-intellig
 import {CryptoSentimentView} from './crypto-sentiment-view';
 import styles from './crypto-research.module.css';
 type TaggedPost=RunPost&{coins:string[]};
-const coins=['ZCAT','PONS','DPONS','ZEC'];
+const coins=['ZCAT','PONS','DPONS','ZEC','STANDARD'];
 const count=(n:number|null|undefined)=>n==null?'—':n.toLocaleString();
 export function CryptoPostBrowser({coin,run,allSearches=false,insightsOnly=false,onBrowse}:{coin:string;run:RunData;allSearches?:boolean;onBrowse?:()=>void;insightsOnly?:boolean}){
  const sheet=useRef<HTMLDialogElement>(null);
