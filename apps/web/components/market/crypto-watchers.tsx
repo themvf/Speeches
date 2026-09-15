@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from 'react';
+import {CryptoCoinDiscovery} from './crypto-coin-discovery';
 import {CryptoWatcherFeed} from './crypto-watcher-feed';
 import type {Watcher} from '@/lib/crypto-watchers';
 import styles from './crypto-research.module.css';
@@ -19,5 +20,5 @@ function WatcherRankings({coin}:{coin:string}){
 
 export function CryptoWatchers({coin}:{coin:string}){
  const [view,setView]=useState('feed');
- return <><div className={styles.secondaryTabs} aria-label="Watcher view"><button aria-pressed={view==='feed'} onClick={()=>setView('feed')}>Latest posts</button><button aria-pressed={view==='rankings'} onClick={()=>setView('rankings')}>Account rankings</button></div>{view==='feed'?<CryptoWatcherFeed/>:<WatcherRankings coin={coin}/>}</>;
+ return <><div className={styles.secondaryTabs} aria-label="Watcher view"><button aria-pressed={view==='feed'} onClick={()=>setView('feed')}>Latest posts</button><button aria-pressed={view==='coins'} onClick={()=>setView('coins')}>Coin discovery</button><button aria-pressed={view==='rankings'} onClick={()=>setView('rankings')}>Account rankings</button></div>{view==='feed'?<CryptoWatcherFeed/>:view==='coins'?<CryptoCoinDiscovery/>:<WatcherRankings coin={coin}/>}</>;
 }
