@@ -176,3 +176,43 @@ def test_db_pons_does_not_search_future_intervals(db):
     with db,db.cursor() as c:
         c.execute("SELECT count(*),max(end_at) FROM crypto_social_windows WHERE coin='PONS'")
         assert c.fetchone()==(2,start+timedelta(hours=12))
+
+
+def test_db_dpons_daily_windows_independent_cap_and_restart(db):
+    from crypto_social_history import settings, DPONS_ADDRESS
+    setup(db)
+    campaign,start,end,query=settings('DPONS')
+    assert DPONS_ADDRESS in query and '$DPONS' in query and 'Diamond Pons' in query
+    setup(db,'DPONS',now=end)
+    with db,db.cursor() as c:
+        c.execute('SELECT count(*) FROM crypto_social_history_windows WHERE campaign_id=%s',(campaign,))
+        assert c.fetchone()[0]==52
+        c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=149700 WHERE id=%s',(campaign,))
+    class Response:
+        status_code=200
+        def json(self):return {'tweets':[],'has_next_page':False}
+    assert collect_history(db,'fake',80,lambda *a,**k:Response(),coin='DPONS')==1
+    setup(db,'DPONS',now=end)
+    assert reserve(db,coin='DPONS') is None
+    with db,db.cursor() as c:
+        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign WHERE id=%s',(campaign,))
+        assert c.fetchone()[0]==150000
+        c.execute("SELECT reserved_credits FROM crypto_social_history_campaign WHERE id='zcat-july-2026'")
+        assert c.fetchone()[0]==0
+        c.execute('SELECT reserved_credits FROM crypto_social_pilot')
+        assert c.fetchone()[0]==0
+
+
+def test_db_dpons_discovery_preserves_existing_ledger_and_windows(db):
+    from crypto_social_dpons import setup_discovery
+    from crypto_social_history import settings
+    campaign,_,end,_=settings('DPONS')
+    setup(db,'DPONS',now=end)
+    with db,db.cursor() as c:
+        c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=16200 WHERE id=%s',(campaign,))
+    setup_discovery(db);setup_discovery(db)
+    with db,db.cursor() as c:
+        c.execute('SELECT count(*) FROM crypto_social_history_windows WHERE campaign_id=%s',(campaign,))
+        assert c.fetchone()[0]==156
+        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign WHERE id=%s',(campaign,))
+        assert c.fetchone()[0]==16200

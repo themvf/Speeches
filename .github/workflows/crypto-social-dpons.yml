@@ -1,0 +1,51 @@
+name: DPONS Authorized Capture
+on:
+  push:
+    branches: [agent/dpons-capture]
+    paths: ['crypto_social_dpons.py', 'crypto_social_history.py', '.github/workflows/crypto-social-dpons.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: crypto-social-pilot
+  cancel-in-progress: false
+jobs:
+  safeguards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: disposable-test-password
+          POSTGRES_DB: crypto_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_history.py -q
+        env:
+          CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@localhost:5432/crypto_test
+  capture:
+    needs: safeguards
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TWITTERAPI_IO_API_KEY: ${{ secrets.TWITTERAPI_IO_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - name: Capture DPONS within its cumulative 150000-credit ceiling
+        run: python crypto_social_dpons.py --execute
