@@ -236,7 +236,7 @@
 .researchPage { width:100%; max-width:1200px; margin:0 auto; padding:16px 24px 48px; }
 .researchBack { display:inline-flex; align-items:center; min-height:44px; color:var(--ink-soft); font-size:14px; margin-bottom:8px; }
 .researchBack:focus-visible { outline:2px solid #7dd3fc; outline-offset:3px; }
-.viewTabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:visible; }
+.viewTabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); overflow:visible; }
 .secondaryTabs { display:flex; gap:8px; margin:8px 0 16px; }
 .secondaryTabs button { flex:1; min-height:44px; padding:8px; border-bottom:2px solid transparent; font-size:13px; color:var(--ink-soft); }
 .secondaryTabs button[aria-pressed=true] { border-color:#38bdf8; color:var(--ink); font-weight:650; }
@@ -256,7 +256,7 @@
  .researchPage .explorerHeader>div { display:none; }
  .researchPage .explorerHeader { margin:0; padding:0; }
  .researchPage .explorerHeader select { font-size:16px; min-width:0; }
- .viewTabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:12px 0; }
+ .viewTabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin:12px 0; }
  .viewTabs button { font-size:14px; padding:10px 4px; min-height:44px; }
  .scopeControls { margin-bottom:16px; }
  .scopeSummary,.muted,.resultsCaption { font-size:13px; color:var(--ink-soft); }

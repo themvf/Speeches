@@ -1,9 +1,10 @@
 "use client";
 import {useEffect,useState} from 'react';
+import {CryptoWatcherFeed} from './crypto-watcher-feed';
 import type {Watcher} from '@/lib/crypto-watchers';
 import styles from './crypto-research.module.css';
 type Data={accounts:Watcher[];loaded:number;total:number;candidates:number;asOf?:string};
-export function CryptoWatchers({coin}:{coin:string}){
+function WatcherRankings({coin}:{coin:string}){
  const [data,setData]=useState<Data|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
  useEffect(()=>{const controller=new AbortController();setData(null);setError('');fetch(`/api/market/crypto/watchers?coin=${coin}`,{signal:controller.signal}).then(async r=>{const b=await r.json();if(!r.ok||!b.ok)throw Error();setData(b.data);}).catch(()=>{if(!controller.signal.aborted)setError('Could not load saved watcher evidence.');});return()=>controller.abort();},[coin,retry]);
  return <section aria-label="Whale and volume watchers"><h3>Whale & volume watchers</h3><p className={styles.muted}>{coin==='ALL'?'Across all five coins':coin} · full saved history · no X credits used.</p><p className={styles.coverageNote}>Accounts reporting on wallets and trading volume. These are evidence-based candidates, not verified whales or endorsements. Numeric claims have not been checked against blockchain data.</p>
@@ -14,4 +15,9 @@ export function CryptoWatchers({coin}:{coin:string}){
  </>}
  <details className={styles.methodology}><summary>Ranking method & limitations</summary><p className={styles.muted}>Non-repost posts must match a tracked coin, contain whale/wallet activity or trading-volume language, and include a numeric amount. Reposts and duplicate post IDs are excluded. Repeated observations, distinct days, varied formats, source links and relevant bios contribute to the ranking. Dedicated reporting/alert profiles receive priority. Non-specialists need at least three numeric reports. A mentioned coin may be a comparison or trading pair, rather than the asset whose activity is reported. Followers break ties only. English and selected Chinese phrases are supported; other wording may be missed. “Provisional” means fewer than three qualifying posts or fewer than two observed days. Repeated numeric alerts can still be promotional or inaccurate.</p></details>
  </section>;
+}
+
+export function CryptoWatchers({coin}:{coin:string}){
+ const [view,setView]=useState('feed');
+ return <><div className={styles.secondaryTabs} aria-label="Watcher view"><button aria-pressed={view==='feed'} onClick={()=>setView('feed')}>Latest posts</button><button aria-pressed={view==='rankings'} onClick={()=>setView('rankings')}>Account rankings</button></div>{view==='feed'?<CryptoWatcherFeed/>:<WatcherRankings coin={coin}/>}</>;
 }
