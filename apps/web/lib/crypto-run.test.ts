@@ -26,3 +26,5 @@ test('large accounts rank current audiences and keep missing metrics distinct fr
  assert.equal(rows[0].medianLikes,null);assert.equal(rows[0].amplification,null);assert.equal(rows[2].followers,null);
  assert.equal(largeAccounts(sample,'')[0].before,null);
 });
+
+test('DPONS evidence is distinct from PONS and accepts contract casing',()=>{const texts=['0x0E6D1EBB33F3B8F2D09BACF3B1A1D5C581110C33','$DPONS news','Diamond Pons news','$PONS news','dponsfake'];const sample=texts.map((text,i)=>({...post,id:String(i),text}));assert.deepEqual(filterEvidence(sample,'DPONS','words').map(p=>p.id),['0','1','2']);assert.deepEqual(filterEvidence(sample,'DPONS','contract').map(p=>p.id),['0']);});

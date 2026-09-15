@@ -69,7 +69,7 @@ export function AppNav({ authEnabled }: { authEnabled: boolean }) {
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-[color:rgba(5,12,19,0.72)] backdrop-blur-md">
+    <header className={`${pathname==='/market/crypto'?'hidden md:block ':''}sticky top-0 z-40 border-b border-[color:var(--line)] bg-[color:rgba(5,12,19,0.72)] backdrop-blur-md`}>
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-8">
         <Link href="/" prefetch className="inline-flex items-center gap-2 rounded-xl px-2 py-1 text-sm font-semibold text-[color:var(--ink)]">
           <span className="h-2.5 w-2.5 rounded-full bg-[color:var(--accent)]" aria-hidden="true" />

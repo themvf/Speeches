@@ -231,3 +231,68 @@
  .explorerHeader .label,.explorerHeader .muted { display:none; }
  .viewTabs { margin-top:12px; }
 }
+
+/* Dedicated research route and compact mobile reading layout. */
+.researchPage { width:100%; max-width:1200px; margin:0 auto; padding:16px 24px 48px; }
+.researchBack { display:inline-flex; align-items:center; min-height:44px; color:var(--ink-soft); font-size:14px; margin-bottom:8px; }
+.researchBack:focus-visible { outline:2px solid #7dd3fc; outline-offset:3px; }
+.viewTabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:visible; }
+.secondaryTabs { display:flex; gap:8px; margin:8px 0 16px; }
+.secondaryTabs button { flex:1; min-height:44px; padding:8px; border-bottom:2px solid transparent; font-size:13px; color:var(--ink-soft); }
+.secondaryTabs button[aria-pressed=true] { border-color:#38bdf8; color:var(--ink); font-weight:650; }
+.postSearchRow { grid-template-columns:minmax(0,1fr); }
+.accountRows { display:grid; margin:16px 0; }
+.accountRows article { min-width:0; border-bottom:1px solid var(--line); padding:12px 0; overflow-wrap:anywhere; }
+.accountRowButton { display:grid; gap:8px; text-align:left; width:100%; min-height:44px; padding:8px 0; }
+.accountRowButton strong { color:#7dd3fc; font-size:15px; overflow-wrap:anywhere; }
+.accountRowButton>span,.accountRowButton small { font-size:13px; color:var(--ink-soft); }
+.accountRows .link,.accountRows a { display:inline-flex; align-items:center; min-height:44px; }
+.connectionSelect { display:grid; gap:8px; margin:16px 0; font-size:13px; }
+.connectionSelect select { width:100%; min-width:0; }
+.panel input:focus-visible,.panel select:focus-visible { outline:2px solid #7dd3fc; outline-offset:2px; }
+@media(max-width:760px) {
+ .researchPage { padding:0 16px max(24px,env(safe-area-inset-bottom)); }
+ .researchPage .explorer { padding:0; border:0; background:none; border-radius:0; }
+ .researchPage .explorerHeader>div { display:none; }
+ .researchPage .explorerHeader { margin:0; padding:0; }
+ .researchPage .explorerHeader select { font-size:16px; min-width:0; }
+ .viewTabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:12px 0; }
+ .viewTabs button { font-size:14px; padding:10px 4px; min-height:44px; }
+ .scopeControls { margin-bottom:16px; }
+ .scopeSummary,.muted,.resultsCaption { font-size:13px; color:var(--ink-soft); }
+ .sectionHeading { margin:8px 0 16px; }
+ .sectionHeading .label,.sectionHeading .savedBadge { display:none; }
+ .sectionHeading h3 { font-size:22px; }
+ .sectionHeading p { margin-bottom:0; }
+ .reachHighlights { grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px; }
+ .reachHighlights button,.reachHighlights button:first-child { grid-column:auto; border:0; border-radius:0; padding:12px 8px; }
+ .reachHighlights button+button { border-left:1px solid var(--line); }
+ .reachHighlights button::before { display:none; }
+ .reachHighlights span { font-size:12px; }
+ .reachHighlights strong,.reachHighlights button:first-child strong { font-size:24px; margin:8px 0 0; }
+ .reachHighlights small { display:none; }
+ .audienceChips button { min-height:44px; }
+ .rankingSearch { grid-template-columns:1fr; }
+ .rankingSearch input,.rankingSearch select { font-size:16px; }
+ .reachMobile { gap:0; }
+ .mobileAccount { padding:8px 0; border:0; border-bottom:1px solid var(--line); border-radius:0; background:none; }
+ .mobileAccountHeader { align-items:start; flex-wrap:wrap; gap:4px 12px; }
+ .mobileAccountHeader>span { color:var(--ink-soft); font-size:12px; }
+ .followerValue { font-size:16px; }
+ .postSearchRow { grid-template-columns:minmax(0,1fr); margin-bottom:8px; }
+ .feedActions { margin:8px 0; }
+ .feedActions button,.feedActions select { font-size:13px; }
+ .postResults article { padding:16px; border-radius:12px; }
+ .postResults header { font-size:12px; }
+ .postResults header .link { font-size:14px; display:inline-flex; align-items:center; min-height:44px; }
+ .postResults header time { font-size:12px; }
+ .postFullText { font-size:16px; line-height:1.5; margin:8px 0; }
+ .postDetails summary,.activeFilterChips button,.postResults footer a { min-height:44px; }
+ .postResults footer a { display:inline-flex; align-items:center; }
+ .postStance span { font-size:12px; }
+ .feedInsights[open] { margin-top:8px; }
+ .feedInsights>.scopeControls { padding:0; border:0!important; }
+}
+
+.connectionGraph { overflow-x:auto; }
+.connectionGraph svg { min-width:760px; }
