@@ -1,0 +1,33 @@
+name: Review Saved Whale and Volume Watchers
+on:
+  push:
+    branches: [agent/crypto-watchers]
+    paths: ['apps/web/lib/crypto-watchers.ts', 'apps/web/lib/server/crypto-watchers-query.ts', 'review_crypto_watchers.py', '.github/workflows/crypto-watchers-review.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install 'psycopg2-binary>=2.9,<3'
+      - run: python review_crypto_watchers.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Rank saved evidence without X calls
+        run: |
+          node --experimental-strip-types --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {rankWatchers} from './apps/web/lib/crypto-watchers.ts';
+          const posts=JSON.parse(fs.readFileSync('/tmp/crypto-watcher-evidence.json','utf8'));
+          const ranked=rankWatchers(posts);
+          console.log(JSON.stringify({loaded:posts.length,total:posts[0]?.corpus_total??0,candidates:ranked.length,accounts:ranked.slice(0,20)},null,2));
+          JS
