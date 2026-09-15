@@ -151,7 +151,7 @@ export function MarketDashboard() {
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            onClick={() => {if(id==="crypto"&&window.matchMedia("(max-width: 760px)").matches){window.location.assign("/market/crypto");return;}setTab(id);}}
             className={`whitespace-nowrap rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
               tab === id
                 ? "border-[color:var(--line-strong)] bg-[color:rgba(15,32,50,0.92)] text-[color:var(--ink)] shadow-[inset_0_1px_0_rgba(79,213,255,0.15)]"
