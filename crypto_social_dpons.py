@@ -2,13 +2,33 @@
 import argparse
 import json
 import os
-from crypto_social_history import setup, settings, start_batch, collect_history, LIMIT
+from datetime import timedelta, datetime, timezone
+from crypto_social_history import setup, settings, start_batch, collect_history, LIMIT, DPONS_ADDRESS
+
+
+def setup_discovery(conn):
+    """Keep prior query evidence intact; separate half-day windows broaden name coverage."""
+    campaign,start,end,_ = settings('DPONS')
+    current=start
+    end=min(end,datetime.now(timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0))
+    query_base=f'(DPONS OR "DiamondPons" OR "Diamond Pons" OR "{DPONS_ADDRESS}")'
+    with conn,conn.cursor() as cur:
+        while current<end:
+            until=min(current+timedelta(hours=12),end)
+            query=f'{query_base} since_time:{int(current.timestamp())} until_time:{int(until.timestamp())}'
+            cur.execute("INSERT INTO crypto_social_windows(coin,start_at,end_at,query) VALUES ('DPONS',%s,%s,%s) ON CONFLICT DO NOTHING",(current,until,query))
+            cur.execute("SELECT id FROM crypto_social_windows WHERE coin='DPONS' AND start_at=%s AND end_at=%s AND query=%s",(current,until,query))
+            row=cur.fetchone()
+            if not row:raise ValueError('Conflicting discovery query; review coverage')
+            cur.execute('INSERT INTO crypto_social_history_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(campaign,row[0]))
+            current=until
 
 
 def capture(conn, key):
     coin = 'DPONS'
     campaign, _, _, _ = settings(coin)
     setup(conn, coin)
+    setup_discovery(conn)
     calls = 0
     # 500 maximum requests across this campaign, including previous runs.
     for _ in range(7):

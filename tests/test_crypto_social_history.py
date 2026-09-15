@@ -201,3 +201,18 @@ def test_db_dpons_daily_windows_independent_cap_and_restart(db):
         assert c.fetchone()[0]==0
         c.execute('SELECT reserved_credits FROM crypto_social_pilot')
         assert c.fetchone()[0]==0
+
+
+def test_db_dpons_discovery_preserves_existing_ledger_and_windows(db):
+    from crypto_social_dpons import setup_discovery
+    from crypto_social_history import settings
+    campaign,_,end,_=settings('DPONS')
+    setup(db,'DPONS',now=end)
+    with db,db.cursor() as c:
+        c.execute('UPDATE crypto_social_history_campaign SET reserved_credits=16200 WHERE id=%s',(campaign,))
+    setup_discovery(db);setup_discovery(db)
+    with db,db.cursor() as c:
+        c.execute('SELECT count(*) FROM crypto_social_history_windows WHERE campaign_id=%s',(campaign,))
+        assert c.fetchone()[0]==156
+        c.execute('SELECT reserved_credits FROM crypto_social_history_campaign WHERE id=%s',(campaign,))
+        assert c.fetchone()[0]==16200
