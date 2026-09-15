@@ -4,10 +4,10 @@ const whale=/\bwhale(?:s|watch|watcher)?\b|\bsmart (?:money|wallets?)\b|\blarge 
 const volume=/\b(?:trading|trade|buy|sell|24h|daily|hourly|high|surging|record)\s+volume\b|\bvolume\s*(?:[:：]|surge|spike|up|hit|reach|exceed|\$|\d)|\bvol\s*[:：]|交易量|成交量|交易额/i;
 const amount=/(?:\$|USD\s*)\s*\d[\d,.]*(?:\s*[kmb])?|\b\d[\d,.]*\s*(?:USD|ETH|SOL|BTC|ZEC|million|billion|K|M)\b|\d[\d,.]*\s*(?:万|亿)/i;
 const link=/https?:\/\/(?:[^\s/]+\.)?(?:etherscan\.io|solscan\.io|gmgn\.ai|dexscreener\.com|arkhamintelligence\.com|intel\.arkm\.com|nansen\.ai)\b/i;
-const transaction=new RegExp('(?:bought|sold|purchased|transferred|deposited|withdrew|buy|sell|buying|selling|买入|卖出|转账)[^.!?\\n]{0,60}(?:'+amount.source+')','i');
+const transaction=new RegExp('(?:(?:bought|sold|purchased|transferred|deposited|withdrew|buy|sell|buying|selling|holds|holding)\\b|买入|卖出|转账)[^.!?\\n]{0,60}(?:'+amount.source+')','i');
 
 function template(text:string){return text.toLowerCase().replace(/https?:\/\/\S+|0x[a-f0-9]+|\$[a-z]+|@[\w]+/g,' ').replace(/[\d,.]+/g,'#').replace(/\s+/g,' ').trim();}
-export function watcherSignals(text:string){const w=whale.test(text)&&transaction.test(text),v=text.split(/\n/).some(line=>volume.test(line)&&amount.test(line));return {whale:w,volume:v,supported:w||v,linked:link.test(text)};}
+export function watcherSignals(text:string){const w=text.split(/\n\s*\n/).some(part=>whale.test(part)&&transaction.test(part)),v=text.split(/\n/).some(line=>volume.test(line)&&amount.test(line));return {whale:w,volume:v,supported:w||v,linked:link.test(text)};}
 
 export function rankWatchers(raw:WatcherPost[],coin='ALL'){
  const dedup=new Map<string,WatcherPost>();for(const p of raw)if(!dedup.has(p.id))dedup.set(p.id,p);
