@@ -6,7 +6,7 @@ import {accountRoles,type Sentiment,sentimentLabels} from '@/lib/crypto-intellig
 import {CryptoSentimentView} from './crypto-sentiment-view';
 import styles from './crypto-research.module.css';
 type TaggedPost=RunPost&{coins:string[]};
-const coins=['ZCAT','PONS','ZEC'];
+const coins=['ZCAT','PONS','DPONS','ZEC'];
 const count=(n:number|null|undefined)=>n==null?'—':n.toLocaleString();
 export function CryptoPostBrowser({coin,run,allSearches=false,insightsOnly=false,onBrowse}:{coin:string;run:RunData;allSearches?:boolean;onBrowse?:()=>void;insightsOnly?:boolean}){
  const sheet=useRef<HTMLDialogElement>(null);
@@ -32,7 +32,7 @@ export function CryptoPostBrowser({coin,run,allSearches=false,insightsOnly=false
  const active=Object.entries(filters).filter(([k,v])=>v!==defaultPostFilters[k as keyof PostFilters]).length+(evidence!=='words'?1:0)+(role!=='all'?1:0)+(stance!=='all'?1:0);
  return <div className={styles.postBrowser}>
   <div hidden={insightsOnly}>
-  <div className={`${styles.sectionHeading} ${styles.feedHeading}`}><div><p className={styles.label}>Saved search results</p><h3>Find the posts that matter</h3><p className={styles.muted}>Search one coin or compare all three. Filters below apply to this post view.</p></div><span className={styles.savedBadge}>No X credits used</span></div>
+  <div className={`${styles.sectionHeading} ${styles.feedHeading}`}><div><p className={styles.label}>Saved search results</p><h3>Find the posts that matter</h3><p className={styles.muted}>Search one coin or compare all tracked coins. Filters below apply to this post view.</p></div><span className={styles.savedBadge}>No X credits used</span></div>
   {sentimentError&&<p role="alert">{sentimentError}</p>}
   <div className={styles.postSearchRow}><input type="search" aria-label="Search post text" placeholder="Search posts" value={filters.query} onChange={e=>update({query:e.target.value})}/></div>
   <div className={styles.feedActions}><button className={styles.control} onClick={()=>sheet.current?.showModal()}>Filters{active?` · ${active}`:''}</button><select aria-label="Post sort" value={filters.sort} onChange={e=>update({sort:e.target.value})}><option value="newest">Newest</option><option value="oldest">Earliest</option><option value="followers">Largest audience</option><option value="likes">Most likes</option><option value="reposts">Most reposts</option></select><button className={styles.control} aria-pressed={stance==='classified'} onClick={()=>{setStance(stance==='classified'?'all':'classified');setPage(0);}}>Analyzed only</button></div>
@@ -57,7 +57,7 @@ export function CryptoPostBrowser({coin,run,allSearches=false,insightsOnly=false
    <label>Minimum likes<input type="number" min="0" value={filters.likes} onChange={e=>update({likes:Math.max(0,Number(e.target.value))})}/></label>
    <label>Minimum reposts<input type="number" min="0" value={filters.reposts} onChange={e=>update({reposts:Math.max(0,Number(e.target.value))})}/></label>
    <label>Post type<select value={filters.kind} onChange={e=>update({kind:e.target.value})}>{['all','original','reply','quote','repost'].map(k=><option key={k} value={k}>{k==='all'?'All types':k}</option>)}</select></label>
-   <label>Coin evidence<select value={evidence} onChange={e=>{setEvidence(e.target.value);setPage(0);}}><option value="words">Coin mentions</option><option value="contract">Exact contract · ZCAT / PONS</option><option value="all">All saved search results</option></select></label>
+   <label>Coin evidence<select value={evidence} onChange={e=>{setEvidence(e.target.value);setPage(0);}}><option value="words">Coin mentions</option><option value="contract">Exact contract · token coins</option><option value="all">All saved search results</option></select></label>
   </div><p className={styles.muted}>All included terms must match; any excluded term removes a post. Use quotes for phrases. Exact-contract mode excludes Zcash, which has no token contract.</p></div>
   <div className={styles.toolbar}><label className={styles.checkLabel}><input type="checkbox" checked={filters.onePerAuthor} onChange={e=>update({onePerAuthor:e.target.checked})}/> One post per account, using the selected sort</label></div>
   <p className={styles.muted}>Audience ≥ {count(filters.followers)} · Likes ≥ {count(filters.likes)} · Reposts ≥ {count(filters.reposts)} · {filters.kind==='all'?'All post types':filters.kind}{filters.exclude?` · Excluding: ${filters.exclude}`:''}{filters.from||filters.to?` · ${filters.from||'Start'} → ${filters.to||'Latest'} UTC`:''}</p>

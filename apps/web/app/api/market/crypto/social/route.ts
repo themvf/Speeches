@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 // Read-only: opening the dashboard never calls TwitterAPI.io.
 export async function GET(request: Request) {
   const coin = new URL(request.url).searchParams.get("coin") ?? "ZCAT";
-  if (!["ZCAT", "ZEC", "PONS"].includes(coin)) return fail("Unknown coin", "INVALID_COIN", 400);
+  if (!["ZCAT", "ZEC", "PONS", "DPONS"].includes(coin)) return fail("Unknown coin", "INVALID_COIN", 400);
   if (!process.env.DATABASE_URL) return ok({ status: "not_configured" });
   const sql = neon(process.env.DATABASE_URL);
   try {

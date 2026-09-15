@@ -6,11 +6,11 @@ export const runtime='nodejs';
 // Read-only: a page visit never fetches providers or mutates the archive.
 export async function GET(request:Request){
  const params=new URL(request.url).searchParams,coin=params.get('coin')??'ZCAT';
- if(!['ZCAT','ZEC','PONS'].includes(coin))return fail('Unknown coin','INVALID_COIN',400);
+ if(!['ZCAT','ZEC','PONS','DPONS'].includes(coin))return fail('Unknown coin','INVALID_COIN',400);
  const result:RunMarket={status:'unavailable',points:[],pools:[],selected:null,source:coin!=='ZEC'?'GeckoTerminal':'CoinGecko',
   sourceUrl:coin!=='ZEC'?'https://www.geckoterminal.com/':'https://www.coingecko.com/en/coins/zcash',
   note:'No archived market history yet. Collection saves public observations to Postgres; missing prices remain blank.',observedAt:'',storage:'postgres'};
- const start=coin==='PONS'?'2026-07-01':'2026-07-25',campaignId=coin==='PONS'?'pons-july-2026':'zcat-july-2026';
+ const start=coin==='PONS'?'2026-07-01':'2026-07-25',campaignId=coin==='DPONS'?'dpons-pending':coin==='PONS'?'pons-july-2026':'zcat-july-2026';
  if(!process.env.DATABASE_URL)return ok(result);
  const sql=neon(process.env.DATABASE_URL);
  try{
