@@ -94,8 +94,8 @@ export async function GET(request: Request) {
     }
     let history = null;
     const historySchema = await sql`SELECT to_regclass('public.crypto_social_history_campaign') AS relation`;
-    if (["ZCAT","PONS"].includes(coin) && historySchema[0]?.relation) {
-      const campaignId=coin==='PONS'?'pons-july-2026':'zcat-july-2026';
+    if (["ZCAT","PONS","DPONS"].includes(coin) && historySchema[0]?.relation) {
+      const campaignId=coin==='DPONS'?'dpons-july-2026':coin==='PONS'?'pons-july-2026':'zcat-july-2026';
       const [campaign, earliest, coverage] = await Promise.all([
         sql`SELECT h.*,(SELECT sum(r.estimated_credits) FROM crypto_social_requests r
           WHERE r.endpoint='historical_search' AND r.parameters->>'campaign'=h.id) AS estimated_credits FROM crypto_social_history_campaign h WHERE h.id=${campaignId}`,

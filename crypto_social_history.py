@@ -13,11 +13,14 @@ START=datetime(2026,7,25,tzinfo=timezone.utc)
 END=datetime(2026,9,14,tzinfo=timezone.utc)
 HISTORY='zcat-july-2026'
 PONS_ADDRESS='0x39dbed3a2bd333467115de45665cc57f813c4571'
+DPONS_ADDRESS='0x0e6d1ebb33f3b8f2d09bacf3b1a1d5c581110c33'
+DPONS_QUERY=f'("$DPONS" OR "Diamond Pons" OR "{DPONS_ADDRESS}")'
 PONS_QUERY=f'("$PONS" OR "{PONS_ADDRESS}" OR (PONS Robinhood) OR from:ponsdotfamily)'
 
 def settings(coin):
     if coin=='ZCAT':return HISTORY,START,END,COINS['ZCAT'][1]
     if coin=='PONS':return 'pons-july-2026',datetime(2026,7,1,tzinfo=timezone.utc),datetime(2026,9,15,tzinfo=timezone.utc),PONS_QUERY
+    if coin=='DPONS':return 'dpons-july-2026',START,datetime(2026,9,15,tzinfo=timezone.utc),DPONS_QUERY
     raise ValueError('Unsupported historical coin')
 
 LIMIT=150000
@@ -25,7 +28,7 @@ BATCH_REQUESTS=80
 MAX_WINDOW_PAGES=8
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS crypto_social_history_campaign (
- id text PRIMARY KEY CHECK(id IN ('zcat-july-2026','pons-july-2026')), start_at timestamptz NOT NULL,
+ id text PRIMARY KEY CHECK(id IN ('zcat-july-2026','pons-july-2026','dpons-july-2026')), start_at timestamptz NOT NULL,
  end_at timestamptz NOT NULL, credit_limit integer NOT NULL DEFAULT 150000 CHECK(credit_limit=150000),
  reserved_credits integer NOT NULL DEFAULT 0 CHECK(reserved_credits BETWEEN 0 AND 150000),
  created_at timestamptz NOT NULL DEFAULT now()
@@ -49,9 +52,12 @@ def setup(conn,coin='ZCAT',now=None):
     initialize(conn,end)
     with conn,conn.cursor() as cur:
         cur.execute(SCHEMA)
-        cur.execute("ALTER TABLE crypto_social_history_campaign DROP CONSTRAINT IF EXISTS crypto_social_history_campaign_id_check; ALTER TABLE crypto_social_history_campaign ADD CONSTRAINT crypto_social_history_campaign_id_check CHECK(id IN ('zcat-july-2026','pons-july-2026'))")
+        cur.execute("ALTER TABLE crypto_social_history_campaign DROP CONSTRAINT IF EXISTS crypto_social_history_campaign_id_check; ALTER TABLE crypto_social_history_campaign ADD CONSTRAINT crypto_social_history_campaign_id_check CHECK(id IN ('zcat-july-2026','pons-july-2026','dpons-july-2026'))")
         cur.execute('INSERT INTO crypto_social_coins VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
                     ('PONS','Pons',PONS_QUERY,PONS_ADDRESS,'Robinhood Chain; exact contract matched to explorer and pool relationships'))
+        if coin=='DPONS':
+            cur.execute('INSERT INTO crypto_social_coins VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
+                        ('DPONS','Diamond Pons',DPONS_QUERY,DPONS_ADDRESS,'User-supplied contract; Robinhood Chain listing'))
         # Upgrade the existing allowance transactionally; never reset reservations.
         cur.execute('''ALTER TABLE crypto_social_history_campaign
             DROP CONSTRAINT IF EXISTS crypto_social_history_campaign_credit_limit_check,
@@ -68,7 +74,7 @@ def setup(conn,coin='ZCAT',now=None):
         closed=now.replace(hour=(now.hour//6)*6,minute=0,second=0,microsecond=0)
         available=min(end,closed)
         while current<available:
-            until=min(current+timedelta(hours=6),available)
+            until=min(current+timedelta(hours=24 if coin=='DPONS' else 6),available)
             query=f'{query_base} since_time:{int(current.timestamp())} until_time:{int(until.timestamp())}'
             cur.execute('''INSERT INTO crypto_social_windows(coin,start_at,end_at,query)
                 VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(coin,current,until,query))
@@ -124,7 +130,7 @@ def reserve(conn,focus=None,baseline=False,batch_id=None,coin='ZCAT'):
             WHERE h.campaign_id=%s AND w.status IN ('pending','partial') AND w.pages<%s
             ORDER BY w.pages,CASE WHEN %s AND w.start_at>=%s AND w.start_at<%s THEN 0 ELSE 1 END,
             w.start_at,w.id LIMIT 1 FOR UPDATE OF w''',
-            (campaign,MAX_WINDOW_PAGES,bool(focus) and not baseline,focus['start'] if focus else start,focus['end'] if focus else end))
+            (campaign,32 if coin=='DPONS' else MAX_WINDOW_PAGES,bool(focus) and not baseline,focus['start'] if focus else start,focus['end'] if focus else end))
         window=cur.fetchone()
         if not window:return None
         cur.execute('UPDATE crypto_social_history_campaign SET reserved_credits=reserved_credits+%s WHERE id=%s',(PAGE_RESERVE,campaign))
@@ -165,7 +171,7 @@ def collect_history(conn,key,max_requests=BATCH_REQUESTS,fetch=None,focus=None,b
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--coin',choices=['ZCAT','PONS'],default='ZCAT')
+    parser.add_argument('--coin',choices=['ZCAT','PONS','DPONS'],default='ZCAT')
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--max-requests',type=int,default=BATCH_REQUESTS)
     args=parser.parse_args()

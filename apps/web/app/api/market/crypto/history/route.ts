@@ -10,7 +10,7 @@ export async function GET(request:Request){
  const result:RunMarket={status:'unavailable',points:[],pools:[],selected:null,source:coin!=='ZEC'?'GeckoTerminal':'CoinGecko',
   sourceUrl:coin!=='ZEC'?'https://www.geckoterminal.com/':'https://www.coingecko.com/en/coins/zcash',
   note:'No archived market history yet. Collection saves public observations to Postgres; missing prices remain blank.',observedAt:'',storage:'postgres'};
- const start=coin==='PONS'?'2026-07-01':'2026-07-25',campaignId=coin==='DPONS'?'dpons-pending':coin==='PONS'?'pons-july-2026':'zcat-july-2026';
+ const start=coin==='PONS'?'2026-07-01':'2026-07-25',campaignId=coin==='DPONS'?'dpons-july-2026':coin==='PONS'?'pons-july-2026':'zcat-july-2026';
  if(!process.env.DATABASE_URL)return ok(result);
  const sql=neon(process.env.DATABASE_URL);
  try{
