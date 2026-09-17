@@ -227,7 +227,7 @@ account's posts as pink marks above the price line so timing can be read against
 the account link opens the cross-coin drawer. Dragging still selects a range. All of it is
 computed from the posts already loaded for the coin; nothing new is fetched.
 
-## BACKPACK and PERSPAD added (2026-09-17)
+## BACKPACK, PERSPAD and OMFG added (2026-09-17)
 
 Two user-supplied Solana contracts joined the registry: BACKPACK
 (`BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy`) and PERSPAD
@@ -238,3 +238,7 @@ enrolled both in the rolling collector on its next run (a separate 30,000-credit
 each under the existing campaign) and in the market archive, which finds their pools on
 GeckoTerminal. Neither has official handles configured yet. Tests that counted coins now
 derive counts from the registry.
+
+OMFG (`omfgRBnxHsNJh6YeGbGAmWenNkenzsXyBXm3WDhmeta`) was added the same way; the ticker is
+inferred from the address's vanity prefix and not verified. Bare "omfg" is slang, so words
+mode needs `$OMFG`/`#OMFG`, the contract, or token context in the same post.

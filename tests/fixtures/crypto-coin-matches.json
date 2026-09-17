@@ -202,5 +202,35 @@
     "PERSPAD",
     "contract",
     true
+  ],
+  [
+    "$OMFG just launched",
+    "OMFG",
+    "words",
+    true
+  ],
+  [
+    "omfg this market lol",
+    "OMFG",
+    "words",
+    false
+  ],
+  [
+    "omfg token on solana",
+    "OMFG",
+    "words",
+    true
+  ],
+  [
+    "omfgRBnxHsNJh6YeGbGAmWenNkenzsXyBXm3WDhmeta",
+    "OMFG",
+    "contract",
+    true
+  ],
+  [
+    "$OMFG just launched",
+    "OMFG",
+    "contract",
+    false
   ]
 ]

@@ -179,6 +179,32 @@
       "official": [],
       "searchQuery": "(\"$PERSPAD\" OR \"PersPad\" OR \"PerPsCe2SJ7Q25CN4R5TTX4fmBdmknE2hQmqCt96fHL\")",
       "identityNote": "user-supplied address; not independently verified"
+    },
+    {
+      "symbol": "OMFG",
+      "name": "OMFG",
+      "label": "OMFG · omfg…meta",
+      "network": "solana",
+      "networkLabel": "Solana",
+      "address": "omfgRBnxHsNJh6YeGbGAmWenNkenzsXyBXm3WDhmeta",
+      "archiveStart": "2026-09-01",
+      "words": [
+        "[$#]omfg(?![a-z0-9_])"
+      ],
+      "contextWords": [
+        [
+          "(^|[^a-z0-9_])omfg(?![a-z0-9_])",
+          "\\b(?:token|coin|solana|sol|pump|ca|meta)\\b"
+        ]
+      ],
+      "exclude": [],
+      "discoveryName": "\\bomfg\\s+(?:token|coin)\\b",
+      "profileTerms": [
+        "$omfg"
+      ],
+      "official": [],
+      "searchQuery": "(\"$OMFG\" OR \"omfgRBnxHsNJh6YeGbGAmWenNkenzsXyBXm3WDhmeta\")",
+      "identityNote": "user-supplied address; ticker inferred from the vanity prefix, not verified. Bare 'omfg' is slang and needs token context"
     }
   ]
 }
