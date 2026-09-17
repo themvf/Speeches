@@ -18,7 +18,8 @@ export async function GET(request:Request){
   const exists=await sql`SELECT to_regclass('public.crypto_social_posts') AS posts,to_regclass('public.crypto_market_hourly') AS hourly,to_regclass('public.crypto_price_events') AS events`;
   if(!exists[0]?.posts)return ok({...empty,status:'not_started'});
   const windowStart=new Date(Date.now()-hours*3600000).toISOString(),prevStart=new Date(Date.now()-2*hours*3600000).toISOString();
-  const leaders=rankLeaders(await loadLeaders(sql)).filter(l=>l.early_coins||l.episodes>=3);
+  // Watched = reviewed watchers plus accounts with a real track record: early on a coin, or repeatedly price-linked across coins.
+  const leaders=rankLeaders(await loadLeaders(sql)).filter(l=>l.early_coins>0||(l.episodes>=5&&l.coins.length>=2&&(l.median_excess_24h??0)>0));
   const watched:WatchedAccount[]=[...watcherAccounts.map(w=>({id:w.id,handle:w.handle,reason:'reviewed whale & volume watcher'})),...leaders.filter(l=>!watcherAccounts.some(w=>w.id===l.account_id)).map(l=>({id:l.account_id,handle:l.handle,reason:whyLeader(l)}))];
   const watchedIds=watched.map(w=>w.id);
   const [activity,prices,linked,posts,firsts,shares]=await Promise.all([

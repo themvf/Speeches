@@ -26,11 +26,14 @@ export function evaluateSignals(input:{coins:BoardCoin[];posts:SignalPost[];watc
   if(c.posts_24h>=20&&c.price_change!=null&&Math.abs(c.price_change)<.02&&share>=.6)out.push({at:input.windowStart,coin:c.symbol,rule:'attention_without_price',severity:'info',title:'Attention without price',detail:`${c.posts_24h} posts, pool ${(c.price_change*100).toFixed(1)}%, three accounts wrote ${Math.round(share*100)}% of them.`});
  }
  for(const f of input.firstContract)if(f.posted_at>=input.windowStart)out.push({at:f.posted_at,coin:f.coin,rule:'first_contract_post',severity:'high',title:'First contract post saved',detail:`@${f.handle} posted the address.`,account_id:f.account_id,handle:f.handle,post_url:f.url});
+ // Alert feeds post every few minutes: keep one trade report per account, coin and six-hour bucket, and only posts tied to a tracked coin.
+ const seen=new Set<string>();
  for(const p of input.posts){
-  const w=watched.get(p.author_id);if(!w||p.kind==='repost')continue;
-  const coin=p.coins[0]??'';
-  if(p.contract)out.push({at:p.posted_at,coin,rule:'watched_contract_post',severity:'high',title:`@${p.handle} posted the contract`,detail:w.reason,account_id:p.author_id,handle:p.handle,post_url:p.url});
-  else if(watcherSignals(p.text).supported)out.push({at:p.posted_at,coin,rule:'watched_trade_report',severity:'medium',title:`@${p.handle} reported a trade or volume figure`,detail:w.reason,account_id:p.author_id,handle:p.handle,post_url:p.url});
+  const w=watched.get(p.author_id);if(!w||p.kind==='repost'||!p.coins.length)continue;
+  const coin=p.coins[0];
+  if(p.contract){const k=`c:${p.author_id}:${coin}`;if(seen.has(k))continue;seen.add(k);out.push({at:p.posted_at,coin,rule:'watched_contract_post',severity:'high',title:`@${p.handle} posted the contract`,detail:w.reason,account_id:p.author_id,handle:p.handle,post_url:p.url});}
+  else if(watcherSignals(p.text).supported){const k=`t:${p.author_id}:${coin}:${p.posted_at.slice(0,11)}${Math.floor(Number(p.posted_at.slice(11,13))/6)}`;if(seen.has(k))continue;seen.add(k);out.push({at:p.posted_at,coin,rule:'watched_trade_report',severity:'medium',title:`@${p.handle} reported a trade or volume figure`,detail:w.reason,account_id:p.author_id,handle:p.handle,post_url:p.url});}
  }
- return out.sort((a,b)=>b.at.localeCompare(a.at)||a.coin.localeCompare(b.coin)||a.rule.localeCompare(b.rule));
+ const weight={high:0,medium:1,info:2};
+ return out.sort((a,b)=>weight[a.severity]-weight[b.severity]||b.at.localeCompare(a.at)||a.coin.localeCompare(b.coin)||a.rule.localeCompare(b.rule));
 }
