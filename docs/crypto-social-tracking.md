@@ -216,3 +216,13 @@ posts in the current selection. `GET /api/market/crypto/leaders` ranks accounts 
 tracked coins they were early on, then coin count, then episode-weighted median excess 24h
 move (`apps/web/lib/crypto-leaders.ts`); the Overview shows the top 15 as "Accounts to
 watch". Both build only from snapshots and the event study, so they read nothing live.
+
+## Chart as navigation (2026-09-17)
+
+On Insights → Price & timing, tapping a day on the price/attention chart (or the "Largest
+daily price gain" card) opens **Before the move**: every account that posted in the 24 hours
+before that UTC day, one row per account, largest saved audience first, with the day's daily
+close change and the count of posts during the day itself. "Mark on chart" draws that
+account's posts as pink marks above the price line so timing can be read against price;
+the account link opens the cross-coin drawer. Dragging still selects a range. All of it is
+computed from the posts already loaded for the coin; nothing new is fetched.

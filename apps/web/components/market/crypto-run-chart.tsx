@@ -1,10 +1,11 @@
 "use client";
 import {useState} from 'react';
 import {priceLabel,type MarketPoint,type RunDay,type RunPost} from '@/lib/crypto-run';
-export function CryptoRunChart({days,market,posts,coverage,from,to,onRange}:{days:string[];market:MarketPoint[];posts:RunPost[];coverage:RunDay[];from:string;to:string;onRange:(a:string,b:string)=>void}){
+export function CryptoRunChart({days,market,posts,coverage,from,to,onRange,onInspect,highlight,inspecting}:{days:string[];market:MarketPoint[];posts:RunPost[];coverage:RunDay[];from:string;to:string;onRange:(a:string,b:string)=>void;onInspect?:(day:string)=>void;highlight?:string|null;inspecting?:string|null}){
  const [log,setLog]=useState(false);const [anchor,setAnchor]=useState<number|null>(null);const [hover,setHover]=useState<number|null>(null);
  const prices=new Map(market.map(p=>[p.day,p]));const counts=new Map<string,number>();for(const p of posts){const day=p.posted_at.slice(0,10);counts.set(day,(counts.get(day)??0)+1);}
  const searched=new Set(coverage.filter(d=>d.searched>0).map(d=>d.day));
+ const marks=new Map<string,number>();if(highlight)for(const p of posts)if(p.author_id===highlight){const day=p.posted_at.slice(0,10);marks.set(day,(marks.get(day)??0)+1);}
  const values=days.map(d=>prices.get(d)?.close).filter((v):v is number=>v!=null&&v>0);const max=Math.max(...values,1e-9),min=Math.min(...values,max);
  const maxVolume=Math.max(...market.map(p=>p.volume),1),maxPosts=Math.max(...counts.values(),1);
  const x=(i:number)=>66+(i+.5)*864/Math.max(days.length,1);const bw=864/Math.max(days.length,1);
@@ -14,7 +15,7 @@ export function CryptoRunChart({days,market,posts,coverage,from,to,onRange}:{day
  const lo=anchor==null?days.indexOf(from):Math.min(anchor,hover??anchor),hi=anchor==null?days.indexOf(to):Math.max(anchor,hover??anchor);
  const selected=hover==null?null:days[hover],point=selected?prices.get(selected):null;
  return <div>
-  <div className="flex flex-wrap items-center justify-between gap-2 mb-2"><p className="text-xs text-[color:var(--ink-faint)]">Drag across the chart to explore a period. Tap to select a day.</p><button className="rounded-lg border border-[color:var(--line)] px-3 py-2 text-xs" aria-pressed={log} onClick={()=>setLog(!log)}>{log?'Log price scale':'Linear price scale'}</button></div>
+  <div className="flex flex-wrap items-center justify-between gap-2 mb-2"><p className="text-xs text-[color:var(--ink-faint)]">Drag across the chart to explore a period. Tap a day to see what was said in the 24 hours before it.</p><button className="rounded-lg border border-[color:var(--line)] px-3 py-2 text-xs" aria-pressed={log} onClick={()=>setLog(!log)}>{log?'Log price scale':'Linear price scale'}</button></div>
   <div className="overflow-x-auto"><svg style={{minWidth:640}} viewBox="0 0 960 400" className="w-full touch-pan-y" role="img" aria-label="Aligned daily price, trading volume and observed social posts. Amber marks missing market history; dashes mark unsearched social days.">
    <rect x="66" y="26" width="864" height="150" fill="var(--bg-elev-strong)" rx="5"/>
    {days.map((d,i)=>!prices.has(d)?<rect key={d} x={66+i*bw} y="26" width={bw} height="150" fill="#fbbf24" opacity=".075"/>:null)}
@@ -29,13 +30,15 @@ export function CryptoRunChart({days,market,posts,coverage,from,to,onRange}:{day
    {days.map((d,i)=>{const n=counts.get(d)??0;return n>0||searched.has(d)?<rect key={d} x={66+i*bw+1} y={355-n/maxPosts*52} width={Math.max(1,bw-2)} height={n?Math.max(1,n/maxPosts*52):1} fill="#a78bfa" opacity=".85"/>:<path key={d} d={`M${x(i)-2},350h4`} stroke="#fbbf24" opacity=".6"/>;})}
    <text x="58" y="314" textAnchor="end" fill="var(--ink-faint)" fontSize="10">{maxPosts}</text>
    {[0,.25,.5,.75,1].map(f=>{const i=Math.round(f*(days.length-1));return <text key={f} x={x(i)} y="382" textAnchor={f===0?'start':f===1?'end':'middle'} fill="var(--ink-faint)" fontSize="11">{days[i]?.slice(5)}</text>;})}
+   {inspecting&&days.includes(inspecting)&&<path d={`M${x(days.indexOf(inspecting))},26V355`} stroke="#f472b6" strokeWidth="2" opacity=".8"/>}
+   {days.map((d,i)=>{const n=marks.get(d);if(!n)return null;const p=prices.get(d);return <g key={'mark'+d}><path d={`M${x(i)},${p?y(p.close)-14:60}v10`} stroke="#f472b6" strokeWidth="2"/><circle cx={x(i)} cy={p?y(p.close)-18:56} r="3.5" fill="#f472b6"><title>{n} post{n>1?'s':''} by the selected account on {d}</title></circle></g>;})}
    {hover!=null&&<path d={`M${x(hover)},26V355`} stroke="#e2e8f0" strokeDasharray="3 4" opacity=".6"/>}
    <rect x="66" y="26" width="864" height="329" fill="transparent" style={{cursor:'crosshair'}}
     onPointerDown={e=>{const i=index(e);setAnchor(i);setHover(i);e.currentTarget.setPointerCapture(e.pointerId);}}
     onPointerMove={e=>setHover(index(e))} onPointerLeave={()=>{if(anchor==null)setHover(null);}}
     onPointerCancel={()=>{setAnchor(null);setHover(null);}}
-    onPointerUp={e=>{if(anchor!=null){const i=index(e);onRange(days[Math.min(i,anchor)],days[Math.max(i,anchor)]);setAnchor(null);}}}/>
+    onPointerUp={e=>{if(anchor!=null){const i=index(e);if(i===anchor&&onInspect)onInspect(days[i]);else onRange(days[Math.min(i,anchor)],days[Math.max(i,anchor)]);setAnchor(null);}}}/>
   </svg></div>
-  <p className="min-h-5 text-xs text-[color:var(--ink-faint)]">{selected?`${selected} UTC · Price ${point?priceLabel(point.close)+(point.complete===false?' (incomplete day)':''):'unavailable'} · ${counts.has(selected)?counts.get(selected)+' observed posts':searched.has(selected)?'0 returned posts':'Social activity not searched'}`:'Daily UTC observations. Missing history remains blank; unequal search coverage limits comparisons.'}</p>
+  <p className="min-h-5 text-xs text-[color:var(--ink-faint)]">{highlight&&marks.size>0?`Pink marks: ${[...marks.values()].reduce((a,b)=>a+b,0)} posts by the selected account. `:''}{selected?`${selected} UTC · Price ${point?priceLabel(point.close)+(point.complete===false?' (incomplete day)':''):'unavailable'} · ${counts.has(selected)?counts.get(selected)+' observed posts':searched.has(selected)?'0 returned posts':'Social activity not searched'}`:'Daily UTC observations. Missing history remains blank; unequal search coverage limits comparisons.'}</p>
  </div>;
 }
