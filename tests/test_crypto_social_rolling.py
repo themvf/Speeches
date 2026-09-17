@@ -162,5 +162,5 @@ def test_db_origin_window_is_one_bounded_contract_search_per_new_coin(db):
         assert end==slot(NOW)-timedelta(hours=42) and query.startswith('"'+REGISTRY[coin]['address']+'"') and '$' not in query
     # Fresh six-hour windows keep filling forward from the live start, never from the origin window's end.
     with db,db.cursor() as c:
-        c.execute("SELECT count(*) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE w.coin=%s AND w.end_at>=%s",(rows[0][0],slot(NOW)-timedelta(hours=42)))
+        c.execute("SELECT count(*) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE w.coin=%s AND w.end_at>=%s AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id)",(rows[0][0],slot(NOW)-timedelta(hours=42)))
         assert c.fetchone()[0]==10
