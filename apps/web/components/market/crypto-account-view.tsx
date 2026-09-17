@@ -2,21 +2,23 @@
 import {useEffect,useState} from 'react';
 import {pct,share} from '@/lib/crypto-impact';
 import {whyLeader,type Leader} from '@/lib/crypto-leaders';
+import {PageHeader} from './crypto-shell';
+import {paths} from '@/lib/crypto-workspace';
 import styles from './crypto-research.module.css';
 type AccountData={status:string;account?:{id:string;handle:string;name:string;followers:number|null};latest_profile?:{bio:string|null;followers:number|null;observed_at:string}|null;profile_history?:{followers:number|null;available:boolean;observed_at:string}[];activity?:{coin:string;posts:number;originals:number;first_at:string;last_at:string}[];posts?:{id:string;text:string;url:string;posted_at:string;kind:string;coins:string[]|null;return_24h:number|null}[];summary?:Leader|null};
 const compact=(n:number|null|undefined)=>n==null?'unknown':Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:1}).format(n);
-export function CryptoAccountView({accountId,onBack,onCoin,onMark}:{accountId:string;onBack:()=>void;onCoin:(coin:string)=>void;onMark:(coin:string,id:string)=>void}){
+export function CryptoAccountView({accountId,onCoin,onMark}:{accountId:string;onCoin:(coin:string)=>void;onMark:(coin:string,id:string)=>void}){
  const [data,setData]=useState<AccountData|null>(null),[error,setError]=useState('');
  useEffect(()=>{const c=new AbortController();setData(null);setError('');fetch(`/api/market/crypto/account?id=${accountId}`,{signal:c.signal}).then(async r=>{const b=await r.json();if(!r.ok||!b.ok)throw Error();setData(b.data);}).catch(()=>{if(!c.signal.aborted)setError('This account could not be loaded.');});return()=>c.abort();},[accountId]);
  const s=data?.summary??null;const history=(data?.profile_history??[]).filter(h=>h.available&&h.followers!=null).slice().reverse();
  const growth=history.length>=2?Number(history[history.length-1].followers)-Number(history[0].followers):null;
  const firstCoin=data?.activity?.[0]?.coin;
  return <div style={{display:'flex',flexDirection:'column',gap:16}}>
-  <button className={styles.link} onClick={onBack}>← People</button>
+  <PageHeader eyebrow="People" title={data?.account?.handle?'@'+data.account.handle:'Account'} crumbs={[{href:paths.people,label:'People'},{label:data?.account?.handle?'@'+data.account.handle:'Account'}]}>Profile, roles, price-linked history and posts for one account across every tracked coin.</PageHeader>
   {error?<p role="alert" className={styles.empty}>{error}</p>:!data?<p role="status" className={styles.muted}>Loading account evidence…</p>:data.status!=='ready'?<p className={styles.empty}>No saved evidence for this account.</p>:
   <div className={styles.wsGrid5}>
    <div style={{display:'flex',flexDirection:'column',gap:16}}>
-    <section className={styles.wsSection}><h3 style={{fontSize:24}}>@{data.account?.handle}</h3>
+    <section className={styles.wsSection}><h3>Profile</h3>
      <p style={{margin:0,fontSize:13,lineHeight:1.6,whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{data.latest_profile?.bio??'No bio saved for this account yet.'}</p>
      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
       <div className={styles.wsStat}><span>Followers</span><strong>{compact(data.latest_profile?.followers??data.account?.followers)}</strong><small>{growth==null?'no comparable snapshots yet':`${growth>0?'+':''}${growth.toLocaleString()} across ${history.length} daily snapshots`}</small></div>

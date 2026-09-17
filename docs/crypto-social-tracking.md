@@ -289,3 +289,17 @@ account drawer; their libraries (`crypto-voices.ts`, `crypto-watchers.ts`,
 `crypto-coin-discovery.ts`, `crypto-run-reach.ts`) remain because the snapshot builder and
 routes use them. Weekly cohort validation tables are no longer rendered; the data is still
 written and served by the voices route.
+
+## Real routes and a left rail (2026-09-17, second pass)
+
+The five destinations are now paths under `apps/web/app/market/crypto/`: `/market/crypto`
+(Signals), `/people`, `/coins/<SYMBOL>`, `/accounts/<id>` and `/data`, sharing one layout
+(`crypto-shell.tsx`) with a left rail (icon, name, four-word purpose; a bottom bar on phones),
+the header search, and a `PageHeader` (eyebrow, question, one sentence) used identically on
+every page. Child pages carry breadcrumbs (People › @handle; Signals › coin) and the coin page
+shows every tracked coin as chips. The Coin page is one scrolling page: stats, chart with
+Before the move, the posts list (sentiment under its Insights disclosure), and connections
+in a collapsed section; there are no sub-tabs. Only the coin page keeps query state
+(`from`, `to`, `day`, `highlight`). Old `?view=` links redirect through `legacyPath` in
+`lib/crypto-workspace.ts`. The app nav item is "Crypto"; the Market → Crypto tab keeps
+prices and a one-line link.

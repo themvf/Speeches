@@ -20,7 +20,6 @@ export function CryptoSignalsView({onCoin,onAccount,onPeople,onData}:{onCoin:(co
   load(`/api/market/crypto/coin-discovery?from=${from}`).then(d=>setDiscovery(d.coins)).catch(()=>setDiscovery([]));return()=>c.abort();},[]);
  const surfaced=(discovery??[]).filter(c=>!c.tracked).slice(0,6);
  return <div style={{display:'flex',flexDirection:'column',gap:20}}>
-  <div className={styles.wsTitle}><h2>What moved, and did attention lead it?</h2><p>Saved X posts against archived pool prices for every tracked coin. Association only, never attribution.</p></div>
   {error?<p role="alert" className={styles.empty}>{error}</p>:!data?<p role="status" className={styles.muted}>Loading the board…</p>:<>
   <div className={styles.wsGrid}>
    <section className={styles.wsSection}><h3>Board · sorted by 24h volume ratio</h3>
