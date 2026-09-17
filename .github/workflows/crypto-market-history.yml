@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'crypto_market_history.py'
+      - 'crypto_event_study.py'
       - 'sql/crypto_market_history.sql'
       - '.github/workflows/crypto-market-history.yml'
   workflow_dispatch:
@@ -27,3 +28,6 @@ jobs:
           python-version: '3.11'
       - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
       - run: python crypto_market_history.py --execute
+      - name: Link saved posts to archived hourly prices (no provider calls)
+        if: always()
+        run: python crypto_event_study.py --execute

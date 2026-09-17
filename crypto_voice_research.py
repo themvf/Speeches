@@ -42,4 +42,10 @@ def evaluate(conn,now):
                  (SELECT count(*) FROM heldout WHERE author_id=ANY(%s)),
                  (SELECT count(DISTINCT (e.target_id,p.author_id)) FROM heldout p JOIN crypto_social_edges e ON e.post_id=p.id WHERE e.target_id=ANY(%s) AND p.author_id!=e.target_id)''',(coin,start,end,end,ids,ids,ids))
                 active,posts,interactors=cur.fetchone();result[label]={'accounts':len(ids),'active':active,'newPosts':posts,'newInteractors':interactors}
-            cur.execute('UPDATE crypto_voice_snapshots SET evaluation=%s WHERE coin=%s AND week=%s AND evaluation IS NULL',(json.dumps({'evaluated_at':now.isoformat(),'days':7,'groups':result,'note':'Collected attention only; uneven coverage and identity errors limit comparisons.'}),coin,week))
+                # Price-forward context from the immutable event study: median 24h move after members' episode posts in the window.
+                cur.execute("SELECT to_regclass('crypto_price_events')")
+                if cur.fetchone()[0]:
+                    cur.execute('''SELECT count(*)::int,percentile_cont(0.5) WITHIN GROUP(ORDER BY price_after_24h/price_0-1)::float
+                        FROM crypto_price_events WHERE coin=%s AND episode AND account_id=ANY(%s) AND posted_at>=%s AND posted_at<%s''',(coin,ids,start,end))
+                    n,median=cur.fetchone();result[label].update({'priceEpisodes':n,'median24hReturn':median})
+            cur.execute('UPDATE crypto_voice_snapshots SET evaluation=%s WHERE coin=%s AND week=%s AND evaluation IS NULL',(json.dumps({'evaluated_at':now.isoformat(),'days':7,'groups':result,'note':'Collected attention and archived pool prices only; uneven coverage and identity errors limit comparisons. Price moves after a post are association, not attribution.'}),coin,week))

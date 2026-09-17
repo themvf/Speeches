@@ -134,3 +134,28 @@ node --experimental-strip-types --test lib/crypto-social.test.ts
 Set `CRYPTO_SOCIAL_TEST_DATABASE_URL` only to a disposable local/test database;
 the integration fixture recreates `crypto_test`. The PR's dedicated CI job runs
 these tests against PostgreSQL 16. No tests require a live provider key.
+
+## Price linkage and event study (2026-09-17)
+
+`crypto_market_history.py` now archives every tracked coin, not only ZCAT/ZEC/PONS: daily
+candles for up to five pools per contract and **hourly candles for the pinned default pool
+only** (`crypto_market_hourly`, 1,000-candle pages, roughly 41 days per fetch), plus hourly
+CoinGecko observations for ZEC. Source IDs are unchanged, so existing pins and archives
+carry over. A contract with no indexed pool is reported under `skipped`, never as a failure.
+
+`crypto_event_study.py` (runs after the market archive in the same 6-hourly workflow; no
+provider calls) writes `crypto_price_events`: for each saved non-repost post mentioning the
+coin (same text rules as the dashboard's "Coin words in post" filter), the pinned pool's
+hourly close one hour before, at, and 1/6/24 hours after the post hour, plus 24-hour volume
+sums either side. A row is written only once the 24-hour candle is complete and both
+endpoints exist, and it is never rewritten (`version = price-events-v1`; a rule change is a
+new version, not an update). `episode` marks an author's first eligible post on a coin in
+24 hours so a burst during one move counts once. The weekly voice evaluation now also records
+each group's episode count and median 24h forward move.
+
+`GET /api/market/crypto/impact?coin=ALL|<coin>` aggregates episodes per account (median
++1h/+6h/+24h, median excess over the coin's own median 24h move across every archived hour,
+share up, share beating drift, 24h-after over 24h-before volume ratio, best/worst post) and
+returns the per-coin baselines. Accounts → "Price after posting" renders it with a
+minimum-episodes control (default 3). All of it is association: a post can follow a move,
+react to news, or be one of hundreds in the same hour, and pool prices are one pool.

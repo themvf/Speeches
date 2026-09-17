@@ -26,3 +26,32 @@ CREATE OR REPLACE VIEW crypto_market_latest AS
 
 ALTER TABLE crypto_market_sources DROP CONSTRAINT IF EXISTS crypto_market_sources_coin_check;
 ALTER TABLE crypto_market_sources ADD CONSTRAINT crypto_market_sources_coin_check CHECK(coin IN ('ZCAT','ZEC','PONS'));
+
+-- Price linkage (2026-09): hourly candles for every tracked coin and an immutable event study.
+ALTER TABLE crypto_market_sources DROP CONSTRAINT IF EXISTS crypto_market_sources_coin_check;
+ALTER TABLE crypto_market_sources ADD CONSTRAINT crypto_market_sources_coin_check CHECK(coin IN ('ZCAT','ZEC','PONS','DPONS','STANDARD'));
+CREATE TABLE IF NOT EXISTS crypto_market_hourly (
+ fetch_id bigint NOT NULL REFERENCES crypto_market_fetches(id), hour timestamptz NOT NULL,
+ sample_at timestamptz NOT NULL, close double precision NOT NULL CHECK(close>0),
+ volume double precision NOT NULL CHECK(volume>=0),
+ open double precision, high double precision, low double precision,
+ complete boolean NOT NULL, kind text NOT NULL CHECK(kind IN ('ohlcv','price_observation')),
+ PRIMARY KEY(fetch_id,hour)
+);
+CREATE OR REPLACE VIEW crypto_market_hourly_latest AS
+ SELECT DISTINCT ON (f.source_id,o.hour) f.source_id,f.retrieved_at,o.*
+ FROM crypto_market_hourly o JOIN crypto_market_fetches f ON f.id=o.fetch_id
+ ORDER BY f.source_id,o.hour,f.retrieved_at DESC,f.id DESC;
+-- One row per (post, coin, version). Rows are written once the 24-hour horizon has passed and are never rewritten.
+CREATE TABLE IF NOT EXISTS crypto_price_events (
+ post_id text NOT NULL REFERENCES crypto_social_posts(id), coin text NOT NULL, version text NOT NULL,
+ account_id text NOT NULL, posted_at timestamptz NOT NULL, source_id text NOT NULL REFERENCES crypto_market_sources(id),
+ hour timestamptz NOT NULL, episode boolean NOT NULL,
+ price_before_1h double precision, price_0 double precision NOT NULL,
+ price_after_1h double precision, price_after_6h double precision, price_after_24h double precision NOT NULL,
+ volume_before_24h double precision, volume_after_24h double precision,
+ hours_before_24h integer NOT NULL, hours_after_24h integer NOT NULL,
+ computed_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(post_id,coin,version)
+);
+CREATE INDEX IF NOT EXISTS crypto_price_events_account ON crypto_price_events(coin,account_id,posted_at);
