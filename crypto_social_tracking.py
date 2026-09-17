@@ -116,7 +116,7 @@ def save_profiles(cur,rid,data,ids):
         if not isinstance(raw,dict):raise ValueError('Invalid profile entry')
         # Unidentifiable entries cannot be attributed by response order.
         # Preserve requested-but-missing accounts as unknown, never zero.
-        if not identity(raw.get('id')):continue
+        if not identity(raw.get('id')) and raw.get('unavailable') is True:continue
         p=profile(raw)
         if p['id'] not in ids or p['id'] in seen:
             raise ValueError('Unexpected or duplicate user ID')
