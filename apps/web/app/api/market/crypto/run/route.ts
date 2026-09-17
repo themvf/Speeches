@@ -1,5 +1,6 @@
 import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
+import {withCdnCache} from '@/lib/server/crypto-ranking-cache';
 import {isCoin,coinConfig} from '@/lib/crypto-coins';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -27,6 +28,6 @@ export async function GET(request:Request){
    sql`SELECT count(DISTINCT p.id)::int AS total FROM crypto_social_posts p JOIN crypto_social_matches m ON m.post_id=p.id
     JOIN crypto_social_windows w ON w.id=m.window_id WHERE w.coin=${coin} AND p.posted_at>=${start}::timestamptz`,
   ]);
-  return ok({status:'ready',posts,days,total:total[0].total,limit:25000,start,end:new Date().toISOString().slice(0,10)});
+  return withCdnCache(ok({status:'ready',posts,days,total:total[0].total,limit:25000,start,end:new Date().toISOString().slice(0,10)}));
  }catch{return fail('Saved timeline is temporarily unavailable','RUN_READ_FAILED',503);}
 }

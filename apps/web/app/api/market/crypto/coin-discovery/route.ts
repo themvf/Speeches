@@ -1,5 +1,6 @@
 import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
+import {withCdnCache} from '@/lib/server/crypto-ranking-cache';
 import {discoverCoins,EXTRACTION_VERSION,type DiscoveryPost} from '@/lib/crypto-coin-discovery';
 export const dynamic='force-dynamic';
 const validDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&!Number.isNaN(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
@@ -16,6 +17,6 @@ export async function GET(request:Request){
    AND EXISTS(SELECT 1 FROM crypto_watcher_posts wp JOIN crypto_watcher_windows w ON w.id=wp.window_id WHERE wp.post_id=p.id AND w.campaign_id='watchers-ten-v1')
    ORDER BY p.posted_at DESC,p.id DESC LIMIT 10000`;
   const coverage=await sql`SELECT count(*)::int AS unfinished FROM crypto_watcher_windows WHERE campaign_id='watchers-ten-v1' AND status!='search_exhausted' AND start_at<${end}::timestamptz AND end_at>${from}::timestamptz`;
-  return ok({...empty,coins:discoverCoins(posts as DiscoveryPost[]),loaded:posts.length,total:posts[0]?.total??0,unfinished:coverage[0]?.unfinished??0});
+  return withCdnCache(ok({...empty,coins:discoverCoins(posts as DiscoveryPost[]),loaded:posts.length,total:posts[0]?.total??0,unfinished:coverage[0]?.unfinished??0}));
  }catch{return fail('Saved coin discoveries could not be loaded','DISCOVERY_READ_FAILED',503);}
 }

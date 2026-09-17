@@ -177,3 +177,19 @@ Do not edit `searchQuery` for a coin with saved windows: window rows store the q
 verbatim and pagination cursors belong to it (`tests/test_crypto_coins.py` pins the live
 ones). The dated, bounded campaign scripts (`crypto_social_pilot/history/catchup/dpons`)
 keep their own literals on purpose; they describe finished or fixed-scope collections.
+
+## Collection-time ranking snapshots (2026-09-17)
+
+`crypto_rankings_cache.py` runs at the end of the rolling (voices) and watcher (watchers)
+collection workflows. It loads every saved row with the same SQL the routes use
+(`apps/web/lib/server/crypto-ranking-queries.json`), ranks it with the dashboard's own
+TypeScript through `scripts/crypto-rankings.mts`, and upserts one payload per
+(key, version) into `crypto_ranking_cache` (`voices:<coin>`, `watchers:ALL|<coin>`). The
+voices and watchers routes serve that snapshot when present (`source: "snapshot"`, with
+its computed time shown in the UI) and otherwise rank live over the old bounded load, so a
+deploy never depends on a collector having run, and a ranking code change simply produces
+a new version key. Because the builder has no row limit, the earliest-50,000 truncation
+that was quietly dropping the newest posts from voice roles no longer applies once a
+snapshot exists. Every read route now also sets `Cache-Control: s-maxage=300` so repeat
+page loads within five minutes are served by the CDN instead of Neon; the run route still
+ships the raw post set the explorer needs, which is the remaining large read.

@@ -1,5 +1,6 @@
 import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
+import {withCdnCache} from '@/lib/server/crypto-ranking-cache';
 import {isCoin,coinConfig} from '@/lib/crypto-coins';
 import type {RunMarket,Pool} from '@/lib/crypto-run';
 export const dynamic='force-dynamic';
@@ -38,6 +39,6 @@ export async function GET(request:Request){
     result.investigation=latest[0] as RunMarket['investigation'];
    }
   }
-  return ok(result);
+  return withCdnCache(ok(result));
  }catch{return fail('Archived market history is temporarily unavailable','MARKET_ARCHIVE_READ_FAILED',503);}
 }

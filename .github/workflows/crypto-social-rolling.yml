@@ -54,3 +54,6 @@ jobs:
       - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
       - name: Collect all five coins within the shared 150000-credit pilot
         run: python crypto_social_rolling.py --execute
+      - name: Snapshot voice rankings from every saved row (no provider calls)
+        if: always()
+        run: python crypto_rankings_cache.py --execute --kinds voices

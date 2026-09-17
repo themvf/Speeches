@@ -29,6 +29,9 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -45,9 +48,15 @@ jobs:
       TWITTERAPI_IO_API_KEY: ${{ secrets.TWITTERAPI_IO_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
       - name: Collect ten watcher accounts within their separate 150000-credit pilot
         run: python crypto_social_watchers.py --execute
+      - name: Snapshot watcher rankings from every saved row (no provider calls)
+        if: always()
+        run: python crypto_rankings_cache.py --execute --kinds watchers

@@ -1,5 +1,6 @@
 import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
+import {withCdnCache} from '@/lib/server/crypto-ranking-cache';
 import {IMPACT_VERSION,type ImpactBaseline,type ImpactRow} from '@/lib/crypto-impact';
 import {COIN_SYMBOLS as COINS,isCoin} from '@/lib/crypto-coins';
 export const dynamic='force-dynamic';
@@ -46,6 +47,6 @@ export async function GET(request:Request){
    GROUP BY ev.account_id,a.handle,a.followers ORDER BY episodes DESC,ev.account_id LIMIT 500`,
    sql`SELECT count(*)::int AS events,count(*) FILTER(WHERE episode)::int AS episodes FROM crypto_price_events WHERE version=${IMPACT_VERSION} AND coin=ANY(${filter})`,
   ]);
-  return ok({status:accounts.length?'ready':'no_events',version:IMPACT_VERSION,coin,accounts:accounts as ImpactRow[],baselines:baselines as ImpactBaseline[],events:totals[0]?.events??0,episodes:totals[0]?.episodes??0,asOf:new Date().toISOString()});
+  return withCdnCache(ok({status:accounts.length?'ready':'no_events',version:IMPACT_VERSION,coin,accounts:accounts as ImpactRow[],baselines:baselines as ImpactBaseline[],events:totals[0]?.events??0,episodes:totals[0]?.episodes??0,asOf:new Date().toISOString()}));
  }catch{return fail('Price impact evidence could not be loaded','IMPACT_READ_FAILED',503);}
 }

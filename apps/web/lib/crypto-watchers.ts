@@ -1,4 +1,5 @@
 import {filterEvidence,type RunPost} from './crypto-run.ts';
+export const WATCHER_VERSION='watchers-v1';
 export type WatcherPost=RunPost&{coins:string[];bio?:string|null;corpus_total?:number};
 const whale=/\bwhale(?:s|watch|watcher)?\b|\bsmart (?:money|wallets?)\b|\blarge (?:wallet|holder|transfer|transaction|buy|sell)\b|巨鲸|鲸鱼|聪明钱包|聪明钱|大额(?:转账|买入|卖出)/i;
 const volume=/\b(?:trading|trade|buy|sell|24h|daily|hourly|high|surging|record)\s+volume\b|\bvolume\s*(?:[:：]|surge|spike|up|hit|reach|exceed|\$|\d)|\bvol\s*[:：]|交易量|成交量|交易额/i;

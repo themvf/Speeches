@@ -1,17 +1,7 @@
-// Shared by the read-only route and the saved-corpus review job.
+// Shared by the read-only route, the saved-corpus review job and the Python snapshot builder (via the JSON).
+import queries from './crypto-ranking-queries.json' with { type: 'json' };
 import {COIN_SYMBOLS} from '../crypto-coins.ts';
-export const WATCHER_QUERY = `
-WITH matched AS (
- SELECT p.id,array_agg(DISTINCT w.coin ORDER BY w.coin) AS coins
- FROM crypto_social_posts p JOIN crypto_social_matches m ON m.post_id=p.id
- JOIN crypto_social_windows w ON w.id=m.window_id
- WHERE w.coin IN (${COIN_SYMBOLS.map(s=>`'${s}'`).join(',')}) GROUP BY p.id
-), profiles AS MATERIALIZED (
- SELECT DISTINCT ON(account_id) account_id,bio FROM crypto_social_profile_history
- WHERE bio IS NOT NULL AND available ORDER BY account_id,observed_at DESC,request_id DESC
-)
-SELECT p.id,p.author_id,p.text,p.url,p.posted_at,p.kind,a.handle,a.followers::float AS followers,
- a.observed_at AS followers_observed_at,b.bio,m.coins,'[]'::json AS edges,count(*) OVER()::int AS corpus_total
- FROM matched m JOIN crypto_social_posts p ON p.id=m.id JOIN crypto_social_accounts a ON a.id=p.author_id
- LEFT JOIN profiles b ON b.account_id=a.id ORDER BY p.posted_at DESC,p.id LIMIT 50000
-`;
+const quoted=COIN_SYMBOLS.map(s=>`'${s}'`).join(',');
+export const WATCHER_QUERY=queries.watchers.replace('__COINS__',quoted);
+export const VOICES_QUERY=(limit:number)=>queries.voices.replace('__COIN__','$1').replace('__LIMIT__',String(limit));
+export const VOICES_UNFINISHED_QUERY=queries.voices_unfinished.replace('__COIN__','$1');
