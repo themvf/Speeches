@@ -403,3 +403,12 @@
  .rail a[aria-current=page] { background:none; color:#7dd3fc; }
  .rail a[aria-current=page] strong { color:#7dd3fc; }
 }
+/* People table: icon chips for posting style, coin chips with day counts, dimmed thin-sample rows */
+.peopleTable td { vertical-align:top; }
+.dimRow { opacity:.55; }
+.dimRow:hover { opacity:1; }
+.coinDays { display:flex; flex-wrap:wrap; gap:4px; }
+.coinDays .wsPill small { font-weight:400; opacity:.8; margin-left:2px; font-size:10px; }
+.howChips { display:flex; flex-wrap:wrap; gap:4px; max-width:260px; }
+.howChip { display:inline-flex; align-items:center; gap:5px; padding:3px 8px 3px 6px; border-radius:6px; font-size:11px; background:var(--bg-elev); color:var(--ink-soft); white-space:nowrap; }
+.howChip svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; }

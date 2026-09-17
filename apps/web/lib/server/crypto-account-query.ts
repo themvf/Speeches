@@ -1,5 +1,5 @@
 import type {NeonQueryFunction} from '@neondatabase/serverless';
-import {summarize,type CoinImpact,type CoinRole,type Leader} from '../crypto-leaders.ts';
+import {summarize,dayAfterAnchor,type CoinImpact,type CoinRole,type Leader} from '../crypto-leaders.ts';
 import {VOICE_VERSION} from '../crypto-voices.ts';
 import {WATCHER_VERSION} from '../crypto-watchers.ts';
 import {IMPACT_VERSION} from '../crypto-impact.ts';
@@ -9,11 +9,11 @@ export async function loadRoles(sql:Sql,accountId?:string):Promise<Map<string,{h
  const exists=await sql`SELECT to_regclass('public.crypto_ranking_cache') AS relation`;const out=new Map<string,{handle:string;followers:number|null;roles:CoinRole[]}>();
  if(!exists[0]?.relation)return out;
  const rows=accountId
-  ?await sql`SELECT substr(c.key,8) AS coin,v FROM crypto_ranking_cache c,jsonb_array_elements(c.payload->'voices') v WHERE c.key LIKE 'voices:%' AND c.version=${VOICE_VERSION} AND v->>'id'=${accountId}`
-  :await sql`SELECT substr(c.key,8) AS coin,v FROM crypto_ranking_cache c,jsonb_array_elements(c.payload->'voices') v WHERE c.key LIKE 'voices:%' AND c.version=${VOICE_VERSION} AND ((v->'scores'->>'Early discoverers')::float>0 OR (v->'scores'->>'Original analysis')::float>0 OR (v->>'subsequent')::int>=3)`;
- for(const r of rows){const v=r.v as {id:string;handle:string;followers:number|null;role:string;posts:number;first:string;scores:Record<string,number>};
+  ?await sql`SELECT substr(c.key,8) AS coin,c.payload->>'anchor' AS anchor,v FROM crypto_ranking_cache c,jsonb_array_elements(c.payload->'voices') v WHERE c.key LIKE 'voices:%' AND c.version=${VOICE_VERSION} AND v->>'id'=${accountId}`
+  :await sql`SELECT substr(c.key,8) AS coin,c.payload->>'anchor' AS anchor,v FROM crypto_ranking_cache c,jsonb_array_elements(c.payload->'voices') v WHERE c.key LIKE 'voices:%' AND c.version=${VOICE_VERSION} AND ((v->'scores'->>'Early discoverers')::float>0 OR (v->'scores'->>'Original analysis')::float>0 OR (v->>'subsequent')::int>=3)`;
+ for(const r of rows){const v=r.v as {id:string;handle:string;followers:number|null;role:string;posts:number;first:string;contractPosts?:number;scores:Record<string,number>};
   const entry=out.get(v.id)??{handle:v.handle,followers:v.followers,roles:[]};
-  entry.roles.push({coin:String(r.coin),role:v.role,early:(v.scores['Early discoverers']??0)>0,analysis:(v.scores['Original analysis']??0)>0,amplifier:v.role==='Amplifiers',posts:v.posts,first:v.first});out.set(v.id,entry);}
+  entry.roles.push({coin:String(r.coin),role:v.role,early:(v.scores['Early discoverers']??0)>0,analysis:(v.scores['Original analysis']??0)>0,amplifier:v.role==='Amplifiers',posts:v.posts,first:v.first,day:dayAfterAnchor(v.first,r.anchor==null?null:String(r.anchor)),contract:(v.contractPosts??0)>0});out.set(v.id,entry);}
  return out;
 }
 export async function loadImpact(sql:Sql,accountId?:string):Promise<Map<string,{handle:string;followers:number|null;impact:CoinImpact[]}>>{

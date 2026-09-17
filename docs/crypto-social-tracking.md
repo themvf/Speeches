@@ -269,9 +269,20 @@ questions a researcher asks, replacing the eleven tab/sub-tab views.
   watched account reports a trade or volume figure. "Watched" = the ten reviewed watcher
   accounts plus every account with a track record (early on a coin, or ≥3 episodes). Below:
   top five track records and untracked coins named by watchers in the last seven days.
-- **People** (`GET /api/market/crypto/leaders?all=1`): one ranked list with coin chips and
-  rank/role/minimum-episodes/audience/recency filters. The former Largest audiences, Voice
-  roles, Price after posting and Watcher rankings views are sorts and filters here.
+- **People** (`GET /api/market/crypto/leaders?all=1`): one ranked list whose columns are the
+  questions — Who · Where early · After they post · How they post · Evidence. *Where early*
+  shows coin chips with the calendar day of the account's first post counted from the coin's
+  earliest saved contract post (`CoinRole.day`, computed in `loadRoles` from the voices
+  snapshot's `anchor`; day 1 = same day). *After they post* is plain text (`up 7 of 9 times ·
+  typically +14% vs the coin's own drift a day later`) and appears only with
+  `MIN_LINKED_POSTS` (3) episodes; thinner rows say so and are dimmed. *How they post* is a set
+  of icon chips from `postingStyles()` (first to share the contract / among the first to post /
+  explains rather than hypes / mostly quotes others / alert feed / project account / reports
+  whale trades). *Evidence* is counts (`21 price-linked · 4 coins · 12 days`, `days` = distinct
+  posting days from `crypto_social_posts`) with the one-line `whyLeader` under it. Ranking
+  (`rankLeaders`): early-coin breadth, then any account with a sample beats one without, then
+  hit rate, then median excess move. The former Largest audiences, Voice roles, Price after
+  posting and Watcher rankings views are sorts and filters here.
 - **Coins** (`?view=coins&coin=X&tab=timeline|posts|sentiment|connections`): opens on the
   timeline with four stat cards (largest gain, accounts before it, earliest contract post,
   coverage), the price/attention chart, and Before the move as the drill-down (`day=`,

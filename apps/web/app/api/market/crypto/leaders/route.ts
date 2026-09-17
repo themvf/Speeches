@@ -13,8 +13,8 @@ export async function GET(request:Request){
   const ranked=rankLeaders(await loadLeaders(sql));
   const leaders=(all?ranked:ranked.filter(l=>l.early_coins||l.episodes>=3||l.roles.some(r=>r.analysis))).slice(0,all?600:50);
   const ids=leaders.map(l=>l.account_id);
-  const activity=ids.length?await sql`SELECT author_id,max(posted_at) AS last_at,count(*)::int AS posts FROM crypto_social_posts WHERE author_id=ANY(${ids}) AND kind<>'repost' GROUP BY author_id`:[];
+  const activity=ids.length?await sql`SELECT author_id,max(posted_at) AS last_at,count(*)::int AS posts,count(DISTINCT posted_at::date)::int AS days FROM crypto_social_posts WHERE author_id=ANY(${ids}) AND kind<>'repost' GROUP BY author_id`:[];
   const byId=new Map(activity.map(a=>[String(a.author_id),a]));
-  return withCdnCache(ok({status:leaders.length?'ready':'no_evidence',leaders:leaders.map(l=>({...l,last_at:byId.get(l.account_id)?.last_at??null,posts:byId.get(l.account_id)?.posts??0})),asOf:new Date().toISOString()}));
+  return withCdnCache(ok({status:leaders.length?'ready':'no_evidence',leaders:leaders.map(l=>({...l,last_at:byId.get(l.account_id)?.last_at??null,posts:byId.get(l.account_id)?.posts??0,days:byId.get(l.account_id)?.days??0})),asOf:new Date().toISOString()}));
  }catch{return fail('Leaders could not be loaded','LEADERS_READ_FAILED',503);}
 }
