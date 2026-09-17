@@ -217,10 +217,27 @@ def account_failed_profile(conn,rid):
         print(json.dumps({'reviewed_failed_request':rid,'conservative_credits_retained':row[2],'refund':0,'data_saved':False}),flush=True)
 
 
+def recover_profile(conn,rid):
+    """Reprocess an archived profile response with no network call or budget refund."""
+    with conn,conn.cursor() as cur:
+        cur.execute('SELECT id FROM crypto_social_pilot WHERE id=%s FOR UPDATE',(PILOT,))
+        cur.execute("SELECT r.status,r.endpoint,r.parameters,r.reserved_credits,c.charged FROM crypto_social_requests r JOIN crypto_rolling_calls c ON c.request_id=r.id WHERE r.id=%s AND c.campaign_id=%s FOR UPDATE",(rid,CAMPAIGN))
+        row=cur.fetchone()
+        if not row or row[1]!='rolling_profiles' or row[3]!=row[4]:raise ValueError('Recovery ledger mismatch')
+        if row[0]=='saved':return
+        if row[0]!='uncertain':raise ValueError('Only uncertain archived profiles can be recovered')
+        data=row[2].get('provider_response')
+        if not isinstance(data,dict) or data.get('status') not in (None,'success'):raise ValueError('No successful archived response')
+        returned,accepted,_=save_profiles(cur,rid,data,row[2]['user_ids'])
+        cur.execute("UPDATE crypto_social_requests SET status='saved',returned_count=%s,accepted_count=%s,estimated_credits=reserved_credits,error='Recovered archived response; unidentifiable entries withheld; full reservation retained conservatively' WHERE id=%s",(returned,accepted,rid))
+        print(json.dumps({'recovered_request':rid,'returned':returned,'accepted':accepted,'credits_retained':row[3],'paid_calls':0}),flush=True)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--account-failed-profile',type=int)
+    parser.add_argument('--recover-profile',type=int)
     args=parser.parse_args()
     if not args.execute:
         print(json.dumps({'mode':'plan_only','coins':list(TRACKED),'days':30,'total_ceiling':COIN_LIMIT*len(TRACKED),'per_coin_ceiling':COIN_LIMIT,'pages_per_coin_per_run':PAGES_PER_RUN,'profiles_per_coin_daily':20,'paid_calls':0}));return
@@ -228,6 +245,7 @@ def main():
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
         now=datetime.now(timezone.utc)
+        if args.recover_profile:recover_profile(conn,args.recover_profile)
         if args.account_failed_profile:account_failed_profile(conn,args.account_failed_profile)
         if setup(conn,now):
             key=os.environ['TWITTERAPI_IO_API_KEY']

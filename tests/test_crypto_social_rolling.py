@@ -131,3 +131,20 @@ def test_db_reviewed_profile_failure_keeps_maximum_charge_and_never_claims_data(
     with db,db.cursor() as c:
         c.execute('SELECT status,estimated_credits FROM crypto_social_requests WHERE id=%s',(rid,));assert c.fetchone()==('failed_charged',credits)
         c.execute("SELECT used_credits FROM crypto_rolling_coins WHERE coin='ZCAT'");assert c.fetchone()[0]==credits
+
+
+def test_db_recover_archived_profile_without_network_or_refund(db):
+    import json
+    from crypto_social_rolling import recover_profile
+    setup(db,NOW)
+    with db,db.cursor() as c:
+        c.execute("INSERT INTO crypto_voice_snapshots VALUES ('ZCAT',%s,%s,'test',%s,'{}','{}',NULL)",(NOW.date(),NOW,'[{"id":"123","handle":"test","role":"Audience"}]'))
+    rid,_,_,credits=reserve(db,'ZCAT',NOW,'profiles')
+    with db,db.cursor() as c:
+        c.execute("UPDATE crypto_social_requests SET status='uncertain',parameters=parameters || jsonb_build_object('provider_response',%s::jsonb) WHERE id=%s",(json.dumps({'users':[{'id':'123','followers':456}]}),rid))
+    recover_profile(db,rid);recover_profile(db,rid)
+    with db,db.cursor() as c:
+        c.execute('SELECT status,accepted_count,estimated_credits FROM crypto_social_requests WHERE id=%s',(rid,))
+        assert c.fetchone()==('saved',1,credits)
+        c.execute('SELECT count(*) FROM crypto_social_profile_history WHERE request_id=%s',(rid,));assert c.fetchone()[0]==1
+        c.execute("SELECT used_credits FROM crypto_rolling_coins WHERE coin='ZCAT'");assert c.fetchone()[0]==credits

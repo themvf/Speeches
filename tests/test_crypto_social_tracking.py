@@ -138,3 +138,13 @@ def test_db_timeline_coverage_and_deduplication(db):
 
 def test_discovery_refuses_an_unverified_billing_bound():
     with pytest.raises(ValueError): discover(None,'fake',datetime.now(timezone.utc),0)
+
+
+def test_db_unidentifiable_profile_is_unknown_without_discarding_valid_batch(db):
+    start_tracking(db)
+    rid=reserve_request(db,'profile','missing-id',{},36,'profiles')
+    with db,db.cursor() as c:
+        result=save_profiles(c,rid,{'users':[{'id':'1','followers':123},{'unavailable':True}]},['1','2'])
+        assert result==(2,1,36)
+        c.execute('SELECT account_id,followers,available FROM crypto_social_profile_history ORDER BY account_id')
+        assert c.fetchall()==[('1',123,True),('2',None,False)]

@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install pytest 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
-      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_history.py tests/test_crypto_social_rolling.py tests/test_crypto_social_watchers.py -q
+      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_history.py tests/test_crypto_social_tracking.py tests/test_crypto_social_rolling.py tests/test_crypto_social_watchers.py -q
         env:
           CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@localhost:5432/crypto_test
   capture:
@@ -55,14 +55,5 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
-      - name: Diagnose saved request without paid calls
-        run: |
-          python - <<'PYCODE'
-          import os, json, psycopg2
-          with psycopg2.connect(os.environ['DATABASE_URL']) as conn, conn.cursor() as cur:
-              cur.execute("SELECT id,endpoint,status,error,parameters->'provider_response' FROM crypto_social_requests WHERE id=1293")
-              for _,_,_,_,data in cur.fetchall():
-                  users=data.get('users',[]) if isinstance(data,dict) else []
-                  missing=[u for u in users if not str(u.get('id','')).isdigit()]
-                  print(json.dumps(dict(total=len(users),missing_id=len(missing),missing_field_names=[sorted(u.keys()) for u in missing],unavailable_flags=[u.get('unavailable') is True for u in missing])))
-          PYCODE
+      - name: Collect all five coins within the shared 150000-credit pilot
+        run: python crypto_social_rolling.py --execute --recover-profile 1293
