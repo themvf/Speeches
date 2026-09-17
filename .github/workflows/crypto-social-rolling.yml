@@ -61,6 +61,8 @@ jobs:
           import os, json, psycopg2
           with psycopg2.connect(os.environ['DATABASE_URL']) as conn, conn.cursor() as cur:
               cur.execute("SELECT id,endpoint,status,error,parameters->'provider_response' FROM crypto_social_requests WHERE id=1293")
-              for rid,endpoint,status,error,data in cur.fetchall():
-                  print(json.dumps(dict(id=rid,endpoint=endpoint,status=status,error=error,keys=list(data) if isinstance(data,dict) else None, message=data.get('msg',data.get('message')) if isinstance(data,dict) else None, users_type=type(data.get('users')).__name__ if isinstance(data,dict) else None, first_user_keys=list(data['users'][0]) if isinstance(data,dict) and data.get('users') else None)))
+              for _,_,_,_,data in cur.fetchall():
+                  users=data.get('users',[]) if isinstance(data,dict) else []
+                  missing=[u for u in users if not str(u.get('id','')).isdigit()]
+                  print(json.dumps(dict(total=len(users),missing_id=len(missing),missing_field_names=[sorted(u.keys()) for u in missing],unavailable_flags=[u.get('unavailable') is True for u in missing])))
           PYCODE
