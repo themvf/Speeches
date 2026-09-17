@@ -2,7 +2,7 @@ from datetime import datetime,timedelta,timezone
 import pytest
 from test_crypto_social_pilot import db
 from test_crypto_market_history import candles,catalog,POOL
-from crypto_market_history import normalize_hourly,save,setup,refresh
+from crypto_market_history import normalize_hourly,save,setup,refresh,MARKETS
 from crypto_event_study import mentions,build_events,compute,VERSION
 
 NOW=datetime(2026,9,16,12,tzinfo=timezone.utc)
@@ -98,8 +98,8 @@ def test_db_refresh_archives_hourly_for_the_pinned_pool_only(db):
     result=refresh(db,fetch=fetch,now=NOW,wait=lambda _:None)
     hourly=[u for u in calls if '/ohlcv/hour' in u];daily=[u for u in calls if '/ohlcv/day' in u]
     assert len(daily)==2 and len(hourly)==1 and POOL in hourly[0] and 'limit=1000' in hourly[0]
-    assert len([u for u in calls if u.endswith('/pools')])==4  # every contract coin is catalogued
-    assert result['skipped']==[c+': no indexed pool for this contract' for c in ['PONS','DPONS','STANDARD']]
+    assert len([u for u in calls if u.endswith('/pools')])==len(MARKETS)  # every contract coin is catalogued
+    assert result['skipped']==[c+': no indexed pool for this contract' for c in MARKETS if c!='ZCAT']
     with db,db.cursor() as c:
         c.execute('SELECT count(*) FROM crypto_market_hourly_latest');assert c.fetchone()[0]==1
         c.execute("SELECT id FROM crypto_market_sources WHERE is_default");assert c.fetchone()[0]=='geckoterminal:'+POOL

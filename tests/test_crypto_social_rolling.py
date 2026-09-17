@@ -16,11 +16,11 @@ def test_db_rolling_initial_overlap_and_gap_filling(db):
     assert setup(db,NOW)
     setup(db,NOW)
     with db,db.cursor() as c:
-        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==40
-        c.execute('SELECT sum(credit_limit) FROM crypto_rolling_coins');assert c.fetchone()[0]==150000
+        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==8*len(TRACKED)
+        c.execute('SELECT sum(credit_limit) FROM crypto_rolling_coins');assert c.fetchone()[0]==30000*len(TRACKED)
     setup(db,NOW+timedelta(hours=12))
     with db,db.cursor() as c:
-        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==50
+        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==10*len(TRACKED)
     _,window,_,_=reserve(db,'STANDARD',NOW+timedelta(hours=12))
     assert window[2]==slot(NOW)+timedelta(hours=12)
     assert window[2]-window[1]==timedelta(hours=7)

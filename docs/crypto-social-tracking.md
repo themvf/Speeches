@@ -226,3 +226,15 @@ close change and the count of posts during the day itself. "Mark on chart" draws
 account's posts as pink marks above the price line so timing can be read against price;
 the account link opens the cross-coin drawer. Dragging still selects a range. All of it is
 computed from the posts already loaded for the coin; nothing new is fetched.
+
+## BACKPACK and PERSPAD added (2026-09-17)
+
+Two user-supplied Solana contracts joined the registry: BACKPACK
+(`BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy`) and PERSPAD
+(`PerPsCe2SJ7Q25CN4R5TTX4fmBdmknE2hQmqCt96fHL`), archive start 2026-09-01. "Backpack" is an
+ordinary word, so its words-mode match needs the cashtag/hashtag or token context
+(`token|coin|solana|sol|pump|ca` in the same post); the contract always matches. Adding them
+enrolled both in the rolling collector on its next run (a separate 30,000-credit ceiling
+each under the existing campaign) and in the market archive, which finds their pools on
+GeckoTerminal. Neither has official handles configured yet. Tests that counted coins now
+derive counts from the registry.
