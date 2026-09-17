@@ -232,5 +232,53 @@
     "OMFG",
     "contract",
     false
+  ],
+  [
+    "$KNOTS pumping",
+    "KNOTS",
+    "words",
+    true
+  ],
+  [
+    "tied some knots",
+    "KNOTS",
+    "words",
+    false
+  ],
+  [
+    "knots coin ca below",
+    "KNOTS",
+    "words",
+    true
+  ],
+  [
+    "8RVBk8vxLiUHueLUW1f4izFVqN3nWippLhkohKg6EGkS",
+    "KNOTS",
+    "contract",
+    true
+  ],
+  [
+    "$STONK",
+    "STONK",
+    "words",
+    true
+  ],
+  [
+    "stonks only go up",
+    "STONK",
+    "words",
+    false
+  ],
+  [
+    "stonk token launch",
+    "STONK",
+    "words",
+    true
+  ],
+  [
+    "6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx",
+    "STONK",
+    "contract",
+    true
   ]
 ]

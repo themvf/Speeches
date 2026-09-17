@@ -17,6 +17,7 @@ PAGES_PER_RUN=4
 BASE='https://api.twitterapi.io'
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS crypto_voice_focus (window_id bigint PRIMARY KEY,coin text NOT NULL);
+CREATE TABLE IF NOT EXISTS crypto_origin_windows (window_id bigint PRIMARY KEY,coin text NOT NULL);
 
 CREATE TABLE IF NOT EXISTS crypto_rolling_campaign (
  id text PRIMARY KEY, started_at timestamptz NOT NULL, end_at timestamptz NOT NULL
@@ -55,9 +56,11 @@ def setup(conn,now):
             cur.execute('INSERT INTO crypto_social_coins VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',(coin,name,query,address,note))
             cur.execute('INSERT INTO crypto_rolling_coins(campaign_id,coin,credit_limit) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,coin,COIN_LIMIT))
             cur.execute('''SELECT max(w.end_at) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id
-                WHERE r.campaign_id=%s AND w.coin=%s AND NOT EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id)''',(CAMPAIGN,coin))
+                WHERE r.campaign_id=%s AND w.coin=%s AND NOT EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id)
+                AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id)''',(CAMPAIGN,coin))
             last=cur.fetchone()[0]
             end=last+timedelta(hours=6) if last else anchor-timedelta(hours=42)
+            setup_origin(cur,coin,anchor-timedelta(hours=42))
             while end<=anchor:
                 start=end-timedelta(hours=7)  # one-hour overlap catches delayed indexing
                 q=f'{query} since_time:{int(start.timestamp())} until_time:{int(end.timestamp())}'
@@ -72,6 +75,26 @@ def setup(conn,now):
           AND w.coin IN ('PONS','STANDARD') AND position('$' in w.query)>0 AND EXISTS(
           SELECT 1 FROM crypto_rolling_windows r WHERE r.window_id=w.id AND r.campaign_id=%s)""",(CAMPAIGN,))
     return True
+
+
+def setup_origin(cur,coin,until):
+    """One bounded contract-only search from the registry's originFrom date to the first live window.
+
+    Paginated across runs until exhausted, inside the coin's ordinary ceiling, so a coin's earliest saved
+    posts are its launch-era posts. Exact-address text is rare, which keeps this to a handful of pages."""
+    cfg=REGISTRY.get(coin,{});origin=cfg.get('originFrom');address=cfg.get('address')
+    if not origin or not address:return
+    cur.execute('SELECT 1 FROM crypto_origin_windows WHERE coin=%s',(coin,))
+    if cur.fetchone():return
+    start=datetime.fromisoformat(origin).replace(tzinfo=timezone.utc)
+    if start>=until:return
+    q=f'"{address}" since_time:{int(start.timestamp())} until_time:{int(until.timestamp())}'
+    cur.execute('INSERT INTO crypto_social_windows(coin,start_at,end_at,query) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING',(coin,start,until,q))
+    cur.execute('SELECT id FROM crypto_social_windows WHERE coin=%s AND start_at=%s AND end_at=%s',(coin,start,until))
+    row=cur.fetchone()
+    if not row:return
+    cur.execute('INSERT INTO crypto_rolling_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,row[0]))
+    cur.execute('INSERT INTO crypto_origin_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(row[0],coin))
 
 
 def setup_focus(conn,coin,now):
@@ -129,7 +152,7 @@ def reserve(conn,coin,now,kind='posts'):
             cur.execute('''SELECT w.id,w.start_at,w.end_at,w.query,w.cursor FROM crypto_social_windows w
                 JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE r.campaign_id=%s AND w.coin=%s
                 AND w.status IN ('pending','partial') AND w.end_at<=%s
-                ORDER BY CASE WHEN EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id)=%s THEN 0 ELSE 1 END,CASE WHEN %s THEN CASE WHEN w.pages=0 THEN 0 ELSE 1 END ELSE CASE WHEN w.pages>0 THEN 0 ELSE 1 END END,
+                ORDER BY CASE WHEN (EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id) OR EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id))=%s THEN 0 ELSE 1 END,CASE WHEN %s THEN CASE WHEN w.pages=0 THEN 0 ELSE 1 END ELSE CASE WHEN w.pages>0 THEN 0 ELSE 1 END END,
                 CASE WHEN w.pages>0 THEN w.start_at END ASC,w.end_at DESC,w.id LIMIT 1 FOR UPDATE OF w''',(CAMPAIGN,coin,slot(now),cur_slot_count==3,cur_slot_count==0))
             window=cur.fetchone()
             if not window:return None

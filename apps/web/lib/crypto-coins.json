@@ -1,5 +1,5 @@
 {
-  "note": "Single registry for tracked crypto coins. Consumed by apps/web/lib/crypto-coins.ts and crypto_coins.py; never fork per-language copies. Addresses are user-supplied and unverified. Patterns are case-insensitive regular expressions valid in both JavaScript and Python. 'words' match the coin by name/cashtag; 'contextWords' need both patterns in the same post; 'exclude' drops a words-mode match (a different token shares the name); 'searchQuery' is the provider query text and must not change for a live campaign, because saved search windows carry it verbatim.",
+  "note": "Single registry for tracked crypto coins. Consumed by apps/web/lib/crypto-coins.ts and crypto_coins.py; never fork per-language copies. Addresses are user-supplied and unverified. Patterns are case-insensitive regular expressions valid in both JavaScript and Python. 'words' match the coin by name/cashtag; 'contextWords' need both patterns in the same post; 'exclude' drops a words-mode match (a different token shares the name); 'searchQuery' is the provider query text and must not change for a live campaign, because saved search windows carry it verbatim. 'originFrom' (optional) asks the rolling collector for one bounded contract-only search from that date up to its first live window, so a coin's earliest saved posts are its launch-era posts rather than the day it was added.",
   "coins": [
     {
       "symbol": "ZCAT",
@@ -140,7 +140,7 @@
       "network": "solana",
       "networkLabel": "Solana",
       "address": "BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy",
-      "archiveStart": "2026-09-01",
+      "archiveStart": "2026-06-01",
       "words": [
         "[$#]backpack(?![a-z0-9_])"
       ],
@@ -157,7 +157,8 @@
       ],
       "official": [],
       "searchQuery": "(\"$BACKPACK\" OR \"BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy\")",
-      "identityNote": "user-supplied address; not independently verified. Common word: bare 'backpack' needs token context"
+      "identityNote": "user-supplied address; not independently verified. Common word: bare 'backpack' needs token context",
+      "originFrom": "2026-06-01"
     },
     {
       "symbol": "PERSPAD",
@@ -166,7 +167,7 @@
       "network": "solana",
       "networkLabel": "Solana",
       "address": "PerPsCe2SJ7Q25CN4R5TTX4fmBdmknE2hQmqCt96fHL",
-      "archiveStart": "2026-09-01",
+      "archiveStart": "2026-06-01",
       "words": [
         "(^|[^a-z0-9_])perspad(?![a-z0-9_])"
       ],
@@ -178,7 +179,8 @@
       ],
       "official": [],
       "searchQuery": "(\"$PERSPAD\" OR \"PersPad\" OR \"PerPsCe2SJ7Q25CN4R5TTX4fmBdmknE2hQmqCt96fHL\")",
-      "identityNote": "user-supplied address; not independently verified"
+      "identityNote": "user-supplied address; not independently verified",
+      "originFrom": "2026-06-01"
     },
     {
       "symbol": "OMFG",
@@ -187,7 +189,7 @@
       "network": "solana",
       "networkLabel": "Solana",
       "address": "omfgRBnxHsNJh6YeGbGAmWenNkenzsXyBXm3WDhmeta",
-      "archiveStart": "2026-09-01",
+      "archiveStart": "2026-06-01",
       "words": [
         "[$#]omfg(?![a-z0-9_])"
       ],
@@ -204,7 +206,62 @@
       ],
       "official": [],
       "searchQuery": "(\"$OMFG\" OR \"omfgRBnxHsNJh6YeGbGAmWenNkenzsXyBXm3WDhmeta\")",
-      "identityNote": "user-supplied address; ticker inferred from the vanity prefix, not verified. Bare 'omfg' is slang and needs token context"
+      "identityNote": "user-supplied address; ticker inferred from the vanity prefix, not verified. Bare 'omfg' is slang and needs token context",
+      "originFrom": "2026-06-01"
+    },
+    {
+      "symbol": "KNOTS",
+      "name": "Knots",
+      "label": "KNOTS · Knots",
+      "network": "solana",
+      "networkLabel": "Solana",
+      "address": "8RVBk8vxLiUHueLUW1f4izFVqN3nWippLhkohKg6EGkS",
+      "archiveStart": "2026-06-01",
+      "words": [
+        "[$#]knots(?![a-z0-9_])"
+      ],
+      "contextWords": [
+        [
+          "\\bknots\\b",
+          "\\b(?:token|coin|solana|sol|pump|ca)\\b"
+        ]
+      ],
+      "exclude": [],
+      "discoveryName": "\\bknots\\s+(?:token|coin)\\b",
+      "profileTerms": [
+        "$knots"
+      ],
+      "official": [],
+      "searchQuery": "(\"$KNOTS\" OR \"8RVBk8vxLiUHueLUW1f4izFVqN3nWippLhkohKg6EGkS\")",
+      "identityNote": "user-supplied address; not independently verified. Common word: bare 'knots' needs token context",
+      "originFrom": "2026-06-01"
+    },
+    {
+      "symbol": "STONK",
+      "name": "Stonk",
+      "label": "STONK · Stonk",
+      "network": "solana",
+      "networkLabel": "Solana",
+      "address": "6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx",
+      "archiveStart": "2026-06-01",
+      "words": [
+        "[$#]stonk(?![a-z0-9_])"
+      ],
+      "contextWords": [
+        [
+          "(^|[^a-z0-9_])stonk(?![a-z0-9_])",
+          "\\b(?:token|coin|solana|sol|pump|ca)\\b"
+        ]
+      ],
+      "exclude": [],
+      "discoveryName": "\\bstonk\\s+(?:token|coin)\\b",
+      "profileTerms": [
+        "$stonk"
+      ],
+      "official": [],
+      "searchQuery": "(\"$STONK\" OR \"6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx\")",
+      "identityNote": "user-supplied address; not independently verified. Slang: bare 'stonk' needs token context; 'stonks' plural never matches",
+      "originFrom": "2026-06-01"
     }
   ]
 }

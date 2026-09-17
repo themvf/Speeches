@@ -242,3 +242,16 @@ derive counts from the registry.
 OMFG (`omfgRBnxHsNJh6YeGbGAmWenNkenzsXyBXm3WDhmeta`) was added the same way; the ticker is
 inferred from the address's vanity prefix and not verified. Bare "omfg" is slang, so words
 mode needs `$OMFG`/`#OMFG`, the contract, or token context in the same post.
+
+## Origin search for newly added coins (2026-09-17)
+
+KNOTS (`8RVBk8vxLiUHueLUW1f4izFVqN3nWippLhkohKg6EGkS`) and STONK
+(`6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx`) joined the registry; both are common words,
+so bare mentions need the cashtag or token context. A registry coin may now carry
+`originFrom`: on the rolling collector's next run, `setup_origin` creates one contract-only
+search window from that date to the coin's first live window (recorded in
+`crypto_origin_windows`, excluded from forward gap-filling). Lane four of each run prefers
+focus and origin windows, so the backfill paginates until exhausted within the coin's
+ordinary 30,000-credit ceiling. Once an earliest contract post is saved, the existing
+30-hour focus windows around it are created automatically. All five coins added today carry
+`originFrom: 2026-06-01`; the established coins had dedicated history campaigns and do not.

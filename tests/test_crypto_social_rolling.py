@@ -1,7 +1,8 @@
 from datetime import datetime,timedelta,timezone
 import pytest
 from test_crypto_social_pilot import db
-from crypto_social_rolling import setup,reserve,collect_one,slot,CAMPAIGN,TRACKED
+from crypto_social_rolling import setup,reserve,collect_one,slot,CAMPAIGN,TRACKED,REGISTRY
+ORIGINS=sum(1 for c in REGISTRY.values() if c.get('originFrom'))
 
 NOW=datetime(2026,9,15,12,17,tzinfo=timezone.utc)
 
@@ -16,11 +17,11 @@ def test_db_rolling_initial_overlap_and_gap_filling(db):
     assert setup(db,NOW)
     setup(db,NOW)
     with db,db.cursor() as c:
-        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==8*len(TRACKED)
+        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==8*len(TRACKED)+ORIGINS
         c.execute('SELECT sum(credit_limit) FROM crypto_rolling_coins');assert c.fetchone()[0]==30000*len(TRACKED)
     setup(db,NOW+timedelta(hours=12))
     with db,db.cursor() as c:
-        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==10*len(TRACKED)
+        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==10*len(TRACKED)+ORIGINS
     _,window,_,_=reserve(db,'STANDARD',NOW+timedelta(hours=12))
     assert window[2]==slot(NOW)+timedelta(hours=12)
     assert window[2]-window[1]==timedelta(hours=7)
@@ -148,3 +149,18 @@ def test_db_recover_archived_profile_without_network_or_refund(db):
         assert c.fetchone()==('saved',1,credits)
         c.execute('SELECT count(*) FROM crypto_social_profile_history WHERE request_id=%s',(rid,));assert c.fetchone()[0]==1
         c.execute("SELECT used_credits FROM crypto_rolling_coins WHERE coin='ZCAT'");assert c.fetchone()[0]==credits
+
+
+def test_db_origin_window_is_one_bounded_contract_search_per_new_coin(db):
+    assert setup(db,NOW);setup(db,NOW+timedelta(hours=12))
+    with db,db.cursor() as c:
+        c.execute("SELECT w.coin,w.start_at,w.end_at,w.query FROM crypto_origin_windows o JOIN crypto_social_windows w ON w.id=o.window_id ORDER BY w.coin")
+        rows=c.fetchall()
+    assert len(rows)==ORIGINS and all(r[0] in REGISTRY and REGISTRY[r[0]].get('originFrom') for r in rows)
+    for coin,start,end,query in rows:
+        assert start==datetime.fromisoformat(REGISTRY[coin]['originFrom']).replace(tzinfo=timezone.utc)
+        assert end==slot(NOW)-timedelta(hours=42) and query.startswith('"'+REGISTRY[coin]['address']+'"') and '$' not in query
+    # Fresh six-hour windows keep filling forward from the live start, never from the origin window's end.
+    with db,db.cursor() as c:
+        c.execute("SELECT count(*) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE w.coin=%s AND w.end_at>=%s",(rows[0][0],slot(NOW)-timedelta(hours=42)))
+        assert c.fetchone()[0]==10
