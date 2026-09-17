@@ -3,21 +3,24 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import json
 import os
+from crypto_voice_research import snapshot,evaluate,initialize as initialize_research
 from crypto_social_pilot import PILOT, COINS, initialize, save_page
 from crypto_social_history import PONS_ADDRESS, DPONS_ADDRESS
-from crypto_social_tracking import save_profiles
+from crypto_social_tracking import save_profiles,save_posts
 
 STANDARD_ADDRESS='0x88ad8ddf1e3898412146a534538d418c6f8a9062'
 TRACKED={**COINS,
- 'PONS':('Pons',f'(\"$PONS\" OR \"{PONS_ADDRESS}\" OR (PONS Robinhood) OR from:ponsdotfamily)',PONS_ADDRESS,'Robinhood Chain'),
+ 'PONS':('Pons',f'(\"{PONS_ADDRESS}\" OR (PONS Robinhood) OR from:ponsdotfamily)',PONS_ADDRESS,'Robinhood Chain'),
  'DPONS':('Diamond Pons',f'(DPONS OR \"DiamondPons\" OR \"Diamond Pons\" OR \"{DPONS_ADDRESS}\")',DPONS_ADDRESS,'Robinhood Chain'),
- 'STANDARD':('The Standard Reserve',f'(\"$STANDARD\" OR \"The Standard Reserve\" OR \"standard_rsv\" OR \"{STANDARD_ADDRESS}\")',STANDARD_ADDRESS,'Robinhood Chain')}
+ 'STANDARD':('The Standard Reserve',f'(\"The Standard Reserve\" OR from:standard_rsv OR to:standard_rsv OR \"{STANDARD_ADDRESS}\")',STANDARD_ADDRESS,'Robinhood Chain')}
 CAMPAIGN='rolling-five-coins-v1'
 COIN_LIMIT=30000
 DAILY_LIMIT=5400
 PAGES_PER_RUN=4
 BASE='https://api.twitterapi.io'
 SCHEMA='''
+CREATE TABLE IF NOT EXISTS crypto_voice_focus (window_id bigint PRIMARY KEY,coin text NOT NULL);
+
 CREATE TABLE IF NOT EXISTS crypto_rolling_campaign (
  id text PRIMARY KEY, started_at timestamptz NOT NULL, end_at timestamptz NOT NULL
 );
@@ -47,6 +50,7 @@ def setup(conn,now):
     initialize(conn,anchor)
     with conn,conn.cursor() as cur:
         cur.execute(SCHEMA)
+        initialize_research(cur)
         cur.execute('INSERT INTO crypto_rolling_campaign VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,now,now+timedelta(days=30)))
         cur.execute('SELECT end_at FROM crypto_rolling_campaign WHERE id=%s',(CAMPAIGN,))
         if now>=cur.fetchone()[0]:return False
@@ -54,7 +58,7 @@ def setup(conn,now):
             cur.execute('INSERT INTO crypto_social_coins VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',(coin,name,query,address,note))
             cur.execute('INSERT INTO crypto_rolling_coins(campaign_id,coin,credit_limit) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,coin,COIN_LIMIT))
             cur.execute('''SELECT max(w.end_at) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id
-                WHERE r.campaign_id=%s AND w.coin=%s''',(CAMPAIGN,coin))
+                WHERE r.campaign_id=%s AND w.coin=%s AND NOT EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id)''',(CAMPAIGN,coin))
             last=cur.fetchone()[0]
             end=last+timedelta(hours=6) if last else anchor-timedelta(hours=42)
             while end<=anchor:
@@ -66,7 +70,33 @@ def setup(conn,now):
                 if not row:raise ValueError('Conflicting rolling window; preserve existing evidence')
                 cur.execute('INSERT INTO crypto_rolling_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,row[0]))
                 end+=timedelta(hours=6)
+        # Preserve broad-search evidence, but retire its unfinished queue after tightening identity queries.
+        cur.execute("""UPDATE crypto_social_windows w SET status='retired_query' WHERE w.status IN ('pending','partial')
+          AND w.coin IN ('PONS','STANDARD') AND position('$' in w.query)>0 AND EXISTS(
+          SELECT 1 FROM crypto_rolling_windows r WHERE r.window_id=w.id AND r.campaign_id=%s)""",(CAMPAIGN,))
     return True
+
+
+def setup_focus(conn,coin,now):
+    address=TRACKED[coin][2]
+    if not address:return
+    with conn,conn.cursor() as cur:
+        cur.execute('SELECT 1 FROM crypto_voice_focus WHERE coin=%s LIMIT 1',(coin,))
+        if cur.fetchone():return
+        cur.execute('SELECT min(posted_at) FROM crypto_social_posts WHERE position(%s in '+('lower(text)' if address.startswith('0x') else 'text')+')>0',(address.lower() if address.startswith('0x') else address,))
+        anchor=cur.fetchone()[0]
+        if not anchor:return
+        start=anchor.replace(minute=0,second=0,microsecond=0)-timedelta(hours=6)
+        for i in range(30):
+            a=start+timedelta(hours=i);b=a+timedelta(hours=1)
+            if b>now:continue
+            q=f'"{address}" since_time:{int(a.timestamp())} until_time:{int(b.timestamp())}'
+            cur.execute('INSERT INTO crypto_social_windows(coin,start_at,end_at,query) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING',(coin,a,b,q))
+            cur.execute('SELECT id FROM crypto_social_windows WHERE coin=%s AND start_at=%s AND end_at=%s AND query=%s',(coin,a,b,q))
+            row=cur.fetchone()
+            if row:
+                cur.execute('INSERT INTO crypto_rolling_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,row[0]))
+                cur.execute('INSERT INTO crypto_voice_focus VALUES (%s,%s) ON CONFLICT DO NOTHING',(row[0],coin))
 
 
 def reserve(conn,coin,now,kind='posts'):
@@ -80,22 +110,30 @@ def reserve(conn,coin,now,kind='posts'):
         used,limit=cur.fetchone()
         cur.execute('SELECT coalesce(sum(charged),0) FROM crypto_rolling_calls WHERE campaign_id=%s AND coin=%s AND day=%s',(CAMPAIGN,coin,now.date()))
         daily=cur.fetchone()[0]
-        cur.execute('SELECT count(*) FROM crypto_rolling_calls WHERE campaign_id=%s AND coin=%s AND kind=%s AND '+('day=%s' if kind=='profiles' else 'run_slot=%s'),(CAMPAIGN,coin,kind,now.date() if kind=='profiles' else slot(now)))
-        if cur.fetchone()[0]>=(1 if kind=='profiles' else PAGES_PER_RUN):return None
+        cur.execute('SELECT count(*) FROM crypto_rolling_calls WHERE campaign_id=%s AND coin=%s AND kind=%s AND '+('day=%s' if kind!='posts' else 'run_slot=%s'),(CAMPAIGN,coin,kind,now.date() if kind!='posts' else slot(now)))
+        cur_slot_count=cur.fetchone()[0]
+        if cur_slot_count>=(1 if kind!='posts' else PAGES_PER_RUN):return None
         ids=[];window=None
-        if kind=='profiles':
-            cur.execute('''SELECT a.id FROM crypto_social_accounts a WHERE EXISTS(
-                SELECT 1 FROM crypto_social_posts p JOIN crypto_social_matches m ON m.post_id=p.id
-                JOIN crypto_social_windows w ON w.id=m.window_id WHERE p.author_id=a.id AND w.coin=%s)
-                ORDER BY a.followers DESC NULLS LAST,a.id LIMIT 20''',(coin,))
+        if kind=='engagement':
+            cur.execute("""SELECT p.id FROM crypto_social_posts p WHERE p.kind='original' AND p.posted_at BETWEEN %s AND %s
+              AND EXISTS(SELECT 1 FROM crypto_social_matches m JOIN crypto_social_windows w ON w.id=m.window_id WHERE m.post_id=p.id AND w.coin=%s)
+              AND NOT EXISTS(SELECT 1 FROM crypto_social_snapshots s WHERE s.post_id=p.id AND s.observed_at-p.posted_at BETWEEN interval '24 hours' AND interval '30 hours')
+              ORDER BY p.posted_at,p.id LIMIT 10""",(now-timedelta(hours=30),now-timedelta(hours=24),coin))
             ids=[r[0] for r in cur.fetchall()]
+            if not ids:return None
+            credits=300 # Conservative page reservation, release only after a validated response.
+        elif kind=='profiles':
+            cur.execute('SELECT selection FROM crypto_voice_snapshots WHERE coin=%s ORDER BY week DESC LIMIT 1',(coin,))
+            cohort=cur.fetchone()
+            ids=[a['id'] for a in cohort[0]][:20] if cohort else []
             if not ids:return None
             credits=len(ids)*18
         else:
             cur.execute('''SELECT w.id,w.start_at,w.end_at,w.query,w.cursor FROM crypto_social_windows w
                 JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE r.campaign_id=%s AND w.coin=%s
                 AND w.status IN ('pending','partial') AND w.end_at<=%s
-                ORDER BY w.pages,w.end_at DESC,w.id LIMIT 1 FOR UPDATE OF w''',(CAMPAIGN,coin,slot(now)))
+                ORDER BY CASE WHEN EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id)=%s THEN 0 ELSE 1 END,CASE WHEN %s THEN CASE WHEN w.pages=0 THEN 0 ELSE 1 END ELSE CASE WHEN w.pages>0 THEN 0 ELSE 1 END END,
+                CASE WHEN w.pages>0 THEN w.start_at END ASC,w.end_at DESC,w.id LIMIT 1 FOR UPDATE OF w''',(CAMPAIGN,coin,slot(now),cur_slot_count==3,cur_slot_count==0))
             window=cur.fetchone()
             if not window:return None
             credits=300
@@ -115,8 +153,8 @@ def collect_one(conn,key,coin,now,kind='posts',fetch=None):
     if item is None:return False
     rid,window,ids,credits=item
     try:
-        endpoint='/twitter/user/batch_info_by_ids' if kind=='profiles' else '/twitter/tweet/advanced_search'
-        params={'userIds':','.join(ids)} if ids else {'query':window[3],'queryType':'Latest','cursor':window[4]}
+        endpoint='/twitter/user/batch_info_by_ids' if kind=='profiles' else '/twitter/tweets' if kind=='engagement' else '/twitter/tweet/advanced_search'
+        params={('tweet_ids' if kind=='engagement' else 'userIds'):','.join(ids)} if ids else {'query':window[3],'queryType':'Latest','cursor':window[4]}
         response=(fetch or requests.get)(BASE+endpoint,params=params,headers={'X-API-Key':key},timeout=30,allow_redirects=False)
         if response.status_code!=200:raise ValueError(f'HTTP {response.status_code}')
         data=response.json()
@@ -129,7 +167,10 @@ def collect_one(conn,key,coin,now,kind='posts',fetch=None):
                     if cur.fetchone()[0]==len(post_ids):raise ValueError('Repeated page; stop before paying for a loop')
             save_page(conn,rid,window,data)
         with conn,conn.cursor() as cur:
-            if kind=='profiles':
+            if kind=='engagement':
+                returned,accepted,estimated=save_posts(cur,rid,data,now-timedelta(hours=30),now,refresh_ids=ids)
+                cur.execute("UPDATE crypto_social_requests SET status='saved',returned_count=%s,accepted_count=%s,estimated_credits=%s WHERE id=%s",(returned,accepted,estimated,rid))
+            elif kind=='profiles':
                 returned,accepted,estimated=save_profiles(cur,rid,data,ids)
                 cur.execute("UPDATE crypto_social_requests SET status='saved',returned_count=%s,accepted_count=%s,estimated_credits=%s WHERE id=%s",(returned,accepted,estimated,rid))
             else:
@@ -170,7 +211,11 @@ def main():
         now=datetime.now(timezone.utc)
         if setup(conn,now):
             key=os.environ['TWITTERAPI_IO_API_KEY']
+            evaluate(conn,now)
             for coin in TRACKED:
+                setup_focus(conn,coin,now)
+                snapshot(conn,coin,now)
+                collect_one(conn,key,coin,now,'engagement')
                 for _ in range(PAGES_PER_RUN):
                     if not collect_one(conn,key,coin,now):break
                 collect_one(conn,key,coin,now,'profiles')

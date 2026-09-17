@@ -68,7 +68,53 @@ def test_db_rolling_profiles_only_once_per_day(db):
     class Profiles:
         status_code=200
         def json(self):return {'users':[{'id':'456','userName':'tester','followers':500,'description':'DPONS'}]}
+    from crypto_voice_research import snapshot
+    # A cohort requires exact asset identity, not a bare ticker in an empty test database.
+    with db,db.cursor() as c:c.execute("UPDATE crypto_social_posts SET text=%s",('0x0e6d1ebb33f3b8f2d09bacf3b1a1d5c581110c33',))
+    snapshot(db,'DPONS',NOW)
     assert collect_one(db,'fake','DPONS',NOW,'profiles',lambda *a,**k:Profiles())
     assert reserve(db,'DPONS',NOW+timedelta(hours=6),'profiles') is None
     with db,db.cursor() as c:
         c.execute("SELECT used_credits FROM crypto_rolling_coins WHERE coin='DPONS'");assert c.fetchone()[0]==33
+
+
+def test_db_continuation_gets_budget_before_more_fresh_windows(db):
+    setup(db,NOW)
+    with db,db.cursor() as c:
+        c.execute("UPDATE crypto_social_windows SET pages=1,status='partial',cursor='next' WHERE coin='ZCAT'")
+    # First call can resume when no untouched window remains.
+    rid,w,_,_=reserve(db,'ZCAT',NOW)
+    with db,db.cursor() as c:c.execute("UPDATE crypto_social_requests SET status='saved' WHERE id=%s",(rid,))
+    _,next_window,_,_=reserve(db,'ZCAT',NOW)
+    assert next_window[0]==w[0]
+
+
+def test_db_focus_windows_are_bounded_contract_searches_and_do_not_advance_live_watermark(db):
+    from crypto_social_rolling import setup_focus
+    setup(db,NOW)
+    with db,db.cursor() as c:
+        c.execute("INSERT INTO crypto_social_accounts(id,handle) VALUES ('123','early')")
+        c.execute("INSERT INTO crypto_social_posts(id,author_id,text,posted_at,kind,url) VALUES ('456','123',%s,%s,'original','https://x.com/i/status/456')",(TRACKED['PONS'][2],NOW-timedelta(days=10)))
+    setup_focus(db,'PONS',NOW);setup_focus(db,'PONS',NOW)
+    with db,db.cursor() as c:
+        c.execute('SELECT count(*) FROM crypto_voice_focus');assert c.fetchone()[0]==30
+        c.execute('SELECT min(end_at-start_at),max(end_at-start_at) FROM crypto_social_windows w JOIN crypto_voice_focus f ON f.window_id=w.id');assert c.fetchone()==(timedelta(hours=1),timedelta(hours=1))
+    setup(db,NOW+timedelta(hours=6))
+    with db,db.cursor() as c:
+        c.execute("SELECT max(end_at) FROM crypto_social_windows WHERE coin='PONS'");assert c.fetchone()[0]==slot(NOW)+timedelta(hours=6)
+
+
+def test_db_weekly_cohort_is_immutable_and_evaluation_keeps_inactive_accounts(db):
+    from crypto_voice_research import snapshot,evaluate
+    setup(db,NOW)
+    with db,db.cursor() as c:
+        c.execute("INSERT INTO crypto_social_accounts(id,handle,followers) VALUES ('123','early',500)")
+        c.execute("INSERT INTO crypto_social_posts(id,author_id,text,posted_at,kind,url) VALUES ('456','123',%s,%s,'original','https://x.com/i/status/456')",(TRACKED['PONS'][2],NOW-timedelta(hours=1)))
+        c.execute("INSERT INTO crypto_social_matches SELECT '456',min(id) FROM crypto_social_windows WHERE coin='PONS'")
+    ids=snapshot(db,'PONS',NOW);assert ids==['123']
+    assert snapshot(db,'PONS',NOW+timedelta(days=1))==ids
+    evaluate(db,NOW+timedelta(days=8))
+    with db,db.cursor() as c:
+        c.execute("SELECT evaluation FROM crypto_voice_snapshots WHERE coin='PONS'");e=c.fetchone()[0]
+        assert e['groups']['Mixed cohort']['accounts']==1
+        assert e['groups']['Mixed cohort']['active']==0
