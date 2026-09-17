@@ -204,3 +204,15 @@ voices this week and price-linked episodes, plus a table of untracked coins name
 watcher accounts in the last seven days (from the coin-discovery extractor). Coin, view,
 selected account and date range live in the query string (`?coin=&view=&account=&from=&to=`),
 written with `history.replaceState`, so any state is shareable.
+
+## One account, every coin (2026-09-17)
+
+`GET /api/market/crypto/account?id=<x id>` returns an account's profile, per-coin saved
+activity, its role per coin from the voice snapshots, its price-linked episodes per coin from
+the event study, its watcher category, and its latest posts with the pool's 24h move where
+linked. The account drawer now shows this "Across tracked coins" section and opens for any
+account id (from the Overview, a leaderboard, or a `?account=` link), not only accounts with
+posts in the current selection. `GET /api/market/crypto/leaders` ranks accounts by how many
+tracked coins they were early on, then coin count, then episode-weighted median excess 24h
+move (`apps/web/lib/crypto-leaders.ts`); the Overview shows the top 15 as "Accounts to
+watch". Both build only from snapshots and the event study, so they read nothing live.
