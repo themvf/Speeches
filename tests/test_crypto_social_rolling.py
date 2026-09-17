@@ -118,3 +118,16 @@ def test_db_weekly_cohort_is_immutable_and_evaluation_keeps_inactive_accounts(db
         c.execute("SELECT evaluation FROM crypto_voice_snapshots WHERE coin='PONS'");e=c.fetchone()[0]
         assert e['groups']['Mixed cohort']['accounts']==1
         assert e['groups']['Mixed cohort']['active']==0
+
+
+def test_db_reviewed_profile_failure_keeps_maximum_charge_and_never_claims_data(db):
+    from crypto_social_rolling import account_failed_profile
+    setup(db,NOW)
+    with db,db.cursor() as c:
+        c.execute("INSERT INTO crypto_voice_snapshots VALUES ('ZCAT',%s,%s,'test',%s,'{}','{}',NULL)",(NOW.date(),NOW,'[{"id":"123","handle":"test","role":"Audience"}]'))
+    rid,_,_,credits=reserve(db,'ZCAT',NOW,'profiles')
+    with db,db.cursor() as c:c.execute("UPDATE crypto_social_requests SET status='uncertain' WHERE id=%s",(rid,))
+    account_failed_profile(db,rid);account_failed_profile(db,rid)
+    with db,db.cursor() as c:
+        c.execute('SELECT status,estimated_credits FROM crypto_social_requests WHERE id=%s',(rid,));assert c.fetchone()==('failed_charged',credits)
+        c.execute("SELECT used_credits FROM crypto_rolling_coins WHERE coin='ZCAT'");assert c.fetchone()[0]==credits

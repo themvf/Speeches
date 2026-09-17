@@ -110,7 +110,7 @@ def reserve(conn,coin,now,kind='posts'):
         used,limit=cur.fetchone()
         cur.execute('SELECT coalesce(sum(charged),0) FROM crypto_rolling_calls WHERE campaign_id=%s AND coin=%s AND day=%s',(CAMPAIGN,coin,now.date()))
         daily=cur.fetchone()[0]
-        cur.execute('SELECT count(*) FROM crypto_rolling_calls WHERE campaign_id=%s AND coin=%s AND kind=%s AND '+('day=%s' if kind!='posts' else 'run_slot=%s'),(CAMPAIGN,coin,kind,now.date() if kind!='posts' else slot(now)))
+        cur.execute("SELECT count(*) FROM crypto_rolling_calls WHERE request_id NOT IN (SELECT id FROM crypto_social_requests WHERE status='failed_charged') AND campaign_id=%s AND coin=%s AND kind=%s AND "+('day=%s' if kind!='posts' else 'run_slot=%s'),(CAMPAIGN,coin,kind,now.date() if kind!='posts' else slot(now)))
         cur_slot_count=cur.fetchone()[0]
         if cur_slot_count>=(1 if kind!='posts' else PAGES_PER_RUN):return None
         ids=[];window=None
@@ -158,6 +158,9 @@ def collect_one(conn,key,coin,now,kind='posts',fetch=None):
         response=(fetch or requests.get)(BASE+endpoint,params=params,headers={'X-API-Key':key},timeout=30,allow_redirects=False)
         if response.status_code!=200:raise ValueError(f'HTTP {response.status_code}')
         data=response.json()
+        # Archive the public provider response before parsing so failures can be diagnosed without another paid call.
+        with conn,conn.cursor() as cur:
+            cur.execute("UPDATE crypto_social_requests SET parameters=parameters || jsonb_build_object('provider_response',%s::jsonb) WHERE id=%s",(json.dumps(data),rid))
         if not isinstance(data,dict) or data.get('status') not in (None,'success'):raise ValueError('Provider error')
         if kind=='posts':
             post_ids=[str(t.get('id','')) for t in data.get('tweets',[])]
@@ -180,9 +183,9 @@ def collect_one(conn,key,coin,now,kind='posts',fetch=None):
             # Release unused headroom only after a validated saved response.
             cur.execute('UPDATE crypto_rolling_coins SET used_credits=used_credits-%s WHERE campaign_id=%s AND coin=%s',(credits-estimated,CAMPAIGN,coin))
             cur.execute('UPDATE crypto_rolling_calls SET charged=%s WHERE request_id=%s',(estimated,rid))
-    except Exception:
+    except Exception as exc:
         with conn,conn.cursor() as cur:
-            cur.execute("UPDATE crypto_social_requests SET status='uncertain',error='rolling_request_failed' WHERE id=%s",(rid,))
+            cur.execute("UPDATE crypto_social_requests SET status='uncertain',error=%s WHERE id=%s",(type(exc).__name__+": "+str(exc)[:300] if not isinstance(exc,requests.RequestException) else type(exc).__name__,rid))
         raise RuntimeError(f'Rolling request {rid} uncertain; retained reservation and stopped. Review ledger.') from None
     print(json.dumps({'coin':coin,'kind':kind,'request_id':rid,'estimated_credits':estimated}),flush=True)
     return True
@@ -199,9 +202,25 @@ def report(conn):
         return [dict(zip(['coin','charged_or_reserved','ceiling','posts','authors','latest_post','unfinished_windows'],row)) for row in cur.fetchall()]
 
 
+def account_failed_profile(conn,rid):
+    # Explicit operator-reviewed recovery only. Never refund an unknown charge or mark its data saved.
+    with conn,conn.cursor() as cur:
+        cur.execute('SELECT id FROM crypto_social_pilot WHERE id=%s FOR UPDATE',(PILOT,))
+        cur.execute("SELECT r.status,r.endpoint,r.reserved_credits,c.charged,r.parameters FROM crypto_social_requests r JOIN crypto_rolling_calls c ON c.request_id=r.id WHERE r.id=%s AND c.campaign_id=%s FOR UPDATE",(rid,CAMPAIGN))
+        row=cur.fetchone()
+        if not row or row[1]!='rolling_profiles' or row[2]!=row[3]:raise ValueError('Recovery ledger mismatch')
+        if row[0]=='failed_charged':return
+        if row[0]!='uncertain':raise ValueError('Only an uncertain failed profile request can be reconciled')
+        cur.execute('SELECT count(*) FROM crypto_social_profile_history WHERE request_id=%s',(rid,))
+        if cur.fetchone()[0]:raise ValueError('Saved profile evidence exists; needs separate review')
+        cur.execute("UPDATE crypto_social_requests SET status='failed_charged',estimated_credits=reserved_credits,error='Operator reviewed failed profile batch; full reservation charged conservatively; no saved data; actual provider charge unknown' WHERE id=%s",(rid,))
+        print(json.dumps({'reviewed_failed_request':rid,'conservative_credits_retained':row[2],'refund':0,'data_saved':False}),flush=True)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true')
+    parser.add_argument('--account-failed-profile',type=int)
     args=parser.parse_args()
     if not args.execute:
         print(json.dumps({'mode':'plan_only','coins':list(TRACKED),'days':30,'total_ceiling':COIN_LIMIT*len(TRACKED),'per_coin_ceiling':COIN_LIMIT,'pages_per_coin_per_run':PAGES_PER_RUN,'profiles_per_coin_daily':20,'paid_calls':0}));return
@@ -209,6 +228,7 @@ def main():
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
         now=datetime.now(timezone.utc)
+        if args.account_failed_profile:account_failed_profile(conn,args.account_failed_profile)
         if setup(conn,now):
             key=os.environ['TWITTERAPI_IO_API_KEY']
             evaluate(conn,now)
