@@ -19,6 +19,7 @@ type NavItem = {
     | "/briefings"
     | "/enforcement"
     | "/market"
+    | "/market/crypto"
     | "/saved";
   label: string;
   prefetch?: boolean;
@@ -32,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/trends-monitor", label: "Trend Monitor", prefetch: true },
   { href: "/enforcement", label: "Enforcement", prefetch: true },
   { href: "/market", label: "Market", prefetch: true },
+  { href: "/market/crypto", label: "Crypto Research", prefetch: true },
   { href: "/saved", label: "Saved", prefetch: true },
   { href: "/notices", label: "Rulemakings & Comments", prefetch: true },
   { href: "/chats", label: "Agentic Chats", prefetch: true }
@@ -41,6 +43,7 @@ function isActive(pathname: string, href: NavItem["href"]): boolean {
   if (href === "/") {
     return pathname === "/";
   }
+  if (href === "/market") return pathname === "/market";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

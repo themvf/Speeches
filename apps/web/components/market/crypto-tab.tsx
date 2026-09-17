@@ -1,6 +1,6 @@
 "use client";
 
-import { CryptoSocialPanel } from "./crypto-social-panel";
+import Link from "next/link";
 import { useState } from "react";
 import type { CryptoCoin, MarketCryptoData } from "@/lib/server/types";
 import { InlineChart } from "./price-chart";
@@ -95,11 +95,11 @@ export function CryptoTab({ data, loading, error }: Props) {
   const [range, setRange] = useState<CryptoRange>("24h");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (!data) return <><CryptoSocialPanel /><p className="p-4 text-sm">{error ?? (loading ? "Loading crypto markets…" : "Market prices unavailable.")}</p></>;
+  if (!data) return <><Link href="/market/crypto" className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] px-4 py-3 hover:border-[color:var(--line-strong)]"><span><span className="block text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Research workspace</span><span className="text-sm text-[color:var(--ink)]">Who is talking about ZCAT, PONS, DPONS, STANDARD and ZEC on X, and what the price did afterwards.</span></span><span className="text-sm font-semibold text-[color:var(--accent)]">Open Crypto Research →</span></Link><p className="p-4 text-sm">{error ?? (loading ? "Loading crypto markets…" : "Market prices unavailable.")}</p></>;
 
   return (
     <div className="space-y-4">
-      <CryptoSocialPanel />
+      <Link href="/market/crypto" className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.6)] px-4 py-3 hover:border-[color:var(--line-strong)]"><span><span className="block text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">Research workspace</span><span className="text-sm text-[color:var(--ink)]">Who is talking about ZCAT, PONS, DPONS, STANDARD and ZEC on X, and what the price did afterwards.</span></span><span className="text-sm font-semibold text-[color:var(--accent)]">Open Crypto Research →</span></Link>
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--ink-faint)]">
           Crypto Markets

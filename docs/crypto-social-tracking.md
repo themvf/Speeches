@@ -193,3 +193,14 @@ that was quietly dropping the newest posts from voice roles no longer applies on
 snapshot exists. Every read route now also sets `Cache-Control: s-maxage=300` so repeat
 page loads within five minutes are served by the CDN instead of Neon; the run route still
 ships the raw post set the explorer needs, which is the remaining large read.
+
+## Front door and URL state (2026-09-17)
+
+`/market/crypto` is the research workspace's own route (in the app nav as "Crypto
+Research"; the Market → Crypto tab keeps prices and links across). It opens on an
+**Overview** view (`GET /api/market/crypto/overview`): one card per tracked coin with the
+pinned pool's 24h price change, saved posts and distinct accounts over 24h/7d, first-time
+voices this week and price-linked episodes, plus a table of untracked coins named by the
+watcher accounts in the last seven days (from the coin-discovery extractor). Coin, view,
+selected account and date range live in the query string (`?coin=&view=&account=&from=&to=`),
+written with `history.replaceState`, so any state is shareable.
