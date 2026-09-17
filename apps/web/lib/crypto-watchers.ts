@@ -10,7 +10,8 @@ function template(text:string){return text.toLowerCase().replace(/https?:\/\/\S+
 export function watcherSignals(text:string){const w=text.split(/\n\s*\n/).some(part=>whale.test(part)&&transaction.test(part)),v=text.split(/\n/).some(line=>volume.test(line)&&amount.test(line));return {whale:w,volume:v,supported:w||v,linked:link.test(text)};}
 
 export function rankWatchers(raw:WatcherPost[],coin='ALL'){
- const dedup=new Map<string,WatcherPost>();for(const p of raw)if(!dedup.has(p.id))dedup.set(p.id,p);
+ const normalized=raw.map(p=>({...p,posted_at:new Date(p.posted_at).toISOString(),followers_observed_at:p.followers_observed_at?new Date(p.followers_observed_at).toISOString():null}));
+ const dedup=new Map<string,WatcherPost>();for(const p of normalized)if(!dedup.has(p.id))dedup.set(p.id,p);
  const posts=[...dedup.values()].filter(p=>p.kind!=='repost'&&p.coins.some(c=>(coin==='ALL'||c===coin)&&filterEvidence([p],c,'words').length));
  const groups=new Map<string,WatcherPost[]>();for(const p of posts){const a=groups.get(p.author_id)??[];a.push(p);groups.set(p.author_id,a);}
  const rows=[...groups].flatMap(([id,all])=>{

@@ -1,8 +1,5 @@
 name: Rolling Crypto Collection
 on:
-  push:
-    branches: [agent/crypto-rolling]
-    paths: ['crypto_social_rolling.py', '.github/workflows/crypto-social-rolling.yml']
   schedule:
     - cron: '17 0,6,12,18 * * *'
   workflow_dispatch:
@@ -29,11 +26,14 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install pytest 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
-      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_history.py tests/test_crypto_social_rolling.py -q
+      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_history.py tests/test_crypto_social_tracking.py tests/test_crypto_social_rolling.py tests/test_crypto_social_watchers.py -q
         env:
           CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@localhost:5432/crypto_test
   capture:
@@ -45,6 +45,9 @@ jobs:
       TWITTERAPI_IO_API_KEY: ${{ secrets.TWITTERAPI_IO_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'

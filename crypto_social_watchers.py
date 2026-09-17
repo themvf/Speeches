@@ -60,10 +60,12 @@ def reserve(conn,account,now):
         if now>=end or used+300>limit:return None
         cur.execute('''SELECT count(*) FROM crypto_watcher_calls c JOIN crypto_watcher_windows w ON w.id=c.window_id
             WHERE w.campaign_id=%s AND w.account_id=%s AND c.run_slot=%s''',(CAMPAIGN,account,slot(now)))
-        if cur.fetchone()[0]>=2:return None
+        slot_count=cur.fetchone()[0]
+        if slot_count>=2:return None
         cur.execute('''SELECT id,start_at,end_at,query,cursor FROM crypto_watcher_windows
             WHERE campaign_id=%s AND account_id=%s AND status IN ('pending','partial') AND end_at<=%s
-            ORDER BY pages,end_at DESC,id LIMIT 1 FOR UPDATE''',(CAMPAIGN,account,slot(now)))
+            ORDER BY CASE WHEN %s THEN CASE WHEN pages=0 THEN 0 ELSE 1 END ELSE CASE WHEN pages>0 THEN 0 ELSE 1 END END,
+            CASE WHEN pages>0 THEN start_at END ASC,end_at DESC,id LIMIT 1 FOR UPDATE''',(CAMPAIGN,account,slot(now),slot_count==0))
         window=cur.fetchone()
         if not window:return None
         cur.execute('UPDATE crypto_watcher_campaign SET used_credits=used_credits+300 WHERE id=%s',(CAMPAIGN,))
