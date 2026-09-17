@@ -255,3 +255,37 @@ focus and origin windows, so the backfill paginates until exhausted within the c
 ordinary 30,000-credit ceiling. Once an earliest contract post is saved, the existing
 30-hour focus windows around it are created automatically. All five coins added today carry
 `originFrom: 2026-06-01`; the established coins had dedicated history campaigns and do not.
+
+## Workspace redesign (2026-09-17)
+
+`/market/crypto` now runs on `crypto-workspace.tsx`: five destinations organised around the
+questions a researcher asks, replacing the eleven tab/sub-tab views.
+
+- **Signals** (`GET /api/market/crypto/signals?hours=24`): a coin board sorted by 24h pool
+  volume ratio (price, volume, posts and distinct accounts vs the prior window, watched
+  accounts posting) and a feed of named-rule signals evaluated by `lib/crypto-signals.ts`:
+  watched account posts the contract; volume ≥2× with ≥30 posts; first saved contract post
+  on a coin; attention without price (≥20 posts, |price| <2%, top three authors ≥60%); a
+  watched account reports a trade or volume figure. "Watched" = the ten reviewed watcher
+  accounts plus every account with a track record (early on a coin, or ≥3 episodes). Below:
+  top five track records and untracked coins named by watchers in the last seven days.
+- **People** (`GET /api/market/crypto/leaders?all=1`): one ranked list with coin chips and
+  rank/role/minimum-episodes/audience/recency filters. The former Largest audiences, Voice
+  roles, Price after posting and Watcher rankings views are sorts and filters here.
+- **Coins** (`?view=coins&coin=X&tab=timeline|posts|sentiment|connections`): opens on the
+  timeline with four stat cards (largest gain, accounts before it, earliest contract post,
+  coverage), the price/attention chart, and Before the move as the drill-down (`day=`,
+  `highlight=` in the URL). All posts, Sentiment and Connections are sub-views of the coin.
+- **Account** (`?view=account&account=<id>`): a full page backed by `/api/market/crypto/account`.
+- **Data** (`GET /api/market/crypto/status`): coverage per coin (days searched, origin search
+  progress, hourly candles), every credit ledger, and the registry with official handles.
+
+The header search (`GET /api/market/crypto/search?q=`) resolves coins by symbol, name or
+contract and accounts by handle; an untracked contract address offers the registry. Legacy
+URLs (`view=impact`, `view=network`, `account=` without a view) map onto the new destinations
+in `lib/crypto-workspace.ts`. Removed components: the social panel, influencer panel, large
+accounts, voices, watchers, watcher feed, coin discovery, price impact, overview and the
+account drawer; their libraries (`crypto-voices.ts`, `crypto-watchers.ts`,
+`crypto-coin-discovery.ts`, `crypto-run-reach.ts`) remain because the snapshot builder and
+routes use them. Weekly cohort validation tables are no longer rendered; the data is still
+written and served by the voices route.
