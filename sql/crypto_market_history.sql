@@ -1,6 +1,6 @@
 -- Immutable fetches and observations preserve earlier history and provider revisions.
 CREATE TABLE IF NOT EXISTS crypto_market_sources (
- id text PRIMARY KEY, coin text NOT NULL CHECK(coin IN ('ZCAT','ZEC','PONS')),
+ id text PRIMARY KEY, coin text NOT NULL,
  provider text NOT NULL, source_url text NOT NULL, metadata jsonb NOT NULL,
  is_default boolean NOT NULL DEFAULT false
 );
@@ -24,12 +24,10 @@ CREATE OR REPLACE VIEW crypto_market_latest AS
  FROM crypto_market_observations o JOIN crypto_market_fetches f ON f.id=o.fetch_id
  ORDER BY f.source_id,o.day,f.retrieved_at DESC,f.id DESC;
 
-ALTER TABLE crypto_market_sources DROP CONSTRAINT IF EXISTS crypto_market_sources_coin_check;
-ALTER TABLE crypto_market_sources ADD CONSTRAINT crypto_market_sources_coin_check CHECK(coin IN ('ZCAT','ZEC','PONS'));
 
 -- Price linkage (2026-09): hourly candles for every tracked coin and an immutable event study.
+-- Coin identity is governed by apps/web/lib/crypto-coins.json; the enumerated CHECK was dropped so a new coin needs no migration.
 ALTER TABLE crypto_market_sources DROP CONSTRAINT IF EXISTS crypto_market_sources_coin_check;
-ALTER TABLE crypto_market_sources ADD CONSTRAINT crypto_market_sources_coin_check CHECK(coin IN ('ZCAT','ZEC','PONS','DPONS','STANDARD'));
 CREATE TABLE IF NOT EXISTS crypto_market_hourly (
  fetch_id bigint NOT NULL REFERENCES crypto_market_fetches(id), hour timestamptz NOT NULL,
  sample_at timestamptz NOT NULL, close double precision NOT NULL CHECK(close>0),

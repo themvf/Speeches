@@ -1,13 +1,8 @@
 // Deterministic extraction from saved source text. No price, identity or trade verification.
+import {COINS} from './crypto-coins.ts';
 export const EXTRACTION_VERSION='watcher-coins-v1';
 export type DiscoveryPost={id:string;author_id:string;handle:string;text:string;posted_at:string;kind:string;url:string};
-const tracked=[
- {symbol:'ZCAT',network:'Solana',address:'HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR',name:/\banonymous cat\b/i},
- {symbol:'PONS',network:'Robinhood',address:'0x39dbed3a2bd333467115de45665cc57f813c4571',name:/\bponsdotfamily\b/i},
- {symbol:'DPONS',network:'Robinhood',address:'0x0e6d1ebb33f3b8f2d09bacf3b1a1d5c581110c33',name:/\bdiamond\s*pons\b/i},
- {symbol:'STANDARD',network:'Robinhood',address:'0x88ad8ddf1e3898412146a534538d418c6f8a9062',name:/\bthe standard reserve\b/i},
- {symbol:'ZEC',network:'Zcash',address:'',name:/\bzcash\b/i},
-];
+const tracked=COINS.map(c=>({symbol:c.symbol,network:c.networkLabel,address:c.address??'',name:new RegExp(c.discoveryName,'i')}));
 const canonical=(a:string)=>a.startsWith('0x')?a.toLowerCase():a;
 const addressPattern='(?:0x[a-fA-F0-9]{40}(?![a-fA-F0-9])|[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z]))';
 const excluded=new Set(['USD','US','K','M','B']);

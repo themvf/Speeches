@@ -1,11 +1,12 @@
 import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
+import {isCoin,coinConfig} from '@/lib/crypto-coins';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 export async function GET(request:Request){
  const coin=new URL(request.url).searchParams.get('coin')??'ZCAT';
- if(!['ZCAT','ZEC','PONS','DPONS','STANDARD'].includes(coin))return fail('Unknown coin','INVALID_COIN',400);
- const start=coin==='PONS'?'2026-07-01':'2026-07-25';
+ if(!isCoin(coin))return fail('Unknown coin','INVALID_COIN',400);
+ const start=coinConfig(coin).archiveStart;
  if(!process.env.DATABASE_URL)return ok({status:'not_configured',posts:[],days:[],total:0,limit:25000});
  const sql=neon(process.env.DATABASE_URL);
  try{

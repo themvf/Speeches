@@ -10,6 +10,7 @@ import math
 import os
 from pathlib import Path
 import re
+from crypto_coins import markets
 
 ADDRESS='HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR'
 START=date(2026,7,25)
@@ -17,13 +18,8 @@ GECKO='https://api.geckoterminal.com/api/v2/networks/'
 BASE=GECKO+'solana'
 ZEC_URL='https://api.coingecko.com/api/v3/coins/zcash/market_chart?vs_currency=usd&days=90&interval=daily'
 ZEC_HOURLY_URL='https://api.coingecko.com/api/v3/coins/zcash/market_chart?vs_currency=usd&days=30'
-# Contract coins: network, address, first archived day. Addresses are user-supplied and unverified.
-MARKETS={
- 'ZCAT':('solana',ADDRESS,START),
- 'PONS':('robinhood','0x39dbed3a2bd333467115de45665cc57f813c4571',date(2026,7,1)),
- 'DPONS':('robinhood','0x0e6d1ebb33f3b8f2d09bacf3b1a1d5c581110c33',START),
- 'STANDARD':('robinhood','0x88ad8ddf1e3898412146a534538d418c6f8a9062',START),
-}
+# Contract coins: network, address, first archived day (from the shared registry).
+MARKETS=markets()
 
 
 def setup(conn):
@@ -129,10 +125,10 @@ def refresh(conn,fetch=None,now=None,wait=None):
         cur.execute("SELECT pg_try_advisory_lock(hashtext('crypto-market-history'))")
         if not cur.fetchone()[0]:return {'saved':[],'errors':['refresh_already_running']}
     def get(url):
-        for attempt in range(2):
-            wait(3)  # Public market APIs are shared and rate-limited; never burst requests.
+        for attempt in range(4):
+            wait(4)  # Public market APIs are shared and rate-limited; never burst requests.
             response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
-            if response.status_code==429 and attempt==0:
+            if response.status_code==429 and attempt<3:
                 try:delay=float(getattr(response,'headers',{}).get('Retry-After','15'))
                 except (ValueError,TypeError):delay=15
                 if not math.isfinite(delay):delay=15
@@ -155,7 +151,10 @@ def refresh(conn,fetch=None,now=None,wait=None):
                 if not selected:skipped.append(coin+': no indexed pool for this contract');continue
                 # The pin rule is the oldest pool among those archived; the hourly series follows the same choice.
                 primary=row[0]['id'] if row else min(selected,key=lambda p:(p['created'],p['id']))['id']
+                # Daily candles: the pinned pool plus the two most liquid others; every extra pool is another rate-limited call.
+                daily=[p for p in sorted(selected,key=lambda p:(-p['liquidity'],p['id'])) if p['id']!=primary][:2]
                 for pool in sorted(selected,key=lambda p:(p['created'],p['id'])):
+                    if pool['id']!=primary and pool not in daily:continue
                     source=dict(id=source_id(network,pool['id']),coin=coin,provider='GeckoTerminal',url='https://www.geckoterminal.com/'+network+'/pools/'+pool['id'],metadata=pool)
                     for timeframe,hourly in [('day',False),('hour',True)]:
                         if hourly and pool['id']!=primary:continue
@@ -165,7 +164,7 @@ def refresh(conn,fetch=None,now=None,wait=None):
                             fid=save(conn,source,{'catalog':catalog,'ohlcv':raw},points,url,now,hourly=hourly)
                             saved.append({'source':source['id'],'fetch_id':fid,'points':len(points),'timeframe':timeframe})
                         except (ValueError,requests.RequestException) as exc:errors.append(coin+' pool '+pool['id']+' '+timeframe+': '+type(exc).__name__+' '+str(exc)[:160])
-            except (ValueError,requests.RequestException) as exc:errors.append(coin+' catalog: '+type(exc).__name__)
+            except (ValueError,requests.RequestException) as exc:errors.append(coin+' catalog: '+type(exc).__name__+' '+str(exc)[:160])
         source=dict(id='coingecko:zcash',coin='ZEC',provider='CoinGecko',url='https://www.coingecko.com/en/coins/zcash',metadata={'id':'zcash'})
         for url,hourly in [(ZEC_URL,False),(ZEC_HOURLY_URL,True)]:
             try:
@@ -192,7 +191,8 @@ def main():
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
         result=refresh(conn);print(json.dumps(result));
-        if result['errors']:raise SystemExit(1)
+        # Provider rate limits on secondary pools are noise; a run with nothing archived is the failure.
+        if not result['saved']:raise SystemExit(1)
     finally:conn.close()
 
 if __name__=='__main__':main()

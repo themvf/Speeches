@@ -5,14 +5,11 @@ import json
 import os
 from crypto_voice_research import snapshot,evaluate,initialize as initialize_research
 from crypto_social_pilot import PILOT, COINS, initialize, save_page
-from crypto_social_history import PONS_ADDRESS, DPONS_ADDRESS
+from crypto_coins import COINS as REGISTRY
 from crypto_social_tracking import save_profiles,save_posts
 
-STANDARD_ADDRESS='0x88ad8ddf1e3898412146a534538d418c6f8a9062'
-TRACKED={**COINS,
- 'PONS':('Pons',f'(\"{PONS_ADDRESS}\" OR (PONS Robinhood) OR from:ponsdotfamily)',PONS_ADDRESS,'Robinhood Chain'),
- 'DPONS':('Diamond Pons',f'(DPONS OR \"DiamondPons\" OR \"Diamond Pons\" OR \"{DPONS_ADDRESS}\")',DPONS_ADDRESS,'Robinhood Chain'),
- 'STANDARD':('The Standard Reserve',f'(\"The Standard Reserve\" OR from:standard_rsv OR to:standard_rsv OR \"{STANDARD_ADDRESS}\")',STANDARD_ADDRESS,'Robinhood Chain')}
+# Query text comes from the shared registry; saved windows carry it verbatim, so it must not drift (pinned in tests).
+TRACKED={**COINS,**{s:(c['name'],c['searchQuery'],c['address'],c['networkLabel']+' Chain') for s,c in REGISTRY.items() if s not in COINS}}
 CAMPAIGN='rolling-five-coins-v1'
 COIN_LIMIT=30000
 DAILY_LIMIT=5400

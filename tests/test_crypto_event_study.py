@@ -103,3 +103,39 @@ def test_db_refresh_archives_hourly_for_the_pinned_pool_only(db):
     with db,db.cursor() as c:
         c.execute('SELECT count(*) FROM crypto_market_hourly_latest');assert c.fetchone()[0]==1
         c.execute("SELECT id FROM crypto_market_sources WHERE is_default");assert c.fetchone()[0]=='geckoterminal:'+POOL
+
+def test_db_daily_candles_are_limited_to_pinned_plus_two_liquid_pools(db):
+    class Response:
+        status_code=200
+        def __init__(self,data):self.data=data
+        def json(self):return self.data
+    calls=[]
+    def fetch(url,**kwargs):
+        calls.append(url)
+        if 'coingecko.com' in url:raise ValueError('provider unavailable')
+        if url.endswith('/pools'):
+            data=catalog();base=data['data'][0]
+            for i in range(1,5):
+                extra=dict(base);extra['attributes']={**base['attributes'],'address':str(i)*40,'pool_created_at':f'2026-09-0{i}T00:00:00Z','reserve_in_usd':str(1000*i)}
+                data['data'].append(extra)
+            return Response(data)
+        return Response(candles())
+    refresh(db,fetch=fetch,now=NOW,wait=lambda _:None)
+    daily=[u for u in calls if '/ohlcv/day' in u]
+    assert len(daily)==3 and any(POOL in u for u in daily) and any('4'*40 in u for u in daily) and any('3'*40 in u for u in daily)
+
+def test_db_repeated_rate_limits_retry_within_bound_then_fail_softly(db):
+    class Response:
+        headers={'Retry-After':'5'}
+        def __init__(self,status,data=None):self.status_code=status;self.data=data
+        def json(self):return self.data
+    calls=[]
+    def fetch(url,**kwargs):
+        calls.append(url)
+        if url.endswith('/pools') and 'solana' in url:return Response(200,catalog())
+        if '/ohlcv/day' in url:return Response(200,candles())
+        return Response(429)
+    result=refresh(db,fetch=fetch,now=NOW,wait=lambda _:None)
+    assert len(result['saved'])==1  # the daily candles arrived; hourly and the other catalogs were rate-limited four times each
+    assert calls.count([u for u in calls if '/ohlcv/hour' in u][0])==4
+    assert any('429' in e for e in result['errors'])

@@ -1,12 +1,13 @@
 "use client";
 import {useEffect,useMemo,useState,useRef} from 'react';
 import {filterEvidence,type RunData,type RunPost} from '@/lib/crypto-run';
+import {COIN_SYMBOLS} from '@/lib/crypto-coins';
 import {defaultPostFilters,filterSavedPosts,type PostFilters} from '@/lib/crypto-post-filter';
 import {accountRoles,type Sentiment,sentimentLabels} from '@/lib/crypto-intelligence';
 import {CryptoSentimentView} from './crypto-sentiment-view';
 import styles from './crypto-research.module.css';
 type TaggedPost=RunPost&{coins:string[]};
-const coins=['ZCAT','PONS','DPONS','ZEC','STANDARD'];
+const coins=COIN_SYMBOLS;
 const count=(n:number|null|undefined)=>n==null?'—':n.toLocaleString();
 export function CryptoPostBrowser({coin,run,allSearches=false,insightsOnly=false,onBrowse}:{coin:string;run:RunData;allSearches?:boolean;onBrowse?:()=>void;insightsOnly?:boolean}){
  const sheet=useRef<HTMLDialogElement>(null);
@@ -20,7 +21,7 @@ export function CryptoPostBrowser({coin,run,allSearches=false,insightsOnly=false
   Promise.all(coins.filter(c=>c!==coin).map(async c=>{const response=await fetch(`/api/market/crypto/run?coin=${c}`,{signal:controller.signal});const body=await response.json();if(!response.ok||!body.ok)throw Error();return [c,body.data] as [string,RunData];})).then(rows=>{if(!controller.signal.aborted){setExtra(Object.fromEntries(rows));setLoading(false);}}).catch(()=>{if(!controller.signal.aborted){setLoading(false);setError('Could not load all searches. Retry to avoid reviewing an incomplete combined result.');}});return()=>controller.abort();
  },[scope,coin,retry]);
  const datasets=useMemo(()=>scope==='all'?{...extra,[coin]:run}:{[coin]:run},[scope,extra,coin,run]);
- const posts=useMemo(()=>{const map=new Map<string,TaggedPost>();for(const [symbol,data] of Object.entries(datasets)){const eligible=evidence==='contract'&&symbol==='ZEC'?[]:filterEvidence(data.posts,symbol,evidence);for(const p of eligible){const existing=map.get(p.id);if(existing)existing.coins.push(symbol);else map.set(p.id,{...p,coins:[symbol]});}}return [...map.values()];},[datasets,evidence]);
+ const posts=useMemo(()=>{const map=new Map<string,TaggedPost>();for(const [symbol,data] of Object.entries(datasets)){const eligible=filterEvidence(data.posts,symbol,evidence);for(const p of eligible){const existing=map.get(p.id);if(existing)existing.coins.push(symbol);else map.set(p.id,{...p,coins:[symbol]});}}return [...map.values()];},[datasets,evidence]);
  const roles=useMemo(()=>Object.fromEntries(Object.entries(datasets).map(([c,d])=>[c,accountRoles(filterEvidence(d.posts,c,'words'))])),[datasets]);
  const annotationMap=useMemo(()=>new Map(annotations.filter(a=>a.coin===analysisCoin).map(a=>[a.post_id,a])),[annotations,analysisCoin]);
  const baseResults=useMemo(()=>filterSavedPosts(posts,filters),[posts,filters]);

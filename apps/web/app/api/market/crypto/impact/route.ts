@@ -1,13 +1,13 @@
 import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
 import {IMPACT_VERSION,type ImpactBaseline,type ImpactRow} from '@/lib/crypto-impact';
+import {COIN_SYMBOLS as COINS,isCoin} from '@/lib/crypto-coins';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
-const COINS=['ZCAT','ZEC','PONS','DPONS','STANDARD'];
 // Read-only: aggregates the immutable event study written by crypto_event_study.py. Never calls a provider.
 export async function GET(request:Request){
  const coin=new URL(request.url).searchParams.get('coin')??'ALL';
- if(coin!=='ALL'&&!COINS.includes(coin))return fail('Unknown coin','INVALID_COIN',400);
+ if(coin!=='ALL'&&!isCoin(coin))return fail('Unknown coin','INVALID_COIN',400);
  const empty={status:'not_started',version:IMPACT_VERSION,coin,accounts:[] as ImpactRow[],baselines:[] as ImpactBaseline[],events:0,episodes:0};
  if(!process.env.DATABASE_URL)return ok({...empty,status:'not_configured'});
  const sql=neon(process.env.DATABASE_URL);

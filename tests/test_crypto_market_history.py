@@ -80,7 +80,7 @@ def test_db_market_rate_limit_has_one_bounded_retry_without_x_calls(db):
         return Response(200,catalog() if url.endswith('/pools') else candles())
     result=refresh(db,fetch=fetch,now=NOW,wait=delays.append)
     assert not result['errors'] and len(result['saved'])==4
-    assert len(calls)==16 and max(delays)==20
+    assert len(calls)==16 and max(delays)==20 and min(delays)==4
     assert all('twitter' not in url for url in calls)
 
 
@@ -91,7 +91,7 @@ def test_db_long_provider_cooldown_is_not_shortened(db):
         headers={'Retry-After':'999'}
     def fetch(url,**kwargs):calls.append(url);return Response()
     result=refresh(db,fetch=fetch,now=NOW,wait=lambda _:None)
-    assert len(calls)==6 and len(set(calls))==6
+    assert len(calls)==6 and len(set(calls))==6  # one long cooldown per request is not retried
     assert len(result['errors'])==6 and not result['saved']
 
 

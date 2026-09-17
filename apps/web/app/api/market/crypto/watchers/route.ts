@@ -2,11 +2,12 @@ import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
 import {rankWatchers,type WatcherPost} from '@/lib/crypto-watchers';
 import {WATCHER_QUERY} from '@/lib/server/crypto-watchers-query';
+import {isCoin} from '@/lib/crypto-coins';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 export async function GET(request:Request){
  const coin=new URL(request.url).searchParams.get('coin')??'ALL';
- if(!['ALL','ZCAT','ZEC','PONS','DPONS','STANDARD'].includes(coin))return fail('Unknown coin','INVALID_COIN',400);
+ if(coin!=='ALL'&&!isCoin(coin))return fail('Unknown coin','INVALID_COIN',400);
  if(!process.env.DATABASE_URL)return ok({accounts:[],loaded:0,total:0,candidates:0});
  try{
   const sql=neon(process.env.DATABASE_URL);

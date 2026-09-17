@@ -1,9 +1,10 @@
 import {neon} from '@neondatabase/serverless';
 import {ok,fail} from '@/lib/server/api-utils';
 import {rankVoices,type VoicePost} from '@/lib/crypto-voices';
+import {isCoin} from '@/lib/crypto-coins';
 export const dynamic='force-dynamic';
 export async function GET(request:Request){
- const coin=new URL(request.url).searchParams.get('coin')??'ZCAT';if(!['ZCAT','PONS','DPONS','ZEC','STANDARD'].includes(coin))return fail('Invalid coin','INVALID_COIN',400);
+ const coin=new URL(request.url).searchParams.get('coin')??'ZCAT';if(!isCoin(coin))return fail('Invalid coin','INVALID_COIN',400);
  if(!process.env.DATABASE_URL)return ok({...rankVoices([],coin),total:0,unfinished:0,snapshots:[]});
  try{const sql=neon(process.env.DATABASE_URL);const posts=await sql`SELECT p.*,a.handle,a.followers::float,a.observed_at AS followers_observed_at,
  coalesce((SELECT jsonb_agg(jsonb_build_object('target_id',e.target_id,'target',e.target_id,'kind',e.kind)) FROM crypto_social_edges e WHERE e.post_id=p.id),'[]'::jsonb) AS edges,count(*) OVER()::int AS total

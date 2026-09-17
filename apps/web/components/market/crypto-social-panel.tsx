@@ -11,6 +11,7 @@ import {CryptoConnections} from './crypto-connections';
 import {CryptoLargeAccounts} from './crypto-large-accounts';
 import {CryptoAccountDrawer} from './crypto-account-drawer';
 import {CryptoPriceImpact} from './crypto-price-impact';
+import {COINS,coinConfig} from '@/lib/crypto-coins';
 import styles from './crypto-research.module.css';
 type Meta={rolling?:{used_credits:number;credit_limit:number;end_at:string;last_saved:string|null;unfinished:number}|null;tracking?:Tracking|null;pilot?:{reserved_credits:number;credit_limit:number;outstanding:number};history?:{campaign:{reserved_credits:number;credit_limit:number}}|null};
 export function CryptoSocialPanel(){
@@ -21,7 +22,7 @@ export function CryptoSocialPanel(){
  const [error,setError]=useState(''),[marketLoading,setMarketLoading]=useState(true);
  const [from,setFrom]=useState('2026-07-25'),[to,setTo]=useState(new Date().toISOString().slice(0,10));
  const [selected,setSelected]=useState<string|null>(null);
- useEffect(()=>{const c=new AbortController();setRun(null);setMeta(null);setError('');setSelected(null);setFrom(coin==='PONS'?'2026-07-01':'2026-07-25');setTo(new Date().toISOString().slice(0,10));
+ useEffect(()=>{const c=new AbortController();setRun(null);setMeta(null);setError('');setSelected(null);setFrom(coinConfig(coin).archiveStart);setTo(new Date().toISOString().slice(0,10));
   const load=async(path:string)=>{const r=await fetch(path,{signal:c.signal});const b=await r.json();if(!r.ok||!b.ok)throw new Error();return b.data;};
   load(`/api/market/crypto/run?coin=${coin}`).then(setRun).catch(()=>{if(!c.signal.aborted)setError('Saved research could not be loaded. Please reload to try again.');});
   load(`/api/market/crypto/social?coin=${coin}`).then(setMeta).catch(()=>{});return()=>c.abort();},[coin]);
@@ -37,7 +38,7 @@ export function CryptoSocialPanel(){
  const searchedDays=(run?.days??[]).filter(d=>d.day>=from&&d.day<=to&&d.searched>0).length,first=authors[0]?.posts[0];
  const range=(a:string,b:string)=>{setFrom(a);setTo(b);setSelected(null);};
  return <section className={`${styles.panel} ${styles.explorer}`} aria-label="Crypto run explorer">
-  <header className={styles.explorerHeader}><div><p className={styles.label}>Research workspace</p><h2>Crypto intelligence</h2><p className={styles.muted}>Find the accounts. Understand the timing. Follow the evidence.</p></div><select hidden={tab==='watchers'} aria-label="Research coin" value={allSearches?'ALL':coin} onChange={e=>{setPool('');setEvidenceMode('words');setAllSearches(e.target.value==='ALL');if(e.target.value==='ALL')setTab(previous=>previous==='watchers'?'watchers':'posts');else setCoin(e.target.value);}}><option value="ZCAT">ZCAT · Anonymous Cat</option><option value="PONS">PONS · Robinhood Chain</option><option value="DPONS">DPONS · Diamond Pons</option><option value="ZEC">ZEC · Zcash</option><option value="STANDARD">STANDARD · The Standard Reserve</option><option value="ALL">All tracked coins</option></select></header>
+  <header className={styles.explorerHeader}><div><p className={styles.label}>Research workspace</p><h2>Crypto intelligence</h2><p className={styles.muted}>Find the accounts. Understand the timing. Follow the evidence.</p></div><select hidden={tab==='watchers'} aria-label="Research coin" value={allSearches?'ALL':coin} onChange={e=>{setPool('');setEvidenceMode('words');setAllSearches(e.target.value==='ALL');if(e.target.value==='ALL')setTab(previous=>previous==='watchers'?'watchers':'posts');else setCoin(e.target.value);}}>{COINS.map(c=><option key={c.symbol} value={c.symbol}>{c.label}</option>)}<option value="ALL">All tracked coins</option></select></header>
   <nav className={styles.viewTabs} aria-label="Research views">{[['posts','Posts'],['reach','Accounts'],['run','Insights'],['watchers','Watchers']].map(([id,label])=><button key={id} aria-pressed={id==='posts'?tab==='posts':id==='reach'?['reach','voices','impact'].includes(tab):id==='watchers'?tab==='watchers':['run','network','sentiment'].includes(tab)} onClick={()=>{setTab(id);if(id!=='posts')setAllSearches(id==='watchers');}}>{label}</button>)}</nav>
   {['reach','voices','impact'].includes(tab)&&<div className={styles.secondaryTabs} aria-label="Account view"><button aria-pressed={tab==='reach'} onClick={()=>{setTab('reach');setAllSearches(false);}}>Largest audiences</button><button aria-pressed={tab==='voices'} onClick={()=>{setTab('voices');setAllSearches(false);}}>Voice roles</button><button aria-pressed={tab==='impact'} onClick={()=>{setTab('impact');setAllSearches(false);}}>Price after posting</button></div>}
   {['run','network','sentiment'].includes(tab)&&<div className={styles.secondaryTabs} aria-label="Insight view"><button aria-pressed={tab==='run'} onClick={()=>setTab('run')}>Price & timing</button><button aria-pressed={tab==='sentiment'} onClick={()=>setTab('sentiment')}>Sentiment</button><button aria-pressed={tab==='network'} onClick={()=>setTab('network')}>Connections</button></div>}

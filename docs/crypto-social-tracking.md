@@ -159,3 +159,21 @@ share up, share beating drift, 24h-after over 24h-before volume ratio, best/wors
 returns the per-coin baselines. Accounts → "Price after posting" renders it with a
 minimum-episodes control (default 3). All of it is association: a post can follow a move,
 react to news, or be one of hundreds in the same hour, and pool prices are one pool.
+
+## Coin registry (2026-09-17)
+
+Tracked-coin identity lives in one file, `apps/web/lib/crypto-coins.json`: symbol, name,
+network, contract address, archive start date, name/cashtag patterns, context pairs,
+name-collision exclusions, discovery name, profile terms, official handles and the
+provider search query. `apps/web/lib/crypto-coins.ts` (`matchesCoin`, `isCoin`,
+`coinConfig`) and `crypto_coins.py` (`mentions`, `markets`, `archive_start`) read it;
+`tests/fixtures/crypto-coin-matches.json` pins both to the same answers. Consumers:
+`filterEvidence`, voice roles, coin discovery, every `/api/market/crypto/*` allowlist and
+archive start, the research coin picker, the market archive, the event study, profile bio
+matching and the rolling collector's names/queries. Adding a coin is one JSON entry plus a
+pinned pool appearing on GeckoTerminal; the SQL coin CHECK was dropped for that reason.
+
+Do not edit `searchQuery` for a coin with saved windows: window rows store the query text
+verbatim and pagination cursors belong to it (`tests/test_crypto_coins.py` pins the live
+ones). The dated, bounded campaign scripts (`crypto_social_pilot/history/catchup/dpons`)
+keep their own literals on purpose; they describe finished or fixed-scope collections.

@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { ok, fail } from "@/lib/server/api-utils";
+import { isCoin } from "@/lib/crypto-coins";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -7,7 +8,7 @@ export const runtime = "nodejs";
 // Read-only: opening the dashboard never calls TwitterAPI.io.
 export async function GET(request: Request) {
   const coin = new URL(request.url).searchParams.get("coin") ?? "ZCAT";
-  if (!["ZCAT", "ZEC", "PONS", "DPONS", "STANDARD"].includes(coin)) return fail("Unknown coin", "INVALID_COIN", 400);
+  if (!isCoin(coin)) return fail("Unknown coin", "INVALID_COIN", 400);
   if (!process.env.DATABASE_URL) return ok({ status: "not_configured" });
   const sql = neon(process.env.DATABASE_URL);
   try {

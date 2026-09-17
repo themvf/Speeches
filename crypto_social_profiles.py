@@ -3,7 +3,8 @@ import re
 import unicodedata
 from crypto_social_pilot import count, identity, ADDRESS
 
-TERMS = {'ZCAT': ['zcat', 'anonymous cat'], 'ZEC': ['zcash', 'zec'], 'PONS': ['pons', 'ponsdotfamily'], 'DPONS': ['dpons', 'diamond pons', 'diamondpons'], 'STANDARD': ['the standard reserve', 'standard_rsv']}
+from crypto_coins import COINS as _REGISTRY
+TERMS = {symbol: cfg['profileTerms'] for symbol, cfg in _REGISTRY.items()}
 
 
 def matches(text):

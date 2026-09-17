@@ -13,34 +13,20 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import json
 import os
-import re
-from crypto_market_history import setup, MARKETS, START
+from crypto_coins import SYMBOLS, archive_start, mentions as registry_mentions
+from crypto_market_history import setup
 
 VERSION='price-events-v1'
 HORIZON=timedelta(hours=24)
-COINS=list(MARKETS)+['ZEC']
-_CONTRACT={coin:cfg[1] for coin,cfg in MARKETS.items()}
-_WORDS={
- 'ZCAT':re.compile(r'(^|[^a-z0-9_])zcat(?![a-z0-9_])|anonymous\s+cat',re.I),
- 'PONS':re.compile(r'[$#]pons(?![a-z0-9_])',re.I),
- 'DPONS':re.compile(r'(^|[^a-z0-9_])dpons(?![a-z0-9_])|\bdiamond\s*pons\b',re.I),
- 'STANDARD':re.compile(r'[$#]standard(?![a-z0-9_])|\bthe\s+standard\s+reserve\b|\bstandard_rsv\b',re.I),
- 'ZEC':re.compile(r'(^|[^a-z0-9_])zcash(?![a-z0-9_])|(^|[^a-z0-9_])zec(?![a-z0-9_])',re.I),
-}
-_PONS_CONTEXT=re.compile(r'\bpons\b',re.I),re.compile(r'robinhood|ponsdotfamily',re.I)
+COINS=SYMBOLS
 
 
 def mentions(coin,text):
-    """Port of the dashboard's 'Coin words in post' evidence filter (apps/web/lib/crypto-run.ts)."""
-    contract=_CONTRACT.get(coin)
-    if contract and (contract.lower() in text.lower() if contract.startswith('0x') else contract in text):return True
-    if coin=='PONS' and _PONS_CONTEXT[0].search(text) and _PONS_CONTEXT[1].search(text):return True
-    if coin=='ZCAT' and re.search(r'\bton\b|toncoin',text,re.I):return False  # a different token shares the name
-    return bool(_WORDS[coin].search(text))
+    return registry_mentions(text,coin,'words')
 
 
 def coin_start(coin):
-    return datetime.combine(MARKETS[coin][2] if coin in MARKETS else START,datetime.min.time(),timezone.utc)
+    return datetime.combine(archive_start(coin),datetime.min.time(),timezone.utc)
 
 
 def floor_hour(stamp):

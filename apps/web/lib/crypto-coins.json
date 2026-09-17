@@ -1,0 +1,45 @@
+{
+  "note": "Single registry for tracked crypto coins. Consumed by apps/web/lib/crypto-coins.ts and crypto_coins.py; never fork per-language copies. Addresses are user-supplied and unverified. Patterns are case-insensitive regular expressions valid in both JavaScript and Python. 'words' match the coin by name/cashtag; 'contextWords' need both patterns in the same post; 'exclude' drops a words-mode match (a different token shares the name); 'searchQuery' is the provider query text and must not change for a live campaign, because saved search windows carry it verbatim.",
+  "coins": [
+    {
+      "symbol": "ZCAT", "name": "Anonymous Cat", "label": "ZCAT · Anonymous Cat", "network": "solana", "networkLabel": "Solana",
+      "address": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR", "archiveStart": "2026-07-25",
+      "words": ["(^|[^a-z0-9_])zcat(?![a-z0-9_])", "anonymous\\s+cat"], "contextWords": [], "exclude": ["\\bton\\b|toncoin"],
+      "discoveryName": "\\banonymous cat\\b", "profileTerms": ["zcat", "anonymous cat"], "official": ["launchonsf"],
+      "searchQuery": "(\"$ZCAT\" OR \"Anonymous Cat\" OR \"HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR\")",
+      "identityNote": "user-supplied address; not independently verified"
+    },
+    {
+      "symbol": "PONS", "name": "Pons", "label": "PONS · Robinhood Chain", "network": "robinhood", "networkLabel": "Robinhood",
+      "address": "0x39dbed3a2bd333467115de45665cc57f813c4571", "archiveStart": "2026-07-01",
+      "words": ["[$#]pons(?![a-z0-9_])"], "contextWords": [["\\bpons\\b", "robinhood|ponsdotfamily"]], "exclude": [],
+      "discoveryName": "\\bponsdotfamily\\b", "profileTerms": ["pons", "ponsdotfamily"], "official": ["ponsdotfamily"],
+      "searchQuery": "(\"0x39dbed3a2bd333467115de45665cc57f813c4571\" OR (PONS Robinhood) OR from:ponsdotfamily)",
+      "identityNote": "Robinhood Chain"
+    },
+    {
+      "symbol": "DPONS", "name": "Diamond Pons", "label": "DPONS · Diamond Pons", "network": "robinhood", "networkLabel": "Robinhood",
+      "address": "0x0e6d1ebb33f3b8f2d09bacf3b1a1d5c581110c33", "archiveStart": "2026-07-25",
+      "words": ["(^|[^a-z0-9_])dpons(?![a-z0-9_])|\\bdiamond\\s*pons\\b"], "contextWords": [], "exclude": [],
+      "discoveryName": "\\bdiamond\\s*pons\\b", "profileTerms": ["dpons", "diamond pons", "diamondpons"], "official": ["diamondpons_"],
+      "searchQuery": "(DPONS OR \"DiamondPons\" OR \"Diamond Pons\" OR \"0x0e6d1ebb33f3b8f2d09bacf3b1a1d5c581110c33\")",
+      "identityNote": "Robinhood Chain"
+    },
+    {
+      "symbol": "ZEC", "name": "Zcash", "label": "ZEC · Zcash", "network": "zcash", "networkLabel": "Zcash",
+      "address": null, "archiveStart": "2026-07-25",
+      "words": ["(^|[^a-z0-9_])zcash(?![a-z0-9_])|(^|[^a-z0-9_])zec(?![a-z0-9_])"], "contextWords": [], "exclude": [],
+      "discoveryName": "\\bzcash\\b", "profileTerms": ["zcash", "zec"], "official": ["zcash", "electriccoinco", "zcashfoundation"],
+      "searchQuery": "(\"$ZEC\" OR \"Zcash\")",
+      "identityNote": "name and cashtag"
+    },
+    {
+      "symbol": "STANDARD", "name": "The Standard Reserve", "label": "STANDARD · The Standard Reserve", "network": "robinhood", "networkLabel": "Robinhood",
+      "address": "0x88ad8ddf1e3898412146a534538d418c6f8a9062", "archiveStart": "2026-07-25",
+      "words": ["[$#]standard(?![a-z0-9_])", "\\bthe\\s+standard\\s+reserve\\b|\\bstandard_rsv\\b"], "contextWords": [], "exclude": [],
+      "discoveryName": "\\bthe standard reserve\\b", "profileTerms": ["the standard reserve", "standard_rsv"], "official": ["standard_rsv"],
+      "searchQuery": "(\"The Standard Reserve\" OR from:standard_rsv OR to:standard_rsv OR \"0x88ad8ddf1e3898412146a534538d418c6f8a9062\")",
+      "identityNote": "Robinhood Chain"
+    }
+  ]
+}

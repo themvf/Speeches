@@ -1,0 +1,12 @@
+[
+  ["$ZCAT rising", "ZCAT", "words", true], ["HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR", "ZCAT", "contract", true],
+  ["$ZCAT rising", "ZCAT", "contract", false], ["zcatfish", "ZCAT", "words", false], ["Anonymous Cat launch", "ZCAT", "words", true],
+  ["zcat on TON is different", "ZCAT", "words", false], ["concatenate", "ZCAT", "words", false],
+  ["0x39dBED3a2bd333467115dE45665cC57F813C4571", "PONS", "contract", true], ["$PONS news", "PONS", "words", true],
+  ["Pons dictionary", "PONS", "words", false], ["PONS on Robinhood", "PONS", "words", true], ["pons asinorum", "PONS", "words", false],
+  ["0x0E6D1EBB33F3B8F2D09BACF3B1A1D5C581110C33", "DPONS", "words", true], ["$DPONS news", "DPONS", "words", true],
+  ["Diamond Pons news", "DPONS", "words", true], ["$PONS news", "DPONS", "words", false], ["dponsfake", "DPONS", "words", false],
+  ["standard procedure", "STANDARD", "words", false], ["gold standard", "STANDARD", "words", false], ["The Standard Reserve", "STANDARD", "words", true],
+  ["$STANDARD", "STANDARD", "words", true], ["0x88ad8DdF1E3898412146a534538d418c6F8A9062", "STANDARD", "contract", true], ["standard_rsv", "STANDARD", "words", true],
+  ["Zcash and $ZEC", "ZEC", "words", true], ["zecharia", "ZEC", "words", false], ["Zcash", "ZEC", "contract", false]
+]

@@ -1,5 +1,6 @@
 import type {Pool,MarketPoint} from '../crypto-run';
-export const ZCAT_ADDRESS='HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR';
+import {coinConfig} from '../crypto-coins.ts';
+export const ZCAT_ADDRESS=coinConfig('ZCAT').address!;
 type RawPool={attributes?:{address?:string;name?:string;pool_created_at?:string;reserve_in_usd?:string};relationships?:{base_token?:{data?:{id?:string}};quote_token?:{data?:{id?:string}}}};
 export function verifiedPools(raw:RawPool[]):Pool[]{return raw.flatMap(p=>{
  const a=p.attributes;const base=p.relationships?.base_token?.data?.id,quote=p.relationships?.quote_token?.data?.id;
