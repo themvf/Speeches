@@ -282,7 +282,10 @@ questions a researcher asks, replacing the eleven tab/sub-tab views.
   posting days from `crypto_social_posts`) with the one-line `whyLeader` under it. Ranking
   (`rankLeaders`): early-coin breadth, then any account with a sample beats one without, then
   hit rate, then median excess move. The former Largest audiences, Voice roles, Price after
-  posting and Watcher rankings views are sorts and filters here.
+  posting and Watcher rankings views are sorts and filters here. The table is built on
+  `@tanstack/react-table` (headless): every visible heading sorts on click (with `aria-sort`),
+  the heading row is sticky inside a scrolling wrapper, and the Rank by menu is a preset that
+  sets the sorting state (three sort-only hidden columns back the audience/recency/move presets).
 - **Coins** (`?view=coins&coin=X&tab=timeline|posts|sentiment|connections`): opens on the
   timeline with four stat cards (largest gain, accounts before it, earliest contract post,
   coverage), the price/attention chart, and Before the move as the drill-down (`day=`,

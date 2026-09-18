@@ -412,3 +412,16 @@
 .howChips { display:flex; flex-wrap:wrap; gap:4px; max-width:260px; }
 .howChip { display:inline-flex; align-items:center; gap:5px; padding:3px 8px 3px 6px; border-radius:6px; font-size:11px; background:var(--bg-elev); color:var(--ink-soft); white-space:nowrap; }
 .howChip svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.peopleTable thead th { position:sticky; top:0; z-index:1; padding:0; }
+.sortHeader { display:flex; align-items:center; gap:6px; width:100%; padding:12px; background:none; border:0; color:inherit; font:inherit; font-size:11px; font-weight:600; text-align:left; cursor:pointer; white-space:nowrap; }
+.sortHeader:hover { color:var(--ink); }
+.sortHeader span { font-size:9px; opacity:.8; min-width:8px; }
+.peopleScroll { max-height:72vh; overflow:auto; }
+.peopleTable { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+.peopleTable th { color:var(--ink-soft); background:var(--bg-elev-strong); border-bottom:1px solid var(--line-soft); }
+.peopleTable td { padding:12px; border-top:1px solid var(--line-soft); line-height:1.45; }
+.peopleTable td:first-child { min-width:170px; }
+.peopleTable td:nth-child(2) { min-width:150px; }
+.peopleTable td:nth-child(3) { min-width:220px; max-width:280px; }
+.coinDays .wsPill { white-space:nowrap; }
+.peopleTable .accountIdentity .link { white-space:nowrap; }
