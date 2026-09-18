@@ -1,7 +1,7 @@
 "use client";
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {useRouter,useSearchParams} from 'next/navigation';
-import {createColumnHelper,flexRender,getCoreRowModel,getSortedRowModel,useReactTable,type SortingState} from '@tanstack/react-table';
+import {createColumnHelper,flexRender,getCoreRowModel,getSortedRowModel,useReactTable,type SortingState,type ColumnDef} from '@tanstack/react-table';
 import {COINS,coinConfig} from '@/lib/crypto-coins';
 import {afterPosting,earlyCoins,postingStyles,whyLeader,MIN_LINKED_POSTS,STYLE_LABEL,type Leader} from '@/lib/crypto-leaders';
 import {pct} from '@/lib/crypto-impact';
@@ -9,6 +9,7 @@ import type {Signal,boardRows} from '@/lib/crypto-signals';
 import type {CoinFinding} from '@/lib/crypto-coin-discovery';
 import {daysBetween,largestDailyGain,networkEdges,scopePosts,type RunData,type RunMarket} from '@/lib/crypto-run';
 import {voiceEvidence} from '@/lib/crypto-voices';
+import {computeRings,RING_LABEL,RING_DESCRIPTION,type Ring} from '@/lib/crypto-rings';
 import {describeScope,matchesQuery,parseQuery,readState,writeState,legacyState,TABS,type State,type Tab} from '@/lib/crypto-workbench';
 import {CryptoRunChart} from './crypto-run-chart';
 import {CryptoBeforeMove} from './crypto-before-move';
@@ -40,6 +41,7 @@ const COLUMNS=[
  col.accessor(r=>r.last_at??'',{id:'active',header:'Active'}),
 ];
 const RIGHT=new Set(['aud','hit','move','linked','coins','days']);
+const RINGS:Ring[]=[1,2,3,4,5,6,7,8];
 export function CryptoWorkbench(){
  const router=useRouter(),params=useSearchParams();
  const state=useMemo(()=>readState(params),[params]);
@@ -65,18 +67,22 @@ export function CryptoWorkbench(){
   load<RunMarket>(`/api/market/crypto/history?coin=${focusCoin}`,c.signal).then(setMarket).catch(()=>{});return()=>c.abort();},[focusCoin]);
  const [acct,setAcct]=useState<Account|null>(null);
  useEffect(()=>{if(!state.account){setAcct(null);return;}const c=new AbortController();setAcct(null);load<Account>(`/api/market/crypto/account?id=${encodeURIComponent(state.account)}`,c.signal).then(setAcct).catch(()=>{if(!c.signal.aborted)setAcct({status:'error'});});return()=>c.abort();},[state.account]);
- // People
- const people=useMemo(()=>(leaders??[]).filter(l=>matchesQuery(l,query,coin)),[leaders,query,coin]);
- const [sorting,setSorting]=useState<SortingState>([{id:'early',desc:true}]);
- const table=useReactTable({data:people,columns:COLUMNS,state:{sorting},onSortingChange:setSorting,getCoreRowModel:getCoreRowModel(),getSortedRowModel:getSortedRowModel(),sortDescFirst:true});
- const rows=table.getRowModel().rows;
- const [cursor,setCursor]=useState(0);useEffect(()=>{setCursor(0);},[people,sorting]);
- const [help,setHelp]=useState(false);
  // Coin-shaped panels
  const today=new Date().toISOString().slice(0,10);const start=coinConfig(focusCoin).archiveStart;const fromDay=state.from??start,toDay=state.to??today;
  const days=useMemo(()=>daysBetween(run?.start??start,run?.end??today),[run?.start,run?.end,start,today]);
  const eligible=useMemo(()=>voiceEvidence(run?.posts??[],focusCoin),[run,focusCoin]);
  const scoped=useMemo(()=>scopePosts(eligible.eligible,fromDay,toDay),[eligible,fromDay,toDay]);
+ // Rings: who posts with whom on the focus coin over the current window.
+ const rings=useMemo(()=>computeRings(scoped,focusCoin,[coinConfig(focusCoin).name]),[scoped,focusCoin]);
+ const ringCounts=useMemo(()=>{const c=new Map<Ring,number>();for(const r of rings.values())if(r.ring)c.set(r.ring,(c.get(r.ring)??0)+1);return c;},[rings]);
+ // People
+ const people=useMemo(()=>(leaders??[]).filter(l=>matchesQuery(l,query,coin,rings)),[leaders,query,coin,rings]);
+ const columns=useMemo<ColumnDef<Row,unknown>[]>(()=>[...COLUMNS.slice(0,3),col.accessor(r=>rings.get(r.account_id)?.ring??9,{id:'ring',header:'Ring',sortingFn:(a,b)=>(rings.get(b.original.account_id)?.ring??9)-(rings.get(a.original.account_id)?.ring??9)}) as ColumnDef<Row,unknown>,...COLUMNS.slice(3)] as ColumnDef<Row,unknown>[],[rings]);
+ const [sorting,setSorting]=useState<SortingState>([{id:'early',desc:true}]);
+ const table=useReactTable({data:people,columns,state:{sorting},onSortingChange:setSorting,getCoreRowModel:getCoreRowModel(),getSortedRowModel:getSortedRowModel(),sortDescFirst:true});
+ const rows=table.getRowModel().rows;
+ const [cursor,setCursor]=useState(0);useEffect(()=>{setCursor(0);},[people,sorting]);
+ const [help,setHelp]=useState(false);
  const series=market?.points??[];const gain=largestDailyGain(series.filter(p=>p.day>=fromDay&&p.day<=toDay));
  const closes=useMemo(()=>new Map(series.map(p=>[p.day,p.close])),[series]);
  const nextClose=(iso:string)=>{const d=iso.slice(0,10);const a=closes.get(d),b=closes.get(new Date(Date.parse(d+'T00:00:00Z')+86400000).toISOString().slice(0,10));return a&&b?b/a-1:null;};
@@ -123,11 +129,13 @@ export function CryptoWorkbench(){
     <div className={s.tabs} role="tablist">{TABS.map(t=><button key={t.id} role="tab" aria-selected={state.tab===t.id} className={s.tab} onClick={()=>set({tab:t.id as Tab})}>{t.label}</button>)}
      {state.tab==='people'&&<span className={s.hint}>headings sort · <span className={s.key}>↑</span> <span className={s.key}>↓</span> move · <span className={s.key}>⏎</span> open · <span className={s.key}>c</span> pin coin · <span className={s.key}>/</span> command</span>}
      <button className={s.link} style={{marginLeft:'auto',fontSize:11,fontWeight:500}} onClick={()=>setHelp(h=>!h)}>{help?'hide definitions':'definitions'}</button></div>
-    {help&&<div className={s.help}>Early = day of the account&#39;s first post on a coin counted from the coin&#39;s first saved contract post (d1 = same day, within the first week). Up = how many of the account&#39;s price-linked posts saw the pinned pool higher 24h later; Excess = the median move minus the coin&#39;s own median. Both need {MIN_LINKED_POSTS}+ linked posts; thinner rows are dimmed. Style is a text heuristic. Feed &quot;next close&quot; is the daily close after the post&#39;s day versus its own day, not the hourly event study. Association only, never attribution.</div>}
+    {(state.tab==='people'||state.tab==='posts')&&ringCounts.size>0&&<div className={s.ringRow}><span className={s.faint}>Rings · {focusCoin} · {fromDay}→{toDay}</span>{RINGS.filter(r=>ringCounts.get(r)).map(r=><button key={r} className={s.ringTag} data-ring={r} title={RING_DESCRIPTION[r]} aria-pressed={query.ring===r} onClick={()=>setQText(q=>(q.replace(/\bring:?\d\b/gi,'').trim()+(query.ring===r?'':' ring:'+r)).trim())}>{r} {RING_LABEL[r]} · {ringCounts.get(r)}</button>)}</div>}
+    {help&&<div className={s.help}>Early = day of the account&#39;s first post on a coin counted from the coin&#39;s first saved contract post (d1 = same day, within the first week). Up = how many of the account&#39;s price-linked posts saw the pinned pool higher 24h later; Excess = the median move minus the coin&#39;s own median. Both need {MIN_LINKED_POSTS}+ linked posts; thinner rows are dimmed. Style is a text heuristic. Feed &quot;next close&quot; is the daily close after the post&#39;s day versus its own day, not the hourly event study. Association only, never attribution.<div style={{marginTop:6}}><b>Rings</b> (computed for {focusCoin} over {fromDay}→{toDay}; type <span className={s.key}>ring:N</span> to filter): {RINGS.map(r=><span key={r}><span className={s.ringTag} data-ring={r}>{r} {RING_LABEL[r]}</span> {RING_DESCRIPTION[r]}{ringCounts.get(r)?` (${ringCounts.get(r)})`:''}. </span>)}</div></div>}
     {state.tab==='people'&&<div className={s.scroll}>{!leaders?<div className={s.empty}>Reading saved rankings…</div>:!rows.length?<div className={s.empty}>No accounts match. Rankings appear after the next collection run; price-linked posts need a day of hourly candles.</div>:
      <table className={s.t}><thead>{table.getHeaderGroups().map(g=><tr key={g.id}><th style={{width:26}}>#</th>{g.headers.map(h=>{const d=h.column.getIsSorted();return <th key={h.id} className={RIGHT.has(h.id)?s.r:''} aria-sort={d==='asc'?'ascending':d==='desc'?'descending':'none'}><button onClick={h.column.getToggleSortingHandler()}>{flexRender(h.column.columnDef.header,h.getContext())}{d?(d==='asc'?' ▲':' ▼'):''}</button></th>;})}</tr>)}</thead>
      <tbody>{rows.slice(0,300).map((row,i)=>{const r=row.original,early=earlyCoins(r),ok=sampled(r),styles=postingStyles(r);return <tr key={r.account_id} className={`${s.row} ${ok?'':s.dim} ${state.account===r.account_id?s.on:''} ${i===cursor?s.cursor:''}`} onClick={()=>{setCursor(i);set({account:r.account_id});}} title={whyLeader(r)}>
       <td className={s.faint}>{i+1}</td><td><span className={s.link}>@{r.handle}</span></td><td className={`${s.r} ${s.soft}`}>{aud(r.followers)}</td>
+      <td>{(()=>{const rg=rings.get(r.account_id);return rg?.ring?<span className={s.ringTag} data-ring={rg.ring} title={rg.evidence}>{rg.ring} {RING_LABEL[rg.ring]}</span>:<span className={s.faint}>{rg?'—':''}</span>;})()}</td>
       <td className={`${s.mono} ${s.soft}`}>{early.length?early.map(e=>e.coin+(e.day?' d'+e.day:'')).join(' '):'—'}</td>
       <td className={`${s.r} ${ok?(r.hit_rate!=null&&r.hit_rate>=.5?s.pos:s.neg):s.faint}`}>{ok?`${r.up}/${r.episodes}`:r.episodes?`${r.episodes} · thin`:'—'}</td>
       <td className={`${s.r} ${ok?tone(r.median_excess_24h):s.faint}`} style={{fontWeight:600}}>{ok?pct(r.median_excess_24h,0):'—'}</td>
@@ -135,7 +143,7 @@ export function CryptoWorkbench(){
       <td className={s.soft} title={styles.map(k=>STYLE_LABEL[k]).join(' · ')}>{styles.join(' · ')||'—'}</td><td className={s.faint}>{ago(r.last_at)}</td></tr>;})}</tbody></table>}</div>}
     {state.tab==='posts'&&<><div className={`${s.pad} ${s.faint}`} style={{fontSize:11,borderBottom:'1px solid var(--line-soft)',display:'flex'}}><span>X posts on {focusCoin} · {fromDay} → {toDay} · newest first · reposts hidden{query.handle?` · @${query.handle}`:''}</span><span style={{marginLeft:'auto'}}>{run?`${feed.length}${feed.length===400?'+':''} posts · next close vs post day`:''}</span></div>
      <div className={s.scroll}>{!run?<div className={s.empty}>Loading saved posts…</div>:!feed.length?<div className={s.empty}>No saved posts in scope.</div>:feed.map(p=><div key={p.id} className={s.feedRow} style={{gridTemplateColumns:'86px 128px minmax(0,1fr) 64px'}} onClick={()=>set({account:p.author_id})} title={p.text}>
-      <span className={`${s.mono} ${s.faint}`}>{p.posted_at.slice(5,16).replace('T',' ')}</span><span className={s.clip} style={{fontWeight:600,color:'#bae6fd'}}>@{p.handle}</span><span className={s.clip} style={{color:'var(--ink)'}}>{p.kind==='quote'?'↳ ':p.kind==='reply'?'↩ ':''}{p.text}</span><span className={`${s.r} ${tone(nextClose(p.posted_at))}`} style={{textAlign:'right'}}>{nextClose(p.posted_at)==null?'—':pct(nextClose(p.posted_at),0)}</span></div>)}</div></>}
+      <span className={`${s.mono} ${s.faint}`}>{p.posted_at.slice(5,16).replace('T',' ')}</span><span className={s.clip} style={{fontWeight:600,color:'#bae6fd'}}>{rings.get(p.author_id)?.ring?<span className={s.ringDot} data-ring={rings.get(p.author_id)!.ring} title={RING_LABEL[rings.get(p.author_id)!.ring!]}>{rings.get(p.author_id)!.ring}</span>:null}@{p.handle}</span><span className={s.clip} style={{color:'var(--ink)'}}>{p.kind==='quote'?'↳ ':p.kind==='reply'?'↩ ':''}{p.text}</span><span className={`${s.r} ${tone(nextClose(p.posted_at))}`} style={{textAlign:'right'}}>{nextClose(p.posted_at)==null?'—':pct(nextClose(p.posted_at),0)}</span></div>)}</div></>}
     {state.tab==='timeline'&&<div className={s.scroll}>
      <div className={s.stats}><strong>{coinConfig(focusCoin).name} · {focusCoin}</strong><span>pinned pool {market?.selected?market.selected.id.slice(0,6)+'…':'—'}</span>
       <button disabled={!gain} onClick={()=>gain&&set({day:gain.day})}>largest daily gain <strong className={s.pos}>{gain?`+${gain.percent.toFixed(0)}% · ${gain.day.slice(5)}`:'—'}</strong></button>
@@ -157,7 +165,7 @@ export function CryptoWorkbench(){
     {!state.account?<div className={s.empty}>No account selected. Click a row, a signal, a post or a handle, or type <span className={s.key}>@handle</span> in the command line. The pane opens here; the table stays put.</div>
     :!acct?<div className={s.empty}>Loading account…</div>:acct.status!=='ready'?<div className={s.empty}>No saved evidence for this account. <button className={s.link} onClick={()=>set({account:null})}>close</button></div>:<>
      <div className={s.paneHead}><strong>@{acct.account?.handle}</strong><span className={s.faint} style={{fontSize:11}}>{aud(acct.latest_profile?.followers??acct.account?.followers)} followers</span><a href={`https://x.com/i/user/${acct.account?.id}`} target="_blank" rel="noreferrer" style={{marginLeft:'auto',fontSize:11}}>x.com ↗</a><button className={s.link} style={{fontSize:11,fontWeight:500}} onClick={()=>set({account:null})}>close</button></div>
-     <div className={s.paneWhy}>{summary?whyLeader(summary):'saved posts only'}{acct.latest_profile?.bio?<span className={s.faint} style={{display:'block',marginTop:4,whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{acct.latest_profile.bio}</span>:null}</div>
+     <div className={s.paneWhy}>{(()=>{const rg=acct.account?rings.get(acct.account.id):undefined;return rg?.ring?<div style={{marginBottom:4}}><span className={s.ringTag} data-ring={rg.ring}>ring {rg.ring} · {RING_LABEL[rg.ring]}</span> <span className={s.faint}>on {focusCoin} {fromDay}→{toDay}: {rg.evidence}{rg.tags.length>1?' · also '+rg.tags.filter(t=>t!==rg.ring).map(t=>RING_LABEL[t]).join(', '):''}</span></div>:null;})()}{summary?whyLeader(summary):'saved posts only'}{acct.latest_profile?.bio?<span className={s.faint} style={{display:'block',marginTop:4,whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{acct.latest_profile.bio}</span>:null}</div>
      <div className={s.h}>Per coin</div>
      <div className={s.fixed}><table className={s.t}><thead><tr><th>Coin</th><th>Early</th><th className={s.r}>Posts</th><th className={s.r}>Up</th><th className={s.r}>Excess</th></tr></thead><tbody>{(acct.activity??[]).map(a=>{const role=summary?.roles.find(r=>r.coin===a.coin),imp=summary?.impact.find(i=>i.coin===a.coin);const ok=(imp?.episodes??0)>=MIN_LINKED_POSTS;return <tr key={a.coin} className={s.row} onClick={()=>set({coin:a.coin,tab:'timeline',highlight:acct.account?.id??null})}><td style={{fontWeight:600,color:'#7dd3fc'}}>{a.coin}</td><td className={`${s.mono} ${s.soft}`}>{role?.early&&role.day?'d'+role.day+(role.contract?' ·ca':''):'—'}</td><td className={s.r}>{a.posts}</td><td className={s.r}>{imp?`${Math.round((imp.share_up_24h??0)*imp.episodes)}/${imp.episodes}`:'—'}</td><td className={`${s.r} ${ok?tone(imp?.median_excess_24h):s.faint}`}>{ok?pct(imp?.median_excess_24h,0):'—'}</td></tr>;})}</tbody></table>{summary&&afterPosting(summary)==null&&summary.episodes>0&&<div className={`${s.pad} ${s.faint}`} style={{fontSize:11}}>Too few price-linked posts to read the outcome.</div>}</div>
      <div className={s.h}>Recent posts <span>· pool 24h after</span></div>

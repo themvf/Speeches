@@ -22,6 +22,11 @@ test('matches leaders against the query and the pinned coin',()=>{
  assert.equal(matchesQuery(b,parseQuery('watcher'),null),true);assert.equal(matchesQuery(a,parseQuery('watcher'),null),false);
  assert.equal(describeScope(parseQuery('@tyler hit>0.7'),'ZCAT'),'ZCAT · @tyler · hit>0.7');
 });
+test('ring token filters by computed ring',()=>{
+ const rings=new Map([['1',{ring:1 as const,tags:[1 as const],posts:9,evidence:'x'}]]);
+ assert.equal(parseQuery('ring:2').ring,2);assert.equal(matchesQuery(a,parseQuery('ring:1'),null,rings),true);assert.equal(matchesQuery(b,parseQuery('ring:1'),null,rings),false);
+ assert.equal(describeScope(parseQuery('ring:2'),'ZCAT'),'ZCAT · ring 2 defender');
+});
 test('state round-trips through the query string',()=>{
  const s={...EMPTY,coin:'ZCAT',account:'9',tab:'posts' as const,q:'hit>0.5',day:'2026-09-01'};
  assert.equal(writeState(s),'/market/crypto?coin=ZCAT&account=9&tab=posts&q=hit%3E0.5&day=2026-09-01');

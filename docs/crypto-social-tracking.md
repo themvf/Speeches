@@ -348,3 +348,31 @@ wants it in one move:
   and the four sub-route pages. `/api/market/crypto/sentiment` and `/search` still exist but nothing
   renders them; the sentiment panel was dropped deliberately as low signal.
 - Tests: `lib/crypto-workbench.test.ts` (parser, matching, state round-trip, legacy mapping).
+
+
+## Rings: who posts with whom (2026-09-18)
+
+`apps/web/lib/crypto-rings.ts` (`computeRings(posts, coin, pairedWith)`) assigns every author in the
+current coin and window to at most one ring, computed client-side in the workbench from the posts
+already loaded, so any date range works. Rings are reading aids, not verdicts; the account pane
+shows the evidence line for each assignment.
+
+| Ring | Label | Rule |
+| --- | --- | --- |
+| 1 | hub | The 2-core of strong ties around the most-replied author. A tie is a reply, quote or mention in either direction (weight 1) or a 5-gram line shared by three or more authors (weight 2); strong = weight 3+. Members need two strong partners inside the ring and two posts (the centre is exempt). Empty below three members. |
+| 2 | defender | Any post using vamp/copy/beta/"better meme"/"both can exist" vocabulary without critic vocabulary. |
+| 3 | witness | Any post reporting rewards received (received, earned, airdropped, sent me, in my wallet, for holding). |
+| 4 | campaign | Tagged the window's most-tagged outside account three or more times. |
+| 5 | early caller | Posted a contract address and first appeared in the first fifth of the window. |
+| 6 | piggyback | Another cashtag in half or more of the author's posts, twice or more. |
+| 7 | feed | Handle matches alert/bot/scan/track/whale/signal/sniper/radar, or five or more posts with 40% or fewer distinct openings. |
+| 8 | critic | Half or more of the author's posts use rug/scam/bundle/cabal/insider/psyop/jeet vocabulary. |
+
+Precedence when several apply: feed → piggyback → critic → hub → defender → campaign → witness →
+early caller; the others are kept as secondary tags. Calibrated on ZCAT 2026-08-31→09-02 (383 posts,
+130 authors): the hub resolves to exactly the five accounts found by hand (@_imagyn, @miragemunny,
+@crypto_regrets, @spaceman026, @eylboh), defenders to 14, witnesses to 11.
+
+In the workbench: a `Ring` column on People, a clickable ring legend row above People and X posts
+with counts, ring badges on feed rows, the ring and its evidence at the top of the account pane, and
+a `ring:N` command token (`ZCAT ring:2`). Tests: `apps/web/lib/crypto-rings.test.ts`.

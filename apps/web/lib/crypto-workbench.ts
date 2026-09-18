@@ -2,20 +2,22 @@
 import type {Route} from 'next';
 import {COINS,isCoin} from './crypto-coins.ts';
 import {MIN_LINKED_POSTS,postingStyles,type Leader} from './crypto-leaders.ts';
+import {ringToken,RING_LABEL,type Ring,type RingResult} from './crypto-rings.ts';
 export const BASE='/market/crypto';
 export type Tab='people'|'posts'|'timeline'|'connections'|'data';
 export const TABS:{id:Tab;label:string}[]=[{id:'people',label:'People'},{id:'posts',label:'X posts'},{id:'timeline',label:'Timeline'},{id:'connections',label:'Connections'},{id:'data',label:'Data'}];
-export type Query={coin:string|null;handle:string|null;early:boolean;day:number|null;hit:number|null;posts:number|null;watcher:boolean;contract:string|null;unknown:string[]};
+export type Query={coin:string|null;handle:string|null;early:boolean;day:number|null;hit:number|null;posts:number|null;watcher:boolean;contract:string|null;ring:Ring|null;unknown:string[]};
 const CONTRACT=/^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
 export function coinForContract(address:string){const a=address.toLowerCase();return COINS.find(c=>c.address&&c.address.toLowerCase()===a)?.symbol??null;}
-// Tokens: SYMBOL · @handle · contract address · early · day<N · hit>0.x · posts>N · watcher. Anything else narrows the handle.
+// Tokens: SYMBOL · @handle · contract address · early · day<N · hit>0.x · posts>N · watcher · ring:N. Anything else narrows the handle.
 export function parseQuery(text:string):Query{
- const q:Query={coin:null,handle:null,early:false,day:null,hit:null,posts:null,watcher:false,contract:null,unknown:[]};
+ const q:Query={coin:null,handle:null,early:false,day:null,hit:null,posts:null,watcher:false,contract:null,ring:null,unknown:[]};
  for(const t of text.trim().split(/\s+/).filter(Boolean)){let m;
   if(t[0]==='@'){q.handle=t.slice(1).toLowerCase();continue;}
   const low=t.toLowerCase();
   if(low==='early'){q.early=true;continue;}
   if(low==='watcher'||low==='watchers'){q.watcher=true;continue;}
+  const ring=ringToken(low);if(ring){q.ring=ring;continue;}
   if((m=low.match(/^day<(\d+)$/))){q.day=Number(m[1]);continue;}
   if((m=low.match(/^hit>(\d*\.?\d+)$/))){q.hit=Number(m[1]);continue;}
   if((m=low.match(/^posts>(\d+)$/))){q.posts=Number(m[1]);continue;}
@@ -26,8 +28,9 @@ export function parseQuery(text:string):Query{
  }
  return q;
 }
-export function matchesQuery(l:Leader,q:Query,coin:string|null){
+export function matchesQuery(l:Leader,q:Query,coin:string|null,rings?:Map<string,RingResult>){
  if(coin&&!l.coins.includes(coin))return false;
+ if(q.ring!=null&&rings?.get(l.account_id)?.ring!==q.ring)return false;
  if(q.handle&&!l.handle.toLowerCase().includes(q.handle))return false;
  if(q.early&&!l.early_coins)return false;
  if(q.day!=null&&!l.roles.some(r=>r.early&&r.day!=null&&r.day<q.day!))return false;
@@ -37,7 +40,7 @@ export function matchesQuery(l:Leader,q:Query,coin:string|null){
  return true;
 }
 export function describeScope(q:Query,coin:string|null){
- return [coin??'all coins',q.handle?'@'+q.handle:null,q.early?'early':null,q.day!=null?'day<'+q.day:null,q.hit!=null?'hit>'+q.hit:null,q.posts!=null?'posts>'+q.posts:null,q.watcher?'watchers':null,q.contract&&!q.coin?'contract '+q.contract.slice(0,6)+'… (not tracked)':null].filter(Boolean).join(' · ');
+ return [coin??'all coins',q.handle?'@'+q.handle:null,q.early?'early':null,q.day!=null?'day<'+q.day:null,q.hit!=null?'hit>'+q.hit:null,q.posts!=null?'posts>'+q.posts:null,q.watcher?'watchers':null,q.ring!=null?`ring ${q.ring} ${RING_LABEL[q.ring]}`:null,q.contract&&!q.coin?'contract '+q.contract.slice(0,6)+'… (not tracked)':null].filter(Boolean).join(' · ');
 }
 // URL state: everything the screen shows is in the query string so a view is a bookmark.
 export type State={coin:string|null;account:string|null;tab:Tab;q:string;day:string|null;highlight:string|null;from:string|null;to:string|null};
