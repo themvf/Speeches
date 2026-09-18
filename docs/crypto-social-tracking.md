@@ -265,6 +265,19 @@ matches only the `$AD` cashtag, the phrase "artificial doge" or the contract; th
 token-context rule. Carries `originFrom: 2026-06-01`, so the next rolling run backfills
 launch-era contract posts, and the market archive picks up its Robinhood pools.
 
+## Hourly cadence for ZCAT, ZEC and KNOTS (2026-09-18)
+
+A registry coin may carry `cadenceHours: 1`. The rolling workflow now runs every hour
+(`17 * * * *`); an hourly coin opens a one-hour search window each run (two-hour span, the
+usual one-hour overlap) and takes two pages, while six-hourly coins keep four pages per
+six-hour slot and simply find no work on the other five runs. Hourly coins get a 450,000-credit
+ceiling for the 30-day campaign (about $4.50 at 100,000 credits per dollar; two pages an hour at
+300 reserved is at most 14,400 a day) and a 16,200 daily cap; the `crypto_rolling_coins`
+checks were relaxed to `credit_limit IN (30000,450000)` and `used_credits <= credit_limit`, and a
+coin promoted mid-campaign keeps its spend and is raised, never lowered. At the 6-hour cadence
+ZCAT and ZEC had each used more than half of the 30,000 ceiling in three days, so the old ceiling
+would have stopped them within the week regardless.
+
 ## Workspace redesign (2026-09-17)
 
 `/market/crypto` now runs on `crypto-workspace.tsx`: five destinations organised around the

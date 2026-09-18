@@ -1,5 +1,5 @@
 {
-  "note": "Single registry for tracked crypto coins. Consumed by apps/web/lib/crypto-coins.ts and crypto_coins.py; never fork per-language copies. Addresses are user-supplied and unverified. Patterns are case-insensitive regular expressions valid in both JavaScript and Python. 'words' match the coin by name/cashtag; 'contextWords' need both patterns in the same post; 'exclude' drops a words-mode match (a different token shares the name); 'searchQuery' is the provider query text and must not change for a live campaign, because saved search windows carry it verbatim. 'originFrom' (optional) asks the rolling collector for one bounded contract-only search from that date up to its first live window, so a coin's earliest saved posts are its launch-era posts rather than the day it was added.",
+  "note": "Single registry for tracked crypto coins. Consumed by apps/web/lib/crypto-coins.ts and crypto_coins.py; never fork per-language copies. Addresses are user-supplied and unverified. Patterns are case-insensitive regular expressions valid in both JavaScript and Python. 'words' match the coin by name/cashtag; 'contextWords' need both patterns in the same post; 'exclude' drops a words-mode match (a different token shares the name); 'searchQuery' is the provider query text and must not change for a live campaign, because saved search windows carry it verbatim. 'originFrom' (optional) asks the rolling collector for one bounded contract-only search from that date up to its first live window, so a coin's earliest saved posts are its launch-era posts rather than the day it was added. 'cadenceHours' (optional, 1 or 6, default 6) sets how often the rolling collector opens a new search window for the coin; hourly coins get two pages an hour and a 450,000-credit ceiling instead of four pages every six hours under 30,000.",
   "coins": [
     {
       "symbol": "ZCAT",
@@ -26,7 +26,8 @@
         "launchonsf"
       ],
       "searchQuery": "(\"$ZCAT\" OR \"Anonymous Cat\" OR \"HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR\")",
-      "identityNote": "user-supplied address; not independently verified"
+      "identityNote": "user-supplied address; not independently verified",
+      "cadenceHours": 1
     },
     {
       "symbol": "PONS",
@@ -106,7 +107,8 @@
         "zcashfoundation"
       ],
       "searchQuery": "(\"$ZEC\" OR \"Zcash\")",
-      "identityNote": "name and cashtag"
+      "identityNote": "name and cashtag",
+      "cadenceHours": 1
     },
     {
       "symbol": "STANDARD",
@@ -234,7 +236,8 @@
       "official": [],
       "searchQuery": "(\"$KNOTS\" OR \"8RVBk8vxLiUHueLUW1f4izFVqN3nWippLhkohKg6EGkS\")",
       "identityNote": "user-supplied address; not independently verified. Common word: bare 'knots' needs token context",
-      "originFrom": "2026-06-01"
+      "originFrom": "2026-06-01",
+      "cadenceHours": 1
     },
     {
       "symbol": "STONK",

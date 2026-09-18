@@ -1,4 +1,4 @@
-"""Six-hour post collection and daily profile snapshots; independent bounded 30-day pilot."""
+"""Rolling post collection (six-hourly, or hourly for registry coins with cadenceHours 1) and daily profile snapshots; independent bounded 30-day pilot."""
 import argparse
 from datetime import datetime, timedelta, timezone
 import json
@@ -12,8 +12,20 @@ from crypto_social_tracking import save_profiles,save_posts
 TRACKED={**COINS,**{s:(c['name'],c['searchQuery'],c['address'],c['networkLabel']+' Chain') for s,c in REGISTRY.items() if s not in COINS}}
 CAMPAIGN='rolling-five-coins-v1'
 COIN_LIMIT=30000
+HOURLY_LIMIT=450000  # hourly coins: 2 pages an hour at 300 reserved = ~14,400/day, 30 days inside the ceiling ($4.50 at 100,000 credits/USD)
 DAILY_LIMIT=5400
 PAGES_PER_RUN=4
+HOURLY_PAGES_PER_RUN=2
+
+
+def cadence(coin):
+    """Hours between collection windows: the registry's cadenceHours (1 or 6), default 6."""
+    return 1 if REGISTRY.get(coin,{}).get('cadenceHours')==1 else 6
+
+
+def ceiling(coin):return HOURLY_LIMIT if cadence(coin)==1 else COIN_LIMIT
+def daily_limit(coin):return DAILY_LIMIT*3 if cadence(coin)==1 else DAILY_LIMIT
+def pages_per_run(coin):return HOURLY_PAGES_PER_RUN if cadence(coin)==1 else PAGES_PER_RUN
 BASE='https://api.twitterapi.io'
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS crypto_voice_focus (window_id bigint PRIMARY KEY,coin text NOT NULL);
@@ -24,7 +36,7 @@ CREATE TABLE IF NOT EXISTS crypto_rolling_campaign (
 );
 CREATE TABLE IF NOT EXISTS crypto_rolling_coins (
  campaign_id text REFERENCES crypto_rolling_campaign(id),coin text REFERENCES crypto_social_coins(symbol),
- credit_limit integer NOT NULL CHECK(credit_limit=30000), used_credits integer NOT NULL DEFAULT 0 CHECK(used_credits BETWEEN 0 AND 30000),
+ credit_limit integer NOT NULL CHECK(credit_limit IN (30000,450000)), used_credits integer NOT NULL DEFAULT 0 CHECK(used_credits BETWEEN 0 AND credit_limit),
  PRIMARY KEY(campaign_id,coin)
 );
 CREATE TABLE IF NOT EXISTS crypto_rolling_windows (
@@ -38,38 +50,46 @@ CREATE TABLE IF NOT EXISTS crypto_rolling_calls (
 );
 '''
 
-def slot(now):
-    now=now.astimezone(timezone.utc)
-    return now.replace(hour=now.hour//6*6,minute=0,second=0,microsecond=0)
+def slot(now,coin=None):
+    """Start of the current collection slot: six-hour blocks, or the hour for an hourly coin."""
+    now=now.astimezone(timezone.utc);h=cadence(coin) if coin else 6
+    return now.replace(hour=now.hour//h*h,minute=0,second=0,microsecond=0)
 
 
 def setup(conn,now):
-    anchor=slot(now)
-    initialize(conn,anchor)
+    initialize(conn,slot(now))
     with conn,conn.cursor() as cur:
         cur.execute(SCHEMA)
+        # Ceilings differ by cadence now; the original schema pinned every coin to 30000.
+        cur.execute("""ALTER TABLE crypto_rolling_coins DROP CONSTRAINT IF EXISTS crypto_rolling_coins_credit_limit_check,
+            DROP CONSTRAINT IF EXISTS crypto_rolling_coins_used_credits_check,
+            ADD CONSTRAINT crypto_rolling_coins_credit_limit_check CHECK(credit_limit IN (30000,450000)),
+            ADD CONSTRAINT crypto_rolling_coins_used_credits_check CHECK(used_credits BETWEEN 0 AND credit_limit)""")
         initialize_research(cur)
         cur.execute('INSERT INTO crypto_rolling_campaign VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,now,now+timedelta(days=30)))
         cur.execute('SELECT end_at FROM crypto_rolling_campaign WHERE id=%s',(CAMPAIGN,))
         if now>=cur.fetchone()[0]:return False
         for coin,(name,query,address,note) in TRACKED.items():
+            anchor=slot(now,coin);step=timedelta(hours=cadence(coin))
             cur.execute('INSERT INTO crypto_social_coins VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',(coin,name,query,address,note))
-            cur.execute('INSERT INTO crypto_rolling_coins(campaign_id,coin,credit_limit) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,coin,COIN_LIMIT))
+            cur.execute('INSERT INTO crypto_rolling_coins(campaign_id,coin,credit_limit) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,coin,ceiling(coin)))
+            # A coin moved to hourly keeps its spend and gains the larger ceiling; ceilings are never lowered mid-campaign.
+            cur.execute('UPDATE crypto_rolling_coins SET credit_limit=%s WHERE campaign_id=%s AND coin=%s AND credit_limit<%s',(ceiling(coin),CAMPAIGN,coin,ceiling(coin)))
             cur.execute('''SELECT max(w.end_at) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id
                 WHERE r.campaign_id=%s AND w.coin=%s AND NOT EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id)
                 AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id)''',(CAMPAIGN,coin))
             last=cur.fetchone()[0]
-            end=last+timedelta(hours=6) if last else anchor-timedelta(hours=42)
+            end=last+step if last else anchor-timedelta(hours=42)
             setup_origin(cur,coin,anchor-timedelta(hours=42))
             while end<=anchor:
-                start=end-timedelta(hours=7)  # one-hour overlap catches delayed indexing
+                start=end-step-timedelta(hours=1)  # one-hour overlap catches delayed indexing
                 q=f'{query} since_time:{int(start.timestamp())} until_time:{int(end.timestamp())}'
                 cur.execute('INSERT INTO crypto_social_windows(coin,start_at,end_at,query) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING',(coin,start,end,q))
                 cur.execute('SELECT id FROM crypto_social_windows WHERE coin=%s AND start_at=%s AND end_at=%s AND query=%s',(coin,start,end,q))
                 row=cur.fetchone()
                 if not row:raise ValueError('Conflicting rolling window; preserve existing evidence')
                 cur.execute('INSERT INTO crypto_rolling_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,row[0]))
-                end+=timedelta(hours=6)
+                end+=step
         # Preserve broad-search evidence, but retire its unfinished queue after tightening identity queries.
         cur.execute("""UPDATE crypto_social_windows w SET status='retired_query' WHERE w.status IN ('pending','partial')
           AND w.coin IN ('PONS','STANDARD') AND position('$' in w.query)>0 AND EXISTS(
@@ -130,9 +150,9 @@ def reserve(conn,coin,now,kind='posts'):
         used,limit=cur.fetchone()
         cur.execute('SELECT coalesce(sum(charged),0) FROM crypto_rolling_calls WHERE campaign_id=%s AND coin=%s AND day=%s',(CAMPAIGN,coin,now.date()))
         daily=cur.fetchone()[0]
-        cur.execute("SELECT count(*) FROM crypto_rolling_calls WHERE request_id NOT IN (SELECT id FROM crypto_social_requests WHERE status='failed_charged') AND campaign_id=%s AND coin=%s AND kind=%s AND "+('day=%s' if kind!='posts' else 'run_slot=%s'),(CAMPAIGN,coin,kind,now.date() if kind!='posts' else slot(now)))
+        cur.execute("SELECT count(*) FROM crypto_rolling_calls WHERE request_id NOT IN (SELECT id FROM crypto_social_requests WHERE status='failed_charged') AND campaign_id=%s AND coin=%s AND kind=%s AND "+('day=%s' if kind!='posts' else 'run_slot=%s'),(CAMPAIGN,coin,kind,now.date() if kind!='posts' else slot(now,coin)))
         cur_slot_count=cur.fetchone()[0]
-        if cur_slot_count>=(1 if kind!='posts' else PAGES_PER_RUN):return None
+        if cur_slot_count>=(1 if kind!='posts' else pages_per_run(coin)):return None
         ids=[];window=None
         if kind=='engagement':
             cur.execute("""SELECT p.id FROM crypto_social_posts p WHERE p.kind='original' AND p.posted_at BETWEEN %s AND %s
@@ -153,17 +173,17 @@ def reserve(conn,coin,now,kind='posts'):
                 JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE r.campaign_id=%s AND w.coin=%s
                 AND w.status IN ('pending','partial') AND w.end_at<=%s
                 ORDER BY CASE WHEN (EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id) OR EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id))=%s THEN 0 ELSE 1 END,CASE WHEN %s THEN CASE WHEN w.pages=0 THEN 0 ELSE 1 END ELSE CASE WHEN w.pages>0 THEN 0 ELSE 1 END END,
-                CASE WHEN w.pages>0 THEN w.start_at END ASC,w.end_at DESC,w.id LIMIT 1 FOR UPDATE OF w''',(CAMPAIGN,coin,slot(now),cur_slot_count==3,cur_slot_count==0))
+                CASE WHEN w.pages>0 THEN w.start_at END ASC,w.end_at DESC,w.id LIMIT 1 FOR UPDATE OF w''',(CAMPAIGN,coin,slot(now,coin),cur_slot_count==pages_per_run(coin)-1,cur_slot_count==0))
             window=cur.fetchone()
             if not window:return None
             credits=300
-        if used+credits>limit or daily+credits>DAILY_LIMIT:return None
-        parameters={'campaign':CAMPAIGN,'coin':coin,'kind':kind,'run_slot':slot(now).isoformat(),'user_ids':ids}
+        if used+credits>limit or daily+credits>daily_limit(coin):return None
+        parameters={'campaign':CAMPAIGN,'coin':coin,'kind':kind,'run_slot':slot(now,coin).isoformat(),'user_ids':ids}
         cur.execute('UPDATE crypto_rolling_coins SET used_credits=used_credits+%s WHERE campaign_id=%s AND coin=%s',(credits,CAMPAIGN,coin))
         cur.execute('''INSERT INTO crypto_social_requests(window_id,endpoint,parameters,reserved_credits)
             VALUES (%s,%s,%s,%s) RETURNING id''',(window[0] if window else None,'rolling_'+kind,json.dumps(parameters),credits))
         rid=cur.fetchone()[0]
-        cur.execute('INSERT INTO crypto_rolling_calls VALUES (%s,%s,%s,%s,%s,%s,%s)',(rid,CAMPAIGN,coin,slot(now),now.date(),kind,credits))
+        cur.execute('INSERT INTO crypto_rolling_calls VALUES (%s,%s,%s,%s,%s,%s,%s)',(rid,CAMPAIGN,coin,slot(now,coin),now.date(),kind,credits))
         return rid,window,ids,credits
 
 
@@ -260,7 +280,7 @@ def main():
     parser.add_argument('--recover-profile',type=int)
     args=parser.parse_args()
     if not args.execute:
-        print(json.dumps({'mode':'plan_only','coins':list(TRACKED),'days':30,'total_ceiling':COIN_LIMIT*len(TRACKED),'per_coin_ceiling':COIN_LIMIT,'pages_per_coin_per_run':PAGES_PER_RUN,'profiles_per_coin_daily':20,'paid_calls':0}));return
+        print(json.dumps({'mode':'plan_only','coins':list(TRACKED),'days':30,'total_ceiling':sum(ceiling(c) for c in TRACKED),'per_coin_ceiling':{c:ceiling(c) for c in TRACKED},'cadence_hours':{c:cadence(c) for c in TRACKED},'pages_per_coin_per_run':{c:pages_per_run(c) for c in TRACKED},'profiles_per_coin_daily':20,'paid_calls':0}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
@@ -274,7 +294,7 @@ def main():
                 setup_focus(conn,coin,now)
                 snapshot(conn,coin,now)
                 collect_one(conn,key,coin,now,'engagement')
-                for _ in range(PAGES_PER_RUN):
+                for _ in range(pages_per_run(coin)):
                     if not collect_one(conn,key,coin,now):break
                 collect_one(conn,key,coin,now,'profiles')
         print(json.dumps({'campaign':CAMPAIGN,'results':report(conn)},default=str),flush=True)

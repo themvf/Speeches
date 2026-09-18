@@ -2,7 +2,7 @@
 // tests/fixtures/crypto-coin-matches.json pins both implementations to the same answers.
 import registry from './crypto-coins.json' with { type: 'json' };
 export type CoinConfig={symbol:string;name:string;label:string;network:string;networkLabel:string;address:string|null;archiveStart:string;
- words:string[];contextWords:string[][];exclude:string[];discoveryName:string;profileTerms:string[];official:string[];searchQuery:string;identityNote:string;originFrom?:string};
+ words:string[];contextWords:string[][];exclude:string[];discoveryName:string;profileTerms:string[];official:string[];searchQuery:string;identityNote:string;originFrom?:string;cadenceHours?:1|6};
 export const COINS:CoinConfig[]=registry.coins as CoinConfig[];
 export const COIN_SYMBOLS=COINS.map(c=>c.symbol);
 const bySymbol=new Map(COINS.map(c=>[c.symbol,c]));

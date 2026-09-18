@@ -1,8 +1,9 @@
 from datetime import datetime,timedelta,timezone
 import pytest
 from test_crypto_social_pilot import db
-from crypto_social_rolling import setup,reserve,collect_one,slot,CAMPAIGN,TRACKED,REGISTRY
+from crypto_social_rolling import setup,reserve,collect_one,slot,cadence,ceiling,pages_per_run,CAMPAIGN,TRACKED,REGISTRY
 ORIGINS=sum(1 for c in REGISTRY.values() if c.get('originFrom'))
+def windows(hours):return sum(hours//cadence(c)+1 for c in TRACKED)  # windows from anchor-hours to the anchor inclusive
 
 NOW=datetime(2026,9,15,12,17,tzinfo=timezone.utc)
 
@@ -17,11 +18,11 @@ def test_db_rolling_initial_overlap_and_gap_filling(db):
     assert setup(db,NOW)
     setup(db,NOW)
     with db,db.cursor() as c:
-        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==8*len(TRACKED)+ORIGINS
-        c.execute('SELECT sum(credit_limit) FROM crypto_rolling_coins');assert c.fetchone()[0]==30000*len(TRACKED)
+        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==windows(42)+ORIGINS
+        c.execute('SELECT sum(credit_limit) FROM crypto_rolling_coins');assert c.fetchone()[0]==sum(ceiling(c) for c in TRACKED)
     setup(db,NOW+timedelta(hours=12))
     with db,db.cursor() as c:
-        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==10*len(TRACKED)+ORIGINS
+        c.execute('SELECT count(*) FROM crypto_rolling_windows');assert c.fetchone()[0]==windows(54)+ORIGINS
     _,window,_,_=reserve(db,'STANDARD',NOW+timedelta(hours=12))
     assert window[2]==slot(NOW)+timedelta(hours=12)
     assert window[2]-window[1]==timedelta(hours=7)
@@ -160,7 +161,26 @@ def test_db_origin_window_is_one_bounded_contract_search_per_new_coin(db):
     for coin,start,end,query in rows:
         assert start==datetime.fromisoformat(REGISTRY[coin]['originFrom']).replace(tzinfo=timezone.utc)
         assert end==slot(NOW)-timedelta(hours=42) and query.startswith('"'+REGISTRY[coin]['address']+'"') and '$' not in query
-    # Fresh six-hour windows keep filling forward from the live start, never from the origin window's end.
+    # Fresh live windows keep filling forward from the live start, never from the origin window's end.
     with db,db.cursor() as c:
         c.execute("SELECT count(*) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE w.coin=%s AND w.end_at>=%s AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id)",(rows[0][0],slot(NOW)-timedelta(hours=42)))
-        assert c.fetchone()[0]==10
+        assert c.fetchone()[0]==54//cadence(rows[0][0])+1
+
+
+def test_db_hourly_coins_get_hourly_windows_two_pages_and_the_larger_ceiling(db):
+    hourly=[c for c in TRACKED if cadence(c)==1];assert set(hourly)=={'ZCAT','ZEC','KNOTS'}
+    coin=hourly[0];assert pages_per_run(coin)==2 and ceiling(coin)==450000
+    setup(db,NOW)
+    with db,db.cursor() as c:
+        c.execute('SELECT credit_limit FROM crypto_rolling_coins WHERE coin=%s',(coin,));assert c.fetchone()[0]==450000
+        c.execute('SELECT max(end_at),max(end_at-start_at) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE w.coin=%s AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id)',(coin,))
+        assert c.fetchone()==(NOW.replace(minute=0),timedelta(hours=2))
+    for _ in range(2):assert collect_one(db,'fake',coin,NOW,fetch=lambda *a,**k:Response())
+    assert reserve(db,coin,NOW) is None, 'two pages an hour'
+    assert reserve(db,coin,NOW+timedelta(hours=1)) is not None, 'the next hour is a new slot'
+    # A six-hourly coin promoted mid-campaign keeps its spend and is raised, never lowered.
+    with db,db.cursor() as c:
+        c.execute("UPDATE crypto_rolling_coins SET credit_limit=30000,used_credits=20000 WHERE coin=%s",(coin,))
+    setup(db,NOW)
+    with db,db.cursor() as c:
+        c.execute('SELECT credit_limit,used_credits FROM crypto_rolling_coins WHERE coin=%s',(coin,));assert c.fetchone()==(450000,20000)
