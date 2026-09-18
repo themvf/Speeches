@@ -265,6 +265,21 @@ matches only the `$AD` cashtag, the phrase "artificial doge" or the contract; th
 token-context rule. Carries `originFrom: 2026-06-01`, so the next rolling run backfills
 launch-era contract posts, and the market archive picks up its Robinhood pools.
 
+## Day-1 supporters, cross-coin accounts and interest over time (2026-09-18)
+
+Reading the People data across coins showed pairs that share almost all their posters
+(KNOTS/STONK 36 of 40, BACKPACK/PERSPAD 11 of 13, DPONS/STANDARD 12 of 13, many day-1 on both),
+so the workbench now makes that visible without leaving the screen. `dayOneCoins(leader)` lists
+the coins where the account's first post landed on the day of the coin's first saved contract post;
+those accounts carry a yellow `d1` badge (`d1×N` for several coins) on the People table, in the X
+posts feed and in the account pane. Command tokens `day1` (alias `d1`) and `coins>N` filter, and
+the legend row gained two chips, "d1 day-1" and "3+ coins", with counts in scope. The account
+route now returns `weekly` (posts per ISO week per coin, reposts excluded) and the pane draws an
+"Interest over time" strip per coin: bars for every week since the first post, with silent weeks as
+gaps, and a label from `interestTrend`: gone (nothing in 14 days), new (under three weeks),
+rising (latest two weeks ≥1.5× the first two), fading (under half), else steady. Tests in
+`crypto-leaders.test.ts` and `crypto-workbench.test.ts`.
+
 ## Hourly cadence for ZCAT, ZEC and KNOTS (2026-09-18)
 
 A registry coin may carry `cadenceHours: 1`. The rolling workflow now runs every hour

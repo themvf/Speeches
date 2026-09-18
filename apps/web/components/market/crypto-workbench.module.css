@@ -90,3 +90,8 @@
 .ringRow { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:5px 12px; border-bottom:1px solid var(--line-soft); font-size:11px; }
 .ringRow .ringTag { cursor:pointer; border:1px solid transparent; }
 .ringRow .ringTag[aria-pressed="true"] { border-color:currentColor; }
+.d1 { display:inline-block; margin-right:5px; padding:0 4px; border-radius:3px; font-size:10px; font-weight:700; line-height:14px; letter-spacing:.02em; background:rgba(250,204,21,.22); color:#fde68a; border:1px solid rgba(250,204,21,.45); font-family:"SF Mono",Menlo,Consolas,monospace; vertical-align:1px; }
+.d1Chip { background:rgba(250,204,21,.14); color:#fde68a; }
+.cadence { display:flex; align-items:center; gap:8px; padding:3px 14px; font-size:11.5px; border-bottom:1px solid rgba(110,176,224,.06); }
+.bars { display:inline-flex; align-items:flex-end; gap:2px; height:14px; flex:1 1 auto; min-width:0; }
+.bars i { display:block; width:6px; background:rgba(125,211,252,.55); border-radius:1px; }

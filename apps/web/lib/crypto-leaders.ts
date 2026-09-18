@@ -45,6 +45,26 @@ export function afterPosting(l:Leader){
  return parts.join(' · ');
 }
 export function earlyCoins(l:Leader){return l.roles.filter(r=>r.early).map(r=>({coin:r.coin,day:r.day}));}
+// Day-1 supporter: first post on the coin landed the same calendar day as the coin's first saved contract post.
+export function dayOneCoins(l:Leader){return l.roles.filter(r=>r.early&&r.day===1).map(r=>r.coin);}
+// Interest over time from weekly post counts on one coin. Compares the account's latest two weeks with its first two
+// active weeks; "gone" means nothing in the last 14 days. Pure so the account pane and tests read the same answer.
+export type Weekly={week:string;posts:number}; // week = ISO date of the Monday, UTC
+export type Interest={label:'rising'|'steady'|'fading'|'gone'|'new';recent:number;opening:number;lastDays:number|null;bars:number[]};
+export function interestTrend(weekly:Weekly[],lastAt:string|null,now=Date.now()):Interest{
+ const w=[...weekly].filter(x=>x.posts>0).sort((a,b)=>a.week.localeCompare(b.week));
+ const lastDays=lastAt?Math.floor((now-Date.parse(lastAt))/86400000):null;
+ if(!w.length)return {label:'new',recent:0,opening:0,lastDays,bars:[]};
+ // Fill every week from the first active one to the current week so a silent week shows as a gap, not a missing bar.
+ const start=Date.parse(w[0].week+'T00:00:00Z');const cur=new Date(now);const dow=(cur.getUTCDay()+6)%7;const monday=Date.UTC(cur.getUTCFullYear(),cur.getUTCMonth(),cur.getUTCDate()-dow);
+ const byWeek=new Map(w.map(x=>[x.week,x.posts]));const bars:number[]=[];
+ for(let t=start;t<=monday;t+=7*86400000)bars.push(byWeek.get(new Date(t).toISOString().slice(0,10))??0);
+ const opening=bars.slice(0,2).reduce((a,b)=>a+b,0),recent=bars.slice(-2).reduce((a,b)=>a+b,0);
+ if(lastDays!=null&&lastDays>=14)return {label:'gone',recent,opening,lastDays,bars};
+ if(bars.length<3)return {label:'new',recent,opening,lastDays,bars};
+ const label=recent>=opening*1.5&&recent>opening?'rising':recent*2<opening?'fading':'steady';
+ return {label,recent,opening,lastDays,bars};
+}
 export function whyLeader(l:Leader){
  const parts:string[]=[];
  const early=earlyCoins(l);if(early.length)parts.push(`early on ${early.map(e=>e.day?`${e.coin} day ${e.day}`:e.coin).join(', ')}`);

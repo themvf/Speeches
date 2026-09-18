@@ -27,6 +27,13 @@ test('ring token filters by computed ring',()=>{
  assert.equal(parseQuery('ring:2').ring,2);assert.equal(matchesQuery(a,parseQuery('ring:1'),null,rings),true);assert.equal(matchesQuery(b,parseQuery('ring:1'),null,rings),false);
  assert.equal(describeScope(parseQuery('ring:2'),'ZCAT'),'ZCAT · ring 2 defender');
 });
+test('day1 and coins>N tokens',()=>{
+ const d1=summarize('3','launch_crew',null,[role('KNOTS',1),role('STONK',1),role('ZCAT',6)],[],null);
+ assert.equal(parseQuery('day1 coins>2').day1,true);assert.equal(parseQuery('d1 coins>2').coins,2);
+ assert.equal(matchesQuery(d1,parseQuery('day1'),null),true);assert.equal(matchesQuery(a,parseQuery('day1'),null),false,'day 5 is early, not day 1');
+ assert.equal(matchesQuery(d1,parseQuery('coins>2'),null),true);assert.equal(matchesQuery(a,parseQuery('coins>2'),null),false);
+ assert.equal(describeScope(parseQuery('day1 coins>2'),null),'all coins · day-1 · coins>2');
+});
 test('state round-trips through the query string',()=>{
  const s={...EMPTY,coin:'ZCAT',account:'9',tab:'posts' as const,q:'hit>0.5',day:'2026-09-01'};
  assert.equal(writeState(s),'/market/crypto?coin=ZCAT&account=9&tab=posts&q=hit%3E0.5&day=2026-09-01');

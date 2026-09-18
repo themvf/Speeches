@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {summarize,rankLeaders,whyLeader,afterPosting,postingStyles,dayAfterAnchor,type CoinRole,type CoinImpact} from './crypto-leaders.ts';
+import {dayOneCoins,interestTrend,summarize,rankLeaders,whyLeader,afterPosting,postingStyles,dayAfterAnchor,type CoinRole,type CoinImpact} from './crypto-leaders.ts';
 const role=(coin:string,early=false,extra:Partial<CoinRole>={}):CoinRole=>({coin,role:early?'Early discoverers':'Amplifiers',early,analysis:false,amplifier:!early,posts:3,first:'2026-08-01',day:early?2:null,contract:early,...extra});
 const imp=(coin:string,episodes:number,x:number|null,up=.5):CoinImpact=>({coin,episodes,median_24h:x,median_excess_24h:x,share_up_24h:up});
 test('cross-coin summary weights per-coin medians by episodes and counts early coins and ups',()=>{
@@ -30,4 +30,17 @@ test('day after anchor counts the anchor day as day 1',()=>{
  assert.equal(dayAfterAnchor('2026-08-01T10:00:00Z','2026-08-01T08:00:00Z'),1);
  assert.equal(dayAfterAnchor('2026-08-03T01:00:00Z','2026-08-01T08:00:00Z'),2);
  assert.equal(dayAfterAnchor('2026-08-03T01:00:00Z',null),null);
+});
+
+test('day-one coins and interest trend',()=>{
+ const l=summarize('9','crew',null,[{coin:'KNOTS',role:'Early discoverers',early:true,analysis:false,amplifier:false,posts:4,first:'2026-09-01',day:1,contract:true},{coin:'ZCAT',role:'Early discoverers',early:true,analysis:false,amplifier:false,posts:2,first:'2026-08-01',day:6,contract:false}],[],null);
+ assert.deepEqual(dayOneCoins(l),['KNOTS']);
+ const now=Date.parse('2026-09-18T12:00:00Z');
+ const fading=interestTrend([{week:'2026-08-24',posts:9},{week:'2026-08-31',posts:5},{week:'2026-09-07',posts:1},{week:'2026-09-14',posts:1}],'2026-09-15T00:00:00Z',now);
+ assert.equal(fading.label,'fading');assert.deepEqual(fading.bars,[9,5,1,1]);assert.equal(fading.lastDays,3);
+ assert.equal(interestTrend([{week:'2026-08-24',posts:2},{week:'2026-08-31',posts:1},{week:'2026-09-07',posts:4},{week:'2026-09-14',posts:3}],'2026-09-17T00:00:00Z',now).label,'rising');
+ assert.equal(interestTrend([{week:'2026-08-24',posts:9}],'2026-08-25T00:00:00Z',now).label,'gone');
+ assert.deepEqual(interestTrend([{week:'2026-08-24',posts:3}],'2026-08-25T00:00:00Z',now).bars,[3,0,0,0],'silent weeks show as gaps');
+ assert.equal(interestTrend([{week:'2026-09-14',posts:3}],'2026-09-17T00:00:00Z',now).label,'new');
+ assert.equal(interestTrend([],null,now).label,'new');
 });
