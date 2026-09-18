@@ -262,6 +262,30 @@
       "searchQuery": "(\"$STONK\" OR \"6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx\")",
       "identityNote": "user-supplied address; not independently verified. Slang: bare 'stonk' needs token context; 'stonks' plural never matches",
       "originFrom": "2026-06-01"
+    },
+    {
+      "symbol": "AD",
+      "name": "Artificial Doge",
+      "label": "AD · Artificial Doge",
+      "network": "robinhood",
+      "networkLabel": "Robinhood",
+      "address": "0x63ffd4aa844f4befcee1b4606e467d1d209a926b",
+      "archiveStart": "2026-06-01",
+      "words": [
+        "\\$ad(?![a-z0-9_])",
+        "\\bartificial\\s+doge\\b"
+      ],
+      "contextWords": [],
+      "exclude": [],
+      "discoveryName": "\\bartificial\\s+doge\\b",
+      "profileTerms": [
+        "$ad",
+        "artificial doge"
+      ],
+      "official": [],
+      "searchQuery": "(\"$AD\" OR \"Artificial Doge\" OR \"0x63ffd4aa844f4befcee1b4606e467d1d209a926b\")",
+      "identityNote": "Robinhood Chain; user-supplied address, name read from GeckoTerminal (coingecko id artificial-doge). 'ad' is a word and '#ad' marks sponsored posts, so only the $AD cashtag, the full name or the contract match",
+      "originFrom": "2026-06-01"
     }
   ]
 }

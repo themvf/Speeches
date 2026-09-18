@@ -280,5 +280,47 @@
     "STONK",
     "contract",
     true
+  ],
+  [
+    "$AD on Robinhood chain",
+    "AD",
+    "words",
+    true
+  ],
+  [
+    "Artificial Doge is live",
+    "AD",
+    "words",
+    true
+  ],
+  [
+    "#ad sponsored post",
+    "AD",
+    "words",
+    false
+  ],
+  [
+    "this ad is annoying",
+    "AD",
+    "words",
+    false
+  ],
+  [
+    "$ADA rising",
+    "AD",
+    "words",
+    false
+  ],
+  [
+    "0x63FFD4AA844F4BEFCEE1B4606E467D1D209A926B",
+    "AD",
+    "contract",
+    true
+  ],
+  [
+    "$AD on Robinhood chain",
+    "AD",
+    "contract",
+    false
   ]
 ]

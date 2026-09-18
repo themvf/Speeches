@@ -256,6 +256,15 @@ ordinary 30,000-credit ceiling. Once an earliest contract post is saved, the exi
 30-hour focus windows around it are created automatically. All five coins added today carry
 `originFrom: 2026-06-01`; the established coins had dedicated history campaigns and do not.
 
+## AD · Artificial Doge (2026-09-18)
+
+`0x63ffd4aa844f4befcee1b4606e467d1d209a926b` on Robinhood Chain joined the registry as AD;
+GeckoTerminal names it Artificial Doge (coingecko id `artificial-doge`), which is the only
+identity check done. "ad" is an English word and `#ad` marks sponsored posts, so words mode
+matches only the `$AD` cashtag, the phrase "artificial doge" or the contract; there is no
+token-context rule. Carries `originFrom: 2026-06-01`, so the next rolling run backfills
+launch-era contract posts, and the market archive picks up its Robinhood pools.
+
 ## Workspace redesign (2026-09-17)
 
 `/market/crypto` now runs on `crypto-workspace.tsx`: five destinations organised around the
