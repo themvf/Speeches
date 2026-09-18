@@ -256,6 +256,17 @@ ordinary 30,000-credit ceiling. Once an earliest contract post is saved, the exi
 30-hour focus windows around it are created automatically. All five coins added today carry
 `originFrom: 2026-06-01`; the established coins had dedicated history campaigns and do not.
 
+## FLX · FAIRLAUNCH (2026-09-18)
+
+`0x0d4ed27a906a0774474b200cc5392019facd2a47` on Robinhood Chain joined the registry as FLX;
+GeckoTerminal names it FAIRLAUNCH (coingecko id `fairlaunch`), the only identity check done.
+Matching is the strictest in the registry because the name is ordinary memecoin vocabulary:
+"fair launch" as two words never matches, one-word `fairlaunch` needs token context
+(robinhood/token/coin/ca/contract or an address in the same post), and words mode otherwise
+needs the `$FLX` or `$FAIRLAUNCH` cashtag or the contract. FLX is also an unrelated ticker on
+other chains, so a bare cashtag is evidence of a post about *a* FLX, not proof of this one.
+Carries `originFrom: 2026-06-01` for the launch-era contract backfill.
+
 ## AD · Artificial Doge (2026-09-18)
 
 `0x63ffd4aa844f4befcee1b4606e467d1d209a926b` on Robinhood Chain joined the registry as AD;

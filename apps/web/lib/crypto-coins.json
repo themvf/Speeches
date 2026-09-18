@@ -289,6 +289,35 @@
       "searchQuery": "(\"$AD\" OR \"Artificial Doge\" OR \"0x63ffd4aa844f4befcee1b4606e467d1d209a926b\")",
       "identityNote": "Robinhood Chain; user-supplied address, name read from GeckoTerminal (coingecko id artificial-doge). 'ad' is a word and '#ad' marks sponsored posts, so only the $AD cashtag, the full name or the contract match",
       "originFrom": "2026-06-01"
+    },
+    {
+      "symbol": "FLX",
+      "name": "FAIRLAUNCH",
+      "label": "FLX · FAIRLAUNCH",
+      "network": "robinhood",
+      "networkLabel": "Robinhood",
+      "address": "0x0d4ed27a906a0774474b200cc5392019facd2a47",
+      "archiveStart": "2026-06-01",
+      "words": [
+        "\\$flx(?![a-z0-9_])",
+        "[$#]fairlaunch(?![a-z0-9_])"
+      ],
+      "contextWords": [
+        [
+          "(^|[^a-z0-9_])fairlaunch(?![a-z0-9_])",
+          "\\b(?:robinhood|token|coin|ca|contract|0x[0-9a-f]{6})\\b"
+        ]
+      ],
+      "exclude": [],
+      "discoveryName": "\\bfairlaunch\\s+(?:token|coin)\\b",
+      "profileTerms": [
+        "$flx",
+        "fairlaunch"
+      ],
+      "official": [],
+      "searchQuery": "(\"$FLX\" OR \"$FAIRLAUNCH\" OR \"0x0d4ed27a906a0774474b200cc5392019facd2a47\")",
+      "identityNote": "Robinhood Chain; user-supplied address, name read from GeckoTerminal (coingecko id fairlaunch). 'fair launch' as two words is generic memecoin vocabulary and never matches; bare one-word 'fairlaunch' needs token context. FLX is also an unrelated ticker elsewhere, so the cashtag alone is not treated as proof of this coin",
+      "originFrom": "2026-06-01"
     }
   ]
 }

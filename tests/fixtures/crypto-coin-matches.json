@@ -322,5 +322,47 @@
     "AD",
     "contract",
     false
+  ],
+  [
+    "$FLX on Robinhood",
+    "FLX",
+    "words",
+    true
+  ],
+  [
+    "$FAIRLAUNCH is live",
+    "FLX",
+    "words",
+    true
+  ],
+  [
+    "this was a fair launch, no presale",
+    "FLX",
+    "words",
+    false
+  ],
+  [
+    "fairlaunch token on robinhood",
+    "FLX",
+    "words",
+    true
+  ],
+  [
+    "fairlaunch vibes only",
+    "FLX",
+    "words",
+    false
+  ],
+  [
+    "0x0D4ED27A906A0774474B200CC5392019FACD2A47",
+    "FLX",
+    "contract",
+    true
+  ],
+  [
+    "$FLX on Robinhood",
+    "FLX",
+    "contract",
+    false
   ]
 ]
