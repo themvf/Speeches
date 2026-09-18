@@ -72,7 +72,11 @@ export function CryptoWorkbench(){
  useEffect(()=>{if(!state.account){setAcct(null);return;}const c=new AbortController();setAcct(null);load<Account>(`/api/market/crypto/account?id=${encodeURIComponent(state.account)}`,c.signal).then(setAcct).catch(()=>{if(!c.signal.aborted)setAcct({status:'error'});});return()=>c.abort();},[state.account]);
  // Coin-shaped panels
  const today=new Date().toISOString().slice(0,10);const start=coinConfig(focusCoin).archiveStart;const fromDay=state.from??start,toDay=state.to??today;
- const days=useMemo(()=>daysBetween(run?.start??start,run?.end??today),[run?.start,run?.end,start,today]);
+ // The chart axis starts at the first day with evidence (a candle or a post), not the registry's archiveStart, so a coin
+ // whose pool appeared weeks after the archive window opened is not squeezed into the right edge. A dragged range wins.
+ const firstEvidence=useMemo(()=>{const c=market?.points?.find(p=>p.close>0)?.day;const p=run?.posts?.reduce<string|null>((m,x)=>{const d=x.posted_at.slice(0,10);return m==null||d<m?d:m;},null);return [c,p].filter((d):d is string=>!!d).sort()[0]??null;},[market,run]);
+ const chartStart=useMemo(()=>{const s0=run?.start??start;const cands=[firstEvidence??s0,state.from??s0].filter(d=>d>=s0);return cands.length?cands.sort()[0]:s0;},[run?.start,start,firstEvidence,state.from]);
+ const days=useMemo(()=>daysBetween(chartStart,run?.end??today),[chartStart,run?.end,today]);
  const eligible=useMemo(()=>voiceEvidence(run?.posts??[],focusCoin),[run,focusCoin]);
  const scoped=useMemo(()=>scopePosts(eligible.eligible,fromDay,toDay),[eligible,fromDay,toDay]);
  // Rings: who posts with whom on the focus coin over the current window.
@@ -159,7 +163,7 @@ export function CryptoWorkbench(){
       <span>earliest contract post <strong className={s.mono}>{eligible.anchor?eligible.anchor.slice(0,16).replace('T',' ')+'Z':coinConfig(focusCoin).address?'none saved':'native'}</strong></span>
       <button onClick={()=>set({tab:'data'})}>coverage <strong className={searched<days.length?s.neg:''}>{searched}/{days.length} days</strong></button>
       {(state.from||state.to)&&<button onClick={()=>set({from:null,to:null})}><strong>full period</strong></button>}</div>
-     <div className={s.pad}>{!run?<div className={s.empty}>Loading saved posts…</div>:<CryptoRunChart days={days} market={series} posts={eligible.eligible} coverage={run.days??[]} from={fromDay} to={toDay} onRange={(a,b)=>set({from:a,to:b})} onInspect={d=>set({day:d})} highlight={state.highlight} inspecting={state.day}/>}
+     <div className={s.pad}>{!run?<div className={s.empty}>Loading saved posts…</div>:<CryptoRunChart days={days} market={series} posts={eligible.eligible} coverage={run.days??[]} from={fromDay<chartStart?chartStart:fromDay} to={toDay} onRange={(a,b)=>set({from:a,to:b})} onInspect={d=>set({day:d})} highlight={state.highlight} inspecting={state.day}/>}{run&&chartStart>(run.start??start)&&<div className={s.faint} style={{fontSize:11,marginTop:4}}>Axis starts {chartStart}, the first day with a candle or a saved post; the archive window opened {run.start??start} and nothing was found before then.</div>}
       {market&&<p className={s.faint} style={{fontSize:11,margin:'4px 0 0'}}>{market.source} · {market.note}</p>}</div>
      {state.day&&run&&<div className={s.pad}><CryptoBeforeMove day={state.day} posts={eligible.eligible} market={series} highlight={state.highlight} onHighlight={h=>set({highlight:h})} onSelect={id=>set({account:id})} onClose={()=>set({day:null,highlight:null})}/></div>}
      {!state.day&&<div className={s.empty}>Click a day on the chart, or the largest gain above, to list who posted in the 24 hours before it.</div>}
