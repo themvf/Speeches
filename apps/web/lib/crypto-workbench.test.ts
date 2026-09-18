@@ -33,6 +33,8 @@ test('day1 and coins>N tokens',()=>{
  assert.equal(matchesQuery(d1,parseQuery('day1'),null),true);assert.equal(matchesQuery(a,parseQuery('day1'),null),false,'day 5 is early, not day 1');
  assert.equal(matchesQuery(d1,parseQuery('coins>2'),null),true);assert.equal(matchesQuery(a,parseQuery('coins>2'),null),false);
  assert.equal(describeScope(parseQuery('day1 coins>2'),null),'all coins · day-1 · coins>2');
+ const circle=new Map([['1',{handle:'Tyler_Did_It',inside:true,count:2,from:new Map([['spaceman',2]])}]]);
+ assert.equal(parseQuery('circle').circle,true);assert.equal(matchesQuery(a,parseQuery('circle'),null,undefined,circle),true);assert.equal(matchesQuery(b,parseQuery('circle'),null,undefined,circle),false);
 });
 test('state round-trips through the query string',()=>{
  const s={...EMPTY,coin:'ZCAT',account:'9',tab:'posts' as const,q:'hit>0.5',day:'2026-09-01'};

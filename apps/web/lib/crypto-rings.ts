@@ -71,3 +71,16 @@ export function computeRings(posts:RunPost[],coin:string,pairedWith:string[]=[])
  return out;
 }
 export function ringToken(text:string):Ring|null{const m=text.match(/^ring:?(\d)$/i);const n=m?Number(m[1]):NaN;return n>=1&&n<=8?n as Ring:null;}
+
+// Day-1 circle: who the coin's day-1 supporters reply to, quote or tag. A peer posts on the coin too; an outside target
+// does not (an account being lobbied, not a supporter). Day-1 supporters themselves are never in the circle.
+export type CircleEntry={handle:string;inside:boolean;count:number;from:Map<string,number>}; // from: day-1 handle → edges
+export function dayOneCircle(posts:RunPost[],dayOne:Set<string>):Map<string,CircleEntry>{
+ const out=new Map<string,CircleEntry>();const authors=new Set(posts.map(p=>p.author_id));
+ for(const p of posts){if(!dayOne.has(p.author_id)||p.kind==='repost')continue;
+  for(const e of p.edges){if(e.target_id===p.author_id||dayOne.has(e.target_id))continue;
+   const c=out.get(e.target_id)??{handle:e.target,inside:authors.has(e.target_id),count:0,from:new Map()};
+   c.count++;c.from.set(p.handle,(c.from.get(p.handle)??0)+1);out.set(e.target_id,c);}}
+ return out;
+}
+export function circleEvidence(c:CircleEntry){return `${c.inside?'peer':'outside target'} · ${c.count} repl${c.count===1?'y':'ies'}/tags from ${[...c.from].sort((a,b)=>b[1]-a[1]).slice(0,4).map(([h,n])=>'@'+h+(n>1?' ×'+n:'')).join(', ')}`;}

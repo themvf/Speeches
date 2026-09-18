@@ -2,21 +2,22 @@
 import type {Route} from 'next';
 import {COINS,isCoin} from './crypto-coins.ts';
 import {MIN_LINKED_POSTS,postingStyles,dayOneCoins,type Leader} from './crypto-leaders.ts';
-import {ringToken,RING_LABEL,type Ring,type RingResult} from './crypto-rings.ts';
+import {ringToken,RING_LABEL,type Ring,type RingResult,type CircleEntry} from './crypto-rings.ts';
 export const BASE='/market/crypto';
 export type Tab='people'|'posts'|'timeline'|'connections'|'data';
 export const TABS:{id:Tab;label:string}[]=[{id:'people',label:'People'},{id:'posts',label:'X posts'},{id:'timeline',label:'Timeline'},{id:'connections',label:'Connections'},{id:'data',label:'Data'}];
-export type Query={coin:string|null;handle:string|null;early:boolean;day:number|null;hit:number|null;posts:number|null;watcher:boolean;contract:string|null;ring:Ring|null;coins:number|null;day1:boolean;unknown:string[]};
+export type Query={coin:string|null;handle:string|null;early:boolean;day:number|null;hit:number|null;posts:number|null;watcher:boolean;contract:string|null;ring:Ring|null;coins:number|null;day1:boolean;circle:boolean;unknown:string[]};
 const CONTRACT=/^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
 export function coinForContract(address:string){const a=address.toLowerCase();return COINS.find(c=>c.address&&c.address.toLowerCase()===a)?.symbol??null;}
-// Tokens: SYMBOL · @handle · contract address · early · day1 · day<N · hit>0.x · posts>N · coins>N · watcher · ring:N. Anything else narrows the handle.
+// Tokens: SYMBOL · @handle · contract address · early · day1 · circle · day<N · hit>0.x · posts>N · coins>N · watcher · ring:N. Anything else narrows the handle.
 export function parseQuery(text:string):Query{
- const q:Query={coin:null,handle:null,early:false,day:null,hit:null,posts:null,watcher:false,contract:null,ring:null,coins:null,day1:false,unknown:[]};
+ const q:Query={coin:null,handle:null,early:false,day:null,hit:null,posts:null,watcher:false,contract:null,ring:null,coins:null,day1:false,circle:false,unknown:[]};
  for(const t of text.trim().split(/\s+/).filter(Boolean)){let m;
   if(t[0]==='@'){q.handle=t.slice(1).toLowerCase();continue;}
   const low=t.toLowerCase();
   if(low==='early'){q.early=true;continue;}
   if(low==='day1'||low==='d1'){q.day1=true;continue;}
+  if(low==='circle'||low==='d1circle'){q.circle=true;continue;}
   if(low==='watcher'||low==='watchers'){q.watcher=true;continue;}
   const ring=ringToken(low);if(ring){q.ring=ring;continue;}
   if((m=low.match(/^day<(\d+)$/))){q.day=Number(m[1]);continue;}
@@ -30,8 +31,9 @@ export function parseQuery(text:string):Query{
  }
  return q;
 }
-export function matchesQuery(l:Leader,q:Query,coin:string|null,rings?:Map<string,RingResult>){
+export function matchesQuery(l:Leader,q:Query,coin:string|null,rings?:Map<string,RingResult>,circle?:Map<string,CircleEntry>){
  if(coin&&!l.coins.includes(coin))return false;
+ if(q.circle&&!circle?.has(l.account_id))return false;
  if(q.ring!=null&&rings?.get(l.account_id)?.ring!==q.ring)return false;
  if(q.handle&&!l.handle.toLowerCase().includes(q.handle))return false;
  if(q.early&&!l.early_coins)return false;
@@ -44,7 +46,7 @@ export function matchesQuery(l:Leader,q:Query,coin:string|null,rings?:Map<string
  return true;
 }
 export function describeScope(q:Query,coin:string|null){
- return [coin??'all coins',q.handle?'@'+q.handle:null,q.early?'early':null,q.day1?'day-1':null,q.coins!=null?'coins>'+q.coins:null,q.day!=null?'day<'+q.day:null,q.hit!=null?'hit>'+q.hit:null,q.posts!=null?'posts>'+q.posts:null,q.watcher?'watchers':null,q.ring!=null?`ring ${q.ring} ${RING_LABEL[q.ring]}`:null,q.contract&&!q.coin?'contract '+q.contract.slice(0,6)+'… (not tracked)':null].filter(Boolean).join(' · ');
+ return [coin??'all coins',q.handle?'@'+q.handle:null,q.early?'early':null,q.day1?'day-1':null,q.circle?'day-1 circle':null,q.coins!=null?'coins>'+q.coins:null,q.day!=null?'day<'+q.day:null,q.hit!=null?'hit>'+q.hit:null,q.posts!=null?'posts>'+q.posts:null,q.watcher?'watchers':null,q.ring!=null?`ring ${q.ring} ${RING_LABEL[q.ring]}`:null,q.contract&&!q.coin?'contract '+q.contract.slice(0,6)+'… (not tracked)':null].filter(Boolean).join(' · ');
 }
 // URL state: everything the screen shows is in the query string so a view is a bookmark.
 export type State={coin:string|null;account:string|null;tab:Tab;q:string;day:string|null;highlight:string|null;from:string|null;to:string|null};

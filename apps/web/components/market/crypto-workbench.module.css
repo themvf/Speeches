@@ -95,3 +95,5 @@
 .cadence { display:flex; align-items:center; gap:8px; padding:3px 14px; font-size:11.5px; border-bottom:1px solid rgba(110,176,224,.06); }
 .bars { display:inline-flex; align-items:flex-end; gap:2px; height:14px; flex:1 1 auto; min-width:0; }
 .bars i { display:block; width:6px; background:rgba(125,211,252,.55); border-radius:1px; }
+.d1Peer { background:rgba(45,212,191,.16); color:#99f6e4; border-color:rgba(45,212,191,.4); }
+.d1Out { background:rgba(148,163,184,.12); color:#cbd5e1; border-color:rgba(148,163,184,.35); }

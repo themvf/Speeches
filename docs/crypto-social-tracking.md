@@ -280,6 +280,14 @@ gaps, and a label from `interestTrend`: gone (nothing in 14 days), new (under th
 rising (latest two weeks ≥1.5× the first two), fading (under half), else steady. Tests in
 `crypto-leaders.test.ts` and `crypto-workbench.test.ts`.
 
+**Day-1 circle** (same day): `dayOneCircle(posts, dayOneIds)` in `crypto-rings.ts` lists every
+account a day-1 supporter of the pinned coin replied to, quoted or tagged in the window, split
+into peers (they post on the coin) and outside targets (they do not; an account being lobbied,
+such as @blknoiz06 or @moonshot in ZCAT's case). Day-1 accounts are never in the circle. Badges
+`d1·peer` / `d1·target` on People, feed, Connections and the pane; `circle` token and a legend
+chip with peer/target counts; a day-1 account's pane lists who it talks to with counts, and a
+circle account's pane says which day-1 accounts reached it and how often.
+
 ## Hourly cadence for ZCAT, ZEC and KNOTS (2026-09-18)
 
 A registry coin may carry `cadenceHours: 1`. The rolling workflow now runs every hour

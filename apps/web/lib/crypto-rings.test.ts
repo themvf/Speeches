@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {computeRings,ringToken} from './crypto-rings.ts';
+import {dayOneCircle,circleEvidence,computeRings,ringToken} from './crypto-rings.ts';
 import type {RunPost} from './crypto-run.ts';
 let n=0;
 const post=(author:string,text:string,at:string,kind='original',edges:{target_id:string;target:string;kind:string}[]=[]):RunPost=>({id:'p'+(n++),author_id:author,handle:author,text,url:'',posted_at:at,kind,edges});
@@ -32,3 +32,13 @@ test('feeds, piggybackers and critics are separated and take precedence',()=>{
  assert.equal(r.get('whalewatchalert')?.ring,7);assert.equal(r.get('elio')?.ring,6);assert.equal(r.get('cov')?.ring,8,'critic outranks defender even when the reply says vamp');
 });
 test('ring token parses',()=>{assert.equal(ringToken('ring:2'),2);assert.equal(ringToken('ring9'),null);assert.equal(ringToken('rings'),null);});
+
+test('day-one circle splits peers from outside targets and never includes day-one accounts',()=>{
+ const post=(id:string,author:string,handle:string,edges:{target_id:string;target:string;kind:string}[],kind='reply'):RunPost=>({id,author_id:author,handle,text:'$ZCAT',url:'',posted_at:'2026-09-02T10:00:00Z',kind,edges});
+ const posts=[post('1','d1','spaceman',[{target_id:'peer','target':'imagyn',kind:'reply'}]),post('2','d1','spaceman',[{target_id:'out','target':'blknoiz06',kind:'mention'}]),post('3','d1','spaceman',[{target_id:'out','target':'blknoiz06',kind:'mention'},{target_id:'d1b','target':'eylboh',kind:'reply'}]),
+  post('4','peer','imagyn',[],'original'),post('5','d1b','eylboh',[{target_id:'d1','target':'spaceman',kind:'reply'}]),post('6','x','random',[{target_id:'out','target':'blknoiz06',kind:'mention'}])];
+ const c=dayOneCircle(posts,new Set(['d1','d1b']));
+ assert.deepEqual([...c.keys()].sort(),['out','peer']);
+ assert.equal(c.get('peer')!.inside,true);assert.equal(c.get('out')!.inside,false);assert.equal(c.get('out')!.count,2,'only edges from day-one accounts count');
+ assert.equal(circleEvidence(c.get('out')!),'outside target · 2 replies/tags from @spaceman ×2');
+});
