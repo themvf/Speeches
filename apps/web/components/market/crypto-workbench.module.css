@@ -79,9 +79,14 @@
 .ringTag[data-ring="7"] { background:rgba(148,163,184,.10); color:var(--ink-faint); }
 .ringTag[data-ring="8"] { background:rgba(255,107,127,.16); color:#fda4af; }
 .ringDot { display:inline-block; min-width:14px; margin-right:5px; border-radius:3px; font-size:10px; font-weight:700; text-align:center; line-height:14px; background:rgba(110,176,224,.15); color:var(--ink-soft); }
-.ringDot[data-ring="1"] { background:rgba(79,213,255,.25); color:#bae6fd; }
-.ringDot[data-ring="2"] { background:rgba(240,155,61,.25); color:#fcd34d; }
-.ringDot[data-ring="8"] { background:rgba(255,107,127,.25); color:#fda4af; }
+.ringDot[data-ring="1"] { background:rgba(79,213,255,.28); color:#bae6fd; }
+.ringDot[data-ring="2"] { background:rgba(240,155,61,.28); color:#fcd34d; }
+.ringDot[data-ring="3"] { background:rgba(65,211,157,.26); color:#6ee7b7; }
+.ringDot[data-ring="4"] { background:rgba(167,139,250,.28); color:#c4b5fd; }
+.ringDot[data-ring="5"] { background:rgba(244,114,182,.26); color:#f9a8d4; }
+.ringDot[data-ring="6"] { background:rgba(148,163,184,.26); color:#cbd5e1; }
+.ringDot[data-ring="7"] { background:rgba(148,163,184,.14); color:var(--ink-faint); }
+.ringDot[data-ring="8"] { background:rgba(255,107,127,.28); color:#fda4af; }
 .ringRow { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:5px 12px; border-bottom:1px solid var(--line-soft); font-size:11px; }
 .ringRow .ringTag { cursor:pointer; border:1px solid transparent; }
 .ringRow .ringTag[aria-pressed="true"] { border-color:currentColor; }
