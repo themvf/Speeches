@@ -17,10 +17,23 @@
     },
     "app/api/notices-comments/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/cron/dispatch-workflows/route.ts": {
+      "maxDuration": 30
     }
   },
   "crons": [
-    { "path": "/api/intel/rss-refresh", "schedule": "*/30 * * * *" },
-    { "path": "/api/briefings/scheduled/run", "schedule": "0 1,2 * * *" }
+    {
+      "path": "/api/intel/rss-refresh",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/briefings/scheduled/run",
+      "schedule": "0 1,2 * * *"
+    },
+    {
+      "path": "/api/cron/dispatch-workflows",
+      "schedule": "20 * * * *"
+    }
   ]
 }

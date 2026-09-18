@@ -1,7 +1,7 @@
 from datetime import datetime,timedelta,timezone
 import pytest
 from test_crypto_social_pilot import db
-from crypto_social_rolling import setup,reserve,collect_one,slot,cadence,ceiling,pages_per_run,CAMPAIGN,TRACKED,REGISTRY
+from crypto_social_rolling import setup,reserve,collect_one,slot,cadence,ceiling,PAGES_PER_RUN,CAMPAIGN,TRACKED,REGISTRY
 ORIGINS=sum(1 for c in REGISTRY.values() if c.get('originFrom'))
 def windows(hours):return sum(hours//cadence(c)+1 for c in TRACKED)  # windows from anchor-hours to the anchor inclusive
 
@@ -169,14 +169,16 @@ def test_db_origin_window_is_one_bounded_contract_search_per_new_coin(db):
 
 def test_db_hourly_coins_get_hourly_windows_two_pages_and_the_larger_ceiling(db):
     hourly=[c for c in TRACKED if cadence(c)==1];assert set(hourly)=={'ZCAT','ZEC','KNOTS'}
-    coin=hourly[0];assert pages_per_run(coin)==2 and ceiling(coin)==450000
+    coin=hourly[0];assert ceiling(coin)==450000
     setup(db,NOW)
     with db,db.cursor() as c:
         c.execute('SELECT credit_limit FROM crypto_rolling_coins WHERE coin=%s',(coin,));assert c.fetchone()[0]==450000
         c.execute('SELECT max(end_at),max(end_at-start_at) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE w.coin=%s AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id)',(coin,))
         assert c.fetchone()==(NOW.replace(minute=0),timedelta(hours=2))
-    for _ in range(2):assert collect_one(db,'fake',coin,NOW,fetch=lambda *a,**k:Response())
-    assert reserve(db,coin,NOW) is None, 'two pages an hour'
+    # Hourly coins take the same pages per run as everyone else; the hour-long slot is the only
+    # difference. Fewer pages per run would cut throughput, because runs are the scarce resource.
+    for _ in range(PAGES_PER_RUN):assert collect_one(db,'fake',coin,NOW,fetch=lambda *a,**k:Response())
+    assert reserve(db,coin,NOW) is None, 'the slot cap still binds within one hour'
     assert reserve(db,coin,NOW+timedelta(hours=1)) is not None, 'the next hour is a new slot'
     # A six-hourly coin promoted mid-campaign keeps its spend and is raised, never lowered.
     with db,db.cursor() as c:

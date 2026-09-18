@@ -256,6 +256,27 @@ ordinary 30,000-credit ceiling. Once an earliest contract post is saved, the exi
 30-hour focus windows around it are created automatically. All five coins added today carry
 `originFrom: 2026-06-01`; the established coins had dedicated history campaigns and do not.
 
+## Vercel triggers the collector; GitHub schedule is a fallback (2026-09-18)
+
+Measured that day: GitHub drops most `schedule` fires in this repo. Two independent hourly workflows
+with separate concurrency groups, `crypto-social-rolling` and `bloomberg-public-hourly`, each ran six
+or fewer times in twenty hours, with gaps of 2.5 to 5.5 hours. The repo has 40 scheduled workflows and
+GitHub documents `schedule` as best effort under load, so no cron string can buy the cadence back.
+
+`GET/POST /api/cron/dispatch-workflows` (Vercel cron at `20 * * * *`) presses `workflow_dispatch`,
+which is an explicit API call and is not throttled that way. `lib/server/github-dispatch.ts` holds the
+target list and reads each workflow's real last-run time from GitHub before dispatching, so a fire from
+GitHub's own scheduler counts and the two schedulers never stack. The workflows are untouched: same
+runner, Python, secrets and pre-flight test gate, and their `schedule:` triggers stay as a fallback.
+Auth is the existing `checkCronAuth` (Vercel sends `CRON_SECRET` as a bearer automatically); the route
+returns 503 with a named code when `GITHUB_DISPATCH_TOKEN` is missing rather than quietly doing nothing.
+Requires one secret in Vercel: a fine-grained token with Actions read and write on this repo.
+
+Same day, a regression from the hourly change was reverted: hourly coins had been given 2 pages per run
+instead of 4, on the assumption of 24 firings a day. At the real cadence that cut throughput for
+ZCAT/ZEC/KNOTS from about 16 pages a day to 12. Runs are the scarce resource, not pages, so all coins
+take `PAGES_PER_RUN` = 4 again and the one-hour slot is the only thing cadence changes.
+
 ## FLX · FAIRLAUNCH (2026-09-18)
 
 `0x0d4ed27a906a0774474b200cc5392019facd2a47` on Robinhood Chain joined the registry as FLX;

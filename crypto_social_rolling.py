@@ -12,10 +12,9 @@ from crypto_social_tracking import save_profiles,save_posts
 TRACKED={**COINS,**{s:(c['name'],c['searchQuery'],c['address'],c['networkLabel']+' Chain') for s,c in REGISTRY.items() if s not in COINS}}
 CAMPAIGN='rolling-five-coins-v1'
 COIN_LIMIT=30000
-HOURLY_LIMIT=450000  # hourly coins: 2 pages an hour at 300 reserved = ~14,400/day, 30 days inside the ceiling ($4.50 at 100,000 credits/USD)
+HOURLY_LIMIT=450000  # hourly coins: a larger ceiling for the higher window rate ($4.50 at 100,000 credits/USD)
 DAILY_LIMIT=5400
 PAGES_PER_RUN=4
-HOURLY_PAGES_PER_RUN=2
 
 
 def cadence(coin):
@@ -25,7 +24,6 @@ def cadence(coin):
 
 def ceiling(coin):return HOURLY_LIMIT if cadence(coin)==1 else COIN_LIMIT
 def daily_limit(coin):return DAILY_LIMIT*3 if cadence(coin)==1 else DAILY_LIMIT
-def pages_per_run(coin):return HOURLY_PAGES_PER_RUN if cadence(coin)==1 else PAGES_PER_RUN
 BASE='https://api.twitterapi.io'
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS crypto_voice_focus (window_id bigint PRIMARY KEY,coin text NOT NULL);
@@ -152,7 +150,7 @@ def reserve(conn,coin,now,kind='posts'):
         daily=cur.fetchone()[0]
         cur.execute("SELECT count(*) FROM crypto_rolling_calls WHERE request_id NOT IN (SELECT id FROM crypto_social_requests WHERE status='failed_charged') AND campaign_id=%s AND coin=%s AND kind=%s AND "+('day=%s' if kind!='posts' else 'run_slot=%s'),(CAMPAIGN,coin,kind,now.date() if kind!='posts' else slot(now,coin)))
         cur_slot_count=cur.fetchone()[0]
-        if cur_slot_count>=(1 if kind!='posts' else pages_per_run(coin)):return None
+        if cur_slot_count>=(1 if kind!='posts' else PAGES_PER_RUN):return None
         ids=[];window=None
         if kind=='engagement':
             cur.execute("""SELECT p.id FROM crypto_social_posts p WHERE p.kind='original' AND p.posted_at BETWEEN %s AND %s
@@ -173,7 +171,7 @@ def reserve(conn,coin,now,kind='posts'):
                 JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE r.campaign_id=%s AND w.coin=%s
                 AND w.status IN ('pending','partial') AND w.end_at<=%s
                 ORDER BY CASE WHEN (EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id) OR EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id))=%s THEN 0 ELSE 1 END,CASE WHEN %s THEN CASE WHEN w.pages=0 THEN 0 ELSE 1 END ELSE CASE WHEN w.pages>0 THEN 0 ELSE 1 END END,
-                CASE WHEN w.pages>0 THEN w.start_at END ASC,w.end_at DESC,w.id LIMIT 1 FOR UPDATE OF w''',(CAMPAIGN,coin,slot(now,coin),cur_slot_count==pages_per_run(coin)-1,cur_slot_count==0))
+                CASE WHEN w.pages>0 THEN w.start_at END ASC,w.end_at DESC,w.id LIMIT 1 FOR UPDATE OF w''',(CAMPAIGN,coin,slot(now,coin),cur_slot_count==PAGES_PER_RUN-1,cur_slot_count==0))
             window=cur.fetchone()
             if not window:return None
             credits=300
@@ -280,7 +278,7 @@ def main():
     parser.add_argument('--recover-profile',type=int)
     args=parser.parse_args()
     if not args.execute:
-        print(json.dumps({'mode':'plan_only','coins':list(TRACKED),'days':30,'total_ceiling':sum(ceiling(c) for c in TRACKED),'per_coin_ceiling':{c:ceiling(c) for c in TRACKED},'cadence_hours':{c:cadence(c) for c in TRACKED},'pages_per_coin_per_run':{c:pages_per_run(c) for c in TRACKED},'profiles_per_coin_daily':20,'paid_calls':0}));return
+        print(json.dumps({'mode':'plan_only','coins':list(TRACKED),'days':30,'total_ceiling':sum(ceiling(c) for c in TRACKED),'per_coin_ceiling':{c:ceiling(c) for c in TRACKED},'cadence_hours':{c:cadence(c) for c in TRACKED},'pages_per_coin_per_run':PAGES_PER_RUN,'profiles_per_coin_daily':20,'paid_calls':0}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
@@ -294,7 +292,7 @@ def main():
                 setup_focus(conn,coin,now)
                 snapshot(conn,coin,now)
                 collect_one(conn,key,coin,now,'engagement')
-                for _ in range(pages_per_run(coin)):
+                for _ in range(PAGES_PER_RUN):
                     if not collect_one(conn,key,coin,now):break
                 collect_one(conn,key,coin,now,'profiles')
         print(json.dumps({'campaign':CAMPAIGN,'results':report(conn)},default=str),flush=True)
