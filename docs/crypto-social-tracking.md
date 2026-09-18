@@ -317,3 +317,34 @@ in a collapsed section; there are no sub-tabs. Only the coin page keeps query st
 (`from`, `to`, `day`, `highlight`). Old `?view=` links redirect through `legacyPath` in
 `lib/crypto-workspace.ts`. The app nav item is "Crypto"; the Market → Crypto tab keeps
 prices and a one-line link.
+
+
+## Workbench: one screen (2026-09-18)
+
+The five-page layout (Signals / People / Coins / Account / Data with a left rail) is gone. `/market/crypto`
+is one dense screen, `components/market/crypto-workbench.tsx`, built for someone who knows the data and
+wants it in one move:
+
+- **Command line** (`/` focuses it): `ZCAT`, `@handle`, a contract address, `early`, `day<3`, `hit>0.7`,
+  `posts>5`, `watcher`. Parsed by `lib/crypto-workbench.ts` (`parseQuery`, `matchesQuery`,
+  `describeScope`), debounced into the URL as `q=`. A contract address resolves to its registry coin.
+- **Selection instead of navigation**: clicking a coin anywhere pins it (`coin=`) and every panel narrows
+  to it; clicking an account opens the right-hand pane (`account=`) without leaving the table. Esc clears
+  the pane, then the scope. Arrow keys move a cursor in the People table, Enter opens, `c` pins the row's
+  first coin. All state is in the query string (`readState`/`writeState`), so a view is a bookmark.
+- **Panels**: left = coin board (24h price, volume ratio, posts, signal count), signal feed, discovery
+  (untracked coins named by watchers, 7d); centre tabs = People (TanStack table, dense figures, thin-sample
+  rows dimmed, one "definitions" toggle), X posts (newest first, reposts hidden, next daily close vs the
+  post's day), Timeline (stat row, `CryptoRunChart`, `CryptoBeforeMove` on the inspected day),
+  Connections (edge table from `networkEdges`), Data (`CryptoDataView`); right = account pane (why line,
+  bio, per-coin table, recent posts with the 24h pool move); bottom = coverage, candle/post freshness,
+  coins with no pool, origin progress, credits.
+- Coin-shaped tabs need one coin; with none pinned they show the first registry coin and the scope strip
+  says so.
+- **Old links keep working**: `next.config.mjs` redirects `/people`, `/coins/:coin`, `/accounts/:id` and
+  `/data` into the same screen, and `legacyState` maps the pre-redesign `?view=…&coin=…&account=…` links.
+- Deleted: `crypto-shell.tsx`, `crypto-signals-view.tsx`, `crypto-people-view.tsx`, `crypto-coin-view.tsx`,
+  `crypto-account-view.tsx`, `crypto-post-browser.tsx`, `crypto-sentiment-view.tsx`, `lib/crypto-workspace.ts`
+  and the four sub-route pages. `/api/market/crypto/sentiment` and `/search` still exist but nothing
+  renders them; the sentiment panel was dropped deliberately as low signal.
+- Tests: `lib/crypto-workbench.test.ts` (parser, matching, state round-trip, legacy mapping).

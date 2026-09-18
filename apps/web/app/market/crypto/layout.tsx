@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import type {Metadata} from 'next';
-import {CryptoShell} from '@/components/market/crypto-shell';
-import styles from '@/components/market/crypto-research.module.css';
-export const metadata:Metadata={title:'Crypto research | Policy Research Hub',description:'Saved X posts, account track records and archived pool prices for tracked crypto coins.'};
+import styles from '@/components/market/crypto-workbench.module.css';
+export const metadata:Metadata={title:'Crypto workbench | Policy Research Hub',description:'Saved X posts, account track records and archived pool prices for tracked crypto coins on one screen.'};
 export default function CryptoLayout({children}:{children:React.ReactNode}){
- return <div className={styles.researchPage}><Link className={styles.researchBack} href="/market">← Market</Link><CryptoShell>{children}</CryptoShell></div>;
+ return <div className={styles.page}><Link className={styles.back} href="/market">← Market</Link>{children}</div>;
 }
