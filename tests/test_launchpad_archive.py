@@ -275,9 +275,12 @@ def test_db_report_calls_a_broken_archive_incomplete(db):
 
 # --- Solana adapter: the chain-specific path end to end ---------------------------------------
 
-SOL_TOKEN='csi8dlhfexl6qcsq8xw5p63vnrmzfkr3kobshn7fy5yo'
-SOL_DEEP='alpzyxzbtvbmt1cyhxwxugvflcymvuaxajv9nlydpieq'
-SOL_EMPTY='framdv5myadcwonkashaqnqtov8kkbmmxh6s4qzjtteb'
+# In the 25% ladder cohort (the draw hashes the mint), so the full measure-pool and trade-capture
+# path runs. SOL_OUTSIDE below is deliberately not in it.
+SOL_TOKEN='Csi8DLHFExL6QCsQ8xW5P63vNrMzFKR3koBSHn7fY5Yc'
+SOL_OUTSIDE='Csi8DLHFExL6QCsQ8xW5P63vNrMzFKR3koBSHn7fY5Yo'
+SOL_DEEP='ALPZYXZBTvbmT1cyHxwXUgvFLCyMVuAXaJv9nLYDpieq'
+SOL_EMPTY='FramDv5MyadCwonKaShAqNQToV8kKBMmxh6S4QzJtTeb'
 
 
 def sol_pool(dex='pump-fun',address='0xcurve',token=SOL_TOKEN,created='2026-09-19T19:18:02Z'):
@@ -375,3 +378,23 @@ def test_db_the_two_chains_never_touch_each_other(db):
         assert cur.fetchall()==[('robinhood',1),('solana',1)]
         cur.execute("SELECT dex FROM launchpad_tokens WHERE network='robinhood'")
         assert cur.fetchone()[0]=='pons-v2'
+
+
+def test_db_a_graduate_outside_the_cohort_is_recorded_without_being_measured(db):
+    from launchpad_archive import sweep
+    from launchpad_chains import SOLANA,in_cohort
+    assert not in_cohort(SOLANA,SOL_OUTSIDE)
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP,token=SOL_OUTSIDE,created='2026-09-19T19:18:07Z')
+    multi={'data':[{'attributes':{'address':SOL_OUTSIDE,'symbol':'Nike',
+        'launchpad_details':{'graduation_percentage':100.0,'completed':True,
+                             'completed_at':'2026-09-19T19:18:02.000Z','migrated_destination_pool_address':SOL_EMPTY}}}]}
+    info={'data':{'attributes':{'developer_address':'7H7SkM44','developer_holding_percentage':'19.99'}}}
+    result=sweep(db,SOLANA,fetch=sol_responder({1:[graduation]},multi=multi,info=info),now=NOW,wait=lambda *_:None)
+    assert result['graduations']==1 and result['trade_captures']==0
+    with db,db.cursor() as cur:
+        cur.execute("SELECT cohort_sampled,measure_pool,measure_pool_reason,developer_address FROM launchpad_tokens WHERE network='solana'")
+        sampled,measure,reason,dev=cur.fetchone()
+        # Still recorded, still enriched - the creator layer wants every graduate - but no pool list
+        # was fetched and no ladder will run, and the reason says so rather than implying emptiness.
+        assert sampled is False and measure is None and reason=='outside ladder cohort'
+        assert dev=='7H7SkM44'

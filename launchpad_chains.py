@@ -42,6 +42,21 @@ class Chain:
     # key. Solana's base58 is case-SENSITIVE: folding it produces an address that resolves to
     # nothing. A live sweep proved this - every enrichment call 404'd until it was switched off.
     lowercase_addresses: bool = True
+    # Per-sweep work budgets. These were sized for Robinhood, where graduations are rare and the
+    # cadence is five minutes; on Solana the inherited values needed 5.9 minutes of calls for a
+    # 2-minute sweep. Counts alone cannot guarantee a sweep finishes inside its cadence, so
+    # budget_fraction also imposes a wall-clock deadline on optional fetches - whatever is not done
+    # this sweep is picked up by the next one, because rungs are idempotent and enrichment is
+    # first-write-wins.
+    max_info: int = 20
+    max_snapshots: int = 40
+    max_candidates: int = 300
+    request_wait: float = 2.5
+    budget_fraction: float = 0.6
+
+    @property
+    def deadline_seconds(self):
+        return self.sweep_minutes*60*self.budget_fraction
 
 
 ROBINHOOD=Chain(
@@ -67,6 +82,12 @@ SOLANA=Chain(
     cohort_fraction=0.25,
     extended_info=True,
     lowercase_addresses=False,
+    # ~1.7 graduations per 2-minute sweep, of which a quarter join the cohort, so the ceilings are
+    # generous rather than tight; the deadline is what actually holds the cadence.
+    max_info=8,
+    max_snapshots=12,
+    max_candidates=120,
+    request_wait=2.0,
 )
 
 CHAINS={c.network:c for c in (ROBINHOOD,SOLANA)}

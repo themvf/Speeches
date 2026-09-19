@@ -156,13 +156,17 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
     import requests,time
     wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
     setup(conn)
+    # Wall clock, not the sweep's logical `now`, so a fixture-driven test is never bounded by it.
+    started=time.monotonic()
+    def budget_left():
+        return time.monotonic()-started < chain.deadline_seconds
     with conn,conn.cursor() as cur:
         cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-archive:'+chain.network,))
         if not cur.fetchone()[0]:return {'status':'already_running','errors':['sweep_already_running']}
     errors=[]
     def get(url):
         for attempt in range(4):
-            wait(2.5)  # ~30 requests/minute is the unkeyed ceiling; never burst.
+            wait(chain.request_wait)  # ~30 requests/minute is the unkeyed ceiling; never burst.
             response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
             status=getattr(response,'status_code',0)
             if status==429 and attempt<3:
@@ -208,7 +212,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
             cur.execute('''SELECT token_address FROM launchpad_tokens
                            WHERE network=%s AND state='live' AND last_seen_at>%s
                            ORDER BY moved DESC,last_seen_at DESC LIMIT %s''',
-                        (chain.network,now-timedelta(hours=STALE_HOURS),MAX_CANDIDATES))
+                        (chain.network,now-timedelta(hours=STALE_HOURS),chain.max_candidates))
             candidates=[r[0] for r in cur.fetchall()]
             cur.execute('''SELECT t.token_address,t.graduated_at,array_remove(array_agg(o.rung_minutes),NULL)
                            FROM launchpad_tokens t LEFT JOIN launchpad_observations o
@@ -233,7 +237,8 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         newly=[t for t,entry in arrivals.items() if not known.get(t,{}).get('graduated')]
         newly+=[t for t,s in state.items() if s['completed'] and not known.get(t,{}).get('graduated') and t not in arrivals]
         info={};measure={};captures=[]
-        for token in sorted(set(newly))[:MAX_INFO]:
+        for token in sorted(set(newly))[:chain.max_info]:
+            if not budget_left():break
             try:
                 payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
                 info[token]=parse_info(payload)
@@ -244,17 +249,22 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
             # Which pool the ladder will read. Never the launchpad's destination field on a chain
             # where that has been seen pointing at an empty pool.
             destination=(state.get(token) or {}).get('destination') or (arrivals[token]['pool'] if token in arrivals else None)
-            if chain.deepest_pool_wins:
+            sampled=in_cohort(chain,token)
+            if not chain.deepest_pool_wins:
+                measure[token]=choose_measure_pool(chain,[],destination)
+            elif not sampled:
+                # Outside the cohort there is no ladder to read, so the pool list is never fetched.
+                # Recorded as its own reason: "we did not look" must not read as "there was nothing".
+                measure[token]=(None,'outside ladder cohort')
+            else:
                 try:pool_list=parse_pool_list(get(GECKO+chain.network+'/tokens/'+token+'/pools'))
                 except (ValueError,requests.RequestException) as exc:
                     pool_list=[];errors.append('pools '+token[:10]+': '+type(exc).__name__)
                 measure[token]=choose_measure_pool(chain,pool_list,destination)
-            else:
-                measure[token]=choose_measure_pool(chain,[],destination)
             # Opening trade capture: perishable. On a busy graduate 300 trades spanned 33 seconds, so
             # this is taken now or never - it cannot be reconstructed later at any price.
             address=measure[token][0]
-            if chain.capture_trades and address:
+            if chain.capture_trades and address and sampled and budget_left():
                 started=datetime.now(timezone.utc);rows=[];fetched=0
                 for page in range(1,chain.trade_pages+1):
                     try:
@@ -278,7 +288,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         with conn,conn.cursor() as cur:
             for token,graduated_at,filled in ladder:
                 due=rungs_due(graduated_at,now,filled,chain.rungs)
-                if not due or snapshots>=MAX_SNAPSHOTS:continue
+                if not due or snapshots>=chain.max_snapshots or not budget_left():continue
                 cur.execute('SELECT coalesce(measure_pool,graduation_pool) FROM launchpad_tokens WHERE network=%s AND token_address=%s',(chain.network,token))
                 row=cur.fetchone();pool_address=row[0] if row else None
                 if not pool_address:continue
