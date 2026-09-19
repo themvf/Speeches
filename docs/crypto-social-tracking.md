@@ -456,3 +456,21 @@ early caller; the others are kept as secondary tags. Calibrated on ZCAT 2026-08-
 In the workbench: a `Ring` column on People, a clickable ring legend row above People and X posts
 with counts, ring badges on feed rows, the ring and its evidence at the top of the account pane, and
 a `ring:N` command token (`ZCAT ring:2`). Tests: `apps/web/lib/crypto-rings.test.ts`.
+
+## ASKR · heyaskr (2026-09-19)
+
+`0xa92768863a55d8a0591709f7f5e594a249d36ea3` on Robinhood Chain joined the registry as ASKR.
+GeckoTerminal names it heyaskr (coingecko id `heyaskr`, `gt_verified`), which is the only identity
+check done; the same record gives the project's X handle, `@heyaskr`, recorded in `official` so the
+account is scored as project/platform rather than as an organic early discoverer. Its launchpad
+graduated 2026-09-18T18:36:55Z into the ASKR/WETH pool, which is also the deepest of the five pools
+the archiver accepts, so that is what gets pinned.
+
+Matching: the `$ASKR` cashtag, the one-word name `heyaskr` and the contract each match on their own.
+Bare `askr` needs token context (robinhood/token/coin/ca/contract, an address, or `heyaskr` in the
+same post), because Askr is the Norse ash tree and first man and a personal name; posts naming
+Yggdrasil or "Askr and Embla" are excluded outright.
+
+`archiveStart` and `originFrom` are 2026-09-15, three days before graduation, so the first rolling
+run reaches back over the pre-launch chatter rather than starting at the pool. Cadence is the
+six-hour default; set `cadenceHours: 1` if it earns hourly collection like ZCAT/ZEC/KNOTS.
