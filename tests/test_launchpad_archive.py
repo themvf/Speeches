@@ -494,7 +494,7 @@ def test_db_the_worker_drains_what_the_sweep_left(db):
                         'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
     sweep(db,SOLANA,fetch=sol_responder({1:[graduation]},multi=multi,pool_list=pool_list),now=NOW,wait=lambda *_:None)
     health=backlog_health(db,SOLANA,now=NOW)
-    assert health['pending_enrichment']==1 and health['keeping_up'] is False
+    assert health['pending_enrichment']==1 and health['state']=='healthy'
     info={'data':{'attributes':{'developer_address':'7H7SkM44','developer_holding_percentage':'19.99',
                                 'twitter_handle':'nikebasketball','holders':{'count':2153,'distribution_percentage':{'top_10':'57.5'}}}}}
     # 30 minutes after the fixture's graduation (19:18), so the +5/+10/+30 rungs are due.
@@ -573,3 +573,39 @@ def test_db_re_running_the_worker_skips_finished_work_and_keeps_first_values(db)
         # Identity-ish fields are first-write-wins; the pool chosen at graduation is never relabelled.
         assert dev=='DEV1' and handle=='first_handle' and holders==10
         assert reason=='deepest graduate pool'
+
+
+def test_db_backlog_health_is_about_age_not_count_or_rate(db):
+    from launchpad_archive import backlog_health
+    from launchpad_chains import SOLANA
+    def graduate(token,age_minutes,enriched=False):
+        with db,db.cursor() as cur:
+            cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
+                             graduated,graduated_at,cohort_sampled,enriched_at)
+                           VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,false,%s)""",
+                        (token,NOW,NOW,NOW-timedelta(minutes=age_minutes),NOW if enriched else None))
+    def record(age):
+        with db,db.cursor() as cur:
+            cur.execute("""INSERT INTO launchpad_enrich_runs (network,started_at,oldest_pending_age_seconds)
+                           VALUES ('solana',%s,%s)""",(NOW,age))
+    # A big queue whose oldest item is young is healthy: count alone says nothing.
+    for i in range(100):graduate('young%d'%i,2)
+    h=backlog_health(db,SOLANA,now=NOW)
+    assert h['pending_enrichment']==100 and h['state']=='healthy'
+    # One genuinely old item past the target, and rising across the last runs, is degrading - even
+    # though the service rate here comfortably exceeds the arrival rate.
+    graduate('ancient',360)
+    record(60);record(120)
+    h=backlog_health(db,SOLANA,now=NOW)
+    assert h['oldest_pending_age_seconds']==21600 and h['oldest_age_rising'] is True
+    assert h['state']=='degrading'
+    # The same age falling again is healthy, whatever the rates are doing.
+    record(30000);record(25000)
+    h=backlog_health(db,SOLANA,now=NOW)
+    assert h['oldest_age_rising'] is False and h['state']=='healthy'
+
+
+def test_db_an_empty_backlog_is_idle_not_healthy_by_accident(db):
+    from launchpad_archive import backlog_health
+    from launchpad_chains import SOLANA
+    assert backlog_health(db,SOLANA,now=NOW)['state']=='idle'

@@ -145,3 +145,30 @@ CREATE TABLE IF NOT EXISTS launchpad_trades (
  PRIMARY KEY (capture_id,sequence)
 );
 CREATE INDEX IF NOT EXISTS launchpad_trades_wallet ON launchpad_trades(wallet) WHERE wallet IS NOT NULL;
+
+-- One row per enrichment worker run. Health is not "the worker ran": a worker can match the arrival
+-- rate exactly while never reaching the back of the queue, so the primary signal is whether the
+-- OLDEST pending item is getting older across successive runs. That needs history to answer.
+CREATE TABLE IF NOT EXISTS launchpad_enrich_runs (
+ id bigserial PRIMARY KEY,
+ network text NOT NULL,
+ started_at timestamptz NOT NULL,
+ finished_at timestamptz,
+ processed integer NOT NULL DEFAULT 0,
+ rungs_filled integer NOT NULL DEFAULT 0,
+ error_count integer NOT NULL DEFAULT 0,
+ pending integer,
+ oldest_pending_age_seconds integer,
+ arrival_rate_per_hour integer,
+ service_rate_per_hour integer,
+ state text                                        -- idle | healthy | degrading
+);
+CREATE INDEX IF NOT EXISTS launchpad_enrich_runs_network ON launchpad_enrich_runs(network,id DESC);
+
+-- Data-quality caveat, recorded where the column lives so it travels with the schema.
+COMMENT ON COLUMN launchpad_tokens.first_pool_created IS
+ 'Creation time of the pool we observed. On Solana this is an indexing/migration-adjacent timestamp '
+ 'and MUST NOT be interpreted as token launch time: measured 2026-09-19, the median gap between it '
+ 'and graduation was 0s for Pump.fun and 52s for Meteora DBC, because the curve pool is frequently '
+ 'indexed at or near migration rather than at launch. Any time-since-launch or minutes-to-graduation '
+ 'calculation on Solana needs a different source (Solana RPC or Bitquery on the launchpad program).';

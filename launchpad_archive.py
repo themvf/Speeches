@@ -648,8 +648,17 @@ def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
         # The ladder lives here too: it is durable work, and a rung filled late is still honest
         # because its observed_at records when it was actually taken.
         rungs_filled=_fill_ladder(conn,chain,get,now,budget_left,errors)
+        health=backlog_health(conn,chain,now)
+        with conn,conn.cursor() as cur:
+            cur.execute('''INSERT INTO launchpad_enrich_runs
+              (network,started_at,finished_at,processed,rungs_filled,error_count,pending,
+               oldest_pending_age_seconds,arrival_rate_per_hour,service_rate_per_hour,state)
+              VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+              (chain.network,now,datetime.now(timezone.utc),processed,rungs_filled,len(errors),
+               health['pending_enrichment'],health['oldest_pending_age_seconds'],
+               health['arrival_rate_per_hour'],health['service_rate_per_hour'],health['state']))
         return dict({'status':'ok','network':chain.network,'processed_this_run':processed,
-                     'rungs_filled':rungs_filled,'errors':errors},**backlog_health(conn,chain,now))
+                     'rungs_filled':rungs_filled,'errors':errors},**health)
     finally:
         with conn,conn.cursor() as cur:cur.execute("SELECT pg_advisory_unlock(hashtext(%s))",('launchpad-enrich:'+chain.network,))
 
@@ -693,7 +702,17 @@ def _fill_ladder(conn,chain,get,now,budget_left,errors):
 
 
 def backlog_health(conn,chain=SOLANA,now=None):
-    """Is the worker keeping up? Service rate against arrival rate, not "it ran"."""
+    """Is the worker keeping up?
+
+    Primary signal is the AGE of the oldest pending graduate, not the count and not the rates. A
+    worker can match the arrival rate exactly while never reaching the back of the queue, so
+    "service >= arrival" can read healthy while old work quietly rots. A queue of 100 whose oldest
+    item is eight minutes old and shrinking is fine; a queue of 20 whose oldest is six hours old and
+    growing is not.
+
+    state: idle (nothing pending) | healthy (oldest is within target, or getting younger) |
+    degrading (oldest is older than target AND rising across successive runs).
+    """
     now=now or datetime.now(timezone.utc)
     with conn,conn.cursor() as cur:
         cur.execute("""SELECT count(*),min(graduated_at) FROM launchpad_tokens
@@ -705,11 +724,26 @@ def backlog_health(conn,chain=SOLANA,now=None):
         cur.execute("""SELECT count(*) FROM launchpad_tokens
                        WHERE network=%s AND enriched_at>%s""",(chain.network,now-timedelta(hours=1)))
         served=cur.fetchone()[0]
-    return dict(pending_enrichment=pending,
-                oldest_pending_age_seconds=int((now-oldest).total_seconds()) if oldest else None,
+        cur.execute("""SELECT oldest_pending_age_seconds FROM launchpad_enrich_runs
+                       WHERE network=%s AND oldest_pending_age_seconds IS NOT NULL
+                       ORDER BY id DESC LIMIT 2""",(chain.network,))
+        history=[r[0] for r in cur.fetchall()]
+    age=int((now-oldest).total_seconds()) if oldest else None
+    # Rising means older than every one of the last runs we have to compare against - a single
+    # noisy run should not condemn the worker, nor should it excuse a real trend.
+    rising=bool(age is not None and history and all(age>h for h in history))
+    if not pending:state='idle'
+    elif age is None:state='healthy'
+    elif age<=chain.enrich_age_target_seconds:state='healthy'
+    elif rising:state='degrading'
+    else:state='healthy'
+    return dict(pending_enrichment=pending,oldest_pending_age_seconds=age,
+                age_target_seconds=chain.enrich_age_target_seconds,
+                oldest_age_rising=rising,previous_ages=history,
                 arrival_rate_per_hour=arrived,service_rate_per_hour=served,
-                # The condition that actually matters. False for a run is fine; false for a day is not.
-                keeping_up=bool(served>=arrived) if (served or arrived) else None)
+                # Diagnostics, not the verdict: they explain a degrading state, they do not define it.
+                service_exceeds_arrival=bool(served>=arrived) if (served or arrived) else None,
+                state=state)
 
 
 def report(conn,now=None,hours=48,chain=ROBINHOOD):

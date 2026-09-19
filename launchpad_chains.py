@@ -67,6 +67,11 @@ class Chain:
     enrich_in_sweep: bool = True
     enrich_batch: int = 40
     enrich_minutes: int = 10
+    # How old the oldest pending graduate may get before the backlog counts as unhealthy. Three
+    # worker periods: one run to notice, one to react, one of slack.
+    @property
+    def enrich_age_target_seconds(self):
+        return self.enrich_minutes*60*3
 
     @property
     def deadline_seconds(self):
