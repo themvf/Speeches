@@ -46,7 +46,25 @@ any depth at all on day one — impossible. So:
   channel memberships and nothing more. It joins only public channels.
 - `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` from my.telegram.org, and `TELEGRAM_SESSION`, a session
   string generated once **interactively on a workstation** (the login sends a code to the account;
-  an unattended runner cannot answer it).
+  an unattended runner cannot answer it). Generate it with the same client the collector uses, so
+  the string is in the format that client reads back:
+
+  ```python
+  # pip install kurigram tgcrypto   (installs as kurigram, imports as pyrogram - see above)
+  import asyncio
+  from pyrogram import Client
+
+  async def main():
+      async with Client('gen', api_id=API_ID, api_hash=API_HASH, in_memory=True) as app:
+          print(await app.export_session_string())
+
+  asyncio.run(main())
+  ```
+
+  It prompts for the phone number and the code Telegram sends. Paste the printed string straight
+  into the GitHub secret — do not commit it, and do not echo it in a workflow log. A Telethon
+  session string (`StringSession.save()`) is a different format and only works with
+  `TELEGRAM_LIBRARY=telethon`.
 - The session string is **equivalent to the account**: full read access to everything it can see.
   It lives in GitHub Actions secrets only, and the client runs `in_memory=True` so no session file
   is ever written to the runner's disk.
