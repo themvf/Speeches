@@ -354,6 +354,42 @@ def _persist(conn,*,now,pools,curve,arrivals,state,info,known,observations,pages
             'twitter_credits':0}
 
 
+def daily(conn,now=None,days=7):
+    """One row per UTC day: is the archive healthy, without reading raw rows.
+
+    p95 alongside the median because the median hides the tail that matters here - a lag that is
+    usually seconds but occasionally minutes is the shape that argues for a faster collector, and a
+    median alone would never show it.
+    """
+    now=now or datetime.now(timezone.utc);since=(now-timedelta(days=days)).replace(hour=0,minute=0,second=0,microsecond=0)
+    rows={}
+    with conn,conn.cursor() as cur:
+        cur.execute('''SELECT date_trunc('day',started_at),count(*),count(*) FILTER (WHERE NOT complete),
+                              coalesce(max(gap_seconds),0),coalesce(sum(new_tokens),0),coalesce(sum(graduations),0),
+                              coalesce(sum(observations),0)
+                       FROM launchpad_sweeps WHERE started_at>=%s GROUP BY 1''',(since,))
+        for day,sweeps,incomplete,max_gap,launches,graduates,observations in cur.fetchall():
+            rows[day]=dict(day=day.date().isoformat(),sweeps=sweeps,expected=int(24*60/SWEEP_MINUTES),
+                           incomplete_sweeps=incomplete,max_gap_seconds=max_gap,launches_seen=launches,
+                           graduates_detected=graduates,observations=observations,
+                           detection_lag_median=None,detection_lag_p95=None,lag_measured=0)
+        # Lag is keyed on when the graduation happened, not on which sweep noticed it.
+        cur.execute('''SELECT date_trunc('day',graduated_at),count(*),
+                              percentile_disc(0.5) WITHIN GROUP (ORDER BY lag),
+                              percentile_disc(0.95) WITHIN GROUP (ORDER BY lag)
+                       FROM (SELECT graduated_at,extract(epoch FROM graduated_detected_at-graduated_at) AS lag
+                             FROM launchpad_tokens
+                             WHERE graduated AND graduated_at>=%s AND graduated_detected_at IS NOT NULL) d
+                       GROUP BY 1''',(since,))
+        for day,measured,median,p95 in cur.fetchall():
+            row=rows.setdefault(day,dict(day=day.date().isoformat(),sweeps=0,expected=int(24*60/SWEEP_MINUTES),
+                                         incomplete_sweeps=0,max_gap_seconds=0,launches_seen=0,
+                                         graduates_detected=0,observations=0))
+            row.update(lag_measured=measured,detection_lag_median=int(median) if median is not None else None,
+                       detection_lag_p95=int(p95) if p95 is not None else None)
+    return [rows[k] for k in sorted(rows)]
+
+
 def report(conn,now=None,hours=48):
     """Is the archive continuous and internally consistent? Read-only; this is the V1 deliverable."""
     now=now or datetime.now(timezone.utc);since=now-timedelta(hours=hours)
@@ -412,6 +448,7 @@ def report(conn,now=None,hours=48):
                         f"{out['sweeps']['incomplete']} incomplete sweeps" if out['sweeps']['incomplete'] else '',
                         f"max feed gap {out['sweeps']['max_gap_seconds']}s" if out['sweeps']['max_gap_seconds'] else '',
                         f"{out['sweeps']['recorded']} of {expected} expected sweeps" if out['sweeps']['recorded']<expected*0.9 else ''])))
+    out['daily']=daily(conn,now=now,days=max(1,-(-hours//24)))
     if out['margin_warning']:
         out['verdict']+=f"; shallowest reach {narrowest}s against a {SWEEP_MINUTES}m sweep - shorten the interval"
     return out
@@ -421,14 +458,17 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true',help='run a sweep (network + database writes)')
     parser.add_argument('--report',action='store_true',help='read-only continuity report')
+    parser.add_argument('--daily',action='store_true',help='read-only daily health summary')
     parser.add_argument('--hours',type=int,default=48)
+    parser.add_argument('--days',type=int,default=7)
     args=parser.parse_args()
-    if not args.execute and not args.report:
+    if not args.execute and not args.report and not args.daily:
         print(json.dumps({'mode':'plan_only','max_public_requests':PAGES+MULTI_BATCH//10+MAX_INFO+MAX_SNAPSHOTS,
                           'twitter_credits':0,'database_writes':0,'sweep_minutes':SWEEP_MINUTES}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
+        if args.daily:print(json.dumps(daily(conn,days=args.days),indent=1));return
         if args.report:print(json.dumps(report(conn,hours=args.hours),indent=1));return
         result=sweep(conn);print(json.dumps(result))
         # A sweep that reached no pages is a failure; losing a page to rate limiting is not, because

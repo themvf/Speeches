@@ -280,3 +280,22 @@ Live verification, three sweeps against the real API into a local Postgres: 149/
 arrivals, holders and X handles enriched, zero errors. First real measurements from our own data:
 **2.2% graduation rate** (4 of 181) and a **median detection lag of 86 seconds** (worst 764) — that
 lag is the number that will eventually decide whether the 60-second fast lane is worth building.
+
+## Post-merge checklist
+
+Continuity first; the graduation rate and the dashboard can wait. `--daily` is one row per UTC day
+(launches seen, graduates detected, incomplete sweeps, max gap, median and p95 detection lag) and
+answers the health question without reading raw rows; `--report` gives the same window in detail.
+
+After 24-48 hours of collection, three things decide whether the architecture is doing its job:
+
+1. **No incomplete sweeps and `max_gap_seconds` 0.** Anything else means launches were lost, and
+   the affected window is not a complete population for any later analysis.
+2. **`margin_seconds` still positive** against the 5-minute cadence, read only from full-depth
+   sweeps. The feed was already shallower than the spec assumed once; if it narrows again, shorten
+   the interval before the margin reaches zero, not after.
+3. **The detection-lag distribution.** Consistently low median *and* p95 means the current
+   architecture is enough. Lag clustering at several minutes, or a p95 far above the median, is the
+   evidence that a 60-second fast lane would buy something - and by then it would be an argument
+   from data rather than intuition. `lag_measured` carries the sample size, because an early p95
+   over a handful of graduations is not yet a number to act on.

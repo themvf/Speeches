@@ -236,6 +236,33 @@ def test_db_feed_depth_is_only_read_from_a_sweep_that_went_full_depth(db):
     assert out['margin_warning'] is False
 
 
+def test_db_daily_summary_answers_the_health_question_without_reading_raw_rows(db):
+    from launchpad_archive import daily
+    day=datetime(2026,9,19,tzinfo=timezone.utc)
+    with db,db.cursor() as cur:
+        for minute,gap,complete,launches,graduates in ((0,0,True,40,1),(30,0,True,35,2),(60,900,False,20,0)):
+            cur.execute('''INSERT INTO launchpad_sweeps (started_at,pages_fetched,pools_seen,oldest_pool_at,
+                             newest_pool_at,new_tokens,graduations,observations,gap_seconds,complete)
+                           VALUES (%s,10,200,%s,%s,%s,%s,%s,%s,%s)''',
+                        (day+timedelta(minutes=minute),day,day+timedelta(minutes=minute),launches,graduates,launches,gap,complete))
+        # Lags of 30/60/90/600s: the median stays low while the tail does not, which is exactly the
+        # shape that would argue for a faster collector and which a median alone would hide.
+        for i,lag in enumerate((30,60,90,600)):
+            cur.execute('''INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
+                             graduated,graduated_at,graduated_detected_at)
+                           VALUES (%s,%s,'pons-v2',%s,%s,true,%s,%s)''',
+                        (NETWORK,'0x'+str(i)*40,day,day,day+timedelta(hours=1),day+timedelta(hours=1,seconds=lag)))
+    rows=daily(db,now=day+timedelta(hours=2),days=1)
+    assert len(rows)==1
+    row=rows[0]
+    assert row['day']=='2026-09-19'
+    assert row['launches_seen']==95 and row['graduates_detected']==3
+    assert row['incomplete_sweeps']==1 and row['max_gap_seconds']==900
+    assert row['sweeps']==3 and row['expected']==288          # 24h / 5-minute cadence
+    assert row['detection_lag_median']==60 and row['detection_lag_p95']==600
+    assert row['lag_measured']==4
+
+
 def test_db_report_calls_a_broken_archive_incomplete(db):
     from launchpad_archive import report,sweep
     sweep(db,fetch=responder({1:[pool()]}),now=NOW,wait=lambda *_:None)
