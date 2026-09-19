@@ -407,7 +407,7 @@ def test_db_an_exhausted_budget_still_produces_a_complete_sweep_row(db):
     from dataclasses import replace
     from launchpad_archive import sweep
     from launchpad_chains import SOLANA
-    # budget_fraction 0 means every optional fetch is already past the deadline on the first check.
+    # budget_fraction 0 puts every fetch past the deadline on its first check, including discovery.
     # This exercises the deadline path itself, which is how a shadowed variable in it went unnoticed
     # until a live run: the mocked tests never entered the branch.
     broke=replace(SOLANA,budget_fraction=0.0)
@@ -416,14 +416,13 @@ def test_db_an_exhausted_budget_still_produces_a_complete_sweep_row(db):
         'launchpad_details':{'graduation_percentage':100.0,'completed':True,
                              'completed_at':'2026-09-19T19:18:02.000Z','migrated_destination_pool_address':None}}}]}
     result=sweep(db,broke,fetch=sol_responder({1:[graduation]},multi=multi),now=NOW,wait=lambda *_:None)
-    # The sweep still completes and still writes: enrichment simply waits for the next one.
-    assert result['status']=='ok' and result['graduations']==1 and result['trade_captures']==0
+    # The sweep still completes and still writes a row saying what it could not do, rather than
+    # crashing or reporting a clean run it did not have.
+    assert result['status']=='ok' and result['pools']==0 and result['trade_captures']==0
+    assert any('reserve budget' in e for e in result['errors'])
     with db,db.cursor() as cur:
-        cur.execute("SELECT graduated,enriched_at FROM launchpad_tokens WHERE network='solana'")
-        graduated,enriched=cur.fetchone()
-        assert graduated is True and enriched is None
-        cur.execute('SELECT count(*) FROM launchpad_sweeps')
-        assert cur.fetchone()[0]==1
+        cur.execute('SELECT count(*),bool_or(NOT complete) FROM launchpad_sweeps')
+        assert cur.fetchone()==(1,True)
 
 
 def test_db_a_graduate_the_deadline_skipped_is_retried_not_abandoned(db):
@@ -437,8 +436,9 @@ def test_db_a_graduate_the_deadline_skipped_is_retried_not_abandoned(db):
     info={'data':{'attributes':{'developer_address':'7H7SkM44'}}}
     pool_list={'data':[{'attributes':{'address':SOL_DEEP,'reserve_in_usd':'31356.0'},
                         'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
-    # First sweep runs out of budget before it can enrich anything.
-    sweep(db,replace(SOLANA,budget_fraction=0.0),fetch=sol_responder({1:[graduation]},multi=multi,info=info,pool_list=pool_list),
+    # First sweep discovers the graduation but has no enrichment budget at all, which is what the
+    # deadline does in practice when discovery has eaten the sweep.
+    sweep(db,replace(SOLANA,max_info=0),fetch=sol_responder({1:[graduation]},multi=multi,info=info,pool_list=pool_list),
           now=NOW,wait=lambda *_:None)
     with db,db.cursor() as cur:
         cur.execute("SELECT graduated,measure_pool_reason FROM launchpad_tokens WHERE network='solana'")

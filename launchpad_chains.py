@@ -53,6 +53,12 @@ class Chain:
     max_candidates: int = 300
     request_wait: float = 2.5
     budget_fraction: float = 0.6
+    # Share of the deadline discovery and batched state may consume. A single first-come-first-served
+    # deadline lets renewable work starve perishable work: measured on a live sweep, 10 discovery
+    # pages plus 8 state calls used 54 of 72 seconds and the opening trade captures - which cannot be
+    # taken later at any price - never ran. Discovery cut short merely records a gap and is redone
+    # next sweep; a missed capture is gone.
+    discovery_share: float = 0.5
 
     @property
     def deadline_seconds(self):

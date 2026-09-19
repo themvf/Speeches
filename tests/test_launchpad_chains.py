@@ -117,3 +117,13 @@ def test_solana_addresses_are_never_case_folded():
     payload={'data':[{'attributes':{'address':mixed,'launchpad_details':{'graduation_percentage':1.0}}}]}
     assert mixed in parse_multi(payload,SOLANA)
     assert mixed.lower() in parse_multi(payload,ROBINHOOD)
+
+
+def test_discovery_can_never_consume_the_whole_budget():
+    # Renewable work must not starve perishable work: a live sweep spent 54 of 72 seconds on
+    # discovery and state, and the opening trade captures never ran.
+    for chain in CHAINS.values():
+        assert 0 < chain.discovery_share < 1
+        reserve=chain.deadline_seconds*(1-chain.discovery_share)
+        # Enough left for at least one graduate's capture (info + pools + two trade pages).
+        assert reserve >= 4*chain.request_wait

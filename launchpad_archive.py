@@ -158,8 +158,8 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
     setup(conn)
     # Wall clock, not the sweep's logical `now`, so a fixture-driven test is never bounded by it.
     sweep_clock=time.monotonic()
-    def budget_left():
-        return time.monotonic()-sweep_clock < chain.deadline_seconds
+    def budget_left(share=1.0):
+        return time.monotonic()-sweep_clock < chain.deadline_seconds*share
     with conn,conn.cursor() as cur:
         cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-archive:'+chain.network,))
         if not cur.fetchone()[0]:return {'status':'already_running','errors':['sweep_already_running']}
@@ -184,6 +184,10 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         # 1. Discovery. Stop early once a page predates the last sweep - the rest is already recorded.
         pools=[];pages=0;oldest=None;newest=None
         for page in range(1,PAGES+1):
+            # Stopping here leaves a gap, which is recorded; stopping later loses a capture, which
+            # is not recoverable. The reserve is what keeps that trade the right way round.
+            if not budget_left(chain.discovery_share):
+                errors.append('discovery stopped at page '+str(page)+' to reserve budget for captures');break
             try:payload=get(GECKO+chain.network+'/new_pools?page='+str(page))
             except (ValueError,requests.RequestException) as exc:
                 errors.append('new_pools page '+str(page)+': '+type(exc).__name__+' '+str(exc)[:120]);break
@@ -228,6 +232,8 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         ask=sorted({e['token'] for e in curve if e['token'] not in known}|set(candidates)|set(arrivals))
         state={}
         for start in range(0,len(ask),MULTI_BATCH):
+            if not budget_left(chain.discovery_share):
+                errors.append('state reads stopped to reserve budget for captures');break
             batch=ask[start:start+MULTI_BATCH]
             try:state.update(parse_multi(get(multi_url(batch,chain.network)),chain))
             except (ValueError,requests.RequestException) as exc:
