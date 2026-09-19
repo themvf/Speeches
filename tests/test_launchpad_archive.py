@@ -526,3 +526,50 @@ def test_db_a_pool_the_worker_had_to_choose_late_says_so(db):
         cur.execute("SELECT measure_pool_reason FROM launchpad_tokens WHERE network='solana'")
         # Chosen hours after the fact, which may not be the market that mattered. Recorded, not hidden.
         assert 'selected late, not at graduation' in cur.fetchone()[0]
+
+
+def test_db_one_failing_item_does_not_block_the_backlog(db):
+    from launchpad_archive import enrich
+    from launchpad_chains import SOLANA
+    good='Csi8DLHFExL6QCsQ8xW5P63vNrMzFKR3koBSHn7fY5Yc'
+    bad='Bad8DLHFExL6QCsQ8xW5P63vNrMzFKR3koBSHn7fY5Yc'
+    with db,db.cursor() as cur:
+        for t in (bad,good):   # bad is older, so it is attempted first
+            cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
+                             graduated,graduated_at,cohort_sampled) VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,false)""",
+                        (t,NOW,NOW,NOW-timedelta(minutes=10 if t==bad else 5)))
+    def fetch(url,**_):
+        if bad in url:return Response({'errors':[{'status':'404'}]},status=404)
+        if url.endswith('/info'):return Response({'data':{'attributes':{'developer_address':'DEV1'}}})
+        return Response({'data':[]})
+    out=enrich(db,SOLANA,fetch=fetch,now=NOW,wait=lambda *_:None)
+    # The failure is recorded and the run continues; a bad row must never stall everything behind it.
+    assert out['processed_this_run']==1 and any(bad[:10] in e for e in out['errors'])
+    with db,db.cursor() as cur:
+        cur.execute("SELECT token_address,developer_address FROM launchpad_tokens WHERE enriched_at IS NOT NULL")
+        assert cur.fetchall()==[(good,'DEV1')]
+        cur.execute("SELECT count(*) FROM launchpad_tokens WHERE enriched_at IS NULL")
+        assert cur.fetchone()[0]==1     # the failure stays pending, to be retried
+
+
+def test_db_re_running_the_worker_skips_finished_work_and_keeps_first_values(db):
+    from launchpad_archive import enrich
+    from launchpad_chains import SOLANA
+    with db,db.cursor() as cur:
+        cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
+                         graduated,graduated_at,cohort_sampled,measure_pool,measure_pool_reason)
+                       VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,false,%s,'deepest graduate pool')""",
+                    (SOL_TOKEN,NOW,NOW,NOW,SOL_DEEP))
+    first={'data':{'attributes':{'developer_address':'DEV1','twitter_handle':'first_handle','holders':{'count':10,'distribution_percentage':{}}}}}
+    second={'data':{'attributes':{'developer_address':'DEV2','twitter_handle':'second_handle','holders':{'count':99,'distribution_percentage':{}}}}}
+    enrich(db,SOLANA,fetch=lambda url,**_:Response(first if url.endswith('/info') else {'data':[]}),now=NOW,wait=lambda *_:None)
+    out=enrich(db,SOLANA,fetch=lambda url,**_:Response(second if url.endswith('/info') else {'data':[]}),
+               now=NOW+timedelta(minutes=10),wait=lambda *_:None)
+    # Nothing is pending, so the second run does no work at all rather than re-reading the same rows.
+    assert out['processed_this_run']==0 and out['pending_enrichment']==0
+    with db,db.cursor() as cur:
+        cur.execute("SELECT developer_address,twitter_handle,holders,measure_pool_reason FROM launchpad_tokens WHERE network='solana'")
+        dev,handle,holders,reason=cur.fetchone()
+        # Identity-ish fields are first-write-wins; the pool chosen at graduation is never relabelled.
+        assert dev=='DEV1' and handle=='first_handle' and holders==10
+        assert reason=='deepest graduate pool'
