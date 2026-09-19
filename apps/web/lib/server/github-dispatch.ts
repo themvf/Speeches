@@ -27,6 +27,12 @@ export const DISPATCH_TARGETS: DispatchTarget[] = [
     everyMinutes: 60,
     reason: "ZCAT/ZEC/KNOTS open one search window an hour; missed fires leave windows pending",
   },
+  {
+    workflow: "launchpad-archive.yml",
+    everyMinutes: 5,
+    reason:
+      "GeckoTerminal's new_pools feed reached back only 11 minutes at the launch rate measured 2026-09-19, so a missed sweep loses launches permanently",
+  },
 ];
 
 export type DispatchOutcome = {

@@ -33,7 +33,7 @@
     },
     {
       "path": "/api/cron/dispatch-workflows",
-      "schedule": "20 * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

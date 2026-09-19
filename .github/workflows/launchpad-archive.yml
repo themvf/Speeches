@@ -1,0 +1,40 @@
+name: Graduation Archive sweep
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'launchpad_archive.py'
+      - 'sql/launchpad_archive.sql'
+      - '.github/workflows/launchpad-archive.yml'
+  workflow_dispatch:
+  # GitHub drops most `schedule` fires in this repo, and this archive cannot tolerate that: the feed
+  # reaches back only ~11 minutes, so a missed run loses launches permanently. The reliable trigger is
+  # the Vercel cron at /api/cron/dispatch-workflows pressing workflow_dispatch (see
+  # apps/web/lib/server/github-dispatch.ts).
+  #
+  # This cron is a fallback for dispatch failing, not a second scheduler. At the sweep cadence it
+  # would compete with the Vercel tick - both read the same last-run time, so two runs can queue for
+  # the same slot, and the concurrency group below turns that into a wasted execution rather than a
+  # parallel one. Every half hour recovers the archive if dispatch stops entirely, while rarely
+  # landing on a Vercel tick. Sweeps that do collide stay safe: the concurrency group serialises
+  # them, an advisory lock makes the second a no-op, and observations are ON CONFLICT DO NOTHING.
+  schedule:
+    - cron: '*/30 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: launchpad-archive
+  cancel-in-progress: false
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - run: python launchpad_archive.py --execute
