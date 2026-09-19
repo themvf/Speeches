@@ -19,9 +19,9 @@ Re-verify before assuming any of this still holds; GeckoTerminal's schema is not
 
 | Fact | Measured |
 |---|---|
-| New pool rate, Robinhood Chain | **~8/minute** (~11,500/day) |
+| New pool rate, Robinhood Chain | **8/minute**, then **13.4/minute** an hour later — it varies |
 | `new_pools` pagination depth | **10 pages × 20 = 200 pools**, page 11 returns 401 |
-| History covered by a full sweep | **~19 minutes** at the current rate |
+| History covered by a full sweep | **11-14 minutes**, measured; falls as the chain gets busier |
 | Share of new pools that are Pons curve pools | 57 of 80 (71%) |
 | Curve pools vs graduated pools | 57 vs 1 → **1.8%** (published figure elsewhere: 1.55%) |
 | Rate limit (no API key) | ~30 requests/minute; exceeded easily with per-token calls |
@@ -60,7 +60,7 @@ a graduate arrives with its own declared X account, without a search.
 
 ## Budget
 
-Per sweep (every 10 minutes): 10 discovery calls + ~2-4 `tokens/multi` calls + a handful of
+Per sweep (every 5 minutes; see the build note at the end): 10 discovery calls + ~2-4 `tokens/multi` calls + a handful of
 snapshot/info calls for graduates in flight. Comfortably inside ~30/minute even allowing retries.
 Free public data; **no X credits are involved** — this is entirely separate from the collection
 ledger that meters post ingestion.
@@ -247,3 +247,36 @@ collection widens.
 - Scheduling mechanism: GitHub `schedule` fires are dropped often (see the Vercel-trigger section
   of docs/crypto-social-tracking.md), so the 10-minute cadence likely needs the existing
   `/api/cron/dispatch-workflows` pattern rather than a bare cron.
+
+
+## Built 2026-09-19 — what the implementation changed
+
+`launchpad_archive.py`, `sql/launchpad_archive.sql`, `.github/workflows/launchpad-archive.yml`,
+`tests/test_launchpad_archive.py`. Four things the build learned that the spec above had wrong or
+did not cover.
+
+**The cadence is five minutes, not ten.** A live sweep fetched 149 unique pools spanning 11.1
+minutes — 13.4 pools/minute, well above the 8/minute measured an hour earlier. A ten-minute sweep
+would have run on about one minute of margin, so any delayed run would lose launches. The window is
+a function of how busy the chain is, so it is re-measured every sweep rather than trusted.
+
+**Feed depth can only be read from a sweep that went full depth.** A healthy sweep stops early once
+it meets pools it already recorded, which makes its reach short precisely when everything is
+working — measuring that raises an alarm exactly when nothing is wrong. The continuity report
+therefore takes its depth figure only from sweeps with `pages_fetched >= 10`, and reports depth as
+unknown (not healthy) when no sweep in the window went full depth.
+
+**`twitter_handle` is whatever the launcher typed.** A live sweep returned
+`Na1_N1ako/status/2101346622135230543` in that field. Handles are normalised (URL prefixes and
+path segments stripped, `@` removed, 15-character and character-set check) and anything that is
+not a handle is stored as NULL rather than as a value the social join would silently miss on.
+
+**Observations carry `rung_minutes`.** The ladder rung is stored rather than inferred from
+timestamps, with a partial unique index on `(network, token_address, rung_minutes)`, so a rung is
+filled exactly once even if a sweep retries.
+
+Live verification, three sweeps against the real API into a local Postgres: 149/80/20 pools,
+`gap_seconds` 0 on both sweeps that had a predecessor, 4 graduations detected from graduate-DEX
+arrivals, holders and X handles enriched, zero errors. First real measurements from our own data:
+**2.2% graduation rate** (4 of 181) and a **median detection lag of 86 seconds** (worst 764) — that
+lag is the number that will eventually decide whether the 60-second fast lane is worth building.
