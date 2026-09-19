@@ -69,6 +69,9 @@ export function CryptoWorkbench(){
  const [run,setRun]=useState<RunData|null>(null),[market,setMarket]=useState<RunMarket|null>(null);
  // One post open at a time: the feed row is clipped to one line, so tapping it is the only way to read the post on a touch screen.
  const [openPost,setOpenPost]=useState<string|null>(null);
+ // A signal names a post but carries only its URL; the post itself arrives with the coin's run, so hold the URL until it can be matched.
+ const [pendingPost,setPendingPost]=useState<string|null>(null);
+ const centre=useRef<HTMLDivElement>(null);
  useEffect(()=>{const c=new AbortController();setRun(null);setMarket(null);
   load<RunData>(`/api/market/crypto/run?coin=${focusCoin}`,c.signal).then(setRun).catch(()=>{if(!c.signal.aborted)setRun({status:'error',posts:[],days:[],total:0,limit:0,start:coinConfig(focusCoin).archiveStart,end:new Date().toISOString().slice(0,10)});});
   load<RunMarket>(`/api/market/crypto/history?coin=${focusCoin}`,c.signal).then(setMarket).catch(()=>{});return()=>c.abort();},[focusCoin]);
@@ -120,6 +123,18 @@ export function CryptoWorkbench(){
   else if(e.key==='Enter'){set({account:rows[cursor]?.original.account_id??null});}
   else if(e.key==='c'){const r=rows[cursor]?.original;if(r)set({coin:state.coin===r.coins[0]?null:r.coins[0]});}};
   document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[rows,cursor,state.tab,state.account,state.coin,set]);
+ // Tapping a signal opens the post it is about: pin the coin, show the posts feed, and scroll to the row (the centre column
+ // sits below the signals on a phone, so without the scroll the tap looks like it did nothing).
+ const openSignal=useCallback((x:Signal)=>{
+  set({coin:x.coin,account:x.account_id??stateRef.current.account,tab:x.post_url?'posts':stateRef.current.tab,from:null,to:null,day:null,highlight:null});
+  setOpenPost(null);setPendingPost(x.post_url??null);
+  if(!x.post_url)centre.current?.scrollIntoView({behavior:'smooth',block:'start'});
+ },[set]);
+ useEffect(()=>{if(!pendingPost)return;if(!run){centre.current?.scrollIntoView({behavior:'smooth',block:'start'});return;}
+  const p=run.posts.find(q=>q.url===pendingPost);setPendingPost(null);
+  if(!p){centre.current?.scrollIntoView({behavior:'smooth',block:'start'});return;}
+  setOpenPost(p.id);
+  requestAnimationFrame(()=>{const el=document.getElementById('wbp-'+p.id);(el??centre.current)?.scrollIntoView({behavior:'smooth',block:el?'center':'start'});});},[pendingPost,run]);
  const pinCoin=(c:string)=>{setQText(q=>q.replace(/\b[A-Za-z]{2,10}\b/g,t=>t.toUpperCase()===c?'':t).replace(/\s+/g,' ').trim());set({coin:state.coin===c?null:c});};
  const cov=status?.coverage??[];const noPool=cov.filter(c=>!c.source_id).map(c=>c.symbol);const latest=cov.map(c=>c.hourly_latest).filter(Boolean).sort().at(-1);
  const credits=status?.ledgers.reduce((n,l)=>n+Math.max(0,l.ceiling-l.used),0);
@@ -138,12 +153,12 @@ export function CryptoWorkbench(){
      {(sig?.board??COINS.map(c=>({symbol:c.symbol,price_change:null,volume_ratio:null,posts_24h:0}))).map(b=>{const n=(sig?.signals??[]).filter(x=>x.coin===b.symbol).length;return <tr key={b.symbol} className={`${s.row} ${coin===b.symbol?s.on:''}`} onClick={()=>pinCoin(b.symbol)}><td style={{fontWeight:600}}>{b.symbol}</td><td className={`${s.r} ${tone(b.price_change)}`}>{b.price_change==null?'—':pct(b.price_change,0)}</td><td className={`${s.r} ${s.soft}`}>{b.volume_ratio==null?'—':b.volume_ratio.toFixed(1)}</td><td className={s.r}>{b.posts_24h}</td><td className={s.r}>{n||'—'}</td></tr>;})}
     </tbody></table></div>
     <div className={s.h}>Signals · last 24h {err&&<span className={s.warn}>{err}</span>}</div>
-    <div className={s.scroll}>{!sig?<div className={s.empty}>Reading signals…</div>:!sig.signals.filter(x=>!coin||x.coin===coin).length?<div className={s.empty}>No signals in scope.</div>:sig.signals.filter(x=>!coin||x.coin===coin).map((x,i)=><div key={i} className={s.feedRow} style={{gridTemplateColumns:'40px 56px minmax(0,1fr) auto'}} onClick={()=>set({coin:x.coin,account:x.account_id??state.account,tab:x.post_url?'posts':state.tab})} title={x.detail}><span className={`${s.mono} ${s.faint}`}>{hm(x.at)}</span><span style={{fontWeight:600,color:'#7dd3fc'}}>{x.coin}</span><span className={s.clip}>{x.title}{x.handle?' · @'+x.handle:''}</span>{x.post_url?<a className={s.sigLink} href={x.post_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}>post ↗</a>:<span/>}</div>)}</div>
+    <div className={s.scroll}>{!sig?<div className={s.empty}>Reading signals…</div>:!sig.signals.filter(x=>!coin||x.coin===coin).length?<div className={s.empty}>No signals in scope.</div>:sig.signals.filter(x=>!coin||x.coin===coin).map((x,i)=><div key={i} className={s.feedRow} style={{gridTemplateColumns:'40px 56px minmax(0,1fr) auto'}} onClick={()=>openSignal(x)} title={x.detail}><span className={`${s.mono} ${s.faint}`}>{hm(x.at)}</span><span style={{fontWeight:600,color:'#7dd3fc'}}>{x.coin}</span><span className={s.clip}>{x.title}{x.handle?' · @'+x.handle:''}</span>{x.post_url?<a className={s.sigLink} href={x.post_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}>post ↗</a>:<span/>}</div>)}</div>
     <div className={s.h} style={{borderTop:'1px solid var(--line-soft)'}}>Discovery <span>· untracked coins named by watchers · 7d</span></div>
     <div className={s.fixed}>{!disc?<div className={s.empty}>Reading watcher posts…</div>:!disc.filter(c=>!c.tracked).length?<div className={s.empty}>None in the last seven days.</div>:<table className={s.t}><tbody>{disc.filter(c=>!c.tracked).slice(0,8).map(c=><tr key={c.key}><td style={{fontWeight:600}}>{c.symbol}<span className={`${s.mono} ${s.faint}`} style={{marginLeft:6,fontSize:10.5}}>{c.address?c.address.slice(0,4)+'…'+c.address.slice(-3):c.network}</span></td><td className={s.r}>{c.accounts}</td><td className={s.soft}>{c.identity}</td><td><button className={`${s.btn} ${s.btnSm}`} onClick={()=>set({tab:'data'})}>registry</button></td></tr>)}</tbody></table>}</div>
    </div>
    {/* Centre: tabs */}
-   <div className={s.col}>
+   <div className={s.col} ref={centre}>
     <div className={s.tabs} role="tablist">{TABS.map(t=><button key={t.id} role="tab" aria-selected={state.tab===t.id} className={s.tab} onClick={()=>set({tab:t.id as Tab})}>{t.label}</button>)}
      {state.tab==='people'&&<span className={s.hint}>headings sort · <span className={s.key}>↑</span> <span className={s.key}>↓</span> move · <span className={s.key}>⏎</span> open · <span className={s.key}>c</span> pin coin · <span className={s.key}>/</span> command</span>}
      <button className={s.link} style={{marginLeft:'auto',fontSize:11,fontWeight:500}} onClick={()=>setHelp(h=>!h)}>{help?'hide definitions':'definitions'}</button></div>
@@ -162,8 +177,8 @@ export function CryptoWorkbench(){
       <td className={`${s.r} ${ok?tone(r.median_excess_24h):s.faint}`} style={{fontWeight:600}}>{ok?pct(r.median_excess_24h,0):'—'}</td>
       <td className={s.r}>{r.episodes}</td><td className={s.r}>{r.coins.length}</td><td className={s.r}>{r.days}</td>
       <td className={s.soft} title={styles.map(k=>STYLE_LABEL[k]).join(' · ')}>{styles.join(' · ')||'—'}</td><td className={s.faint}>{ago(r.last_at)}</td></tr>;})}</tbody></table>}</div>}
-    {state.tab==='posts'&&<><div className={`${s.pad} ${s.faint}`} style={{fontSize:11,borderBottom:'1px solid var(--line-soft)',display:'flex'}}><span>X posts on {focusCoin} · {fromDay} → {toDay} · newest first · reposts hidden{query.handle?` · @${query.handle}`:''}{query.ring!=null?` · ring ${query.ring} ${RING_LABEL[query.ring]} only`:''}</span><span style={{marginLeft:'auto'}}>{run?`${feed.length}${feed.length===400?'+':''} posts · tap one to read it in full · next close vs post day`:''}</span></div>
-     <div className={s.scroll}>{!run?<div className={s.empty}>Loading saved posts…</div>:!feed.length?<div className={s.empty}>No saved posts in scope.</div>:feed.map(p=>{const open=openPost===p.id;return <div key={p.id} className={`${s.feedRow} ${s.postRow} ${open?s.postOpen:''}`} role="button" tabIndex={0} aria-expanded={open} onClick={()=>setOpenPost(open?null:p.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setOpenPost(open?null:p.id);}}} title={open?undefined:p.text}>
+    {state.tab==='posts'&&<><div className={`${s.pad} ${s.faint}`} style={{fontSize:11,borderBottom:'1px solid var(--line-soft)',display:'flex',flexWrap:'wrap',gap:'2px 10px'}}><span>X posts on {focusCoin} · {fromDay} → {toDay} · newest first · reposts hidden{query.handle?` · @${query.handle}`:''}{query.ring!=null?` · ring ${query.ring} ${RING_LABEL[query.ring]} only`:''}</span><span style={{marginLeft:'auto'}}>{run?`${feed.length}${feed.length===400?'+':''} posts · tap one to read it in full · next close vs post day`:''}</span></div>
+     <div className={s.scroll}>{!run?<div className={s.empty}>Loading saved posts…</div>:!feed.length?<div className={s.empty}>No saved posts in scope.</div>:feed.map(p=>{const open=openPost===p.id;return <div key={p.id} id={'wbp-'+p.id} className={`${s.feedRow} ${s.postRow} ${open?s.postOpen:''}`} role="button" tabIndex={0} aria-expanded={open} onClick={()=>setOpenPost(open?null:p.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setOpenPost(open?null:p.id);}}} title={open?undefined:p.text}>
       <span className={`${s.mono} ${s.faint} ${s.postWhen}`}>{p.posted_at.slice(5,16).replace('T',' ')}</span><span className={`${s.clip} ${s.postWho}`} style={{fontWeight:600,color:'#bae6fd'}}>{rings.get(p.author_id)?.ring?<span className={s.ringDot} data-ring={rings.get(p.author_id)!.ring} title={RING_LABEL[rings.get(p.author_id)!.ring!]}>{rings.get(p.author_id)!.ring}</span>:null}<D1 l={leaderById.get(p.author_id)}/><Circle c={circle.get(p.author_id)}/>@{p.handle}</span><span className={`${open?s.full:s.clip} ${s.postText}`} style={{color:'var(--ink)'}}>{p.kind==='quote'?'↳ ':p.kind==='reply'?'↩ ':''}{p.text}</span><span className={`${s.r} ${s.postMove} ${tone(nextClose(p.posted_at))}`} style={{textAlign:'right'}}>{nextClose(p.posted_at)==null?'—':pct(nextClose(p.posted_at),0)}</span>
       {open&&<span className={s.postActions} onClick={e=>e.stopPropagation()}><button className={s.link} style={{fontSize:11}} onClick={()=>set({account:p.author_id})}>Account @{p.handle} →</button><a href={p.url} target="_blank" rel="noreferrer" style={{fontSize:11}}>Open on X ↗</a><span className={s.faint} style={{fontSize:11}}>{p.kind==='quote'?'quote':p.kind==='reply'?'reply':'post'} · next close {nextClose(p.posted_at)==null?'—':pct(nextClose(p.posted_at),0)}</span></span>}</div>;})}</div></>}
     {state.tab==='timeline'&&<div className={s.scroll}>

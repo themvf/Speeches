@@ -77,6 +77,19 @@
 .warn { color:var(--warn); }
 @media (max-width: 1100px) { .body { grid-template-columns:260px minmax(0,1fr); } .right { display:none; } }
 @media (max-width: 760px) { .wb { height:auto; } .body { grid-template-columns:1fr; } .left { border-right:0; border-bottom:1px solid var(--line-soft); } .fixed { max-height:none; } }
+/* Phone: the header, scope strip, tabs and footer are single non-wrapping rows on desktop and pushed the whole board off
+   the right edge of a narrow screen. Let them wrap instead of overflowing. */
+@media (max-width: 760px) {
+ .page { padding:8px 10px 16px; }
+ .top { height:auto; flex-wrap:wrap; gap:8px; padding:8px 10px; }
+ .top h1 { flex:1 1 auto; }
+ .cmdLabel { display:none; }
+ .cmd { flex:1 1 100%; order:3; }
+ .status { flex:1 1 100%; order:4; white-space:normal; }
+ .scope { height:auto; flex-wrap:wrap; padding:6px 10px; }
+ .tabs { flex-wrap:wrap; }
+ .bottom { height:auto; flex-wrap:wrap; white-space:normal; padding:6px 10px; }
+}
 /* Phone: the post feed stacks — time/handle/move on one line, the post on its own, so an opened post reads at full width. */
 @media (max-width: 760px) {
  .postRow { grid-template-columns:auto minmax(0,1fr) auto; column-gap:8px; row-gap:2px; padding:8px 12px; }
