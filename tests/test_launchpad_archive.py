@@ -494,7 +494,7 @@ def test_db_the_worker_drains_what_the_sweep_left(db):
                         'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
     sweep(db,SOLANA,fetch=sol_responder({1:[graduation]},multi=multi,pool_list=pool_list),now=NOW,wait=lambda *_:None)
     health=backlog_health(db,SOLANA,now=NOW)
-    assert health['pending_enrichment']==1 and health['state']=='healthy'
+    assert health['pending_enrichment']==1 and health['enrichment_state']=='healthy'
     info={'data':{'attributes':{'developer_address':'7H7SkM44','developer_holding_percentage':'19.99',
                                 'twitter_handle':'nikebasketball','holders':{'count':2153,'distribution_percentage':{'top_10':'57.5'}}}}}
     # 30 minutes after the fixture's graduation (19:18), so the +5/+10/+30 rungs are due.
@@ -591,24 +591,28 @@ def test_db_backlog_health_is_about_age_not_count_or_rate(db):
     # A big queue whose oldest item is young is healthy: count alone says nothing.
     for i in range(100):graduate('young%d'%i,2)
     h=backlog_health(db,SOLANA,now=NOW)
-    assert h['pending_enrichment']==100 and h['state']=='healthy'
+    assert h['pending_enrichment']==100 and h['enrichment_state']=='healthy'
     # One genuinely old item past the target, and rising across the last runs, is degrading - even
     # though the service rate here comfortably exceeds the arrival rate.
     graduate('ancient',360)
     record(60);record(120)
     h=backlog_health(db,SOLANA,now=NOW)
     assert h['oldest_pending_age_seconds']==21600 and h['oldest_age_rising'] is True
-    assert h['state']=='degrading'
+    assert h['enrichment_state']=='degrading' and h['state']=='degrading'
     # The same age falling again is healthy, whatever the rates are doing.
     record(30000);record(25000)
     h=backlog_health(db,SOLANA,now=NOW)
-    assert h['oldest_age_rising'] is False and h['state']=='healthy'
+    assert h['oldest_age_rising'] is False and h['enrichment_state']=='healthy'
 
 
 def test_db_an_empty_backlog_is_idle_not_healthy_by_accident(db):
     from launchpad_archive import backlog_health
     from launchpad_chains import SOLANA
-    assert backlog_health(db,SOLANA,now=NOW)['state']=='idle'
+    h=backlog_health(db,SOLANA,now=NOW)
+    assert h['enrichment_state']=='idle'
+    # With no captures and no measured pools there is nothing to judge, and an empty system must not
+    # claim health: the overall state is unknown, not idle.
+    assert h['capture_state']=='unknown' and h['selection_state']=='unknown' and h['state']=='unknown'
 
 
 def test_db_pool_selection_timing_is_a_commissioning_metric(db):
@@ -618,11 +622,67 @@ def test_db_pool_selection_timing_is_a_commissioning_metric(db):
         for token,reason in (('a','deepest graduate pool'),('b','deepest graduate pool'),
                              ('c','deepest graduate pool (selected late, not at graduation)')):
             cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
-                             graduated,graduated_at,cohort_sampled,measure_pool,measure_pool_reason,enriched_at)
-                           VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,true,'pool',%s,%s)""",
-                        (token,NOW,NOW,NOW-timedelta(minutes=5),reason,NOW))
+                             graduated,graduated_at,cohort_sampled,measure_pool,measure_pool_reason,
+                             measure_pool_timing,enriched_at)
+                           VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,true,'pool',%s,%s,%s)""",
+                        (token,NOW,NOW,NOW-timedelta(minutes=5),reason,
+                         'late' if 'selected late' in reason else 'at_graduation',NOW))
     h=backlog_health(db,SOLANA,now=NOW)
     # Two of three chosen at graduation. A share that stays low once fresh data accumulates means the
     # cadence-critical sweep is not reaching cohort members, and the backlog is covering for it.
     assert h['pools_measured_24h']==3 and h['pools_selected_at_graduation']==2
     assert h['at_graduation_share']==pytest.approx(0.667,abs=0.001)
+    # Three rows is not evidence: the share is reported, the verdict is withheld.
+    assert h['selection_state']=='unknown'
+
+
+def test_db_capture_health_is_separate_from_enrichment_health(db):
+    from launchpad_archive import backlog_health
+    from launchpad_chains import SOLANA
+    epoch=NOW-timedelta(hours=2)
+    with db,db.cursor() as cur:
+        # A fully drained, perfectly healthy enrichment backlog...
+        for i in range(30):
+            cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,launchpad_family,first_seen_at,
+                             last_seen_at,graduated,graduated_at,cohort_sampled,measure_pool,
+                             measure_pool_reason,measure_pool_timing,enriched_at)
+                           VALUES ('solana',%s,'pumpswap','pump.fun',%s,%s,true,%s,true,'pool',
+                                   'deepest graduate pool','at_graduation',%s)""",
+                        ('tok%d'%i,NOW,NOW,NOW-timedelta(minutes=30),NOW))
+        # ...with captures for only three of them, all before the window.
+        for i in range(3):
+            cur.execute("""INSERT INTO launchpad_trade_captures (network,token_address,pool,capture_started_at)
+                           VALUES ('solana',%s,'pool',%s)""",('tok%d'%i,epoch))
+    h=backlog_health(db,SOLANA,now=NOW)
+    # Enrichment is spotless. Capture is not. One boolean would have blurred exactly the failure we
+    # care most about: losing perishable data while every durable metric reads perfect.
+    assert h['enrichment_state']=='idle'
+    assert h['captures_taken']==3 and h['captures_eligible']==30
+    assert h['capture_coverage_24h']==0.1 and h['capture_state']=='degrading'
+    # The overall state takes the worse of the parts, so nothing has to remember to check both.
+    assert h['state']=='degrading'
+
+
+def test_db_capture_coverage_ignores_graduates_from_before_captures_existed(db):
+    from launchpad_archive import backlog_health
+    from launchpad_chains import SOLANA
+    epoch=NOW-timedelta(hours=1)
+    with db,db.cursor() as cur:
+        # 25 graduates predating the capture mechanism: never eligible, so counting them would
+        # manufacture a failure that never happened and poison the metric for the first day.
+        for i in range(25):
+            cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
+                             graduated,graduated_at,cohort_sampled,enriched_at)
+                           VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,true,%s)""",
+                        ('old%d'%i,NOW,NOW,NOW-timedelta(hours=3),NOW))
+        for i in range(25):
+            cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
+                             graduated,graduated_at,cohort_sampled,enriched_at)
+                           VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,true,%s)""",
+                        ('new%d'%i,NOW,NOW,NOW-timedelta(minutes=30),NOW))
+            cur.execute("""INSERT INTO launchpad_trade_captures (network,token_address,pool,capture_started_at)
+                           VALUES ('solana',%s,'pool',%s)""",('new%d'%i,epoch+timedelta(minutes=1)))
+    h=backlog_health(db,SOLANA,now=NOW)
+    # Only the 25 that graduated after the first capture count, and all of them were captured.
+    assert h['captures_eligible']==25 and h['captures_taken']==25
+    assert h['capture_coverage_24h']==1.0 and h['capture_state']=='healthy'

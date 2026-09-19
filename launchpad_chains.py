@@ -59,6 +59,11 @@ class Chain:
     # taken later at any price - never ran. Discovery cut short merely records a gap and is redone
     # next sweep; a missed capture is gone.
     discovery_share: float = 0.5
+    # Provenance must survive whichever side we happen to observe first. A fast graduator is often
+    # only ever seen arriving on its destination DEX, so filtering on the curve DEX alone silently
+    # drops it: on the commissioning sample, launchpad='pump-fun' returned 9 of 16 real Pump.fun
+    # graduates. A family spans both sides of a launchpad's pairing.
+    families: tuple = ()
     # Whether the cadence-critical sweep also enriches. Measured on Solana: graduations arrive at
     # 3.4/minute (~4,900/day across all launchpads, ~30% of it Pump.fun lineage), which is 6.8 per
     # 2-minute sweep against a capacity of 8 - service rate barely equals arrival rate, so the
@@ -83,6 +88,11 @@ ROBINHOOD=Chain(
     curve_dexes=frozenset({'pons-v2','pons-v2-dex-curve','hoodit','o1-launchpad-robinhood','bankr-robinhood',
                            'clanker-robinhood','virtuals-robinhood','easya-kickstart-robinhood','mint-club-robinhood'}),
     graduate_dexes=frozenset({'pons-v2-dex'}),
+    families=(('pons',frozenset({'pons-v2','pons-v2-dex','pons-v2-dex-curve'})),
+              ('hoodit',frozenset({'hoodit'})),('o1',frozenset({'o1-launchpad-robinhood'})),
+              ('bankr',frozenset({'bankr-robinhood'})),('clanker',frozenset({'clanker-robinhood'})),
+              ('virtuals',frozenset({'virtuals-robinhood'})),('easya',frozenset({'easya-kickstart-robinhood'})),
+              ('mint-club',frozenset({'mint-club-robinhood'}))),
     sweep_minutes=5,
     rungs=(10,30,60,180,360,720,1440,2880,10080),
 )
@@ -94,6 +104,12 @@ SOLANA=Chain(
     network='solana',
     curve_dexes=frozenset({'pump-fun','meteora-dbc','raydium-launchlab','boop-fun','moonshot'}),
     graduate_dexes=frozenset({'pumpswap','meteora-damm-v2'}),
+    # pumpswap is Pump.fun's own AMM and meteora-damm-v2 is Meteora's, so arrival there is
+    # provenance, not just a destination.
+    families=(('pump.fun',frozenset({'pump-fun','pumpswap'})),
+              ('meteora',frozenset({'meteora-dbc','meteora-damm-v2'})),
+              ('raydium',frozenset({'raydium-launchlab'})),('boop',frozenset({'boop-fun'})),
+              ('moonshot',frozenset({'moonshot'}))),
     sweep_minutes=2,
     rungs=(5,10,30,60,180,360,720,1440,2880,10080),
     deepest_pool_wins=True,
@@ -117,6 +133,28 @@ CHAINS={c.network:c for c in (ROBINHOOD,SOLANA)}
 
 def classify(dex,chain=ROBINHOOD):
     return 'graduate' if dex in chain.graduate_dexes else 'curve' if dex in chain.curve_dexes else 'other'
+
+
+def family_of(dex,chain=ROBINHOOD):
+    """Which launchpad family a DEX belongs to, from either side of its pairing.
+
+    `launchpad` answers "where did it launch" and is only ever a curve DEX, so it is NULL for a
+    graduate we first saw arriving. `launchpad_family` answers "whose launchpad is this" and is
+    answerable either way - which is what a Pump.fun-specific analysis actually needs.
+    """
+    for name,dexes in chain.families:
+        if dex in dexes:return name
+    return None
+
+
+def selection_timing(reason):
+    """'at_graduation' | 'late' | None, as an explicit value rather than a substring match.
+
+    The reason string carries the detail; analysis must never have to parse it. Encoding analytical
+    semantics indirectly is how a filter silently means something other than it says.
+    """
+    if not reason:return None
+    return 'late' if 'selected late' in reason else 'at_graduation'
 
 
 def choose_measure_pool(chain,pools,destination=None):

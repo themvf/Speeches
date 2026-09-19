@@ -100,9 +100,8 @@ so service is about 1.8x arrival):
   so the two are never mixed in analysis.
 - **The queue is the archive itself** — graduates with no `enriched_at`, oldest first. No second
   queueing system.
-- **Health is service rate against arrival rate**, not "the worker ran": `--backlog` reports
-  `pending_enrichment`, `oldest_pending_age_seconds`, `arrival_rate_per_hour`,
-  `service_rate_per_hour` and `keeping_up`. False for one run is fine; false for a day is not.
+- **Health is three separate states**, because one boolean blurs different failure modes. See the
+  review section at the end.
 
 # Enrichment worker commissioning (2026-09-19)
 
@@ -146,3 +145,38 @@ for Pump.fun and 52s for Meteora DBC. Any "time to graduation" or "minutes since
 computed from these columns will be confidently wrong, which is why the caveat is a
 `COMMENT ON COLUMN` rather than prose here alone. True launch timing needs Solana RPC or Bitquery
 against the launchpad program.
+
+
+# Semantic review, and what it changed (2026-09-19)
+
+A review against five silent-failure concerns found three real defects. All are fixed; the re-review
+numbers are from the commissioning data.
+
+**Pump.fun analysis could not filter correctly.** `launchpad` is only ever a curve DEX, so it was
+NULL for every graduate first seen arriving at its destination — and a fast graduator is frequently
+only ever seen that way. `WHERE launchpad='pump-fun'` returned **9 of 16** real Pump.fun graduates,
+a silent 44% undercount biased toward exactly the fastest tokens. Fixed with `launchpad_family`,
+which spans both sides of a pairing (`pump-fun` and `pumpswap` are both `pump.fun`), derived by the
+adapter so there is one source of truth. Re-review: **16 of 16, zero unattributed.**
+
+**The worker could report perfect health while captures were being missed.** Enrichment health said
+`idle` — the strongest possible signal — while capture coverage was 3 of 16. Health is now three
+states kept deliberately apart: `enrichment_state` (durable work, judged on the age of the oldest
+pending graduate), `capture_state` (perishable work, judged on coverage), and `state`, the worse of
+them. The capture denominator counts only graduates that arrived **after the first capture we ever
+took**, so a pre-mechanism backlog cannot manufacture a failure that never happened — it cut the
+denominator from 16 to 5 on this data. A sample below 20 reports `unknown`, never `healthy`.
+
+**`at_graduation_share` was reported but not surfaced.** It is now on the `--daily` row with its
+numerator and denominator (`pools_at_graduation` / `pools_measured`), alongside capture coverage,
+and it only produces a verdict once the sample justifies one.
+
+**Also, selection timing is an explicit column.** `measure_pool_timing` is `at_graduation` | `late`,
+not a `LIKE '%selected late%'` against a prose reason. The reason string keeps the detail; analysis
+never parses it. Encoding analytical semantics indirectly is how a filter silently comes to mean
+something other than what it says — the same class of mistake as the `launchpad` undercount above.
+
+**Robinhood was confirmed unchanged**: worst-case optional work is 150s against its new 180s
+deadline, so nothing it previously completed is cut, and discovery's half-deadline cap (90s) is far
+above its ~25s cost. One immaterial change: on an arrival-only row `graduation_pool` now prefers the
+declared destination over the observed pool; those were verified identical for Pons.

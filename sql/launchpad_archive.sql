@@ -172,3 +172,23 @@ COMMENT ON COLUMN launchpad_tokens.first_pool_created IS
  'and graduation was 0s for Pump.fun and 52s for Meteora DBC, because the curve pool is frequently '
  'indexed at or near migration rather than at launch. Any time-since-launch or minutes-to-graduation '
  'calculation on Solana needs a different source (Solana RPC or Bitquery on the launchpad program).';
+
+-- Provenance that survives whichever side we observe first. `launchpad` is only ever a curve DEX,
+-- so it is NULL for a graduate first seen arriving at its destination - on the commissioning sample
+-- filtering launchpad='pump-fun' returned 9 of 16 real Pump.fun graduates. Family spans both sides.
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS launchpad_family text;
+CREATE INDEX IF NOT EXISTS launchpad_tokens_family ON launchpad_tokens(network,launchpad_family) WHERE graduated;
+COMMENT ON COLUMN launchpad_tokens.launchpad IS
+ 'The bonding-curve DEX, when we observed it. NULL for a graduate first seen arriving at its '
+ 'destination. Filter analysis on launchpad_family instead: this column silently undercounts.';
+COMMENT ON COLUMN launchpad_tokens.launchpad_family IS
+ 'Launchpad provenance spanning both sides of a pairing (pump-fun and pumpswap are both pump.fun). '
+ 'This is the column a launchpad-specific analysis should filter on.';
+
+-- Analytical semantics as a value, not a substring of a prose reason.
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS measure_pool_timing text
+  CHECK (measure_pool_timing IN ('at_graduation','late'));
+COMMENT ON COLUMN launchpad_tokens.measure_pool_timing IS
+ 'Whether the measurement pool was chosen at graduation or later. A late choice may name a '
+ 'different market than the one that mattered, since a token can fall to near-zero liquidity '
+ 'within the hour, so the two must stay separable in analysis.';

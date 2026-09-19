@@ -127,3 +127,28 @@ def test_discovery_can_never_consume_the_whole_budget():
         reserve=chain.deadline_seconds*(1-chain.discovery_share)
         # Enough left for at least one graduate's capture (info + pools + two trade pages).
         assert reserve >= 4*chain.request_wait
+
+
+def test_launchpad_family_survives_whichever_side_we_observe_first():
+    from launchpad_chains import family_of
+    # The defect this fixes: on the commissioning sample, filtering launchpad='pump-fun' returned 9
+    # of 16 real Pump.fun graduates, because a fast graduator is often only ever seen arriving on
+    # PumpSwap. Provenance has to span both sides of the pairing.
+    assert family_of('pump-fun',SOLANA)==family_of('pumpswap',SOLANA)=='pump.fun'
+    assert family_of('meteora-dbc',SOLANA)==family_of('meteora-damm-v2',SOLANA)=='meteora'
+    assert family_of('pons-v2',ROBINHOOD)==family_of('pons-v2-dex',ROBINHOOD)=='pons'
+    # Every DEX a chain claims must resolve, or a graduate lands with no provenance at all.
+    for chain in CHAINS.values():
+        for dex in chain.curve_dexes|chain.graduate_dexes:
+            assert family_of(dex,chain) is not None,f'{chain.network}:{dex} has no family'
+    # And never across chains.
+    assert family_of('pump-fun',ROBINHOOD) is None and family_of('pons-v2',SOLANA) is None
+
+
+def test_selection_timing_is_a_value_not_a_substring_search():
+    from launchpad_chains import selection_timing
+    assert selection_timing('deepest graduate pool')=='at_graduation'
+    assert selection_timing('deepest graduate pool (destination field disagreed)')=='at_graduation'
+    assert selection_timing('deepest graduate pool (selected late, not at graduation)')=='late'
+    assert selection_timing('no liquid pool (selected late, not at graduation)')=='late'
+    assert selection_timing(None) is None
