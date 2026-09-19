@@ -10,9 +10,16 @@ on:
   # GitHub drops most `schedule` fires in this repo, and this archive cannot tolerate that: the feed
   # reaches back only ~11 minutes, so a missed run loses launches permanently. The reliable trigger is
   # the Vercel cron at /api/cron/dispatch-workflows pressing workflow_dispatch (see
-  # apps/web/lib/server/github-dispatch.ts). This schedule stays as a fallback only.
+  # apps/web/lib/server/github-dispatch.ts).
+  #
+  # This cron is a fallback for dispatch failing, not a second scheduler. At the sweep cadence it
+  # would compete with the Vercel tick - both read the same last-run time, so two runs can queue for
+  # the same slot, and the concurrency group below turns that into a wasted execution rather than a
+  # parallel one. Every half hour recovers the archive if dispatch stops entirely, while rarely
+  # landing on a Vercel tick. Sweeps that do collide stay safe: the concurrency group serialises
+  # them, an advisory lock makes the second a no-op, and observations are ON CONFLICT DO NOTHING.
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/30 * * * *'
 permissions:
   contents: read
 concurrency:
