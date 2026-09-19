@@ -1,5 +1,21 @@
 # CLAUDE.md
 
+## Graduation Archive (cross-chain launchpad research) — START HERE for launchpad work
+
+The program overview lives in [`docs/graduation-archive-overview.md`](docs/graduation-archive-overview.md):
+what the cross-chain graduation archive is for, the question it exists to answer, and the rules it is
+built on. Read it before touching `launchpad_archive.py`, `launchpad_chains.py`,
+`sql/launchpad_archive.sql` or the `launchpad-archive` / `solana-archive` / `solana-enrich`
+workflows. Implementation contracts: [`docs/graduation-archive-spec.md`](docs/graduation-archive-spec.md)
+(Robinhood Chain) and [`docs/solana-pumpfun-archive-spec.md`](docs/solana-pumpfun-archive-spec.md)
+(Solana adapter, enrichment worker, and the five-item live-smoke gate every new chain must pass
+before merge).
+
+Four rules that are easy to break by accident: no arbitrary "good token" thresholds before outcomes
+are labelled; "not observed" must never read as "observed and absent"; Solana's
+`first_pool_created` is **not** a launch time; and launchpad-specific analysis filters on
+`launchpad_family`, never on `launchpad`.
+
 ## Rates & Credit Intelligence
 
 The implementation strategy for the Market → Macro rates and credit workspace lives in [`docs/rates-credit-intelligence-strategy.md`](docs/rates-credit-intelligence-strategy.md). Follow its phased architecture, source hierarchy, interpretability requirements, and data-quality rules when extending rates, corporate credit, ratings, mortgages, or CDS coverage.
