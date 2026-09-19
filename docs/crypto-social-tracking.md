@@ -268,9 +268,12 @@ which is an explicit API call and is not throttled that way. `lib/server/github-
 target list and reads each workflow's real last-run time from GitHub before dispatching, so a fire from
 GitHub's own scheduler counts and the two schedulers never stack. The workflows are untouched: same
 runner, Python, secrets and pre-flight test gate, and their `schedule:` triggers stay as a fallback.
-Auth is the existing `checkCronAuth` (Vercel sends `CRON_SECRET` as a bearer automatically); the route
-returns 503 with a named code when `GITHUB_DISPATCH_TOKEN` is missing rather than quietly doing nothing.
-Requires one secret in Vercel: a fine-grained token with Actions read and write on this repo.
+Auth is the existing `checkCronAuth` (Vercel sends `CRON_SECRET` as a bearer automatically). **No new
+secret was needed**: the dispatch reuses `getGithubActionsConfig()`, the same
+`GITHUB_ACTIONS_TOKEN` / `GITHUB_REPO_OWNER` / `GITHUB_REPO_NAME` / `GITHUB_DEFAULT_REF` the admin
+job-runner (`lib/server/github-actions.ts`, `/api/admin/workflow`) has used all along, and production
+`/api/metrics` confirms `github_actions_missing_required_env: []`. If that config is ever disabled the
+route returns 503 with a named code and the missing variables rather than quietly doing nothing.
 
 Same day, a regression from the hourly change was reverted: hourly coins had been given 2 pages per run
 instead of 4, on the assumption of 24 firings a day. At the real cadence that cut throughput for

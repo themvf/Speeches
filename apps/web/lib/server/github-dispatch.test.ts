@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isDue, dispatchIfDue, DISPATCH_TARGETS, type DispatchTarget, type FetchLike } from "./github-dispatch.ts";
 
+// Credentials are passed explicitly here so the tests never depend on the ambient environment.
+const CREDS = { token: "t", owner: "o", repo: "r", ref: "main" };
+
 const target: DispatchTarget = { workflow: "w.yml", everyMinutes: 60, reason: "test" };
 const NOW = new Date("2026-09-18T12:00:00Z");
 const runsBody = (createdAt: string | null) =>
@@ -27,7 +30,7 @@ test("isDue respects the period with a minute of slack", () => {
 
 test("a recent run is skipped without dispatching", async () => {
   const { calls, fetchImpl } = stub({ runs: runsBody("2026-09-18T11:45:00Z") });
-  const out = await dispatchIfDue(target, { token: "t", now: NOW, fetchImpl });
+  const out = await dispatchIfDue(target, { ...CREDS, now: NOW, fetchImpl });
   assert.equal(out.status, "skipped");
   assert.match(out.detail, /15m ago/);
   assert.equal(out.lastRunAt, "2026-09-18T11:45:00.000Z");
@@ -36,7 +39,7 @@ test("a recent run is skipped without dispatching", async () => {
 
 test("a stale run is dispatched and 204 is the success signal", async () => {
   const { calls, fetchImpl } = stub({ runs: runsBody("2026-09-18T08:00:00Z") });
-  const out = await dispatchIfDue(target, { token: "t", now: NOW, fetchImpl });
+  const out = await dispatchIfDue(target, { ...CREDS, now: NOW, fetchImpl });
   assert.equal(out.status, "dispatched");
   assert.equal(out.detail, "ref main");
   assert.deepEqual(calls, ["GET runs", "POST dispatch"]);
@@ -44,14 +47,14 @@ test("a stale run is dispatched and 204 is the success signal", async () => {
 
 test("a rejected dispatch reports the status rather than throwing", async () => {
   const { fetchImpl } = stub({ runs: runsBody(null), dispatch: new Response("Resource not accessible", { status: 403 }) });
-  const out = await dispatchIfDue(target, { token: "t", now: NOW, fetchImpl });
+  const out = await dispatchIfDue(target, { ...CREDS, now: NOW, fetchImpl });
   assert.equal(out.status, "failed");
   assert.match(out.detail, /HTTP 403: Resource not accessible/);
 });
 
 test("unreadable run history fails the target, not the tick", async () => {
   const fetchImpl: FetchLike = async () => new Response("nope", { status: 401 });
-  const out = await dispatchIfDue(target, { token: "t", now: NOW, fetchImpl });
+  const out = await dispatchIfDue(target, { ...CREDS, now: NOW, fetchImpl });
   assert.equal(out.status, "failed");
   assert.match(out.detail, /run history unavailable \(HTTP 401\)/);
 });

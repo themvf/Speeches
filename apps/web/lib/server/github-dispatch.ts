@@ -1,13 +1,17 @@
-// Dispatch GitHub Actions workflows from a Vercel cron.
+import { getGithubActionsConfig } from "./env.ts";
+
+// Dispatch GitHub Actions workflows on a schedule, from a Vercel cron.
 //
 // Why this exists: GitHub treats the `schedule` event as best effort and drops most fires in a repo
 // with many scheduled workflows. Measured 2026-09-18, two independent hourly workflows in this repo
-// (crypto-social-rolling, bloomberg-public-hourly) each ran 6 or fewer times in 20 hours, with gaps of
-// 2.5 to 5.5 hours. `workflow_dispatch` is an explicit API call and is not throttled that way, so a
-// reliable scheduler pressing the button gives the cadence the cron string asks for.
+// (crypto-social-rolling, bloomberg-public-hourly) each ran six or fewer times in twenty hours, with
+// gaps of 2.5 to 5.5 hours. `workflow_dispatch` is an explicit API call and is not throttled that
+// way, so a reliable scheduler pressing the button gives the cadence the cron string asks for.
 //
-// The workflows themselves are unchanged: same runner, same Python, same secrets, same pre-flight test
-// gate. Their `schedule:` triggers stay in place as a fallback. That is safe because we read the real
+// Credentials are the ones the admin job-runner already uses (`getGithubActionsConfig`:
+// GITHUB_ACTIONS_TOKEN / GITHUB_REPO_OWNER / GITHUB_REPO_NAME / GITHUB_DEFAULT_REF), so this needs no
+// new secret. The workflows themselves are untouched: same runner, Python, secrets and pre-flight
+// test gate, and their `schedule:` triggers stay as a fallback. That is safe because we read the real
 // last-run time before dispatching, so a schedule fire and a Vercel tick never stack up.
 export type DispatchTarget = {
   workflow: string; // workflow file name, e.g. "crypto-social-rolling.yml"
@@ -34,8 +38,20 @@ export type DispatchOutcome = {
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
-export const GITHUB_REPO = process.env.GITHUB_DISPATCH_REPO ?? "themvf/Speeches";
+type Creds = { token: string; owner: string; repo: string; ref: string };
+
 const API_VERSION = "2022-11-28";
+
+/** Credentials for the dispatch calls, defaulting to the admin job-runner's existing configuration. */
+export function dispatchCredentials(overrides?: Partial<Creds>): Creds {
+  const cfg = getGithubActionsConfig();
+  return {
+    token: overrides?.token ?? cfg.token,
+    owner: overrides?.owner ?? cfg.owner,
+    repo: overrides?.repo ?? cfg.repo,
+    ref: overrides?.ref ?? cfg.ref,
+  };
+}
 
 function githubHeaders(token: string): Record<string, string> {
   return {
@@ -52,12 +68,11 @@ function githubHeaders(token: string): Record<string, string> {
  */
 export async function lastRunAt(
   workflow: string,
-  options: { token: string; repo?: string; fetchImpl?: FetchLike },
+  creds: Creds,
+  fetchImpl: FetchLike = fetch as FetchLike,
 ): Promise<Date | null> {
-  const repo = options.repo ?? GITHUB_REPO;
-  const doFetch = options.fetchImpl ?? (fetch as FetchLike);
-  const url = `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/runs?per_page=1`;
-  const response = await doFetch(url, { headers: githubHeaders(options.token) });
+  const url = `https://api.github.com/repos/${creds.owner}/${creds.repo}/actions/workflows/${workflow}/runs?per_page=1`;
+  const response = await fetchImpl(url, { headers: githubHeaders(creds.token) });
   if (!response.ok) throw new Error(`run history unavailable (HTTP ${response.status})`);
   const body = (await response.json()) as { workflow_runs?: { created_at?: string }[] };
   const created = body.workflow_runs?.[0]?.created_at;
@@ -81,14 +96,13 @@ export function isDue(target: DispatchTarget, last: Date | null, now: Date): boo
  */
 export async function dispatchIfDue(
   target: DispatchTarget,
-  options: { token: string; ref?: string; repo?: string; now?: Date; fetchImpl?: FetchLike },
+  options: { now?: Date; fetchImpl?: FetchLike } & Partial<Creds> = {},
 ): Promise<DispatchOutcome> {
-  const repo = options.repo ?? GITHUB_REPO;
-  const ref = options.ref ?? "main";
+  const creds = dispatchCredentials(options);
   const now = options.now ?? new Date();
   const doFetch = options.fetchImpl ?? (fetch as FetchLike);
   try {
-    const last = await lastRunAt(target.workflow, { token: options.token, repo, fetchImpl: doFetch });
+    const last = await lastRunAt(target.workflow, creds, doFetch);
     const lastIso = last ? last.toISOString() : null;
     if (!isDue(target, last, now)) {
       const mins = last ? Math.round((now.getTime() - last.getTime()) / 60_000) : 0;
@@ -99,15 +113,15 @@ export async function dispatchIfDue(
         lastRunAt: lastIso,
       };
     }
-    const url = `https://api.github.com/repos/${repo}/actions/workflows/${target.workflow}/dispatches`;
+    const url = `https://api.github.com/repos/${creds.owner}/${creds.repo}/actions/workflows/${target.workflow}/dispatches`;
     const response = await doFetch(url, {
       method: "POST",
-      headers: { ...githubHeaders(options.token), "Content-Type": "application/json" },
-      body: JSON.stringify({ ref }),
+      headers: { ...githubHeaders(creds.token), "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: creds.ref }),
     });
     // GitHub answers a successful dispatch with 204 No Content and an empty body.
     if (response.status === 204) {
-      return { workflow: target.workflow, status: "dispatched", detail: `ref ${ref}`, lastRunAt: lastIso };
+      return { workflow: target.workflow, status: "dispatched", detail: `ref ${creds.ref}`, lastRunAt: lastIso };
     }
     const body = await response.text().catch(() => "");
     return {
