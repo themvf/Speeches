@@ -15,7 +15,9 @@ import math
 import os
 from pathlib import Path
 
-NETWORK='robinhood'
+from launchpad_chains import (CHAINS,ROBINHOOD,SOLANA,Chain,choose_measure_pool,classify,family_of,
+                              in_cohort,parse_extended_info,parse_pool_list,parse_trades,
+                              selection_timing,summarize_trades)
 GECKO='https://api.geckoterminal.com/api/v2/networks/'
 PAGES=10                      # new_pools caps at page 10 (page 11 returns 401)
 # Cadence is set by how far the feed reaches back, and that shrinks as the chain gets busier. A live
@@ -23,25 +25,39 @@ PAGES=10                      # new_pools caps at page 10 (page 11 returns 401)
 # the 8/minute measured an hour earlier. A ten-minute cadence would have left about one minute of
 # margin, so any delayed run would lose launches. Five minutes restores the margin; the sweep table
 # records its reach every run, so the real figure should be re-read from the data, not assumed.
-SWEEP_MINUTES=5
-# Bonding-curve DEXes. A token appears here at launch. Verified live 2026-09-19 via /networks/robinhood/dexes.
-CURVE_DEXES={'pons-v2','pons-v2-dex-curve','hoodit','o1-launchpad-robinhood','bankr-robinhood',
-             'clanker-robinhood','virtuals-robinhood','easya-kickstart-robinhood','mint-club-robinhood'}
-# Where graduates land. Only the Pons pairing is confirmed: ASKR's migrated_destination_pool_address
-# sits on pons-v2-dex and its pool_created_at equals launchpad_details.completed_at to the second.
-GRADUATE_DEXES={'pons-v2-dex'}
-# Post-graduation snapshot ladder, in minutes since graduation.
-RUNGS=(10,30,60,180,360,720,1440,2880,10080)
+SWEEP_MINUTES=ROBINHOOD.sweep_minutes
+# Chain-specific identity lives in launchpad_chains.py. These aliases keep the default chain's
+# constants importable at module level, so nothing that already reads them has to change.
+NETWORK=ROBINHOOD.network
+CURVE_DEXES=set(ROBINHOOD.curve_dexes)
+GRADUATE_DEXES=set(ROBINHOOD.graduate_dexes)
+RUNGS=ROBINHOOD.rungs
 MULTI_BATCH=30                # tokens/multi accepts 30 addresses per call
 MAX_CANDIDATES=300            # live curve tokens re-read per sweep, newest first
 MAX_INFO=20                   # per-token /info calls per sweep (graduates only: holders, X handle)
 MAX_SNAPSHOTS=40              # pool snapshots per sweep; unfilled rungs are picked up next sweep
 STALE_HOURS=24                # a curve token with no movement for this long stops being a candidate
+# Health thresholds. A metric over a handful of rows says nothing, so a small sample reports
+# 'unknown' rather than passing or failing on noise.
+MIN_HEALTH_SAMPLE=20
+CAPTURE_COVERAGE_TARGET=0.8   # cohort graduates that should carry an opening trade capture
+AT_GRADUATION_TARGET=0.8      # measurement pools that should have been chosen at graduation
 
 
-def setup(conn):
+def setup(conn,chain=None):
     with conn,conn.cursor() as cur:
         cur.execute(Path(__file__).with_name('sql').joinpath('launchpad_archive.sql').read_text())
+        # Backfill the derived columns from the adapter rather than duplicating its mapping in SQL,
+        # so there is one source of truth. Idempotent and bounded by the partial-NULL predicate.
+        for c in ([chain] if chain else CHAINS.values()):
+            for name,dexes in c.families:
+                cur.execute('''UPDATE launchpad_tokens SET launchpad_family=%s
+                               WHERE network=%s AND launchpad_family IS NULL AND dex=ANY(%s)''',
+                            (name,c.network,sorted(dexes)))
+        cur.execute('''UPDATE launchpad_tokens
+                       SET measure_pool_timing=CASE WHEN measure_pool_reason LIKE '%%selected late%%'
+                                                    THEN 'late' ELSE 'at_graduation' END
+                       WHERE measure_pool_timing IS NULL AND measure_pool_reason IS NOT NULL''')
 
 
 def iso(value):
@@ -58,8 +74,9 @@ def number(value):
     except (TypeError,ValueError):return None
 
 
-def parse_pool(entry):
+def parse_pool(entry,chain=ROBINHOOD):
     """One new_pools/pool record -> the fields we store. Returns None if it is not usable."""
+    fold=(lambda x:x.lower()) if chain.lowercase_addresses else (lambda x:x)
     attributes=entry.get('attributes') or {};relationships=entry.get('relationships') or {}
     address=attributes.get('address')
     dex=((relationships.get('dex') or {}).get('data') or {}).get('id')
@@ -68,7 +85,7 @@ def parse_pool(entry):
     if not address or not dex or not token:return None
     txns=attributes.get('transactions') or {};volume=attributes.get('volume_usd') or {}
     change=attributes.get('price_change_percentage') or {}
-    return dict(pool=address.lower(),dex=dex,token=token.lower(),
+    return dict(pool=fold(address),dex=dex,token=fold(token),
                 symbol=(attributes.get('name') or '').split('/')[0].strip() or None,
                 name=attributes.get('name'),created=iso(attributes.get('pool_created_at')),
                 price=number(attributes.get('base_token_price_usd')),fdv=number(attributes.get('fdv_usd')),
@@ -78,10 +95,6 @@ def parse_pool(entry):
                 buyers_h1=(txns.get('h1') or {}).get('buyers'),sellers_h1=(txns.get('h1') or {}).get('sellers'),
                 txns_h1=((txns.get('h1') or {}).get('buys') or 0)+((txns.get('h1') or {}).get('sells') or 0),
                 change_h1=number(change.get('h1')))
-
-
-def classify(dex):
-    return 'graduate' if dex in GRADUATE_DEXES else 'curve' if dex in CURVE_DEXES else 'other'
 
 
 def gap_seconds(previous_newest,this_oldest):
@@ -95,23 +108,24 @@ def gap_seconds(previous_newest,this_oldest):
     return max(0,int((this_oldest-previous_newest).total_seconds()))
 
 
-def rungs_due(graduated_at,now,filled):
+def rungs_due(graduated_at,now,filled,rungs=RUNGS):
     """Ladder rungs whose time has passed and which have no observation yet."""
     if not graduated_at:return []
     elapsed=(now-graduated_at).total_seconds()/60
-    return [r for r in RUNGS if elapsed>=r and r not in filled]
+    return [r for r in rungs if elapsed>=r and r not in filled]
 
 
-def multi_url(addresses):
-    return GECKO+NETWORK+'/tokens/multi/'+','.join(addresses)
+def multi_url(addresses,network=NETWORK):
+    return GECKO+network+'/tokens/multi/'+','.join(addresses)
 
 
-def parse_multi(payload):
+def parse_multi(payload,chain=ROBINHOOD):
     """tokens/multi -> {address: {pct, completed, completed_at, destination, symbol, name, price, fdv}}."""
     out={}
+    fold=(lambda x:x.lower()) if chain.lowercase_addresses else (lambda x:x)
     for entry in (payload or {}).get('data') or []:
         attributes=entry.get('attributes') or {}
-        address=(attributes.get('address') or '').lower()
+        address=fold(attributes.get('address') or '')
         if not address:continue
         launchpad=attributes.get('launchpad_details') or {}
         # A token with no launchpad_details is not a launchpad token (or is no longer described as one);
@@ -119,7 +133,7 @@ def parse_multi(payload):
         out[address]=dict(pct=number(launchpad.get('graduation_percentage')),
                           completed=bool(launchpad.get('completed')),
                           completed_at=iso(launchpad.get('completed_at')),
-                          destination=(launchpad.get('migrated_destination_pool_address') or '').lower() or None,
+                          destination=fold(launchpad.get('migrated_destination_pool_address') or '') or None,
                           symbol=attributes.get('symbol'),name=attributes.get('name'),
                           price=number(attributes.get('price_usd')),fdv=number(attributes.get('fdv_usd')),
                           has_launchpad='launchpad_details' in attributes and attributes.get('launchpad_details') is not None)
@@ -154,18 +168,22 @@ def parse_info(payload):
                 twitter=normalize_handle(attributes.get('twitter_handle')))
 
 
-def sweep(conn,fetch=None,now=None,wait=None):
-    """One ten-minute sweep. Gathers everything, then writes once. Returns a summary dict."""
+def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
+    """One sweep of one chain. Gathers everything, then writes once. Returns a summary dict."""
     import requests,time
     wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
     setup(conn)
+    # Wall clock, not the sweep's logical `now`, so a fixture-driven test is never bounded by it.
+    sweep_clock=time.monotonic()
+    def budget_left(share=1.0):
+        return time.monotonic()-sweep_clock < chain.deadline_seconds*share
     with conn,conn.cursor() as cur:
-        cur.execute("SELECT pg_try_advisory_lock(hashtext('launchpad-archive'))")
+        cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-archive:'+chain.network,))
         if not cur.fetchone()[0]:return {'status':'already_running','errors':['sweep_already_running']}
     errors=[]
     def get(url):
         for attempt in range(4):
-            wait(2.5)  # ~30 requests/minute is the unkeyed ceiling; never burst.
+            wait(chain.request_wait)  # ~30 requests/minute is the unkeyed ceiling; never burst.
             response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
             status=getattr(response,'status_code',0)
             if status==429 and attempt<3:
@@ -183,11 +201,15 @@ def sweep(conn,fetch=None,now=None,wait=None):
         # 1. Discovery. Stop early once a page predates the last sweep - the rest is already recorded.
         pools=[];pages=0;oldest=None;newest=None
         for page in range(1,PAGES+1):
-            try:payload=get(GECKO+NETWORK+'/new_pools?page='+str(page))
+            # Stopping here leaves a gap, which is recorded; stopping later loses a capture, which
+            # is not recoverable. The reserve is what keeps that trade the right way round.
+            if not budget_left(chain.discovery_share):
+                errors.append('discovery stopped at page '+str(page)+' to reserve budget for captures');break
+            try:payload=get(GECKO+chain.network+'/new_pools?page='+str(page))
             except (ValueError,requests.RequestException) as exc:
                 errors.append('new_pools page '+str(page)+': '+type(exc).__name__+' '+str(exc)[:120]);break
             pages+=1
-            entries=[p for p in (parse_pool(e) for e in (payload.get('data') or [])) if p]
+            entries=[p for p in (parse_pool(e,chain) for e in (payload.get('data') or [])) if p]
             if not entries:break
             pools+=entries
             created=[e['created'] for e in entries if e['created']]
@@ -198,26 +220,26 @@ def sweep(conn,fetch=None,now=None,wait=None):
         by_pool={}
         for entry in pools:by_pool.setdefault(entry['pool'],entry)
         pools=list(by_pool.values())
-        curve=[e for e in pools if classify(e['dex'])=='curve']
-        graduate_pools=[e for e in pools if classify(e['dex'])=='graduate']
+        curve=[e for e in pools if classify(e['dex'],chain)=='curve']
+        graduate_pools=[e for e in pools if classify(e['dex'],chain)=='graduate']
 
         # 2. Known state for everything this sweep touches, plus the live candidate set.
         touched=sorted({e['token'] for e in pools})
         with conn,conn.cursor() as cur:
             known={}
             if touched:
-                cur.execute('SELECT token_address,graduated,first_seen_pct,state FROM launchpad_tokens WHERE network=%s AND token_address=ANY(%s)',(NETWORK,touched))
+                cur.execute('SELECT token_address,graduated,first_seen_pct,state FROM launchpad_tokens WHERE network=%s AND token_address=ANY(%s)',(chain.network,touched))
                 known={r[0]:dict(graduated=r[1],first_pct=r[2],state=r[3]) for r in cur.fetchall()}
             cur.execute('''SELECT token_address FROM launchpad_tokens
                            WHERE network=%s AND state='live' AND last_seen_at>%s
                            ORDER BY moved DESC,last_seen_at DESC LIMIT %s''',
-                        (NETWORK,now-timedelta(hours=STALE_HOURS),MAX_CANDIDATES))
+                        (chain.network,now-timedelta(hours=STALE_HOURS),chain.max_candidates))
             candidates=[r[0] for r in cur.fetchall()]
             cur.execute('''SELECT t.token_address,t.graduated_at,array_remove(array_agg(o.rung_minutes),NULL)
                            FROM launchpad_tokens t LEFT JOIN launchpad_observations o
                              ON o.network=t.network AND o.token_address=t.token_address AND o.rung_minutes IS NOT NULL
-                           WHERE t.network=%s AND t.graduated AND t.graduated_at>%s
-                           GROUP BY t.token_address,t.graduated_at''',(NETWORK,now-timedelta(days=8)))
+                           WHERE t.network=%s AND t.graduated AND t.cohort_sampled AND t.graduated_at>%s
+                           GROUP BY t.token_address,t.graduated_at''',(chain.network,now-timedelta(days=8)))
             ladder=[(r[0],r[1],set(r[2] or [])) for r in cur.fetchall()]
 
         # 3. Graduation by arrival: a graduate-DEX pool whose token we hold is a graduation event.
@@ -227,35 +249,103 @@ def sweep(conn,fetch=None,now=None,wait=None):
         ask=sorted({e['token'] for e in curve if e['token'] not in known}|set(candidates)|set(arrivals))
         state={}
         for start in range(0,len(ask),MULTI_BATCH):
+            if not budget_left(chain.discovery_share):
+                errors.append('state reads stopped to reserve budget for captures');break
             batch=ask[start:start+MULTI_BATCH]
-            try:state.update(parse_multi(get(multi_url(batch))))
+            try:state.update(parse_multi(get(multi_url(batch,chain.network)),chain))
             except (ValueError,requests.RequestException) as exc:
                 errors.append('tokens/multi: '+type(exc).__name__+' '+str(exc)[:120])
 
         # 5. Enrichment for graduates we have not enriched, and 6. the snapshot ladder.
         newly=[t for t,entry in arrivals.items() if not known.get(t,{}).get('graduated')]
         newly+=[t for t,s in state.items() if s['completed'] and not known.get(t,{}).get('graduated') and t not in arrivals]
-        info={}
-        for token in sorted(set(newly))[:MAX_INFO]:
-            try:info[token]=parse_info(get(GECKO+NETWORK+'/tokens/'+token+'/info'))
-            except (ValueError,requests.RequestException) as exc:
-                errors.append('info '+token[:10]+': '+type(exc).__name__)
+        # A graduate the deadline skipped is already marked graduated, so it never reappears in the
+        # set above: without this backlog it would stay unenriched and unmeasured for ever. Measured
+        # on a live sweep, where 27 of 29 graduates were cut and silently abandoned.
+        backlog=[]
+        if chain.enrich_in_sweep:
+            # A graduate the deadline skipped is already marked graduated, so it never reappears in
+            # the set above: without this backlog it would stay unenriched for ever. On a chain whose
+            # enrichment runs in its own worker, that worker owns the backlog instead.
+            with conn,conn.cursor() as cur:
+                cur.execute('''SELECT token_address FROM launchpad_tokens
+                               WHERE network=%s AND graduated AND measure_pool_reason IS NULL
+                                 AND graduated_at>%s ORDER BY graduated_at DESC LIMIT %s''',
+                            (chain.network,now-timedelta(hours=6),chain.max_info))
+                backlog=[r[0] for r in cur.fetchall() if r[0] not in newly]
+        # Cohort members first: their opening trade capture is perishable and cannot be taken later,
+        # while everything else can wait without losing anything.
+        queue=sorted(set(newly),key=lambda t:(not in_cohort(chain,t),t))+backlog
+        backlog_set=set(backlog)
+        info={};measure={};captures=[]
+        for token in queue[:chain.max_info]:
+            if not budget_left():break
+            sampled=in_cohort(chain,token)
+            # When enrichment has its own worker the sweep skips it entirely for tokens that carry
+            # nothing perishable - there is no reason to spend cadence-critical time on them. The
+            # reason is still recorded, because it costs nothing and "we did not look" must never
+            # read back as "there was nothing there".
+            if not chain.enrich_in_sweep and not sampled:
+                measure[token]=(None,'outside ladder cohort');continue
+            if chain.enrich_in_sweep:
+                try:
+                    payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
+                    info[token]=parse_info(payload)
+                    # Creator, authorities, socials and description - free, in the call we already make.
+                    if chain.extended_info:info[token].update(parse_extended_info(payload))
+                except (ValueError,requests.RequestException) as exc:
+                    errors.append('info '+token[:10]+': '+type(exc).__name__)
+            # Which pool the ladder will read. Chosen AT GRADUATION even when the rest of enrichment
+            # is deferred: a token can fall from a real market to a few dollars of liquidity within
+            # the hour, so "deepest pool now" hours later can name a different market than the one
+            # that mattered. The candidate list is stored with it so the choice stays auditable.
+            destination=(state.get(token) or {}).get('destination') or (arrivals[token]['pool'] if token in arrivals else None)
+            if not chain.deepest_pool_wins:
+                measure[token]=choose_measure_pool(chain,[],destination)
+            elif not sampled:
+                # Outside the cohort there is no ladder to read, so the pool list is never fetched.
+                # Recorded as its own reason: "we did not look" must not read as "there was nothing".
+                measure[token]=(None,'outside ladder cohort')
+            else:
+                try:pool_list=parse_pool_list(get(GECKO+chain.network+'/tokens/'+token+'/pools'))
+                except (ValueError,requests.RequestException) as exc:
+                    pool_list=[];errors.append('pools '+token[:10]+': '+type(exc).__name__)
+                measure[token]=choose_measure_pool(chain,pool_list,destination)
+            # Opening trade capture: perishable. On a busy graduate 300 trades spanned 33 seconds, so
+            # this is taken now or never - it cannot be reconstructed later at any price.
+            address=measure[token][0]
+            if chain.capture_trades and address and sampled and budget_left():
+                started=datetime.now(timezone.utc);rows=[];fetched=0
+                for page in range(1,chain.trade_pages+1):
+                    try:
+                        batch=parse_trades(get(GECKO+chain.network+'/pools/'+address+'/trades?page='+str(page)),address)
+                    except (ValueError,requests.RequestException) as exc:
+                        errors.append('trades '+address[:10]+': '+type(exc).__name__);break
+                    fetched+=1
+                    if not batch:break
+                    rows+=batch
+                # Pages overlap rather than extending backwards, so dedupe on the transaction itself.
+                unique={(r['tx_hash'],r['wallet'],r['traded_at']):r for r in rows}
+                ordered=sorted(unique.values(),key=lambda r:(r['traded_at'],r['tx_hash'] or ''))
+                captures.append(dict(token=token,pool=address,started=started,
+                                     finished=datetime.now(timezone.utc),pages=fetched,
+                                     rows=ordered,summary=summarize_trades(ordered)))
         observations=[]
         for entry in curve:
             pct=(state.get(entry['token']) or {}).get('pct')
             observations.append(dict(token=entry['token'],at=now,phase='curve',rung=None,pct=pct,pool=entry,holders=None))
         snapshots=0
         with conn,conn.cursor() as cur:
-            for token,graduated_at,filled in ladder:
-                due=rungs_due(graduated_at,now,filled)
-                if not due or snapshots>=MAX_SNAPSHOTS:continue
-                cur.execute('SELECT graduation_pool FROM launchpad_tokens WHERE network=%s AND token_address=%s',(NETWORK,token))
+            for token,graduated_at,filled in (ladder if chain.enrich_in_sweep else []):
+                due=rungs_due(graduated_at,now,filled,chain.rungs)
+                if not due or snapshots>=chain.max_snapshots or not budget_left():continue
+                cur.execute('SELECT coalesce(measure_pool,graduation_pool) FROM launchpad_tokens WHERE network=%s AND token_address=%s',(chain.network,token))
                 row=cur.fetchone();pool_address=row[0] if row else None
                 if not pool_address:continue
-                try:payload=get(GECKO+NETWORK+'/pools/'+pool_address)
+                try:payload=get(GECKO+chain.network+'/pools/'+pool_address)
                 except (ValueError,requests.RequestException) as exc:
                     errors.append('pool '+pool_address[:10]+': '+type(exc).__name__);continue
-                parsed=parse_pool((payload or {}).get('data') or {})
+                parsed=parse_pool((payload or {}).get('data') or {},chain)
                 if not parsed:continue
                 snapshots+=1
                 # Only the earliest due rung is filled per sweep: one row per rung, honestly timestamped.
@@ -263,16 +353,34 @@ def sweep(conn,fetch=None,now=None,wait=None):
                                          holders=(info.get(token) or {}).get('holders')))
 
         # 7. One write for the whole sweep.
-        summary=_persist(conn,now=now,pools=pools,curve=curve,arrivals=arrivals,state=state,info=info,
+        summary=_persist(conn,chain=chain,now=now,pools=pools,curve=curve,arrivals=arrivals,state=state,info=info,
                          known=known,observations=observations,pages=pages,oldest=oldest,newest=newest,
-                         previous_newest=previous_newest,errors=errors)
+                         previous_newest=previous_newest,errors=errors,measure=measure,captures=captures,
+                         backlog=sorted(backlog_set&set(measure)))
         return summary
     finally:
-        with conn,conn.cursor() as cur:cur.execute("SELECT pg_advisory_unlock(hashtext('launchpad-archive'))")
+        with conn,conn.cursor() as cur:cur.execute("SELECT pg_advisory_unlock(hashtext(%s))",('launchpad-archive:'+chain.network,))
 
 
-def _persist(conn,*,now,pools,curve,arrivals,state,info,known,observations,pages,oldest,newest,previous_newest,errors):
-    from psycopg2.extras import execute_values
+def _extra(chain,token,dex,chosen,enrich):
+    """Adapter-owned columns, in the order the INSERT lists them.
+
+    `launchpad` is only ever the DEX of a bonding-curve pool. When a graduation is detected from a
+    destination pool arriving, that pool's DEX is where the token landed, not where it launched -
+    recording pumpswap or meteora-damm-v2 as a launchpad would be simply false.
+    """
+    from psycopg2.extras import Json
+    launchpad=dex if dex in chain.curve_dexes else None
+    return (launchpad,family_of(dex,chain),chosen[0],chosen[1],selection_timing(chosen[1]),in_cohort(chain,token),
+            enrich.get('developer_address'),enrich.get('developer_holding'),enrich.get('is_honeypot'),
+            enrich.get('mint_authority'),enrich.get('freeze_authority'),enrich.get('telegram_handle'),
+            enrich.get('website'),enrich.get('description'),enrich.get('categories'),enrich.get('gt_score'),
+            Json(enrich['info_raw']) if enrich.get('info_raw') else None)
+
+
+def _persist(conn,*,chain,now,pools,curve,arrivals,state,info,known,observations,pages,oldest,newest,previous_newest,errors,measure=None,captures=None,backlog=None):
+    from psycopg2.extras import execute_values,Json
+    measure=measure or {};captures=captures or [];backlog=backlog or []
     gap=gap_seconds(previous_newest,oldest)
     window=int((newest-oldest).total_seconds()) if (newest and oldest) else None
     rows=[]
@@ -282,24 +390,30 @@ def _persist(conn,*,now,pools,curve,arrivals,state,info,known,observations,pages
         graduated_at=s.get('completed_at') or (arrivals[token]['created'] if token in arrivals else None)
         detected=now if (graduated and not known.get(token,{}).get('graduated')) else None
         enrich=info.get(token) or {}
-        rows.append((NETWORK,token,s.get('symbol') or entry['symbol'],s.get('name') or entry['name'],entry['dex'],
+        chosen=measure.get(token) or (None,None)
+        rows.append((chain.network,token,s.get('symbol') or entry['symbol'],s.get('name') or entry['name'],entry['dex'],
                      entry['pool'],entry['created'],now,s.get('pct'),graduated,graduated_at,detected,
                      s.get('destination') or (arrivals[token]['pool'] if token in arrivals else None),
                      s.get('pct'),now,'graduated' if graduated else 'live',
-                     enrich.get('holders'),enrich.get('top10'),enrich.get('twitter'),now if enrich else None))
+                     enrich.get('holders'),enrich.get('top10'),enrich.get('twitter'),now if enrich else None)
+                    +_extra(chain,token,entry['dex'],chosen,enrich))
     # A graduate pool whose curve pool we never saw still belongs in the archive, flagged by its
     # missing first_pool_created - that is the fingerprint of a launch the sweep window missed.
     for token,entry in arrivals.items():
         if any(r[1]==token for r in rows):continue
         s=state.get(token) or {};enrich=info.get(token) or {}
-        rows.append((NETWORK,token,s.get('symbol') or entry['symbol'],s.get('name') or entry['name'],entry['dex'],
+        chosen=measure.get(token) or (None,None)
+        rows.append((chain.network,token,s.get('symbol') or entry['symbol'],s.get('name') or entry['name'],entry['dex'],
                      None,None,now,s.get('pct'),True,s.get('completed_at') or entry['created'],
-                     now if not known.get(token,{}).get('graduated') else None,entry['pool'],s.get('pct'),now,'graduated',
-                     enrich.get('holders'),enrich.get('top10'),enrich.get('twitter'),now if enrich else None))
+                     now if not known.get(token,{}).get('graduated') else None,
+                     # The launchpad's declared destination is metadata; what we measure is measure_pool.
+                     s.get('destination') or entry['pool'],s.get('pct'),now,'graduated',
+                     enrich.get('holders'),enrich.get('top10'),enrich.get('twitter'),now if enrich else None)
+                    +_extra(chain,token,entry['dex'],chosen,enrich))
     observation_rows=[]
     for o in observations:
         p=o['pool']
-        observation_rows.append((NETWORK,o['token'],o['at'],o['phase'],o['rung'],o['pct'],p['price'],p['fdv'],
+        observation_rows.append((chain.network,o['token'],o['at'],o['phase'],o['rung'],o['pct'],p['price'],p['fdv'],
                                  p['liquidity'],p['volume_m30'],p['volume_h1'],p['volume_h24'],
                                  p['buyers_m30'],p['sellers_m30'],p['buyers_h1'],p['sellers_h1'],p['txns_h1'],
                                  p['change_h1'],o['holders']))
@@ -310,7 +424,10 @@ def _persist(conn,*,now,pools,curve,arrivals,state,info,known,observations,pages
             execute_values(cur,'''INSERT INTO launchpad_tokens
               (network,token_address,symbol,name,dex,curve_pool,first_pool_created,first_seen_at,first_seen_pct,
                graduated,graduated_at,graduated_detected_at,graduation_pool,last_pct,last_seen_at,state,
-               holders,top10_share,twitter_handle,enriched_at) VALUES %s
+               holders,top10_share,twitter_handle,enriched_at,
+               launchpad,launchpad_family,measure_pool,measure_pool_reason,measure_pool_timing,cohort_sampled,
+               developer_address,developer_holding,is_honeypot,mint_authority,freeze_authority,
+               telegram_handle,website,description,categories,gt_score,info_raw) VALUES %s
               ON CONFLICT (network,token_address) DO UPDATE SET
                symbol=COALESCE(EXCLUDED.symbol,launchpad_tokens.symbol),
                name=COALESCE(EXCLUDED.name,launchpad_tokens.name),
@@ -330,7 +447,26 @@ def _persist(conn,*,now,pools,curve,arrivals,state,info,known,observations,pages
                holders=COALESCE(EXCLUDED.holders,launchpad_tokens.holders),
                top10_share=COALESCE(EXCLUDED.top10_share,launchpad_tokens.top10_share),
                twitter_handle=COALESCE(EXCLUDED.twitter_handle,launchpad_tokens.twitter_handle),
-               enriched_at=COALESCE(launchpad_tokens.enriched_at,EXCLUDED.enriched_at)''',rows,page_size=500)
+               enriched_at=COALESCE(launchpad_tokens.enriched_at,EXCLUDED.enriched_at),
+               launchpad=COALESCE(launchpad_tokens.launchpad,EXCLUDED.launchpad),
+               launchpad_family=COALESCE(launchpad_tokens.launchpad_family,EXCLUDED.launchpad_family),
+               measure_pool_timing=COALESCE(launchpad_tokens.measure_pool_timing,EXCLUDED.measure_pool_timing),
+               -- First choice of measurement pool wins: switching it mid-ladder would silently mix
+               -- two different measurement targets inside one token's history.
+               measure_pool=COALESCE(launchpad_tokens.measure_pool,EXCLUDED.measure_pool),
+               measure_pool_reason=COALESCE(launchpad_tokens.measure_pool_reason,EXCLUDED.measure_pool_reason),
+               cohort_sampled=launchpad_tokens.cohort_sampled AND EXCLUDED.cohort_sampled,
+               developer_address=COALESCE(launchpad_tokens.developer_address,EXCLUDED.developer_address),
+               developer_holding=COALESCE(EXCLUDED.developer_holding,launchpad_tokens.developer_holding),
+               is_honeypot=COALESCE(EXCLUDED.is_honeypot,launchpad_tokens.is_honeypot),
+               mint_authority=COALESCE(EXCLUDED.mint_authority,launchpad_tokens.mint_authority),
+               freeze_authority=COALESCE(EXCLUDED.freeze_authority,launchpad_tokens.freeze_authority),
+               telegram_handle=COALESCE(launchpad_tokens.telegram_handle,EXCLUDED.telegram_handle),
+               website=COALESCE(launchpad_tokens.website,EXCLUDED.website),
+               description=COALESCE(launchpad_tokens.description,EXCLUDED.description),
+               categories=COALESCE(launchpad_tokens.categories,EXCLUDED.categories),
+               gt_score=COALESCE(EXCLUDED.gt_score,launchpad_tokens.gt_score),
+               info_raw=COALESCE(launchpad_tokens.info_raw,EXCLUDED.info_raw)''',rows,page_size=500)
         if observation_rows:
             execute_values(cur,'''INSERT INTO launchpad_observations
               (network,token_address,observed_at,phase,rung_minutes,graduation_pct,price_usd,fdv_usd,liquidity_usd,
@@ -340,7 +476,59 @@ def _persist(conn,*,now,pools,curve,arrivals,state,info,known,observations,pages
         # analysis says a token still on the curve after 24h almost never graduates; our own data
         # will confirm or refute that, which is why the rows stay and only the state changes.
         cur.execute('''UPDATE launchpad_tokens SET state='dead'
-                       WHERE network=%s AND state='live' AND last_seen_at<%s''',(NETWORK,now-timedelta(hours=STALE_HOURS)))
+                       WHERE network=%s AND state='live' AND last_seen_at<%s''',(chain.network,now-timedelta(hours=STALE_HOURS)))
+        # Backlog rows already exist and are not rebuilt from a pool we saw this sweep, so they are
+        # filled in place. Guarded on measure_pool_reason IS NULL: a row already measured is never
+        # re-measured, for the same reason the ladder never switches pools mid-history.
+        for token in backlog:
+            chosen=measure.get(token) or (None,None)
+            enrich=info.get(token) or {}
+            cur.execute('''UPDATE launchpad_tokens SET measure_pool=%s,measure_pool_reason=%s,
+                             measure_pool_timing=COALESCE(measure_pool_timing,%s),
+                             developer_address=COALESCE(developer_address,%s),
+                             developer_holding=COALESCE(%s,developer_holding),
+                             is_honeypot=COALESCE(%s,is_honeypot),
+                             telegram_handle=COALESCE(telegram_handle,%s),
+                             website=COALESCE(website,%s),description=COALESCE(description,%s),
+                             gt_score=COALESCE(%s,gt_score),holders=COALESCE(%s,holders),
+                             top10_share=COALESCE(%s,top10_share),
+                             twitter_handle=COALESCE(launchpad_tokens.twitter_handle,%s),
+                             info_raw=COALESCE(info_raw,%s),enriched_at=COALESCE(enriched_at,%s)
+                           WHERE network=%s AND token_address=%s AND measure_pool_reason IS NULL''',
+                        (chosen[0],chosen[1],selection_timing(chosen[1]),enrich.get('developer_address'),enrich.get('developer_holding'),
+                         enrich.get('is_honeypot'),enrich.get('telegram_handle'),enrich.get('website'),
+                         enrich.get('description'),enrich.get('gt_score'),enrich.get('holders'),
+                         enrich.get('top10'),enrich.get('twitter'),
+                         Json(enrich['info_raw']) if enrich.get('info_raw') else None,
+                         now if enrich else None,chain.network,token))
+        captured=0
+        for capture in captures:
+            summary=capture['summary']
+            earliest=iso(summary['earliest']);latest=iso(summary['latest'])
+            graduated_at=next((r[10] for r in rows if r[1]==capture['token']),None)
+            if graduated_at is None:
+                cur.execute('SELECT graduated_at FROM launchpad_tokens WHERE network=%s AND token_address=%s',
+                            (chain.network,capture['token']))
+                found=cur.fetchone();graduated_at=found[0] if found else None
+            cur.execute('''INSERT INTO launchpad_trade_captures
+              (network,token_address,pool,graduated_at,capture_started_at,capture_finished_at,pages_fetched,
+               trades,wallets,buyers,sellers,top_wallet_share,repeat_wallets,earliest_trade_at,latest_trade_at,
+               window_seconds,lag_seconds)
+              VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+              (chain.network,capture['token'],capture['pool'],graduated_at,capture['started'],capture['finished'],
+               capture['pages'],summary['trades'],summary['wallets'],summary['buyers'],summary['sellers'],
+               summary['top_wallet_share'],summary['repeat_wallets'],earliest,latest,
+               int((latest-earliest).total_seconds()) if earliest and latest else None,
+               # How much of the opening window we missed, rather than assuming we caught it all.
+               int((earliest-graduated_at).total_seconds()) if earliest and graduated_at else None))
+            capture_id=cur.fetchone()[0]
+            if capture['rows']:
+                execute_values(cur,'''INSERT INTO launchpad_trades
+                  (capture_id,sequence,wallet,traded_at,kind,token_amount,usd,tx_hash,block_number)
+                  VALUES %s ON CONFLICT DO NOTHING''',
+                  [(capture_id,i,r['wallet'],r['traded_at'],r['kind'],r['token_amount'],r['usd'],r['tx_hash'],r['block_number'])
+                   for i,r in enumerate(capture['rows'])],page_size=500)
+            captured+=1
         cur.execute('''INSERT INTO launchpad_sweeps
           (started_at,finished_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,window_seconds,
            new_tokens,graduations,observations,gap_seconds,complete,errors)
@@ -348,13 +536,14 @@ def _persist(conn,*,now,pools,curve,arrivals,state,info,known,observations,pages
           (now,datetime.now(timezone.utc),pages,len(pools),oldest,newest,window,new_tokens,graduations,
            len(observation_rows),gap,not errors and (gap==0 or gap is None),errors))
         sweep_id=cur.fetchone()[0]
-    return {'status':'ok','sweep_id':sweep_id,'pages':pages,'pools':len(pools),'curve':len(curve),
+    return {'status':'ok','network':chain.network,'sweep_id':sweep_id,'pages':pages,'pools':len(pools),'curve':len(curve),
+            'trade_captures':len(captures),'trades':sum(c['summary']['trades'] for c in captures),
             'new_tokens':new_tokens,'graduations':graduations,'observations':len(observation_rows),
             'window_seconds':window,'gap_seconds':gap,'enriched':len(info),'errors':errors,
             'twitter_credits':0}
 
 
-def daily(conn,now=None,days=7):
+def daily(conn,now=None,days=7,chain=ROBINHOOD):
     """One row per UTC day: is the archive healthy, without reading raw rows.
 
     p95 alongside the median because the median hides the tail that matters here - a lag that is
@@ -369,10 +558,34 @@ def daily(conn,now=None,days=7):
                               coalesce(sum(observations),0)
                        FROM launchpad_sweeps WHERE started_at>=%s GROUP BY 1''',(since,))
         for day,sweeps,incomplete,max_gap,launches,graduates,observations in cur.fetchall():
-            rows[day]=dict(day=day.date().isoformat(),sweeps=sweeps,expected=int(24*60/SWEEP_MINUTES),
+            rows[day]=dict(day=day.date().isoformat(),sweeps=sweeps,expected=int(24*60/chain.sweep_minutes),
                            incomplete_sweeps=incomplete,max_gap_seconds=max_gap,launches_seen=launches,
                            graduates_detected=graduates,observations=observations,
                            detection_lag_median=None,detection_lag_p95=None,lag_measured=0)
+        cur.execute('''SELECT date_trunc('day',graduated_at),
+                              count(*) FILTER (WHERE measure_pool_timing='at_graduation'),
+                              count(*) FILTER (WHERE measure_pool_timing IS NOT NULL),
+                              count(*) FILTER (WHERE cohort_sampled)
+                       FROM launchpad_tokens
+                       WHERE network=%s AND graduated AND graduated_at>=%s GROUP BY 1''',(chain.network,since))
+        for day,at_grad,timed,cohort in cur.fetchall():
+            row=rows.setdefault(day,dict(day=day.date().isoformat(),sweeps=0,expected=int(24*60/chain.sweep_minutes),
+                                         incomplete_sweeps=0,max_gap_seconds=0,launches_seen=0,
+                                         graduates_detected=0,observations=0))
+            # Numerator and denominator, not just a percentage: a share over three rows is noise.
+            row.update(pools_at_graduation=at_grad,pools_measured=timed,cohort_graduates=cohort,
+                       at_graduation_share=round(at_grad/timed,3) if timed else None)
+        cur.execute('''SELECT date_trunc('day',t.graduated_at),count(c.id),count(*)
+                       FROM launchpad_tokens t LEFT JOIN launchpad_trade_captures c
+                         ON c.network=t.network AND c.token_address=t.token_address
+                       WHERE t.network=%s AND t.graduated AND t.cohort_sampled AND t.graduated_at>=%s
+                       GROUP BY 1''',(chain.network,since))
+        for day,captured,eligible in cur.fetchall():
+            row=rows.setdefault(day,dict(day=day.date().isoformat(),sweeps=0,expected=int(24*60/chain.sweep_minutes),
+                                         incomplete_sweeps=0,max_gap_seconds=0,launches_seen=0,
+                                         graduates_detected=0,observations=0))
+            row.update(captures_taken=captured,captures_eligible=eligible,
+                       capture_coverage=round(captured/eligible,3) if eligible else None)
         # Lag is keyed on when the graduation happened, not on which sweep noticed it.
         cur.execute('''SELECT date_trunc('day',graduated_at),count(*),
                               percentile_disc(0.5) WITHIN GROUP (ORDER BY lag),
@@ -382,7 +595,7 @@ def daily(conn,now=None,days=7):
                              WHERE graduated AND graduated_at>=%s AND graduated_detected_at IS NOT NULL) d
                        GROUP BY 1''',(since,))
         for day,measured,median,p95 in cur.fetchall():
-            row=rows.setdefault(day,dict(day=day.date().isoformat(),sweeps=0,expected=int(24*60/SWEEP_MINUTES),
+            row=rows.setdefault(day,dict(day=day.date().isoformat(),sweeps=0,expected=int(24*60/chain.sweep_minutes),
                                          incomplete_sweeps=0,max_gap_seconds=0,launches_seen=0,
                                          graduates_detected=0,observations=0))
             row.update(lag_measured=measured,detection_lag_median=int(median) if median is not None else None,
@@ -390,7 +603,230 @@ def daily(conn,now=None,days=7):
     return [rows[k] for k in sorted(rows)]
 
 
-def report(conn,now=None,hours=48):
+def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
+    """Drain the enrichment backlog, on its own schedule and in its own process.
+
+    Split out of the sweep because service rate must exceed arrival rate, and in the sweep it could
+    not: graduations arrive on Solana at 3.4/minute while a 2-minute sweep could enrich at most 8,
+    so the backlog only grew. The sweep now protects what expires - discovery and the opening trade
+    capture - and everything durable happens here, where being slow costs latency rather than data.
+
+    The queue is the archive itself (graduates missing enrichment, oldest first); no second queueing
+    system. Health is service rate against arrival rate over time, not "the worker ran".
+    """
+    import requests,time
+    wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
+    setup(conn,chain)
+    with conn,conn.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-enrich:'+chain.network,))
+        if not cur.fetchone()[0]:return {'status':'already_running'}
+    clock=time.monotonic();errors=[];processed=0
+    def budget_left():return time.monotonic()-clock < chain.enrich_minutes*60*chain.budget_fraction
+    def get(url):
+        for attempt in range(4):
+            wait(chain.request_wait)
+            response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
+            status=getattr(response,'status_code',0)
+            if status==429 and attempt<3:
+                try:delay=float(getattr(response,'headers',{}).get('Retry-After','15'))
+                except (ValueError,TypeError):delay=15
+                if not math.isfinite(delay) or delay>30:raise ValueError('rate limit cooldown exceeds retry bound')
+                wait(max(3,delay));continue
+            if status!=200:raise ValueError('HTTP '+str(status))
+            return response.json()
+        raise ValueError('rate limited')
+    try:
+        from psycopg2.extras import Json
+        with conn,conn.cursor() as cur:
+            # Oldest first: a graduate waiting longest is the one whose ladder is most at risk.
+            cur.execute("""SELECT token_address,graduation_pool,measure_pool,measure_pool_reason,cohort_sampled
+                           FROM launchpad_tokens
+                           WHERE network=%s AND graduated AND enriched_at IS NULL
+                           ORDER BY graduated_at LIMIT %s""",(chain.network,chain.enrich_batch))
+            pending=cur.fetchall()
+        for token,destination,measure_pool,measure_reason,sampled in pending:
+            if not budget_left():break
+            enrich_row={}
+            try:
+                payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
+                enrich_row=parse_info(payload)
+                if chain.extended_info:enrich_row.update(parse_extended_info(payload))
+            except (ValueError,requests.RequestException) as exc:
+                errors.append('info '+token[:10]+': '+type(exc).__name__);continue
+            # Pool selection is normally already done at graduation, where it belongs. This only
+            # catches rows the sweep never reached, and it is marked so the two are never confused:
+            # a pool chosen hours later may not be the market that mattered at the time.
+            chosen=(measure_pool,measure_reason)
+            if chain.deepest_pool_wins and measure_reason is None:
+                try:pool_list=parse_pool_list(get(GECKO+chain.network+'/tokens/'+token+'/pools'))
+                except (ValueError,requests.RequestException) as exc:
+                    pool_list=[];errors.append('pools '+token[:10]+': '+type(exc).__name__)
+                address,reason=choose_measure_pool(chain,pool_list,destination)
+                chosen=(address,reason+' (selected late, not at graduation)')
+            with conn,conn.cursor() as cur:
+                cur.execute("""UPDATE launchpad_tokens SET
+                                 measure_pool=COALESCE(measure_pool,%s),
+                                 measure_pool_reason=COALESCE(measure_pool_reason,%s),
+                                 measure_pool_timing=COALESCE(measure_pool_timing,%s),
+                                 holders=COALESCE(%s,holders),top10_share=COALESCE(%s,top10_share),
+                                 twitter_handle=COALESCE(twitter_handle,%s),
+                                 developer_address=COALESCE(developer_address,%s),
+                                 developer_holding=COALESCE(%s,developer_holding),
+                                 is_honeypot=COALESCE(%s,is_honeypot),
+                                 mint_authority=COALESCE(%s,mint_authority),
+                                 freeze_authority=COALESCE(%s,freeze_authority),
+                                 telegram_handle=COALESCE(telegram_handle,%s),
+                                 website=COALESCE(website,%s),description=COALESCE(description,%s),
+                                 categories=COALESCE(categories,%s),gt_score=COALESCE(%s,gt_score),
+                                 info_raw=COALESCE(info_raw,%s),enriched_at=%s
+                               WHERE network=%s AND token_address=%s""",
+                            (chosen[0],chosen[1],selection_timing(chosen[1]),enrich_row.get('holders'),enrich_row.get('top10'),
+                             enrich_row.get('twitter'),enrich_row.get('developer_address'),
+                             enrich_row.get('developer_holding'),enrich_row.get('is_honeypot'),
+                             enrich_row.get('mint_authority'),enrich_row.get('freeze_authority'),
+                             enrich_row.get('telegram_handle'),enrich_row.get('website'),
+                             enrich_row.get('description'),enrich_row.get('categories'),
+                             enrich_row.get('gt_score'),
+                             Json(enrich_row['info_raw']) if enrich_row.get('info_raw') else None,
+                             now,chain.network,token))
+            processed+=1
+        # The ladder lives here too: it is durable work, and a rung filled late is still honest
+        # because its observed_at records when it was actually taken.
+        rungs_filled=_fill_ladder(conn,chain,get,now,budget_left,errors)
+        health=backlog_health(conn,chain,now)
+        with conn,conn.cursor() as cur:
+            cur.execute('''INSERT INTO launchpad_enrich_runs
+              (network,started_at,finished_at,processed,rungs_filled,error_count,pending,
+               oldest_pending_age_seconds,arrival_rate_per_hour,service_rate_per_hour,state)
+              VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+              (chain.network,now,datetime.now(timezone.utc),processed,rungs_filled,len(errors),
+               health['pending_enrichment'],health['oldest_pending_age_seconds'],
+               health['arrival_rate_per_hour'],health['service_rate_per_hour'],health['state']))
+        return dict({'status':'ok','network':chain.network,'processed_this_run':processed,
+                     'rungs_filled':rungs_filled,'errors':errors},**health)
+    finally:
+        with conn,conn.cursor() as cur:cur.execute("SELECT pg_advisory_unlock(hashtext(%s))",('launchpad-enrich:'+chain.network,))
+
+
+def _fill_ladder(conn,chain,get,now,budget_left,errors):
+    """Post-graduation snapshots for cohort members whose rungs are due."""
+    import requests
+    filled=0
+    with conn,conn.cursor() as cur:
+        cur.execute("""SELECT t.token_address,t.graduated_at,t.measure_pool,
+                              array_remove(array_agg(o.rung_minutes),NULL)
+                       FROM launchpad_tokens t LEFT JOIN launchpad_observations o
+                         ON o.network=t.network AND o.token_address=t.token_address AND o.rung_minutes IS NOT NULL
+                       WHERE t.network=%s AND t.graduated AND t.cohort_sampled AND t.measure_pool IS NOT NULL
+                         AND t.graduated_at>%s
+                       GROUP BY t.token_address,t.graduated_at,t.measure_pool
+                       ORDER BY t.graduated_at""",(chain.network,now-timedelta(days=8)))
+        ladder=cur.fetchall()
+    rows=[]
+    for token,graduated_at,pool,done in ladder:
+        due=rungs_due(graduated_at,now,set(done or []),chain.rungs)
+        if not due or not budget_left():continue
+        try:payload=get(GECKO+chain.network+'/pools/'+pool)
+        except (ValueError,requests.RequestException) as exc:
+            errors.append('pool '+pool[:10]+': '+type(exc).__name__);continue
+        parsed=parse_pool((payload or {}).get('data') or {},chain)
+        if not parsed:continue
+        rows.append((chain.network,token,now,'post',min(due),None,parsed['price'],parsed['fdv'],
+                     parsed['liquidity'],parsed['volume_m30'],parsed['volume_h1'],parsed['volume_h24'],
+                     parsed['buyers_m30'],parsed['sellers_m30'],parsed['buyers_h1'],parsed['sellers_h1'],
+                     parsed['txns_h1'],parsed['change_h1'],None))
+        filled+=1
+    if rows:
+        from psycopg2.extras import execute_values
+        with conn,conn.cursor() as cur:
+            execute_values(cur,"""INSERT INTO launchpad_observations
+              (network,token_address,observed_at,phase,rung_minutes,graduation_pct,price_usd,fdv_usd,
+               liquidity_usd,volume_m30,volume_h1,volume_h24,buyers_m30,sellers_m30,buyers_h1,
+               sellers_h1,txns_h1,price_change_h1,holders) VALUES %s ON CONFLICT DO NOTHING""",rows,page_size=200)
+    return filled
+
+
+def backlog_health(conn,chain=SOLANA,now=None):
+    """Three states, kept apart on purpose.
+
+    `enrichment_state` is about durable work: is the oldest pending graduate getting older? Age, not
+    count and not rates - a worker can match the arrival rate exactly while never reaching the back
+    of the queue.
+
+    `capture_state` is about perishable work: are opening trade captures actually happening? This is
+    deliberately NOT folded into enrichment health, because the failure we care most about is losing
+    captures while every durable metric reads perfect. On the commissioning data, capture coverage
+    was 3 of 16 while enrichment health read `idle`.
+
+    `state` is the worse of the two, so nothing has to remember to check both.
+    """
+    now=now or datetime.now(timezone.utc)
+    with conn,conn.cursor() as cur:
+        cur.execute("""SELECT count(*),min(graduated_at) FROM launchpad_tokens
+                       WHERE network=%s AND graduated AND enriched_at IS NULL""",(chain.network,))
+        pending,oldest=cur.fetchone()
+        cur.execute("""SELECT count(*) FROM launchpad_tokens
+                       WHERE network=%s AND graduated AND graduated_at>%s""",(chain.network,now-timedelta(hours=1)))
+        arrived=cur.fetchone()[0]
+        cur.execute("""SELECT count(*) FROM launchpad_tokens
+                       WHERE network=%s AND enriched_at>%s""",(chain.network,now-timedelta(hours=1)))
+        served=cur.fetchone()[0]
+        cur.execute("""SELECT oldest_pending_age_seconds FROM launchpad_enrich_runs
+                       WHERE network=%s AND oldest_pending_age_seconds IS NOT NULL
+                       ORDER BY id DESC LIMIT 2""",(chain.network,))
+        history=[r[0] for r in cur.fetchall()]
+        # The capture mechanism has an epoch: the first capture we ever took. Graduates from before
+        # it were never eligible, and counting them would poison the metric for the first day with a
+        # failure that never happened.
+        cur.execute("SELECT min(capture_started_at) FROM launchpad_trade_captures WHERE network=%s",(chain.network,))
+        epoch=cur.fetchone()[0]
+        captured=eligible=0
+        if epoch:
+            cur.execute("""SELECT count(*),count(c.id) FROM launchpad_tokens t
+                           LEFT JOIN launchpad_trade_captures c
+                             ON c.network=t.network AND c.token_address=t.token_address
+                           WHERE t.network=%s AND t.graduated AND t.cohort_sampled
+                             AND t.graduated_at>=%s AND t.graduated_at>%s""",
+                        (chain.network,epoch,now-timedelta(hours=24)))
+            eligible,captured=cur.fetchone()
+        cur.execute("""SELECT count(*) FILTER (WHERE measure_pool_timing='at_graduation'),count(*)
+                       FROM launchpad_tokens
+                       WHERE network=%s AND graduated AND cohort_sampled AND measure_pool_timing IS NOT NULL
+                         AND graduated_at>%s""",(chain.network,now-timedelta(hours=24)))
+        at_graduation,measured=cur.fetchone()
+    age=int((now-oldest).total_seconds()) if oldest else None
+    rising=bool(age is not None and history and all(age>h for h in history))
+    if not pending:enrichment='idle'
+    elif age is None or age<=chain.enrich_age_target_seconds:enrichment='healthy'
+    elif rising:enrichment='degrading'
+    else:enrichment='healthy'
+    coverage=round(captured/eligible,3) if eligible else None
+    # Small samples say nothing. A single uncaptured graduate in an hour is noise, not a failure.
+    if not chain.capture_trades:capture='not_applicable'
+    elif eligible<MIN_HEALTH_SAMPLE:capture='unknown'
+    elif coverage>=CAPTURE_COVERAGE_TARGET:capture='healthy'
+    else:capture='degrading'
+    share=round(at_graduation/measured,3) if measured else None
+    if measured<MIN_HEALTH_SAMPLE:selection='unknown'
+    elif share>=AT_GRADUATION_TARGET:selection='healthy'
+    else:selection='degrading'
+    worst=lambda *s:('degrading' if 'degrading' in s else
+                     'unknown' if 'unknown' in s else
+                     'idle' if all(x in ('idle','not_applicable') for x in s) else 'healthy')
+    return dict(pending_enrichment=pending,oldest_pending_age_seconds=age,
+                age_target_seconds=chain.enrich_age_target_seconds,
+                oldest_age_rising=rising,previous_ages=history,
+                arrival_rate_per_hour=arrived,service_rate_per_hour=served,
+                service_exceeds_arrival=bool(served>=arrived) if (served or arrived) else None,
+                captures_taken=captured,captures_eligible=eligible,capture_coverage_24h=coverage,
+                capture_epoch=epoch,
+                pools_selected_at_graduation=at_graduation,pools_measured_24h=measured,
+                at_graduation_share=share,
+                enrichment_state=enrichment,capture_state=capture,selection_state=selection,
+                state=worst(enrichment,capture,selection))
+
+
+def report(conn,now=None,hours=48,chain=ROBINHOOD):
     """Is the archive continuous and internally consistent? Read-only; this is the V1 deliverable."""
     now=now or datetime.now(timezone.utc);since=now-timedelta(hours=hours)
     out={'window_hours':hours,'as_of':now.isoformat()}
@@ -405,7 +841,7 @@ def report(conn,now=None,hours=48):
                               coalesce(sum(observations),0),min(started_at),max(started_at)
                        FROM launchpad_sweeps WHERE started_at>=%s''',(PAGES,since))
         row=cur.fetchone()
-        expected=int(hours*60/SWEEP_MINUTES)
+        expected=int(hours*60/chain.sweep_minutes)
         out['sweeps']=dict(recorded=row[0],expected=expected,incomplete=row[1],max_gap_seconds=row[2],
                            min_reach_seconds=int(row[3]) if row[3] is not None else None,
                            first=row[7].isoformat() if row[7] else None,
@@ -439,8 +875,8 @@ def report(conn,now=None,hours=48):
     # approaches the sweep interval, ordinary jitter starts costing launches. None means no sweep in
     # this window went full depth, so the feed's limit was never observed - unknown, not healthy.
     narrowest=out['sweeps']['min_reach_seconds']
-    out['margin_seconds']=narrowest-SWEEP_MINUTES*60 if narrowest else None
-    out['margin_warning']=bool(narrowest and narrowest<SWEEP_MINUTES*60*1.5)
+    out['margin_seconds']=narrowest-chain.sweep_minutes*60 if narrowest else None
+    out['margin_warning']=bool(narrowest and narrowest<chain.sweep_minutes*60*1.5)
     complete=out['sweeps']['incomplete']==0 and out['sweeps']['max_gap_seconds']==0
     out['continuous']=bool(complete and out['sweeps']['recorded']>=expected*0.9)
     out['verdict']=('continuous and internally consistent' if out['continuous']
@@ -448,9 +884,9 @@ def report(conn,now=None,hours=48):
                         f"{out['sweeps']['incomplete']} incomplete sweeps" if out['sweeps']['incomplete'] else '',
                         f"max feed gap {out['sweeps']['max_gap_seconds']}s" if out['sweeps']['max_gap_seconds'] else '',
                         f"{out['sweeps']['recorded']} of {expected} expected sweeps" if out['sweeps']['recorded']<expected*0.9 else ''])))
-    out['daily']=daily(conn,now=now,days=max(1,-(-hours//24)))
+    out['daily']=daily(conn,now=now,days=max(1,-(-hours//24)),chain=chain)
     if out['margin_warning']:
-        out['verdict']+=f"; shallowest reach {narrowest}s against a {SWEEP_MINUTES}m sweep - shorten the interval"
+        out['verdict']+=f"; shallowest reach {narrowest}s against a {chain.sweep_minutes}m sweep - shorten the interval"
     return out
 
 
@@ -458,19 +894,26 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true',help='run a sweep (network + database writes)')
     parser.add_argument('--report',action='store_true',help='read-only continuity report')
+    parser.add_argument('--enrich',action='store_true',help='drain the enrichment backlog (separate worker)')
+    parser.add_argument('--backlog',action='store_true',help='read-only backlog health')
     parser.add_argument('--daily',action='store_true',help='read-only daily health summary')
     parser.add_argument('--hours',type=int,default=48)
     parser.add_argument('--days',type=int,default=7)
+    parser.add_argument('--chain',default=ROBINHOOD.network,choices=sorted(CHAINS),help='which chain to sweep or report on')
     args=parser.parse_args()
-    if not args.execute and not args.report and not args.daily:
-        print(json.dumps({'mode':'plan_only','max_public_requests':PAGES+MULTI_BATCH//10+MAX_INFO+MAX_SNAPSHOTS,
-                          'twitter_credits':0,'database_writes':0,'sweep_minutes':SWEEP_MINUTES}));return
+    chain=CHAINS[args.chain]
+    if not args.execute and not args.report and not args.daily and not args.enrich and not args.backlog:
+        print(json.dumps({'mode':'plan_only','chain':chain.network,
+                          'max_public_requests':PAGES+MULTI_BATCH//10+MAX_INFO+MAX_SNAPSHOTS,
+                          'twitter_credits':0,'database_writes':0,'sweep_minutes':chain.sweep_minutes}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
-        if args.daily:print(json.dumps(daily(conn,days=args.days),indent=1));return
-        if args.report:print(json.dumps(report(conn,hours=args.hours),indent=1));return
-        result=sweep(conn);print(json.dumps(result))
+        if args.backlog:print(json.dumps(backlog_health(conn,chain),indent=1,default=str));return
+        if args.enrich:print(json.dumps(enrich(conn,chain),indent=1,default=str));return
+        if args.daily:print(json.dumps(daily(conn,days=args.days,chain=chain),indent=1));return
+        if args.report:print(json.dumps(report(conn,hours=args.hours,chain=chain),indent=1));return
+        result=sweep(conn,chain);print(json.dumps(result))
         # A sweep that reached no pages is a failure; losing a page to rate limiting is not, because
         # the gap is recorded and the next sweep still overlaps.
         if result.get('status')=='ok' and not result['pools']:raise SystemExit(1)

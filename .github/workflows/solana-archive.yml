@@ -1,0 +1,36 @@
+name: Graduation Archive sweep (Solana)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'launchpad_archive.py'
+      - 'launchpad_chains.py'
+      - 'sql/launchpad_archive.sql'
+      - '.github/workflows/solana-archive.yml'
+  workflow_dispatch:
+  # Solana's feed is 5.8 minutes deep across all ten pages at 25 new pools/minute, so the sweep runs
+  # every two minutes and is driven by the Vercel cron pressing workflow_dispatch (see
+  # apps/web/lib/server/github-dispatch.ts). This cron is a fallback for dispatch failing, not a
+  # second scheduler - at the sweep cadence the two would compete and queue duplicate runs.
+  schedule:
+    - cron: '*/30 * * * *'
+permissions:
+  contents: read
+# Separate group from the Robinhood archive on purpose: a Solana failure must never be able to stop
+# the chain that is already collecting.
+concurrency:
+  group: launchpad-archive-solana
+  cancel-in-progress: false
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - run: python launchpad_archive.py --execute --chain solana

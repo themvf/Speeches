@@ -33,6 +33,18 @@ export const DISPATCH_TARGETS: DispatchTarget[] = [
     reason:
       "GeckoTerminal's new_pools feed reached back only 11 minutes at the launch rate measured 2026-09-19, so a missed sweep loses launches permanently",
   },
+  {
+    workflow: "solana-archive.yml",
+    everyMinutes: 2,
+    reason:
+      "Solana's feed is 5.8 minutes deep at 25 new pools/minute, and opening-trade capture is perishable: 300 trades spanned 33 seconds on a busy graduate",
+  },
+  {
+    workflow: "solana-enrich.yml",
+    everyMinutes: 10,
+    reason:
+      "graduations arrive at ~3.4/minute on Solana, so enrichment needs its own schedule to keep service rate above arrival rate",
+  },
 ];
 
 export type DispatchOutcome = {
