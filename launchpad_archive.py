@@ -157,9 +157,9 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
     wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
     setup(conn)
     # Wall clock, not the sweep's logical `now`, so a fixture-driven test is never bounded by it.
-    started=time.monotonic()
+    sweep_clock=time.monotonic()
     def budget_left():
-        return time.monotonic()-started < chain.deadline_seconds
+        return time.monotonic()-sweep_clock < chain.deadline_seconds
     with conn,conn.cursor() as cur:
         cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-archive:'+chain.network,))
         if not cur.fetchone()[0]:return {'status':'already_running','errors':['sweep_already_running']}

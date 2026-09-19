@@ -398,3 +398,26 @@ def test_db_a_graduate_outside_the_cohort_is_recorded_without_being_measured(db)
         # was fetched and no ladder will run, and the reason says so rather than implying emptiness.
         assert sampled is False and measure is None and reason=='outside ladder cohort'
         assert dev=='7H7SkM44'
+
+
+def test_db_an_exhausted_budget_still_produces_a_complete_sweep_row(db):
+    from dataclasses import replace
+    from launchpad_archive import sweep
+    from launchpad_chains import SOLANA
+    # budget_fraction 0 means every optional fetch is already past the deadline on the first check.
+    # This exercises the deadline path itself, which is how a shadowed variable in it went unnoticed
+    # until a live run: the mocked tests never entered the branch.
+    broke=replace(SOLANA,budget_fraction=0.0)
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP,created='2026-09-19T19:18:07Z')
+    multi={'data':[{'attributes':{'address':SOL_TOKEN,'symbol':'Nike',
+        'launchpad_details':{'graduation_percentage':100.0,'completed':True,
+                             'completed_at':'2026-09-19T19:18:02.000Z','migrated_destination_pool_address':None}}}]}
+    result=sweep(db,broke,fetch=sol_responder({1:[graduation]},multi=multi),now=NOW,wait=lambda *_:None)
+    # The sweep still completes and still writes: enrichment simply waits for the next one.
+    assert result['status']=='ok' and result['graduations']==1 and result['trade_captures']==0
+    with db,db.cursor() as cur:
+        cur.execute("SELECT graduated,enriched_at FROM launchpad_tokens WHERE network='solana'")
+        graduated,enriched=cur.fetchone()
+        assert graduated is True and enriched is None
+        cur.execute('SELECT count(*) FROM launchpad_sweeps')
+        assert cur.fetchone()[0]==1
