@@ -318,6 +318,40 @@
       "searchQuery": "(\"$FLX\" OR \"$FAIRLAUNCH\" OR \"0x0d4ed27a906a0774474b200cc5392019facd2a47\")",
       "identityNote": "Robinhood Chain; user-supplied address, name read from GeckoTerminal (coingecko id fairlaunch). 'fair launch' as two words is generic memecoin vocabulary and never matches; bare one-word 'fairlaunch' needs token context. FLX is also an unrelated ticker elsewhere, so the cashtag alone is not treated as proof of this coin",
       "originFrom": "2026-06-01"
+    },
+    {
+      "symbol": "ASKR",
+      "name": "heyaskr",
+      "label": "ASKR · heyaskr",
+      "network": "robinhood",
+      "networkLabel": "Robinhood",
+      "address": "0xa92768863a55d8a0591709f7f5e594a249d36ea3",
+      "archiveStart": "2026-09-15",
+      "words": [
+        "\\$askr(?![a-z0-9_])",
+        "(^|[^a-z0-9_])heyaskr(?![a-z0-9_])"
+      ],
+      "contextWords": [
+        [
+          "(^|[^a-z0-9_])askr(?![a-z0-9_])",
+          "\\b(?:robinhood|token|coin|ca|contract|0x[0-9a-f]{6}|heyaskr)\\b"
+        ]
+      ],
+      "exclude": [
+        "\\byggdrasil\\b",
+        "\\baskr\\s+(?:and|ok|og)\\s+embla\\b"
+      ],
+      "discoveryName": "\\bheyaskr\\b",
+      "profileTerms": [
+        "$askr",
+        "heyaskr"
+      ],
+      "official": [
+        "heyaskr"
+      ],
+      "searchQuery": "(\"$ASKR\" OR \"heyaskr\" OR \"0xa92768863a55d8a0591709f7f5e594a249d36ea3\")",
+      "identityNote": "Robinhood Chain; user-supplied address, name and X handle read from GeckoTerminal 2026-09-19 (coingecko id heyaskr, gt_verified, twitter_handle heyaskr — the handle is not independently confirmed). Launchpad graduated 2026-09-18T18:36:55Z into the ASKR/WETH pool; archiveStart is set three days earlier to catch pre-launch posts. Bare 'askr' is the Norse ash tree and a personal name, so it needs token context, and Yggdrasil/Askr-and-Embla mythology posts are excluded; the $ASKR cashtag, 'heyaskr' and the contract match on their own",
+      "originFrom": "2026-09-15"
     }
   ]
 }
