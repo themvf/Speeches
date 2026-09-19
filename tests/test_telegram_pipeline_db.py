@@ -138,3 +138,40 @@ def test_analytics_case_study_and_health_run_against_real_sql(db):
     health=analytics.health(db,now=NOW)
     assert health['resolution']['contract']==2 and health['coverage']['archive_share']==1.0
     assert set(health['outcome_status'])<= {'observed','pending','unobserved'}
+
+
+def test_the_propagation_graph_tells_original_from_relay_from_independent(db):
+    """The semantic risk the whole attribution layer exists for.
+
+    Four posts about one token: an original call, a Telegram forward of it, an unattributed
+    copy-paste of it, and a genuinely independent later mention. Only two of those are discoveries,
+    and only one is first.
+    """
+    original=('New call: FLEX just graduated, liquidity looks deep and the chart is clean, '
+              'contract '+FLEX+', size accordingly')
+    with db,db.cursor() as cur:
+        for channel_id,username in ((3,'gamma'),(4,'delta')):
+            cur.execute('INSERT INTO telegram_channels (channel_id,username,title,active) '
+                        'VALUES (%s,%s,%s,true)',(channel_id,username,username))
+    collector.upsert_messages(db,1,[message(20,GRAD-timedelta(minutes=10),original)])
+    collector.upsert_messages(db,2,[message(21,GRAD-timedelta(minutes=9),original,is_forward=True,
+                                            forward_from_channel_id=1,forward_from_name='alpha')])
+    collector.upsert_messages(db,3,[message(22,GRAD-timedelta(minutes=8),original+' ⚡ via partners')])
+    collector.upsert_messages(db,4,[message(23,GRAD-timedelta(minutes=1),
+                                            'FLEX holding above its graduation price, buyers still '
+                                            'arriving, this one may have legs '+FLEX)])
+    mentions.derive(db,now=NOW)
+    graph=analytics.propagation(db,FLEX)
+    by_channel={h['channel_id']:h for h in graph['hops']}
+    assert by_channel[1]['origin']=='original' and by_channel[1]['sequence']==1
+    assert by_channel[2]['origin']=='forward'
+    # The copy-paste has no forward header and would otherwise read as a second discovery.
+    assert by_channel[3]['origin']=='repost' and by_channel[3]['relay_of_channel_id']==1
+    assert by_channel[4]['origin']=='original' and by_channel[4]['sequence']==2
+    # Neither relay takes a sequence position, so neither can be credited with being early.
+    assert by_channel[2]['sequence'] is None and by_channel[3]['sequence'] is None
+    assert graph['original_posts']==2 and graph['forwards']==1 and graph['reposts']==1
+    # And the relay channels' own statistics count no discovery at all.
+    stats={s['channel_id']:s for s in analytics.channel_stats(db,now=NOW)}
+    assert stats[3]['reposted_mentions']==1 and stats[3]['first_among_monitored']==0
+    assert stats[1]['first_among_monitored']==1

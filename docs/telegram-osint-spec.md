@@ -40,7 +40,10 @@ implementation would start on the successor, not on GramJS.
 history even where it can see new posts, which makes backfill — the thing that gives this dataset
 any depth at all on day one — impossible. So:
 
-- A dedicated Telegram user account, used for nothing else. It joins only public channels.
+- A dedicated Telegram user account, used for nothing else and **never a personal everyday
+  account**: the session string this collector holds is full read access to whatever that account
+  can see, so the blast radius of a leaked runner secret should be a throwaway account's public
+  channel memberships and nothing more. It joins only public channels.
 - `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` from my.telegram.org, and `TELEGRAM_SESSION`, a session
   string generated once **interactively on a workstation** (the login sends a code to the account;
   an unattended runner cannot answer it).
@@ -97,6 +100,30 @@ Resolution (`telegram_mentions.py`):
   `unresolved_not_in_archive`, recorded as such. A wrong resolution is worse than no resolution: it
   puts another channel's token into this channel's denominator.
 - A message carrying a contract has its cashtags **dropped**. The contract is the subject.
+
+### Relay attribution — original vs forward vs repost
+
+The largest semantic risk in this layer, and the one that decides whether it measures discovery or
+just stores text. A Telegram **forward** announces itself in the message header. A **copy-paste
+repost** does not, and in call channels the repost is the commoner shape — so without a rule for it,
+an unattributed copy becomes a second independent sighting: the token looks discovered twice, and
+the relay channel's "first among monitored" count is inflated by exactly the tokens it was slowest
+on.
+
+`mention_origin` is therefore three-valued, set by `attribute_relays()` before the sequence is
+computed, per token, in time order (a repost can only ever be attributed to a post that came
+*before* it):
+
+| value | rule | counts as discovery |
+|---|---|---|
+| `forward` | Telegram forward header | no |
+| `repost` | ≥0.60 Jaccard over word 5-grams with an earlier post about the same token from another channel, inside 24h; below 8 words only an exact copy counts | no, and `relay_of_channel_id` names what it relayed |
+| `original` | everything else | yes |
+
+The word floor matters: these channels legitimately post a bare contract address, and without it
+every terse channel would be labelled a relay of every other terse channel. Only `original` mentions
+take a sequence position, so `is_first_monitored_mention` and every timing statistic derived from it
+are counts of discovery, not of posting.
 
 ## 6. Archive join, and why there is a second price layer
 
@@ -167,24 +194,32 @@ against a disposable schema (set `CRYPTO_SOCIAL_TEST_DATABASE_URL`, same convent
 tests). That pass caught a query whose parameters were never passed — it had been green against
 every mocked test. It still proves only the SQL, not Telegram.
 
-Before this is merged and scaled past the pilot channel set, one live run must confirm:
+Before this is merged and scaled past the pilot channel set, one live run must confirm all six,
+plus the manual inspection. `telegram_gate.py --run --markdown` executes them in order and prints
+PR-ready evidence; it exits non-zero if any fails.
 
-1. **Peer resolution** — `--resolve` returns real peer ids for the configured usernames, and the
-   ids stored match what the client reports for the same channel on a second call.
-2. **Paging actually walks** — a backfill run's second page returns strictly older message ids than
-   its first, and `backfill_floor_id` decreases. Pyrogram's history iterator has no `min_id`; the
-   stop condition is ours, and if it is wrong the poll silently re-reads whole histories forever.
-3. **A FloodWait is survived and recorded** — one appears in `telegram_collection_runs.flood_waits`
-   with a non-null duration, and the channels after it in the run still collected.
-4. **Text arrives intact** — a message with an emoji, a Cyrillic word and a Dexscreener link round-
-   trips, and its address extracts. Telegram text is not ASCII and the store must not assume it is.
-5. **One real end-to-end mention** — a collected message resolves to a token the archive holds,
-   `seconds_to_graduation` has the right sign against the archive's own `graduated_at`, and its
-   rungs fill as they elapse.
-6. **The FLEX case study passes** — `telegram_analytics.py --case-study` against
-   `fvHLJUwsynVHJrssbZ8MLNyku9jt2izUspbBD4Spump`, with every acceptance item satisfied from stored
-   data. Items 1–5 above are pass/fail assertions; this one is the judgement call, and it is the one
-   that would catch a plausible-looking pipeline that is measuring the wrong pool.
+1. **Peer resolution** — 3–5 real channels resolved from usernames into peer ids, the identity
+   confirmed against what the client reports, and the same ids returned on a re-check.
+2. **Backfill idempotence** — a backfill page writes rows, `backfill_floor_id` decreases, and a
+   re-read of the same window writes **zero** new rows. Pyrogram's history iterator has no `min_id`;
+   the stop condition is ours, and if it is wrong the poll silently re-reads whole histories forever.
+3. **A real contract resolves to the correct archive token** — and the stored address round-trips
+   out of the stored message text, which is what would catch a normalisation or truncation bug
+   between extraction and storage.
+4. **Contract beats ticker** — a real message carrying both derives exactly one mention, of kind
+   `contract`.
+5. **One known case reconstructs** — FLEX or PHILANCAT, from the original call through
+   mention-anchored outcomes, as a single line:
+   `@channel → contract → first observed mention → market cap at mention → +30m/+1h/+3h/+24h`.
+6. **Health separates a lost channel from a quiet one** — the gate deliberately polls a peer that
+   does not exist: it must appear in `channels_losing_access` while a genuinely quiet channel stays
+   `access_state='ok'` with zero new messages. This is the distinction that decides whether a silent
+   dashboard means everything is fine or that collection died.
+7. **Relay attribution, read by eye** — a token posted by at least two monitored channels, whose
+   chain reads *original post → forwarded/reposted alert → later independent mention*, with only the
+   originals holding sequence positions. This is the one item that cannot be a pass/fail assertion,
+   and it is the one that would catch a plausible-looking pipeline that is crediting relays with
+   discovery.
 
 ## 11. Pilot scope and what is deliberately not built
 

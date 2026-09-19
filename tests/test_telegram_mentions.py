@@ -100,3 +100,40 @@ def test_ohlcv_parsing_survives_the_rows_the_api_actually_returns():
     rows=mentions.parse_ohlcv(payload)
     assert len(rows)==1 and rows[0]['high']==2.0 and rows[0]['volume_usd']==900.0
     assert rows[0]['minute'].tzinfo is timezone.utc
+
+
+ORIGINAL=('New call: FLEX just graduated, liquidity looks deep and the chart is clean, '
+          'contract in the next message, size accordingly')
+REPOST=('New call: FLEX just graduated, liquidity looks deep and the chart is clean, '
+        'contract in the next message, size accordingly ⚡ via our partners')
+INDEPENDENT=('FLEX holding above its graduation price two hours later, buyers still coming in, '
+             'this one might actually have legs unlike the rest today')
+
+
+def test_a_telegram_forward_is_a_relay_by_its_header():
+    assert mentions.classify_origin('anything',True,[])[:2]==('forward',None)
+
+
+def test_a_copy_paste_repost_is_attributed_to_the_post_it_copied():
+    # The commoner shape in call channels, and the one with no header to announce it. Left
+    # unattributed it becomes a second independent sighting of the same discovery.
+    origin,relay_of,reason=mentions.classify_origin(REPOST,False,[(11,ORIGINAL)])
+    assert origin=='repost' and relay_of==11 and '5-gram overlap' in reason
+
+
+def test_two_channels_saying_different_things_are_independent():
+    origin,relay_of,_=mentions.classify_origin(INDEPENDENT,False,[(11,ORIGINAL)])
+    assert origin=='original' and relay_of is None
+
+
+def test_a_bare_contract_posted_twice_is_two_posts_not_a_copy():
+    # These channels legitimately post an address alone. Below the word floor only an exact copy
+    # counts, or every terse channel would be labelled a relay of every other terse channel.
+    assert mentions.classify_origin(FLEX,False,[(11,'ape '+FLEX)])[0]=='original'
+    assert mentions.classify_origin(FLEX,False,[(11,FLEX)])[:2]==('repost',11)
+
+
+def test_similarity_is_symmetric_and_bounded():
+    assert mentions.similarity(ORIGINAL,ORIGINAL)==1.0
+    assert mentions.similarity(ORIGINAL,INDEPENDENT)<mentions.REPOST_SIMILARITY
+    assert mentions.similarity('',ORIGINAL)==0.0

@@ -266,3 +266,20 @@ ALTER TABLE telegram_channel_stats ADD COLUMN IF NOT EXISTS median_claimed_multi
 COMMENT ON COLUMN telegram_channel_stats.median_claimed_multiple IS
  'What the channel SAID it achieved, for comparison against the measured rungs. Never an input to '
  'them: performance is computed from price history, not from the post claiming a result.';
+
+-- Relay attribution (2026-09-19). A Telegram forward announces itself in the message header; a
+-- copy-paste repost does not, and in call channels the repost is the commoner shape. Without this
+-- an unattributed copy becomes a second independent sighting: the token looks discovered twice and
+-- the relay channel's "first among monitored" count is inflated by exactly the tokens it was
+-- slowest on. Only 'original' mentions take a sequence position.
+ALTER TABLE telegram_token_mentions ADD COLUMN IF NOT EXISTS mention_origin text
+  NOT NULL DEFAULT 'original' CHECK (mention_origin IN ('original','forward','repost'));
+ALTER TABLE telegram_token_mentions ADD COLUMN IF NOT EXISTS relay_of_channel_id bigint;
+ALTER TABLE telegram_token_mentions ADD COLUMN IF NOT EXISTS relay_reason text;
+CREATE INDEX IF NOT EXISTS telegram_token_mentions_origin
+ ON telegram_token_mentions(network,token_address,mention_origin,mentioned_at);
+COMMENT ON COLUMN telegram_token_mentions.mention_origin IS
+ 'original = this channel posted it itself; forward = Telegram forward header; repost = near-'
+ 'duplicate text about the same token from another channel earlier in the window. Only original '
+ 'mentions are counted as discovery, and relay_of_channel_id names what a relay relayed.';
+ALTER TABLE telegram_channel_stats ADD COLUMN IF NOT EXISTS reposted_mentions integer;

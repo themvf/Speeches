@@ -42,6 +42,14 @@ SETTLE_SECONDS=120               # grace after a horizon before 'no price' count
 # resolution is worse than an unresolved one: it puts another channel's token in this channel's
 # denominator.
 TICKER_WINDOW_HOURS=72
+# Relay attribution. A Telegram forward announces itself in the message header; a copy-paste repost
+# does not, and a repost is the commoner shape in call channels - which makes an unattributed copy
+# the single easiest way for a relay to be credited as a discovery. Near-duplicate text about the
+# same token, from a different channel, inside this window, is treated as a repost of the earlier
+# post rather than as independent discovery.
+REPOST_WINDOW_HOURS=24
+REPOST_SIMILARITY=0.6            # Jaccard over word 5-grams; short texts fall back to exact match
+REPOST_MIN_WORDS=8               # below this, wording is too generic for similarity to mean anything
 PRICE_WINDOW_MINUTES=1500        # mention -> +25h, so the 24h rung and the peak are both covered
 
 
@@ -91,6 +99,44 @@ def message_references(text):
     if any(r['reference_kind']=='contract' for r in rows):
         return [r for r in rows if r['reference_kind']=='contract']
     return rows
+
+
+def shingles(text,size=5):
+    """Normalised word 5-grams. Same device the crypto rings use: shared phrasing is what separates
+    a copied post from two people independently saying 'new call' about the same token."""
+    words=[w for w in ''.join(c.lower() if c.isalnum() or c.isspace() else ' ' for c in (text or '')).split()]
+    if len(words)<size:return {' '.join(words)} if words else set()
+    return {' '.join(words[i:i+size]) for i in range(len(words)-size+1)}
+
+
+def similarity(left,right):
+    a,b=shingles(left),shingles(right)
+    if not a or not b:return 0.0
+    return len(a&b)/len(a|b)
+
+
+def classify_origin(text,is_forward,earlier):
+    """'original' | 'forward' | 'repost', and what it relays, for one mention of one token.
+
+    `earlier` is [(channel_id, text)] for mentions of the SAME token from OTHER channels inside the
+    window, oldest first. Returning the relayed channel rather than a bare flag is what lets the
+    propagation graph show 'original post -> reposted alert -> later independent mention' instead of
+    three sightings that look alike.
+    """
+    if is_forward:return 'forward',None,'telegram forward header'
+    words=len((text or '').split())
+    for channel_id,other in earlier:
+        if words<REPOST_MIN_WORDS or len((other or '').split())<REPOST_MIN_WORDS:
+            # Too short for similarity to carry information, so only an exact copy counts. A bare
+            # contract address posted twice is two posts, not a copy - that is how these channels
+            # legitimately talk.
+            if text and other and text.strip()==other.strip():
+                return 'repost',channel_id,'identical text'
+            continue
+        score=similarity(text,other)
+        if score>=REPOST_SIMILARITY:
+            return 'repost',channel_id,f'{score:.2f} 5-gram overlap with an earlier post'
+    return 'original',None,None
 
 
 def _archive_lookup(conn,network,at):
@@ -149,6 +195,7 @@ def derive(conn,network='solana',limit=5000,now=None):
         with conn,conn.cursor() as cur:
             cur.execute('UPDATE telegram_messages SET references_derived_at=%s WHERE channel_id=%s AND message_id=%s',
                         (now,channel_id,message_id))
+    summary['origins']=attribute_relays(conn,network,now)
     summary.update(sequence(conn,network))
     return summary
 
@@ -168,19 +215,58 @@ def archive_row(conn,network,address):
                 measure_pool=row[4],measure_pool_timing=row[5])
 
 
+def attribute_relays(conn,network='solana',now=None):
+    """Label every resolved mention original / forward / repost before the sequence is computed.
+
+    This runs on text, per token, in time order, so a repost is only ever attributed to a post that
+    came BEFORE it. Getting this wrong in the permissive direction is the expensive failure: an
+    unattributed copy-paste becomes a second independent sighting, the token looks like it was
+    discovered twice, and the relay channel's 'first among monitored' count is inflated by exactly
+    the tokens it was slowest on.
+    """
+    with conn,conn.cursor() as cur:
+        cur.execute('''SELECT m.id,m.token_address,m.channel_id,m.mentioned_at,m.is_forward,g.text
+                       FROM telegram_token_mentions m
+                       JOIN telegram_messages g ON g.channel_id=m.channel_id AND g.message_id=m.message_id
+                       WHERE m.network=%s AND m.token_address IS NOT NULL
+                       ORDER BY m.token_address,m.mentioned_at''',(network,))
+        rows=cur.fetchall()
+    counts=dict(original=0,forward=0,repost=0)
+    history={}
+    updates=[]
+    for mention_id,token,channel_id,at,is_forward,text in rows:
+        seen=history.setdefault(token,[])
+        earlier=[(cid,body) for cid,when,body in seen
+                 if cid!=channel_id and (at-when).total_seconds()<=REPOST_WINDOW_HOURS*3600]
+        origin,relay_of,reason=classify_origin(text,is_forward,earlier)
+        counts[origin]+=1
+        updates.append((origin,relay_of,reason,mention_id))
+        seen.append((channel_id,at,text))
+    if updates:
+        from psycopg2.extras import execute_values
+        with conn,conn.cursor() as cur:
+            execute_values(cur,'''UPDATE telegram_token_mentions m SET mention_origin=v.origin,
+                                    relay_of_channel_id=v.relay_of,relay_reason=v.reason
+                                  FROM (VALUES %s) AS v(origin,relay_of,reason,id)
+                                  WHERE m.id=v.id''',updates,
+                           template='(%s,%s::bigint,%s,%s::bigint)')
+    return counts
+
+
 def sequence(conn,network='solana'):
     """Order the monitored channels' ORIGINAL posts per token: first, position, lag behind first.
 
-    Forwards are excluded from the ordering entirely. A forwarded post is the same discovery as the
+    Forwards AND reposts are excluded from the ordering. A relayed post is the same discovery as the
     post it copies, and letting it take a sequence position would credit a relay channel with being
-    early to something it re-transmitted.
+    early to something it re-transmitted - which is the whole attribution question this layer exists
+    to answer.
     """
     with conn,conn.cursor() as cur:
         cur.execute('''WITH ordered AS (
                          SELECT id,row_number() OVER w AS seq,
                                 extract(epoch FROM mentioned_at-min(mentioned_at) OVER w2) AS lag
                          FROM telegram_token_mentions
-                         WHERE network=%s AND token_address IS NOT NULL AND NOT is_forward
+                         WHERE network=%s AND token_address IS NOT NULL AND mention_origin='original'
                          WINDOW w AS (PARTITION BY token_address ORDER BY mentioned_at,channel_id),
                                 w2 AS (PARTITION BY token_address))
                        UPDATE telegram_token_mentions m
@@ -191,9 +277,8 @@ def sequence(conn,network='solana'):
         # Forwards carry an explicit false rather than NULL, so "is this the first mention" never
         # has to be read as a three-valued question downstream.
         cur.execute('''UPDATE telegram_token_mentions SET is_first_monitored_mention=false,
-                              monitored_sequence=NULL
-                       WHERE network=%s AND is_forward AND is_first_monitored_mention IS DISTINCT FROM false''',
-                    (network,))
+                              monitored_sequence=NULL,seconds_after_first_mention=NULL
+                       WHERE network=%s AND mention_origin<>'original' ''',(network,))
     return dict(sequenced=updated)
 
 

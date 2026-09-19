@@ -18,8 +18,10 @@ health). Contract: [`docs/telegram-osint-spec.md`](docs/telegram-osint-spec.md).
 graduation archive and never writes to it. **Not yet run against real Telegram data** — the spec's
 §10 live-smoke gate is a merge requirement, and the mocked tests prove the rules, not the pipeline.
 Three rules specific to this layer: a pending outcome rung (horizon not yet elapsed) is never a
-loss; a forward is never independent discovery; a channel's claimed "10x" is never an input to its
-measured performance.
+loss; a relay is never independent discovery (`mention_origin` is original/forward/**repost**, the
+last being an unattributed copy-paste caught by 5-gram similarity — only originals take a sequence
+position); a channel's claimed "10x" is never an input to its measured performance. `telegram_gate.py
+--run --markdown` is the live gate and prints the PR evidence.
 
 Four rules that are easy to break by accident: no arbitrary "good token" thresholds before outcomes
 are labelled; "not observed" must never read as "observed and absent"; Solana's

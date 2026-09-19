@@ -43,14 +43,14 @@ def channel_rows(conn,network='solana',window_days=30,now=None):
     """Per-channel raw material for the statistics: one row per resolved mention."""
     now=now or datetime.now(timezone.utc);since=now-timedelta(days=window_days)
     with conn,conn.cursor() as cur:
-        cur.execute('''SELECT m.channel_id,m.id,m.token_address,m.resolution,m.is_forward,m.graduated,
+        cur.execute('''SELECT m.channel_id,m.id,m.token_address,m.resolution,m.mention_origin,m.graduated,
                               m.seconds_to_graduation,m.is_first_monitored_mention,m.monitored_sequence,
                               m.seconds_after_first_mention,s.market_cap_at_mention,s.peak_multiple,
                               m.claimed_multiple
                        FROM telegram_token_mentions m
                        LEFT JOIN telegram_mention_summary s ON s.mention_id=m.id
                        WHERE m.network=%s AND m.mentioned_at>=%s''',(network,since))
-        columns=['channel_id','id','token_address','resolution','is_forward','graduated',
+        columns=['channel_id','id','token_address','resolution','origin','graduated',
                  'seconds_to_graduation','is_first','sequence','seconds_after_first',
                  'market_cap','peak_multiple','claimed_multiple']
         rows=[dict(zip(columns,r)) for r in cur.fetchall()]
@@ -111,9 +111,11 @@ def typology(stats):
     if stats['messages'] and stats['wallet_alert_messages']/max(stats['messages'],1)>=WALLET_ALERT_SHARE:
         return 'smart_wallet_relay',(f"{stats['wallet_alert_messages']}/{stats['messages']} messages carry addresses "
                                      'that are not archived tokens - wallet/on-chain alert shape')
-    if stats['forwarded_mentions']/max(stats['mentions'],1)>=FORWARD_SHARE:
-        return 'relay',(f"{stats['forwarded_mentions']}/{stats['mentions']} mentions are forwards, so most of what "
-                        'it posts is re-transmission rather than discovery')
+    relayed=stats['forwarded_mentions']+stats.get('reposted_mentions',0)
+    if relayed/max(stats['mentions'],1)>=FORWARD_SHARE:
+        return 'relay',(f"{relayed}/{stats['mentions']} mentions relay another channel "
+                        f"({stats['forwarded_mentions']} forwarded, {stats.get('reposted_mentions',0)} reposted "
+                        'without attribution), so most of what it posts is re-transmission rather than discovery')
     if first_share>=FIRST_SHARE and pre_share>=PRE_GRADUATION_SHARE:
         return 'originator',(f'first among monitored channels on {stats["first_among_monitored"]}/{sample} tokens, '
                              f'{pre_share:.0%} of them before graduation')
@@ -137,14 +139,17 @@ def channel_stats(conn,network='solana',window_days=30,now=None,store=False):
     for row in rows:by_channel.setdefault(row['channel_id'],[]).append(row)
     for channel_id,mentions in by_channel.items():
         resolved=[m for m in mentions if m['token_address']]
-        originals=[m for m in resolved if not m['is_forward']]
+        # Discovery is an original post. A forward and an unattributed repost are both relays of
+        # someone else's post, and neither is this channel finding a token.
+        originals=[m for m in resolved if m['origin']=='original']
         graduated=[m for m in originals if m['graduated']]
         counts={}
         for m in resolved:counts[m['token_address']]=counts.get(m['token_address'],0)+1
         stats=dict(channel_id=channel_id,network=network,window_days=window_days,computed_at=now,
                    messages=messages.get(channel_id,(0,0))[0],
                    mentions=len(mentions),
-                   forwarded_mentions=sum(1 for m in mentions if m['is_forward']),
+                   forwarded_mentions=sum(1 for m in mentions if m['origin']=='forward'),
+                   reposted_mentions=sum(1 for m in mentions if m['origin']=='repost'),
                    unresolved_mentions=sum(1 for m in mentions if not m['token_address']),
                    wallet_alert_messages=wallet_alerts.get(channel_id,0),
                    tokens_distinct=len(counts),
@@ -179,8 +184,8 @@ def store_channel_stats(conn,stats):
                    pre_graduation,median_seconds_to_graduation,first_among_monitored,median_sequence,
                    median_market_cap_at_mention,rungs,median_peak_multiple,peak_sample,typology,
                    typology_reason,typology_sample,wallet_alert_messages,median_seconds_after_first,
-                   tight_pair_share,median_claimed_multiple)
-                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   tight_pair_share,median_claimed_multiple,reposted_mentions)
+                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                   ON CONFLICT DO NOTHING''',
                         (row['channel_id'],row['network'],row['window_days'],row['computed_at'],
                          row['messages'],row['mentions'],row['forwarded_mentions'],
@@ -190,7 +195,7 @@ def store_channel_stats(conn,stats):
                          row['median_market_cap_at_mention'],Json(row['rungs']),row['median_peak_multiple'],
                          row['peak_sample'],row['typology'],row['typology_reason'],row['typology_sample'],
                          row['wallet_alert_messages'],row['median_seconds_after_first'],
-                         row['tight_pair_share'],row['median_claimed_multiple']))
+                         row['tight_pair_share'],row['median_claimed_multiple'],row['reposted_mentions']))
     return len(stats)
 
 
@@ -205,7 +210,7 @@ def pairs(conn,network='solana',window_days=30,now=None,store=False):
     with conn,conn.cursor() as cur:
         cur.execute('''SELECT a.channel_id,b.channel_id,a.token_address,
                               extract(epoch FROM b.mentioned_at-a.mentioned_at),
-                              (a.is_forward OR b.is_forward)
+                              (a.mention_origin<>'original' OR b.mention_origin<>'original')
                        FROM telegram_token_mentions a
                        JOIN telegram_token_mentions b
                          ON b.network=a.network AND b.token_address=a.token_address
@@ -275,7 +280,8 @@ def propagation(conn,token_address,network='solana'):
         token=dict(zip(['symbol','name','launchpad_family','graduated','graduated_at','first_seen_at',
                         'measure_pool','measure_pool_timing'],row)) if row else {'in_archive':False}
         cur.execute('''SELECT m.id,m.channel_id,coalesce(c.username,c.title,m.channel_id::text),
-                              m.mentioned_at,m.is_forward,m.forward_source,m.resolution,
+                              m.mentioned_at,m.is_forward,m.mention_origin,m.relay_of_channel_id,
+                              m.relay_reason,m.forward_source,m.resolution,
                               m.seconds_to_graduation,m.monitored_sequence,m.seconds_after_first_mention,
                               s.market_cap_at_mention,s.base_price,s.peak_multiple,m.claimed_multiple
                        FROM (SELECT m.*,g.forward_from_name AS forward_source
@@ -286,7 +292,8 @@ def propagation(conn,token_address,network='solana'):
                        LEFT JOIN telegram_mention_summary s ON s.mention_id=m.id
                        WHERE m.network=%s AND m.token_address=%s ORDER BY m.mentioned_at''',
                     (network,token_address))
-        columns=['mention_id','channel_id','channel','mentioned_at','is_forward','forward_source',
+        columns=['mention_id','channel_id','channel','mentioned_at','is_forward','origin',
+                 'relay_of_channel_id','relay_reason','forward_source',
                  'resolution','seconds_to_graduation','sequence','seconds_after_first','market_cap',
                  'base_price','peak_multiple','claimed_multiple']
         hops=[dict(zip(columns,r)) for r in cur.fetchall()]
@@ -302,8 +309,9 @@ def propagation(conn,token_address,network='solana'):
                                                                   hundred_dollars=value)
     return dict(network=network,token_address=token_address,token=token,hops=hops,
                 monitored_channels=len({h['channel_id'] for h in hops}),
-                original_posts=sum(1 for h in hops if not h['is_forward']),
-                forwards=sum(1 for h in hops if h['is_forward']))
+                original_posts=sum(1 for h in hops if h['origin']=='original'),
+                forwards=sum(1 for h in hops if h['origin']=='forward'),
+                reposts=sum(1 for h in hops if h['origin']=='repost'))
 
 
 FLEX='fvHLJUwsynVHJrssbZ8MLNyku9jt2izUspbBD4Spump'
@@ -317,7 +325,7 @@ def case_study(conn,token_address=FLEX,network='solana'):
     answer is exactly how a pipeline gets declared working before it is.
     """
     graph=propagation(conn,token_address,network)
-    originals=[h for h in graph['hops'] if not h['is_forward']]
+    originals=[h for h in graph['hops'] if h['origin']=='original']
     first=originals[0] if originals else None
     token=graph['token']
     items=[]
@@ -339,6 +347,11 @@ def case_study(conn,token_address=FLEX,network='solana'):
     for hop in originals:
         if hop['channel_id'] in seen:continue
         seen.add(hop['channel_id']);chain.append(hop)
+    relays=[h for h in graph['hops'] if h['origin']!='original']
+    item('relays told apart from independent mentions',
+         not relays or all(h['relay_reason'] or h['origin']=='forward' for h in relays),
+         [f"{h['channel']}: {h['origin']}"+(f" of {h['relay_of_channel_id']} ({h['relay_reason']})"
+          if h['relay_of_channel_id'] else '') for h in relays] or 'no relayed mentions of this token')
     item('subsequent channels',len(chain)>1,
          ' -> '.join(f"{h['channel']} (+{h['seconds_after_first']:.0f}s)" if h.get('seconds_after_first')
                      else h['channel'] for h in chain) or 'no original posts collected')
@@ -350,6 +363,7 @@ def case_study(conn,token_address=FLEX,network='solana'):
           for r,v in rungs.items()} or 'no outcome rows: the mention has no price history yet')
     return dict(token_address=token_address,network=network,token=token,
                 hops=graph['hops'],original_posts=graph['original_posts'],forwards=graph['forwards'],
+                reposts=graph['reposts'],
                 measured_rungs=len(measured),acceptance=items,
                 passed=all(i['satisfied'] for i in items),
                 note=('Every item must be satisfied from stored data before the collector is scaled '
