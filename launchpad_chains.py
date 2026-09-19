@@ -59,6 +59,14 @@ class Chain:
     # taken later at any price - never ran. Discovery cut short merely records a gap and is redone
     # next sweep; a missed capture is gone.
     discovery_share: float = 0.5
+    # Whether the cadence-critical sweep also enriches. Measured on Solana: graduations arrive at
+    # 3.4/minute (~4,900/day across all launchpads, ~30% of it Pump.fun lineage), which is 6.8 per
+    # 2-minute sweep against a capacity of 8 - service rate barely equals arrival rate, so the
+    # backlog never drains. Splitting enrichment out leaves the sweep protecting only what expires:
+    # discovery, and the opening trade capture.
+    enrich_in_sweep: bool = True
+    enrich_batch: int = 40
+    enrich_minutes: int = 10
 
     @property
     def deadline_seconds(self):
@@ -94,6 +102,9 @@ SOLANA=Chain(
     max_snapshots=12,
     max_candidates=120,
     request_wait=2.0,
+    enrich_in_sweep=False,
+    enrich_batch=60,
+    enrich_minutes=10,
 )
 
 CHAINS={c.network:c for c in (ROBINHOOD,SOLANA)}

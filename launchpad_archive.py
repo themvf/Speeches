@@ -245,30 +245,44 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         # A graduate the deadline skipped is already marked graduated, so it never reappears in the
         # set above: without this backlog it would stay unenriched and unmeasured for ever. Measured
         # on a live sweep, where 27 of 29 graduates were cut and silently abandoned.
-        with conn,conn.cursor() as cur:
-            cur.execute('''SELECT token_address FROM launchpad_tokens
-                           WHERE network=%s AND graduated AND measure_pool_reason IS NULL
-                             AND graduated_at>%s ORDER BY graduated_at DESC LIMIT %s''',
-                        (chain.network,now-timedelta(hours=6),chain.max_info))
-            backlog=[r[0] for r in cur.fetchall() if r[0] not in newly]
+        backlog=[]
+        if chain.enrich_in_sweep:
+            # A graduate the deadline skipped is already marked graduated, so it never reappears in
+            # the set above: without this backlog it would stay unenriched for ever. On a chain whose
+            # enrichment runs in its own worker, that worker owns the backlog instead.
+            with conn,conn.cursor() as cur:
+                cur.execute('''SELECT token_address FROM launchpad_tokens
+                               WHERE network=%s AND graduated AND measure_pool_reason IS NULL
+                                 AND graduated_at>%s ORDER BY graduated_at DESC LIMIT %s''',
+                            (chain.network,now-timedelta(hours=6),chain.max_info))
+                backlog=[r[0] for r in cur.fetchall() if r[0] not in newly]
         # Cohort members first: their opening trade capture is perishable and cannot be taken later,
-        # while enrichment of everything else can wait for the next sweep without losing anything.
+        # while everything else can wait without losing anything.
         queue=sorted(set(newly),key=lambda t:(not in_cohort(chain,t),t))+backlog
         backlog_set=set(backlog)
         info={};measure={};captures=[]
         for token in queue[:chain.max_info]:
             if not budget_left():break
-            try:
-                payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
-                info[token]=parse_info(payload)
-                # Creator, authorities, socials and description - free, in the call we already make.
-                if chain.extended_info:info[token].update(parse_extended_info(payload))
-            except (ValueError,requests.RequestException) as exc:
-                errors.append('info '+token[:10]+': '+type(exc).__name__)
-            # Which pool the ladder will read. Never the launchpad's destination field on a chain
-            # where that has been seen pointing at an empty pool.
-            destination=(state.get(token) or {}).get('destination') or (arrivals[token]['pool'] if token in arrivals else None)
             sampled=in_cohort(chain,token)
+            # When enrichment has its own worker the sweep skips it entirely for tokens that carry
+            # nothing perishable - there is no reason to spend cadence-critical time on them. The
+            # reason is still recorded, because it costs nothing and "we did not look" must never
+            # read back as "there was nothing there".
+            if not chain.enrich_in_sweep and not sampled:
+                measure[token]=(None,'outside ladder cohort');continue
+            if chain.enrich_in_sweep:
+                try:
+                    payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
+                    info[token]=parse_info(payload)
+                    # Creator, authorities, socials and description - free, in the call we already make.
+                    if chain.extended_info:info[token].update(parse_extended_info(payload))
+                except (ValueError,requests.RequestException) as exc:
+                    errors.append('info '+token[:10]+': '+type(exc).__name__)
+            # Which pool the ladder will read. Chosen AT GRADUATION even when the rest of enrichment
+            # is deferred: a token can fall from a real market to a few dollars of liquidity within
+            # the hour, so "deepest pool now" hours later can name a different market than the one
+            # that mattered. The candidate list is stored with it so the choice stays auditable.
+            destination=(state.get(token) or {}).get('destination') or (arrivals[token]['pool'] if token in arrivals else None)
             if not chain.deepest_pool_wins:
                 measure[token]=choose_measure_pool(chain,[],destination)
             elif not sampled:
@@ -305,7 +319,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
             observations.append(dict(token=entry['token'],at=now,phase='curve',rung=None,pct=pct,pool=entry,holders=None))
         snapshots=0
         with conn,conn.cursor() as cur:
-            for token,graduated_at,filled in ladder:
+            for token,graduated_at,filled in (ladder if chain.enrich_in_sweep else []):
                 due=rungs_due(graduated_at,now,filled,chain.rungs)
                 if not due or snapshots>=chain.max_snapshots or not budget_left():continue
                 cur.execute('SELECT coalesce(measure_pool,graduation_pool) FROM launchpad_tokens WHERE network=%s AND token_address=%s',(chain.network,token))
@@ -545,6 +559,159 @@ def daily(conn,now=None,days=7,chain=ROBINHOOD):
     return [rows[k] for k in sorted(rows)]
 
 
+def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
+    """Drain the enrichment backlog, on its own schedule and in its own process.
+
+    Split out of the sweep because service rate must exceed arrival rate, and in the sweep it could
+    not: graduations arrive on Solana at 3.4/minute while a 2-minute sweep could enrich at most 8,
+    so the backlog only grew. The sweep now protects what expires - discovery and the opening trade
+    capture - and everything durable happens here, where being slow costs latency rather than data.
+
+    The queue is the archive itself (graduates missing enrichment, oldest first); no second queueing
+    system. Health is service rate against arrival rate over time, not "the worker ran".
+    """
+    import requests,time
+    wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
+    setup(conn)
+    with conn,conn.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-enrich:'+chain.network,))
+        if not cur.fetchone()[0]:return {'status':'already_running'}
+    clock=time.monotonic();errors=[];processed=0
+    def budget_left():return time.monotonic()-clock < chain.enrich_minutes*60*chain.budget_fraction
+    def get(url):
+        for attempt in range(4):
+            wait(chain.request_wait)
+            response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
+            status=getattr(response,'status_code',0)
+            if status==429 and attempt<3:
+                try:delay=float(getattr(response,'headers',{}).get('Retry-After','15'))
+                except (ValueError,TypeError):delay=15
+                if not math.isfinite(delay) or delay>30:raise ValueError('rate limit cooldown exceeds retry bound')
+                wait(max(3,delay));continue
+            if status!=200:raise ValueError('HTTP '+str(status))
+            return response.json()
+        raise ValueError('rate limited')
+    try:
+        from psycopg2.extras import Json
+        with conn,conn.cursor() as cur:
+            # Oldest first: a graduate waiting longest is the one whose ladder is most at risk.
+            cur.execute("""SELECT token_address,graduation_pool,measure_pool,measure_pool_reason,cohort_sampled
+                           FROM launchpad_tokens
+                           WHERE network=%s AND graduated AND enriched_at IS NULL
+                           ORDER BY graduated_at LIMIT %s""",(chain.network,chain.enrich_batch))
+            pending=cur.fetchall()
+        for token,destination,measure_pool,measure_reason,sampled in pending:
+            if not budget_left():break
+            enrich_row={}
+            try:
+                payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
+                enrich_row=parse_info(payload)
+                if chain.extended_info:enrich_row.update(parse_extended_info(payload))
+            except (ValueError,requests.RequestException) as exc:
+                errors.append('info '+token[:10]+': '+type(exc).__name__);continue
+            # Pool selection is normally already done at graduation, where it belongs. This only
+            # catches rows the sweep never reached, and it is marked so the two are never confused:
+            # a pool chosen hours later may not be the market that mattered at the time.
+            chosen=(measure_pool,measure_reason)
+            if chain.deepest_pool_wins and measure_reason is None:
+                try:pool_list=parse_pool_list(get(GECKO+chain.network+'/tokens/'+token+'/pools'))
+                except (ValueError,requests.RequestException) as exc:
+                    pool_list=[];errors.append('pools '+token[:10]+': '+type(exc).__name__)
+                address,reason=choose_measure_pool(chain,pool_list,destination)
+                chosen=(address,reason+' (selected late, not at graduation)')
+            with conn,conn.cursor() as cur:
+                cur.execute("""UPDATE launchpad_tokens SET
+                                 measure_pool=COALESCE(measure_pool,%s),
+                                 measure_pool_reason=COALESCE(measure_pool_reason,%s),
+                                 holders=COALESCE(%s,holders),top10_share=COALESCE(%s,top10_share),
+                                 twitter_handle=COALESCE(twitter_handle,%s),
+                                 developer_address=COALESCE(developer_address,%s),
+                                 developer_holding=COALESCE(%s,developer_holding),
+                                 is_honeypot=COALESCE(%s,is_honeypot),
+                                 mint_authority=COALESCE(%s,mint_authority),
+                                 freeze_authority=COALESCE(%s,freeze_authority),
+                                 telegram_handle=COALESCE(telegram_handle,%s),
+                                 website=COALESCE(website,%s),description=COALESCE(description,%s),
+                                 categories=COALESCE(categories,%s),gt_score=COALESCE(%s,gt_score),
+                                 info_raw=COALESCE(info_raw,%s),enriched_at=%s
+                               WHERE network=%s AND token_address=%s""",
+                            (chosen[0],chosen[1],enrich_row.get('holders'),enrich_row.get('top10'),
+                             enrich_row.get('twitter'),enrich_row.get('developer_address'),
+                             enrich_row.get('developer_holding'),enrich_row.get('is_honeypot'),
+                             enrich_row.get('mint_authority'),enrich_row.get('freeze_authority'),
+                             enrich_row.get('telegram_handle'),enrich_row.get('website'),
+                             enrich_row.get('description'),enrich_row.get('categories'),
+                             enrich_row.get('gt_score'),
+                             Json(enrich_row['info_raw']) if enrich_row.get('info_raw') else None,
+                             now,chain.network,token))
+            processed+=1
+        # The ladder lives here too: it is durable work, and a rung filled late is still honest
+        # because its observed_at records when it was actually taken.
+        rungs_filled=_fill_ladder(conn,chain,get,now,budget_left,errors)
+        return dict({'status':'ok','network':chain.network,'processed_this_run':processed,
+                     'rungs_filled':rungs_filled,'errors':errors},**backlog_health(conn,chain,now))
+    finally:
+        with conn,conn.cursor() as cur:cur.execute("SELECT pg_advisory_unlock(hashtext(%s))",('launchpad-enrich:'+chain.network,))
+
+
+def _fill_ladder(conn,chain,get,now,budget_left,errors):
+    """Post-graduation snapshots for cohort members whose rungs are due."""
+    import requests
+    filled=0
+    with conn,conn.cursor() as cur:
+        cur.execute("""SELECT t.token_address,t.graduated_at,t.measure_pool,
+                              array_remove(array_agg(o.rung_minutes),NULL)
+                       FROM launchpad_tokens t LEFT JOIN launchpad_observations o
+                         ON o.network=t.network AND o.token_address=t.token_address AND o.rung_minutes IS NOT NULL
+                       WHERE t.network=%s AND t.graduated AND t.cohort_sampled AND t.measure_pool IS NOT NULL
+                         AND t.graduated_at>%s
+                       GROUP BY t.token_address,t.graduated_at,t.measure_pool
+                       ORDER BY t.graduated_at""",(chain.network,now-timedelta(days=8)))
+        ladder=cur.fetchall()
+    rows=[]
+    for token,graduated_at,pool,done in ladder:
+        due=rungs_due(graduated_at,now,set(done or []),chain.rungs)
+        if not due or not budget_left():continue
+        try:payload=get(GECKO+chain.network+'/pools/'+pool)
+        except (ValueError,requests.RequestException) as exc:
+            errors.append('pool '+pool[:10]+': '+type(exc).__name__);continue
+        parsed=parse_pool((payload or {}).get('data') or {},chain)
+        if not parsed:continue
+        rows.append((chain.network,token,now,'post',min(due),None,parsed['price'],parsed['fdv'],
+                     parsed['liquidity'],parsed['volume_m30'],parsed['volume_h1'],parsed['volume_h24'],
+                     parsed['buyers_m30'],parsed['sellers_m30'],parsed['buyers_h1'],parsed['sellers_h1'],
+                     parsed['txns_h1'],parsed['change_h1'],None))
+        filled+=1
+    if rows:
+        from psycopg2.extras import execute_values
+        with conn,conn.cursor() as cur:
+            execute_values(cur,"""INSERT INTO launchpad_observations
+              (network,token_address,observed_at,phase,rung_minutes,graduation_pct,price_usd,fdv_usd,
+               liquidity_usd,volume_m30,volume_h1,volume_h24,buyers_m30,sellers_m30,buyers_h1,
+               sellers_h1,txns_h1,price_change_h1,holders) VALUES %s ON CONFLICT DO NOTHING""",rows,page_size=200)
+    return filled
+
+
+def backlog_health(conn,chain=SOLANA,now=None):
+    """Is the worker keeping up? Service rate against arrival rate, not "it ran"."""
+    now=now or datetime.now(timezone.utc)
+    with conn,conn.cursor() as cur:
+        cur.execute("""SELECT count(*),min(graduated_at) FROM launchpad_tokens
+                       WHERE network=%s AND graduated AND enriched_at IS NULL""",(chain.network,))
+        pending,oldest=cur.fetchone()
+        cur.execute("""SELECT count(*) FROM launchpad_tokens
+                       WHERE network=%s AND graduated AND graduated_at>%s""",(chain.network,now-timedelta(hours=1)))
+        arrived=cur.fetchone()[0]
+        cur.execute("""SELECT count(*) FROM launchpad_tokens
+                       WHERE network=%s AND enriched_at>%s""",(chain.network,now-timedelta(hours=1)))
+        served=cur.fetchone()[0]
+    return dict(pending_enrichment=pending,
+                oldest_pending_age_seconds=int((now-oldest).total_seconds()) if oldest else None,
+                arrival_rate_per_hour=arrived,service_rate_per_hour=served,
+                # The condition that actually matters. False for a run is fine; false for a day is not.
+                keeping_up=bool(served>=arrived) if (served or arrived) else None)
+
+
 def report(conn,now=None,hours=48,chain=ROBINHOOD):
     """Is the archive continuous and internally consistent? Read-only; this is the V1 deliverable."""
     now=now or datetime.now(timezone.utc);since=now-timedelta(hours=hours)
@@ -613,19 +780,23 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true',help='run a sweep (network + database writes)')
     parser.add_argument('--report',action='store_true',help='read-only continuity report')
+    parser.add_argument('--enrich',action='store_true',help='drain the enrichment backlog (separate worker)')
+    parser.add_argument('--backlog',action='store_true',help='read-only backlog health')
     parser.add_argument('--daily',action='store_true',help='read-only daily health summary')
     parser.add_argument('--hours',type=int,default=48)
     parser.add_argument('--days',type=int,default=7)
     parser.add_argument('--chain',default=ROBINHOOD.network,choices=sorted(CHAINS),help='which chain to sweep or report on')
     args=parser.parse_args()
     chain=CHAINS[args.chain]
-    if not args.execute and not args.report and not args.daily:
+    if not args.execute and not args.report and not args.daily and not args.enrich and not args.backlog:
         print(json.dumps({'mode':'plan_only','chain':chain.network,
                           'max_public_requests':PAGES+MULTI_BATCH//10+MAX_INFO+MAX_SNAPSHOTS,
                           'twitter_credits':0,'database_writes':0,'sweep_minutes':chain.sweep_minutes}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
+        if args.backlog:print(json.dumps(backlog_health(conn,chain),indent=1,default=str));return
+        if args.enrich:print(json.dumps(enrich(conn,chain),indent=1,default=str));return
         if args.daily:print(json.dumps(daily(conn,days=args.days,chain=chain),indent=1));return
         if args.report:print(json.dumps(report(conn,hours=args.hours,chain=chain),indent=1));return
         result=sweep(conn,chain);print(json.dumps(result))

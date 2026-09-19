@@ -1,0 +1,34 @@
+name: Graduation Archive enrichment (Solana)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'launchpad_archive.py'
+      - 'launchpad_chains.py'
+      - '.github/workflows/solana-enrich.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'
+permissions:
+  contents: read
+# A separate workflow rather than another mode inside the 2-minute sweep, so it has its own
+# concurrency, retries, schedule and failure isolation. Graduations arrive at ~3.4/minute on Solana
+# and a 2-minute sweep could enrich at most 8, so service rate never exceeded arrival rate and the
+# backlog only grew. Here being slow costs latency; in the sweep it cost opening trade captures,
+# which expire within about a minute of graduation and cannot be recovered at any price.
+concurrency:
+  group: launchpad-enrich-solana
+  cancel-in-progress: false
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - run: python launchpad_archive.py --enrich --chain solana

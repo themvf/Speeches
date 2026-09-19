@@ -332,11 +332,13 @@ def test_db_solana_graduate_measures_the_deep_pool_and_captures_opening_trades(d
         # The ladder must read the deep pool, never the near-empty one the launchpad field names.
         assert measure==SOL_DEEP and destination==SOL_EMPTY
         assert 'deepest' in reason and 'disagreed' in reason
-        assert dev=='7H7SkM44' and round(holding,2)==19.99
+        # Enrichment moved to its own worker: the sweep protects only what expires.
+        assert dev is None and holding is None
         # pumpswap is where it landed, not where it launched: recording a destination venue as the
         # launchpad would be false, so it stays NULL until we see the curve pool itself.
         assert launchpad is None
-        assert handle=='nikebasketball' and raw is True
+        # Socials and the raw payload arrive with the worker, not the sweep.
+        assert handle is None and raw is False
         cur.execute('''SELECT trades,wallets,buyers,sellers,pool,lag_seconds,window_seconds
                        FROM launchpad_trade_captures''')
         trades_n,wallets,buyers,sellers,cpool,lag,window=cur.fetchone()
@@ -395,12 +397,12 @@ def test_db_a_graduate_outside_the_cohort_is_recorded_without_being_measured(db)
     result=sweep(db,SOLANA,fetch=sol_responder({1:[graduation]},multi=multi,info=info),now=NOW,wait=lambda *_:None)
     assert result['graduations']==1 and result['trade_captures']==0
     with db,db.cursor() as cur:
-        cur.execute("SELECT cohort_sampled,measure_pool,measure_pool_reason,developer_address FROM launchpad_tokens WHERE network='solana'")
-        sampled,measure,reason,dev=cur.fetchone()
-        # Still recorded, still enriched - the creator layer wants every graduate - but no pool list
-        # was fetched and no ladder will run, and the reason says so rather than implying emptiness.
+        cur.execute("SELECT cohort_sampled,measure_pool,measure_pool_reason,enriched_at FROM launchpad_tokens WHERE network='solana'")
+        sampled,measure,reason,enriched=cur.fetchone()
+        # Still recorded, and the reason still says we chose not to look rather than implying the
+        # token had no pools. Enrichment itself is the worker's job now.
         assert sampled is False and measure is None and reason=='outside ladder cohort'
-        assert dev=='7H7SkM44'
+        assert enriched is None
 
 
 def test_db_an_exhausted_budget_still_produces_a_complete_sweep_row(db):
@@ -428,7 +430,7 @@ def test_db_an_exhausted_budget_still_produces_a_complete_sweep_row(db):
 def test_db_a_graduate_the_deadline_skipped_is_retried_not_abandoned(db):
     from dataclasses import replace
     from launchpad_archive import sweep
-    from launchpad_chains import SOLANA
+    from launchpad_chains import SOLANA  # noqa: F401 - kept for symmetry with the worker test
     graduation=sol_pool(dex='pumpswap',address=SOL_DEEP,created='2026-09-19T19:18:07Z')
     multi={'data':[{'attributes':{'address':SOL_TOKEN,'symbol':'Nike',
         'launchpad_details':{'graduation_percentage':100.0,'completed':True,
@@ -436,9 +438,10 @@ def test_db_a_graduate_the_deadline_skipped_is_retried_not_abandoned(db):
     info={'data':{'attributes':{'developer_address':'7H7SkM44'}}}
     pool_list={'data':[{'attributes':{'address':SOL_DEEP,'reserve_in_usd':'31356.0'},
                         'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
-    # First sweep discovers the graduation but has no enrichment budget at all, which is what the
-    # deadline does in practice when discovery has eaten the sweep.
-    sweep(db,replace(SOLANA,max_info=0),fetch=sol_responder({1:[graduation]},multi=multi,info=info,pool_list=pool_list),
+    # Solana enriches in its own worker now, so exercise the in-sweep backlog on a chain that still
+    # enriches in the sweep. First sweep discovers the graduation with no enrichment budget at all.
+    chain=replace(SOLANA,enrich_in_sweep=True,max_info=0)
+    sweep(db,chain,fetch=sol_responder({1:[graduation]},multi=multi,info=info,pool_list=pool_list),
           now=NOW,wait=lambda *_:None)
     with db,db.cursor() as cur:
         cur.execute("SELECT graduated,measure_pool_reason FROM launchpad_tokens WHERE network='solana'")
@@ -446,9 +449,80 @@ def test_db_a_graduate_the_deadline_skipped_is_retried_not_abandoned(db):
     # It is already graduated, so it never returns via the newly-graduated set. Measured live: 27 of
     # 29 graduates were cut this way and would have stayed unenriched for ever. The backlog is what
     # brings them back.
-    sweep(db,SOLANA,fetch=sol_responder({1:[]},multi=multi,info=info,pool_list=pool_list),
+    sweep(db,replace(SOLANA,enrich_in_sweep=True),fetch=sol_responder({1:[]},multi=multi,info=info,pool_list=pool_list),
           now=NOW+timedelta(minutes=2),wait=lambda *_:None)
     with db,db.cursor() as cur:
         cur.execute("SELECT measure_pool,measure_pool_reason,developer_address FROM launchpad_tokens WHERE network='solana'")
         measure,reason,dev=cur.fetchone()
         assert measure==SOL_DEEP and reason=='deepest graduate pool' and dev=='7H7SkM44'
+
+
+# --- Enrichment worker: durable work, its own schedule ------------------------------------------
+
+def test_db_the_solana_sweep_no_longer_enriches_but_still_captures(db):
+    from launchpad_archive import sweep
+    from launchpad_chains import SOLANA
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP,created='2026-09-19T19:18:07Z')
+    multi={'data':[{'attributes':{'address':SOL_TOKEN,'symbol':'Nike',
+        'launchpad_details':{'graduation_percentage':100.0,'completed':True,
+                             'completed_at':'2026-09-19T19:18:02.000Z','migrated_destination_pool_address':None}}}]}
+    pool_list={'data':[{'attributes':{'address':SOL_DEEP,'reserve_in_usd':'31356.0'},
+                        'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
+    trades={'data':[{'attributes':{'tx_from_address':'w'+str(i),'block_timestamp':f'2026-09-19T19:18:{10+i:02d}Z',
+                                   'kind':'buy','to_token_amount':'10','from_token_amount':'1','volume_in_usd':'100',
+                                   'tx_hash':'tx'+str(i),'block_number':i}} for i in range(5)]}
+    result=sweep(db,SOLANA,fetch=sol_responder({1:[graduation]},multi=multi,pool_list=pool_list,trades=trades),
+                 now=NOW,wait=lambda *_:None)
+    # The perishable half still happens in the sweep, at graduation.
+    assert result['trade_captures']==1 and result['graduations']==1
+    with db,db.cursor() as cur:
+        cur.execute("SELECT measure_pool,enriched_at,developer_address FROM launchpad_tokens WHERE network='solana'")
+        measure,enriched,dev=cur.fetchone()
+        # Pool selection is immediate - a token can fall to nothing within the hour, so choosing it
+        # later could name a different market. Everything durable is left to the worker.
+        assert measure==SOL_DEEP and enriched is None and dev is None
+
+
+def test_db_the_worker_drains_what_the_sweep_left(db):
+    from launchpad_archive import backlog_health,enrich,sweep
+    from launchpad_chains import SOLANA
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP,created='2026-09-19T19:18:07Z')
+    multi={'data':[{'attributes':{'address':SOL_TOKEN,'symbol':'Nike',
+        'launchpad_details':{'graduation_percentage':100.0,'completed':True,
+                             'completed_at':'2026-09-19T19:18:02.000Z','migrated_destination_pool_address':None}}}]}
+    pool_list={'data':[{'attributes':{'address':SOL_DEEP,'reserve_in_usd':'31356.0'},
+                        'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
+    sweep(db,SOLANA,fetch=sol_responder({1:[graduation]},multi=multi,pool_list=pool_list),now=NOW,wait=lambda *_:None)
+    health=backlog_health(db,SOLANA,now=NOW)
+    assert health['pending_enrichment']==1 and health['keeping_up'] is False
+    info={'data':{'attributes':{'developer_address':'7H7SkM44','developer_holding_percentage':'19.99',
+                                'twitter_handle':'nikebasketball','holders':{'count':2153,'distribution_percentage':{'top_10':'57.5'}}}}}
+    # 30 minutes after the fixture's graduation (19:18), so the +5/+10/+30 rungs are due.
+    out=enrich(db,SOLANA,fetch=sol_responder({},info=info,pool_list=pool_list,pool_payload=sol_pool(dex='pumpswap',address=SOL_DEEP)),
+               now=datetime(2026,9,19,19,48,tzinfo=timezone.utc),wait=lambda *_:None)
+    assert out['processed_this_run']==1 and out['pending_enrichment']==0 and out['errors']==[]
+    # +5,+10 and +30 rungs are all due 30 minutes after graduation; one is filled per run.
+    assert out['rungs_filled']==1
+    with db,db.cursor() as cur:
+        cur.execute("SELECT developer_address,holders,twitter_handle,measure_pool_reason,enriched_at IS NOT NULL FROM launchpad_tokens WHERE network='solana'")
+        dev,holders,handle,reason,enriched=cur.fetchone()
+        assert dev=='7H7SkM44' and holders==2153 and handle=='nikebasketball' and enriched is True
+        # The sweep already chose the pool at graduation, so the worker must not relabel it as late.
+        assert reason=='deepest graduate pool'
+
+
+def test_db_a_pool_the_worker_had_to_choose_late_says_so(db):
+    from launchpad_archive import enrich
+    from launchpad_chains import SOLANA
+    with db,db.cursor() as cur:
+        cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
+                         graduated,graduated_at,cohort_sampled) VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,true)""",
+                    (SOL_TOKEN,NOW,NOW,NOW))
+    pool_list={'data':[{'attributes':{'address':SOL_DEEP,'reserve_in_usd':'12.0'},
+                        'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
+    enrich(db,SOLANA,fetch=sol_responder({},pool_list=pool_list,pool_payload=sol_pool(dex='pumpswap',address=SOL_DEEP)),
+           now=NOW+timedelta(hours=3),wait=lambda *_:None)
+    with db,db.cursor() as cur:
+        cur.execute("SELECT measure_pool_reason FROM launchpad_tokens WHERE network='solana'")
+        # Chosen hours after the fact, which may not be the market that mattered. Recorded, not hidden.
+        assert 'selected late, not at graduation' in cur.fetchone()[0]
