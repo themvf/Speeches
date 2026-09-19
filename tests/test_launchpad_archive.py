@@ -271,3 +271,107 @@ def test_db_report_calls_a_broken_archive_incomplete(db):
     # than reporting healthy-looking totals.
     assert out['continuous'] is False and 'expected sweeps' in out['verdict']
     assert out['tokens']['discovered']==1 and out['totals']['observations']==1
+
+
+# --- Solana adapter: the chain-specific path end to end ---------------------------------------
+
+SOL_TOKEN='csi8dlhfexl6qcsq8xw5p63vnrmzfkr3kobshn7fy5yo'
+SOL_DEEP='alpzyxzbtvbmt1cyhxwxugvflcymvuaxajv9nlydpieq'
+SOL_EMPTY='framdv5myadcwonkashaqnqtov8kkbmmxh6s4qzjtteb'
+
+
+def sol_pool(dex='pump-fun',address='0xcurve',token=SOL_TOKEN,created='2026-09-19T19:18:02Z'):
+    p=pool(dex=dex,address=address,token=token,created=created)
+    p['attributes']['name']='Nike / SOL'
+    p['relationships']['base_token']['data']['id']='solana_'+token
+    return p
+
+
+def sol_responder(pages,multi=None,info=None,pool_list=None,trades=None,pool_payload=None):
+    def fetch(url,**_):
+        if '/new_pools' in url:
+            page=int(url.rsplit('page=',1)[1]);return Response({'data':pages.get(page,[])})
+        if '/tokens/multi/' in url:return Response(multi or {'data':[]})
+        if url.endswith('/pools'):return Response(pool_list or {'data':[]})
+        if '/trades' in url:return Response(trades or {'data':[]})
+        if url.endswith('/info'):return Response(info or {'data':{'attributes':{}}})
+        if '/pools/' in url:return Response({'data':pool_payload or sol_pool()})
+        raise AssertionError('unexpected url '+url)
+    return fetch
+
+
+def test_db_solana_graduate_measures_the_deep_pool_and_captures_opening_trades(db):
+    from launchpad_archive import sweep
+    from launchpad_chains import SOLANA
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP,created='2026-09-19T19:18:07Z')
+    multi={'data':[{'attributes':{'address':SOL_TOKEN,'symbol':'Nike',
+        'launchpad_details':{'graduation_percentage':100.0,'completed':True,
+                             'completed_at':'2026-09-19T19:18:02.000Z',
+                             'migrated_destination_pool_address':SOL_EMPTY}}}]}
+    info={'data':{'attributes':{'developer_address':'7H7SkM44','developer_holding_percentage':'19.99',
+                                'mint_authority':'no','freeze_authority':'no','is_honeypot':'unknown',
+                                'twitter_handle':'nikebasketball','description':'a coin','gt_score':60.0,
+                                'holders':{'count':None,'distribution_percentage':{}}}}}
+    pool_list={'data':[
+        {'attributes':{'address':SOL_DEEP,'reserve_in_usd':'31356.0'},'relationships':{'dex':{'data':{'id':'pumpswap'}}}},
+        {'attributes':{'address':SOL_EMPTY,'reserve_in_usd':'0.0'},'relationships':{'dex':{'data':{'id':'meteora-damm-v2'}}}}]}
+    trades={'data':[{'attributes':{'tx_from_address':'w'+str(i),'block_timestamp':f'2026-09-19T19:18:{10+i:02d}Z',
+                                   'kind':'buy' if i%4 else 'sell','to_token_amount':'10','from_token_amount':'1',
+                                   'volume_in_usd':'100','tx_hash':'tx'+str(i),'block_number':i}} for i in range(12)]}
+    result=sweep(db,SOLANA,fetch=sol_responder({1:[graduation]},multi=multi,info=info,pool_list=pool_list,trades=trades),
+                 now=NOW,wait=lambda *_:None)
+    assert result['network']=='solana' and result['graduations']==1 and result['trade_captures']==1
+    with db,db.cursor() as cur:
+        cur.execute('''SELECT measure_pool,measure_pool_reason,graduation_pool,developer_address,
+                              developer_holding,launchpad,twitter_handle,info_raw IS NOT NULL
+                       FROM launchpad_tokens WHERE network='solana' ''')
+        measure,reason,destination,dev,holding,launchpad,handle,raw=cur.fetchone()
+        # The ladder must read the deep pool, never the near-empty one the launchpad field names.
+        assert measure==SOL_DEEP and destination==SOL_EMPTY
+        assert 'deepest' in reason and 'disagreed' in reason
+        assert dev=='7H7SkM44' and round(holding,2)==19.99 and launchpad=='pumpswap'
+        assert handle=='nikebasketball' and raw is True
+        cur.execute('''SELECT trades,wallets,buyers,sellers,pool,lag_seconds,window_seconds
+                       FROM launchpad_trade_captures''')
+        trades_n,wallets,buyers,sellers,cpool,lag,window=cur.fetchone()
+        assert trades_n==12 and wallets==12 and buyers==9 and sellers==3 and cpool==SOL_DEEP
+        # Boundaries are recorded, so how much of the opening window we caught is measurable rather
+        # than assumed: first trade 8s after graduation, spanning 11s.
+        assert lag==8 and window==11
+        cur.execute('SELECT count(*),count(DISTINCT wallet),min(sequence),max(sequence) FROM launchpad_trades')
+        assert cur.fetchone()==(12,12,0,11)
+
+
+def test_db_solana_capture_is_skipped_when_no_pool_is_liquid(db):
+    from launchpad_archive import sweep
+    from launchpad_chains import SOLANA
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP,created='2026-09-19T19:18:07Z')
+    multi={'data':[{'attributes':{'address':SOL_TOKEN,'symbol':'Nike',
+        'launchpad_details':{'graduation_percentage':100.0,'completed':True,
+                             'completed_at':'2026-09-19T19:18:02.000Z','migrated_destination_pool_address':None}}}]}
+    pool_list={'data':[{'attributes':{'address':SOL_EMPTY,'reserve_in_usd':'0.0'},
+                        'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
+    result=sweep(db,SOLANA,fetch=sol_responder({1:[graduation]},multi=multi,pool_list=pool_list),
+                 now=NOW,wait=lambda *_:None)
+    assert result['trade_captures']==0
+    with db,db.cursor() as cur:
+        cur.execute("SELECT measure_pool,measure_pool_reason FROM launchpad_tokens WHERE network='solana'")
+        measure,reason=cur.fetchone()
+        # Recorded as an outcome, not dropped - dropping these biases every survival rate upward.
+        assert measure is None and reason=='no liquid pool'
+
+
+def test_db_the_two_chains_never_touch_each_other(db):
+    from launchpad_archive import sweep
+    from launchpad_chains import SOLANA
+    sweep(db,fetch=responder({1:[pool()]}),now=NOW,wait=lambda *_:None)
+    sweep(db,SOLANA,fetch=sol_responder({1:[sol_pool()]},
+          multi={'data':[{'attributes':{'address':SOL_TOKEN,'symbol':'Nike',
+                 'launchpad_details':{'graduation_percentage':4.0,'completed':False,'completed_at':None,
+                                      'migrated_destination_pool_address':None}}}]}),
+          now=NOW,wait=lambda *_:None)
+    with db,db.cursor() as cur:
+        cur.execute('SELECT network,count(*) FROM launchpad_tokens GROUP BY network ORDER BY network')
+        assert cur.fetchall()==[('robinhood',1),('solana',1)]
+        cur.execute("SELECT dex FROM launchpad_tokens WHERE network='robinhood'")
+        assert cur.fetchone()[0]=='pons-v2'

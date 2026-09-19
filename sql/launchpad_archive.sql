@@ -80,3 +80,68 @@ CREATE TABLE IF NOT EXISTS launchpad_sweeps (
  note text
 );
 CREATE INDEX IF NOT EXISTS launchpad_sweeps_started ON launchpad_sweeps(started_at DESC);
+
+-- Multi-chain + OSINT capture (2026-09-19). Additive: the Robinhood archive is untouched.
+-- See docs/solana-pumpfun-archive-spec.md.
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS launchpad text;              -- curve pool's DEX id
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS measure_pool text;           -- pool the ladder reads
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS measure_pool_reason text;    -- and why it was chosen
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS cohort_sampled boolean NOT NULL DEFAULT true;
+-- Creator layer, free from the /info call the archive already makes for every graduate.
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS developer_address text;
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS developer_holding double precision;
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS is_honeypot text;
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS mint_authority text;
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS freeze_authority text;
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS telegram_handle text;
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS website text;
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS categories text[];
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS gt_score double precision;
+-- Raw enrichment payload, so a later question can be asked of data already collected.
+ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS info_raw jsonb;
+CREATE INDEX IF NOT EXISTS launchpad_tokens_developer ON launchpad_tokens(developer_address) WHERE developer_address IS NOT NULL;
+
+-- Opening trade capture. Deliberately not called "the first N trades": the endpoint returns a
+-- recent window whose relationship to the graduation moment is not guaranteed, so the capture
+-- records its own boundaries and how much of the opening window it caught is a measurement.
+-- This data is perishable - on a busy graduate 300 trades spanned 33 seconds - so it is captured
+-- at graduation or not at all.
+CREATE TABLE IF NOT EXISTS launchpad_trade_captures (
+ id bigserial PRIMARY KEY,
+ network text NOT NULL,
+ token_address text NOT NULL,
+ pool text,
+ graduated_at timestamptz,
+ capture_started_at timestamptz NOT NULL,
+ capture_finished_at timestamptz,
+ pages_fetched integer NOT NULL DEFAULT 0,
+ trades integer NOT NULL DEFAULT 0,
+ wallets integer NOT NULL DEFAULT 0,
+ buyers integer NOT NULL DEFAULT 0,
+ sellers integer NOT NULL DEFAULT 0,
+ top_wallet_share double precision,
+ repeat_wallets integer,
+ earliest_trade_at timestamptz,                    -- oldest trade the window actually returned
+ latest_trade_at timestamptz,
+ window_seconds integer,                           -- latest - earliest: the span we hold
+ lag_seconds integer,                              -- earliest_trade_at - graduated_at: what we missed
+ note text
+);
+CREATE INDEX IF NOT EXISTS launchpad_trade_captures_token ON launchpad_trade_captures(network,token_address);
+
+-- Raw wallet-level rows. Kept rather than summarised away: which features matter is exactly what
+-- we do not know yet.
+CREATE TABLE IF NOT EXISTS launchpad_trades (
+ capture_id bigint NOT NULL REFERENCES launchpad_trade_captures(id) ON DELETE CASCADE,
+ sequence integer NOT NULL,                        -- order within the capture, oldest first
+ wallet text,
+ traded_at timestamptz NOT NULL,
+ kind text,
+ token_amount double precision,
+ usd double precision,
+ tx_hash text,
+ block_number bigint,
+ PRIMARY KEY (capture_id,sequence)
+);
+CREATE INDEX IF NOT EXISTS launchpad_trades_wallet ON launchpad_trades(wallet) WHERE wallet IS NOT NULL;
