@@ -129,8 +129,11 @@ def reconstruction(conn,token,network='solana'):
         rungs=first.get('outcomes') or {}
         parts=[f"{r}m {rungs[r]['status']}"+(f" {rungs[r]['return_pct']:+.1f}%" if rungs[r].get('return_pct') is not None else '')
                for r in ('30','60','180','1440') if r in rungs]
-        line=(f"@{first['channel']} -> {token} -> first observed mention {first['mentioned_at']} -> "
-              f"market cap at mention {first.get('market_cap')} -> "+', '.join(parts))
+        # Price at the mention is the anchor because it is answerable for every mentioned graduate.
+        # Market cap rides along only when the archive directly observed it, never inferred.
+        line=(f"@{first['channel']} -> {token} -> first original mention {first['mentioned_at']} -> "
+              f"price at mention {first.get('base_price')} -> "+', '.join(parts))
+        if first.get('market_cap') is not None:line+=f" (market cap at mention {first['market_cap']}, observed)"
     return check('5. one known case reconstructs from the original call to its outcomes',
                  case['passed'],dict(acceptance_line=line,items=case['acceptance']))
 

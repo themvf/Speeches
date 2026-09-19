@@ -333,8 +333,19 @@ def case_study(conn,token_address=FLEX,network='solana'):
     item('first observed Telegram mention',first,
          f"{first['channel']} at {first['mentioned_at']}" if first else
          'no monitored channel posted this token in the collected window')
-    item('market cap / price at that mention',first and (first.get('market_cap') or first.get('base_price')),
-         f"market cap {first.get('market_cap')}, price at mention {first.get('base_price')}" if first else None)
+    # Price at the mention is the universal anchor: measure_pool is set for every graduate, so this
+    # is answerable for any mentioned token. Market cap is NOT - it comes from launchpad_observations,
+    # which is the 25% ladder cohort - so it is reported when directly observed and never gates
+    # acceptance. Deriving it instead (price ratio x current FDV) would put a modelling assumption
+    # about constant supply inside a verification, which is the one place it does not belong.
+    item('price at the first original mention',first and first.get('base_price') is not None,
+         dict(price_at_mention=(first or {}).get('base_price'),
+              price_age_seconds=(first or {}).get('base_price_age_seconds'),
+              market_cap_at_mention=(first or {}).get('market_cap'),
+              market_cap_note=('directly observed' if (first or {}).get('market_cap') is not None
+                               else 'not observed - this token is outside the archive 25% ladder '
+                                    'cohort, which is expected and is not a gap in collection'))
+         if first else 'no original mention to anchor on')
     item('graduation timing',token.get('graduated_at'),
          (f"graduated {token.get('graduated_at')}, first mention "
           f"{'before' if (first or {}).get('seconds_to_graduation',0) and first['seconds_to_graduation']>0 else 'after'} it"
@@ -362,6 +373,7 @@ def case_study(conn,token_address=FLEX,network='solana'):
          {r:dict(status=v['status'],return_pct=v.get('return_pct'),hundred_dollars=v.get('hundred_dollars'))
           for r,v in rungs.items()} or 'no outcome rows: the mention has no price history yet')
     return dict(token_address=token_address,network=network,token=token,
+                first_original_mention=(originals[0]['mentioned_at'] if originals else None),
                 hops=graph['hops'],original_posts=graph['original_posts'],forwards=graph['forwards'],
                 reposts=graph['reposts'],
                 measured_rungs=len(measured),acceptance=items,

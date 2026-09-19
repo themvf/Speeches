@@ -76,3 +76,35 @@ def test_every_rung_carries_all_three_statuses():
     assert block['10']==dict(observed=7,pending=2,unobserved=0,median_return_pct=12.5)
     assert block['1440']==dict(observed=0,pending=0,unobserved=5,median_return_pct=None)
     assert analytics.rung_block(rows,2)=={}
+
+
+class Row(dict):
+    """A propagation hop, shaped as analytics.propagation returns one."""
+
+
+def test_acceptance_needs_a_price_at_the_mention_not_a_market_cap(monkeypatch):
+    """The user's acceptance decision, pinned.
+
+    Price at the mention is answerable for every mentioned graduate (measure_pool is set outside the
+    25% ladder cohort). Market cap is not. So price gates acceptance and market cap rides along when
+    directly observed - never derived, because a modelling assumption about constant supply does not
+    belong inside a verification step.
+    """
+    hop=dict(mention_id=1,channel_id=1,channel='alpha',mentioned_at='2026-09-19T12:00:00Z',
+             is_forward=False,origin='original',relay_of_channel_id=None,relay_reason=None,
+             forward_source=None,resolution='contract',seconds_to_graduation=360,sequence=1,
+             seconds_after_first=0,market_cap=None,base_price=0.0012,base_price_age_seconds=20,
+             peak_multiple=3.0,claimed_multiple=None,
+             outcomes={r:dict(status='observed',return_pct=5.0,hundred_dollars=105.0)
+                       for r in ('30','60','180','1440')})
+    monkeypatch.setattr(analytics,'propagation',lambda *a,**k:dict(
+        network='solana',token_address='X',token=dict(graduated_at='2026-09-19T12:06:00Z'),
+        hops=[hop,dict(hop,mention_id=2,channel_id=2,channel='beta',sequence=2,
+                       mentioned_at='2026-09-19T12:04:00Z')],
+        monitored_channels=2,original_posts=2,forwards=0,reposts=0))
+    items={i['item']:i for i in analytics.case_study(None,'X')['acceptance']}
+    price=items['price at the first original mention']
+    assert price['satisfied'] is True
+    assert price['detail']['price_at_mention']==0.0012
+    # Absent market cap is explained rather than left looking like a collection failure.
+    assert 'not observed' in price['detail']['market_cap_note'] and 'cohort' in price['detail']['market_cap_note']

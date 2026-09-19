@@ -56,3 +56,22 @@ def test_claims_are_captured_but_are_claims():
     # A dollar figure that is not market-cap language is not a market cap.
     assert extract.claims('a $100 position')['claimed_market_cap'] is None
     assert extract.claims('no numbers here')=={'claimed_multiple':None,'claimed_market_cap':None}
+
+
+def test_an_invisible_character_inside_an_address_defeats_extraction():
+    """Not a bug to fix blindly - a mint with a zero-width joiner in it is not that mint, and
+    'repairing' it would invent an address the message did not contain. It is a thing to SEE, which
+    is why --inspect flags invisible characters beside the raw repr rather than stripping them."""
+    broken=FLEX[:20]+'​'+FLEX[20:]
+    assert extract.solana_addresses(broken)==[]
+    assert extract.solana_addresses(FLEX)==[FLEX]
+
+
+def test_a_contract_split_across_lines_is_not_reassembled():
+    # Same reasoning: two halves on two lines are two strings, and neither decodes to 32 bytes.
+    assert extract.solana_addresses(FLEX[:20]+'\n'+FLEX[20:])==[]
+
+
+def test_decorative_punctuation_around_a_cashtag_still_resolves():
+    assert extract.cashtags('🚀🚀 $FLEX 🚀🚀')==['FLEX']
+    assert extract.cashtags('**$FLEX**')==['FLEX']

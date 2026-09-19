@@ -238,13 +238,41 @@ PR-ready evidence; it exits non-zero if any fails.
    between extraction and storage.
 4. **Contract beats ticker** — a real message carrying both derives exactly one mention, of kind
    `contract`.
-5. **One known case reconstructs** — FLEX or PHILANCAT, from the original call through
-   mention-anchored outcomes, as a single line:
-   `@channel → contract → first observed mention → market cap at mention → +30m/+1h/+3h/+24h`.
+5. **One known case reconstructs** — from the first original call through mention-anchored
+   outcomes, as a single line:
+   `@channel → contract → first original mention → price at mention → +30m/+1h/+3h/+24h`.
+   **Price at the mention is the universal anchor**, because `measure_pool` is set for every
+   graduate (the enrichment worker's queue is not cohort-filtered), so it is answerable for any
+   mentioned token. **Market cap at mention is optional metadata, reported only when directly
+   observed** — it comes from `launchpad_observations`, which is the 25% ladder cohort, so it is
+   absent for roughly three tokens in four and that absence is expected, not a gap. It is never
+   derived: a price-ratio × current-FDV estimate would put a modelling assumption about constant
+   supply inside a verification step, which is the one place it does not belong.
 6. **Health separates a lost channel from a quiet one** — the gate deliberately polls a peer that
    does not exist: it must appear in `channels_losing_access` while a genuinely quiet channel stays
    `access_state='ok'` with zero new messages. This is the distinction that decides whether a silent
    dashboard means everything is fine or that collection died.
+### Commissioning is two stages, not one sitting
+
+The +24h rung reads `pending` until a day after the call, correctly, so check 5 cannot complete on
+day 0 unless backfill reaches a call that has already matured.
+
+**Day 0** — credentials and session string (§2), resolve 3–5 channels, one-page backfill, then the
+manual inspection below, then checks 1–4, 6 and 7.
+
+**Day 0, before any of it: read twenty real messages.** `python telegram_collector.py --inspect
+<usernames>` prints each message beside what extraction made of it — addresses, cashtags, URLs,
+claims — with the raw `repr`, any invisible characters, and a flag for messages that talk about a
+contract in words but yielded no address. It writes nothing, to Telegram or the database. This is
+where deterministic extraction fails in ways fixtures cannot anticipate: a zero-width joiner inside
+an address, a contract split across two lines by the sending client, decorative punctuation glued to
+a cashtag, Cyrillic homoglyphs. Note that a mint containing an invisible character **is not that
+mint**, and the extractor correctly returns nothing rather than repairing it into an address the
+message did not contain — the point of the inspection is to see how often that happens, not to
+silence it.
+
+**Day 1+** — check 5, once a collected call has matured through +24h.
+
 **Acceptance threshold**: all six automated checks pass, and the manual inspection (7) shows the
 expected sequence with no false "first" credit. Then the PR opens with this output verbatim.
 

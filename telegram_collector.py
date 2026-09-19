@@ -358,6 +358,47 @@ async def open_client():
     return client,await kurigram_fetch_factory(client),client.stop
 
 
+async def inspect(client,fetch,peers,limit=20):
+    """Print real messages beside what extraction made of them. Writes nothing, anywhere.
+
+    This is the step before the cron is turned on. Real call-channel formatting is where
+    deterministic extraction fails in ways no fixture anticipates: zero-width joiners between
+    characters of an address, a contract split across two lines by the sending client, decorative
+    punctuation glued to a cashtag, Cyrillic homoglyphs. A fixture asserts what we already thought
+    of; twenty real messages show what we did not.
+
+    So the output deliberately puts the raw repr next to the extraction, and flags the two shapes
+    that most often mean a missed contract: a message that mentions a contract in words but yielded
+    no address, and a message carrying invisible characters.
+    """
+    import telegram_extract as extract
+    out=[]
+    for peer in peers:
+        rows=await fetch(peer,min_id=0,offset_id=0,limit=limit)
+        for row in rows:
+            text=row.get('text') or ''
+            invisible=sorted({hex(ord(c)) for c in text if ord(c) in INVISIBLE or 0x200b<=ord(c)<=0x200f})
+            addresses=extract.solana_addresses(text)
+            out.append(dict(peer=str(peer),message_id=row['message_id'],posted_at=str(row['posted_at']),
+                            is_forward=row['is_forward'],
+                            text=text[:400],
+                            text_repr=repr(text[:200]),
+                            addresses=addresses,cashtags=extract.cashtags(text),
+                            urls=row['urls'],claims=extract.claims(text),
+                            invisible_characters=invisible,
+                            # Not a failure by itself - plenty of messages legitimately talk about a
+                            # token without pasting its mint - but it is where to look first.
+                            mentions_a_contract_but_none_extracted=bool(
+                                not addresses and any(word in text.lower() for word in CONTRACT_WORDS))))
+    return out
+
+
+# Zero-width and directional marks: invisible in every client, and fatal to a base58 match if one
+# lands inside an address.
+INVISIBLE={0x00ad,0x061c,0x2060,0xfeff}
+CONTRACT_WORDS=('contract','ca:','ca ','mint','token address','address:')
+
+
 async def execute(conn,mode,limit=None,resolve=None):
     client,fetch,close=await open_client()
     try:
@@ -372,8 +413,18 @@ def main():
     parser.add_argument('--backfill',action='store_true',help='walk older history instead of polling')
     parser.add_argument('--sync-config',action='store_true',help='seed telegram_channels from JSON')
     parser.add_argument('--resolve',action='store_true',help='resolve configured usernames to peer ids (Telegram)')
+    parser.add_argument('--inspect',nargs='*',metavar='USERNAME',
+                        help='print real messages beside their extraction and write nothing (do this '
+                             'before enabling the cron)')
     parser.add_argument('--limit',type=int,default=None)
     args=parser.parse_args()
+    if args.inspect is not None:
+        usernames=args.inspect or [e['username'] for e in json.loads(CONFIG.read_text()) if e.get('username')]
+        async def run_inspect():
+            client,fetch,close=await open_client()
+            try:return await inspect(client,fetch,usernames,limit=args.limit or 20)
+            finally:await close()
+        print(json.dumps(asyncio.run(run_inspect()),indent=1,ensure_ascii=False,default=str));return
     if not args.execute and not args.sync_config and not args.resolve:
         entries=json.loads(CONFIG.read_text()) if CONFIG.exists() else []
         print(json.dumps(dict(mode='plan_only',backend=backend_name(),
