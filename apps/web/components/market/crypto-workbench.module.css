@@ -47,7 +47,10 @@
 .clip { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 /* The feed clips each post to one line and there is no hover on a touch screen, so a row opens to show the post in full. */
 .full { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; }
-.postRow { grid-template-columns:86px 128px minmax(0,1fr) 64px; }
+.postRow { grid-template-columns:86px 128px minmax(0,1fr) 64px 34px; }
+/* Always-present escape hatch to the post on X, so reaching the source is one tap rather than expand-then-tap. */
+.openX { justify-self:end; align-self:center; display:inline-flex; align-items:center; justify-content:center; min-width:30px; min-height:24px; padding:2px 4px; font-size:11px; font-weight:600; color:var(--ink-faint); white-space:nowrap; text-decoration:none; }
+.openX:hover { color:#bae6fd; text-decoration:underline; }
 .postRow:focus-visible { outline:1px solid var(--accent); outline-offset:-1px; }
 .postOpen { background:rgba(79,213,255,.06); align-items:start; }
 .postActions { grid-column:3 / -1; display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:4px; cursor:default; }
@@ -92,10 +95,11 @@
 }
 /* Phone: the post feed stacks — time/handle/move on one line, the post on its own, so an opened post reads at full width. */
 @media (max-width: 760px) {
- .postRow { grid-template-columns:auto minmax(0,1fr) auto; column-gap:8px; row-gap:2px; padding:8px 12px; }
+ .postRow { grid-template-columns:auto minmax(0,1fr) auto auto; column-gap:8px; row-gap:2px; padding:8px 12px; }
  .postWhen { grid-column:1; }
  .postWho { grid-column:2; }
  .postMove { grid-column:3; }
+ .openX { grid-column:4; min-width:44px; min-height:34px; margin:-6px -4px -6px 0; }
  .postText { grid-column:1 / -1; }
  .postActions { grid-column:1 / -1; gap:16px; margin-top:6px; }
  .postOpen .postText { font-size:13px; }
