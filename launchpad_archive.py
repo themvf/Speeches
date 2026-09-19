@@ -728,6 +728,15 @@ def backlog_health(conn,chain=SOLANA,now=None):
                        WHERE network=%s AND oldest_pending_age_seconds IS NOT NULL
                        ORDER BY id DESC LIMIT 2""",(chain.network,))
         history=[r[0] for r in cur.fetchall()]
+        # Commissioning metric. Pool selection belongs at graduation, because a token can fall from a
+        # real market to a few dollars within the hour and a pool chosen later may name a different
+        # market. A low share here after fresh data has accumulated means the cadence-critical sweep
+        # is not reaching its cohort members - the backlog is silently doing work it should not.
+        cur.execute("""SELECT count(*) FILTER (WHERE measure_pool_reason NOT LIKE '%%selected late%%'),count(*)
+                       FROM launchpad_tokens
+                       WHERE network=%s AND graduated AND cohort_sampled AND measure_pool_reason IS NOT NULL
+                         AND graduated_at>%s""",(chain.network,now-timedelta(hours=24)))
+        at_graduation,measured=cur.fetchone()
     age=int((now-oldest).total_seconds()) if oldest else None
     # Rising means older than every one of the last runs we have to compare against - a single
     # noisy run should not condemn the worker, nor should it excuse a real trend.
@@ -738,6 +747,8 @@ def backlog_health(conn,chain=SOLANA,now=None):
     elif rising:state='degrading'
     else:state='healthy'
     return dict(pending_enrichment=pending,oldest_pending_age_seconds=age,
+                pools_selected_at_graduation=at_graduation,pools_measured_24h=measured,
+                at_graduation_share=round(at_graduation/measured,3) if measured else None,
                 age_target_seconds=chain.enrich_age_target_seconds,
                 oldest_age_rising=rising,previous_ages=history,
                 arrival_rate_per_hour=arrived,service_rate_per_hour=served,

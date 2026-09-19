@@ -103,3 +103,46 @@ so service is about 1.8x arrival):
 - **Health is service rate against arrival rate**, not "the worker ran": `--backlog` reports
   `pending_enrichment`, `oldest_pending_age_seconds`, `arrival_rate_per_hour`,
   `service_rate_per_hour` and `keeping_up`. False for one run is fine; false for a day is not.
+
+# Enrichment worker commissioning (2026-09-19)
+
+Two live runs against a real 48-item backlog:
+
+```
+pending:          48  →   5  →  0
+oldest age:    2074s → 1288s → drained
+processed:      43/48 →  5/5
+rungs filled:       0 →   15
+errors:             0 →    0
+service/arrival: 48/53 → 53/53
+run time:        370s  → 133s
+```
+
+Throughput is ~7/minute (43 in 370s, deadline-bound rather than batch-bound), so a 10-minute run
+sustains ~70 against ~34 arrivals — about **twice the arrival rate**. Durable fields landed: 53
+enriched, 45 with developer address, holding and mint authority, 36 X handles, 27 websites, 15
+descriptions, 4 Telegram; holders present for 27 of 53, confirming the ~50% availability flagged
+earlier. The second run processed only the 5 genuinely pending rows, not the 43 already done.
+
+## Two things to expect, so neither reads as a fault
+
+**The ladder lags enrichment by one run.** A rung needs a measurement pool, and rows have none until
+enrichment sets one — hence 0 rungs in the first run and 15 in the second. Empty early rungs are
+normal on a cold backlog.
+
+**Measurement-pool selection timing is a commissioning metric.** 44 of 53 pools in this backlog were
+`selected late, not at graduation`, because it predates the split. Once fresh data accumulates the
+ratio should invert, and `backlog_health()` reports it as `at_graduation_share`. **If that share
+stays low, the cadence-critical sweep is not reaching its cohort members and the backlog is quietly
+covering for it** — a pool chosen hours later may name a different market than the one that mattered,
+so a low share silently degrades every post-graduation measurement. It read 0.25 at commissioning,
+as expected for a pre-split backlog.
+
+## What this archive is, and is not
+
+It is a **graduation and post-graduation archive**. It is **not** a reliable archive of launch times:
+`first_pool_created` on Solana is indexing/migration-adjacent, with a median gap to graduation of 0s
+for Pump.fun and 52s for Meteora DBC. Any "time to graduation" or "minutes since launch" statistic
+computed from these columns will be confidently wrong, which is why the caveat is a
+`COMMENT ON COLUMN` rather than prose here alone. True launch timing needs Solana RPC or Bitquery
+against the launchpad program.

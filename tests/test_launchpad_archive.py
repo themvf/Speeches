@@ -609,3 +609,20 @@ def test_db_an_empty_backlog_is_idle_not_healthy_by_accident(db):
     from launchpad_archive import backlog_health
     from launchpad_chains import SOLANA
     assert backlog_health(db,SOLANA,now=NOW)['state']=='idle'
+
+
+def test_db_pool_selection_timing_is_a_commissioning_metric(db):
+    from launchpad_archive import backlog_health
+    from launchpad_chains import SOLANA
+    with db,db.cursor() as cur:
+        for token,reason in (('a','deepest graduate pool'),('b','deepest graduate pool'),
+                             ('c','deepest graduate pool (selected late, not at graduation)')):
+            cur.execute("""INSERT INTO launchpad_tokens (network,token_address,dex,first_seen_at,last_seen_at,
+                             graduated,graduated_at,cohort_sampled,measure_pool,measure_pool_reason,enriched_at)
+                           VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,true,'pool',%s,%s)""",
+                        (token,NOW,NOW,NOW-timedelta(minutes=5),reason,NOW))
+    h=backlog_health(db,SOLANA,now=NOW)
+    # Two of three chosen at graduation. A share that stays low once fresh data accumulates means the
+    # cadence-critical sweep is not reaching cohort members, and the backlog is covering for it.
+    assert h['pools_measured_24h']==3 and h['pools_selected_at_graduation']==2
+    assert h['at_graduation_share']==pytest.approx(0.667,abs=0.001)
