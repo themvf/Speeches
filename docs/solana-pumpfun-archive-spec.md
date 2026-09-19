@@ -278,3 +278,130 @@ The decision should be made from data this archive produces, not from intuition:
 
 Only once 3 and 5 have answers does a faster collector have a case. Until then, more history beats
 more resolution.
+
+---
+
+# OSINT layers — what is reachable, measured 2026-09-19
+
+Framing this as early warning rather than selection changes what the archive must capture. Five
+layers were proposed: creator, early buyers, social, narrative, momentum. Their feasibility differs
+enormously, and two findings below decide the collection design.
+
+## Layer 1 (creator) is free, and already one call away
+
+`/tokens/{address}/info` — the call the archive already makes for every graduate — carries far more
+than holders and socials:
+
+`developer_address`, `developer_holding_percentage`, `is_honeypot`, `mint_authority`,
+`freeze_authority`, `description`, `categories`, `telegram_handle`, `websites`, `discord_url`,
+`gt_score`, `gt_score_details`.
+
+Populated on all three Solana tokens sampled, with `developer_holding_percentage` varying
+meaningfully (0.0, 19.99, 26.01). So the creator layer needs **no Solana RPC, no Bitquery and no new
+credential**, and once `developer_address` is stored per token, creator history — prior launches,
+graduation rate, survivor rate — is a **self-join on our own archive**, costing nothing per token
+and getting better the longer we collect.
+
+Caveat: `developer_address` is the address that deployed, which is exactly what a sophisticated
+operator rotates. Treat a creator's record as evidence about *that address*, never about a person,
+and expect the honest finding to be that most addresses are single-use.
+
+## Layer 2 (early buyers) is free at wallet level — but only if captured live
+
+`/networks/solana/pools/{pool}/trades` returns 300 trades, each with `tx_from_address`. A live call
+returned 300 trades from **281 distinct wallets** — so buyer-level cohort analysis needs no paid
+service either.
+
+**The constraint that decides everything: those 300 trades covered 33 seconds.** On a token taking
+1,964 trades in five minutes, the endpoint's window is under a minute, and `?page=2` returned an
+overlapping, partly *newer* window rather than an older one — so paging backwards is not reliable.
+
+**Consequence: early-buyer data cannot be reconstructed retrospectively for the tokens that matter.**
+A hot graduate's first minutes are gone from the endpoint within about a minute. Any experiment that
+proposes to "take every graduated token for the last 30 days and reconstruct the first 30 minutes"
+is impossible for precisely the successful tokens it most needs — the data no longer exists to be
+fetched. This layer must be collected **forward**, within seconds of graduation, or not at all.
+
+That is also the first genuine argument for a fast lane, and it is narrow: not a minute-resolution
+radar over the whole firehose, but a burst of trade captures on a token **at the moment it
+graduates**. Cost is bounded by graduations (~0.9/minute), not by launches.
+
+## Layer 3 (social) splits into a free half and an expensive half
+
+**Free, already collected:** the declared handles, Telegram, website and description from `/info`.
+Note that declared handles are frequently not handles — two of three sampled tokens had a status URL
+in `twitter_handle` — so the existing `normalize_handle` matters here too, and *whether a creator
+declared a clean, real handle* is itself a candidate feature.
+
+**Expensive: propagation and sequence.** Reconstructing who mentioned a token first, and in what
+order, needs X search per token. At ~1,250 graduates/day, 30 days is ~37,500 tokens; at roughly 100
+posts each and the pay-per-use rates recorded in CLAUDE.md (~$0.005/post read), that is **~$18,750**
+— not a budget question, a non-starter. A random sample of ~400 graduates costs ~$200 at the same
+rates and answers the same question with confidence intervals. Account-age and follower lookups for
+declared handles are ~$0.01 each, so ~$4 for that sample: the cheapest genuinely new social signal
+available.
+
+**The feature that actually matters is not available.** "Has a Telegram" is weak — it is confounded
+by creator effort, and manipulators fill socials in too. "Has a Telegram that existed before the
+token" is the real signal, and neither GeckoTerminal nor a cheap X call provides community age.
+Telegram history is rated medium/low feasibility in this repo's own source guidance, and nothing
+here changes that.
+
+## Layer 4 (narrative) is the only one needing an LLM, and both provider accounts are unfunded
+
+Classifying what a token references, and whether the narrative predates it, is an LLM task over the
+`description`, name and social text we already collect. It is cheap per token but blocked today —
+see the credit note at the top of CLAUDE.md. It is also the layer most exposed to circularity: a
+model asked "is this a copycat?" after the fact will happily rationalise either answer, so the
+classification must be made from launch-time text only, stored immutably with its model version.
+
+## Layer 5 (momentum) is what the archive already does
+
+Nothing new needed beyond the ladder.
+
+## The methodological trap worth stating plainly
+
+The two published findings cited for this work answer **different questions**:
+
+- "Tokens advertising socials graduated 1.9% vs 0.11%" predicts **graduation**, and needs the
+  non-graduated population as its denominator.
+- "What distinguishes durable graduates" predicts **survival among graduates**, and conditions on
+  graduation.
+
+The proposed first experiment conditions on graduation, so it can only answer the second. That is
+fine — it is the archive's own question — but it cannot confirm or refute the social-links result,
+and combining the two would produce a collider-style artifact. Keep them as separate studies with
+separate cohorts, and remember that on Solana our launch census is itself a sample (§6), so the
+graduation-rate denominator is not ours to compute at all.
+
+The same caution applies to early-buyer cohorts: repeated co-occurrence of wallets across launches
+may reflect those wallets selecting into launches that were already attracting attention, rather
+than causing anything. Cohort membership is a **description of the flow**, not an explanation of it.
+
+## Why the manipulation layer is the strongest place to start
+
+It is the one layer that can be validated **without predicting anything**. Wash-trading signatures,
+buyer cohorts that co-occur across unrelated tokens, developer holding concentration and
+instant-shill patterns are all measurable against ground truth that does not depend on future price:
+either the same wallets keep appearing together or they do not. Everything in the opportunity
+direction requires waiting for outcomes; the manipulation direction is checkable the week it is
+built. It is also the half that stays useful even if no predictive signal is ever found.
+
+## Revised first experiment
+
+Not "30 days backwards" — that data is gone. Instead, **forward from now**:
+
+1. Extend the Solana adapter's enrichment to store the fields already available for free:
+   `developer_address`, `developer_holding_percentage`, `is_honeypot`, `mint_authority`,
+   `freeze_authority`, `telegram_handle`, `websites`, `description`, `gt_score`.
+2. Capture **trades at graduation**: on detecting a graduation, pull the measurement pool's trades
+   immediately and again shortly after, storing wallet-level rows. Bounded by graduations, not
+   launches.
+3. Let it run until there are enough graduates with complete +24h and +7d outcomes.
+4. Then run the comparison: creator history (self-join), early-buyer diversity and co-occurrence,
+   declared-social quality — against survival. Sample ~400 for the paid X propagation arm only if
+   the free features look like they carry signal.
+
+Posture: public on-chain records and public posts only, research context, never advice. Wallet
+analysis stays at the level of addresses and behaviour; nothing here attempts to identify the people
+behind them, and a creator's record is a statement about an address, not a person.
