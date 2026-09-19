@@ -268,8 +268,8 @@ COMMENT ON COLUMN telegram_channel_stats.median_claimed_multiple IS
  'them: performance is computed from price history, not from the post claiming a result.';
 
 -- Relay attribution (2026-09-19). A Telegram forward announces itself in the message header; a
--- copy-paste repost does not, and in call channels the repost is the commoner shape. Without this
--- an unattributed copy becomes a second independent sighting: the token looks discovered twice and
+-- repost carrying the same wording does not, and in call channels that shape is the commoner one.
+-- Without this a repost becomes a second independent sighting: the token looks discovered twice and
 -- the relay channel's "first among monitored" count is inflated by exactly the tokens it was
 -- slowest on. Only 'original' mentions take a sequence position.
 ALTER TABLE telegram_token_mentions ADD COLUMN IF NOT EXISTS mention_origin text
@@ -279,7 +279,11 @@ ALTER TABLE telegram_token_mentions ADD COLUMN IF NOT EXISTS relay_reason text;
 CREATE INDEX IF NOT EXISTS telegram_token_mentions_origin
  ON telegram_token_mentions(network,token_address,mention_origin,mentioned_at);
 COMMENT ON COLUMN telegram_token_mentions.mention_origin IS
- 'original = this channel posted it itself; forward = Telegram forward header; repost = near-'
- 'duplicate text about the same token from another channel earlier in the window. Only original '
- 'mentions are counted as discovery, and relay_of_channel_id names what a relay relayed.';
+ 'original = no earlier monitored post shares this wording; forward = Telegram forward header; '
+ 'repost = near-duplicate text about the same token from another channel earlier in the window. '
+ 'Only original mentions are counted as discovery. repost is an observation about SHARED WORDING '
+ 'and an attribution of sequence - it is NOT a finding that one channel deliberately copied '
+ 'another, since shared call-bot templates, a quoted launch announcement and a channel reusing its '
+ 'own boilerplate all produce high overlap with no copying. Intent needs platform metadata or the '
+ 'wording itself saying so; relay_reason states the measurement and never characterises it.';
 ALTER TABLE telegram_channel_stats ADD COLUMN IF NOT EXISTS reposted_mentions integer;

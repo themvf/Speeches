@@ -42,11 +42,19 @@ SETTLE_SECONDS=120               # grace after a horizon before 'no price' count
 # resolution is worse than an unresolved one: it puts another channel's token in this channel's
 # denominator.
 TICKER_WINDOW_HOURS=72
-# Relay attribution. A Telegram forward announces itself in the message header; a copy-paste repost
-# does not, and a repost is the commoner shape in call channels - which makes an unattributed copy
+# Relay attribution. A Telegram forward announces itself in the message header; a repost carrying
+# the same wording does not, and that shape is the commoner one in call channels - which makes it
 # the single easiest way for a relay to be credited as a discovery. Near-duplicate text about the
-# same token, from a different channel, inside this window, is treated as a repost of the earlier
-# post rather than as independent discovery.
+# same token, from a different channel, inside this window, is treated as a relay of the earlier
+# post for SEQUENCING purposes.
+#
+# What this rule is and is not. It measures shared wording, which is an observation. It is NOT a
+# finding that one channel deliberately copied another, and nothing downstream may read it as one:
+# channels share call-bot templates, quote the same launch announcement and reuse their own
+# boilerplate, all of which produce high overlap with no copying involved. The consequence of the
+# label is narrow and defensible on the observation alone - the later post does not take a sequence
+# position, so neither channel is credited with a discovery it cannot be shown to have made. Intent
+# needs platform metadata (a forward header) or the wording itself saying so, and we have neither.
 REPOST_WINDOW_HOURS=24
 REPOST_SIMILARITY=0.6            # Jaccard over word 5-grams; short texts fall back to exact match
 REPOST_MIN_WORDS=8               # below this, wording is too generic for similarity to mean anything
@@ -103,7 +111,8 @@ def message_references(text):
 
 def shingles(text,size=5):
     """Normalised word 5-grams. Same device the crypto rings use: shared phrasing is what separates
-    a copied post from two people independently saying 'new call' about the same token."""
+    shared phrasing from two people independently saying 'new call' about the same token. It says
+    nothing about how the phrasing came to be shared."""
     words=[w for w in ''.join(c.lower() if c.isalnum() or c.isspace() else ' ' for c in (text or '')).split()]
     if len(words)<size:return {' '.join(words)} if words else set()
     return {' '.join(words[i:i+size]) for i in range(len(words)-size+1)}
@@ -119,9 +128,13 @@ def classify_origin(text,is_forward,earlier):
     """'original' | 'forward' | 'repost', and what it relays, for one mention of one token.
 
     `earlier` is [(channel_id, text)] for mentions of the SAME token from OTHER channels inside the
-    window, oldest first. Returning the relayed channel rather than a bare flag is what lets the
-    propagation graph show 'original post -> reposted alert -> later independent mention' instead of
+    window, oldest first. Returning the earlier channel rather than a bare flag is what lets the
+    propagation graph show 'original post -> relayed alert -> later independent mention' instead of
     three sightings that look alike.
+
+    `relay_of_channel_id` names the post this one shares wording with. It is an attribution of
+    SEQUENCE, not of intent - see the note on REPOST_SIMILARITY above. The reason string states the
+    measurement ('0.87 5-gram overlap with an earlier post') and never characterises it.
     """
     if is_forward:return 'forward',None,'telegram forward header'
     words=len((text or '').split())
@@ -131,7 +144,7 @@ def classify_origin(text,is_forward,earlier):
             # contract address posted twice is two posts, not a copy - that is how these channels
             # legitimately talk.
             if text and other and text.strip()==other.strip():
-                return 'repost',channel_id,'identical text'
+                return 'repost',channel_id,'identical text to an earlier post'
             continue
         score=similarity(text,other)
         if score>=REPOST_SIMILARITY:
@@ -218,11 +231,12 @@ def archive_row(conn,network,address):
 def attribute_relays(conn,network='solana',now=None):
     """Label every resolved mention original / forward / repost before the sequence is computed.
 
-    This runs on text, per token, in time order, so a repost is only ever attributed to a post that
-    came BEFORE it. Getting this wrong in the permissive direction is the expensive failure: an
-    unattributed copy-paste becomes a second independent sighting, the token looks like it was
-    discovered twice, and the relay channel's 'first among monitored' count is inflated by exactly
-    the tokens it was slowest on.
+    This runs on text, per token, in time order, so a relay is only ever attributed to a post that
+    came BEFORE it. Getting this wrong in the permissive direction is the expensive failure: a
+    repost becomes a second independent sighting, the token looks like it was discovered twice, and
+    the relay channel's 'first among monitored' count is inflated by exactly the tokens it was
+    slowest on. Getting it wrong the other way costs a channel a sequence position it may have
+    earned, which is why the threshold is high and the window is short.
     """
     with conn,conn.cursor() as cur:
         cur.execute('''SELECT m.id,m.token_address,m.channel_id,m.mentioned_at,m.is_forward,g.text

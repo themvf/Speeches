@@ -113,9 +113,9 @@ def typology(stats):
                                      'that are not archived tokens - wallet/on-chain alert shape')
     relayed=stats['forwarded_mentions']+stats.get('reposted_mentions',0)
     if relayed/max(stats['mentions'],1)>=FORWARD_SHARE:
-        return 'relay',(f"{relayed}/{stats['mentions']} mentions relay another channel "
-                        f"({stats['forwarded_mentions']} forwarded, {stats.get('reposted_mentions',0)} reposted "
-                        'without attribution), so most of what it posts is re-transmission rather than discovery')
+        return 'relay',(f"{relayed}/{stats['mentions']} mentions follow another channel's post "
+                        f"({stats['forwarded_mentions']} forwarded, {stats.get('reposted_mentions',0)} sharing "
+                        "an earlier post's wording), so little of what it posts is first")
     if first_share>=FIRST_SHARE and pre_share>=PRE_GRADUATION_SHARE:
         return 'originator',(f'first among monitored channels on {stats["first_among_monitored"]}/{sample} tokens, '
                              f'{pre_share:.0%} of them before graduation')

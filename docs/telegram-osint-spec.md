@@ -120,6 +120,18 @@ computed, per token, in time order (a repost can only ever be attributed to a po
 | `repost` | ≥0.60 Jaccard over word 5-grams with an earlier post about the same token from another channel, inside 24h; below 8 words only an exact copy counts | no, and `relay_of_channel_id` names what it relayed |
 | `original` | everything else | yes |
 
+**What the repost rule claims, and what it does not.** It measures shared wording, which is an
+observation. It is **not** a finding that one channel deliberately copied another, and nothing
+downstream may read it as one: channels share call-bot templates, quote the same launch
+announcement, and reuse their own boilerplate, all of which produce high overlap with no copying.
+The consequence of the label is deliberately narrow and defensible on the observation alone — the
+later post takes no sequence position, so neither channel is credited with a discovery it cannot be
+shown to have made. Intent would need platform metadata (a forward header) or the wording itself
+saying so. `relay_reason` therefore states the measurement (`0.87 5-gram overlap with an earlier
+post`) and never characterises it; a test asserts the reason vocabulary stays free of
+copied/deliberate/coordinated-class words, the same discipline as the Macro tab's no-forecast-verbs
+assertion.
+
 The word floor matters: these channels legitimately post a bare contract address, and without it
 every terse channel would be labelled a relay of every other terse channel. Only `original` mentions
 take a sequence position, so `is_first_monitored_mention` and every timing statistic derived from it
@@ -215,6 +227,9 @@ PR-ready evidence; it exits non-zero if any fails.
    does not exist: it must appear in `channels_losing_access` while a genuinely quiet channel stays
    `access_state='ok'` with zero new messages. This is the distinction that decides whether a silent
    dashboard means everything is fine or that collection died.
+**Acceptance threshold**: all six automated checks pass, and the manual inspection (7) shows the
+expected sequence with no false "first" credit. Then the PR opens with this output verbatim.
+
 7. **Relay attribution, read by eye** — a token posted by at least two monitored channels, whose
    chain reads *original post → forwarded/reposted alert → later independent mention*, with only the
    originals holding sequence positions. This is the one item that cannot be a pass/fail assertion,

@@ -137,3 +137,21 @@ def test_similarity_is_symmetric_and_bounded():
     assert mentions.similarity(ORIGINAL,ORIGINAL)==1.0
     assert mentions.similarity(ORIGINAL,INDEPENDENT)<mentions.REPOST_SIMILARITY
     assert mentions.similarity('',ORIGINAL)==0.0
+
+
+def test_relay_reasons_state_what_was_measured_not_what_was_intended():
+    """A relay label is an attribution of sequence, not a claim about intent.
+
+    Channels share call-bot templates, quote the same launch announcement and reuse their own
+    boilerplate - all of which produce high overlap with no copying involved. The consequence of the
+    label is narrow and defensible on the observation alone (the later post takes no sequence
+    position), so the reason string must stay a measurement. Same discipline as the Macro tab's
+    assertion that no condition string contains a forecast verb.
+    """
+    forbidden=('copied','copying','stole','plagiar','deliberate','intentional','coordinat',
+               'colluded','faked','shill','pump')
+    reasons=[mentions.classify_origin(REPOST,False,[(11,ORIGINAL)])[2],
+             mentions.classify_origin(FLEX,False,[(11,FLEX)])[2],
+             mentions.classify_origin('anything',True,[])[2]]
+    for reason in reasons:
+        assert reason is None or not any(word in reason.lower() for word in forbidden),reason
