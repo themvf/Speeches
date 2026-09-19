@@ -45,6 +45,17 @@
 .feedRow { display:grid; gap:8px; padding:5px 12px; border-bottom:1px solid rgba(110,176,224,.08); font-size:12px; cursor:pointer; align-items:baseline; }
 .feedRow:hover { background:rgba(110,176,224,.06); }
 .clip { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+/* The feed clips each post to one line and there is no hover on a touch screen, so a row opens to show the post in full. */
+.full { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; }
+.postRow { grid-template-columns:86px 128px minmax(0,1fr) 64px 34px; }
+/* Always-present escape hatch to the post on X, so reaching the source is one tap rather than expand-then-tap. */
+.openX { justify-self:end; align-self:center; display:inline-flex; align-items:center; justify-content:center; min-width:30px; min-height:24px; padding:2px 4px; font-size:11px; font-weight:600; color:var(--ink-faint); white-space:nowrap; text-decoration:none; }
+.openX:hover { color:#bae6fd; text-decoration:underline; }
+.postRow:focus-visible { outline:1px solid var(--accent); outline-offset:-1px; }
+.postOpen { background:rgba(79,213,255,.06); align-items:start; }
+.postActions { grid-column:3 / -1; display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:4px; cursor:default; }
+.sigLink { font-size:11px; color:var(--ink-faint); white-space:nowrap; }
+.sigLink:hover { color:#bae6fd; }
 .tabs { flex:none; display:flex; align-items:center; gap:4px; padding:6px 12px 5px; border-bottom:1px solid var(--line-soft); }
 .tab { height:24px; padding:0 10px; border:1px solid var(--line); border-radius:3px; background:transparent; font:inherit; font-size:11.5px; font-weight:600; color:var(--ink-soft); cursor:pointer; }
 .tab[aria-selected="true"] { background:rgba(79,213,255,.12); border-color:rgba(79,213,255,.4); color:#bae6fd; }
@@ -69,6 +80,30 @@
 .warn { color:var(--warn); }
 @media (max-width: 1100px) { .body { grid-template-columns:260px minmax(0,1fr); } .right { display:none; } }
 @media (max-width: 760px) { .wb { height:auto; } .body { grid-template-columns:1fr; } .left { border-right:0; border-bottom:1px solid var(--line-soft); } .fixed { max-height:none; } }
+/* Phone: the header, scope strip, tabs and footer are single non-wrapping rows on desktop and pushed the whole board off
+   the right edge of a narrow screen. Let them wrap instead of overflowing. */
+@media (max-width: 760px) {
+ .page { padding:8px 10px 16px; }
+ .top { height:auto; flex-wrap:wrap; gap:8px; padding:8px 10px; }
+ .top h1 { flex:1 1 auto; }
+ .cmdLabel { display:none; }
+ .cmd { flex:1 1 100%; order:3; }
+ .status { flex:1 1 100%; order:4; white-space:normal; }
+ .scope { height:auto; flex-wrap:wrap; padding:6px 10px; }
+ .tabs { flex-wrap:wrap; }
+ .bottom { height:auto; flex-wrap:wrap; white-space:normal; padding:6px 10px; }
+}
+/* Phone: the post feed stacks — time/handle/move on one line, the post on its own, so an opened post reads at full width. */
+@media (max-width: 760px) {
+ .postRow { grid-template-columns:auto minmax(0,1fr) auto auto; column-gap:8px; row-gap:2px; padding:8px 12px; }
+ .postWhen { grid-column:1; }
+ .postWho { grid-column:2; }
+ .postMove { grid-column:3; }
+ .openX { grid-column:4; min-width:44px; min-height:34px; margin:-6px -4px -6px 0; }
+ .postText { grid-column:1 / -1; }
+ .postActions { grid-column:1 / -1; gap:16px; margin-top:6px; }
+ .postOpen .postText { font-size:13px; }
+}
 .ringTag { display:inline-block; padding:0 6px; border-radius:3px; font-size:10.5px; font-weight:600; line-height:18px; white-space:nowrap; background:rgba(110,176,224,.12); color:var(--ink-soft); font-family:inherit; }
 .ringTag[data-ring="1"] { background:rgba(79,213,255,.18); color:#bae6fd; }
 .ringTag[data-ring="2"] { background:rgba(240,155,61,.18); color:#fcd34d; }
