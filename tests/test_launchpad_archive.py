@@ -332,7 +332,10 @@ def test_db_solana_graduate_measures_the_deep_pool_and_captures_opening_trades(d
         # The ladder must read the deep pool, never the near-empty one the launchpad field names.
         assert measure==SOL_DEEP and destination==SOL_EMPTY
         assert 'deepest' in reason and 'disagreed' in reason
-        assert dev=='7H7SkM44' and round(holding,2)==19.99 and launchpad=='pumpswap'
+        assert dev=='7H7SkM44' and round(holding,2)==19.99
+        # pumpswap is where it landed, not where it launched: recording a destination venue as the
+        # launchpad would be false, so it stays NULL until we see the curve pool itself.
+        assert launchpad is None
         assert handle=='nikebasketball' and raw is True
         cur.execute('''SELECT trades,wallets,buyers,sellers,pool,lag_seconds,window_seconds
                        FROM launchpad_trade_captures''')
@@ -421,3 +424,31 @@ def test_db_an_exhausted_budget_still_produces_a_complete_sweep_row(db):
         assert graduated is True and enriched is None
         cur.execute('SELECT count(*) FROM launchpad_sweeps')
         assert cur.fetchone()[0]==1
+
+
+def test_db_a_graduate_the_deadline_skipped_is_retried_not_abandoned(db):
+    from dataclasses import replace
+    from launchpad_archive import sweep
+    from launchpad_chains import SOLANA
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP,created='2026-09-19T19:18:07Z')
+    multi={'data':[{'attributes':{'address':SOL_TOKEN,'symbol':'Nike',
+        'launchpad_details':{'graduation_percentage':100.0,'completed':True,
+                             'completed_at':'2026-09-19T19:18:02.000Z','migrated_destination_pool_address':None}}}]}
+    info={'data':{'attributes':{'developer_address':'7H7SkM44'}}}
+    pool_list={'data':[{'attributes':{'address':SOL_DEEP,'reserve_in_usd':'31356.0'},
+                        'relationships':{'dex':{'data':{'id':'pumpswap'}}}}]}
+    # First sweep runs out of budget before it can enrich anything.
+    sweep(db,replace(SOLANA,budget_fraction=0.0),fetch=sol_responder({1:[graduation]},multi=multi,info=info,pool_list=pool_list),
+          now=NOW,wait=lambda *_:None)
+    with db,db.cursor() as cur:
+        cur.execute("SELECT graduated,measure_pool_reason FROM launchpad_tokens WHERE network='solana'")
+        assert cur.fetchone()==(True,None)
+    # It is already graduated, so it never returns via the newly-graduated set. Measured live: 27 of
+    # 29 graduates were cut this way and would have stayed unenriched for ever. The backlog is what
+    # brings them back.
+    sweep(db,SOLANA,fetch=sol_responder({1:[]},multi=multi,info=info,pool_list=pool_list),
+          now=NOW+timedelta(minutes=2),wait=lambda *_:None)
+    with db,db.cursor() as cur:
+        cur.execute("SELECT measure_pool,measure_pool_reason,developer_address FROM launchpad_tokens WHERE network='solana'")
+        measure,reason,dev=cur.fetchone()
+        assert measure==SOL_DEEP and reason=='deepest graduate pool' and dev=='7H7SkM44'

@@ -236,8 +236,21 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         # 5. Enrichment for graduates we have not enriched, and 6. the snapshot ladder.
         newly=[t for t,entry in arrivals.items() if not known.get(t,{}).get('graduated')]
         newly+=[t for t,s in state.items() if s['completed'] and not known.get(t,{}).get('graduated') and t not in arrivals]
+        # A graduate the deadline skipped is already marked graduated, so it never reappears in the
+        # set above: without this backlog it would stay unenriched and unmeasured for ever. Measured
+        # on a live sweep, where 27 of 29 graduates were cut and silently abandoned.
+        with conn,conn.cursor() as cur:
+            cur.execute('''SELECT token_address FROM launchpad_tokens
+                           WHERE network=%s AND graduated AND measure_pool_reason IS NULL
+                             AND graduated_at>%s ORDER BY graduated_at DESC LIMIT %s''',
+                        (chain.network,now-timedelta(hours=6),chain.max_info))
+            backlog=[r[0] for r in cur.fetchall() if r[0] not in newly]
+        # Cohort members first: their opening trade capture is perishable and cannot be taken later,
+        # while enrichment of everything else can wait for the next sweep without losing anything.
+        queue=sorted(set(newly),key=lambda t:(not in_cohort(chain,t),t))+backlog
+        backlog_set=set(backlog)
         info={};measure={};captures=[]
-        for token in sorted(set(newly))[:chain.max_info]:
+        for token in queue[:chain.max_info]:
             if not budget_left():break
             try:
                 payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
@@ -305,25 +318,32 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         # 7. One write for the whole sweep.
         summary=_persist(conn,chain=chain,now=now,pools=pools,curve=curve,arrivals=arrivals,state=state,info=info,
                          known=known,observations=observations,pages=pages,oldest=oldest,newest=newest,
-                         previous_newest=previous_newest,errors=errors,measure=measure,captures=captures)
+                         previous_newest=previous_newest,errors=errors,measure=measure,captures=captures,
+                         backlog=sorted(backlog_set&set(measure)))
         return summary
     finally:
         with conn,conn.cursor() as cur:cur.execute("SELECT pg_advisory_unlock(hashtext(%s))",('launchpad-archive:'+chain.network,))
 
 
 def _extra(chain,token,dex,chosen,enrich):
-    """Adapter-owned columns, in the order the INSERT lists them."""
+    """Adapter-owned columns, in the order the INSERT lists them.
+
+    `launchpad` is only ever the DEX of a bonding-curve pool. When a graduation is detected from a
+    destination pool arriving, that pool's DEX is where the token landed, not where it launched -
+    recording pumpswap or meteora-damm-v2 as a launchpad would be simply false.
+    """
     from psycopg2.extras import Json
-    return (dex,chosen[0],chosen[1],in_cohort(chain,token),
+    launchpad=dex if dex in chain.curve_dexes else None
+    return (launchpad,chosen[0],chosen[1],in_cohort(chain,token),
             enrich.get('developer_address'),enrich.get('developer_holding'),enrich.get('is_honeypot'),
             enrich.get('mint_authority'),enrich.get('freeze_authority'),enrich.get('telegram_handle'),
             enrich.get('website'),enrich.get('description'),enrich.get('categories'),enrich.get('gt_score'),
             Json(enrich['info_raw']) if enrich.get('info_raw') else None)
 
 
-def _persist(conn,*,chain,now,pools,curve,arrivals,state,info,known,observations,pages,oldest,newest,previous_newest,errors,measure=None,captures=None):
+def _persist(conn,*,chain,now,pools,curve,arrivals,state,info,known,observations,pages,oldest,newest,previous_newest,errors,measure=None,captures=None,backlog=None):
     from psycopg2.extras import execute_values,Json
-    measure=measure or {};captures=captures or []
+    measure=measure or {};captures=captures or [];backlog=backlog or []
     gap=gap_seconds(previous_newest,oldest)
     window=int((newest-oldest).total_seconds()) if (newest and oldest) else None
     rows=[]
@@ -418,11 +438,38 @@ def _persist(conn,*,chain,now,pools,curve,arrivals,state,info,known,observations
         # will confirm or refute that, which is why the rows stay and only the state changes.
         cur.execute('''UPDATE launchpad_tokens SET state='dead'
                        WHERE network=%s AND state='live' AND last_seen_at<%s''',(chain.network,now-timedelta(hours=STALE_HOURS)))
+        # Backlog rows already exist and are not rebuilt from a pool we saw this sweep, so they are
+        # filled in place. Guarded on measure_pool_reason IS NULL: a row already measured is never
+        # re-measured, for the same reason the ladder never switches pools mid-history.
+        for token in backlog:
+            chosen=measure.get(token) or (None,None)
+            enrich=info.get(token) or {}
+            cur.execute('''UPDATE launchpad_tokens SET measure_pool=%s,measure_pool_reason=%s,
+                             developer_address=COALESCE(developer_address,%s),
+                             developer_holding=COALESCE(%s,developer_holding),
+                             is_honeypot=COALESCE(%s,is_honeypot),
+                             telegram_handle=COALESCE(telegram_handle,%s),
+                             website=COALESCE(website,%s),description=COALESCE(description,%s),
+                             gt_score=COALESCE(%s,gt_score),holders=COALESCE(%s,holders),
+                             top10_share=COALESCE(%s,top10_share),
+                             twitter_handle=COALESCE(launchpad_tokens.twitter_handle,%s),
+                             info_raw=COALESCE(info_raw,%s),enriched_at=COALESCE(enriched_at,%s)
+                           WHERE network=%s AND token_address=%s AND measure_pool_reason IS NULL''',
+                        (chosen[0],chosen[1],enrich.get('developer_address'),enrich.get('developer_holding'),
+                         enrich.get('is_honeypot'),enrich.get('telegram_handle'),enrich.get('website'),
+                         enrich.get('description'),enrich.get('gt_score'),enrich.get('holders'),
+                         enrich.get('top10'),enrich.get('twitter'),
+                         Json(enrich['info_raw']) if enrich.get('info_raw') else None,
+                         now if enrich else None,chain.network,token))
         captured=0
         for capture in captures:
             summary=capture['summary']
             earliest=iso(summary['earliest']);latest=iso(summary['latest'])
             graduated_at=next((r[10] for r in rows if r[1]==capture['token']),None)
+            if graduated_at is None:
+                cur.execute('SELECT graduated_at FROM launchpad_tokens WHERE network=%s AND token_address=%s',
+                            (chain.network,capture['token']))
+                found=cur.fetchone();graduated_at=found[0] if found else None
             cur.execute('''INSERT INTO launchpad_trade_captures
               (network,token_address,pool,graduated_at,capture_started_at,capture_finished_at,pages_fetched,
                trades,wallets,buyers,sellers,top_wallet_share,repeat_wallets,earliest_trade_at,latest_trade_at,
