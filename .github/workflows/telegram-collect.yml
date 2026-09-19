@@ -1,0 +1,43 @@
+name: Telegram OSINT collection
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'poll or backfill'
+        default: 'poll'
+      limit:
+        description: 'messages per channel (blank = default)'
+        required: false
+  schedule:
+    - cron: '*/15 * * * *'
+permissions:
+  contents: read
+# Deliberately isolated from solana-archive.yml: a Telegram outage, a FloodWait or a lost channel
+# must never interfere with graduation collection, whose feed only reaches back a few minutes and
+# whose misses are permanent. Telegram history, by contrast, can be re-read.
+concurrency:
+  group: telegram-collect
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      # A user-account session string. It is equivalent to the account itself, so it lives only in
+      # secrets and is never written to the runner's disk (the client runs in_memory).
+      TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+      TELEGRAM_LIBRARY: kurigram
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'kurigram>=2.2,<3' 'tgcrypto>=1.2,<2'
+      - run: python telegram_collector.py --sync-config
+      - run: >
+          python telegram_collector.py --execute
+          ${{ github.event.inputs.mode == 'backfill' && '--backfill' || '' }}
+          ${{ github.event.inputs.limit && format('--limit {0}', github.event.inputs.limit) || '' }}

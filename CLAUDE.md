@@ -11,6 +11,16 @@ workflows. Implementation contracts: [`docs/graduation-archive-spec.md`](docs/gr
 (Solana adapter, enrichment worker, and the five-item live-smoke gate every new chain must pass
 before merge).
 
+**Telegram OSINT layer (2026-09-19)**: `telegram_collector.py` (Kurigram/Telethon MTProto capture),
+`telegram_extract.py`, `telegram_mentions.py` (resolution → archive join → mention-anchored OHLCV →
+per-rung outcomes), `telegram_analytics.py` (channel typologies, propagation graph, FLEX case study,
+health). Contract: [`docs/telegram-osint-spec.md`](docs/telegram-osint-spec.md). It reads the
+graduation archive and never writes to it. **Not yet run against real Telegram data** — the spec's
+§10 live-smoke gate is a merge requirement, and the mocked tests prove the rules, not the pipeline.
+Three rules specific to this layer: a pending outcome rung (horizon not yet elapsed) is never a
+loss; a forward is never independent discovery; a channel's claimed "10x" is never an input to its
+measured performance.
+
 Four rules that are easy to break by accident: no arbitrary "good token" thresholds before outcomes
 are labelled; "not observed" must never read as "observed and absent"; Solana's
 `first_pool_created` is **not** a launch time; and launchpad-specific analysis filters on

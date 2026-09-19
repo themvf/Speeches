@@ -1,0 +1,31 @@
+name: Telegram OSINT derivation
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '20 * * * *'
+permissions:
+  contents: read
+# Derivation is separate from collection because it is re-runnable: a resolution rule can change and
+# the whole layer be rebuilt from stored messages, which is only true while collection never depends
+# on it. The price stage is the only one that touches the network.
+concurrency:
+  group: telegram-mentions
+  cancel-in-progress: false
+jobs:
+  derive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - run: python telegram_mentions.py --derive
+      - run: python telegram_mentions.py --prices
+      # Outcomes run last and are cheap, so a rung that has just become eligible is filled in the
+      # same hour it elapses rather than waiting for the next price fetch.
+      - run: python telegram_mentions.py --outcomes
+      - run: python telegram_analytics.py --health --channels --pairs --store
