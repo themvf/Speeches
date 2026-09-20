@@ -412,22 +412,24 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
             pct=(state.get(entry['token']) or {}).get('pct')
             observations.append(dict(token=entry['token'],at=now,phase='curve',rung=None,pct=pct,pool=entry,holders=None))
         snapshots=0
-        with conn,conn.cursor() as cur:
-            for token,graduated_at,filled in (ladder if chain.enrich_in_sweep else []):
-                due=rungs_due(graduated_at,now,filled,chain.rungs)
-                if not due or snapshots>=chain.max_snapshots or not budget_left():continue
+        for token,graduated_at,filled in (ladder if chain.enrich_in_sweep else []):
+            due=rungs_due(graduated_at,now,filled,chain.rungs)
+            if not due or snapshots>=chain.max_snapshots or not budget_left():continue
+            with conn,conn.cursor() as cur:
                 cur.execute('SELECT coalesce(measure_pool,graduation_pool) FROM launchpad_tokens WHERE network=%s AND token_address=%s',(chain.network,token))
                 row=cur.fetchone();pool_address=row[0] if row else None
-                if not pool_address:continue
-                try:payload=get(GECKO+chain.network+'/pools/'+pool_address)
-                except (ValueError,requests.RequestException) as exc:
-                    errors.append('pool '+pool_address[:10]+': '+type(exc).__name__);continue
-                parsed=parse_pool((payload or {}).get('data') or {},chain)
-                if not parsed:continue
-                snapshots+=1
-                # Only the earliest due rung is filled per sweep: one row per rung, honestly timestamped.
-                observations.append(dict(token=token,at=now,phase='post',rung=min(due),pct=None,pool=parsed,
-                                         holders=(info.get(token) or {}).get('holders')))
+            if not pool_address:continue
+            # The HTTP request reserves its own short transaction. Never hold the
+            # pool lookup transaction open across network work.
+            try:payload=get(GECKO+chain.network+'/pools/'+pool_address)
+            except (ValueError,requests.RequestException) as exc:
+                errors.append('pool '+pool_address[:10]+': '+type(exc).__name__);continue
+            parsed=parse_pool((payload or {}).get('data') or {},chain)
+            if not parsed:continue
+            snapshots+=1
+            observations.append(dict(token=token,at=now+timedelta(seconds=time.monotonic()-sweep_clock),
+                                     phase='post',rung=min(due),pct=None,pool=parsed,
+                                     holders=(info.get(token) or {}).get('holders')))
 
         # 7. One write for the whole sweep.
         summary=_persist(conn,chain=chain,now=now,pools=pools,curve=curve,arrivals=arrivals,state=state,info=info,

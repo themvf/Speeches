@@ -159,6 +159,24 @@ def test_worker_leases_survive_connection_switches_and_expired_owner_cannot_rele
     finally:other.close()
 
 
+def test_robinhood_ladder_can_reserve_shared_slots_without_nested_transaction(db,monkeypatch):
+    import requests
+    from test_launchpad_archive import GRAD_POOL
+    with db,db.cursor() as cur:
+        cur.execute('''INSERT INTO launchpad_tokens
+                       (network,token_address,dex,first_seen_at,last_seen_at,graduated,graduated_at,
+                        cohort_sampled,measure_pool,measure_pool_reason)
+                       VALUES ('robinhood',%s,'pons-v2-dex',%s,%s,true,%s,true,%s,'launchpad destination')''',
+                    (TOKEN,NOW,NOW,NOW-timedelta(hours=1),GRAD_POOL))
+    monkeypatch.setattr(requests,'get',responder({1:[]}))
+    # fetch=None uses the real database coordination path; network is stubbed.
+    result=archive.sweep(db,now=NOW,wait=lambda _:None)
+    assert result['observations']==1 and not result['errors']
+    with db,db.cursor() as cur:
+        cur.execute('SELECT count(*) FROM launchpad_worker_leases')
+        assert cur.fetchone()[0]==0
+
+
 def test_worker_does_not_fetch_pools_outside_cohort(db):
     seed_graduate(db,SOL_OUTSIDE,sampled=False)
     calls=[]
