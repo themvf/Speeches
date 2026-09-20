@@ -54,24 +54,47 @@ def schema_ready(conn):
         return cur.fetchone()[0]
 
 
-def bounded_get(fetch,wait,spacing,deadline):
+def reserve_api_slot(conn,remaining,spacing=2.5):
+    """Reserve one request start across workers, or leave the budget untouched."""
+    with conn,conn.cursor() as cur:
+        cur.execute("""SELECT greatest(next_request_at,clock_timestamp()),clock_timestamp()
+                       FROM launchpad_api_budget WHERE name='gecko' FOR UPDATE""")
+        available,db_now=cur.fetchone()
+        delay=max(0,(available-db_now).total_seconds())
+        if delay+1>=remaining:raise ValueError('shared API budget exceeds phase deadline')
+        cur.execute("UPDATE launchpad_api_budget SET next_request_at=%s WHERE name='gecko'",
+                    (available+timedelta(seconds=spacing),))
+    return delay
+
+
+def defer_api(conn,seconds):
+    """A provider cooldown applies to all archive workers, not just the one hit."""
+    with conn,conn.cursor() as cur:
+        cur.execute("""UPDATE launchpad_api_budget
+                       SET next_request_at=greatest(next_request_at,clock_timestamp()+%s*interval '1 second')
+                       WHERE name='gecko'""",(seconds,))
+
+
+def bounded_get(fetch,wait,spacing,deadline,conn=None):
     """A request and its retries share the caller's absolute phase deadline."""
     def get(url):
         for attempt in range(4):
             remaining=deadline()-time.monotonic()
             if remaining<=spacing+1:raise ValueError('request budget exhausted')
-            wait(spacing)
+            wait(reserve_api_slot(conn,remaining) if conn is not None else spacing)
             remaining=deadline()-time.monotonic()
             if remaining<=1:raise ValueError('request budget exhausted')
             response=fetch(url,timeout=min(25,remaining),allow_redirects=False,
                            headers={'Accept':'application/json'})
             status=getattr(response,'status_code',0)
-            if status==429 and attempt<3:
+            if status==429:
                 try:delay=float(getattr(response,'headers',{}).get('Retry-After','15'))
                 except (ValueError,TypeError):delay=15
+                if conn is not None:defer_api(conn,min(300,max(3,delay)) if math.isfinite(delay) else 30)
                 if not math.isfinite(delay) or delay>30:
                     raise ValueError('rate limit cooldown exceeds retry bound')
                 delay=max(3,delay)
+                if attempt==3:raise ValueError('HTTP 429')
                 if time.monotonic()+delay+spacing+1>=deadline():
                     raise ValueError('HTTP 429: retry exceeds phase budget')
                 wait(delay)
@@ -209,6 +232,7 @@ def parse_info(payload):
 def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
     """One sweep of one chain. Gathers everything, then writes once. Returns a summary dict."""
     import requests,time
+    use_shared_budget=fetch is None
     wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
     setup(conn,chain)
     # Wall clock, not the sweep's logical `now`, so a fixture-driven test is never bounded by it.
@@ -221,7 +245,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
     errors=[]
     phase_share=chain.discovery_share
     get=bounded_get(fetch,wait,chain.request_wait,
-                    lambda:sweep_clock+chain.deadline_seconds*phase_share)
+                    lambda:sweep_clock+chain.deadline_seconds*phase_share,conn if use_shared_budget else None)
     try:
         with conn,conn.cursor() as cur:
             # Optional failures and previous gaps must not freeze discovery forever.
@@ -647,6 +671,7 @@ def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
     system. Health is service rate against arrival rate over time, not "the worker ran".
     """
     import requests,time
+    use_shared_budget=fetch is None
     wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
     setup(conn,chain)
     with conn,conn.cursor() as cur:
@@ -657,7 +682,7 @@ def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
     metadata_deadline=clock+(deadline-clock)*chain.enrich_metadata_share
     phase_deadline=metadata_deadline
     def budget_left():return time.monotonic()<phase_deadline
-    get=bounded_get(fetch,wait,chain.request_wait,lambda:phase_deadline)
+    get=bounded_get(fetch,wait,chain.request_wait,lambda:phase_deadline,conn if use_shared_budget else None)
     try:
         from psycopg2.extras import Json
         with conn,conn.cursor() as cur:

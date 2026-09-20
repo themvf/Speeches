@@ -112,6 +112,29 @@ def test_retry_cannot_spend_capture_reserve(monkeypatch):
     assert len(calls)==1
 
 
+def test_api_slots_are_shared_across_connections_and_deadline_safe(db):
+    import psycopg2
+    other=psycopg2.connect(os.environ['CRYPTO_SOCIAL_TEST_DATABASE_URL'],
+                          options='-c search_path=launchpad_test')
+    try:
+        first=archive.reserve_api_slot(db,30)
+        second=archive.reserve_api_slot(other,30)
+        assert first<1 and second>1.5
+        with db,db.cursor() as cur:
+            cur.execute("SELECT next_request_at FROM launchpad_api_budget WHERE name='gecko'")
+            before=cur.fetchone()[0]
+        with pytest.raises(ValueError,match='phase deadline'):
+            archive.reserve_api_slot(other,1)
+        with db,db.cursor() as cur:
+            cur.execute("SELECT next_request_at FROM launchpad_api_budget WHERE name='gecko'")
+            assert cur.fetchone()[0]==before
+        archive.defer_api(other,20)
+        with pytest.raises(ValueError,match='phase deadline'):
+            archive.reserve_api_slot(db,10)
+        assert archive.reserve_api_slot(db,40)>18
+    finally:other.close()
+
+
 def test_worker_does_not_fetch_pools_outside_cohort(db):
     seed_graduate(db,SOL_OUTSIDE,sampled=False)
     calls=[]

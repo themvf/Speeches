@@ -73,4 +73,19 @@ expanded social collection, new chain, trading score or UI is part of this work.
   `last_seen_at` in the new test seed helper; corrected before the successful run.
 - Live deployment verification and the new commissioning start are pending.
 
+### Production verification findings
+
+- Deployed Solana sweep 560 advanced to `gap_seconds: 0` after the first
+  chain-attributed sweep, confirming the watermark no longer freezes.
+- The first report invocation failed with PostgreSQL startup options. The pooled
+  connection-compatible version uses read-only session transactions instead; all
+  six production report sections completed in run 35520091620.
+- Concurrent live jobs still received HTTP 429s. Added one shared API pacing row:
+  reserve request starts at 2.5-second intervals across archive workers, propagate
+  provider cooldowns, and decline reservations beyond the current phase deadline.
+  This is a deliberate exception to batching all database writes at sweep end:
+  tiny coordination transactions prevent three jobs each consuming the entire
+  public allowance. The existing two-minute collector already keeps the database
+  awake. No new service or paid API is introduced.
+
 The multi-pool endpoint is documented in the [GeckoTerminal API changelog](https://apiguide.geckoterminal.com/changelogs).

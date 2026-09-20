@@ -84,6 +84,15 @@ CREATE INDEX IF NOT EXISTS launchpad_sweeps_started ON launchpad_sweeps(started_
 ALTER TABLE launchpad_sweeps ADD COLUMN IF NOT EXISTS network text;
 CREATE INDEX IF NOT EXISTS launchpad_sweeps_network_started ON launchpad_sweeps(network,started_at DESC);
 
+-- One shared public-API pacing row across the three concurrent archive jobs.
+-- Per-process sleeps alone let each job consume the entire provider allowance.
+CREATE TABLE IF NOT EXISTS launchpad_api_budget (
+ name text PRIMARY KEY,
+ next_request_at timestamptz NOT NULL
+);
+INSERT INTO launchpad_api_budget(name,next_request_at) VALUES ('gecko',clock_timestamp())
+ ON CONFLICT (name) DO NOTHING;
+
 -- Multi-chain + OSINT capture (2026-09-19). Additive: the Robinhood archive is untouched.
 -- See docs/solana-pumpfun-archive-spec.md.
 ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS launchpad text;              -- curve pool's DEX id
