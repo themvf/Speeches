@@ -24,7 +24,9 @@ def main():
         for mode in (['daily','backlog','report'] if args.mode=='all' else [args.mode]):
             command=[sys.executable,str(root/'launchpad_archive.py'),'--'+mode,'--chain',chain,
                      '--hours',str(args.hours),'--days',str(math.ceil(args.hours/24))]
-            result=subprocess.run(command,cwd=root,check=True,capture_output=True,text=True)
+            # Keep child diagnostics visible; a failed connection must not become
+            # an opaque CalledProcessError with no actionable cause.
+            result=subprocess.run(command,cwd=root,check=True,stdout=subprocess.PIPE,text=True)
             payload=json.loads(result.stdout)
             rendered=json.dumps(payload,indent=2)
             (args.output/f'{chain}-{mode}.json').write_text(rendered+'\n',encoding='utf-8')

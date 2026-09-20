@@ -24,7 +24,8 @@ jobs:
     timeout-minutes: 5
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=60000'
+      # Read-only transactions are set by the CLI. Do not use PGOPTIONS: pooled
+      # production connections may reject PostgreSQL startup parameters.
       REPORT_CHAIN: ${{ inputs.chain }}
       REPORT_MODE: ${{ inputs.mode }}
       REPORT_HOURS: ${{ inputs.hours }}

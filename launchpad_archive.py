@@ -985,6 +985,7 @@ def main():
     try:
         if args.backlog or args.daily or args.report:
             conn.set_session(readonly=True)
+            with conn,conn.cursor() as cur:cur.execute("SET statement_timeout = '60s'")
             if not schema_ready(conn):
                 print(json.dumps({'status':'schema_pending','network':chain.network,
                     'reason':'Collector migration has not yet added launchpad_sweeps.network'}));return
