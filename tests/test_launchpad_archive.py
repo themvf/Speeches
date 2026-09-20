@@ -221,10 +221,10 @@ def test_db_feed_depth_is_only_read_from_a_sweep_that_went_full_depth(db):
     # proof the archive is healthy. Only a sweep that exhausted every page has actually found the
     # feed's limit. Reading the wrong one raises the alarm exactly when nothing is wrong.
     with db,db.cursor() as cur:
-        cur.execute('''INSERT INTO launchpad_sweeps (started_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,gap_seconds,complete)
-                       VALUES (%s,%s,20,%s,%s,0,true)''',(NOW,1,NOW-timedelta(seconds=120),NOW))
-        cur.execute('''INSERT INTO launchpad_sweeps (started_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,gap_seconds,complete)
-                       VALUES (%s,%s,200,%s,%s,0,true)''',(NOW,PAGES,NOW-timedelta(seconds=830),NOW))
+        cur.execute('''INSERT INTO launchpad_sweeps (network,started_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,gap_seconds,complete)
+                       VALUES ('robinhood',%s,%s,20,%s,%s,0,true)''',(NOW,1,NOW-timedelta(seconds=120),NOW))
+        cur.execute('''INSERT INTO launchpad_sweeps (network,started_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,gap_seconds,complete)
+                       VALUES ('robinhood',%s,%s,200,%s,%s,0,true)''',(NOW,PAGES,NOW-timedelta(seconds=830),NOW))
     out=report(db,now=NOW+timedelta(minutes=1),hours=1)
     assert out['sweeps']['min_reach_seconds']==830   # the full-depth sweep, not the 120s early stop
     assert out['margin_warning'] is False
@@ -241,9 +241,9 @@ def test_db_daily_summary_answers_the_health_question_without_reading_raw_rows(d
     day=datetime(2026,9,19,tzinfo=timezone.utc)
     with db,db.cursor() as cur:
         for minute,gap,complete,launches,graduates in ((0,0,True,40,1),(30,0,True,35,2),(60,900,False,20,0)):
-            cur.execute('''INSERT INTO launchpad_sweeps (started_at,pages_fetched,pools_seen,oldest_pool_at,
+            cur.execute('''INSERT INTO launchpad_sweeps (network,started_at,pages_fetched,pools_seen,oldest_pool_at,
                              newest_pool_at,new_tokens,graduations,observations,gap_seconds,complete)
-                           VALUES (%s,10,200,%s,%s,%s,%s,%s,%s,%s)''',
+                           VALUES ('robinhood',%s,10,200,%s,%s,%s,%s,%s,%s,%s)''',
                         (day+timedelta(minutes=minute),day,day+timedelta(minutes=minute),launches,graduates,launches,gap,complete))
         # Lags of 30/60/90/600s: the median stays low while the tail does not, which is exactly the
         # shape that would argue for a faster collector and which a median alone would hide.

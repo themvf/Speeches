@@ -1,0 +1,44 @@
+name: Graduation Archive read-only report
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: Chain to inspect
+        type: choice
+        options: [both, robinhood, solana]
+        default: both
+      mode:
+        description: Report surface
+        type: choice
+        options: [all, daily, backlog, report]
+        default: all
+      hours:
+        description: Continuity window in hours (1–720); daily uses rounded-up days; backlog is trailing 24h
+        type: string
+        default: '48'
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=60000'
+      REPORT_CHAIN: ${{ inputs.chain }}
+      REPORT_MODE: ${{ inputs.mode }}
+      REPORT_HOURS: ${{ inputs.hours }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3'
+      - name: Read archive health
+        run: python scripts/graduation_archive_report.py --chain "$REPORT_CHAIN" --mode "$REPORT_MODE" --hours "$REPORT_HOURS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: graduation-archive-report
+          path: archive-reports/
+          retention-days: 30

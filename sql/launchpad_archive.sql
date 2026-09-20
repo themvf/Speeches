@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS launchpad_sweeps (
  note text
 );
 CREATE INDEX IF NOT EXISTS launchpad_sweeps_started ON launchpad_sweeps(started_at DESC);
+-- Legacy rows cannot be reliably attributed to a chain. Never guess their network.
+ALTER TABLE launchpad_sweeps ADD COLUMN IF NOT EXISTS network text;
+CREATE INDEX IF NOT EXISTS launchpad_sweeps_network_started ON launchpad_sweeps(network,started_at DESC);
 
 -- Multi-chain + OSINT capture (2026-09-19). Additive: the Robinhood archive is untouched.
 -- See docs/solana-pumpfun-archive-spec.md.

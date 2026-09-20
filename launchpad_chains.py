@@ -72,6 +72,9 @@ class Chain:
     enrich_in_sweep: bool = True
     enrich_batch: int = 40
     enrich_minutes: int = 10
+    enrich_budget_fraction: float = 0.85
+    # Metadata may use at most this share; the remainder protects measurements.
+    enrich_metadata_share: float = 0.65
     # How old the oldest pending graduate may get before the backlog counts as unhealthy. Three
     # worker periods: one run to notice, one to react, one of slack.
     @property
@@ -114,6 +117,8 @@ SOLANA=Chain(
     rungs=(5,10,30,60,180,360,720,1440,2880,10080),
     deepest_pool_wins=True,
     capture_trades=True,
+    # The endpoint's pages overlap. Spend a second request on another graduate.
+    trade_pages=1,
     cohort_fraction=0.25,
     extended_info=True,
     lowercase_addresses=False,

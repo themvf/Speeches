@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import math
 import os
+import time
 from pathlib import Path
 
 from launchpad_chains import (CHAINS,ROBINHOOD,SOLANA,Chain,choose_measure_pool,classify,family_of,
@@ -42,6 +43,43 @@ STALE_HOURS=24                # a curve token with no movement for this long sto
 MIN_HEALTH_SAMPLE=20
 CAPTURE_COVERAGE_TARGET=0.8   # cohort graduates that should carry an opening trade capture
 AT_GRADUATION_TARGET=0.8      # measurement pools that should have been chosen at graduation
+
+
+def schema_ready(conn):
+    """Check the active schema without DDL or an aborted undefined-column transaction."""
+    with conn,conn.cursor() as cur:
+        cur.execute("""SELECT EXISTS (SELECT 1 FROM pg_attribute
+                       WHERE attrelid=to_regclass('launchpad_sweeps') AND attname='network'
+                         AND NOT attisdropped)""")
+        return cur.fetchone()[0]
+
+
+def bounded_get(fetch,wait,spacing,deadline):
+    """A request and its retries share the caller's absolute phase deadline."""
+    def get(url):
+        for attempt in range(4):
+            remaining=deadline()-time.monotonic()
+            if remaining<=spacing+1:raise ValueError('request budget exhausted')
+            wait(spacing)
+            remaining=deadline()-time.monotonic()
+            if remaining<=1:raise ValueError('request budget exhausted')
+            response=fetch(url,timeout=min(25,remaining),allow_redirects=False,
+                           headers={'Accept':'application/json'})
+            status=getattr(response,'status_code',0)
+            if status==429 and attempt<3:
+                try:delay=float(getattr(response,'headers',{}).get('Retry-After','15'))
+                except (ValueError,TypeError):delay=15
+                if not math.isfinite(delay) or delay>30:
+                    raise ValueError('rate limit cooldown exceeds retry bound')
+                delay=max(3,delay)
+                if time.monotonic()+delay+spacing+1>=deadline():
+                    raise ValueError('HTTP 429: retry exceeds phase budget')
+                wait(delay)
+                continue
+            if status!=200:raise ValueError('HTTP '+str(status))
+            return response.json()
+        raise ValueError('rate limited')
+    return get
 
 
 def setup(conn,chain=None):
@@ -172,7 +210,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
     """One sweep of one chain. Gathers everything, then writes once. Returns a summary dict."""
     import requests,time
     wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
-    setup(conn)
+    setup(conn,chain)
     # Wall clock, not the sweep's logical `now`, so a fixture-driven test is never bounded by it.
     sweep_clock=time.monotonic()
     def budget_left(share=1.0):
@@ -181,22 +219,15 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-archive:'+chain.network,))
         if not cur.fetchone()[0]:return {'status':'already_running','errors':['sweep_already_running']}
     errors=[]
-    def get(url):
-        for attempt in range(4):
-            wait(chain.request_wait)  # ~30 requests/minute is the unkeyed ceiling; never burst.
-            response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
-            status=getattr(response,'status_code',0)
-            if status==429 and attempt<3:
-                try:delay=float(getattr(response,'headers',{}).get('Retry-After','15'))
-                except (ValueError,TypeError):delay=15
-                if not math.isfinite(delay) or delay>30:raise ValueError('rate limit cooldown exceeds retry bound')
-                wait(max(3,delay));continue
-            if status!=200:raise ValueError('HTTP '+str(status))
-            return response.json()
-        raise ValueError('rate limited')
+    phase_share=chain.discovery_share
+    get=bounded_get(fetch,wait,chain.request_wait,
+                    lambda:sweep_clock+chain.deadline_seconds*phase_share)
     try:
         with conn,conn.cursor() as cur:
-            cur.execute('SELECT newest_pool_at FROM launchpad_sweeps WHERE complete AND newest_pool_at IS NOT NULL ORDER BY started_at DESC LIMIT 1')
+            # Optional failures and previous gaps must not freeze discovery forever.
+            cur.execute('''SELECT newest_pool_at FROM launchpad_sweeps
+                           WHERE network=%s AND newest_pool_at IS NOT NULL
+                           ORDER BY started_at DESC,id DESC LIMIT 1''',(chain.network,))
             row=cur.fetchone();previous_newest=row[0] if row else None
         # 1. Discovery. Stop early once a page predates the last sweep - the rest is already recorded.
         pools=[];pages=0;oldest=None;newest=None
@@ -246,7 +277,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         arrivals={e['token']:e for e in graduate_pools}
 
         # 4. Batched state for new tokens and live candidates.
-        ask=sorted({e['token'] for e in curve if e['token'] not in known}|set(candidates)|set(arrivals))
+        ask=sorted(arrivals)+sorted(({e['token'] for e in curve if e['token'] not in known}|set(candidates))-set(arrivals))
         state={}
         for start in range(0,len(ask),MULTI_BATCH):
             if not budget_left(chain.discovery_share):
@@ -256,6 +287,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
             except (ValueError,requests.RequestException) as exc:
                 errors.append('tokens/multi: '+type(exc).__name__+' '+str(exc)[:120])
 
+        phase_share=1.0
         # 5. Enrichment for graduates we have not enriched, and 6. the snapshot ladder.
         newly=[t for t,entry in arrivals.items() if not known.get(t,{}).get('graduated')]
         newly+=[t for t,s in state.items() if s['completed'] and not known.get(t,{}).get('graduated') and t not in arrivals]
@@ -309,7 +341,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
             else:
                 try:pool_list=parse_pool_list(get(GECKO+chain.network+'/tokens/'+token+'/pools'))
                 except (ValueError,requests.RequestException) as exc:
-                    pool_list=[];errors.append('pools '+token[:10]+': '+type(exc).__name__)
+                    errors.append('pools '+token[:10]+': '+type(exc).__name__);continue
                 measure[token]=choose_measure_pool(chain,pool_list,destination)
             # Opening trade capture: perishable. On a busy graduate 300 trades spanned 33 seconds, so
             # this is taken now or never - it cannot be reconstructed later at any price.
@@ -327,7 +359,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
                 # Pages overlap rather than extending backwards, so dedupe on the transaction itself.
                 unique={(r['tx_hash'],r['wallet'],r['traded_at']):r for r in rows}
                 ordered=sorted(unique.values(),key=lambda r:(r['traded_at'],r['tx_hash'] or ''))
-                captures.append(dict(token=token,pool=address,started=started,
+                if fetched:captures.append(dict(token=token,pool=address,started=started,
                                      finished=datetime.now(timezone.utc),pages=fetched,
                                      rows=ordered,summary=summarize_trades(ordered)))
         observations=[]
@@ -530,10 +562,10 @@ def _persist(conn,*,chain,now,pools,curve,arrivals,state,info,known,observations
                    for i,r in enumerate(capture['rows'])],page_size=500)
             captured+=1
         cur.execute('''INSERT INTO launchpad_sweeps
-          (started_at,finished_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,window_seconds,
+          (network,started_at,finished_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,window_seconds,
            new_tokens,graduations,observations,gap_seconds,complete,errors)
-          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
-          (now,datetime.now(timezone.utc),pages,len(pools),oldest,newest,window,new_tokens,graduations,
+          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+          (chain.network,now,datetime.now(timezone.utc),pages,len(pools),oldest,newest,window,new_tokens,graduations,
            len(observation_rows),gap,not errors and (gap==0 or gap is None),errors))
         sweep_id=cur.fetchone()[0]
     return {'status':'ok','network':chain.network,'sweep_id':sweep_id,'pages':pages,'pools':len(pools),'curve':len(curve),
@@ -556,7 +588,7 @@ def daily(conn,now=None,days=7,chain=ROBINHOOD):
         cur.execute('''SELECT date_trunc('day',started_at),count(*),count(*) FILTER (WHERE NOT complete),
                               coalesce(max(gap_seconds),0),coalesce(sum(new_tokens),0),coalesce(sum(graduations),0),
                               coalesce(sum(observations),0)
-                       FROM launchpad_sweeps WHERE started_at>=%s GROUP BY 1''',(since,))
+                       FROM launchpad_sweeps WHERE network=%s AND started_at>=%s GROUP BY 1''',(chain.network,since))
         for day,sweeps,incomplete,max_gap,launches,graduates,observations in cur.fetchall():
             rows[day]=dict(day=day.date().isoformat(),sweeps=sweeps,expected=int(24*60/chain.sweep_minutes),
                            incomplete_sweeps=incomplete,max_gap_seconds=max_gap,launches_seen=launches,
@@ -592,8 +624,8 @@ def daily(conn,now=None,days=7,chain=ROBINHOOD):
                               percentile_disc(0.95) WITHIN GROUP (ORDER BY lag)
                        FROM (SELECT graduated_at,extract(epoch FROM graduated_detected_at-graduated_at) AS lag
                              FROM launchpad_tokens
-                             WHERE graduated AND graduated_at>=%s AND graduated_detected_at IS NOT NULL) d
-                       GROUP BY 1''',(since,))
+                             WHERE network=%s AND graduated AND graduated_at>=%s AND graduated_detected_at IS NOT NULL) d
+                       GROUP BY 1''',(chain.network,since))
         for day,measured,median,p95 in cur.fetchall():
             row=rows.setdefault(day,dict(day=day.date().isoformat(),sweeps=0,expected=int(24*60/chain.sweep_minutes),
                                          incomplete_sweeps=0,max_gap_seconds=0,launches_seen=0,
@@ -621,28 +653,20 @@ def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
         cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-enrich:'+chain.network,))
         if not cur.fetchone()[0]:return {'status':'already_running'}
     clock=time.monotonic();errors=[];processed=0
-    def budget_left():return time.monotonic()-clock < chain.enrich_minutes*60*chain.budget_fraction
-    def get(url):
-        for attempt in range(4):
-            wait(chain.request_wait)
-            response=fetch(url,timeout=25,allow_redirects=False,headers={'Accept':'application/json'})
-            status=getattr(response,'status_code',0)
-            if status==429 and attempt<3:
-                try:delay=float(getattr(response,'headers',{}).get('Retry-After','15'))
-                except (ValueError,TypeError):delay=15
-                if not math.isfinite(delay) or delay>30:raise ValueError('rate limit cooldown exceeds retry bound')
-                wait(max(3,delay));continue
-            if status!=200:raise ValueError('HTTP '+str(status))
-            return response.json()
-        raise ValueError('rate limited')
+    deadline=clock+chain.enrich_minutes*60*chain.enrich_budget_fraction
+    metadata_deadline=clock+(deadline-clock)*chain.enrich_metadata_share
+    phase_deadline=metadata_deadline
+    def budget_left():return time.monotonic()<phase_deadline
+    get=bounded_get(fetch,wait,chain.request_wait,lambda:phase_deadline)
     try:
         from psycopg2.extras import Json
         with conn,conn.cursor() as cur:
             # Oldest first: a graduate waiting longest is the one whose ladder is most at risk.
             cur.execute("""SELECT token_address,graduation_pool,measure_pool,measure_pool_reason,cohort_sampled
                            FROM launchpad_tokens
-                           WHERE network=%s AND graduated AND enriched_at IS NULL
-                           ORDER BY graduated_at LIMIT %s""",(chain.network,chain.enrich_batch))
+                           WHERE network=%s AND graduated AND (enriched_at IS NULL
+                             OR (cohort_sampled AND measure_pool_reason IS NULL))
+                           ORDER BY graduated_at,token_address LIMIT %s""",(chain.network,chain.enrich_batch))
             pending=cur.fetchall()
         for token,destination,measure_pool,measure_reason,sampled in pending:
             if not budget_left():break
@@ -657,12 +681,15 @@ def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
             # catches rows the sweep never reached, and it is marked so the two are never confused:
             # a pool chosen hours later may not be the market that mattered at the time.
             chosen=(measure_pool,measure_reason)
-            if chain.deepest_pool_wins and measure_reason is None:
+            if not sampled and measure_reason is None:
+                chosen=(None,'outside ladder cohort')
+            elif chain.deepest_pool_wins and measure_reason is None:
                 try:pool_list=parse_pool_list(get(GECKO+chain.network+'/tokens/'+token+'/pools'))
                 except (ValueError,requests.RequestException) as exc:
-                    pool_list=[];errors.append('pools '+token[:10]+': '+type(exc).__name__)
-                address,reason=choose_measure_pool(chain,pool_list,destination)
-                chosen=(address,reason+' (selected late, not at graduation)')
+                    errors.append('pools '+token[:10]+': '+type(exc).__name__)
+                else:
+                    address,reason=choose_measure_pool(chain,pool_list,destination)
+                    chosen=(address,reason+' (selected late, not at graduation)')
             with conn,conn.cursor() as cur:
                 cur.execute("""UPDATE launchpad_tokens SET
                                  measure_pool=COALESCE(measure_pool,%s),
@@ -692,8 +719,9 @@ def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
             processed+=1
         # The ladder lives here too: it is durable work, and a rung filled late is still honest
         # because its observed_at records when it was actually taken.
-        rungs_filled=_fill_ladder(conn,chain,get,now,budget_left,errors)
-        health=backlog_health(conn,chain,now)
+        phase_deadline=deadline
+        rungs_filled=_fill_ladder(conn,chain,get,now+timedelta(seconds=time.monotonic()-clock),budget_left,errors)
+        health=backlog_health(conn,chain,now+timedelta(seconds=time.monotonic()-clock))
         with conn,conn.cursor() as cur:
             cur.execute('''INSERT INTO launchpad_enrich_runs
               (network,started_at,finished_at,processed,rungs_filled,error_count,pending,
@@ -722,20 +750,34 @@ def _fill_ladder(conn,chain,get,now,budget_left,errors):
                        GROUP BY t.token_address,t.graduated_at,t.measure_pool
                        ORDER BY t.graduated_at""",(chain.network,now-timedelta(days=8)))
         ladder=cur.fetchall()
-    rows=[]
+    rows=[];due_rows=[];snapshot_clock=time.monotonic()
     for token,graduated_at,pool,done in ladder:
         due=rungs_due(graduated_at,now,set(done or []),chain.rungs)
-        if not due or not budget_left():continue
-        try:payload=get(GECKO+chain.network+'/pools/'+pool)
+        if due:due_rows.append((token,graduated_at,pool,min(due)))
+    # Batch the same pool objects we previously fetched individually: 30 measurements
+    # per request keeps the ladder affordable as the seven-day cohort grows.
+    for offset in range(0,len(due_rows),MULTI_BATCH):
+        if not budget_left():break
+        batch=due_rows[offset:offset+MULTI_BATCH]
+        addresses=list(dict.fromkeys(r[2] for r in batch))
+        url=GECKO+chain.network+'/pools/'
+        url+=addresses[0] if len(addresses)==1 else 'multi/'+','.join(addresses)
+        try:payload=get(url)
         except (ValueError,requests.RequestException) as exc:
-            errors.append('pool '+pool[:10]+': '+type(exc).__name__);continue
-        parsed=parse_pool((payload or {}).get('data') or {},chain)
-        if not parsed:continue
-        rows.append((chain.network,token,now,'post',min(due),None,parsed['price'],parsed['fdv'],
-                     parsed['liquidity'],parsed['volume_m30'],parsed['volume_h1'],parsed['volume_h24'],
-                     parsed['buyers_m30'],parsed['sellers_m30'],parsed['buyers_h1'],parsed['sellers_h1'],
-                     parsed['txns_h1'],parsed['change_h1'],None))
-        filled+=1
+            errors.append('ladder batch: '+type(exc).__name__+' '+str(exc)[:100]);continue
+        data=payload.get('data') or []
+        if isinstance(data,dict):data=[data]
+        parsed={p['pool']:p for p in (parse_pool(e,chain) for e in data) if p}
+        observed=now+timedelta(seconds=time.monotonic()-snapshot_clock)
+        for token,graduated_at,pool,rung in batch:
+            p=parsed.get(pool)
+            if not p:
+                errors.append('ladder pool missing: '+pool[:10]);continue
+            rows.append((chain.network,token,observed,'post',rung,None,p['price'],p['fdv'],
+                         p['liquidity'],p['volume_m30'],p['volume_h1'],p['volume_h24'],
+                         p['buyers_m30'],p['sellers_m30'],p['buyers_h1'],p['sellers_h1'],
+                         p['txns_h1'],p['change_h1'],None))
+            filled+=1
     if rows:
         from psycopg2.extras import execute_values
         with conn,conn.cursor() as cur:
@@ -826,10 +868,29 @@ def backlog_health(conn,chain=SOLANA,now=None):
                 state=worst(enrichment,capture,selection))
 
 
+def ladder_health(conn,chain,now,since):
+    """Only graduates old enough for a rung enter its denominator; expose late fills."""
+    with conn,conn.cursor() as cur:
+        cur.execute('''SELECT r.rung,count(*),count(o.rung_minutes),
+                         count(*) FILTER (WHERE t.measure_pool IS NULL),
+                         percentile_disc(0.5) WITHIN GROUP (ORDER BY
+                           extract(epoch FROM o.observed_at-t.graduated_at)-r.rung*60)
+                       FROM launchpad_tokens t CROSS JOIN unnest(%s::int[]) AS r(rung)
+                       LEFT JOIN launchpad_observations o ON o.network=t.network
+                         AND o.token_address=t.token_address AND o.rung_minutes=r.rung
+                       WHERE t.network=%s AND t.graduated AND t.cohort_sampled
+                         AND t.graduated_at>=%s AND t.graduated_at+r.rung*interval '1 minute'<=%s
+                       GROUP BY r.rung ORDER BY r.rung''',(list(chain.rungs),chain.network,since,now))
+        return [dict(rung_minutes=r,eligible=n,filled=f,missing=n-f,without_pool=m,
+                     coverage=round(f/n,3) if n else None,
+                     median_lateness_seconds=int(late) if late is not None else None)
+                for r,n,f,m,late in cur.fetchall()]
+
+
 def report(conn,now=None,hours=48,chain=ROBINHOOD):
     """Is the archive continuous and internally consistent? Read-only; this is the V1 deliverable."""
     now=now or datetime.now(timezone.utc);since=now-timedelta(hours=hours)
-    out={'window_hours':hours,'as_of':now.isoformat()}
+    out={'network':chain.network,'window_hours':hours,'as_of':now.isoformat()}
     with conn,conn.cursor() as cur:
         # How deep the feed reaches is only observable from a sweep that exhausted all PAGES pages:
         # any other sweep stopped early because it met ground already recorded, so its shallow reach
@@ -839,7 +900,7 @@ def report(conn,now=None,hours=48,chain=ROBINHOOD):
                               min(extract(epoch FROM started_at-oldest_pool_at)) FILTER (WHERE pages_fetched>=%s),
                               coalesce(sum(new_tokens),0),coalesce(sum(graduations),0),
                               coalesce(sum(observations),0),min(started_at),max(started_at)
-                       FROM launchpad_sweeps WHERE started_at>=%s''',(PAGES,since))
+                       FROM launchpad_sweeps WHERE network=%s AND started_at>=%s AND started_at<=%s''',(PAGES,chain.network,since,now))
         row=cur.fetchone()
         expected=int(hours*60/chain.sweep_minutes)
         out['sweeps']=dict(recorded=row[0],expected=expected,incomplete=row[1],max_gap_seconds=row[2],
@@ -850,25 +911,33 @@ def report(conn,now=None,hours=48,chain=ROBINHOOD):
         # Longest silence between consecutive sweeps: the honest measure of delivery reliability.
         cur.execute('''SELECT coalesce(max(delta),0) FROM (
                          SELECT extract(epoch FROM started_at-lag(started_at) OVER (ORDER BY started_at)) AS delta
-                         FROM launchpad_sweeps WHERE started_at>=%s) g''',(since,))
+                         FROM launchpad_sweeps WHERE network=%s AND started_at>=%s AND started_at<=%s) g''',(chain.network,since,now))
         out['sweeps']['longest_interval_seconds']=int(cur.fetchone()[0] or 0)
+        cur.execute('''SELECT count(*),min(started_at),max(started_at) FROM launchpad_sweeps
+                       WHERE network IS NULL AND started_at>=%s AND started_at<=%s''',(since,now))
+        legacy=cur.fetchone()
+        out['unattributed_legacy_sweeps']=dict(count=legacy[0],
+            first=legacy[1].isoformat() if legacy[1] else None,last=legacy[2].isoformat() if legacy[2] else None)
+        first=iso(out['sweeps']['first']);last=iso(out['sweeps']['last'])
+        out['sweeps']['leading_silence_seconds']=int((first-since).total_seconds()) if first else hours*3600
+        out['sweeps']['trailing_silence_seconds']=int((now-last).total_seconds()) if last else hours*3600
         cur.execute('''SELECT count(*),count(*) FILTER (WHERE graduated),
                               count(*) FILTER (WHERE graduated AND first_pool_created IS NULL)
-                       FROM launchpad_tokens WHERE first_seen_at>=%s''',(since,))
+                       FROM launchpad_tokens WHERE network=%s AND first_seen_at>=%s''',(chain.network,since))
         seen,graduated,orphan=cur.fetchone()
         out['tokens']=dict(discovered=seen,graduated=graduated,
                            graduation_rate=round(graduated/seen,4) if seen else None,
                            graduated_without_launch_observed=orphan)
         cur.execute('''SELECT count(*),percentile_disc(0.5) WITHIN GROUP (ORDER BY lag),max(lag) FROM (
                          SELECT extract(epoch FROM graduated_detected_at-graduated_at) AS lag
-                         FROM launchpad_tokens WHERE graduated AND graduated_at>=%s
-                           AND graduated_detected_at IS NOT NULL) d''',(since,))
+                         FROM launchpad_tokens WHERE network=%s AND graduated AND graduated_at>=%s
+                           AND graduated_detected_at IS NOT NULL) d''',(chain.network,since))
         count,median,worst=cur.fetchone()
         # This pair is what decides whether a 60-second fast lane ever earns its complexity.
         out['detection_lag_seconds']=dict(measured=count,median=int(median) if median is not None else None,
                                           worst=int(worst) if worst is not None else None)
         cur.execute('''SELECT rung_minutes,count(*) FROM launchpad_observations
-                       WHERE rung_minutes IS NOT NULL AND observed_at>=%s GROUP BY rung_minutes ORDER BY rung_minutes''',(since,))
+                       WHERE network=%s AND rung_minutes IS NOT NULL AND observed_at>=%s GROUP BY rung_minutes ORDER BY rung_minutes''',(chain.network,since))
         out['ladder']={str(r[0]):r[1] for r in cur.fetchall()}
     # Margin is the headroom between how far back the feed reaches and how often we sweep. It shrinks
     # as the chain gets busier, so it is measured rather than assumed: once the feed's depth
@@ -878,13 +947,18 @@ def report(conn,now=None,hours=48,chain=ROBINHOOD):
     out['margin_seconds']=narrowest-chain.sweep_minutes*60 if narrowest else None
     out['margin_warning']=bool(narrowest and narrowest<chain.sweep_minutes*60*1.5)
     complete=out['sweeps']['incomplete']==0 and out['sweeps']['max_gap_seconds']==0
-    out['continuous']=bool(complete and out['sweeps']['recorded']>=expected*0.9)
+    silence=max(out['sweeps'][k] for k in ('longest_interval_seconds','leading_silence_seconds','trailing_silence_seconds'))
+    out['continuous']=bool(complete and out['sweeps']['recorded']>=expected*0.9
+                           and silence<=chain.sweep_minutes*120 and not legacy[0])
     out['verdict']=('continuous and internally consistent' if out['continuous']
                     else 'INCOMPLETE: '+', '.join(filter(None,[
                         f"{out['sweeps']['incomplete']} incomplete sweeps" if out['sweeps']['incomplete'] else '',
                         f"max feed gap {out['sweeps']['max_gap_seconds']}s" if out['sweeps']['max_gap_seconds'] else '',
+                        f"{legacy[0]} legacy sweeps have unknown network" if legacy[0] else '',
+                        f"longest silence {silence}s" if silence>chain.sweep_minutes*120 else '',
                         f"{out['sweeps']['recorded']} of {expected} expected sweeps" if out['sweeps']['recorded']<expected*0.9 else ''])))
     out['daily']=daily(conn,now=now,days=max(1,-(-hours//24)),chain=chain)
+    out['ladder_coverage']=ladder_health(conn,chain,now,since)
     if out['margin_warning']:
         out['verdict']+=f"; shallowest reach {narrowest}s against a {chain.sweep_minutes}m sweep - shorten the interval"
     return out
@@ -909,6 +983,11 @@ def main():
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
+        if args.backlog or args.daily or args.report:
+            conn.set_session(readonly=True)
+            if not schema_ready(conn):
+                print(json.dumps({'status':'schema_pending','network':chain.network,
+                    'reason':'Collector migration has not yet added launchpad_sweeps.network'}));return
         if args.backlog:print(json.dumps(backlog_health(conn,chain),indent=1,default=str));return
         if args.enrich:print(json.dumps(enrich(conn,chain),indent=1,default=str));return
         if args.daily:print(json.dumps(daily(conn,days=args.days,chain=chain),indent=1));return
