@@ -1,0 +1,140 @@
+name: Graduation Archive report
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: 'Which archive to read'
+        type: choice
+        default: all
+        options: [all, solana, robinhood]
+      mode:
+        description: 'Which read-only surface'
+        type: choice
+        default: all
+        options: [all, daily, backlog, report]
+      days:
+        description: 'Window for --daily, in days'
+        type: string
+        default: '3'
+      hours:
+        description: 'Window for --report, in hours'
+        type: string
+        default: '48'
+  # Cadence is deliberately loose, and deliberately NOT registered in DISPATCH_TARGETS
+  # (apps/web/lib/server/github-dispatch.ts): that file is reserved for workflows whose value depends
+  # on hitting their cadence, because a missed sweep loses data that cannot be recovered. Nothing
+  # here is perishable - every number this prints is recomputed from the archive on the next run - so
+  # a few hours of GitHub's scheduling drift costs nothing, and the six-hourly run exists to leave a
+  # readable trail of how the commissioning signals move rather than to hit a deadline.
+  schedule:
+    - cron: '0 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: graduation-archive-report
+  cancel-in-progress: false
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      # Read-only by construction: the only modes reachable from here are --daily, --backlog and
+      # --report. Neither --execute (sweeps, network, writes) nor --enrich (writes) can be selected,
+      # so dispatching this can never disturb collection or compete for the archive's advisory lock.
+      - name: Archive report
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Inputs arrive through env and are validated below, never interpolated into this script
+          # with ${{ }}. `chain` and `mode` are enum-checked by GitHub, but `days` and `hours` are
+          # free-form, and anyone who can press dispatch reaches a job holding a live database
+          # credential.
+          CHAIN: ${{ inputs.chain }}
+          MODE: ${{ inputs.mode }}
+          DAYS: ${{ inputs.days }}
+          HOURS: ${{ inputs.hours }}
+        run: |
+          set -u
+          set -o pipefail
+          # The runner starts this shell with `-e`. Turning it off is load-bearing: the loop below
+          # has to attempt every surface and report which ones failed, and under errexit the first
+          # failing section would abort the step before its exit code was ever recorded.
+          set +e
+
+          # A `schedule` fire carries no inputs at all, so the defaults declared above are not enough
+          # on their own - the scheduled run reaches this script with every value empty.
+          CHAIN="${CHAIN:-}";  CHAIN="${CHAIN:-all}"
+          MODE="${MODE:-}";    MODE="${MODE:-all}"
+          DAYS="${DAYS:-}";    DAYS="${DAYS:-3}"
+          HOURS="${HOURS:-}";  HOURS="${HOURS:-48}"
+
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "DATABASE_URL is not set as a repository secret; nothing can be read." >&2
+            exit 1
+          fi
+          case "$DAYS"  in ''|*[!0-9]*) echo "days must be a positive integer"  >&2; exit 1 ;; esac
+          case "$HOURS" in ''|*[!0-9]*) echo "hours must be a positive integer" >&2; exit 1 ;; esac
+          if [ "$DAYS" -lt 1 ] || [ "$HOURS" -lt 1 ]; then
+            echo "days and hours must be at least 1" >&2; exit 1
+          fi
+          case "$CHAIN" in
+            all) CHAINS='solana robinhood' ;;
+            solana|robinhood) CHAINS="$CHAIN" ;;
+            *) echo "unknown chain: $CHAIN" >&2; exit 1 ;;
+          esac
+          case "$MODE" in
+            all) MODES='daily backlog report' ;;
+            daily|backlog|report) MODES="$MODE" ;;
+            *) echo "unknown mode: $MODE" >&2; exit 1 ;;
+          esac
+
+          err="$(mktemp)"
+          failed=0
+          {
+            echo "# Graduation Archive report"
+            echo
+            echo "Read at $(date -u +%Y-%m-%dT%H:%M:%SZ) from \`${GITHUB_SHA:0:7}\`, triggered by \`${GITHUB_EVENT_NAME}\`."
+            echo "Chains: \`${CHAINS}\` · surfaces: \`${MODES}\` · windows: ${DAYS}d / ${HOURS}h."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for chain in $CHAINS; do
+            for mode in $MODES; do
+              case "$mode" in
+                daily)   set -- --daily   --chain "$chain" --days  "$DAYS"  ;;
+                backlog) set -- --backlog --chain "$chain" ;;
+                report)  set -- --report  --chain "$chain" --hours "$HOURS" ;;
+              esac
+              echo "== $chain $mode =="
+              out="$(python launchpad_archive.py "$@" 2>"$err")"; rc=$?
+              # stderr goes to the job log rather than into the JSON block, so a warning can never
+              # make a successful report unparseable, and is never dropped either.
+              if [ -s "$err" ]; then cat "$err" >&2; fi
+              printf '%s\n' "${out:-(no output)}"
+              {
+                echo
+                echo "## ${chain} — ${mode}"
+                echo '```json'
+                printf '%s\n' "${out:-(no output)}"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              if [ "$rc" -ne 0 ]; then
+                failed=1
+                {
+                  echo "**Failed (exit ${rc}).**"
+                  echo '```'
+                  tail -c 2000 "$err"
+                  echo '```'
+                } >> "$GITHUB_STEP_SUMMARY"
+              fi
+            done
+          done
+
+          # Every surface is attempted, then the run fails if any of them could not be read. A report
+          # that quietly returns less than it was asked for is precisely the failure this archive is
+          # built to make impossible - a plausible, incomplete answer nobody questions.
+          exit "$failed"
