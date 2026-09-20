@@ -102,13 +102,20 @@ therefore splits work by whether it expires:
 Live testing shows the architecture keeps up: enrichment sustains roughly **twice the observed
 arrival rate**, and the sweep completes comfortably inside its cadence.
 
-## Two things every analysis must respect
+## Three things every analysis must respect
 
 **Solana `first_pool_created` is not a launch time.** The curve pool is frequently indexed at or
 near migration — measured median gap to graduation of 0s for Pump.fun — so any "time to graduation"
 or "minutes since launch" statistic computed from it will be confidently wrong. This is a
 **graduation and post-graduation archive**, not a launch-time archive. The caveat is also a
 `COMMENT ON COLUMN`, because the columns make the invalid calculation possible.
+
+**Scope every read to one chain.** `launchpad_sweeps` is shared by both archives, and until
+2026-09-20 it had no `network` column at all. An unscoped read of it blends them, which was true of
+the gap watermark inside the collector itself and of the continuity verdict — the latter read
+healthy straight through an outage, because the other chain's sweeps filled the expected count.
+Sweep rows from before that date are unattributable and are reported separately rather than folded
+into either chain.
 
 **Filter on `launchpad_family`, never on `launchpad`.** A fast graduator is often only ever observed
 arriving at its destination, so the curve-DEX column is NULL for it; filtering on it returned 9 of

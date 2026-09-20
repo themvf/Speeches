@@ -60,6 +60,27 @@ def setup(conn,chain=None):
                        WHERE measure_pool_timing IS NULL AND measure_pool_reason IS NOT NULL''')
 
 
+def schema_ready(conn):
+    """Has the chain-scoping migration been applied yet?
+
+    The read-only surfaces deliberately never call setup(): it writes (the family and timing
+    backfills), and a report that mutates the archive is not a report. But that leaves the standing
+    deploy-order hazard this repo has been bitten by before - a reader shipped ahead of a
+    Python-owned ALTER that only lands when a collector next runs. Between deploying the chain
+    scoping and the next sweep (two minutes on Solana, five on Robinhood) the column does not exist,
+    and every scoped query would die on UndefinedColumn. Answering the question explicitly lets the
+    caller say "not readable yet" instead of either crashing or, far worse, reporting zeros.
+    """
+    # information_schema rather than a regclass cast: a missing table is an ordinary empty result
+    # here, where the cast would raise and leave the transaction aborted. current_schemas(false)
+    # scopes it to the live search_path, so a test schema is never answered from the public one.
+    with conn,conn.cursor() as cur:
+        cur.execute('''SELECT 1 FROM information_schema.columns
+                       WHERE table_name='launchpad_sweeps' AND column_name='network'
+                         AND table_schema=ANY(current_schemas(false))''')
+        return cur.fetchone() is not None
+
+
 def iso(value):
     """Parse GeckoTerminal's Z-suffixed timestamps; None for anything unusable."""
     if not value:return None
@@ -196,7 +217,27 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         raise ValueError('rate limited')
     try:
         with conn,conn.cursor() as cur:
-            cur.execute('SELECT newest_pool_at FROM launchpad_sweeps WHERE complete AND newest_pool_at IS NOT NULL ORDER BY started_at DESC LIMIT 1')
+            # Scoped to this chain: an unscoped watermark reads the other archive's newest pool, and
+            # because both are "roughly now" on a busy chain and far older on a quiet one, it breaks
+            # in both directions - a gap pinned at 0 that can never fire, or a phantom gap on every
+            # sweep. Neither is visible in the output, which is what makes it worth a comment.
+            # No `complete` predicate, deliberately. Requiring one ratcheted the archive shut in
+            # production: `complete` is false whenever a sweep records ANY error, including the
+            # entirely benign "state reads stopped to reserve budget for captures", so one such
+            # sweep froze the watermark, the next sweep measured its gap against that stale instant
+            # and was therefore incomplete too, and the freeze became permanent. Measured live on
+            # 2026-09-20, Robinhood's reported gap had grown to 74,555s and was climbing with the
+            # wall clock. It is self-reinforcing twice over: with the watermark stuck in the past
+            # the early stop `oldest<=previous_newest` can never fire, so discovery walks all ten
+            # pages every sweep, exhausts the budget, and emits the very error that holds the latch.
+            # `newest_pool_at` comes from page 1, which every sweep fetches however early it stopped,
+            # so it is trustworthy even on an incomplete sweep - unlike `oldest_pool_at`, which is
+            # exactly what varies with depth and is still read only from full-depth sweeps.
+            # This also matches gap_seconds' own contract, which says "the previous sweep's newest
+            # pool", not the previous complete one.
+            cur.execute('''SELECT newest_pool_at FROM launchpad_sweeps
+                           WHERE network=%s AND newest_pool_at IS NOT NULL
+                           ORDER BY started_at DESC LIMIT 1''',(chain.network,))
             row=cur.fetchone();previous_newest=row[0] if row else None
         # 1. Discovery. Stop early once a page predates the last sweep - the rest is already recorded.
         pools=[];pages=0;oldest=None;newest=None
@@ -530,10 +571,10 @@ def _persist(conn,*,chain,now,pools,curve,arrivals,state,info,known,observations
                    for i,r in enumerate(capture['rows'])],page_size=500)
             captured+=1
         cur.execute('''INSERT INTO launchpad_sweeps
-          (started_at,finished_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,window_seconds,
+          (network,started_at,finished_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,window_seconds,
            new_tokens,graduations,observations,gap_seconds,complete,errors)
-          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
-          (now,datetime.now(timezone.utc),pages,len(pools),oldest,newest,window,new_tokens,graduations,
+          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+          (chain.network,now,datetime.now(timezone.utc),pages,len(pools),oldest,newest,window,new_tokens,graduations,
            len(observation_rows),gap,not errors and (gap==0 or gap is None),errors))
         sweep_id=cur.fetchone()[0]
     return {'status':'ok','network':chain.network,'sweep_id':sweep_id,'pages':pages,'pools':len(pools),'curve':len(curve),
@@ -556,7 +597,7 @@ def daily(conn,now=None,days=7,chain=ROBINHOOD):
         cur.execute('''SELECT date_trunc('day',started_at),count(*),count(*) FILTER (WHERE NOT complete),
                               coalesce(max(gap_seconds),0),coalesce(sum(new_tokens),0),coalesce(sum(graduations),0),
                               coalesce(sum(observations),0)
-                       FROM launchpad_sweeps WHERE started_at>=%s GROUP BY 1''',(since,))
+                       FROM launchpad_sweeps WHERE network=%s AND started_at>=%s GROUP BY 1''',(chain.network,since))
         for day,sweeps,incomplete,max_gap,launches,graduates,observations in cur.fetchall():
             rows[day]=dict(day=day.date().isoformat(),sweeps=sweeps,expected=int(24*60/chain.sweep_minutes),
                            incomplete_sweeps=incomplete,max_gap_seconds=max_gap,launches_seen=launches,
@@ -592,8 +633,9 @@ def daily(conn,now=None,days=7,chain=ROBINHOOD):
                               percentile_disc(0.95) WITHIN GROUP (ORDER BY lag)
                        FROM (SELECT graduated_at,extract(epoch FROM graduated_detected_at-graduated_at) AS lag
                              FROM launchpad_tokens
-                             WHERE graduated AND graduated_at>=%s AND graduated_detected_at IS NOT NULL) d
-                       GROUP BY 1''',(since,))
+                             WHERE network=%s AND graduated AND graduated_at>=%s
+                               AND graduated_detected_at IS NOT NULL) d
+                       GROUP BY 1''',(chain.network,since))
         for day,measured,median,p95 in cur.fetchall():
             row=rows.setdefault(day,dict(day=day.date().isoformat(),sweeps=0,expected=int(24*60/chain.sweep_minutes),
                                          incomplete_sweeps=0,max_gap_seconds=0,launches_seen=0,
@@ -839,7 +881,7 @@ def report(conn,now=None,hours=48,chain=ROBINHOOD):
                               min(extract(epoch FROM started_at-oldest_pool_at)) FILTER (WHERE pages_fetched>=%s),
                               coalesce(sum(new_tokens),0),coalesce(sum(graduations),0),
                               coalesce(sum(observations),0),min(started_at),max(started_at)
-                       FROM launchpad_sweeps WHERE started_at>=%s''',(PAGES,since))
+                       FROM launchpad_sweeps WHERE network=%s AND started_at>=%s''',(PAGES,chain.network,since))
         row=cur.fetchone()
         expected=int(hours*60/chain.sweep_minutes)
         out['sweeps']=dict(recorded=row[0],expected=expected,incomplete=row[1],max_gap_seconds=row[2],
@@ -850,25 +892,31 @@ def report(conn,now=None,hours=48,chain=ROBINHOOD):
         # Longest silence between consecutive sweeps: the honest measure of delivery reliability.
         cur.execute('''SELECT coalesce(max(delta),0) FROM (
                          SELECT extract(epoch FROM started_at-lag(started_at) OVER (ORDER BY started_at)) AS delta
-                         FROM launchpad_sweeps WHERE started_at>=%s) g''',(since,))
+                         FROM launchpad_sweeps WHERE network=%s AND started_at>=%s) g''',(chain.network,since))
         out['sweeps']['longest_interval_seconds']=int(cur.fetchone()[0] or 0)
+        # Rows written before the network column existed cannot be attributed to a chain after the
+        # fact, so they are counted and named rather than quietly dropped from the denominator: a
+        # window that straddles the migration should read as partly unknown, not as a missed sweep.
+        cur.execute('SELECT count(*) FROM launchpad_sweeps WHERE network IS NULL AND started_at>=%s',(since,))
+        out['sweeps']['unattributed_pre_migration']=cur.fetchone()[0]
         cur.execute('''SELECT count(*),count(*) FILTER (WHERE graduated),
                               count(*) FILTER (WHERE graduated AND first_pool_created IS NULL)
-                       FROM launchpad_tokens WHERE first_seen_at>=%s''',(since,))
+                       FROM launchpad_tokens WHERE network=%s AND first_seen_at>=%s''',(chain.network,since))
         seen,graduated,orphan=cur.fetchone()
         out['tokens']=dict(discovered=seen,graduated=graduated,
                            graduation_rate=round(graduated/seen,4) if seen else None,
                            graduated_without_launch_observed=orphan)
         cur.execute('''SELECT count(*),percentile_disc(0.5) WITHIN GROUP (ORDER BY lag),max(lag) FROM (
                          SELECT extract(epoch FROM graduated_detected_at-graduated_at) AS lag
-                         FROM launchpad_tokens WHERE graduated AND graduated_at>=%s
-                           AND graduated_detected_at IS NOT NULL) d''',(since,))
+                         FROM launchpad_tokens WHERE network=%s AND graduated AND graduated_at>=%s
+                           AND graduated_detected_at IS NOT NULL) d''',(chain.network,since))
         count,median,worst=cur.fetchone()
         # This pair is what decides whether a 60-second fast lane ever earns its complexity.
         out['detection_lag_seconds']=dict(measured=count,median=int(median) if median is not None else None,
                                           worst=int(worst) if worst is not None else None)
         cur.execute('''SELECT rung_minutes,count(*) FROM launchpad_observations
-                       WHERE rung_minutes IS NOT NULL AND observed_at>=%s GROUP BY rung_minutes ORDER BY rung_minutes''',(since,))
+                       WHERE network=%s AND rung_minutes IS NOT NULL AND observed_at>=%s
+                       GROUP BY rung_minutes ORDER BY rung_minutes''',(chain.network,since))
         out['ladder']={str(r[0]):r[1] for r in cur.fetchall()}
     # Margin is the headroom between how far back the feed reaches and how often we sweep. It shrinks
     # as the chain gets busier, so it is measured rather than assumed: once the feed's depth
@@ -909,6 +957,13 @@ def main():
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
     try:
+        if (args.backlog or args.daily or args.report) and not schema_ready(conn):
+            # Explicitly unreadable beats both a stack trace and, much worse, a plausible row of
+            # zeros. Self-heals as soon as a collector runs, which is two minutes on Solana.
+            print(json.dumps({'status':'schema_pending','chain':chain.network,
+                              'detail':'launchpad_sweeps.network is not applied yet; it lands on the '
+                                       'next sweep or enrichment run, which own the migration'}))
+            raise SystemExit(1)
         if args.backlog:print(json.dumps(backlog_health(conn,chain),indent=1,default=str));return
         if args.enrich:print(json.dumps(enrich(conn,chain),indent=1,default=str));return
         if args.daily:print(json.dumps(daily(conn,days=args.days,chain=chain),indent=1));return

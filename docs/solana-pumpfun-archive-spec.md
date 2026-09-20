@@ -180,3 +180,97 @@ something other than what it says — the same class of mistake as the `launchpa
 deadline, so nothing it previously completed is cut, and discovery's half-deadline cap (90s) is far
 above its ~25s cost. One immaterial change: on an arrival-only row `graduation_pool` now prefers the
 declared destination over the observed pool; those were verified identical for Pons.
+
+# Chain scoping, a watermark ratchet, and an automated report (2026-09-20)
+
+Building a read-only reporting workflow turned up two live defects underneath it. Both were found by
+validating the report rather than by reading code, and both are the archive's signature failure
+mode: not a crash, but a plausible number that is wrong.
+
+## 1. launchpad_sweeps had no `network` column
+
+Both archives wrote into it undifferentiated, and seven reads across the collector and both report
+surfaces were chain-blind.
+
+The reporting consequence is that `report()`'s `continuous` verdict compares sweeps recorded against
+sweeps expected **for that chain's cadence**. Blended, Solana's 720/day alone clear Robinhood's 288
+expected, so **`continuous` reads true straight through a total Robinhood outage** - the V1
+deliverable, silently inverted. Reproduced in a test: with the scoping removed, Robinhood reports 4
+sweeps where it has 1.
+
+The worst of the seven was not in a report at all, but the gap-detection watermark inside `sweep()`,
+which read the most recent sweep of either chain. That breaks in both directions and neither is
+visible in the output: against a busy chain (newest pool ~ now) the gap is pinned at 0 and the alarm
+can never fire; against a quiet one it fabricates a gap on every sweep.
+
+Fixed by scoping all 25 reads to `chain.network` and writing `network` on every sweep row, indexed
+on `(network, started_at DESC)`. Rows written before the column existed cannot be attributed after
+the fact, so they are counted and named as `sweeps.unattributed_pre_migration` rather than guessed
+into a chain or dropped from the denominator - a window straddling the migration reads as partly
+unknown, never as an outage.
+
+## 2. The watermark ratchet, measured in production
+
+Two consecutive Robinhood sweeps on main, 24 minutes apart:
+
+```
+14:38  sweep 537  pages 10  window 1100s  gap_seconds 72731  errors: ["state reads stopped ..."]
+15:02  sweep 547  pages 10  window  756s  gap_seconds 74555  errors: ["state reads stopped ..."]
+```
+
+`gap_seconds` grew 1824s across 1435s of wall clock; the residual is the feed window shrinking by
+344s, which moves `oldest_pool_at` later by the same amount. So `previous_newest` was **frozen** and
+the reported gap was just now-minus-a-fixed-instant: 20.7 hours and climbing.
+
+`complete` is false whenever a sweep records **any** error, including the entirely benign
+"state reads stopped to reserve budget for captures" - the budget reserve working as designed. The
+watermark read only advanced across `complete` sweeps, so one such sweep froze it, the next sweep
+measured its gap against that stale instant and was therefore incomplete too, and the freeze became
+permanent. It is self-reinforcing twice over: with the watermark stuck in the past the early stop
+`oldest <= previous_newest` can never fire, so discovery walks all ten pages every sweep, exhausts
+the budget, and emits the very error that holds the latch shut.
+
+Chain scoping alone would **not** have cleared this - Robinhood's own recent sweeps are all
+incomplete, so a scoped query still reaches back past them. The predicate itself had to go.
+
+Dropping it is also what `gap_seconds` already documents: "the previous sweep's newest pool", not
+the previous *complete* one. `newest_pool_at` comes from page 1, which every sweep fetches however
+early it stopped, so it is trustworthy even on an incomplete sweep - unlike `oldest_pool_at`, which
+is exactly what varies with depth and is still read only from full-depth sweeps. No information is
+lost: the gap is recorded on the row where it happened and `daily()`/`report()` aggregate
+`max(gap_seconds)` over the window. Re-deriving the same gap forever only prevented the archive from
+ever reading healthy again.
+
+## The report workflow
+
+`.github/workflows/graduation-archive-report.yml` runs the three read-only surfaces for either or
+both chains and writes the JSON into the job summary, on `workflow_dispatch` and a 6-hourly cron.
+
+Read-only by construction: neither `--execute` nor `--enrich` is reachable from it, so dispatching it
+can never disturb collection or compete for the archive's advisory lock. Inputs arrive through `env`
+and are validated in the shell rather than interpolated with `${{ }}`, because anyone who can press
+dispatch reaches a job holding a live database credential. The runner starts the step as `bash -e`,
+so the script turns errexit off explicitly - otherwise the first failing surface would abort before
+its exit code was recorded. Every surface is attempted and the run then fails if any could not be
+read, so a partial report is never mistaken for a complete one.
+
+It is deliberately **not** registered in `DISPATCH_TARGETS`. That file is for workflows whose value
+depends on hitting their cadence, because a missed sweep loses data permanently. Nothing this prints
+is perishable, so GitHub's scheduling drift costs nothing and it does not belong on the 2-minute
+Vercel tick.
+
+`schema_ready()` closes the deploy-order hazard. The read-only surfaces deliberately never call
+`setup()`, because `setup()` writes (the family and timing backfills) and a report that mutates the
+archive is not a report. That leaves the trap this repo has hit before - a reader shipped ahead of a
+Python-owned `ALTER` that lands only when a collector next runs. `--daily`, `--backlog` and
+`--report` now check for the column and print `{"status":"schema_pending"}` with a non-zero exit
+instead of crashing or, far worse, reporting zeros. It self-heals on the next sweep.
+
+## A note on how these were found
+
+The live-smoke gate above exists because mocked tests execute these paths but cannot evaluate them.
+Both defects here extend that lesson one step further: neither was reachable from a single-chain
+test of any kind, mocked or live, because both require **two collectors running against one
+database**. The ratchet additionally required a *sequence* - three sweeps, one of them erroring -
+that no single run produces. Each now has a regression test that was confirmed to fail against the
+pre-fix code with the exact symptom observed in production.

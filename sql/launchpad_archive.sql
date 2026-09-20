@@ -192,3 +192,17 @@ COMMENT ON COLUMN launchpad_tokens.measure_pool_timing IS
  'Whether the measurement pool was chosen at graduation or later. A late choice may name a '
  'different market than the one that mattered, since a token can fall to near-zero liquidity '
  'within the hour, so the two must stay separable in analysis.';
+
+-- Which chain a sweep belongs to. Added 2026-09-20, after both archives were already running: every
+-- read of this table (the gap-detection watermark, --daily and --report) was chain-blind, so the two
+-- collectors silently contaminated each other's continuity record in both directions. Robinhood read
+-- Solana's newest pool - always about now - so its gap was pinned at 0 and discovery broke out after
+-- page one on every sweep; Solana read Robinhood's, which on a quiet chain is far older, so it
+-- reported a phantom gap and marked sweeps incomplete. Both failures are invisible in the output.
+ALTER TABLE launchpad_sweeps ADD COLUMN IF NOT EXISTS network text;
+CREATE INDEX IF NOT EXISTS launchpad_sweeps_network ON launchpad_sweeps(network,started_at DESC);
+COMMENT ON COLUMN launchpad_sweeps.network IS
+ 'Chain this sweep belongs to. NULL on rows written before 2026-09-20, when the column did not '
+ 'exist and both chains wrote here undifferentiated; those rows cannot be attributed after the '
+ 'fact and are deliberately left unattributed rather than guessed. Reads filter on this column and '
+ 'report the unattributed count separately, so the changeover reads as unknown, never as an outage.';

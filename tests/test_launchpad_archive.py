@@ -221,10 +221,10 @@ def test_db_feed_depth_is_only_read_from_a_sweep_that_went_full_depth(db):
     # proof the archive is healthy. Only a sweep that exhausted every page has actually found the
     # feed's limit. Reading the wrong one raises the alarm exactly when nothing is wrong.
     with db,db.cursor() as cur:
-        cur.execute('''INSERT INTO launchpad_sweeps (started_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,gap_seconds,complete)
-                       VALUES (%s,%s,20,%s,%s,0,true)''',(NOW,1,NOW-timedelta(seconds=120),NOW))
-        cur.execute('''INSERT INTO launchpad_sweeps (started_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,gap_seconds,complete)
-                       VALUES (%s,%s,200,%s,%s,0,true)''',(NOW,PAGES,NOW-timedelta(seconds=830),NOW))
+        cur.execute('''INSERT INTO launchpad_sweeps (network,started_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,gap_seconds,complete)
+                       VALUES (%s,%s,%s,20,%s,%s,0,true)''',(NETWORK,NOW,1,NOW-timedelta(seconds=120),NOW))
+        cur.execute('''INSERT INTO launchpad_sweeps (network,started_at,pages_fetched,pools_seen,oldest_pool_at,newest_pool_at,gap_seconds,complete)
+                       VALUES (%s,%s,%s,200,%s,%s,0,true)''',(NETWORK,NOW,PAGES,NOW-timedelta(seconds=830),NOW))
     out=report(db,now=NOW+timedelta(minutes=1),hours=1)
     assert out['sweeps']['min_reach_seconds']==830   # the full-depth sweep, not the 120s early stop
     assert out['margin_warning'] is False
@@ -241,10 +241,10 @@ def test_db_daily_summary_answers_the_health_question_without_reading_raw_rows(d
     day=datetime(2026,9,19,tzinfo=timezone.utc)
     with db,db.cursor() as cur:
         for minute,gap,complete,launches,graduates in ((0,0,True,40,1),(30,0,True,35,2),(60,900,False,20,0)):
-            cur.execute('''INSERT INTO launchpad_sweeps (started_at,pages_fetched,pools_seen,oldest_pool_at,
+            cur.execute('''INSERT INTO launchpad_sweeps (network,started_at,pages_fetched,pools_seen,oldest_pool_at,
                              newest_pool_at,new_tokens,graduations,observations,gap_seconds,complete)
-                           VALUES (%s,10,200,%s,%s,%s,%s,%s,%s,%s)''',
-                        (day+timedelta(minutes=minute),day,day+timedelta(minutes=minute),launches,graduates,launches,gap,complete))
+                           VALUES (%s,%s,10,200,%s,%s,%s,%s,%s,%s,%s)''',
+                        (NETWORK,day+timedelta(minutes=minute),day,day+timedelta(minutes=minute),launches,graduates,launches,gap,complete))
         # Lags of 30/60/90/600s: the median stays low while the tail does not, which is exactly the
         # shape that would argue for a faster collector and which a median alone would hide.
         for i,lag in enumerate((30,60,90,600)):
@@ -686,3 +686,96 @@ def test_db_capture_coverage_ignores_graduates_from_before_captures_existed(db):
     # Only the 25 that graduated after the first capture count, and all of them were captured.
     assert h['captures_eligible']==25 and h['captures_taken']==25
     assert h['capture_coverage_24h']==1.0 and h['capture_state']=='healthy'
+
+
+def solana_pool(dex='pump-fun',address='PoolSol1',token='CgDpum9wUpdLebGb6vD6F2sk4qaGLstDKArn296fpump',
+                created='2026-09-19T15:59:00Z'):
+    entry=pool(dex=dex,address=address,token=token,created=created)
+    entry['relationships']['base_token']={'data':{'id':'solana_'+token}}
+    return entry
+
+
+def test_db_one_chain_cannot_contaminate_another_chains_gap_watermark(db):
+    # Both archives write into launchpad_sweeps. While the watermark read was unscoped, each chain
+    # compared its own feed against whichever chain had swept most recently, and that breaks in both
+    # directions: against a busy chain (newest pool ~ now) the gap is pinned at 0 and can never fire,
+    # and against a quiet one it reports a gap on every sweep. Neither shows up in the output.
+    from launchpad_archive import sweep
+    from launchpad_chains import ROBINHOOD,SOLANA
+    sweep(db,ROBINHOOD,fetch=responder({1:[pool(created='2026-09-19T15:50:00Z')]}),
+          now=NOW,wait=lambda *_:None)
+    # Solana's oldest reachable pool is ten minutes NEWER than Robinhood's watermark. Unscoped, that
+    # subtraction yields a 600-second phantom gap and marks the sweep incomplete.
+    sweep(db,SOLANA,fetch=responder({1:[solana_pool(created='2026-09-19T16:00:00Z')]}),
+          now=NOW+timedelta(minutes=1),wait=lambda *_:None)
+    with db,db.cursor() as cur:
+        cur.execute('SELECT network,gap_seconds,complete FROM launchpad_sweeps ORDER BY started_at')
+        rows=cur.fetchall()
+    assert [r[0] for r in rows]==['robinhood','solana'],'every sweep records which chain it swept'
+    # No prior sweep of its OWN chain, so the gap is unknown - not a fabricated 600s.
+    assert rows[1][1] is None and rows[1][2] is True
+    # A second Solana sweep does compare against Solana's own watermark.
+    sweep(db,SOLANA,fetch=responder({1:[solana_pool(created='2026-09-19T15:58:00Z')]}),
+          now=NOW+timedelta(minutes=3),wait=lambda *_:None)
+    with db,db.cursor() as cur:
+        cur.execute("SELECT gap_seconds FROM launchpad_sweeps WHERE network='solana' ORDER BY started_at")
+        assert [r[0] for r in cur.fetchall()]==[None,0]
+
+
+def test_db_continuity_reports_count_only_their_own_chain(db):
+    # The continuity verdict is the V1 deliverable, and blended sweep counts silently destroy it:
+    # Solana sweeps 2.5x as often as Robinhood, so Solana's rows alone clear Robinhood's expected
+    # count and `continuous` reads true through a total Robinhood outage.
+    from launchpad_archive import report,sweep
+    from launchpad_chains import ROBINHOOD,SOLANA
+    sweep(db,ROBINHOOD,fetch=responder({1:[pool()]}),now=NOW,wait=lambda *_:None)
+    for i in range(3):
+        sweep(db,SOLANA,fetch=responder({1:[solana_pool(token='sol%d'%i,address='pool%d'%i)]}),
+              now=NOW+timedelta(minutes=2*i+1),wait=lambda *_:None)
+    rh=report(db,now=NOW+timedelta(minutes=10),hours=24,chain=ROBINHOOD)
+    sol=report(db,now=NOW+timedelta(minutes=10),hours=24,chain=SOLANA)
+    assert rh['sweeps']['recorded']==1 and sol['sweeps']['recorded']==3
+    assert rh['tokens']['discovered']==1 and sol['tokens']['discovered']==3
+    assert rh['totals']['new_tokens']==1 and sol['totals']['new_tokens']==3
+    # And the per-day rows underneath, which feed the same numbers into --daily.
+    assert [d['launches_seen'] for d in rh['daily']]==[1]
+    assert [d['launches_seen'] for d in sol['daily']]==[3]
+
+
+def test_db_sweeps_predating_the_network_column_are_reported_as_unknown(db):
+    # They cannot be attributed to a chain after the fact. Dropping them silently would make the
+    # migration window read as an outage; counting them into either chain would be a guess.
+    from launchpad_archive import report
+    from launchpad_chains import SOLANA
+    with db,db.cursor() as cur:
+        for i in range(4):
+            cur.execute('''INSERT INTO launchpad_sweeps (network,started_at,finished_at,pages_fetched,
+                             pools_seen,complete) VALUES (NULL,%s,%s,1,1,true)''',
+                        (NOW-timedelta(minutes=i),NOW-timedelta(minutes=i)))
+    out=report(db,now=NOW+timedelta(minutes=1),hours=24,chain=SOLANA)
+    assert out['sweeps']['recorded']==0,'unattributed rows are never counted as this chain'
+    assert out['sweeps']['unattributed_pre_migration']==4,'but they are named, not dropped'
+
+
+def test_db_one_erroring_sweep_does_not_ratchet_the_archive_shut(db):
+    # Found in production on 2026-09-20: Robinhood's reported gap had reached 74,555s and was still
+    # growing with the wall clock, because the watermark only advanced across sweeps marked
+    # `complete` - and `complete` is false whenever a sweep records any error at all. One sweep with
+    # a gap froze the watermark, every later sweep measured against that stale instant, and the
+    # freeze became permanent. Each sweep below reaches back further than the last, so after the one
+    # real gap every window overlaps and the archive must be able to read healthy again.
+    from launchpad_archive import sweep
+    fetch=lambda created:responder({1:[pool(address='0x'+created[-8:-1].replace(':','')+'0'*33,
+                                             token='0x'+created[-8:-1].replace(':','')+'a'*33,
+                                             created=created)]})
+    sweep(db,fetch=fetch('2026-09-19T15:50:00Z'),now=NOW,wait=lambda *_:None)
+    # A real gap: this sweep reaches back only to 16:20, so 15:50-16:20 was never seen.
+    sweep(db,fetch=fetch('2026-09-19T16:20:00Z'),now=NOW+timedelta(minutes=40),wait=lambda *_:None)
+    # Windows overlap again from here on, so these sweeps are continuous with the one before.
+    sweep(db,fetch=fetch('2026-09-19T16:19:00Z'),now=NOW+timedelta(minutes=45),wait=lambda *_:None)
+    sweep(db,fetch=fetch('2026-09-19T16:18:00Z'),now=NOW+timedelta(minutes=50),wait=lambda *_:None)
+    with db,db.cursor() as cur:
+        cur.execute('SELECT gap_seconds,complete FROM launchpad_sweeps ORDER BY started_at')
+        rows=cur.fetchall()
+    assert [r[0] for r in rows]==[None,1800,0,0],'the gap is recorded once, where it happened'
+    assert [r[1] for r in rows]==[True,False,True,True],'and the archive recovers afterwards'
