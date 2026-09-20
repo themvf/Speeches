@@ -116,6 +116,8 @@ expanded social collection, new chain, trading score or UI is part of this work.
 | [First repaired enrichment](https://github.com/themvf/Speeches/actions/runs/35519976617) | 42 tokens enriched, 570 ladder measurements; previously the inspected window had zero ladder measurements |
 | [Next enrichment](https://github.com/themvf/Speeches/actions/runs/35520494144) | 48 tokens enriched, 676 measurements, backlog 1,685, service 163/hour versus arrivals 145/hour |
 | [Production read-only report](https://github.com/themvf/Speeches/actions/runs/35520783131) | Six JSON sections and summary; historical unknown-network rows explicitly listed; ladder denominators/lateness visible |
+| [Corrected Robinhood sweep 567](https://github.com/themvf/Speeches/actions/runs/35520937291) | Completed the previously failing ladder path, recorded 116 observations and one graduation; retained a real 388-second gap after the interrupted collection window |
+| [Latest report](https://github.com/themvf/Speeches/actions/runs/35521001712) | Solana ladder holds 676 +5-minute and 570 +10-minute observations; service 170/hour versus arrivals 145/hour; capture coverage still 37.5% |
 
 Oldest enrichment age remains about 8.7 hours. Opening capture and selection health
 remain degrading over the trailing 24-hour sample. The 629-second Solana gap in
