@@ -13,9 +13,12 @@ def main():
     parser.add_argument('--chain',choices=['both','solana','robinhood'],default='both')
     parser.add_argument('--mode',choices=['all','daily','backlog','report'],default='all')
     parser.add_argument('--hours',type=int,default=48)
+    parser.add_argument('--cohort-since',default='',help='optional ISO graduation cutoff with timezone')
     parser.add_argument('--output',type=Path,default=Path('archive-reports'))
     args=parser.parse_args()
     if not 1<=args.hours<=720:parser.error('--hours must be between 1 and 720')
+    if args.cohort_since and args.mode not in ('all','report'):
+        parser.error('--cohort-since requires all or report mode')
     args.output.mkdir(parents=True,exist_ok=True)
     root=Path(__file__).resolve().parents[1]
     sections=['# Graduation Archive report',
@@ -24,6 +27,7 @@ def main():
         for mode in (['daily','backlog','report'] if args.mode=='all' else [args.mode]):
             command=[sys.executable,str(root/'launchpad_archive.py'),'--'+mode,'--chain',chain,
                      '--hours',str(args.hours),'--days',str(math.ceil(args.hours/24))]
+            if mode=='report' and args.cohort_since:command+=['--cohort-since',args.cohort_since]
             # Keep child diagnostics visible; a failed connection must not become
             # an opaque CalledProcessError with no actionable cause.
             result=subprocess.run(command,cwd=root,check=True,stdout=subprocess.PIPE,text=True)

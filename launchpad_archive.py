@@ -9,6 +9,7 @@ this buys is the history that makes the threshold question answerable at all - t
 reaches back about ten minutes, so anything not written down at the time is gone for good.
 """
 import argparse
+import hashlib
 from datetime import datetime, timedelta, timezone
 import json
 import math
@@ -128,11 +129,44 @@ def bounded_get(fetch,wait,spacing,deadline,conn=None):
 
 
 def setup(conn,chain=None):
+    """Apply each schema revision once, rather than taking DDL locks every sweep."""
+    import psycopg2
+    sql=Path(__file__).with_name('sql').joinpath('launchpad_archive.sql').read_text()
+    # Include adapter mappings because the migration also backfills their families.
+    mappings=[(c.network,[(name,sorted(dexes)) for name,dexes in c.families]) for c in CHAINS.values()]
+    revision=hashlib.sha256((sql+json.dumps(mappings)).encode()).hexdigest()
+    def applied(cur):
+        cur.execute("SELECT to_regclass('launchpad_schema_revision')")
+        if cur.fetchone()[0] is None:return False
+        cur.execute('SELECT revision FROM launchpad_schema_revision WHERE singleton=true')
+        row=cur.fetchone()
+        return bool(row and row[0]==revision)
     with conn,conn.cursor() as cur:
-        cur.execute(Path(__file__).with_name('sql').joinpath('launchpad_archive.sql').read_text())
+        if applied(cur):return
+    for attempt in range(3):
+        try:
+            with conn,conn.cursor() as cur:
+                # Transaction-scoped: safe through the production transaction pooler.
+                cur.execute('SELECT pg_advisory_xact_lock(784213906)')
+                if applied(cur):return
+                _apply_schema(conn,sql)
+                cur.execute('''CREATE TABLE IF NOT EXISTS launchpad_schema_revision (
+                               singleton boolean PRIMARY KEY CHECK(singleton),revision text NOT NULL)''')
+                cur.execute('''INSERT INTO launchpad_schema_revision VALUES (true,%s)
+                               ON CONFLICT (singleton) DO UPDATE SET revision=EXCLUDED.revision''',(revision,))
+            return
+        except psycopg2.errors.DeadlockDetected:
+            if attempt==2:raise
+            time.sleep(attempt+1)
+
+
+def _apply_schema(conn,sql):
+    # Caller owns the transaction; nesting a connection context would commit its lock early.
+    with conn.cursor() as cur:
+        cur.execute(sql)
         # Backfill the derived columns from the adapter rather than duplicating its mapping in SQL,
         # so there is one source of truth. Idempotent and bounded by the partial-NULL predicate.
-        for c in ([chain] if chain else CHAINS.values()):
+        for c in CHAINS.values():
             for name,dexes in c.families:
                 cur.execute('''UPDATE launchpad_tokens SET launchpad_family=%s
                                WHERE network=%s AND launchpad_family IS NULL AND dex=ANY(%s)''',
@@ -1019,9 +1053,17 @@ def main():
     parser.add_argument('--backlog',action='store_true',help='read-only backlog health')
     parser.add_argument('--daily',action='store_true',help='read-only daily health summary')
     parser.add_argument('--hours',type=int,default=48)
+    parser.add_argument('--cohort-since',help='exact timezone-aware graduation cutoff; requires --report')
     parser.add_argument('--days',type=int,default=7)
     parser.add_argument('--chain',default=ROBINHOOD.network,choices=sorted(CHAINS),help='which chain to sweep or report on')
     args=parser.parse_args()
+    cohort_since=None
+    if args.cohort_since:
+        from launchpad_cohort_report import cutoff
+        try:cohort_since=cutoff(args.cohort_since)
+        except ValueError as exc:parser.error(str(exc))
+        if not args.report:parser.error('--cohort-since requires --report')
+        if cohort_since>=datetime.now(timezone.utc):parser.error('cutoff must precede report time')
     chain=CHAINS[args.chain]
     if not args.execute and not args.report and not args.daily and not args.enrich and not args.backlog:
         print(json.dumps({'mode':'plan_only','chain':chain.network,
@@ -1038,7 +1080,12 @@ def main():
         if args.backlog:print(json.dumps(backlog_health(conn,chain),indent=1,default=str));return
         if args.enrich:print(json.dumps(enrich(conn,chain),indent=1,default=str));return
         if args.daily:print(json.dumps(daily(conn,days=args.days,chain=chain),indent=1));return
-        if args.report:print(json.dumps(report(conn,hours=args.hours,chain=chain),indent=1));return
+        if args.report:
+            result=report(conn,hours=args.hours,chain=chain)
+            if cohort_since:
+                from launchpad_cohort_report import cohort_report
+                result['post_repair_cohort']=cohort_report(conn,chain,cohort_since)
+            print(json.dumps(result,indent=1,default=str));return
         result=sweep(conn,chain);print(json.dumps(result))
         # A sweep that reached no pages is a failure; losing a page to rate limiting is not, because
         # the gap is recorded and the next sweep still overlaps.

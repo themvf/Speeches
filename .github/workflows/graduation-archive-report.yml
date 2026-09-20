@@ -16,6 +16,10 @@ on:
         description: Continuity window in hours (1–720); daily uses rounded-up days; backlog is trailing 24h
         type: string
         default: '48'
+      cohort_since:
+        description: Optional exact graduation cutoff (ISO timestamp with timezone); use all or report mode
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -29,6 +33,7 @@ jobs:
       REPORT_CHAIN: ${{ inputs.chain }}
       REPORT_MODE: ${{ inputs.mode }}
       REPORT_HOURS: ${{ inputs.hours }}
+      COHORT_SINCE: ${{ inputs.cohort_since }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,7 +41,7 @@ jobs:
           python-version: '3.11'
       - run: pip install 'psycopg2-binary>=2.9,<3'
       - name: Read archive health
-        run: python scripts/graduation_archive_report.py --chain "$REPORT_CHAIN" --mode "$REPORT_MODE" --hours "$REPORT_HOURS"
+        run: python scripts/graduation_archive_report.py --chain "$REPORT_CHAIN" --mode "$REPORT_MODE" --hours "$REPORT_HOURS" --cohort-since "$COHORT_SINCE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

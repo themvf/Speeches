@@ -87,6 +87,7 @@ def test_report_detects_trailing_outage_even_with_enough_sweeps(db):
 def test_schema_pending_is_read_only_and_search_path_aware(db):
     with db,db.cursor() as cur:
         cur.execute('ALTER TABLE launchpad_sweeps DROP COLUMN network CASCADE')
+        cur.execute('DELETE FROM launchpad_schema_revision')
     db.set_session(readonly=True)
     assert not archive.schema_ready(db)
     db.set_session(readonly=False)
@@ -249,9 +250,61 @@ def test_report_workflow_script_runs_all_six_read_only_sections(db,tmp_path):
     # PostgreSQL read-only mode, and execute the actual production script.
     env=dict(os.environ,DATABASE_URL=os.environ['CRYPTO_SOCIAL_TEST_DATABASE_URL'],
              PGOPTIONS='-c search_path=launchpad_test -c default_transaction_read_only=on')
-    result=subprocess.run([sys.executable,'scripts/graduation_archive_report.py','--output',str(tmp_path)],
+    result=subprocess.run([sys.executable,'scripts/graduation_archive_report.py','--output',str(tmp_path),
+                           '--cohort-since',NOW.isoformat()],
                            env=env,capture_output=True,text=True)
     assert result.returncode==0,result.stderr
     assert len(list(tmp_path.glob('*.json')))==6
     payload=json.loads((tmp_path/'solana-report.json').read_text())
     assert payload['network']=='solana' and payload['continuous'] is False
+    assert payload['post_repair_cohort']['cohort_graduates']==0
+
+
+def test_current_schema_setup_needs_no_write_or_ddl_locks(db):
+    # A ready collector's setup must even work in a read-only transaction.
+    db.set_session(readonly=True)
+    archive.setup(db,SOLANA)
+    archive.setup(db,ROBINHOOD)
+    db.set_session(readonly=False)
+
+
+def test_schema_revision_is_stable_across_process_hash_seeds(db):
+    env=dict(os.environ,DATABASE_URL=os.environ['CRYPTO_SOCIAL_TEST_DATABASE_URL'],
+             PGOPTIONS='-c search_path=launchpad_test -c default_transaction_read_only=on',
+             PYTHONHASHSEED='733')
+    code="import os,psycopg2,launchpad_archive as a; c=psycopg2.connect(os.environ['DATABASE_URL']); a.setup(c); c.close()"
+    result=subprocess.run([sys.executable,'-c',code],env=env,capture_output=True,text=True)
+    assert result.returncode==0,result.stderr
+
+
+def test_cohort_report_excludes_history_and_deduplicates_captures(db):
+    from launchpad_cohort_report import cohort_report
+    seed_graduate(db,'historical',age=120)
+    seed_graduate(db,'fresh',age=30,measure=SOL_DEEP)
+    seed_graduate(db,'miss',age=10)
+    seed_graduate(db,'outside',age=15,sampled=False)
+    seed_graduate(db,'future',age=-5)
+    with db,db.cursor() as cur:
+        cur.execute("UPDATE launchpad_tokens SET measure_pool_timing='late' WHERE token_address='fresh'")
+        for trades in (0,2):
+            cur.execute('''INSERT INTO launchpad_trade_captures
+                           (network,token_address,capture_started_at,trades)
+                           VALUES ('solana','fresh',%s,%s)''',(NOW-timedelta(minutes=29),trades))
+    db.set_session(readonly=True)
+    out=cohort_report(db,SOLANA,NOW-timedelta(hours=1),NOW)
+    assert out['graduates']==3 and out['cohort_graduates']==2
+    assert out['captures']['captured']==1 and out['captures']['nonempty']==1
+    assert out['captures']['coverage']==0.5 and out['sample_state']=='too_small'
+    assert out['pool_selection']['at_graduation_coverage']==0 and out['pool_selection']['late']==1
+    assert out['global_backlog']['oldest_age_seconds']==7200
+    assert out['cohort_backlog']['oldest_age_seconds']==1800
+    assert out['missed_capture_examples'][0]['token_address']=='miss'
+    assert out['sweeps']['longest_silence_seconds']==3600
+    assert cohort_report(db,ROBINHOOD,NOW-timedelta(hours=1),NOW)['graduates']==0
+    db.set_session(readonly=False)
+
+
+@pytest.mark.parametrize('value',['2026-09-20','2026-09-20T15:58:00','nonsense'])
+def test_cohort_cutoff_requires_timezone(value):
+    from launchpad_cohort_report import cutoff
+    with pytest.raises(ValueError,match='timezone'):cutoff(value)
