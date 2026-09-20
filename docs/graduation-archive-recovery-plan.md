@@ -71,7 +71,9 @@ expanded social collection, new chain, trading score or UI is part of this work.
   suite (765 passed, 86 skipped). The report script produced all six JSON sections
   with PostgreSQL enforcing read-only mode. Initial CI caught a missing required
   `last_seen_at` in the new test seed helper; corrected before the successful run.
-- Live deployment verification and the new commissioning start are pending.
+- Repair code is deployed; production verification is recorded below. A clean
+  commissioning verdict remains pending: historical capture deficits do not vanish
+  when code is deployed, and current provider throttling must remain visible.
 
 ### Production verification findings
 
@@ -98,5 +100,34 @@ expanded social collection, new chain, trading score or UI is part of this work.
   concurrency groups serialize rollout with the prior version.
 - Daily pool-selection counts now exclude graduates outside the sampled cohort,
   matching the backlog surface rather than inflating its denominator.
+- Production exposed a nested connection context in Robinhood's inline ladder
+  after shared pacing was introduced. Fixed by closing the lookup transaction
+  before requesting an API slot, with a regression that uses the actual database
+  coordination path (HTTP only is mocked). Final repair gate:
+  [35520831033](https://github.com/themvf/Speeches/actions/runs/35520831033),
+  **63 archive tests passed** against PostgreSQL; broader suite **765 passed,
+  89 skipped**. Code deployed as `a8dc648`.
+
+### Live evidence and remaining acceptance
+
+| Evidence | Result |
+| --- | --- |
+| [Solana sweep 563](https://github.com/themvf/Speeches/actions/runs/35520781372) | Completed after its predecessor, three pages, zero feed gap, one opening capture with 13 trades; rate-limit/budget errors retained |
+| [First repaired enrichment](https://github.com/themvf/Speeches/actions/runs/35519976617) | 42 tokens enriched, 570 ladder measurements; previously the inspected window had zero ladder measurements |
+| [Next enrichment](https://github.com/themvf/Speeches/actions/runs/35520494144) | 48 tokens enriched, 676 measurements, backlog 1,685, service 163/hour versus arrivals 145/hour |
+| [Production read-only report](https://github.com/themvf/Speeches/actions/runs/35520783131) | Six JSON sections and summary; historical unknown-network rows explicitly listed; ladder denominators/lateness visible |
+
+Oldest enrichment age remains about 8.7 hours. Opening capture and selection health
+remain degrading over the trailing 24-hour sample. The 629-second Solana gap in
+the first lease-based run is a real missed interval following skipped collectors;
+the next run returned to zero. It is retained, not rewritten as recovered data.
+
+The fresh 48–72-hour commissioning acceptance must therefore remain open. Require
+repeated successful per-chain collection, shrinking oldest backlog age, improving
+new-cohort capture/selection coverage and ladder coverage/lateness before calling
+the archive healthy. Use `graduation-archive-report.yml` with `chain=both`,
+`mode=all`, `hours=48` (or 72); a shorter continuity window helps separate the
+new deployment from legacy unattributed sweeps. No historical capture backfill
+or claim of restored completeness is made.
 
 The multi-pool endpoint is documented in the [GeckoTerminal API changelog](https://apiguide.geckoterminal.com/changelogs).

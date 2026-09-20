@@ -23,6 +23,11 @@ Never restore the `complete` filter: it creates a permanent paging/budget feedba
 Read-only report modes must never call `setup()`; they return `schema_pending` until a collector
 applies the migration. The `graduation-archive-report.yml` workflow enforces read-only transactions.
 Archive regressions run against disposable PostgreSQL in the `archive-postgres` CI job.
+Worker exclusion uses expiring, owner-checked rows, not session advisory locks (Neon's
+transaction pooler cannot preserve those). Public API requests reserve a shared 2.5-second
+slot and propagate provider cooldowns. Never hold another connection context open while
+requesting a slot. Enrichment reserves time for batched pool measurements; cohort coverage
+must exclude tokens outside the sample. Recovery is verified from JSON, not workflow badges.
 
 ## Rates & Credit Intelligence
 
