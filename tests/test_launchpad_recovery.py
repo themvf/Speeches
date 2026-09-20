@@ -308,3 +308,40 @@ def test_cohort_report_excludes_history_and_deduplicates_captures(db):
 def test_cohort_cutoff_requires_timezone(value):
     from launchpad_cohort_report import cutoff
     with pytest.raises(ValueError,match='timezone'):cutoff(value)
+
+
+def test_arrival_capture_precedes_state_rate_limit(db):
+    urls=[]
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP)
+    delegate=sol_responder({1:[graduation]},pool_list={'data':[graduation]})
+    def fetch(url,**kwargs):
+        urls.append(url)
+        if '/tokens/multi/' in url:
+            response=Response({},429);response.headers={'Retry-After':'300'}
+            return response
+        return delegate(url,**kwargs)
+    out=archive.sweep(db,SOLANA,fetch=fetch,now=NOW,wait=lambda _:None)
+    assert out['trade_captures']==1
+    assert next(i for i,u in enumerate(urls) if '/trades?' in u)<next(i for i,u in enumerate(urls) if '/tokens/multi/' in u)
+    assert any('rate limit' in e for e in out['errors'])
+
+
+def test_state_only_graduate_still_gets_capture(db):
+    curve=sol_pool()
+    multi={'data':[{'attributes':{'address':SOL_TOKEN,'launchpad_details':{
+        'completed':True,'completed_at':NOW.isoformat(),'migrated_destination_pool_address':SOL_DEEP}}}]}
+    fetch=sol_responder({1:[curve]},multi=multi,
+                       pool_list={'data':[sol_pool(dex='pumpswap',address=SOL_DEEP)]})
+    out=archive.sweep(db,SOLANA,fetch=fetch,now=NOW,wait=lambda _:None)
+    assert out['trade_captures']==1 and out['graduations']==1
+
+
+def test_capture_error_retains_token_and_provider_cause(db):
+    graduation=sol_pool(dex='pumpswap',address=SOL_DEEP)
+    delegate=sol_responder({1:[graduation]},pool_list={'data':[graduation]})
+    def fetch(url,**kwargs):
+        if '/trades?' in url:return Response({},503)
+        return delegate(url,**kwargs)
+    out=archive.sweep(db,SOLANA,fetch=fetch,now=NOW,wait=lambda _:None)
+    assert out['trade_captures']==0
+    assert any(SOL_TOKEN in e and 'HTTP 503' in e for e in out['errors'])

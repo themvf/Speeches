@@ -355,16 +355,22 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         # 3. Graduation by arrival: a graduate-DEX pool whose token we hold is a graduation event.
         arrivals={e['token']:e for e in graduate_pools}
 
-        # 4. Batched state for new tokens and live candidates.
+        # Solana arrivals already establish graduation. Capture them before renewable
+        # state reads can consume the shared API allowance or trigger a cooldown.
         ask=sorted(arrivals)+sorted(({e['token'] for e in curve if e['token'] not in known}|set(candidates))-set(arrivals))
         state={}
-        for start in range(0,len(ask),MULTI_BATCH):
-            if not budget_left(chain.discovery_share):
-                errors.append('state reads stopped to reserve budget for captures');break
-            batch=ask[start:start+MULTI_BATCH]
-            try:state.update(parse_multi(get(multi_url(batch,chain.network)),chain))
-            except (ValueError,requests.RequestException) as exc:
-                errors.append('tokens/multi: '+type(exc).__name__+' '+str(exc)[:120])
+        def read_states(share):
+            for start in range(0,len(ask),MULTI_BATCH):
+                if not budget_left(share):
+                    errors.append('state reads stopped to reserve budget for captures');break
+                batch=ask[start:start+MULTI_BATCH]
+                try:state.update(parse_multi(get(multi_url(batch,chain.network)),chain))
+                except (ValueError,requests.RequestException) as exc:
+                    errors.append('tokens/multi: '+type(exc).__name__+' '+str(exc)[:120])
+                    # A phase deadline is shared by every batch. Do not report the
+                    # same exhausted budget once for each unattempted batch.
+                    if 'budget' in str(exc) or 'deadline' in str(exc):break
+        if chain.enrich_in_sweep:read_states(chain.discovery_share)
 
         phase_share=1.0
         # 5. Enrichment for graduates we have not enriched, and 6. the snapshot ladder.
@@ -388,59 +394,82 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
         # while everything else can wait without losing anything.
         queue=sorted(set(newly),key=lambda t:(not in_cohort(chain,t),t))+backlog
         backlog_set=set(backlog)
-        info={};measure={};captures=[]
-        for token in queue[:chain.max_info]:
-            if not budget_left():break
-            sampled=in_cohort(chain,token)
-            # When enrichment has its own worker the sweep skips it entirely for tokens that carry
-            # nothing perishable - there is no reason to spend cadence-critical time on them. The
-            # reason is still recorded, because it costs nothing and "we did not look" must never
-            # read back as "there was nothing there".
-            if not chain.enrich_in_sweep and not sampled:
-                measure[token]=(None,'outside ladder cohort');continue
-            if chain.enrich_in_sweep:
-                try:
-                    payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
-                    info[token]=parse_info(payload)
-                    # Creator, authorities, socials and description - free, in the call we already make.
-                    if chain.extended_info:info[token].update(parse_extended_info(payload))
-                except (ValueError,requests.RequestException) as exc:
-                    errors.append('info '+token[:10]+': '+type(exc).__name__)
-            # Which pool the ladder will read. Chosen AT GRADUATION even when the rest of enrichment
-            # is deferred: a token can fall from a real market to a few dollars of liquidity within
-            # the hour, so "deepest pool now" hours later can name a different market than the one
-            # that mattered. The candidate list is stored with it so the choice stays auditable.
-            destination=(state.get(token) or {}).get('destination') or (arrivals[token]['pool'] if token in arrivals else None)
-            if not chain.deepest_pool_wins:
-                measure[token]=choose_measure_pool(chain,[],destination)
-            elif not sampled:
-                # Outside the cohort there is no ladder to read, so the pool list is never fetched.
-                # Recorded as its own reason: "we did not look" must not read as "there was nothing".
-                measure[token]=(None,'outside ladder cohort')
-            else:
-                try:pool_list=parse_pool_list(get(GECKO+chain.network+'/tokens/'+token+'/pools'))
-                except (ValueError,requests.RequestException) as exc:
-                    errors.append('pools '+token[:10]+': '+type(exc).__name__);continue
-                measure[token]=choose_measure_pool(chain,pool_list,destination)
-            # Opening trade capture: perishable. On a busy graduate 300 trades spanned 33 seconds, so
-            # this is taken now or never - it cannot be reconstructed later at any price.
-            address=measure[token][0]
-            if chain.capture_trades and address and sampled and budget_left():
-                started=datetime.now(timezone.utc);rows=[];fetched=0
-                for page in range(1,chain.trade_pages+1):
+        info={};measure={};captures=[];attempted=set();selection_lists={}
+        def capture_graduates(work):
+            for token in work:
+                if token in attempted:continue
+                if len(attempted)>=chain.max_info or not budget_left():
+                    if in_cohort(chain,token):errors.append('capture skipped '+token+': sweep limit or deadline')
+                    continue
+                sampled=in_cohort(chain,token)
+                if sampled or chain.enrich_in_sweep:attempted.add(token)
+                # When enrichment has its own worker the sweep skips it entirely for tokens that carry
+                # nothing perishable - there is no reason to spend cadence-critical time on them. The
+                # reason is still recorded, because it costs nothing and "we did not look" must never
+                # read back as "there was nothing there".
+                if not chain.enrich_in_sweep and not sampled:
+                    measure[token]=(None,'outside ladder cohort');continue
+                if chain.enrich_in_sweep:
                     try:
-                        batch=parse_trades(get(GECKO+chain.network+'/pools/'+address+'/trades?page='+str(page)),address)
+                        payload=get(GECKO+chain.network+'/tokens/'+token+'/info')
+                        info[token]=parse_info(payload)
+                        # Creator, authorities, socials and description - free, in the call we already make.
+                        if chain.extended_info:info[token].update(parse_extended_info(payload))
                     except (ValueError,requests.RequestException) as exc:
-                        errors.append('trades '+address[:10]+': '+type(exc).__name__);break
-                    fetched+=1
-                    if not batch:break
-                    rows+=batch
-                # Pages overlap rather than extending backwards, so dedupe on the transaction itself.
-                unique={(r['tx_hash'],r['wallet'],r['traded_at']):r for r in rows}
-                ordered=sorted(unique.values(),key=lambda r:(r['traded_at'],r['tx_hash'] or ''))
-                if fetched:captures.append(dict(token=token,pool=address,started=started,
-                                     finished=datetime.now(timezone.utc),pages=fetched,
-                                     rows=ordered,summary=summarize_trades(ordered)))
+                        errors.append('info '+token+': '+type(exc).__name__+' '+str(exc)[:120])
+                # Which pool the ladder will read. Chosen AT GRADUATION even when the rest of enrichment
+                # is deferred: a token can fall from a real market to a few dollars of liquidity within
+                # the hour, so "deepest pool now" hours later can name a different market than the one
+                # that mattered. The candidate list is stored with it so the choice stays auditable.
+                destination=(state.get(token) or {}).get('destination') or (arrivals[token]['pool'] if token in arrivals else None)
+                if not chain.deepest_pool_wins:
+                    measure[token]=choose_measure_pool(chain,[],destination)
+                elif not sampled:
+                    # Outside the cohort there is no ladder to read, so the pool list is never fetched.
+                    # Recorded as its own reason: "we did not look" must not read as "there was nothing".
+                    measure[token]=(None,'outside ladder cohort')
+                else:
+                    try:pool_list=parse_pool_list(get(GECKO+chain.network+'/tokens/'+token+'/pools'))
+                    except (ValueError,requests.RequestException) as exc:
+                        errors.append('pools '+token+': '+type(exc).__name__+' '+str(exc)[:120]);continue
+                    selection_lists[token]=pool_list
+                    measure[token]=choose_measure_pool(chain,pool_list,destination)
+                # Opening trade capture: perishable. On a busy graduate 300 trades spanned 33 seconds, so
+                # this is taken now or never - it cannot be reconstructed later at any price.
+                address=measure[token][0]
+                if chain.capture_trades and address and sampled and not budget_left():
+                    errors.append('capture skipped '+token+': sweep deadline after pool selection')
+                if chain.capture_trades and address and sampled and budget_left():
+                    started=datetime.now(timezone.utc);rows=[];fetched=0
+                    for page in range(1,chain.trade_pages+1):
+                        try:
+                            batch=parse_trades(get(GECKO+chain.network+'/pools/'+address+'/trades?page='+str(page)),address)
+                        except (ValueError,requests.RequestException) as exc:
+                            errors.append('trades '+token+' pool '+address+': '+type(exc).__name__+' '+str(exc)[:120]);break
+                        fetched+=1
+                        if not batch:break
+                        rows+=batch
+                    # Pages overlap rather than extending backwards, so dedupe on the transaction itself.
+                    unique={(r['tx_hash'],r['wallet'],r['traded_at']):r for r in rows}
+                    ordered=sorted(unique.values(),key=lambda r:(r['traded_at'],r['tx_hash'] or ''))
+                    if fetched:captures.append(dict(token=token,pool=address,started=started,
+                                         finished=datetime.now(timezone.utc),pages=fetched,
+                                         rows=ordered,summary=summarize_trades(ordered)))
+        capture_graduates(queue)
+        if not chain.enrich_in_sweep:
+            # Remaining state work has its own deadline, leaving the final 15%
+            # for a graduation found only through completed state.
+            phase_share=max(chain.discovery_share,0.85)
+            read_states(phase_share)
+            phase_share=1.0
+            extra=[t for t,s in state.items() if s['completed']
+                   and not known.get(t,{}).get('graduated') and t not in arrivals]
+            capture_graduates(sorted(extra,key=lambda t:(not in_cohort(chain,t),t)))
+            # Reconcile the destination annotation against later state using the
+            # original pool list. This never changes the market or fetches it again.
+            for token,pool_list in selection_lists.items():
+                destination=(state.get(token) or {}).get('destination')
+                if destination:measure[token]=choose_measure_pool(chain,pool_list,destination)
         observations=[]
         for entry in curve:
             pct=(state.get(entry['token']) or {}).get('pct')

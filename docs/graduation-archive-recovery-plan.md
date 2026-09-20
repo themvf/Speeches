@@ -133,3 +133,50 @@ new deployment from legacy unattributed sweeps. No historical capture backfill
 or claim of restored completeness is made.
 
 The multi-pool endpoint is documented in the [GeckoTerminal API changelog](https://apiguide.geckoterminal.com/changelogs).
+
+### Post-repair measurement and follow-up (2026-09-20)
+
+Read-only reports now accept `cohort_since`, an exact ISO timestamp with a timezone
+(for example `2026-09-20T15:58:00Z`). It adds `post_repair_cohort` to each chain's
+report; the existing daily and rolling health surfaces retain their original scope.
+The denominator uses graduation time, not detection time, and excludes graduates
+outside the deterministic sample. Duplicate captures count once; empty captures
+are separate from nonempty captures. Unknown graduation times, detection lag,
+opening-window lag, global versus new-graduate backlog age, due ladder coverage,
+worker history and correlated sweep errors remain visible. Undiscovered graduates
+cannot enter this denominator; workflow failures before persistence still require
+workflow logs. Do not equate successful HTTP capture with complete opening history.
+
+- [Report 35521688197](https://github.com/themvf/Speeches/actions/runs/35521688197),
+  cutoff 15:58 UTC, read at 16:07: only one sampled graduate had arrived in the
+  database, with one nonempty capture and an 84-second opening lag. This is too
+  small and too early for acceptance; later detection can expand that denominator.
+- [Transition report 35521729367](https://github.com/themvf/Speeches/actions/runs/35521729367),
+  cutoff 15:34 UTC: 68 graduates, 22 sampled, 8 nonempty captures (36.4%),
+  12 pools selected at graduation (54.5%), and no filled +5-minute rung for those
+  22 sampled graduates. Nine of twelve recorded sweeps had budget errors; five
+  had explicit rate-limit errors. This window includes the rollout and earlier
+  worker failures and is **not** a clean post-final-repair acceptance window.
+- [Failure 35521330862](https://github.com/themvf/Speeches/actions/runs/35521330862)
+  exposed a schema-update deadlock. `318b56d` replaces DDL on every run with a
+  content-addressed schema revision, applies all chain backfills once, serializes
+  migrations with a transaction advisory lock and retries deadlocks at most twice.
+  Ordinary setup becomes read-only. The revision includes deterministic adapter
+  mappings. [CI 35521686917](https://github.com/themvf/Speeches/actions/runs/35521686917):
+  69 archive PostgreSQL tests; full suite 768 passed, 92 skipped.
+
+The next tuning protects already-known Solana graduations by selecting pools and
+capturing trades before renewable batched state reads. Remaining state work uses
+up to 85% of the sweep deadline; the final 15% remains available to capture a
+graduation found only through completed state. Pool selection still uses the
+deepest eligible market and the original selection-time pool list; a later state
+response can annotate a destination disagreement without fetching a different
+market. Shared provider pacing and cohort membership remain unchanged. Errors
+retain public token/pool identity and the provider or deadline cause, including
+explicit skipped captures. Validate arrival-before-state behavior, state-only
+graduations and failure attribution against PostgreSQL before deploying.
+
+Commissioning stays open until a fresh 48–72-hour window demonstrates collection
+continuity, adequate capture/selection coverage, falling oldest backlog age, and
+ladder timeliness. Start its cutoff after the final tuning deployment; do not
+reuse the transition sample as proof that recovery passed.
