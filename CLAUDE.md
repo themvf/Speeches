@@ -28,6 +28,13 @@ transaction pooler cannot preserve those). Public API requests reserve a shared 
 slot and propagate provider cooldowns. Never hold another connection context open while
 requesting a slot. Enrichment reserves time for batched pool measurements; cohort coverage
 must exclude tokens outside the sample. Recovery is verified from JSON, not workflow badges.
+Schema setup uses a content-addressed revision; current schemas must not run DDL or
+backfills on every sweep (production exposed a deadlock). Migration locks are
+transaction-scoped, unlike worker leases. Solana captures known graduate arrivals
+before renewable state reads; state-only graduations retain a final capture reserve.
+The read-only workflow's optional `cohort_since` ISO timestamp reports fresh
+graduations separately from historical rolling metrics, including empty captures
+and actual opening lag. A successful capture is not proof of complete opening history.
 
 ## Rates & Credit Intelligence
 

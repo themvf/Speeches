@@ -165,7 +165,7 @@ workflow logs. Do not equate successful HTTP capture with complete opening histo
   mappings. [CI 35521686917](https://github.com/themvf/Speeches/actions/runs/35521686917):
   69 archive PostgreSQL tests; full suite 768 passed, 92 skipped.
 
-The next tuning protects already-known Solana graduations by selecting pools and
+Deployed tuning `8103346` protects already-known Solana graduations by selecting pools and
 capturing trades before renewable batched state reads. Remaining state work uses
 up to 85% of the sweep deadline; the final 15% remains available to capture a
 graduation found only through completed state. Pool selection still uses the
@@ -173,10 +173,28 @@ deepest eligible market and the original selection-time pool list; a later state
 response can annotate a destination disagreement without fetching a different
 market. Shared provider pacing and cohort membership remain unchanged. Errors
 retain public token/pool identity and the provider or deadline cause, including
-explicit skipped captures. Validate arrival-before-state behavior, state-only
-graduations and failure attribution against PostgreSQL before deploying.
+explicit skipped captures. Arrival-before-state behavior, state-only graduations
+and failure attribution passed PostgreSQL validation before deployment:
+[CI 35521903823](https://github.com/themvf/Speeches/actions/runs/35521903823),
+72 archive tests passed; broader suite 768 passed, 95 skipped.
+
+The first live tuning runs completed:
+[Robinhood 35521968405](https://github.com/themvf/Speeches/actions/runs/35521968405)
+recorded 30 observations with zero feed gap and no errors;
+[Solana 35521968407](https://github.com/themvf/Speeches/actions/runs/35521968407)
+recorded 13 graduations and 59 observations with zero feed gap. Its attempted
+capture failed with an explicit **HTTP 429**, now attributable to the exact
+token and pool. Thus the ordering path runs, but provider limits still prevent
+captures; this is not evidence of recovered capture coverage.
 
 Commissioning stays open until a fresh 48–72-hour window demonstrates collection
 continuity, adequate capture/selection coverage, falling oldest backlog age, and
 ladder timeliness. Start its cutoff after the final tuning deployment; do not
 reuse the transition sample as proof that recovery passed.
+
+Hourly follow-up is configured in the current Codex task as
+`graduation-archive-commissioning`, with a conservative cutoff of
+**2026-09-20 16:15 UTC**. It reads production reports, keeps dated artifacts,
+reports meaningful changes, assesses the 48-hour gate and gives a final assessment
+after 72 hours on September 23 before pausing itself. This local follow-up needs
+the desktop app running; the collectors continue independently on GitHub.
