@@ -14,6 +14,7 @@ import json
 import math
 import os
 import time
+import uuid
 from pathlib import Path
 
 from launchpad_chains import (CHAINS,ROBINHOOD,SOLANA,Chain,choose_measure_pool,classify,family_of,
@@ -52,6 +53,27 @@ def schema_ready(conn):
                        WHERE attrelid=to_regclass('launchpad_sweeps') AND attname='network'
                          AND NOT attisdropped)""")
         return cur.fetchone()[0]
+
+
+def acquire_worker(conn,chain,kind):
+    """A pooled-connection-safe lease lasting beyond the workflow's hard timeout."""
+    owner=uuid.uuid4().hex
+    # Workflow hard limits: five minutes for a sweep, twelve for enrichment.
+    ttl=max(360,chain.deadline_seconds+180) if kind=='sweep' else max(900,chain.enrich_minutes*60+180)
+    with conn,conn.cursor() as cur:
+        cur.execute('''INSERT INTO launchpad_worker_leases(network,kind,owner,expires_at)
+                       VALUES (%s,%s,%s,clock_timestamp()+%s*interval '1 second')
+                       ON CONFLICT (network,kind) DO UPDATE SET
+                         owner=EXCLUDED.owner,expires_at=EXCLUDED.expires_at
+                       WHERE launchpad_worker_leases.expires_at<=clock_timestamp()
+                       RETURNING owner''',(chain.network,kind,owner,ttl))
+        return owner if cur.fetchone() else None
+
+
+def release_worker(conn,chain,kind,owner):
+    with conn,conn.cursor() as cur:
+        cur.execute('DELETE FROM launchpad_worker_leases WHERE network=%s AND kind=%s AND owner=%s',
+                    (chain.network,kind,owner))
 
 
 def reserve_api_slot(conn,remaining,spacing=2.5):
@@ -239,9 +261,8 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
     sweep_clock=time.monotonic()
     def budget_left(share=1.0):
         return time.monotonic()-sweep_clock < chain.deadline_seconds*share
-    with conn,conn.cursor() as cur:
-        cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-archive:'+chain.network,))
-        if not cur.fetchone()[0]:return {'status':'already_running','errors':['sweep_already_running']}
+    owner=acquire_worker(conn,chain,'sweep')
+    if not owner:return {'status':'already_running','errors':['sweep_already_running']}
     errors=[]
     phase_share=chain.discovery_share
     get=bounded_get(fetch,wait,chain.request_wait,
@@ -415,7 +436,7 @@ def sweep(conn,chain=ROBINHOOD,fetch=None,now=None,wait=None):
                          backlog=sorted(backlog_set&set(measure)))
         return summary
     finally:
-        with conn,conn.cursor() as cur:cur.execute("SELECT pg_advisory_unlock(hashtext(%s))",('launchpad-archive:'+chain.network,))
+        release_worker(conn,chain,'sweep',owner)
 
 
 def _extra(chain,token,dex,chosen,enrich):
@@ -674,9 +695,8 @@ def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
     use_shared_budget=fetch is None
     wait=wait or time.sleep;fetch=fetch or requests.get;now=now or datetime.now(timezone.utc)
     setup(conn,chain)
-    with conn,conn.cursor() as cur:
-        cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))",('launchpad-enrich:'+chain.network,))
-        if not cur.fetchone()[0]:return {'status':'already_running'}
+    owner=acquire_worker(conn,chain,'enrich')
+    if not owner:return {'status':'already_running'}
     clock=time.monotonic();errors=[];processed=0
     deadline=clock+chain.enrich_minutes*60*chain.enrich_budget_fraction
     metadata_deadline=clock+(deadline-clock)*chain.enrich_metadata_share
@@ -758,7 +778,7 @@ def enrich(conn,chain=SOLANA,fetch=None,now=None,wait=None):
         return dict({'status':'ok','network':chain.network,'processed_this_run':processed,
                      'rungs_filled':rungs_filled,'errors':errors},**health)
     finally:
-        with conn,conn.cursor() as cur:cur.execute("SELECT pg_advisory_unlock(hashtext(%s))",('launchpad-enrich:'+chain.network,))
+        release_worker(conn,chain,'enrich',owner)
 
 
 def _fill_ladder(conn,chain,get,now,budget_left,errors):

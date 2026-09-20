@@ -135,6 +135,30 @@ def test_api_slots_are_shared_across_connections_and_deadline_safe(db):
     finally:other.close()
 
 
+def test_worker_leases_survive_connection_switches_and_expired_owner_cannot_release(db):
+    import psycopg2
+    other=psycopg2.connect(os.environ['CRYPTO_SOCIAL_TEST_DATABASE_URL'],
+                          options='-c search_path=launchpad_test')
+    try:
+        owner=archive.acquire_worker(db,SOLANA,'sweep')
+        assert owner and archive.acquire_worker(other,SOLANA,'sweep') is None
+        # Chain and job isolation: enrichment and Robinhood remain independent.
+        assert archive.acquire_worker(other,SOLANA,'enrich')
+        assert archive.acquire_worker(other,ROBINHOOD,'sweep')
+        archive.release_worker(other,SOLANA,'sweep',owner)
+        owner=archive.acquire_worker(other,SOLANA,'sweep')
+        assert owner
+        with db,db.cursor() as cur:
+            cur.execute("UPDATE launchpad_worker_leases SET expires_at=clock_timestamp()-interval '1 second'")
+        replacement=archive.acquire_worker(db,SOLANA,'sweep')
+        assert replacement and replacement!=owner
+        archive.release_worker(other,SOLANA,'sweep',owner)
+        assert archive.acquire_worker(other,SOLANA,'sweep') is None
+        archive.release_worker(other,SOLANA,'sweep',replacement)
+        assert archive.acquire_worker(db,SOLANA,'sweep')
+    finally:other.close()
+
+
 def test_worker_does_not_fetch_pools_outside_cohort(db):
     seed_graduate(db,SOL_OUTSIDE,sampled=False)
     calls=[]

@@ -93,6 +93,16 @@ CREATE TABLE IF NOT EXISTS launchpad_api_budget (
 INSERT INTO launchpad_api_budget(name,next_request_at) VALUES ('gecko',clock_timestamp())
  ON CONFLICT (name) DO NOTHING;
 
+-- Session advisory locks are not safe through transaction-pooling proxies.
+-- Leases survive connection switching and recover after a runner is terminated.
+CREATE TABLE IF NOT EXISTS launchpad_worker_leases (
+ network text NOT NULL,
+ kind text NOT NULL,
+ owner text NOT NULL,
+ expires_at timestamptz NOT NULL,
+ PRIMARY KEY (network,kind)
+);
+
 -- Multi-chain + OSINT capture (2026-09-19). Additive: the Robinhood archive is untouched.
 -- See docs/solana-pumpfun-archive-spec.md.
 ALTER TABLE launchpad_tokens ADD COLUMN IF NOT EXISTS launchpad text;              -- curve pool's DEX id

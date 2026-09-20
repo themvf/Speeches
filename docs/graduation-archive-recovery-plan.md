@@ -87,5 +87,16 @@ expanded social collection, new chain, trading score or UI is part of this work.
   tiny coordination transactions prevent three jobs each consuming the entire
   public allowance. The existing two-minute collector already keeps the database
   awake. No new service or paid API is introduced.
+- Completed jobs were followed by repeated `already_running` results. The original
+  lock was session-scoped but transactions were committed throughout each run;
+  [Neon transaction pooling](https://neon.com/docs/connect/connection-pooling)
+  does not support session-level advisory locks. Replaced these with atomic,
+  owner-checked worker leases keyed by chain and job type. Leases expire after
+  six minutes (sweep) or fifteen minutes (enrichment), beyond workflow hard limits
+  of five/twelve minutes. A terminated runner cannot leave a permanent lock, and
+  an expired owner cannot release its successor's lease. Existing workflow
+  concurrency groups serialize rollout with the prior version.
+- Daily pool-selection counts now exclude graduates outside the sampled cohort,
+  matching the backlog surface rather than inflating its denominator.
 
 The multi-pool endpoint is documented in the [GeckoTerminal API changelog](https://apiguide.geckoterminal.com/changelogs).
