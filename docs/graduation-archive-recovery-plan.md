@@ -66,8 +66,11 @@ expanded social collection, new chain, trading score or UI is part of this work.
 - New read-only workflow supports both chains and all three report surfaces,
   publishing six JSON artifacts plus a summary. The database enforces read-only
   transactions; schema migration remains collector-owned.
-- Local non-database checks passed. Full PostgreSQL regression gate and broader
-  Python suite dispatched on the repair branch before main deployment.
+- Local non-database checks passed. Before deployment, [CI run 35519910593](https://github.com/themvf/Speeches/actions/runs/35519910593)
+  passed all 60 archive checks against disposable PostgreSQL and the broader Python
+  suite (765 passed, 86 skipped). The report script produced all six JSON sections
+  with PostgreSQL enforcing read-only mode. Initial CI caught a missing required
+  `last_seen_at` in the new test seed helper; corrected before the successful run.
 - Live deployment verification and the new commissioning start are pending.
 
 The multi-pool endpoint is documented in the [GeckoTerminal API changelog](https://apiguide.geckoterminal.com/changelogs).
