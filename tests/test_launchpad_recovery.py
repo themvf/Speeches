@@ -147,6 +147,9 @@ def test_worker_does_not_fetch_pools_outside_cohort(db):
     with db,db.cursor() as cur:
         cur.execute('SELECT measure_pool_reason FROM launchpad_tokens')
         assert cur.fetchone()[0]=='outside ladder cohort'
+    daily=archive.daily(db,chain=SOLANA,now=NOW)
+    assert daily[0]['pools_measured']==0 and daily[0]['pools_at_graduation']==0
+    assert daily[0]['at_graduation_share'] is None
 
 
 def test_failed_pool_lookup_is_not_recorded_as_no_pools(db):

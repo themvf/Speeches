@@ -619,8 +619,8 @@ def daily(conn,now=None,days=7,chain=ROBINHOOD):
                            graduates_detected=graduates,observations=observations,
                            detection_lag_median=None,detection_lag_p95=None,lag_measured=0)
         cur.execute('''SELECT date_trunc('day',graduated_at),
-                              count(*) FILTER (WHERE measure_pool_timing='at_graduation'),
-                              count(*) FILTER (WHERE measure_pool_timing IS NOT NULL),
+                              count(*) FILTER (WHERE cohort_sampled AND measure_pool_timing='at_graduation'),
+                              count(*) FILTER (WHERE cohort_sampled AND measure_pool_timing IS NOT NULL),
                               count(*) FILTER (WHERE cohort_sampled)
                        FROM launchpad_tokens
                        WHERE network=%s AND graduated AND graduated_at>=%s GROUP BY 1''',(chain.network,since))
