@@ -23,10 +23,10 @@ def seed_sweep(db,network,at,newest,complete=True):
 def seed_graduate(db,token=SOL_TOKEN,sampled=True,age=60,measure=None):
     with db,db.cursor() as cur:
         cur.execute('''INSERT INTO launchpad_tokens
-                       (network,token_address,dex,first_seen_at,graduated,graduated_at,
+                       (network,token_address,dex,first_seen_at,last_seen_at,graduated,graduated_at,
                         cohort_sampled,measure_pool,measure_pool_reason)
-                       VALUES ('solana',%s,'pumpswap',%s,true,%s,%s,%s,%s)''',
-                    (token,NOW,NOW-timedelta(minutes=age),sampled,measure,
+                       VALUES ('solana',%s,'pumpswap',%s,%s,true,%s,%s,%s,%s)''',
+                    (token,NOW,NOW,NOW-timedelta(minutes=age),sampled,measure,
                      'deepest graduate pool' if measure else None))
 
 

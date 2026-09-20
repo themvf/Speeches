@@ -16,6 +16,14 @@ are labelled; "not observed" must never read as "observed and absent"; Solana's
 `first_pool_created` is **not** a launch time; and launchpad-specific analysis filters on
 `launchpad_family`, never on `launchpad`.
 
+Recovery plan and verification: [`docs/graduation-archive-recovery-plan.md`](docs/graduation-archive-recovery-plan.md).
+Sweep history is chain-scoped; pre-migration `network IS NULL` rows remain unattributed.
+The discovery watermark uses the latest same-chain observed feed, even if optional work failed.
+Never restore the `complete` filter: it creates a permanent paging/budget feedback loop.
+Read-only report modes must never call `setup()`; they return `schema_pending` until a collector
+applies the migration. The `graduation-archive-report.yml` workflow enforces read-only transactions.
+Archive regressions run against disposable PostgreSQL in the `archive-postgres` CI job.
+
 ## Rates & Credit Intelligence
 
 The implementation strategy for the Market → Macro rates and credit workspace lives in [`docs/rates-credit-intelligence-strategy.md`](docs/rates-credit-intelligence-strategy.md). Follow its phased architecture, source hierarchy, interpretability requirements, and data-quality rules when extending rates, corporate credit, ratings, mortgages, or CDS coverage.

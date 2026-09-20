@@ -47,4 +47,27 @@ expanded social collection, new chain, trading score or UI is part of this work.
 
 ## Execution record
 
-Implementation and live verification pending.
+- Plan committed separately before implementation (4b6a8a4).
+- No published pending patch or open archive PR was available; implemented from
+  deployed main in `C:/archive-recovery` on `codex/archive-recovery`.
+- Added nullable sweep network migration and chain filters throughout continuity
+  and daily queries. Unknown legacy rows explicitly prevent a complete verdict.
+- Removed the complete-sweep watermark predicate; previous errors/gaps remain
+  stored. Reports also check leading/trailing silence, not just sweep counts.
+- All request retries/timeouts share a phase deadline. Graduate arrivals receive
+  state lookup priority. Solana takes one trade page because pages overlap.
+- Enrichment uses at most 65% of an 85%-of-cadence budget, reserving the remainder
+  for the ladder. Pool lists are skipped outside the sampled cohort. Failed pool
+  requests stay retryable rather than becoming permanent "no pools" outcomes.
+- Ladder measurements use the public multi-pool endpoint, up to 30 pools/request.
+  Live API probe returned both requested pools with exact address matches (HTTP 200).
+  Responses retain actual fetch times; reports include per-rung eligibility,
+  missing observations, missing pools, coverage, and median lateness.
+- New read-only workflow supports both chains and all three report surfaces,
+  publishing six JSON artifacts plus a summary. The database enforces read-only
+  transactions; schema migration remains collector-owned.
+- Local non-database checks passed. Full PostgreSQL regression gate and broader
+  Python suite dispatched on the repair branch before main deployment.
+- Live deployment verification and the new commissioning start are pending.
+
+The multi-pool endpoint is documented in the [GeckoTerminal API changelog](https://apiguide.geckoterminal.com/changelogs).
