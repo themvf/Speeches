@@ -24,8 +24,13 @@ on:
       - '.github/workflows/crypto-market-history.yml'
       - 'sql/crypto_social*.sql'
       - 'tests/test_crypto_social*.py'
+      - 'intelligence_fusion.py'
+      - 'sql/intelligence_fusion.sql'
+      - 'tests/test_intelligence_fusion.py'
       - '.github/workflows/crypto-social*.yml'
       - 'apps/web/lib/crypto-social*'
+      - 'apps/web/lib/intelligence-fusion*'
+      - 'apps/web/lib/server/intelligence-fusion*'
       - 'apps/web/lib/crypto-run*'
       - 'apps/web/lib/crypto-coin-discovery*'
       - 'apps/web/lib/crypto-voices*'
@@ -60,11 +65,11 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install pytest 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
-      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_tracking.py tests/test_crypto_social_history.py tests/test_crypto_social_catchup.py tests/test_crypto_market_history.py tests/test_crypto_event_study.py tests/test_crypto_coins.py tests/test_crypto_rankings_cache.py -q
+      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_tracking.py tests/test_crypto_social_history.py tests/test_crypto_social_catchup.py tests/test_crypto_market_history.py tests/test_crypto_event_study.py tests/test_crypto_coins.py tests/test_crypto_rankings_cache.py tests/test_intelligence_fusion.py -q
         env:
           CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@localhost:5432/crypto_test
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --experimental-strip-types --test apps/web/lib/crypto-social.test.ts apps/web/lib/crypto-run.test.ts apps/web/lib/crypto-coin-discovery.test.ts apps/web/lib/crypto-voices.test.ts apps/web/lib/crypto-watchers.test.ts apps/web/lib/crypto-impact.test.ts apps/web/lib/crypto-coins.test.ts apps/web/lib/crypto-leaders.test.ts apps/web/lib/crypto-signals.test.ts apps/web/lib/crypto-workspace.test.ts
+      - run: node --experimental-strip-types --test apps/web/lib/crypto-social.test.ts apps/web/lib/crypto-run.test.ts apps/web/lib/crypto-coin-discovery.test.ts apps/web/lib/crypto-voices.test.ts apps/web/lib/crypto-watchers.test.ts apps/web/lib/crypto-impact.test.ts apps/web/lib/crypto-coins.test.ts apps/web/lib/crypto-leaders.test.ts apps/web/lib/crypto-signals.test.ts apps/web/lib/crypto-workspace.test.ts apps/web/lib/intelligence-fusion.test.ts
