@@ -27,6 +27,7 @@ import {
   shouldKeywordFilterFeed,
 } from "@/lib/server/rss-ingestion-filter";
 import { analyzeMissingRssArticles } from "@/lib/server/rss-analysis-runner";
+import { X_TIMELINE_FEED_KEY_PREFIX } from "@/lib/server/x-syndication";
 
 export const dynamic = "force-dynamic";
 
@@ -80,11 +81,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = req.nextUrl;
   const limit = parseFeedLimit(searchParams.get("limit"));
   const feedKey = searchParams.get("feedKey") ?? undefined;
+  const xSourceOnly = searchParams.get("source")?.trim().toUpperCase() === "X";
+  const feedKeyPrefix = xSourceOnly ? X_TIMELINE_FEED_KEY_PREFIX : undefined;
   const sinceParam = searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : undefined;
   const refresh = searchParams.get("refresh") === "1";
   const documentsOnly = searchParams.get("documentsOnly") === "1";
-  const includeDocuments = documentsOnly || searchParams.get("includeDocuments") === "1";
+  const includeDocuments = !xSourceOnly && (documentsOnly || searchParams.get("includeDocuments") === "1");
 
   try {
     let articles: StoredRssArticle[] = [];
@@ -97,14 +100,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     if (!documentsOnly && process.env.DATABASE_URL) {
-      articles = await getRecentArticles({ limit, feedKey, since });
+      articles = await getRecentArticles({ limit, feedKey, feedKeyPrefix, since });
 
       const latestFetchedAt = articles.reduce((max, a) => {
         const t = a.fetched_at ? new Date(a.fetched_at).getTime() : 0;
         return t > max ? t : max;
       }, 0);
       const ageMs = latestFetchedAt > 0 ? Date.now() - latestFetchedAt : Number.POSITIVE_INFINITY;
-      const needsRefresh = refresh && !feedKey && !since && ageMs > 8 * 60_000;
+      // Source-scoped reads must not dispatch generic RSS ingestion for X URLs.
+      const needsRefresh = refresh && !xSourceOnly && !feedKey && !since && ageMs > 8 * 60_000;
 
       if (needsRefresh) {
         const activeFeeds = await getFeeds(true, { dueOnly: true });
@@ -140,7 +144,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         if (changedCount > 0 && analysisLimit > 0) {
           await analyzeMissingRssArticles(analysisLimit);
         }
-        articles = await getRecentArticles({ limit, feedKey, since });
+        articles = await getRecentArticles({ limit, feedKey, feedKeyPrefix, since });
       }
     }
 
@@ -180,6 +184,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           articles: compactFeedArticles(articles),
           topicRules,
           unmappedFilteredCount,
+          ...(xSourceOnly ? {
+            source: "X",
+            coverage: "tracked_accounts",
+            articlesAvailable: Boolean(process.env.DATABASE_URL),
+            ...(!process.env.DATABASE_URL ? { warning: "Stored X posts are unavailable because the feed database is not configured." } : {}),
+          } : {}),
           ...(includeDocuments ? { documents } : {}),
           ...(includeDocuments ? {
             documentSource,
@@ -191,7 +201,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       },
       {
         headers: {
-          "Cache-Control": refresh
+          "Cache-Control": refresh || xSourceOnly
             ? "no-store, no-cache, must-revalidate, proxy-revalidate"
             : "public, s-maxage=3600, stale-while-revalidate=86400",
         },

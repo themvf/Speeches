@@ -1262,17 +1262,23 @@ export async function saveIntelligenceMentions(
 export async function getRecentArticles(opts: {
   limit?: number;
   feedKey?: string;
+  feedKeyPrefix?: string;
   since?: Date;
   until?: Date;
 } = {}): Promise<StoredRssArticle[]> {
   const sql = getSql();
   const limit = opts.limit ?? 50;
   const feedKey = opts.feedKey ?? null;
+  const feedKeyPrefix = opts.feedKeyPrefix ?? null;
   const since = opts.since ? opts.since.toISOString() : null;
   const until = opts.until ? opts.until.toISOString() : null;
 
   let query;
-  if (feedKey && since && until) {
+  if (feedKeyPrefix) {
+    // Scope source families before LIMIT so busy RSS feeds cannot crowd out X.
+    // starts_with treats underscores literally rather than as LIKE wildcards.
+    query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE starts_with(a.feed_key, ${feedKeyPrefix}) AND (${feedKey}::text IS NULL OR a.feed_key = ${feedKey}) AND (${since}::timestamptz IS NULL OR COALESCE(a.published_at, a.fetched_at) > ${since}::timestamptz) AND (${until}::timestamptz IS NULL OR COALESCE(a.published_at, a.fetched_at) <= ${until}::timestamptz) ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
+  } else if (feedKey && since && until) {
     query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} AND COALESCE(a.published_at, a.fetched_at) <= ${until} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;
   } else if (feedKey && since) {
     query = sql`SELECT a.*, f.label AS feed_label, to_jsonb(ra.*) AS analysis FROM rss_articles a LEFT JOIN rss_feeds f ON f.feed_key = a.feed_key LEFT JOIN rss_article_analysis ra ON ra.article_id = a.id WHERE a.feed_key = ${feedKey} AND COALESCE(a.published_at, a.fetched_at) > ${since} ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT ${limit}`;

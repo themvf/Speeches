@@ -2636,6 +2636,15 @@ export function IntelBetaDashboard({
         </aside>
 
         <main style={{ minWidth: 0 }}>
+          {selectedSource === "X" ? (
+            <a
+              href={`/?mode=x${search.trim() ? `&q=${encodeURIComponent(search.trim())}` : ""}`}
+              className="mx-3 mt-3 flex min-h-12 items-center justify-between gap-3 rounded-xl border border-purple-400/30 bg-purple-400/10 px-4 py-3 text-sm font-semibold text-purple-200 hover:bg-purple-400/15"
+            >
+              <span>Get quick X insights{search.trim() ? ` about ${search.trim()}` : ""}</span>
+              <span aria-hidden="true">→</span>
+            </a>
+          ) : null}
           <div
             style={{
               display: "flex",
