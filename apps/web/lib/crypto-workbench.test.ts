@@ -41,6 +41,8 @@ test('state round-trips through the query string',()=>{
  assert.equal(writeState(s),'/market/crypto?coin=ZCAT&account=9&tab=posts&q=hit%3E0.5&day=2026-09-01');
  assert.deepEqual(readState(new URLSearchParams('coin=zcat&account=9&tab=posts&q=hit%3E0.5&day=2026-09-01&to=nope')),{...s,to:null});
  assert.equal(writeState(EMPTY),'/market/crypto');assert.equal(readState(new URLSearchParams('tab=bogus&coin=BAD')).tab,'people');
+ assert.equal(readState(new URLSearchParams('tab=brief&window=30d')).window,'30d');
+ assert.equal(writeState({...EMPTY,coin:'BACKPACK',tab:'brief',window:'7d'}),'/market/crypto?coin=BACKPACK&tab=brief&window=7d');
 });
 test('old paths and ?view= links land on the same screen',()=>{
  assert.deepEqual(legacyState('/market/crypto/coins/ZEC',new URLSearchParams('day=2026-08-20')),{...EMPTY,coin:'ZEC',tab:'timeline',day:'2026-08-20'});

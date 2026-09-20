@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {createColumnHelper,flexRender,getCoreRowModel,getSortedRowModel,useReactTable,type SortingState,type ColumnDef} from '@tanstack/react-table';
-import {COINS,coinConfig} from '@/lib/crypto-coins';
+import {COINS,coinConfig,isCoin} from '@/lib/crypto-coins';
 import {afterPosting,earlyCoins,postingStyles,whyLeader,MIN_LINKED_POSTS,STYLE_LABEL,type Leader,dayOneCoins,interestTrend} from '@/lib/crypto-leaders';
 import {pct} from '@/lib/crypto-impact';
 import type {Signal,boardRows} from '@/lib/crypto-signals';
@@ -14,6 +14,7 @@ import {describeScope,matchesQuery,parseQuery,readState,writeState,legacyState,T
 import {CryptoRunChart} from './crypto-run-chart';
 import {CryptoBeforeMove} from './crypto-before-move';
 import {CryptoDataView} from './crypto-data-view';
+import {CryptoBriefPanel} from './crypto-brief';
 import s from './crypto-workbench.module.css';
 type Row=Leader&{last_at:string|null;posts:number;days:number};
 type Board=ReturnType<typeof boardRows>[number];
@@ -53,12 +54,16 @@ export function CryptoWorkbench(){
  // Latest state lives in a ref so two updates in quick succession compose instead of the second reading a stale URL.
  const stateRef=useRef(state);useEffect(()=>{stateRef.current=state;},[state]);
  const set=useCallback((patch:Partial<State>)=>{const next={...stateRef.current,...patch};stateRef.current=next;router.replace(writeState(next),{scroll:false});},[router]);
+ const mobileDefaulted=useRef(false);
+ useEffect(()=>{if(mobileDefaulted.current)return;mobileDefaulted.current=true;if(!params.has('tab')&&window.matchMedia('(max-width: 640px)').matches)set({tab:'brief'});},[params,set]);
  // Legacy ?view= links land here; the old sub-paths are redirected by next.config.
  useEffect(()=>{if(params.get('view')){const l=legacyState(window.location.pathname,params);if(l)router.replace(writeState(l));}},[params,router]);
  const [qText,setQText]=useState(state.q);useEffect(()=>{setQText(state.q);},[state.q]);
  useEffect(()=>{if(qText===state.q)return;const t=setTimeout(()=>set({q:qText}),300);return()=>clearTimeout(t);},[qText,state.q,set]);
  const query=useMemo(()=>parseQuery(qText),[qText]);
  const coin=query.coin??state.coin;
+ const requestedCoin=params.get('coin');
+ const invalidCoin=requestedCoin&&!isCoin(requestedCoin.toUpperCase())?requestedCoin:null;
  const focusCoin=coin??COINS[0].symbol; // coin-shaped panels need one coin; the scope strip says when it is implicit
  const [sig,setSig]=useState<Signals|null>(null),[leaders,setLeaders]=useState<Row[]|null>(null),[disc,setDisc]=useState<CoinFinding[]|null>(null),[status,setStatus]=useState<Status|null>(null),[err,setErr]=useState('');
  useEffect(()=>{const c=new AbortController();const from=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
@@ -167,6 +172,7 @@ export function CryptoWorkbench(){
      <button className={`${s.ringTag} ${s.d1Chip}`} title="Accounts the day-1 supporters reply to, quote or tag: peers post on the coin, targets do not" aria-pressed={query.circle} onClick={()=>setQText(q=>(q.replace(/\b(circle|d1circle)\b/gi,'').trim()+(query.circle?'':' circle')).trim())}>d1 circle · {circleCounts.peer} peers · {circleCounts.out} targets</button>
      <button className={s.ringTag} title="Accounts posting on three or more tracked coins" aria-pressed={query.coins===2} onClick={()=>setQText(q=>(q.replace(/\bcoins>\d+\b/gi,'').trim()+(query.coins===2?'':' coins>2')).trim())}>3+ coins · {multiCount}</button></div>}
     {help&&<div className={s.help}>Early = day of the account&#39;s first post on a coin counted from the coin&#39;s first saved contract post (d1 = same day, within the first week). Up = how many of the account&#39;s price-linked posts saw the pinned pool higher 24h later; Excess = the median move minus the coin&#39;s own median. Both need {MIN_LINKED_POSTS}+ linked posts; thinner rows are dimmed. Style is a text heuristic. <b>d1</b> marks a day-1 supporter: first post on a coin the same day as the coin&#39;s first saved contract post (<span className={s.key}>day1</span> filters; <span className={s.key}>coins&gt;2</span> keeps accounts on three or more coins). <b>d1·peer</b> / <b>d1·target</b> mark the day-1 circle: accounts a day-1 supporter of the pinned coin replied to, quoted or tagged in the window; a peer posts on the coin, a target does not (<span className={s.key}>circle</span> filters). Feed &quot;next close&quot; is the daily close after the post&#39;s day versus its own day, not the hourly event study. Association only, never attribution.<div style={{marginTop:6}}><b>Rings</b> (computed for {focusCoin} over {fromDay}→{toDay}; type <span className={s.key}>ring:N</span> to filter): {RINGS.map(r=><span key={r}><span className={s.ringTag} data-ring={r}>{r} {RING_LABEL[r]}</span> {RING_DESCRIPTION[r]}{ringCounts.get(r)?` (${ringCounts.get(r)})`:''}. </span>)}</div></div>}
+    {state.tab==='brief'&&(invalidCoin?<div className={`${s.scroll} ${s.pad}`} role="alert"><h2 style={{fontSize:18,fontWeight:700}}>“{invalidCoin}” is not a tracked asset</h2><p className={s.soft} style={{marginTop:8}}>Choose a registry asset below. Opening an unknown symbol never starts collection or silently selects another coin.</p><div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:16}}>{COINS.map(c=><button key={c.symbol} className={s.btn} style={{minHeight:44}} onClick={()=>set({coin:c.symbol})}>{c.symbol} · {c.name}</button>)}</div></div>:<CryptoBriefPanel coin={focusCoin} window={state.window} onCoin={c=>set({coin:c})} onWindow={window=>set({window})}/>) }
     {state.tab==='people'&&<div className={s.scroll}>{!leaders?<div className={s.empty}>Reading saved rankings…</div>:!rows.length?<div className={s.empty}>No accounts match. Rankings appear after the next collection run; price-linked posts need a day of hourly candles.</div>:
      <table className={s.t}><thead>{table.getHeaderGroups().map(g=><tr key={g.id}><th style={{width:26}}>#</th>{g.headers.map(h=>{const d=h.column.getIsSorted();return <th key={h.id} className={RIGHT.has(h.id)?s.r:''} aria-sort={d==='asc'?'ascending':d==='desc'?'descending':'none'}><button onClick={h.column.getToggleSortingHandler()}>{flexRender(h.column.columnDef.header,h.getContext())}{d?(d==='asc'?' ▲':' ▼'):''}</button></th>;})}</tr>)}</thead>
      <tbody>{rows.slice(0,300).map((row,i)=>{const r=row.original,early=earlyCoins(r),ok=sampled(r),styles=postingStyles(r);return <tr key={r.account_id} className={`${s.row} ${ok?'':s.dim} ${state.account===r.account_id?s.on:''} ${i===cursor?s.cursor:''}`} onClick={()=>{setCursor(i);set({account:r.account_id});}} title={whyLeader(r)}>

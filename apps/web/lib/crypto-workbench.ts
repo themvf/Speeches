@@ -3,9 +3,10 @@ import type {Route} from 'next';
 import {COINS,isCoin} from './crypto-coins.ts';
 import {MIN_LINKED_POSTS,postingStyles,dayOneCoins,type Leader} from './crypto-leaders.ts';
 import {ringToken,RING_LABEL,type Ring,type RingResult,type CircleEntry} from './crypto-rings.ts';
+import type {CryptoBriefWindow} from './crypto-brief-types.ts';
 export const BASE='/market/crypto';
-export type Tab='people'|'posts'|'timeline'|'connections'|'data';
-export const TABS:{id:Tab;label:string}[]=[{id:'people',label:'People'},{id:'posts',label:'X posts'},{id:'timeline',label:'Timeline'},{id:'connections',label:'Connections'},{id:'data',label:'Data'}];
+export type Tab='brief'|'people'|'posts'|'timeline'|'connections'|'data';
+export const TABS:{id:Tab;label:string}[]=[{id:'brief',label:'Quick brief'},{id:'people',label:'People'},{id:'posts',label:'X posts'},{id:'timeline',label:'Timeline'},{id:'connections',label:'Connections'},{id:'data',label:'Data'}];
 export type Query={coin:string|null;handle:string|null;early:boolean;day:number|null;hit:number|null;posts:number|null;watcher:boolean;contract:string|null;ring:Ring|null;coins:number|null;day1:boolean;circle:boolean;unknown:string[]};
 const CONTRACT=/^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
 export function coinForContract(address:string){const a=address.toLowerCase();return COINS.find(c=>c.address&&c.address.toLowerCase()===a)?.symbol??null;}
@@ -49,17 +50,20 @@ export function describeScope(q:Query,coin:string|null){
  return [coin??'all coins',q.handle?'@'+q.handle:null,q.early?'early':null,q.day1?'day-1':null,q.circle?'day-1 circle':null,q.coins!=null?'coins>'+q.coins:null,q.day!=null?'day<'+q.day:null,q.hit!=null?'hit>'+q.hit:null,q.posts!=null?'posts>'+q.posts:null,q.watcher?'watchers':null,q.ring!=null?`ring ${q.ring} ${RING_LABEL[q.ring]}`:null,q.contract&&!q.coin?'contract '+q.contract.slice(0,6)+'… (not tracked)':null].filter(Boolean).join(' · ');
 }
 // URL state: everything the screen shows is in the query string so a view is a bookmark.
-export type State={coin:string|null;account:string|null;tab:Tab;q:string;day:string|null;highlight:string|null;from:string|null;to:string|null};
+export type State={coin:string|null;account:string|null;tab:Tab;q:string;window:CryptoBriefWindow;day:string|null;highlight:string|null;from:string|null;to:string|null};
 const isDay=(v:string|null)=>!!v&&/^\d{4}-\d{2}-\d{2}$/.test(v);
-export const EMPTY:State={coin:null,account:null,tab:'people',q:'',day:null,highlight:null,from:null,to:null};
+const isWindow=(v:string|null):v is CryptoBriefWindow=>v==='24h'||v==='7d'||v==='30d';
+export const EMPTY:State={coin:null,account:null,tab:'people',q:'',window:'24h',day:null,highlight:null,from:null,to:null};
 export function readState(params:URLSearchParams):State{
- const tab=params.get('tab');const coin=params.get('coin');
+ const tab=params.get('tab');const coin=params.get('coin'),window=params.get('window');
  return {coin:isCoin(coin?.toUpperCase())?coin!.toUpperCase():null,account:params.get('account'),tab:TABS.some(t=>t.id===tab)?tab as Tab:'people',q:params.get('q')??'',
+  window:isWindow(window)?window:'24h',
   day:isDay(params.get('day'))?params.get('day'):null,highlight:params.get('highlight'),from:isDay(params.get('from'))?params.get('from'):null,to:isDay(params.get('to'))?params.get('to'):null};
 }
 export function writeState(s:State):Route{
  const p=new URLSearchParams();
  if(s.coin)p.set('coin',s.coin);if(s.account)p.set('account',s.account);if(s.tab!=='people')p.set('tab',s.tab);if(s.q)p.set('q',s.q);
+ if(s.window!=='24h')p.set('window',s.window);
  if(s.day)p.set('day',s.day);if(s.highlight)p.set('highlight',s.highlight);if(s.from)p.set('from',s.from);if(s.to)p.set('to',s.to);
  const str=p.toString();return (str?BASE+'?'+str:BASE) as Route;
 }
