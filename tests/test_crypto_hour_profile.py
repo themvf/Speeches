@@ -189,3 +189,23 @@ def test_mde_uses_the_hourly_observation_count_and_the_right_multipliers():
     assert e['mde_pct']==pytest.approx(expected,rel=1e-9)
     assert e['mde_pct_corrected']>e['mde_pct']
     assert e['mde_pct_corrected']==pytest.approx(100*(_m.exp(3.920*e['hourly_sd']/_m.sqrt(7))-1),rel=1e-9)
+
+
+def test_the_still_open_final_candle_is_not_counted_as_a_full_hour():
+    """At 00:36 the 00:00 candle holds 36 minutes of trading, not an hour.
+
+    Counting it would drop a systematically short, systematically quiet bar into whichever
+    hour-of-day the run happens to start in.
+    """
+    pts=candles(5,price=lambda i:100.0*(1.1**i))
+    for p in pts: p['complete']=True
+    pts[-1]['complete']=False
+    rows=hourly_returns(pts,T0,NOW)
+    assert [r[0] for r in rows]==[T0+timedelta(hours=i) for i in (1,2,3)]   # hour 4 withheld
+    # A partial hour is also kept out of the volume day, and its absence does not become a zero.
+    day=candles(24,volume=lambda i:10.0)
+    for p in day: p['complete']=True
+    day[-1]['complete']=False
+    assert coin_days(day,T0,T0+timedelta(days=1))==[]      # 23 of 24 hours is not a full day
+    # With no 'complete' key at all (older rows), nothing is withheld.
+    assert len(hourly_returns(candles(5),T0,NOW))==4

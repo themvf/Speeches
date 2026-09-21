@@ -57,7 +57,7 @@ def load_archive(conn, coins, since):
     out = {}
     with conn, conn.cursor() as cur:
         for coin in coins:
-            cur.execute('''SELECT h.hour,h.close,h.volume FROM crypto_market_hourly_latest h
+            cur.execute('''SELECT h.hour,h.close,h.volume,h.complete FROM crypto_market_hourly_latest h
                 JOIN crypto_market_sources s ON s.id=h.source_id
                 WHERE s.coin=%s AND s.is_default AND h.hour>=%s ORDER BY h.hour''', (coin, since))
             rows = cur.fetchall()
@@ -99,8 +99,8 @@ def load_live(coins, since, fetch=None, wait=None):
             raw = get(mh.GECKO + network + '/pools/' + pool['id'] + '/ohlcv/hour?aggregate=1&limit=1000'
                       '&currency=usd&include_empty_intervals=false&token=' + pool['side'])
             pts = mh.normalize_hourly(raw, 'ohlcv', now, start=start)
-            out[coin] = {'kind': 'ohlcv', 'points': [{'hour': p['hour'], 'close': p['close'], 'volume': p['volume']}
-                                                     for p in pts if p['hour'] >= since]}
+            out[coin] = {'kind': 'ohlcv', 'points': [{'hour': p['hour'], 'close': p['close'], 'volume': p['volume'],
+                                                      'complete': p['complete']} for p in pts if p['hour'] >= since]}
         except Exception as exc:  # noqa: BLE001 - one coin's provider failure is a coverage gap, not a failed run.
             errors.append('%s: %s %s' % (coin, type(exc).__name__, str(exc)[:160]))
     if 'ZEC' in coins:
@@ -108,21 +108,27 @@ def load_live(coins, since, fetch=None, wait=None):
             raw = get(mh.ZEC_HOURLY_URL)
             pts = mh.normalize_hourly(raw, 'price_observation', now, start=archive_start('ZEC'))
             out['ZEC'] = {'kind': 'price_observation',
-                          'points': [{'hour': p['hour'], 'close': p['close'], 'volume': p['volume']}
-                                     for p in pts if p['hour'] >= since]}
+                          'points': [{'hour': p['hour'], 'close': p['close'], 'volume': p['volume'],
+                                      'complete': p['complete']} for p in pts if p['hour'] >= since]}
         except Exception as exc:  # noqa: BLE001
             errors.append('ZEC: %s %s' % (type(exc).__name__, str(exc)[:160]))
     return out, errors
 
 
 def hourly_returns(points, since, until):
-    """(hour, log return) for candles in the window whose immediately preceding hour is present."""
+    """(hour, log return) for candles in the window whose immediately preceding hour is present.
+
+    The candle covering the current hour is still open -- at 00:36 it holds 36 minutes of trading.
+    Counting it as a full-hour return would put a systematically short, systematically quiet bar
+    into whichever hour-of-day the run happens to start in, so incomplete candles are excluded.
+    """
     by = {p['hour']: p for p in points}
     rows = []
     for p in sorted(points, key=lambda p: p['hour']):
         prev = by.get(p['hour'] - timedelta(hours=1))
         if not prev or not since <= p['hour'] < until: continue
         if p['close'] <= 0 or prev['close'] <= 0: continue
+        if p.get('complete') is False: continue
         rows.append((p['hour'], math.log(p['close'] / prev['close'])))
     return rows
 
@@ -135,8 +141,10 @@ def coin_days(points, since, until, zero_fill=True):
     t = since
     while t < until:
         if first is not None and t >= first:
-            if t in by: days.setdefault(t.date(), []).append((t.hour, by[t]['volume']))
-            elif zero_fill: days.setdefault(t.date(), []).append((t.hour, 0.0))
+            if t in by and by[t].get('complete') is not False:
+                days.setdefault(t.date(), []).append((t.hour, by[t]['volume']))
+            elif zero_fill and (t not in by or by[t].get('complete') is not False):
+                days.setdefault(t.date(), []).append((t.hour, 0.0))
         t += timedelta(hours=1)
     out = []
     for values in days.values():

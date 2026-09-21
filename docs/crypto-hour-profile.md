@@ -68,6 +68,12 @@ values give a near-zero standard error, so that trivial -0.6% mean produced `t =
 `p = 0.0055`. A window shorter than five days cannot support a per-coin hourly test at all, and the
 tool now says so instead of reporting one.
 
+**The open candle is not an hour.** The candle covering the current hour holds only the minutes
+elapsed so far — 36 of 60 when this was last run. Counting it as a full-hour return would drop a
+systematically short, systematically quiet bar into whichever hour-of-day the run happens to start
+in, and a day-rotation null cannot move a trailing singleton day, so it would be pinned there in
+every permutation. Incomplete candles are excluded from both returns and volume days.
+
 **Report what the window can resolve.** Per coin the output carries `mde_pct` and
 `mde_pct_corrected`: the minimum recurring same-hour move that window could detect at 80% power,
 before and after splitting alpha 24 ways. The multipliers are `z(1-a/2) + z(0.80)` — 2.802
@@ -96,18 +102,18 @@ Global p-values under each null, ZEC excluded from the volume profile:
 
 | Metric | 7-day day / coin / market | 14-day day / coin / market |
 | --- | --- | --- |
-| Return by hour | 0.111 / 0.167 / 0.339 | 0.496 / 0.354 / 0.778 |
+| Return by hour | 0.124 / 0.179 / 0.337 | 0.476 / 0.362 / 0.768 |
 | Volume share by hour | 0.011 / 0.068 / 0.059 | 0.0050 / 0.067 / 0.027 |
-| Volatility by hour | 0.034 / 0.055 / 0.101 | 0.0082 / **0.021** / 0.0097 |
+| Volatility by hour | 0.052 / 0.068 / 0.110 | 0.014 / **0.030** / 0.017 |
 
 Split-half persistence over the same 14 days (profile measured in the first half, correlated with
 the second, against a market-wide rotation null):
 
 | Metric | r | p |
 | --- | --- | --- |
-| Return by hour | **-0.136** | 0.73 |
+| Return by hour | **-0.184** | 0.81 |
 | Volume share by hour | +0.469 | 0.043 |
-| Volatility by hour | +0.475 | 0.037 |
+| Volatility by hour | +0.481 | 0.032 |
 
 Run over each coin's full history instead of 14 days, the same split reaches r = +0.83 (volume) and
 r = +0.57 (volatility) while returns stay at r = -0.01. The activity shape is the same shape a week
@@ -117,7 +123,13 @@ Volatility is the one result significant under all three nulls at 14 days. Activ
 under the day and market nulls and marginal under the coin null, which is what twelve coins buys
 you when each contributes a single vote. Returns clear nothing under any null at any window, and
 unlike the other two they show no trend toward significance as the window grows — that contrast is
-itself the finding.
+itself the finding. Seven days is not enough for either activity result to clear the coin null;
+read the 14-day row, not the 7-day one.
+
+**Volume and volatility are not two independent confirmations.** On an AMM the size of an hourly
+move is mechanically driven by swap flow, so the volatility profile is largely the activity profile
+restated. Conditioning volatility on within-coin volume quintiles leaves 09:00 UTC standing but not
+10:00 or 11:00. Treat this as one finding about when people trade, not two.
 
 Direction has no detectable time-of-day structure; **when people trade does.** Activity troughs at
 02:00–07:00 ET (06:00–11:00 UTC), bottoming near 03:00 ET at 0.65x an even hour, and peaks at
