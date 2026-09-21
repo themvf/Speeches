@@ -1,7 +1,8 @@
 from datetime import datetime,timezone,timedelta
 import pytest
 from test_crypto_social_pilot import db
-from crypto_market_history import ADDRESS,MARKETS,normalize,pools,setup,save,refresh
+from crypto_market_history import (ADDRESS,MARKETS,normalize,normalize_hourly,pools,setup,save,refresh,
+                                   repair_observation_volume)
 CONTRACT_COINS=len(MARKETS)
 
 NOW=datetime(2026,9,14,12,tzinfo=timezone.utc)
@@ -105,3 +106,54 @@ def test_pons_pool_requires_network_contract_and_accepts_v4_ids():
     assert pools({'data':[item]})==[]
     item['relationships']['base_token']['data']['id']='ethereum_'+PONS_ADDRESS
     assert pools({'data':[item]},PONS_ADDRESS,'robinhood')==[]
+
+
+def observations(t=None,volumes=True):
+    """A CoinGecko market_chart payload. total_volumes is a rolling 24h total, not hourly volume."""
+    t=t or int(NOW.timestamp()*1000)
+    data={'prices':[[t-3600000,1.0],[t,2.0]]}
+    if volumes:data['total_volumes']=[[t-3600000,1.2e9],[t,1.19e9]]
+    return data
+
+def test_a_rolling_24h_total_is_never_recorded_as_this_interval_volume():
+    """CoinGecko reports volume over a trailing day, so the hour's own trading is unknown.
+
+    Recording it would put a smoothed window into the column every reader treats as per-interval
+    trading: summing 24 of them implied ~$29bn of daily Zcash volume against the ~$1.2bn the
+    series itself reports.
+    """
+    for points in (normalize(observations(),'price_observation',NOW),
+                   normalize_hourly(observations(),'price_observation',NOW)):
+        assert points and all(p['volume'] is None for p in points)
+        assert all(p['close']>0 for p in points)  # the price observations were always valid
+
+def test_a_payload_missing_total_volumes_is_still_rejected():
+    # The field is unused but its absence means the provider changed shape, which is worth failing on.
+    with pytest.raises(ValueError):normalize(observations(volumes=False),'price_observation',NOW)
+
+def test_an_ohlcv_source_must_still_carry_a_real_volume():
+    good=candles();assert len(normalize(good,'ohlcv',NOW))==1
+    for bad in (None,-1,float('nan')):
+        d=candles();d['data']['attributes']['ohlcv_list'][0][5]=bad
+        assert normalize(d,'ohlcv',NOW)==[],f'volume {bad!r} must not be archived'
+
+def test_db_null_volume_round_trips_and_legacy_rows_repair(db):
+    setup(db)
+    src=dict(id='coingecko:zcash',coin='ZEC',provider='CoinGecko',url='https://example.test/z',metadata={'id':'zcash'})
+    data=observations()
+    fid=save(db,src,data,normalize_hourly(data,'price_observation',NOW),'https://example.test/z',NOW,hourly=True)
+    with db,db.cursor() as cur:
+        cur.execute('SELECT count(*) FROM crypto_market_hourly WHERE fetch_id=%s AND volume IS NULL',(fid,))
+        assert cur.fetchone()[0]>0   # CHECK(volume>=0) must not reject a NULL
+        # A row written before the correction still carries the rolling total.
+        cur.execute("""INSERT INTO crypto_market_hourly(fetch_id,hour,sample_at,close,volume,complete,kind)
+                       VALUES (%s,%s,%s,1450.0,1.2e9,true,'price_observation')""",(fid,NOW-timedelta(days=9),NOW))
+        cur.execute("SELECT count(*) FROM crypto_market_hourly WHERE kind='price_observation' AND volume IS NOT NULL")
+        assert cur.fetchone()[0]==1
+    assert repair_observation_volume(db)['crypto_market_hourly']==1
+    assert repair_observation_volume(db)['crypto_market_hourly']==0   # idempotent
+    with db,db.cursor() as cur:
+        cur.execute("SELECT count(*) FROM crypto_market_hourly WHERE kind='price_observation' AND volume IS NOT NULL")
+        assert cur.fetchone()[0]==0
+        cur.execute('SELECT count(*) FROM crypto_market_hourly WHERE close IS NULL')
+        assert cur.fetchone()[0]==0   # prices are corrected, never discarded

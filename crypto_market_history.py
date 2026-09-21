@@ -57,12 +57,20 @@ def _rows(data,kind):
     else:
         prices=data.get('prices');volumes=data.get('total_volumes')
         if not isinstance(prices,list) or not isinstance(volumes,list):raise ValueError('Missing observations')
-        vol={v[0]:v[1] for v in volumes if isinstance(v,list) and len(v)>=2 and finite(v[0]) and finite(v[1])}
-        rows=[[p[0]/1000,None,None,None,p[1],vol.get(p[0])] for p in prices
+        # total_volumes is a ROLLING 24-HOUR total, not the volume traded in this interval: the
+        # series drifts a couple of percent an hour where a real hourly series swings by tens.
+        # Storing it would put a smoothed window into a column every reader treats as per-interval
+        # trading, so no volume is recorded. Its presence is still required, because a payload
+        # missing it is not the shape the provider documents.
+        rows=[[p[0]/1000,None,None,None,p[1],None] for p in prices
               if isinstance(p,list) and len(p)>=2 and finite(p[0])]
     for row in rows:
-        if not isinstance(row,list) or len(row)<6 or not all(finite(row[i]) for i in [0,4,5]):continue
-        if row[4]<=0 or row[5]<0:continue
+        if not isinstance(row,list) or len(row)<6 or not all(finite(row[i]) for i in [0,4]):continue
+        if row[4]<=0:continue
+        # Volume is absent only where the provider does not measure the interval; a source that
+        # does report it must report it validly.
+        if kind=='ohlcv' and (not finite(row[5]) or row[5]<0):continue
+        if kind!='ohlcv' and row[5] is not None:continue
         if kind=='ohlcv' and (not all(finite(row[i]) and row[i]>0 for i in [1,2,3]) or row[2]<max(row[1],row[3],row[4]) or row[3]>min(row[1],row[2],row[4])):continue
         try:stamp=datetime.fromtimestamp(row[0],timezone.utc)
         except (ValueError,OverflowError,OSError):continue
@@ -183,12 +191,35 @@ def refresh(conn,fetch=None,now=None,wait=None):
     return {'saved':saved,'errors':errors,'skipped':skipped,'twitter_credits':0}
 
 
+def repair_observation_volume(conn):
+    """Clear volumes written before price_observation sources stopped recording a rolling total.
+
+    One-shot and idempotent; deliberately not on the sweep path, because a repeated scan of the
+    observation tables on every run is the pattern that caused a production deadlock elsewhere.
+    Rows are corrected rather than deleted: the price observations themselves were always valid.
+    """
+    cleared={}
+    with conn,conn.cursor() as cur:
+        for table in ('crypto_market_observations','crypto_market_hourly'):
+            cur.execute('UPDATE '+table+" SET volume=NULL WHERE kind='price_observation' AND volume IS NOT NULL")
+            cleared[table]=cur.rowcount
+    return cleared
+
+
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--execute',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--execute',action='store_true')
+    parser.add_argument('--repair-volume',action='store_true',
+                        help='clear rolling-window volumes recorded for price_observation sources, then exit')
+    args=parser.parse_args()
     if not args.execute:
         print(json.dumps({'mode':'plan_only','max_public_requests':30,'twitter_credits':0,'database_writes':0}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
+    if args.repair_volume:
+        try:
+            setup(conn);print(json.dumps({'repaired':repair_observation_volume(conn)}))
+        finally:conn.close()
+        return
     try:
         result=refresh(conn);print(json.dumps(result));
         # Provider rate limits on secondary pools are noise; a run with nothing archived is the failure.

@@ -1,5 +1,5 @@
 // Ranks accounts by what the pinned pool's price did after their posts. Association only: no causal claim.
-export const IMPACT_VERSION='price-events-v1';
+export const IMPACT_VERSION='price-events-v2';
 export type ImpactRow={account_id:string;handle:string;followers:number|null;coins:string[];episodes:number;posts:number;
  median_1h:number|null;median_6h:number|null;median_24h:number|null;median_excess_24h:number|null;
  share_up_24h:number|null;share_beat_24h:number|null;median_volume_ratio:number|null;first_at:string;last_at:string;
