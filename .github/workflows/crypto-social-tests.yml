@@ -21,7 +21,10 @@ on:
       - 'tests/fixtures/crypto-coin-matches.json'
       - 'sql/crypto_market_history.sql'
       - 'tests/test_crypto_market_history.py'
+      - 'crypto_hour_profile.py'
+      - 'tests/test_crypto_hour_profile.py'
       - '.github/workflows/crypto-market-history.yml'
+      - '.github/workflows/crypto-hour-profile.yml'
       - 'sql/crypto_social*.sql'
       - 'tests/test_crypto_social*.py'
       - 'intelligence_fusion.py'
@@ -65,7 +68,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install pytest 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
-      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_tracking.py tests/test_crypto_social_history.py tests/test_crypto_social_catchup.py tests/test_crypto_market_history.py tests/test_crypto_event_study.py tests/test_crypto_coins.py tests/test_crypto_rankings_cache.py tests/test_intelligence_fusion.py -q
+      - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_tracking.py tests/test_crypto_social_history.py tests/test_crypto_social_catchup.py tests/test_crypto_market_history.py tests/test_crypto_event_study.py tests/test_crypto_coins.py tests/test_crypto_rankings_cache.py tests/test_intelligence_fusion.py tests/test_crypto_hour_profile.py -q
         env:
           CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@localhost:5432/crypto_test
 

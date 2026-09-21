@@ -19,6 +19,8 @@ import json
 import math
 import os
 import statistics as st
+import sys
+import zlib
 from zoneinfo import ZoneInfo
 
 from crypto_coins import markets, archive_start
@@ -31,6 +33,12 @@ MIN_SD = 1e-9  # Below this the price never really moved; a permutation p-value 
 # give a near-zero standard error and an enormous t off a trivial mean -- ZEC's CoinGecko series
 # produced t = -56 from a -0.6% mean this way. Hours below this count are reported, never tested.
 MIN_HOUR_OBS = 5
+
+
+def _seed_for(name):
+    """Stable per-coin seed. Python randomises str.__hash__ per process, so using hash() here
+    made two runs of the same window disagree in the fourth decimal of every per-coin p-value."""
+    return zlib.crc32(name.encode()) % 9999
 
 
 class _RNG:
@@ -53,15 +61,25 @@ def _tstat(xs, null=0.0, min_obs=MIN_HOUR_OBS):
 
 
 def load_archive(conn, coins, since):
-    """Hourly candles per coin from the pinned default source."""
+    """Hourly candles per coin from the pinned default source.
+
+    Carries `kind` and `complete` because both decide what the analysis may use: a
+    price_observation source stores NULL volume and must stay out of the volume profile, and a
+    still-open candle is not an hour. Volume is nullable, so it is never blindly cast.
+    """
     out = {}
     with conn, conn.cursor() as cur:
         for coin in coins:
-            cur.execute('''SELECT h.hour,h.close,h.volume,h.complete FROM crypto_market_hourly_latest h
+            cur.execute('''SELECT h.hour,h.close,h.volume,h.complete,h.kind FROM crypto_market_hourly_latest h
                 JOIN crypto_market_sources s ON s.id=h.source_id
                 WHERE s.coin=%s AND s.is_default AND h.hour>=%s ORDER BY h.hour''', (coin, since))
             rows = cur.fetchall()
-            if rows: out[coin] = [{'hour': r[0], 'close': float(r[1]), 'volume': float(r[2])} for r in rows]
+            if not rows: continue
+            kinds = {r[4] for r in rows}
+            out[coin] = {'kind': 'ohlcv' if kinds == {'ohlcv'} else sorted(kinds)[0],
+                         'points': [{'hour': r[0], 'close': float(r[1]),
+                                     'volume': None if r[2] is None else float(r[2]),
+                                     'complete': bool(r[3])} for r in rows]}
     return out
 
 
@@ -240,7 +258,13 @@ def _shift(groups, offset):
 
 def profile(series, days, now=None, iterations=ITERATIONS):
     """Return, volume-share and volatility profiles by hour of day, with global permutation p-values."""
-    now = (now or datetime.now(timezone.utc)).replace(minute=0, second=0, microsecond=0)
+    # Anchor to whole UTC days. A rotation unit is a day, so a part-day at either edge is a
+    # near-degenerate unit: a 3-hour edge day can only rotate three ways and drags the permutation
+    # null around. It also made the result depend on the clock time the job happened to run --
+    # rolling the window nine hours moved volatility's p from 0.030 to 0.104 while the profile
+    # itself was unchanged (r = 1.000). Dropping today's partial day makes a scheduled run
+    # reproducible whenever it fires.
+    now = (now or datetime.now(timezone.utc)).replace(hour=0, minute=0, second=0, microsecond=0)
     since = now - timedelta(days=days)
     # utcoffset() is already the UTC->Eastern shift (-4 during EDT, -5 during EST); do not negate it.
     et_offset = int(now.astimezone(ET).utcoffset().total_seconds() // 3600)
@@ -270,7 +294,7 @@ def profile(series, days, now=None, iterations=ITERATIONS):
             testable = 24 - len(untestable_hours(groups, 0.0))
             if testable:
                 # A single coin has no cross-coin structure, so the day null is the only one available.
-                obs, p = _rotation_p({coin: groups}, 0.0, SEED + abs(hash(coin)) % 9999, 'day', iterations)
+                obs, p = _rotation_p({coin: groups}, 0.0, SEED + _seed_for(coin), 'day', iterations)
                 entry['return_max_abs_t'] = obs
                 entry['return_p_global'] = p
                 entry['testable_hours'] = testable
@@ -368,8 +392,48 @@ def split_half(per_coin, null, seed, iterations=ITERATIONS):
     return {'r': observed, 'p': (ge + 1) / (iterations + 1), 'coins': len(first)}
 
 
+def verdict(report):
+    """Plain-language reading of a report, so a scheduled run says what changed without being parsed.
+
+    Only the strictest null is quoted. A metric that clears the day null alone is called unproven,
+    because that null treats one coin's days as independent evidence for a shared shape.
+    """
+    lines = []
+    window = report['window_days']
+    names = {'returns': 'Direction (do they go up or down at set hours)',
+             'volume_share': 'Activity (when trading happens)',
+             'volatility': 'Volatility (how big the moves are)'}
+    for name, label in names.items():
+        block = report['pooled'].get(name)
+        if not block: lines.append('%s: no data in the last %d days.' % (label, window)); continue
+        if 'p_global' not in block: lines.append('%s: %s.' % (label, block.get('test', 'not tested'))); continue
+        p = block['p_global']['coin']
+        split = block.get('split_half')
+        # Two different questions, so report both rather than collapsing them. The global test asks
+        # whether this window's profile is flat; the split-half asks whether the same shape comes
+        # back. A shape that recurs out of sample is the finding, even when twelve coins cannot
+        # push the strictest null under 0.05.
+        held = split and split['p'] < 0.05
+        shape = ('recurs out of sample (r=%+.2f, p=%.3f)' % (split['r'], split['p'])) if split else 'no holdout available'
+        if not held: shape = ('does not recur out of sample (r=%+.2f, p=%.2f)' % (split['r'], split['p'])) if split else shape
+        strength = 'clears' if p < 0.05 else 'does not clear'
+        lines.append('%s: %s the strictest null (p=%.2f, %d coins) and %s.' % (label, strength, p, block['coins'], shape))
+    testable = [c for c, e in report['coins'].items() if 'return_p_global' in e]
+    hit = [c for c in testable if report['coins'][c]['return_p_global'] < 0.05]
+    lines.append('Per coin: %d of %d testable coins show a return pattern%s.'
+                 % (len(hit), len(testable), (' -- ' + ', '.join(sorted(hit))) if hit else ''))
+    untested = [c for c, e in report['coins'].items() if 'return_p_global' not in e]
+    if untested: lines.append('Not testable in this window (too little history): %s.' % ', '.join(sorted(untested)))
+    if report.get('volume_excluded'):
+        lines.append('Excluded from the activity profile: %s (provider reports a rolling window, not hourly volume).'
+                     % ', '.join(e['coin'] for e in report['volume_excluded']))
+    return lines
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--out', help='write the JSON report here instead of stdout')
+    parser.add_argument('--summary', action='store_true', help='also print a plain-language verdict to stderr')
     parser.add_argument('--days', type=int, default=14, help='window length in days')
     parser.add_argument('--live', action='store_true', help='re-fetch from providers instead of the archive')
     parser.add_argument('--iterations', type=int, default=ITERATIONS)
@@ -395,7 +459,14 @@ def main():
     report['source'] = source
     report['errors'] = errors
     report['ok'] = True
-    print(json.dumps(report, indent=1, default=str))
+    report['verdict'] = verdict(report)
+    text = json.dumps(report, indent=1, default=str, sort_keys=True)
+    if args.out:
+        with open(args.out, 'w') as handle: handle.write(text + '\n')
+    else:
+        print(text)
+    if args.summary:
+        for line in report['verdict']: print(line, file=sys.stderr)
 
 
 if __name__ == '__main__':

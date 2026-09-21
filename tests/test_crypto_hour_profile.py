@@ -1,6 +1,7 @@
 import math
 from datetime import datetime,timedelta,timezone
 import pytest
+from test_crypto_social_pilot import db
 from crypto_hour_profile import (hourly_returns,coin_days,profile,_rotation_p,_shift,_tstat,_RNG,
                                  untestable_hours)
 
@@ -209,3 +210,69 @@ def test_the_still_open_final_candle_is_not_counted_as_a_full_hour():
     assert coin_days(day,T0,T0+timedelta(days=1))==[]      # 23 of 24 hours is not a full day
     # With no 'complete' key at all (older rows), nothing is withheld.
     assert len(hourly_returns(candles(5),T0,NOW))==4
+
+
+def test_the_window_is_anchored_to_whole_days_so_the_run_hour_cannot_change_the_answer():
+    """A part-day at the window edge is a near-degenerate rotation unit and moved the p-value.
+
+    Running at 02:00 and at 11:00 on the same date must give byte-identical results.
+    """
+    series={c:{'kind':'ohlcv','points':candles(24*20,start=NOW-timedelta(days=20),
+               price=lambda i:100.0+_wobble(i//24,i%24,4.0),
+               volume=lambda i:(9.0 if i%24==13 else 1.0)+_wobble(i//24,i%24,0.2))} for c in ('A','B')}
+    early=profile(series,7,now=NOW.replace(hour=2),iterations=200)
+    late=profile(series,7,now=NOW.replace(hour=11),iterations=200)
+    assert early['since']==late['since'] and early['until']==late['until']
+    assert early['until'].endswith('T00:00:00+00:00')          # whole days only
+    for metric in ('returns','volume_share','volatility'):
+        assert early['pooled'][metric]['units']==late['pooled'][metric]['units']
+        assert early['pooled'][metric]['p_global']==late['pooled'][metric]['p_global']
+
+
+def test_per_coin_seeds_do_not_depend_on_pythons_randomised_string_hash():
+    """str.__hash__ is salted per process, so hash() here made the same window disagree run to run."""
+    import subprocess,sys,json as _json
+    from crypto_hour_profile import _seed_for
+    script=("import sys;sys.path.insert(0,'/home/user/Speeches');"
+            "from crypto_hour_profile import _seed_for;"
+            "import json;print(json.dumps([_seed_for(c) for c in ('ZEC','ZCAT','PONS','STONK')]))")
+    runs=[subprocess.run([sys.executable,'-c',script],capture_output=True,text=True,
+                         env={'PYTHONHASHSEED':seed,'PATH':'/usr/bin:/bin'}).stdout.strip()
+          for seed in ('0','1','random')]
+    assert len(set(runs))==1 and runs[0], runs
+    assert _json.loads(runs[0])==[_seed_for(c) for c in ('ZEC','ZCAT','PONS','STONK')]
+
+
+def test_db_archive_read_carries_kind_complete_and_a_null_volume(db):
+    """The scheduled job reads the archive, not the providers, so this path needs its own cover.
+
+    It previously cast volume unconditionally and dropped both `kind` and `complete`, which meant
+    a NULL-volume source crashed the run and, had it not, would have been averaged into the
+    volume profile as though it measured hourly trading.
+    """
+    from crypto_hour_profile import load_archive
+    import crypto_market_history as mh
+    with db,db.cursor() as cur:
+        cur.execute('CREATE TABLE IF NOT EXISTS crypto_social_posts(id text PRIMARY KEY)')
+    mh.setup(db)
+    start=NOW-timedelta(days=3)
+    with db,db.cursor() as cur:
+        for coin,sid,kind,vol in (('STONK','geckoterminal:P','ohlcv',500.0),
+                                  ('ZEC','coingecko:zcash','price_observation',None)):
+            cur.execute("INSERT INTO crypto_market_sources VALUES (%s,%s,'p','u','{}',true) ON CONFLICT DO NOTHING",(sid,coin))
+            cur.execute("""INSERT INTO crypto_market_fetches(source_id,retrieved_at,request_url,metadata,raw_response)
+                           VALUES (%s,%s,'u','{}','{}') RETURNING id""",(sid,NOW))
+            fid=cur.fetchone()[0]
+            for i in range(6):
+                cur.execute("""INSERT INTO crypto_market_hourly(fetch_id,hour,sample_at,close,volume,complete,kind)
+                               VALUES (%s,%s,%s,10.0,%s,%s,%s)""",
+                            (fid,start+timedelta(hours=i),NOW,vol,i<5,kind))
+    got=load_archive(db,['STONK','ZEC','ABSENT'],start)
+    assert set(got)=={'STONK','ZEC'}                      # a coin with no rows is simply absent
+    assert got['ZEC']['kind']=='price_observation' and got['STONK']['kind']=='ohlcv'
+    assert all(p['volume'] is None for p in got['ZEC']['points'])      # NULL must not be cast
+    assert all(p['volume']==500.0 for p in got['STONK']['points'])
+    assert [p['complete'] for p in got['STONK']['points']][-1] is False  # the open candle is flagged
+    # And the shape must be the one profile() expects, so ZEC stays out of the volume profile.
+    report=profile(got,3,now=NOW.replace(hour=0),iterations=50)
+    assert [e['coin'] for e in report['volume_excluded']]==['ZEC']

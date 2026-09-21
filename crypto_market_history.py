@@ -1,5 +1,9 @@
 """Archive public market history for every tracked coin. No X calls; default is a no-network plan.
 
+setup() carries the volume correction: a price_observation source reports a rolling 24h total
+rather than the interval's own trading, so its volume is NULL and a CHECK constraint keeps it
+that way. Rows written before that are cleared by the same one-shot migration.
+
 Daily candles are archived for up to five pools per contract coin; hourly candles for the
 pinned default pool only, because the post-to-price event study reads one source per coin.
 """
@@ -191,35 +195,12 @@ def refresh(conn,fetch=None,now=None,wait=None):
     return {'saved':saved,'errors':errors,'skipped':skipped,'twitter_credits':0}
 
 
-def repair_observation_volume(conn):
-    """Clear volumes written before price_observation sources stopped recording a rolling total.
-
-    One-shot and idempotent; deliberately not on the sweep path, because a repeated scan of the
-    observation tables on every run is the pattern that caused a production deadlock elsewhere.
-    Rows are corrected rather than deleted: the price observations themselves were always valid.
-    """
-    cleared={}
-    with conn,conn.cursor() as cur:
-        for table in ('crypto_market_observations','crypto_market_hourly'):
-            cur.execute('UPDATE '+table+" SET volume=NULL WHERE kind='price_observation' AND volume IS NOT NULL")
-            cleared[table]=cur.rowcount
-    return cleared
-
-
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--execute',action='store_true')
-    parser.add_argument('--repair-volume',action='store_true',
-                        help='clear rolling-window volumes recorded for price_observation sources, then exit')
-    args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--execute',action='store_true');args=parser.parse_args()
     if not args.execute:
         print(json.dumps({'mode':'plan_only','max_public_requests':30,'twitter_credits':0,'database_writes':0}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
-    if args.repair_volume:
-        try:
-            setup(conn);print(json.dumps({'repaired':repair_observation_volume(conn)}))
-        finally:conn.close()
-        return
     try:
         result=refresh(conn);print(json.dumps(result));
         # Provider rate limits on secondary pools are noise; a run with nothing archived is the failure.

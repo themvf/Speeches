@@ -9,7 +9,14 @@ same way, and conflating them is the easiest mistake to make here.
 python crypto_hour_profile.py --days 14            # reads the hourly archive
 python crypto_hour_profile.py --days 14 --live     # re-fetches from the providers instead
 python crypto_hour_profile.py --days 7 --coins ZCAT,ZEC
+python crypto_hour_profile.py --out report.json --summary   # JSON to a file, verdict to stderr
 ```
+
+**It runs itself.** `crypto-hour-profile.yml` recomputes this from the archive every Monday
+(no provider calls, no credits), writes the plain-language verdict to the run summary, and commits
+`apps/web/lib/server/crypto-hour-profile.json` when it changes — so a change in the answer arrives
+as a diff rather than waiting to be asked for. Run it by hand with `workflow_dispatch` to pick a
+different window.
 
 With `DATABASE_URL` set it reads `crypto_market_hourly_latest` for each coin's pinned default
 source. Without it, `--live` re-derives the same candles from GeckoTerminal and CoinGecko using
@@ -68,6 +75,13 @@ values give a near-zero standard error, so that trivial -0.6% mean produced `t =
 `p = 0.0055`. A window shorter than five days cannot support a per-coin hourly test at all, and the
 tool now says so instead of reporting one.
 
+**The window is whole UTC days, and today is excluded.** A rotation unit is a day, so a part-day at
+either edge is a near-degenerate unit: a 3-hour edge day can only rotate three ways and drags the
+null around. It also made the answer depend on the clock time the job ran — rolling the window nine
+hours moved volatility's coin-null p from 0.030 to 0.104 while the hour profile was identical.
+Anchoring to whole days makes a scheduled run reproducible whenever it fires, and two runs of the
+same window are now byte-identical.
+
 **The open candle is not an hour.** The candle covering the current hour holds only the minutes
 elapsed so far — 36 of 60 when this was last run. Counting it as a full-hour return would drop a
 systematically short, systematically quiet bar into whichever hour-of-day the run happens to start
@@ -100,31 +114,36 @@ obvious. Any null result has to be read against the coin's own row.
 
 Global p-values under each null, ZEC excluded from the volume profile:
 
-| Metric | 7-day day / coin / market | 14-day day / coin / market |
-| --- | --- | --- |
-| Return by hour | 0.124 / 0.179 / 0.337 | 0.476 / 0.362 / 0.768 |
-| Volume share by hour | 0.011 / 0.068 / 0.059 | 0.0050 / 0.067 / 0.027 |
-| Volatility by hour | 0.052 / 0.068 / 0.110 | 0.014 / **0.030** / 0.017 |
+| Metric (14-day, whole UTC days) | day | coin | market |
+| --- | --- | --- | --- |
+| Return by hour | 0.56 | **0.38** | 0.83 |
+| Volume share by hour | 0.0050 | **0.067** | 0.027 |
+| Volatility by hour | 0.028 | **0.070** | 0.035 |
 
 Split-half persistence over the same 14 days (profile measured in the first half, correlated with
 the second, against a market-wide rotation null):
 
 | Metric | r | p |
 | --- | --- | --- |
-| Return by hour | **-0.184** | 0.81 |
+| Return by hour | **-0.181** | 0.80 |
 | Volume share by hour | +0.469 | 0.043 |
-| Volatility by hour | +0.481 | 0.032 |
+| Volatility by hour | +0.473 | 0.049 |
 
 Run over each coin's full history instead of 14 days, the same split reaches r = +0.83 (volume) and
 r = +0.57 (volatility) while returns stay at r = -0.01. The activity shape is the same shape a week
 later; the return shape is not a shape at all.
 
-Volatility is the one result significant under all three nulls at 14 days. Activity is significant
-under the day and market nulls and marginal under the coin null, which is what twelve coins buys
-you when each contributes a single vote. Returns clear nothing under any null at any window, and
-unlike the other two they show no trend toward significance as the window grows — that contrast is
-itself the finding. Seven days is not enough for either activity result to clear the coin null;
-read the 14-day row, not the 7-day one.
+**The two tables disagree, and that is the honest reading.** Activity and volatility clear the day
+and market nulls but sit just above 0.05 under the coin null, which is what twelve coins buys when
+each contributes a single vote — while their shape does come back in a held-out half. Returns clear
+nothing under any null and have *negative* persistence. So: the activity shape is real and recurs,
+but with twelve coins this window cannot prove it against the strictest null; the return shape is
+not a shape at all. Report both numbers rather than picking the flattering one.
+
+An earlier draft of this document reported volatility at coin-null p = 0.030 and called it
+significant under all three nulls. That came from a window cut at the hour the job happened to run,
+which included a part-day at each edge. Anchoring to whole days moved it to 0.070 while the profile
+itself was unchanged (r = 1.000 between the two). The shape was never the unstable part.
 
 **Volume and volatility are not two independent confirmations.** On an AMM the size of an hourly
 move is mechanically driven by swap flow, so the volatility profile is largely the activity profile

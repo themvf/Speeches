@@ -1,8 +1,7 @@
 from datetime import datetime,timezone,timedelta
 import pytest
 from test_crypto_social_pilot import db
-from crypto_market_history import (ADDRESS,MARKETS,normalize,normalize_hourly,pools,setup,save,refresh,
-                                   repair_observation_volume)
+from crypto_market_history import ADDRESS,MARKETS,normalize,normalize_hourly,pools,setup,save,refresh
 CONTRACT_COINS=len(MARKETS)
 
 NOW=datetime(2026,9,14,12,tzinfo=timezone.utc)
@@ -137,7 +136,8 @@ def test_an_ohlcv_source_must_still_carry_a_real_volume():
         d=candles();d['data']['attributes']['ohlcv_list'][0][5]=bad
         assert normalize(d,'ohlcv',NOW)==[],f'volume {bad!r} must not be archived'
 
-def test_db_null_volume_round_trips_and_legacy_rows_repair(db):
+def test_db_null_volume_round_trips_and_the_database_forbids_the_old_mistake(db):
+    import psycopg2
     setup(db)
     src=dict(id='coingecko:zcash',coin='ZEC',provider='CoinGecko',url='https://example.test/z',metadata={'id':'zcash'})
     data=observations()
@@ -145,15 +145,57 @@ def test_db_null_volume_round_trips_and_legacy_rows_repair(db):
     with db,db.cursor() as cur:
         cur.execute('SELECT count(*) FROM crypto_market_hourly WHERE fetch_id=%s AND volume IS NULL',(fid,))
         assert cur.fetchone()[0]>0   # CHECK(volume>=0) must not reject a NULL
-        # A row written before the correction still carries the rolling total.
+    # A rolling total can no longer be recorded at all, whoever writes it.
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        with db,db.cursor() as cur:
+            cur.execute("""INSERT INTO crypto_market_hourly(fetch_id,hour,sample_at,close,volume,complete,kind)
+                           VALUES (%s,%s,%s,1450.0,1.2e9,true,'price_observation')""",(fid,NOW-timedelta(days=9),NOW))
+    db.rollback()
+    # An ohlcv source is unaffected by that constraint.
+    with db,db.cursor() as cur:
         cur.execute("""INSERT INTO crypto_market_hourly(fetch_id,hour,sample_at,close,volume,complete,kind)
-                       VALUES (%s,%s,%s,1450.0,1.2e9,true,'price_observation')""",(fid,NOW-timedelta(days=9),NOW))
-        cur.execute("SELECT count(*) FROM crypto_market_hourly WHERE kind='price_observation' AND volume IS NOT NULL")
+                       VALUES (%s,%s,%s,1.1,500.0,true,'ohlcv')""",(fid,NOW-timedelta(days=10),NOW))
+        cur.execute('SELECT count(*) FROM crypto_market_hourly WHERE volume=500.0')
         assert cur.fetchone()[0]==1
-    assert repair_observation_volume(db)['crypto_market_hourly']==1
-    assert repair_observation_volume(db)['crypto_market_hourly']==0   # idempotent
+
+def test_db_migration_clears_legacy_rolling_volumes_without_touching_prices(db):
+    """The correction runs itself: a database still holding the old rows is fixed by setup().
+
+    Rows are corrected rather than deleted, because the price observations were always valid,
+    and contract-coin volumes must survive untouched.
+    """
+    with db,db.cursor() as cur:
+        # Recreate the pre-correction shape: volume NOT NULL, no constraint.
+        cur.execute('DROP TABLE IF EXISTS crypto_price_events,crypto_market_hourly,crypto_market_observations,'
+                    'crypto_market_fetches,crypto_market_sources CASCADE')
+        cur.execute("""CREATE TABLE crypto_market_sources(id text PRIMARY KEY,coin text NOT NULL,provider text NOT NULL,
+                       source_url text NOT NULL,metadata jsonb NOT NULL,is_default boolean NOT NULL DEFAULT false)""")
+        cur.execute("""CREATE TABLE crypto_market_fetches(id bigserial PRIMARY KEY,source_id text NOT NULL
+                       REFERENCES crypto_market_sources(id),retrieved_at timestamptz NOT NULL,request_url text NOT NULL,
+                       metadata jsonb NOT NULL,raw_response jsonb NOT NULL)""")
+        cur.execute("""CREATE TABLE crypto_market_hourly(fetch_id bigint NOT NULL REFERENCES crypto_market_fetches(id),
+                       hour timestamptz NOT NULL,sample_at timestamptz NOT NULL,close double precision NOT NULL CHECK(close>0),
+                       volume double precision NOT NULL CHECK(volume>=0),open double precision,high double precision,
+                       low double precision,complete boolean NOT NULL,
+                       kind text NOT NULL CHECK(kind IN ('ohlcv','price_observation')),PRIMARY KEY(fetch_id,hour))""")
+        cur.execute("INSERT INTO crypto_market_sources VALUES ('coingecko:zcash','ZEC','CoinGecko','x','{}',true)")
+        cur.execute("""INSERT INTO crypto_market_fetches(source_id,retrieved_at,request_url,metadata,raw_response)
+                       VALUES ('coingecko:zcash',%s,'x','{}','{}') RETURNING id""",(NOW,))
+        fid=cur.fetchone()[0]
+        for i in range(5):
+            cur.execute("""INSERT INTO crypto_market_hourly(fetch_id,hour,sample_at,close,volume,complete,kind)
+                           VALUES (%s,%s,%s,1450.0,1.2e9,true,'price_observation')""",(fid,NOW-timedelta(hours=i),NOW))
+        cur.execute("""INSERT INTO crypto_market_hourly(fetch_id,hour,sample_at,close,volume,complete,kind)
+                       VALUES (%s,%s,%s,1.1,500.0,true,'ohlcv')""",(fid,NOW-timedelta(hours=99),NOW))
+    setup(db)
     with db,db.cursor() as cur:
         cur.execute("SELECT count(*) FROM crypto_market_hourly WHERE kind='price_observation' AND volume IS NOT NULL")
-        assert cur.fetchone()[0]==0
-        cur.execute('SELECT count(*) FROM crypto_market_hourly WHERE close IS NULL')
-        assert cur.fetchone()[0]==0   # prices are corrected, never discarded
+        assert cur.fetchone()[0]==0                     # legacy rolling totals cleared
+        cur.execute("SELECT count(*) FROM crypto_market_hourly WHERE kind='price_observation'")
+        assert cur.fetchone()[0]==5                     # the price observations themselves survive
+        cur.execute("SELECT volume FROM crypto_market_hourly WHERE kind='ohlcv'")
+        assert [r[0] for r in cur.fetchall()]==[500.0]  # contract-coin volume untouched
+    setup(db)                                           # re-running the migration is a no-op
+    with db,db.cursor() as cur:
+        cur.execute("SELECT count(*) FROM crypto_market_hourly")
+        assert cur.fetchone()[0]==6
