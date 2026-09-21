@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-09-14T16:59:50Z",
+ "generatedAt": "2026-09-21T17:07:11Z",
  "checkedCount": 888,
  "flaggedCount": 2,
  "candidates": [
@@ -7,9 +7,10 @@
    "ticker": "EQR",
    "name": "Erp Operating Ltd Partnership",
    "cik": "0000931182",
-   "reason": "uncertain",
-   "confidence": "low",
-   "evidence": "Missing from SEC's bulk ticker file, but the CIK's own feed still lists EQR with no deregistration filing - possibly a data lag",
+   "reason": "renamed",
+   "confidence": "high",
+   "evidence": "CIK's own submissions now list ['VRMK'] instead of EQR",
+   "suggestedNewTicker": "VRMK",
    "yahooQuoteAlive": true
   },
   {
