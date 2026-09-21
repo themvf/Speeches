@@ -40,6 +40,27 @@ def _throttle() -> None:
     _last_request_at = time.monotonic()
 
 
+def _bar_is_the_open_session(meta: Optional[Dict[str, Any]], bar_timestamp: Any) -> bool:
+    """True when this daily bar belongs to a session that has not closed yet.
+
+    Yahoo emits a bar for the session in progress whose volume is only the part of the day
+    traded so far. Dividing that by an average of whole days understates the ratio, which is
+    the same mistake as comparing a rolling window against per-interval values. The daily bar's
+    timestamp is its session's open, so the bar is still filling when it is the current trading
+    period and the last trade predates that period's close.
+
+    Returns False whenever the response omits the fields, so a payload without `meta` (including
+    every existing fixture) keeps the previous behaviour rather than silently dropping a bar.
+    """
+    period = ((meta or {}).get("currentTradingPeriod") or {}).get("regular") or {}
+    start, end = period.get("start"), period.get("end")
+    last_trade = (meta or {}).get("regularMarketTime")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+               for v in (start, end, last_trade, bar_timestamp)):
+        return False
+    return start <= bar_timestamp < end and last_trade < end
+
+
 def fetch_daily_market_context(symbol: str) -> Optional[Dict[str, Any]]:
     """Latest close/pct-change/volume plus a 20-trading-day volume baseline
     for `symbol`. Returns None on any failure (bad symbol, network error,
@@ -59,6 +80,7 @@ def fetch_daily_market_context(symbol: str) -> Optional[Dict[str, Any]]:
         if not result:
             return None
         series = result[0]
+        meta: Dict[str, Any] = series.get("meta") or {}
         timestamps: List[int] = series.get("timestamp") or []
         quote = ((series.get("indicators") or {}).get("quote") or [{}])[0]
         closes: List[Optional[float]] = quote.get("close") or []
@@ -71,9 +93,13 @@ def fetch_daily_market_context(symbol: str) -> Optional[Dict[str, Any]]:
         # finalizes it.
         latest_idx = None
         for i in range(len(timestamps) - 1, -1, -1):
-            if closes[i] is not None and volumes[i] is not None:
-                latest_idx = i
-                break
+            if closes[i] is None or volumes[i] is None:
+                continue
+            # A session still in progress has only part of its day's volume.
+            if _bar_is_the_open_session(meta, timestamps[i]):
+                continue
+            latest_idx = i
+            break
         if latest_idx is None:
             return None
 
@@ -131,6 +157,7 @@ def fetch_close_series(symbol: str, range_: str = "3mo") -> Optional[Dict[str, f
         if not result:
             return None
         series = result[0]
+        meta: Dict[str, Any] = series.get("meta") or {}
         timestamps: List[int] = series.get("timestamp") or []
         closes: List[Optional[float]] = (
             ((series.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
