@@ -271,10 +271,16 @@ def profile(series, days, now=None, iterations=ITERATIONS):
                 # to test this coin at all. Saying so is not the same as finding no effect.
                 entry['return_test'] = ('no hour has %d observations in this window; '
                                         'too short to test' % MIN_HOUR_OBS)
-            # Minimum detectable recurring same-hour move, 80% power, two-sided 5%, 24-hour penalty.
-            nd = entry['distinct_days']
-            entry['mde_pct'] = 100 * (math.exp(2.8 * entry['hourly_sd'] / math.sqrt(nd)) - 1) if nd else None
-            entry['mde_pct_corrected'] = 100 * (math.exp(3.6 * entry['hourly_sd'] / math.sqrt(nd)) - 1) if nd else None
+            # Minimum detectable recurring same-hour move at 80% power. The multiplier is
+            # z(1-a/2) + z(0.80): 1.960 + 0.842 = 2.802 uncorrected, and 3.078 + 0.842 = 3.920
+            # once a is split 24 ways for the 24 hours examined.
+            # n is the median number of observations an hour actually has, which falls below the
+            # day count whenever coverage is partial; using the day count would flatter the estimate.
+            counts = sorted(len(v) for v in _bucket(groups).values() if v)
+            n = counts[len(counts) // 2] if counts else 0
+            entry['mde_observations_per_hour'] = n
+            entry['mde_pct'] = 100 * (math.exp(2.802 * entry['hourly_sd'] / math.sqrt(n)) - 1) if n else None
+            entry['mde_pct_corrected'] = 100 * (math.exp(3.920 * entry['hourly_sd'] / math.sqrt(n)) - 1) if n else None
             mean = st.fmean([r for _, r in rows]); sd = entry['hourly_sd']
             ret_groups[coin] = [[(h, (r - mean) / sd) for h, r in g] for g in groups]
             base = st.fmean([abs(r) for _, r in rows]) or 1

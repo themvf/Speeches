@@ -70,9 +70,25 @@ tool now says so instead of reporting one.
 
 **Report what the window can resolve.** Per coin the output carries `mde_pct` and
 `mde_pct_corrected`: the minimum recurring same-hour move that window could detect at 80% power,
-before and after a 24-hour multiplicity penalty. For a coin with 20%+ hourly volatility and a few
-days of history this runs to tens of percent, which is the honest reason a "no effect found" result
-is usually a statement about the window rather than about the coin.
+before and after splitting alpha 24 ways. The multipliers are `z(1-a/2) + z(0.80)` — 2.802
+uncorrected and 3.920 corrected — over the *median observations an hour actually has*, not the day
+count, which would flatter a coin with partial coverage. Over 7 days:
+
+| Coin | hourly SD | obs/hour | MDE | MDE, 24-hour corrected |
+| --- | ---: | ---: | ---: | ---: |
+| ASKR | 25.0% | 2 | 64% | 100% |
+| AD | 21.6% | 3 | 42% | 63% |
+| FLX | 16.6% | 4 | 26% | 39% |
+| DPONS | 14.4% | 7 | 17% | 24% |
+| KNOTS | 9.6% | 7 | 11% | 15% |
+| ZCAT | 6.3% | 7 | 7% | 10% |
+| STONK | 3.8% | 7 | 4% | 6% |
+| PONS | 2.8% | 7 | 3% | 4% |
+| ZEC | 1.4% | 7 | 1.5% | 2.1% |
+
+That table is why "no time-of-day effect found" is mostly a statement about the window. A real
++5%-every-day-at-3pm pattern in ASKR would be invisible here; the same pattern in ZEC would be
+obvious. Any null result has to be read against the coin's own row.
 
 ## What the data said on 2026-09-21 (13 coins, live fetch)
 

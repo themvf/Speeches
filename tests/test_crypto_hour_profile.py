@@ -177,3 +177,15 @@ def test_split_half_declines_to_answer_when_there_are_too_few_coins_or_days():
     from crypto_hour_profile import split_half
     assert split_half({'A':[[(h,1.0) for h in range(24)] for _ in range(8)]},1.0,5,iterations=50) is None
     assert split_half({'A':[[(1,1.0)]],'B':[[(1,2.0)]]},1.0,5,iterations=50) is None
+
+
+def test_mde_uses_the_hourly_observation_count_and_the_right_multipliers():
+    import math as _m
+    report=profile({'A':candles(168,price=lambda i:100.0*_m.exp(_wobble(i//24,i%24,0.2)))},7,now=NOW,iterations=50)
+    e=report['coins']['A']
+    assert e['mde_observations_per_hour']==7           # seven days in the window, not 168 returns
+    # z(0.975)+z(0.80)=2.802 and z(1-0.05/48)+z(0.80)=3.920; the corrected bar must be the higher one.
+    expected=100*(_m.exp(2.802*e['hourly_sd']/_m.sqrt(7))-1)
+    assert e['mde_pct']==pytest.approx(expected,rel=1e-9)
+    assert e['mde_pct_corrected']>e['mde_pct']
+    assert e['mde_pct_corrected']==pytest.approx(100*(_m.exp(3.920*e['hourly_sd']/_m.sqrt(7))-1),rel=1e-9)
