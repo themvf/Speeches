@@ -1,0 +1,807 @@
+{
+ "coins": {
+  "AD": {
+   "coin_days": 3,
+   "distinct_days": 4,
+   "hourly_sd": 0.21761431266389725,
+   "mde_observations_per_hour": 3,
+   "mde_pct": 42.196879820940666,
+   "mde_pct_corrected": 63.64144762332624,
+   "return_test": "no hour has 5 observations in this window; too short to test",
+   "returns": 78
+  },
+  "ASKR": {
+   "coin_days": 2,
+   "distinct_days": 3,
+   "hourly_sd": 0.2521083655917733,
+   "mde_observations_per_hour": 2,
+   "mde_pct": 64.79063984223494,
+   "mde_pct_corrected": 101.13552263213039,
+   "return_test": "no hour has 5 observations in this window; too short to test",
+   "returns": 53
+  },
+  "BACKPACK": {
+   "coin_days": 5,
+   "distinct_days": 6,
+   "hourly_sd": 0.02396466234761309,
+   "mde_observations_per_hour": 5,
+   "mde_pct": 3.0485384702297447,
+   "mde_pct_corrected": 4.290689493042765,
+   "return_max_abs_t": 2.082011082790267,
+   "return_p_global": 0.6768307923019246,
+   "returns": 104,
+   "testable_hours": 12
+  },
+  "DPONS": {
+   "coin_days": 9,
+   "distinct_days": 9,
+   "hourly_sd": 0.16303553982410374,
+   "mde_observations_per_hour": 9,
+   "mde_pct": 16.448065065810358,
+   "mde_pct_corrected": 23.742561599858615,
+   "return_max_abs_t": 2.5511247534422683,
+   "return_p_global": 0.4173956510872282,
+   "returns": 215,
+   "testable_hours": 24
+  },
+  "FLX": {
+   "coin_days": 4,
+   "distinct_days": 5,
+   "hourly_sd": 0.16694079340361442,
+   "mde_observations_per_hour": 4,
+   "mde_pct": 26.349798309216645,
+   "mde_pct_corrected": 38.70843512199771,
+   "return_test": "no hour has 5 observations in this window; too short to test",
+   "returns": 97
+  },
+  "KNOTS": {
+   "coin_days": 13,
+   "distinct_days": 14,
+   "hourly_sd": 0.1301221314771433,
+   "mde_observations_per_hour": 14,
+   "mde_pct": 10.234975244408616,
+   "mde_pct_corrected": 14.605347744249354,
+   "return_max_abs_t": 2.1889776193695205,
+   "return_p_global": 0.6555861034741315,
+   "returns": 324,
+   "testable_hours": 24
+  },
+  "OMFG": {
+   "coin_days": 9,
+   "distinct_days": 5,
+   "hourly_sd": 0.029067678104031318,
+   "return_test": "fewer than 24 returns in the window",
+   "returns": 14
+  },
+  "PERSPAD": {
+   "coin_days": 13,
+   "distinct_days": 14,
+   "hourly_sd": 0.14351360269714974,
+   "mde_observations_per_hour": 14,
+   "mde_pct": 11.346019292950738,
+   "mde_pct_corrected": 16.22456569925741,
+   "return_max_abs_t": 2.033312169275333,
+   "return_p_global": 0.7743064233941515,
+   "returns": 324,
+   "testable_hours": 24
+  },
+  "PONS": {
+   "coin_days": 13,
+   "distinct_days": 14,
+   "hourly_sd": 0.02969952679780139,
+   "mde_observations_per_hour": 14,
+   "mde_pct": 2.2490139973035506,
+   "mde_pct_corrected": 3.160426262789251,
+   "return_max_abs_t": 1.9744471492945792,
+   "return_p_global": 0.828542864283929,
+   "returns": 324,
+   "testable_hours": 24
+  },
+  "STANDARD": {
+   "coin_days": 5,
+   "distinct_days": 6,
+   "hourly_sd": 0.054683877360015815,
+   "mde_observations_per_hour": 6,
+   "mde_pct": 6.455144033370219,
+   "mde_pct_corrected": 9.145583097648458,
+   "return_max_abs_t": 3.604621963385929,
+   "return_p_global": 0.1132216945763559,
+   "returns": 142,
+   "testable_hours": 24
+  },
+  "STONK": {
+   "coin_days": 13,
+   "distinct_days": 14,
+   "hourly_sd": 0.05424145787047575,
+   "mde_observations_per_hour": 14,
+   "mde_pct": 4.145584327534868,
+   "mde_pct_corrected": 5.847249505506946,
+   "return_max_abs_t": 2.1042712991241532,
+   "return_p_global": 0.754561359660085,
+   "returns": 324,
+   "testable_hours": 24
+  },
+  "ZCAT": {
+   "coin_days": 13,
+   "distinct_days": 14,
+   "hourly_sd": 0.07813318803793,
+   "mde_observations_per_hour": 14,
+   "mde_pct": 6.025695378697771,
+   "mde_pct_corrected": 8.53009628557706,
+   "return_max_abs_t": 2.3591102633842245,
+   "return_p_global": 0.551362159460135,
+   "returns": 324,
+   "testable_hours": 24
+  },
+  "ZEC": {
+   "coin_days": 0,
+   "distinct_days": 14,
+   "hourly_sd": 0.013355024341191011,
+   "mde_observations_per_hour": 14,
+   "mde_pct": 1.0051302033872611,
+   "mde_pct_corrected": 1.4089919386700567,
+   "return_max_abs_t": 3.2243459424206513,
+   "return_p_global": 0.09072731817045739,
+   "returns": 324,
+   "testable_hours": 24
+  }
+ },
+ "errors": [],
+ "et_offset_hours": -4,
+ "iterations": 4000,
+ "ok": true,
+ "pooled": {
+  "returns": {
+   "coins": 12,
+   "max_abs_t": 2.1302617945603117,
+   "note": "One test per metric. The ET column relabels the same hours, so it is not a second, independent confirmation. Days are bucketed on their UTC date. Read p_global.coin as the headline: it is the strictest null and treats each coin as one unit.",
+   "p_global": {
+    "coin": 0.38315421144713824,
+    "day": 0.5596100974756311,
+    "market": 0.833791552111972
+   },
+   "split_half": {
+    "coins": 11,
+    "p": 0.802049487628093,
+    "r": -0.18070997011175968
+   },
+   "table": [
+    {
+     "et_hour": 20,
+     "mean": -0.024832722465836843,
+     "median": -0.016134822564119737,
+     "n": 104,
+     "t": -0.24588129241996037,
+     "utc_hour": 0
+    },
+    {
+     "et_hour": 21,
+     "mean": -0.07597316501928084,
+     "median": -0.06736170994493877,
+     "n": 105,
+     "t": -0.7885125334094509,
+     "utc_hour": 1
+    },
+    {
+     "et_hour": 22,
+     "mean": 0.06299330963526913,
+     "median": 0.04890609539918851,
+     "n": 106,
+     "t": 0.5883503918952183,
+     "utc_hour": 2
+    },
+    {
+     "et_hour": 23,
+     "mean": 0.14055929502626083,
+     "median": -0.05916788621109462,
+     "n": 106,
+     "t": 1.46622647803618,
+     "utc_hour": 3
+    },
+    {
+     "et_hour": 0,
+     "mean": -0.13153818308115925,
+     "median": -0.027180197357763468,
+     "n": 105,
+     "t": -1.3325445652814447,
+     "utc_hour": 4
+    },
+    {
+     "et_hour": 1,
+     "mean": -0.024537795140010477,
+     "median": -0.1605827262105112,
+     "n": 105,
+     "t": -0.2569297264215076,
+     "utc_hour": 5
+    },
+    {
+     "et_hour": 2,
+     "mean": 0.01655089569522844,
+     "median": -0.009896227833440501,
+     "n": 105,
+     "t": 0.1887659880659555,
+     "utc_hour": 6
+    },
+    {
+     "et_hour": 3,
+     "mean": 0.056829306224207954,
+     "median": -0.013313602860662356,
+     "n": 105,
+     "t": 0.6840027899019969,
+     "utc_hour": 7
+    },
+    {
+     "et_hour": 4,
+     "mean": 0.12097327205904525,
+     "median": 0.06834174791759301,
+     "n": 106,
+     "t": 1.4440834275253391,
+     "utc_hour": 8
+    },
+    {
+     "et_hour": 5,
+     "mean": -0.04892685640229362,
+     "median": 0.0118243230850912,
+     "n": 106,
+     "t": -0.6675382836292867,
+     "utc_hour": 9
+    },
+    {
+     "et_hour": 6,
+     "mean": -0.1259702050234315,
+     "median": -0.22806161106911604,
+     "n": 106,
+     "t": -1.7237181734089284,
+     "utc_hour": 10
+    },
+    {
+     "et_hour": 7,
+     "mean": -0.14646009166657745,
+     "median": -0.1210154588217797,
+     "n": 106,
+     "t": -1.621674955643986,
+     "utc_hour": 11
+    },
+    {
+     "et_hour": 8,
+     "mean": 0.131791808819274,
+     "median": 0.07455084721649315,
+     "n": 113,
+     "t": 1.44662501153115,
+     "utc_hour": 12
+    },
+    {
+     "et_hour": 9,
+     "mean": -0.09452360273376637,
+     "median": -0.21167835637968946,
+     "n": 113,
+     "t": -0.917617463773476,
+     "utc_hour": 13
+    },
+    {
+     "et_hour": 10,
+     "mean": 0.03809423704498184,
+     "median": 0.025633921388641883,
+     "n": 113,
+     "t": 0.3942136343363152,
+     "utc_hour": 14
+    },
+    {
+     "et_hour": 11,
+     "mean": -0.08410743125345763,
+     "median": -0.263039118922444,
+     "n": 113,
+     "t": -0.7622510999141549,
+     "utc_hour": 15
+    },
+    {
+     "et_hour": 12,
+     "mean": 0.10232864290790408,
+     "median": 0.09411414770413346,
+     "n": 113,
+     "t": 0.8950946796766169,
+     "utc_hour": 16
+    },
+    {
+     "et_hour": 13,
+     "mean": 0.03579238115174644,
+     "median": -0.005431439402416674,
+     "n": 113,
+     "t": 0.3363237328514689,
+     "utc_hour": 17
+    },
+    {
+     "et_hour": 14,
+     "mean": -0.0013638342953281664,
+     "median": -0.11985658845987521,
+     "n": 114,
+     "t": -0.014358408909356808,
+     "utc_hour": 18
+    },
+    {
+     "et_hour": 15,
+     "mean": 0.0042701789798897626,
+     "median": -0.14716126194720802,
+     "n": 115,
+     "t": 0.041860610418130745,
+     "utc_hour": 19
+    },
+    {
+     "et_hour": 16,
+     "mean": 0.05378306493722832,
+     "median": -0.040038924125702875,
+     "n": 115,
+     "t": 0.6727236257286289,
+     "utc_hour": 20
+    },
+    {
+     "et_hour": 17,
+     "mean": 0.01457382658317739,
+     "median": -0.020667310731363093,
+     "n": 115,
+     "t": 0.18482294714591177,
+     "utc_hour": 21
+    },
+    {
+     "et_hour": 18,
+     "mean": -0.20346480662584565,
+     "median": -0.18021277742845246,
+     "n": 115,
+     "t": -2.1302617945603117,
+     "utc_hour": 22
+    },
+    {
+     "et_hour": 19,
+     "mean": 0.13444547059953227,
+     "median": 0.08925488251221064,
+     "n": 115,
+     "t": 1.354050168701163,
+     "utc_hour": 23
+    }
+   ],
+   "units": 116,
+   "untestable_hours": []
+  },
+  "volatility": {
+   "coins": 12,
+   "max_abs_t": 3.8592006529832816,
+   "note": "One test per metric. The ET column relabels the same hours, so it is not a second, independent confirmation. Days are bucketed on their UTC date. Read p_global.coin as the headline: it is the strictest null and treats each coin as one unit.",
+   "p_global": {
+    "coin": 0.06948262934266433,
+    "day": 0.028242939265183703,
+    "market": 0.03524118970257436
+   },
+   "split_half": {
+    "coins": 11,
+    "p": 0.049237690577355664,
+    "r": 0.4729923046795336
+   },
+   "table": [
+    {
+     "et_hour": 20,
+     "mean": 1.0357656608441095,
+     "median": 0.7585305247589227,
+     "n": 104,
+     "t": 0.38079722832972845,
+     "utc_hour": 0
+    },
+    {
+     "et_hour": 21,
+     "mean": 0.9388468077246402,
+     "median": 0.6925288634192659,
+     "n": 105,
+     "t": -0.6214341556851666,
+     "utc_hour": 1
+    },
+    {
+     "et_hour": 22,
+     "mean": 1.1510561624653386,
+     "median": 0.865851643981608,
+     "n": 106,
+     "t": 1.566316287706024,
+     "utc_hour": 2
+    },
+    {
+     "et_hour": 23,
+     "mean": 1.0888630875646195,
+     "median": 0.9016772504518198,
+     "n": 106,
+     "t": 1.0605093001789216,
+     "utc_hour": 3
+    },
+    {
+     "et_hour": 0,
+     "mean": 1.0119182542309992,
+     "median": 0.7015001090815484,
+     "n": 105,
+     "t": 0.1339895994531351,
+     "utc_hour": 4
+    },
+    {
+     "et_hour": 1,
+     "mean": 0.9864971568610388,
+     "median": 0.6781802783966947,
+     "n": 105,
+     "t": -0.14939751432615164,
+     "utc_hour": 5
+    },
+    {
+     "et_hour": 2,
+     "mean": 0.8984626395887766,
+     "median": 0.5634354164788135,
+     "n": 105,
+     "t": -1.165993130533767,
+     "utc_hour": 6
+    },
+    {
+     "et_hour": 3,
+     "mean": 0.8705666089627198,
+     "median": 0.6837387611814646,
+     "n": 105,
+     "t": -1.6730596114480858,
+     "utc_hour": 7
+    },
+    {
+     "et_hour": 4,
+     "mean": 0.8492260683611793,
+     "median": 0.5532390024583704,
+     "n": 106,
+     "t": -1.7559796663680887,
+     "utc_hour": 8
+    },
+    {
+     "et_hour": 5,
+     "mean": 0.7249510500817484,
+     "median": 0.5396672528868232,
+     "n": 106,
+     "t": -3.8592006529832816,
+     "utc_hour": 9
+    },
+    {
+     "et_hour": 6,
+     "mean": 0.8088296346752959,
+     "median": 0.6316467604198235,
+     "n": 106,
+     "t": -2.942822167287475,
+     "utc_hour": 10
+    },
+    {
+     "et_hour": 7,
+     "mean": 0.8888798031857046,
+     "median": 0.5968723166626151,
+     "n": 106,
+     "t": -1.2184677914568791,
+     "utc_hour": 11
+    },
+    {
+     "et_hour": 8,
+     "mean": 1.0367538433160992,
+     "median": 0.8061485298736256,
+     "n": 113,
+     "t": 0.45514941771170414,
+     "utc_hour": 12
+    },
+    {
+     "et_hour": 9,
+     "mean": 1.1015934423047837,
+     "median": 0.720199475416332,
+     "n": 113,
+     "t": 1.0119062434393686,
+     "utc_hour": 13
+    },
+    {
+     "et_hour": 10,
+     "mean": 1.0054176075456471,
+     "median": 0.6751771284986168,
+     "n": 113,
+     "t": 0.05609771676672596,
+     "utc_hour": 14
+    },
+    {
+     "et_hour": 11,
+     "mean": 1.2231550976232755,
+     "median": 0.9428188850330941,
+     "n": 113,
+     "t": 2.2503723453233886,
+     "utc_hour": 15
+    },
+    {
+     "et_hour": 12,
+     "mean": 1.1726171190471701,
+     "median": 0.8164105947280432,
+     "n": 113,
+     "t": 1.4837336247258563,
+     "utc_hour": 16
+    },
+    {
+     "et_hour": 13,
+     "mean": 1.1413085194749952,
+     "median": 0.7702633792923091,
+     "n": 113,
+     "t": 1.364709534949897,
+     "utc_hour": 17
+    },
+    {
+     "et_hour": 14,
+     "mean": 1.093497772065042,
+     "median": 0.8121104896965305,
+     "n": 114,
+     "t": 1.1773196582312615,
+     "utc_hour": 18
+    },
+    {
+     "et_hour": 15,
+     "mean": 1.011618518604724,
+     "median": 0.6992836939611391,
+     "n": 115,
+     "t": 0.10629351728467737,
+     "utc_hour": 19
+    },
+    {
+     "et_hour": 16,
+     "mean": 0.9055270198470489,
+     "median": 0.7525630896746114,
+     "n": 115,
+     "t": -1.3160601096410103,
+     "utc_hour": 20
+    },
+    {
+     "et_hour": 17,
+     "mean": 0.8861243696548537,
+     "median": 0.6489418001541699,
+     "n": 115,
+     "t": -1.5571062288770185,
+     "utc_hour": 21
+    },
+    {
+     "et_hour": 18,
+     "mean": 1.0326506806536948,
+     "median": 0.7367379344928692,
+     "n": 115,
+     "t": 0.34955994201522794,
+     "utc_hour": 22
+    },
+    {
+     "et_hour": 19,
+     "mean": 1.0452996471448797,
+     "median": 0.7092821994016936,
+     "n": 115,
+     "t": 0.43994149032896324,
+     "utc_hour": 23
+    }
+   ],
+   "units": 116,
+   "untestable_hours": []
+  },
+  "volume_share": {
+   "coins": 12,
+   "max_abs_t": 6.055252911963565,
+   "note": "One test per metric. The ET column relabels the same hours, so it is not a second, independent confirmation. Days are bucketed on their UTC date. Read p_global.coin as the headline: it is the strictest null and treats each coin as one unit.",
+   "p_global": {
+    "coin": 0.06723319170207448,
+    "day": 0.0049987503124218945,
+    "market": 0.02649337665583604
+   },
+   "split_half": {
+    "coins": 10,
+    "p": 0.042989252686828294,
+    "r": 0.46896144240989845
+   },
+   "table": [
+    {
+     "et_hour": 20,
+     "mean": 0.04351857650311795,
+     "median": 0.04360520696722485,
+     "n": 102,
+     "t": 0.6434463472404461,
+     "utc_hour": 0
+    },
+    {
+     "et_hour": 21,
+     "mean": 0.05159151349301684,
+     "median": 0.03294353832510645,
+     "n": 102,
+     "t": 1.5626425979898642,
+     "utc_hour": 1
+    },
+    {
+     "et_hour": 22,
+     "mean": 0.05007829839773445,
+     "median": 0.03405425438224904,
+     "n": 102,
+     "t": 0.8506389306095855,
+     "utc_hour": 2
+    },
+    {
+     "et_hour": 23,
+     "mean": 0.05213190881574872,
+     "median": 0.03603497385225243,
+     "n": 102,
+     "t": 1.3004565826712056,
+     "utc_hour": 3
+    },
+    {
+     "et_hour": 0,
+     "mean": 0.037712071691711355,
+     "median": 0.030648905899455403,
+     "n": 102,
+     "t": -1.2230298836694191,
+     "utc_hour": 4
+    },
+    {
+     "et_hour": 1,
+     "mean": 0.03338790781908022,
+     "median": 0.026621035754435644,
+     "n": 102,
+     "t": -3.0320890420739093,
+     "utc_hour": 5
+    },
+    {
+     "et_hour": 2,
+     "mean": 0.0301746001812334,
+     "median": 0.02337677212181625,
+     "n": 102,
+     "t": -3.835295313587521,
+     "utc_hour": 6
+    },
+    {
+     "et_hour": 3,
+     "mean": 0.02708024827089073,
+     "median": 0.024657428981606215,
+     "n": 102,
+     "t": -6.055252911963565,
+     "utc_hour": 7
+    },
+    {
+     "et_hour": 4,
+     "mean": 0.03150345040619735,
+     "median": 0.021487536905786905,
+     "n": 102,
+     "t": -1.6804680391114581,
+     "utc_hour": 8
+    },
+    {
+     "et_hour": 5,
+     "mean": 0.02870355760192339,
+     "median": 0.02123026151640841,
+     "n": 102,
+     "t": -3.9605488188851936,
+     "utc_hour": 9
+    },
+    {
+     "et_hour": 6,
+     "mean": 0.028933430119706907,
+     "median": 0.022127269732999142,
+     "n": 102,
+     "t": -3.117897111967387,
+     "utc_hour": 10
+    },
+    {
+     "et_hour": 7,
+     "mean": 0.029685030140735532,
+     "median": 0.02289250701602078,
+     "n": 102,
+     "t": -3.5966214459662154,
+     "utc_hour": 11
+    },
+    {
+     "et_hour": 8,
+     "mean": 0.0392614558956037,
+     "median": 0.03238132441264319,
+     "n": 102,
+     "t": -0.6683511597965541,
+     "utc_hour": 12
+    },
+    {
+     "et_hour": 9,
+     "mean": 0.04067764315258693,
+     "median": 0.036489666198156995,
+     "n": 102,
+     "t": -0.2871313161490854,
+     "utc_hour": 13
+    },
+    {
+     "et_hour": 10,
+     "mean": 0.04158733578385687,
+     "median": 0.036130521678560956,
+     "n": 102,
+     "t": -0.02524404040244791,
+     "utc_hour": 14
+    },
+    {
+     "et_hour": 11,
+     "mean": 0.045042560751629254,
+     "median": 0.03337814165300009,
+     "n": 102,
+     "t": 0.7893839463866525,
+     "utc_hour": 15
+    },
+    {
+     "et_hour": 12,
+     "mean": 0.048408949246865056,
+     "median": 0.03734146832955143,
+     "n": 102,
+     "t": 1.3386377738030237,
+     "utc_hour": 16
+    },
+    {
+     "et_hour": 13,
+     "mean": 0.0563666939175351,
+     "median": 0.03642736273199294,
+     "n": 102,
+     "t": 1.5793489816840838,
+     "utc_hour": 17
+    },
+    {
+     "et_hour": 14,
+     "mean": 0.053498018293071416,
+     "median": 0.033528770083444494,
+     "n": 102,
+     "t": 1.1543396030135624,
+     "utc_hour": 18
+    },
+    {
+     "et_hour": 15,
+     "mean": 0.045076970035946205,
+     "median": 0.03365037394079115,
+     "n": 102,
+     "t": 0.8283904753605321,
+     "utc_hour": 19
+    },
+    {
+     "et_hour": 16,
+     "mean": 0.05301864303665977,
+     "median": 0.03464895194158246,
+     "n": 102,
+     "t": 1.1272844919875893,
+     "utc_hour": 20
+    },
+    {
+     "et_hour": 17,
+     "mean": 0.052039717740579784,
+     "median": 0.03138928244549933,
+     "n": 102,
+     "t": 1.0105586327897504,
+     "utc_hour": 21
+    },
+    {
+     "et_hour": 18,
+     "mean": 0.039051205402798383,
+     "median": 0.03293900706453449,
+     "n": 102,
+     "t": -0.9156004721528428,
+     "utc_hour": 22
+    },
+    {
+     "et_hour": 19,
+     "mean": 0.04147021330177068,
+     "median": 0.034474221839541686,
+     "n": 102,
+     "t": -0.03709710701061789,
+     "utc_hour": 23
+    }
+   ],
+   "units": 102,
+   "untestable_hours": []
+  }
+ },
+ "since": "2026-09-07T00:00:00+00:00",
+ "source": "providers",
+ "until": "2026-09-21T00:00:00+00:00",
+ "verdict": [
+  "Direction (do they go up or down at set hours): does not clear the strictest null (p=0.38, 12 coins) and does not recur out of sample (r=-0.18, p=0.80).",
+  "Activity (when trading happens): does not clear the strictest null (p=0.07, 12 coins) and recurs out of sample (r=+0.47, p=0.043).",
+  "Volatility (how big the moves are): does not clear the strictest null (p=0.07, 12 coins) and recurs out of sample (r=+0.47, p=0.049).",
+  "Per coin: 0 of 9 testable coins show a return pattern.",
+  "Not testable in this window (too little history): AD, ASKR, FLX, OMFG.",
+  "Excluded from the activity profile: ZEC (provider reports a rolling window, not hourly volume)."
+ ],
+ "volume_excluded": [
+  {
+   "coin": "ZEC",
+   "kind": "price_observation",
+   "reason": "provider reports a rolling 24h total, not hourly volume"
+  }
+ ],
+ "window_days": 14
+}

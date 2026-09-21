@@ -12,11 +12,19 @@ python crypto_hour_profile.py --days 7 --coins ZCAT,ZEC
 python crypto_hour_profile.py --out report.json --summary   # JSON to a file, verdict to stderr
 ```
 
-**It runs itself.** `crypto-hour-profile.yml` recomputes this from the archive every Monday
-(no provider calls, no credits), writes the plain-language verdict to the run summary, and commits
-`apps/web/lib/server/crypto-hour-profile.json` when it changes — so a change in the answer arrives
-as a diff rather than waiting to be asked for. Run it by hand with `workflow_dispatch` to pick a
-different window.
+**It runs itself, and it is visible.** `crypto-hour-profile.yml` recomputes this from the archive
+every Monday (no provider calls, no credits), writes the plain-language verdict to the run summary,
+and commits `apps/web/lib/server/crypto-hour-profile.json` when it changes — so a change in the
+answer arrives as a diff rather than waiting to be asked for. Run it by hand with
+`workflow_dispatch` to pick a different window.
+
+The **Data tab** of `/market/crypto` renders that snapshot: one row per question with its standing,
+the strictest-null p-value and the out-of-sample correlation side by side, then the hour-by-hour
+activity profile in Eastern time. `GET /api/market/crypto/status` serves it, so the 19KB report
+stays on the server and never enters the client bundle, and the panel renders even when the
+database is unreachable. Display logic lives in `apps/web/lib/crypto-hour-profile.ts`
+(`standing`, `runs`, `extremes`) with its own tests — `standing` deliberately requires *both* the
+null and the persistence, so neither number can be quoted alone.
 
 With `DATABASE_URL` set it reads `crypto_market_hourly_latest` for each coin's pinned default
 source. Without it, `--live` re-derives the same candles from GeckoTerminal and CoinGecko using

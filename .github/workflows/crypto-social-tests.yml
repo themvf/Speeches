@@ -23,6 +23,9 @@ on:
       - 'tests/test_crypto_market_history.py'
       - 'crypto_hour_profile.py'
       - 'tests/test_crypto_hour_profile.py'
+      - 'apps/web/lib/crypto-hour-profile*'
+      - 'apps/web/lib/server/crypto-hour-profile.json'
+      - 'apps/web/components/market/crypto-data-view.tsx'
       - '.github/workflows/crypto-market-history.yml'
       - '.github/workflows/crypto-hour-profile.yml'
       - 'sql/crypto_social*.sql'
@@ -75,4 +78,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --experimental-strip-types --test apps/web/lib/crypto-social.test.ts apps/web/lib/crypto-run.test.ts apps/web/lib/crypto-coin-discovery.test.ts apps/web/lib/crypto-voices.test.ts apps/web/lib/crypto-watchers.test.ts apps/web/lib/crypto-impact.test.ts apps/web/lib/crypto-coins.test.ts apps/web/lib/crypto-leaders.test.ts apps/web/lib/crypto-signals.test.ts apps/web/lib/crypto-workspace.test.ts apps/web/lib/intelligence-fusion.test.ts
+      - run: node --experimental-strip-types --test apps/web/lib/crypto-social.test.ts apps/web/lib/crypto-run.test.ts apps/web/lib/crypto-coin-discovery.test.ts apps/web/lib/crypto-voices.test.ts apps/web/lib/crypto-watchers.test.ts apps/web/lib/crypto-impact.test.ts apps/web/lib/crypto-coins.test.ts apps/web/lib/crypto-leaders.test.ts apps/web/lib/crypto-signals.test.ts apps/web/lib/crypto-workspace.test.ts apps/web/lib/intelligence-fusion.test.ts apps/web/lib/crypto-hour-profile.test.ts
