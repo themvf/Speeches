@@ -86,7 +86,7 @@ def test_saved_x_and_chain_rows_materialize_without_provider_calls():
         cur.execute("""INSERT INTO crypto_social_accounts(id,handle,name,observed_at)
           VALUES('fusion-test-actor','fusion_test','Fusion Test','2040-01-01T00:01:00Z') ON CONFLICT DO NOTHING""")
         cur.execute("""INSERT INTO crypto_social_posts(id,author_id,text,posted_at,kind,url,first_seen_at)
-          VALUES('fusion-test-post','fusion-test-actor','PONS graduated and its pool is live on PumpSwap',
+          VALUES('fusion-test-post','fusion-test-actor','$PONS graduated and its pool is live on PumpSwap',
           '2040-01-01T00:00:00Z','post','https://x.example/fusion-test','2040-01-01T00:01:00Z') ON CONFLICT DO NOTHING""")
         cur.execute("""INSERT INTO crypto_social_windows(coin,start_at,end_at,query,status)
           VALUES('PONS','2040-01-01T00:00:00Z','2040-01-02T00:00:00Z','fusion test','search_exhausted')
@@ -104,17 +104,28 @@ def test_saved_x_and_chain_rows_materialize_without_provider_calls():
 
     result = materialize(url, ["PONS"])
     assert result["telegram"] == "not_configured"
-    assert result["observations"] >= 2
-    assert result["claims"] >= 2
-    assert result["events"] >= 2
 
     conn = psycopg2.connect(url)
     with conn, conn.cursor() as cur:
+        # Which sources contributed, checked BEFORE the totals. A bare ">= 2" once passed while the
+        # X side contributed nothing at all: the fixture text said plain "PONS", which the registry
+        # deliberately does not match (bare "pons" is a Latin word, guarded against "pons asinorum"),
+        # so every post was skipped and the lone graduation observation was mistaken for success.
+        # Asserting the sources first means a dropped adapter names itself instead of failing as
+        # an anonymous off-by-one.
+        cur.execute("SELECT source,count(*) FROM intelligence_observations GROUP BY source ORDER BY source")
+        by_source = dict(cur.fetchall())
+        assert by_source.get("x", 0) >= 1, f"the saved X post was not materialized; sources seen: {by_source}"
+        assert by_source.get("onchain", 0) >= 1, f"the stored graduation was not materialized; sources seen: {by_source}"
+        assert by_source.get("telegram", 0) == 0, f"the placeholder adapter wrote rows: {by_source}"
+
+        assert result["observations"] >= 2, f"materialize counted {result['observations']}; sources seen: {by_source}"
+        assert result["claims"] >= 2
+        assert result["events"] >= 2
+
         cur.execute("""SELECT count(*) FROM intelligence_claim_event_assessments a
           JOIN intelligence_claims c ON c.id=a.claim_id WHERE c.claim_type IN ('graduation','pool_creation')""")
         assert cur.fetchone()[0] >= 2
-        cur.execute("SELECT count(*) FROM intelligence_observations WHERE source='telegram'")
-        assert cur.fetchone()[0] == 0
         cur.execute("SELECT count(*) FROM intelligence_claim_outcomes")
         assert cur.fetchone()[0] >= 1
     conn.close()
