@@ -57,7 +57,7 @@ export async function readClaimDossier(coin: string): Promise<ClaimDossier> {
       FROM intelligence_events e JOIN intelligence_event_entities ee ON ee.event_id=e.id
       LEFT JOIN intelligence_event_observations eo ON eo.event_id=e.id
       WHERE ee.entity_id=$1 GROUP BY e.id ORDER BY e.occurred_at,e.id`, [entityId]),
-    sql.query(`SELECT id,measured_at,price_usd,liquidity_usd,volume_usd,source,methodology_version
+    sql.query(`SELECT id,measured_at,price_usd,liquidity_usd,volume_usd,volume_window,source,methodology_version
       FROM intelligence_market_measurements WHERE entity_id=$1 ORDER BY measured_at,id`, [entityId]),
     sql.query(`SELECT o.id,o.claim_id,o.measurement_id,o.anchor_type,o.anchor_at,o.horizon_seconds,o.methodology_version
       FROM intelligence_claim_outcomes o JOIN intelligence_claims c ON c.id=o.claim_id
@@ -99,7 +99,9 @@ export async function readClaimDossier(coin: string): Promise<ClaimDossier> {
   const measurements: DossierMeasurement[] = measurementRows.map((row) => ({
     id: String(row.id), measuredAt: iso(row.measured_at), priceUsd: row.price_usd == null ? null : Number(row.price_usd),
     liquidityUsd: row.liquidity_usd == null ? null : Number(row.liquidity_usd),
-    volumeUsd: row.volume_usd == null ? null : Number(row.volume_usd), source: String(row.source),
+    volumeUsd: row.volume_usd == null ? null : Number(row.volume_usd),
+    // A volume without its window cannot be interpreted, so it is never surfaced alone.
+    volumeWindow: row.volume_window == null ? null : String(row.volume_window), source: String(row.source),
     methodologyVersion: String(row.methodology_version),
   }));
   const outcomes: DossierOutcome[] = outcomeRows.map((row) => ({

@@ -49,6 +49,9 @@ export type DossierMeasurement = {
   priceUsd: number | null;
   liquidityUsd: number | null;
   volumeUsd: number | null;
+  /** The window the volume covers, e.g. 'h1'. Null exactly when volumeUsd is null: a flow
+   *  without its window is uninterpretable, and the database refuses to store one. */
+  volumeWindow: string | null;
   source: string;
   methodologyVersion: string;
 };

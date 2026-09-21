@@ -159,7 +159,12 @@ CREATE TABLE IF NOT EXISTS intelligence_market_measurements (
  measured_at timestamptz NOT NULL,
  price_usd double precision,
  liquidity_usd double precision,
+ -- A volume is a flow over a window, so it is meaningless without one. This table is
+ -- source-neutral and different sources report different windows, so the window travels with the
+ -- value as data rather than in the column name. The paired CHECK below makes a windowless volume
+ -- impossible to store.
  volume_usd double precision,
+ volume_window text,
  source text NOT NULL,
  methodology_version text NOT NULL,
  source_record_id text NOT NULL,
@@ -215,4 +220,24 @@ BEGIN
   EXECUTE format('DROP TRIGGER IF EXISTS %I_append_only ON %I',table_name,table_name);
   EXECUTE format('CREATE TRIGGER %I_append_only BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION prevent_intelligence_fact_mutation()',table_name,table_name);
  END LOOP;
+END $$;
+
+-- Volume windows (2026-09): a flow stored without its window cannot be interpreted. The launchpad
+-- adapter reads launchpad_observations.volume_h1 -- an hour -- and wrote it into a column named
+-- only volume_usd, so the window was lost the moment it crossed into this source-neutral layer.
+-- The window now travels with the value.
+--
+-- The constraint is added NOT VALID on purpose. This table is append-only: a stored fact is never
+-- rewritten, and rows recorded before the column existed genuinely did not record a window.
+-- Backfilling them to 'h1' would be inventing a measurement that was never taken, and the
+-- append-only trigger rightly refuses it. NOT VALID binds every new row while leaving the
+-- historical record exactly as it was written; those rows read as "window not recorded", which is
+-- the truth, rather than as a window we inferred later.
+ALTER TABLE intelligence_market_measurements ADD COLUMN IF NOT EXISTS volume_window text;
+DO $$
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='intelligence_market_measurements_volume_window') THEN
+  ALTER TABLE intelligence_market_measurements ADD CONSTRAINT intelligence_market_measurements_volume_window
+   CHECK ((volume_usd IS NULL) = (volume_window IS NULL)) NOT VALID;
+ END IF;
 END $$;
