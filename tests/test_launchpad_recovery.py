@@ -345,3 +345,22 @@ def test_capture_error_retains_token_and_provider_cause(db):
     out=archive.sweep(db,SOLANA,fetch=fetch,now=NOW,wait=lambda _:None)
     assert out['trade_captures']==0
     assert any(SOL_TOKEN in e and 'HTTP 503' in e for e in out['errors'])
+
+
+def test_multiple_curve_pools_for_one_token_persist_once(db):
+    from test_launchpad_archive import CURVE_POOL,GRAD_POOL
+    second='0x2222222222222222222222222222222222222222'
+    entries=[pool(),pool(address=second),pool(dex='pons-v2-dex',address=GRAD_POOL)]
+    out=archive.sweep(db,fetch=responder({1:entries}),now=NOW,wait=lambda _:None)
+    assert out['pools']==3 and out['new_tokens']==1 and out['graduations']==1
+    with db,db.cursor() as cur:
+        cur.execute('SELECT token_address,curve_pool,graduated,graduation_pool FROM launchpad_tokens')
+        assert cur.fetchall()==[(TOKEN,CURVE_POOL,True,GRAD_POOL)]
+        cur.execute('SELECT count(*) FROM launchpad_sweeps')
+        assert cur.fetchone()[0]==1
+    out=archive.sweep(db,fetch=responder({1:list(reversed(entries))}),
+                      now=NOW+timedelta(minutes=5),wait=lambda _:None)
+    assert out['new_tokens']==0 and out['graduations']==0
+    with db,db.cursor() as cur:
+        cur.execute('SELECT curve_pool FROM launchpad_tokens')
+        assert cur.fetchone()[0]==CURVE_POOL

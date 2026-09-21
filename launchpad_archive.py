@@ -526,8 +526,15 @@ def _persist(conn,*,chain,now,pools,curve,arrivals,state,info,known,observations
     gap=gap_seconds(previous_newest,oldest)
     window=int((newest-oldest).total_seconds()) if (newest and oldest) else None
     rows=[]
+    curve_tokens=set()
     for entry in curve:
-        token=entry['token'];s=state.get(token) or {}
+        token=entry['token']
+        # Several distinct curve pools can name one token. The token table's
+        # conflict key is not the pool key; one upsert must contain it only once.
+        # Keep the first observed pool, matching first-fact and observation policy.
+        if token in curve_tokens:continue
+        curve_tokens.add(token)
+        s=state.get(token) or {}
         graduated=bool(s.get('completed')) or token in arrivals
         graduated_at=s.get('completed_at') or (arrivals[token]['created'] if token in arrivals else None)
         detected=now if (graduated and not known.get(token,{}).get('graduated')) else None
