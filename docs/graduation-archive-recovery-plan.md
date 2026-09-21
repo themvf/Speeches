@@ -198,3 +198,28 @@ Hourly follow-up is configured in the current Codex task as
 reports meaningful changes, assesses the 48-hour gate and gives a final assessment
 after 72 hours on September 23 before pausing itself. This local follow-up needs
 the desktop app running; the collectors continue independently on GitHub.
+
+### Duplicate-token persistence repair (2026-09-21)
+
+[Robinhood run 35558426970](https://github.com/themvf/Speeches/actions/runs/35558426970)
+failed at 03:44 UTC with PostgreSQL `CardinalityViolation`: several distinct
+curve pools produced repeated `(network, token_address)` rows within one upsert.
+The transaction rolled back, leaving a recorded-sweep silence of 723 seconds.
+Subsequent scheduled runs resumed, but the lost observation is not reconstructed.
+
+Commit `2406405` deduplicates curve tokens before building the token upsert,
+retaining the first observed curve pool and first-fact semantics. Pool discovery
+counts and existing observation handling remain intact. A regression exercises
+two curve pools plus a graduate pool for one token, verifies exactly one new
+token/graduation, then reverses the pool order on a later sweep to verify that
+the original stored curve pool survives. [CI 35560912460](https://github.com/themvf/Speeches/actions/runs/35560912460)
+passed 73 archive tests against PostgreSQL and the full suite (774 passed,
+97 skipped) before the 04:26 UTC deployment.
+
+The original September 20 16:15 UTC cohort remains the longitudinal baseline.
+It is **not** a clean single-version commissioning window after this repair.
+Use **2026-09-21 04:35 UTC** as a conservative separate post-fix cutoff, and
+require at least 48 hours after that cutoff before considering acceptance.
+The automation still stops with its final assessment on September 23 at
+16:15 UTC; that permits about 59 hours 40 minutes of post-fix observation,
+not 72. Keep both cohort reports and do not erase earlier failures.
