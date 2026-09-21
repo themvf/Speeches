@@ -47,10 +47,10 @@ def _wobble(i,h,scale=0.05):
 
 def test_rotation_test_finds_an_injected_hour_effect_and_clears_a_profile_with_no_alignment():
     noisy=[[(h,1.0+_wobble(i,h)) for h in range(24)] for i in range(14)]
-    _,p_flat=_rotation_p(noisy,1.0,7,iterations=300)
+    _,p_flat=_rotation_p({'A':noisy},1.0,7,iterations=300)
     assert p_flat>0.2  # no hour is special, so rotation reproduces the observed statistic
     spiked=[[(h,(5.0 if h==13 else 1.0)+_wobble(i,h)) for h in range(24)] for i in range(14)]
-    _,p_spiked=_rotation_p(spiked,1.0,7,iterations=300)
+    _,p_spiked=_rotation_p({'A':spiked},1.0,7,iterations=300)
     assert p_spiked<0.01  # the same hour every day is exactly what rotation destroys
 
 def test_an_hour_with_no_variance_is_reported_rather_than_silently_untested():
@@ -93,7 +93,7 @@ def test_profile_flags_a_repeating_busy_hour_and_still_clears_a_constant_return(
     assert report['coins']['A']['hourly_sd']==pytest.approx(0.0,abs=1e-12)
     assert 'return_p_global' not in report['coins']['A']  # dust-level variance is not a testable series
     assert report['coins']['A']['return_test']=='price did not move enough to measure'
-    assert report['pooled']['volume_share']['p_global']<0.01
+    assert report['pooled']['volume_share']['p_global']['day']<0.01
     busiest=max(report['pooled']['volume_share']['table'],key=lambda r:r['mean'])
     assert busiest['utc_hour']==13
     assert report['pooled']['volume_share']['untestable_hours']==[]
@@ -123,3 +123,38 @@ def test_profile_skips_a_coin_with_too_few_returns_without_failing_the_run():
     assert report['coins']['B']['return_test']=='fewer than 24 returns in the window'
     assert report['coins']['B']['returns']==5
     assert 'return_p_global' in report['coins']['A']
+
+
+def test_a_rolling_volume_series_is_kept_out_of_the_volume_profile():
+    """CoinGecko reports a rolling 24h total, so ZEC's volume is not hourly volume.
+
+    Averaging a smoothed window against real hourly series would flatten the profile toward
+    uniform. The series is excluded and named, never silently mixed in.
+    """
+    real={'kind':'ohlcv','points':candles(168,price=lambda i:100.0+_wobble(i//24,i%24,4.0),
+                                          volume=lambda i:(50.0 if i%24==13 else 1.0)+_wobble(i//24,i%24,0.2))}
+    rolling={'kind':'price_observation','points':candles(168,price=lambda i:100.0+_wobble(i//24,i%24,3.0),
+                                                        volume=lambda i:1000.0+i)}
+    report=profile({'A':real,'B':rolling},7,now=NOW,iterations=200)
+    assert [e['coin'] for e in report['volume_excluded']]==['B']
+    assert 'rolling 24h' in report['volume_excluded'][0]['reason']
+    assert report['pooled']['volume_share']['coins']==1        # only the real series contributed
+    assert report['coins']['B']['returns']==167                 # its RETURNS are still analysed
+    assert report['pooled']['volatility']['coins']==2
+
+def test_three_nulls_are_reported_and_the_coin_null_is_never_the_most_permissive():
+    """The coin null gives each coin one vote, so it cannot be looser than the day null by much."""
+    per={c:[[(h,(3.0 if h==13 else 1.0)+_wobble(i+ord(c),h)) for h in range(24)] for i in range(10)]
+         for c in 'ABCDE'}
+    ps={m:_rotation_p(per,1.0,11,m,iterations=400)[1] for m in ('day','coin','market')}
+    assert ps['day']<0.01                       # a fixed hour every day, every coin
+    assert ps['coin']<=0.2 and ps['market']<=0.2
+    assert ps['coin']>=ps['day']                # stricter null can only cost significance
+
+def test_profile_exposes_all_three_nulls_for_each_pooled_metric():
+    series={c:{'kind':'ohlcv','points':candles(168,price=lambda i:100.0+_wobble(i//24,i%24,4.0),
+                                               volume=lambda i:(9.0 if i%24==13 else 1.0)+_wobble(i//24,i%24,0.2))}
+            for c in ('A','B','C')}
+    report=profile(series,7,now=NOW,iterations=200)
+    assert set(report['pooled']['volume_share']['p_global'])=={'day','coin','market'}
+    assert report['pooled']['volume_share']['coins']==3

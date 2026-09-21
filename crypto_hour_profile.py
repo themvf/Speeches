@@ -99,14 +99,17 @@ def load_live(coins, since, fetch=None, wait=None):
             raw = get(mh.GECKO + network + '/pools/' + pool['id'] + '/ohlcv/hour?aggregate=1&limit=1000'
                       '&currency=usd&include_empty_intervals=false&token=' + pool['side'])
             pts = mh.normalize_hourly(raw, 'ohlcv', now, start=start)
-            out[coin] = [{'hour': p['hour'], 'close': p['close'], 'volume': p['volume']} for p in pts if p['hour'] >= since]
+            out[coin] = {'kind': 'ohlcv', 'points': [{'hour': p['hour'], 'close': p['close'], 'volume': p['volume']}
+                                                     for p in pts if p['hour'] >= since]}
         except Exception as exc:  # noqa: BLE001 - one coin's provider failure is a coverage gap, not a failed run.
             errors.append('%s: %s %s' % (coin, type(exc).__name__, str(exc)[:160]))
     if 'ZEC' in coins:
         try:
             raw = get(mh.ZEC_HOURLY_URL)
             pts = mh.normalize_hourly(raw, 'price_observation', now, start=archive_start('ZEC'))
-            out['ZEC'] = [{'hour': p['hour'], 'close': p['close'], 'volume': p['volume']} for p in pts if p['hour'] >= since]
+            out['ZEC'] = {'kind': 'price_observation',
+                          'points': [{'hour': p['hour'], 'close': p['close'], 'volume': p['volume']}
+                                     for p in pts if p['hour'] >= since]}
         except Exception as exc:  # noqa: BLE001
             errors.append('ZEC: %s %s' % (type(exc).__name__, str(exc)[:160]))
     return out, errors
@@ -143,6 +146,10 @@ def coin_days(points, since, until, zero_fill=True):
     return out
 
 
+def _flatten(per_coin):
+    return [g for groups in per_coin.values() for g in groups]
+
+
 def _bucket(groups):
     acc = {h: [] for h in range(24)}
     for g in groups:
@@ -150,13 +157,21 @@ def _bucket(groups):
     return acc
 
 
-def untestable_hours(groups, null):
+def _rotate(group, k):
+    values = [v for _, v in group]
+    values = values[k:] + values[:k]
+    return [(group[i][0], values[i]) for i in range(len(group))]
+
+
+def untestable_hours(per_coin_or_groups, null):
     """Hours with too few observations to test, or with every observation identical.
 
     Such an hour contributes nothing to the global statistic. A constant hour is exactly the shape a
     permanently dead trading hour would take, so it is reported rather than dropped in silence: an
     hour missing from the test must never read as an hour that was tested and cleared.
     """
+    groups = (_flatten(per_coin_or_groups) if isinstance(per_coin_or_groups, dict)
+              else per_coin_or_groups)
     acc = _bucket(groups)
     return [{'hour': h, 'n': len(acc[h]),
              'reason': 'fewer than %d observations' % MIN_HOUR_OBS if len(acc[h]) < MIN_HOUR_OBS
@@ -164,21 +179,40 @@ def untestable_hours(groups, null):
             for h in range(24) if _tstat(acc[h], null) is None]
 
 
-def _rotation_p(groups, null, seed, iterations=ITERATIONS):
-    """groups: [[(hour, value), ...]] one list per rotatable unit (a coin-day). Returns (max|t|, p)."""
-    def stat(gs):
-        return max((abs(t) for t in (_tstat(v, null) for v in _bucket(gs).values()) if t is not None), default=0.0)
+def _rotation_p(per_coin, null, seed, mode='day', iterations=ITERATIONS):
+    """Permutation p-value under one of three nulls, in increasing strictness.
+
+    day    each coin-day is rotated independently, so a coin's days count as separate evidence.
+    coin   one offset per coin rotates all of its days together. This is the honest unit for a
+           cross-coin claim: a coin contributes one vote however many days it has, and any
+           day-to-day correlation within a coin survives the shuffle instead of being averaged away.
+    market one offset per calendar day is applied to every coin at once, preserving contemporaneous
+           cross-coin co-movement, so a single market-wide move cannot be counted once per coin.
+
+    'day' is anti-conservative when a coin's daily profiles are correlated for reasons unrelated to
+    the clock, which is exactly the case this data cannot rule out. Report all three.
+    """
+    def stat(per):
+        acc = _bucket(_flatten(per))
+        return max((abs(t) for t in (_tstat(v, null) for v in acc.values()) if t is not None), default=0.0)
     rng = _RNG(seed)
-    observed = stat(groups)
+    observed = stat(per_coin)
+    most_days = max((len(g) for g in per_coin.values()), default=0)
     ge = 0
     for _ in range(iterations):
-        rotated = []
-        for g in groups:
-            k = rng.randint(len(g))
-            values = [v for _, v in g]
-            values = values[k:] + values[:k]
-            rotated.append([(g[i][0], values[i]) for i in range(len(g))])
-        if stat(rotated) >= observed: ge += 1
+        shuffled = {}
+        if mode == 'coin':
+            for coin, groups in per_coin.items():
+                k = rng.randint(24)
+                shuffled[coin] = [_rotate(g, k % len(g)) for g in groups if g]
+        elif mode == 'market':
+            offsets = [rng.randint(24) for _ in range(most_days)]
+            for coin, groups in per_coin.items():
+                shuffled[coin] = [_rotate(g, offsets[i] % len(g)) for i, g in enumerate(groups) if g]
+        else:
+            for coin, groups in per_coin.items():
+                shuffled[coin] = [_rotate(g, rng.randint(len(g))) for g in groups if g]
+        if stat(shuffled) >= observed: ge += 1
     return observed, (ge + 1) / (iterations + 1)
 
 
@@ -205,10 +239,19 @@ def profile(series, days, now=None, iterations=ITERATIONS):
     report = {'window_days': days, 'since': since.isoformat(), 'until': now.isoformat(),
               'et_offset_hours': et_offset, 'iterations': iterations, 'coins': {}, 'pooled': {}}
 
-    ret_groups, vol_groups, absret_groups = [], [], []
-    for coin, points in sorted(series.items()):
+    ret_groups, vol_groups, absret_groups = {}, {}, {}
+    report['volume_excluded'] = []
+    for coin, entry_in in sorted(series.items()):
+        points = entry_in['points'] if isinstance(entry_in, dict) else entry_in
+        kind = entry_in.get('kind', 'ohlcv') if isinstance(entry_in, dict) else 'ohlcv'
         rows = hourly_returns(points, since, now)
-        cd = coin_days(points, since, now)
+        # CoinGecko's market_chart reports a ROLLING 24-HOUR total, not the volume traded in that
+        # hour: the series drifts ~2% an hour where a real hourly series swings 50%. Feeding it into
+        # an hour-of-day volume profile would be averaging a smoothed window against real hours.
+        cd = coin_days(points, since, now) if kind == 'ohlcv' else []
+        if kind != 'ohlcv':
+            report['volume_excluded'].append({'coin': coin, 'kind': kind,
+                                              'reason': 'provider reports a rolling 24h total, not hourly volume'})
         entry = {'returns': len(rows), 'coin_days': len(cd),
                  'distinct_days': len({h.date() for h, _ in rows}),
                  'hourly_sd': st.stdev([r for _, r in rows]) if len(rows) > 2 else None}
@@ -218,7 +261,8 @@ def profile(series, days, now=None, iterations=ITERATIONS):
             groups = [g for g in byday.values() if len(g) >= 2]
             testable = 24 - len(untestable_hours(groups, 0.0))
             if testable:
-                obs, p = _rotation_p(groups, 0.0, SEED + abs(hash(coin)) % 9999, iterations)
+                # A single coin has no cross-coin structure, so the day null is the only one available.
+                obs, p = _rotation_p({coin: groups}, 0.0, SEED + abs(hash(coin)) % 9999, 'day', iterations)
                 entry['return_max_abs_t'] = obs
                 entry['return_p_global'] = p
                 entry['testable_hours'] = testable
@@ -232,33 +276,37 @@ def profile(series, days, now=None, iterations=ITERATIONS):
             entry['mde_pct'] = 100 * (math.exp(2.8 * entry['hourly_sd'] / math.sqrt(nd)) - 1) if nd else None
             entry['mde_pct_corrected'] = 100 * (math.exp(3.6 * entry['hourly_sd'] / math.sqrt(nd)) - 1) if nd else None
             mean = st.fmean([r for _, r in rows]); sd = entry['hourly_sd']
-            ret_groups.extend([[(h, (r - mean) / sd) for h, r in g] for g in groups])
+            ret_groups[coin] = [[(h, (r - mean) / sd) for h, r in g] for g in groups]
             base = st.fmean([abs(r) for _, r in rows]) or 1
-            absret_groups.extend([[(h, abs(r) / base) for h, r in g] for g in groups])
+            absret_groups[coin] = [[(h, abs(r) / base) for h, r in g] for g in groups]
         else:
             entry['return_test'] = ('fewer than 24 returns in the window' if len(rows) < 24
                                     else 'price did not move enough to measure')
-        vol_groups.extend(cd)
+        if cd: vol_groups[coin] = cd
         report['coins'][coin] = entry
 
-    for name, groups, null in [('returns', ret_groups, 0.0), ('volume_share', vol_groups, 1 / 24),
-                               ('volatility', absret_groups, 1.0)]:
-        if not groups: continue
-        untestable = untestable_hours(groups, null)
+    for name, per_coin, null in [('returns', ret_groups, 0.0), ('volume_share', vol_groups, 1 / 24),
+                                 ('volatility', absret_groups, 1.0)]:
+        if not per_coin: continue
+        flat = _flatten(per_coin)
+        untestable = untestable_hours(per_coin, null)
+        block = {'units': len(flat), 'coins': len(per_coin), 'untestable_hours': untestable,
+                 'table': _table(flat, null, et_offset),
+                 'note': 'One test per metric. The ET column relabels the same hours, so it is not a '
+                         'second, independent confirmation. Days are bucketed on their UTC date. '
+                         'Read p_global.coin as the headline: it is the strictest null and treats '
+                         'each coin as one unit.'}
         if len(untestable) == 24:
             # No hour can be tested, but the profile itself is still worth showing; what must not
             # happen is a p-value that reads as "tested and found nothing".
-            report['pooled'][name] = {'units': len(groups), 'untestable_hours': untestable,
-                                      'table': _table(groups, null, et_offset),
-                                      'test': 'no hour has %d observations; too short to test' % MIN_HOUR_OBS}
-            continue
-        obs, p = _rotation_p(groups, null, SEED + len(name), iterations)
-        report['pooled'][name] = {
-            'max_abs_t': obs, 'p_global': p, 'units': len(groups),
-            'untestable_hours': untestable,
-            'table': _table(groups, null, et_offset),
-            'note': 'One test per metric. The ET column relabels the same hours, so it is not a '
-                    'second, independent confirmation. Days are bucketed on their UTC date.'}
+            block['test'] = 'no hour has %d observations; too short to test' % MIN_HOUR_OBS
+        else:
+            block['p_global'] = {}
+            for mode in ('day', 'coin', 'market'):
+                obs, p = _rotation_p(per_coin, null, SEED + len(name) + len(mode), mode, iterations)
+                block['max_abs_t'] = obs
+                block['p_global'][mode] = p
+        report['pooled'][name] = block
     return report
 
 
