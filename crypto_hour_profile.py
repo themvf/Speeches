@@ -306,8 +306,52 @@ def profile(series, days, now=None, iterations=ITERATIONS):
                 obs, p = _rotation_p(per_coin, null, SEED + len(name) + len(mode), mode, iterations)
                 block['max_abs_t'] = obs
                 block['p_global'][mode] = p
+            block['split_half'] = split_half(per_coin, null, SEED + len(name) * 3, iterations)
         report['pooled'][name] = block
     return report
+
+
+def _profile_vector(per_coin, null):
+    acc = _bucket(_flatten(per_coin))
+    return [st.fmean(acc[h]) - null if acc[h] else None for h in range(24)]
+
+
+def _correlation(a, b):
+    pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]
+    if len(pairs) < 3: return None
+    xs = [x for x, _ in pairs]; ys = [y for _, y in pairs]
+    mx, my = st.fmean(xs), st.fmean(ys)
+    den = math.sqrt(sum((x - mx) ** 2 for x in xs) * sum((y - my) ** 2 for y in ys))
+    return None if den == 0 else sum((x - mx) * (y - my) for x, y in pairs) / den
+
+
+def split_half(per_coin, null, seed, iterations=ITERATIONS):
+    """Does the hour-of-day shape measured in the first half still hold in the second?
+
+    This is the question a global p-value cannot answer. A profile can be significantly
+    non-flat in-sample and still be a different shape next week. Each coin's days are split in
+    half chronologically; the correlation between the two halves' 24-hour profiles is compared
+    against a market-wide rotation null, which re-dates the second half while preserving
+    cross-coin co-movement exactly.
+    """
+    first, second = {}, {}
+    for coin, groups in per_coin.items():
+        if len(groups) < 4: continue
+        mid = len(groups) // 2
+        first[coin], second[coin] = groups[:mid], groups[mid:]
+    if len(first) < 2: return None
+    a = _profile_vector(first, null)
+    observed = _correlation(a, _profile_vector(second, null))
+    if observed is None: return None
+    rng = _RNG(seed)
+    most = max(len(g) for g in second.values())
+    ge = 0
+    for _ in range(iterations):
+        offsets = [rng.randint(24) for _ in range(most)]
+        shuffled = {c: [_rotate(g, offsets[i] % len(g)) for i, g in enumerate(groups) if g]
+                    for c, groups in second.items()}
+        if (_correlation(a, _profile_vector(shuffled, null)) or -1) >= observed: ge += 1
+    return {'r': observed, 'p': (ge + 1) / (iterations + 1), 'coins': len(first)}
 
 
 def main():

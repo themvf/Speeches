@@ -158,3 +158,22 @@ def test_profile_exposes_all_three_nulls_for_each_pooled_metric():
     report=profile(series,7,now=NOW,iterations=200)
     assert set(report['pooled']['volume_share']['p_global'])=={'day','coin','market'}
     assert report['pooled']['volume_share']['coins']==3
+
+
+def test_split_half_separates_a_persistent_shape_from_a_reshuffled_one():
+    from crypto_hour_profile import split_half
+    # Same busy hour in both halves: the profile should replicate.
+    steady={c:[[(h,(4.0 if h==13 else 1.0)+_wobble(i+ord(c),h)) for h in range(24)] for i in range(12)]
+            for c in 'ABC'}
+    got=split_half(steady,1.0,5,iterations=400)
+    assert got['r']>0.8 and got['p']<0.05 and got['coins']==3
+    # Busy hour MOVES between halves: in-sample the profile is peaky, out of sample it does not hold.
+    drifting={c:[[(h,(4.0 if h==(13 if i<6 else 2) else 1.0)+_wobble(i+ord(c),h)) for h in range(24)]
+                 for i in range(12)] for c in 'ABC'}
+    moved=split_half(drifting,1.0,5,iterations=400)
+    assert moved['r']<got['r'] and moved['p']>0.05
+
+def test_split_half_declines_to_answer_when_there_are_too_few_coins_or_days():
+    from crypto_hour_profile import split_half
+    assert split_half({'A':[[(h,1.0) for h in range(24)] for _ in range(8)]},1.0,5,iterations=50) is None
+    assert split_half({'A':[[(1,1.0)]],'B':[[(1,2.0)]]},1.0,5,iterations=50) is None

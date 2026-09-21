@@ -45,6 +45,11 @@ series swings 47-56%. Any `price_observation` source is therefore excluded from 
 and named in `volume_excluded`, because averaging a smoothed window against real hourly series
 would pull the profile toward uniform. Its *returns* are still analysed — only its volume is unusable.
 
+**A global p-value does not mean the shape will hold next week.** `split_half` splits each coin's
+days chronologically, measures the 24-hour profile in each half, and correlates them against a
+market-wide rotation null. A profile can be significantly non-flat in-sample and still be a
+different shape a week later; this is the only statistic here that distinguishes the two.
+
 **One test per metric; the ET column is a relabel.** Shifting every hour label by a constant cannot
 change the set of per-hour t-statistics, so a separate "ET p-value" would be the same test reported
 twice. Days are bucketed on their UTC date. Eastern hours are computed from the offset actually in
@@ -78,6 +83,19 @@ Global p-values under each null, ZEC excluded from the volume profile:
 | Return by hour | 0.111 / 0.167 / 0.339 | 0.496 / 0.354 / 0.778 |
 | Volume share by hour | 0.011 / 0.068 / 0.059 | 0.0050 / 0.067 / 0.027 |
 | Volatility by hour | 0.034 / 0.055 / 0.101 | 0.0082 / **0.021** / 0.0097 |
+
+Split-half persistence over the same 14 days (profile measured in the first half, correlated with
+the second, against a market-wide rotation null):
+
+| Metric | r | p |
+| --- | --- | --- |
+| Return by hour | **-0.136** | 0.73 |
+| Volume share by hour | +0.469 | 0.043 |
+| Volatility by hour | +0.475 | 0.037 |
+
+Run over each coin's full history instead of 14 days, the same split reaches r = +0.83 (volume) and
+r = +0.57 (volatility) while returns stay at r = -0.01. The activity shape is the same shape a week
+later; the return shape is not a shape at all.
 
 Volatility is the one result significant under all three nulls at 14 days. Activity is significant
 under the day and market nulls and marginal under the coin null, which is what twelve coins buys
@@ -117,7 +135,12 @@ produces.
 - ZCAT's pinned pool is `ZEC / ZCAT` and KNOTS' is `STONK / KNOTS`, so three of the tracked series
   are priced through two others. Their USD returns inherit some of the quote token's movement.
 - The 14-day window contains the 7-day window, so agreement between them is not an out-of-sample
-  check. Treat it as a stability check only.
+  check. Treat it as a stability check only; `split_half` is the actual holdout.
+- Day of week cannot be answered here and the tool does not try. Seven days puts exactly one date in
+  each weekday bucket, so a label-rotation null returns p = 1.000 for any dataset whatsoever; at
+  fourteen days the exact p floor is 1/7 = 0.143. That needs months.
+- GeckoTerminal sets each candle's `open` to the prior `close`, so a gap-versus-session
+  decomposition of the hourly move is not available from this feed.
 - Coverage is ragged. ASKR, AD, FLX and STANDARD were only indexed within the last week, so their
   per-hour counts are 2–6 observations. `MIN_HOUR_OBS` keeps those buckets out of the test, so they
   appear in the table and never in a p-value.
