@@ -108,13 +108,13 @@ def maintain(conn, day, env):
                 greatest(c.reltuples,0)::bigint,pg_database_size(current_database()),
                 (SELECT numbackends FROM pg_stat_database WHERE datname=current_database())
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-            WHERE n.nspname=current_schema() AND c.relkind='r' AND c.relname LIKE 'backpack_%%'
+            WHERE n.nspname=current_schema() AND c.relkind='r' AND (c.relname LIKE 'backpack_%%' OR c.relname LIKE 'tokenized_security_%%')
             ON CONFLICT DO NOTHING''', (day,))
         cur.execute('''INSERT INTO backpack_index_observations(date,index_name,table_name,bytes)
             SELECT %s,i.relname,t.relname,pg_relation_size(i.oid) FROM pg_index x
             JOIN pg_class i ON i.oid=x.indexrelid JOIN pg_class t ON t.oid=x.indrelid
             JOIN pg_namespace n ON n.oid=t.relnamespace
-            WHERE n.nspname=current_schema() AND t.relname LIKE 'backpack_%%' ON CONFLICT DO NOTHING''',(day,))
+            WHERE n.nspname=current_schema() AND (t.relname LIKE 'backpack_%%' OR t.relname LIKE 'tokenized_security_%%') ON CONFLICT DO NOTHING''',(day,))
         allowance = env.get('BACKPACK_DATABASE_ALLOWANCE_BYTES')
         if allowance:
             cur.execute('''INSERT INTO backpack_operational_alerts(date,metric,detail)

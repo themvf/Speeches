@@ -270,7 +270,7 @@ calls. Daily collection and maintenance also run this step. It preserves capture
 sources and never manufactures observations for competitors. A category denominator requires
 an explicitly defined member universe and comparable verified observations; no denominator is
 populated automatically. Per-asset holder counts must not be summed into category unique users.
-Competitor adapters, approved competitor identities and deduplicated category wallets remain future work.
+Storage and index monitoring includes both Backpack and issuer-neutral tables. Competitor adapters, approved competitor identities and deduplicated category wallets remain future work.
 
 The environment panel uses persisted, versioned 7D/30D observations with the actual inputs displayed.
 It compares issuance / starting AUM, AUM/meaningful-holder growth, and the current trading window

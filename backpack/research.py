@@ -55,7 +55,7 @@ def capture_research(conn,day,env):
             underlying_exchange,underlying_name,asset_type,official_source,verified_at,verification_status,backpack_asset_id,active)
             SELECT 'backpack','solana',solana_mint,token_symbol,underlying_symbol,underlying_exchange,underlying_name,
                 asset_type,official_source,source_verified_at,verification_status,id,active
-            FROM backpack_assets WHERE asset_type<>'bp' AND issuer='Backpack' AND verification_status<>'pending'
+            FROM backpack_assets WHERE asset_type<>'bp' AND issuer IN ('Backpack','Backpack Securities') AND verification_status<>'pending'
             ON CONFLICT(network,mint) DO UPDATE SET active=excluded.active
             WHERE tokenized_security_assets.backpack_asset_id=excluded.backpack_asset_id''')
         cur.execute('''INSERT INTO tokenized_security_daily_snapshots(asset_id,date,reference_aum_usd,net_issuance_usd,

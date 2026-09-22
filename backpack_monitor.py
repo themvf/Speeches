@@ -39,16 +39,16 @@ def main():
             result=run(conn)
             print(json.dumps(result,default=str))
             failed=failed or result['status'] in ('failed','partial')
-        if args.maintenance:
-            from backpack.storage import maintain
-            from datetime import datetime, timezone
-            maintain(conn, datetime.now(timezone.utc).date(), os.environ)
-            print(json.dumps({'maintenance':'completed'}))
         if args.research:
             from backpack.research import capture_research
             from datetime import datetime, timezone
             capture_research(conn,datetime.now(timezone.utc).date(),os.environ)
             print(json.dumps({'stored_research':'processed'}))
+        if args.maintenance:
+            from backpack.storage import maintain
+            from datetime import datetime, timezone
+            maintain(conn, datetime.now(timezone.utc).date(), os.environ)
+            print(json.dumps({'maintenance':'completed'}))
         if args.import_billing:
             from backpack.cost_review import import_billing
             print(json.dumps(import_billing(conn,args.import_billing)))
