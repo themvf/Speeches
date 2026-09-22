@@ -12,11 +12,11 @@ export async function readBackpack(assetId?:number):Promise<MonitorData>{
   sql`SELECT a.*, s.*, a.id, a.solana_mint, s.date::text AS date FROM backpack_assets a
        LEFT JOIN backpack_asset_daily_snapshots s ON s.asset_id=a.id AND s.date=${day}::date
        WHERE a.active AND (${assetId??null}::bigint IS NULL OR a.id=${assetId??null}) ORDER BY a.asset_type='bp',a.token_symbol`,
-  sql`SELECT *,date::text AS date FROM backpack_asset_daily_snapshots
-       WHERE (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null}) ORDER BY date DESC LIMIT 20000`,
-  sql`SELECT *,date::text AS date FROM backpack_ecosystem_daily_snapshots ORDER BY date DESC LIMIT 5000`,
+  sql`SELECT *,date::text AS date FROM backpack_asset_daily_snapshots s
+       WHERE (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null}) ORDER BY s.date DESC LIMIT 20000`,
+  sql`SELECT *,date::text AS date FROM backpack_ecosystem_daily_snapshots e ORDER BY e.date DESC LIMIT 5000`,
   sql`SELECT b.*, s.* ,s.date::text AS date FROM backpack_bp_daily_snapshots b
-       JOIN backpack_asset_daily_snapshots s USING(asset_id,date) ORDER BY date DESC LIMIT 5000`,
+       JOIN backpack_asset_daily_snapshots s USING(asset_id,date) ORDER BY s.date DESC LIMIT 5000`,
   sql`SELECT * FROM backpack_data_quality_events WHERE date=${day}::date
        AND (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null}) ORDER BY id DESC LIMIT 5000`,
   sql`SELECT * FROM backpack_asset_liquidity_daily_snapshots WHERE date=${day}::date
@@ -27,8 +27,8 @@ export async function readBackpack(assetId?:number):Promise<MonitorData>{
        AND (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null})`,
   sql`SELECT * FROM backpack_ingestion_runs ORDER BY started_at DESC LIMIT 10`,
   sql`SELECT u.* FROM backpack_provider_usage u JOIN backpack_ingestion_runs r USING(run_id) ORDER BY r.started_at DESC LIMIT 30`,
-  sql`SELECT *,date::text AS date FROM backpack_bp_whale_daily_snapshots
-       WHERE (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null}) ORDER BY date DESC,threshold_usd LIMIT 15000`,
+  sql`SELECT *,date::text AS date FROM backpack_bp_whale_daily_snapshots w
+       WHERE (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null}) ORDER BY w.date DESC,threshold_usd LIMIT 15000`,
  ]);
  return {status:day?'ready':'awaiting_capture',asOf:day,assets:assets as Row[],history:(history as Row[]).reverse(),
   ecosystem:(ecosystem as Row[]).reverse(),bp:(bp as Row[]).reverse(),quality:quality as Quality[],quotes:quotes as Row[],holders:holders as Row[],dex:dex as Row[],runs:runs as Row[],usage:usage as Row[],whales:(whales as Row[]).reverse()};
