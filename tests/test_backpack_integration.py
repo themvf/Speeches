@@ -233,7 +233,12 @@ def test_raw_swap_retention_requires_attestation_and_preserves_pinned_evidence(c
     a=asset(conn,'mint-retention','RET')
     today=datetime.now(timezone.utc).date()
     old=today-timedelta(days=60)
+    run(conn,FakeProviders())
+    from backpack.collector import insert
+    baseline=fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots WHERE asset_id=%s',(a,))[0]
     with conn,conn.cursor() as cur:
+        insert(cur,'backpack_asset_daily_snapshots',dict(baseline,date=old+timedelta(days=1),daily_swap_volume_usd=100,unique_traders=2))
+        insert(cur,'backpack_asset_dex_daily_snapshots',dict(asset_id=a,date=old+timedelta(days=1),venue='All',trades=2,median_trade_size=50,average_trade_size=50,p95_trade_size=50,max_trade_size=50,coverage_status='Verified',source='fixture'))
         for signature in ('ordinary','anomaly','unvalidated'):
             at=old if signature!='unvalidated' else old-timedelta(days=1)
             cur.execute("INSERT INTO backpack_transactions(asset_id,signature,event_kind,timestamp,source,slot) VALUES(%s,%s,'swap',%s,'fixture',1)",(a,signature,datetime.combine(at,datetime.min.time(),timezone.utc)))

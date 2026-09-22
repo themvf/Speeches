@@ -92,7 +92,13 @@ def maintain(conn, day, env):
             SELECT t.ctid FROM backpack_transactions t
             JOIN backpack_transaction_retention_checks c ON c.asset_id=t.asset_id
                 AND c.activity_date=(t.timestamp AT TIME ZONE 'UTC')::date
+            JOIN backpack_asset_daily_snapshots s ON s.asset_id=t.asset_id AND s.date=c.activity_date+1
             WHERE t.timestamp<(%s::date::timestamp AT TIME ZONE 'UTC') AND c.aggregates_validated
+            AND s.daily_swap_volume_usd IS NOT NULL AND s.unique_traders IS NOT NULL
+            AND EXISTS(SELECT 1 FROM backpack_asset_dex_daily_snapshots d
+                WHERE d.asset_id=s.asset_id AND d.date=s.date AND d.coverage_status IN ('Verified','Estimated')
+                AND d.trades IS NOT NULL AND d.median_trade_size IS NOT NULL AND d.average_trade_size IS NOT NULL
+                AND d.p95_trade_size IS NOT NULL AND d.max_trade_size IS NOT NULL)
             AND NOT EXISTS(SELECT 1 FROM backpack_transaction_evidence e
                 WHERE e.asset_id=t.asset_id AND e.signature=t.signature AND e.event_kind=t.event_kind)
             LIMIT 10000)''', (swap_cutoff,))
