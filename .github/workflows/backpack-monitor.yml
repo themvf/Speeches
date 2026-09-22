@@ -22,6 +22,7 @@ jobs:
       BACKPACK_MAX_REQUESTS: '500'
       BACKPACK_MAX_ACTIVITY_WALLETS: '10'
       BACKPACK_ENABLE_QUOTES: '1'
+      BACKPACK_WHALE_THRESHOLDS_USD: ${{ vars.BACKPACK_WHALE_THRESHOLDS_USD || '100000,500000,1000000' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

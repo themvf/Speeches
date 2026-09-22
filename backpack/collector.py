@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 import uuid
-from .metrics import BP_MINT, ecosystem, holders, issuance, multiply, normalize_swap, number, parity, ratio, trading
+from .metrics import BP_MINT, ecosystem, holders, issuance, multiply, normalize_swap, number, parity, ratio, trading, whale_cohorts
 from .providers import Providers, SourceError
 
 UTC = timezone.utc
@@ -199,12 +199,25 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
         if field=='underlying_price': source,calc,limit='Alpaca SIP','Latest trade reference','Last available price; closed-market differences do not trigger parity alerts'
         if field=='onchain_price': source,calc,limit='Jupiter Price V3','Last swapped price','Timestamp is Solana price block time'
         note(field,'Estimated' if snap.get(field) is not None else 'Unavailable',source,calc,limit)
+    cohorts=[]
+    if asset['asset_type']=='bp':
+        prior_wallets=None
+        if previous and previous[0]['holders_complete']:
+            prior_wallets=fetch_all(conn,'SELECT * FROM backpack_asset_holder_daily_snapshots WHERE asset_id=%s AND date=%s',(asset_id,day-timedelta(days=1)))
+        thresholds=p.env.get('BACKPACK_WHALE_THRESHOLDS_USD','100000,500000,1000000').split(',')
+        # The $100K baseline remains available for the BP overview.
+        cohorts=whale_cohorts(wallet_rows if snap['holders_complete'] and not token_stale and token_price is not None else None,
+                              prior_wallets,thresholds+['100000'],labels)
+        note('whale_cohorts','Estimated' if cohorts[0]['whale_count'] is not None else 'Unavailable',
+             'Stored complete holder snapshots + Jupiter price',
+             "USD threshold cohorts; accumulation is token balance change of yesterday's economic whales",
+             'Threshold entries can result from price changes. Consecutive complete priced snapshots required for changes; wallets excluded on either date omitted from changes.')
     scored=('token_supply','reference_aum_usd','holders_over_100','daily_swap_volume_usd','onchain_price')
     snap['data_quality_score']=int(100*sum(snap.get(k) is not None for k in scored)/len(scored))
     # Quality score measures field coverage, never thesis strength.
     with conn,conn.cursor() as cur:
         if not insert(cur,'backpack_asset_daily_snapshots',snap): return 'skipped'
-        insert_many(cur,'backpack_asset_holder_daily_snapshots',[dict(r,asset_id=asset_id,date=day,source='Helius DAS',slot=snap['holder_end_slot']) for r in wallet_rows])
+        insert_many(cur,'backpack_asset_holder_daily_snapshots',[dict(r,asset_id=asset_id,date=day,source='Helius DAS',slot=snap['holder_end_slot'],label_entity=labels.get(r['wallet_address'],{}).get('entity'),label_confidence=labels.get(r['wallet_address'],{}).get('confidence'),label_source=labels.get(r['wallet_address'],{}).get('source'),label_verified_at=labels.get(r['wallet_address'],{}).get('verified_at')) for r in wallet_rows])
         for s in swaps.values():
             insert(cur,'backpack_transactions',dict(asset_id=asset_id,signature=s['signature'],event_kind='swap',slot=s['slot'],
                 timestamp=datetime.fromtimestamp(s['timestamp'],UTC),wallet_address=s['wallet_address'],side=s['side'],tokens=s['tokens'],
@@ -222,9 +235,13 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
                 observed_volume_usd=stats['observed_swap_volume_usd'],trades=stats['trades'],unique_traders=stats['observed_unique_traders'],
                 **{k:stats[k] for k in ('median_trade_size','average_trade_size','p95_trade_size','max_trade_size')},coverage_status='Partial',source='Helius Enhanced Transactions'))
         if asset['asset_type']=='bp':
-            whale_rows=[r for r in wallet_rows if not r['excluded'] and r['value_usd'] is not None and r['value_usd']>=100000]
+            for cohort in cohorts:
+                insert(cur,'backpack_bp_whale_daily_snapshots',dict(cohort,asset_id=asset_id,date=day,
+                    status='Estimated' if cohort['whale_count'] is not None else 'Unavailable',source='Helius DAS + Jupiter + stored holder snapshots',
+                    methodology="Counts exclude confirmed/high system labels. New/exited counts may reflect price changes. Accumulation measures yesterday's eligible whales in tokens; relabeled systems excluded on both dates."))
+            baseline=next(c for c in cohorts if c['threshold_usd']==100000)
             insert(cur,'backpack_bp_daily_snapshots',dict(date=day,asset_id=asset_id,fdv_usd=multiply(supply,token_price),
-                whale_count=len(whale_rows) if snap['holders_complete'] and not token_stale and token_price is not None else None))
+                **{k:baseline[k] for k in ('whale_count','new_whales','whale_net_accumulation_tokens')}))
     return 'succeeded'
 
 

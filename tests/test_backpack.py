@@ -132,3 +132,26 @@ def test_budget_enforced_and_no_secret_leaks():
 
 def test_bp_exact_identity():
     assert BP_MINT=='BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy'
+
+
+def test_whales_distinguish_price_crossings_accumulation_and_exits():
+    from backpack.metrics import whale_cohorts
+    def row(w, tokens, value, excluded=False):
+        return dict(wallet_address=w,balance_tokens=D(tokens),value_usd=D(value),excluded=excluded)
+    before=[row('price-only',100,90000),row('seller',200,200000),row('treasury',1000,1000000)]
+    today=[row('price-only',100,110000),row('seller',50,55000),row('treasury',1000,1100000,True)]
+    result=whale_cohorts(today,before)[0]
+    assert result['whale_count']==1 and result['new_whales']==1 and result['exited_whales']==1
+    assert result['whale_net_accumulation_tokens']==-150 # Treasury relabel does not masquerade as outflow.
+    assert whale_cohorts([],before)[0]['whale_net_accumulation_tokens']==-1200
+    assert whale_cohorts([],before,labels={'treasury':{'label':'Treasury','confidence':'high'}})[0]['whale_net_accumulation_tokens']==-200
+
+
+def test_whales_unknown_history_and_zero_population():
+    from backpack.metrics import whale_cohorts
+    assert whale_cohorts(None)[0]['whale_count'] is None
+    assert whale_cohorts([])[0]['whale_count']==0
+    assert whale_cohorts([])[0]['new_whales'] is None
+    assert whale_cohorts([],[])[0]['new_whales']==0
+    assert whale_cohorts([dict(wallet_address='a',balance_tokens=D(1),value_usd=None,excluded=False)])[0]['whale_count'] is None
+    with pytest.raises(ValueError):whale_cohorts([],thresholds=['NaN'])

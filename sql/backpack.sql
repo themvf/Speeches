@@ -140,3 +140,23 @@ CREATE TABLE IF NOT EXISTS backpack_thesis_milestones (
 CREATE TABLE IF NOT EXISTS backpack_job_leases (
  name text PRIMARY KEY, owner uuid NOT NULL, expires_at timestamptz NOT NULL
 );
+
+-- Immutable label revisions and label evidence captured with each holder snapshot.
+CREATE TABLE IF NOT EXISTS backpack_wallet_label_revisions (
+ id bigserial PRIMARY KEY, wallet_address text NOT NULL,
+ label text NOT NULL, entity text NOT NULL, confidence text NOT NULL,
+ source text NOT NULL, verified_at timestamptz NOT NULL, notes text NOT NULL,
+ recorded_at timestamptz NOT NULL DEFAULT now(), actor text NOT NULL DEFAULT 'authenticated_admin'
+);
+CREATE INDEX IF NOT EXISTS backpack_label_revision_wallet ON backpack_wallet_label_revisions(wallet_address,recorded_at);
+ALTER TABLE backpack_asset_holder_daily_snapshots ADD COLUMN IF NOT EXISTS label_entity text;
+ALTER TABLE backpack_asset_holder_daily_snapshots ADD COLUMN IF NOT EXISTS label_confidence text;
+ALTER TABLE backpack_asset_holder_daily_snapshots ADD COLUMN IF NOT EXISTS label_source text;
+ALTER TABLE backpack_asset_holder_daily_snapshots ADD COLUMN IF NOT EXISTS label_verified_at timestamptz;
+CREATE TABLE IF NOT EXISTS backpack_bp_whale_daily_snapshots (
+ asset_id bigint NOT NULL, date date NOT NULL, threshold_usd numeric NOT NULL CHECK(threshold_usd>0),
+ whale_count bigint, new_whales bigint, exited_whales bigint, whale_net_accumulation_tokens numeric,
+ status text NOT NULL, source text NOT NULL, methodology text NOT NULL,
+ PRIMARY KEY(asset_id,date,threshold_usd),
+ FOREIGN KEY(asset_id,date) REFERENCES backpack_asset_daily_snapshots
+);

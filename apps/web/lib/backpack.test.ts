@@ -22,3 +22,18 @@ test('sorting numerics and keeping missing last in either direction',()=>{
  for(const desc of [true,false])assert.equal(sortRows([{x:10},{x:null},{x:2}],'x',desc).at(-1)?.x,null);
  assert.deepEqual(sortRows([{x:'10'},{x:'2'}],'x',false).map(r=>r.x),['2','10']);
 });
+
+test('wallet attribution requires a real public key, evidence, and explicit review',async()=>{
+ const {solanaAddress,labelError}=await import('./backpack-admin.ts');
+ const body={wallet_address:'BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy',label:'Treasury',entity:'Example',confidence:'high',source:'https://example.test/evidence',notes:'Reviewed address',approved:true};
+ assert.equal(labelError(body),null);
+ assert.equal(solanaAddress('1'.repeat(33)),false);
+ for(const update of [{approved:false},{source:'javascript:alert(1)'},{confidence:'guessed'},{notes:''},{wallet_address:'BP'}])assert.ok(labelError({...body,...update}));
+});
+
+test('admin origin validation preserves public Host across internal URL normalization',async()=>{
+ const {sameOrigin}=await import('./backpack-admin.ts');
+ const request=(origin:string,host='127.0.0.1:3107')=>new Request('http://localhost:3107/api/admin/backpack',{headers:{origin,host}});
+ assert.equal(sameOrigin(request('http://127.0.0.1:3107')),true);
+ for(const origin of ['https://other.test','null','http://127.0.0.1:3108','https://127.0.0.1:3107','http://127.0.0.1:3107/path'])assert.equal(sameOrigin(request(origin)),false);
+});

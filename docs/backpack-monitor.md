@@ -67,7 +67,7 @@ All asset snapshot/holder/quote/evidence writes are in one transaction. An isola
 ## Remaining phase work
 
 - Phase 1 launch: official security-mint seeding, real provider credential/entitlement validation, full mint-wide swaps and unique traders, independent volume reconciliation. These are not marked complete.
-- Phase 2: observed protocol/vault attribution, economic wallet-label maintenance UI and audit history, DeFi balances/utilization, full transfers and BP inflow/outflow monitoring, configurable whales, new whales/accumulation, verified circulating supply and >1% alerts. Schema exists, but empty schema is not live functionality.
+- Phase 2: observed protocol/vault attribution, DeFi balances/utilization, full transfers and BP inflow/outflow monitoring, verified circulating supply and >1% alerts. Schema exists, but empty schema is not live functionality.
 - Phase 2 market quality: complete after-hours aggregates, intraday parity distribution/duration, venue distribution and depth, quote quality trend views. Quote observations and calendar/parity safeguards already exist.
 - Phase 3: validated announcement discovery queue, editable milestones/achievement history, anomaly alerts, competitor comparisons. The milestone table exists without a fabricated achievement panel.
 - Historical backfill: requires reproducible archive sources. Live RPC capture rejects prior dates. Nothing is mislabeled as reconstructed history. No trustworthy historical security supply/holder data was available in this implementation session.
@@ -94,3 +94,30 @@ Provider contracts: [Helius token accounts](https://www.helius.dev/docs/api-refe
 Local verification on 2026-09-22: 20 Python methodology/provider tests, 5 database integration tests, 5 TypeScript methodology tests passed; Next.js production build and targeted ESLint/type checking passed. Browser smoke checks exercised unconfigured and populated fixture states, range selection, search, mobile page width, asset details, unavailable quotes, and unauthenticated admin rejection. UI fixture values were test-only and are not committed as production observations. No production collection or deployment was performed in this session.
 
 CI follow-up: Backpack methodology/storage also passed on GitHub's PostgreSQL 16 service. The repository-wide Python job initially exposed the missing root `exchange-calendars` dependency; it has been added to `requirements.txt`. The existing crypto integration fixture used bare `PONS`, which its registry deliberately rejects without Robinhood context; the fixture now uses the accepted `$PONS` cashtag, preserving the production matching rule. A separate Intelligence Evidence check failed against the already-deployed AML endpoint because it returned no articles; Backpack does not change that endpoint.
+
+## Ownership continuation
+
+Administrators can add or revise evidence-backed wallet labels at `/admin/backpack`.
+Each save atomically updates the current label and appends an immutable revision.
+Assigning Unknown revokes attribution for future captures. Confirmed/high system
+labels exclude addresses from economic metrics; Market Maker and Unknown remain
+included. Historical holder snapshots now copy entity, confidence, source and
+verification time. Earlier snapshots lacking those fields say evidence was not
+captured instead of borrowing current attribution.
+
+BP whale cohorts are captured relationally at $100K, $500K and $1M by default.
+`BACKPACK_WHALE_THRESHOLDS_USD` can configure additional positive USD thresholds
+(comma-separated environment variable, or GitHub repository variable for the scheduled
+workflow); the $100K overview baseline is always retained. New/exited whales require
+consecutive complete, priced holder snapshots and can reflect price movement.
+Accumulation sums token changes for yesterday's economic whale cohort, including
+exits. Wallets classified as verified systems on either date are excluded from
+comparative metrics so attribution changes do not masquerade as flows. These are
+balance changes, not verified exchange flows or purchases. Unavailable history,
+prices or holder coverage produce NULL, not zero.
+
+Run `python backpack_monitor.py --migrate` before serving the updated reader. The
+migration adds tables/columns without backfilling fabricated label evidence or
+rewriting old snapshots. This continuation passes 22 Python unit tests, 6 database
+integration tests and 7 TypeScript tests, including price-driven threshold crossings,
+system relabeling, empty vs unknown populations, immutable evidence and reruns.

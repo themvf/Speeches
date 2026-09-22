@@ -4,7 +4,7 @@ export type Row = Record<string, unknown>;
 export type Quality = {metric:string;status:string;source:string;calculation:string;limitation:string;observed_at:string|null};
 export type MonitorData = {
  status:string; asOf:string|null; assets:Row[]; history:Row[]; ecosystem:Row[];
- bp:Row[]; quality:Quality[]; quotes:Row[]; holders:Row[]; dex:Row[]; runs:Row[]; usage:Row[];
+ bp:Row[]; quality:Quality[]; quotes:Row[]; holders:Row[]; dex:Row[]; runs:Row[]; usage:Row[];whales?:Row[];
 };
 export function numeric(v:unknown):number|null {
  if(v===null||v===undefined||v===''||typeof v==='boolean')return null;

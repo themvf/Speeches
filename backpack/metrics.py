@@ -159,3 +159,35 @@ def trading(swaps, calendar, complete=False):
             'after_hours_volume_pct': ratio(closed, total, True) if not sessions['unknown'] else None,
             'regular_session_volume_usd': sessions['regular'] if total is not None else None,
             'after_hours_volume_usd': closed if total is not None and not sessions['unknown'] else None}
+
+
+def whale_cohorts(current, previous=None, thresholds=(100000, 500000, 1000000), labels=None):
+    """Yesterday's whale cohort measures token accumulation without price-driven entries.
+
+    None means incomplete/unpriced enumeration. An empty list is a complete empty
+    population. Relabeled wallets are excluded on either date from comparisons.
+    """
+    thresholds = tuple(number(t) for t in thresholds)
+    if any(t is None or t <= 0 for t in thresholds):
+        raise ValueError('Whale thresholds must be positive finite USD values')
+    result = []
+    for threshold in sorted(set(thresholds)):
+        row = dict(threshold_usd=threshold, whale_count=None, new_whales=None,
+                   exited_whales=None, whale_net_accumulation_tokens=None)
+        if current is None or any(number(r.get('value_usd')) is None for r in current):
+            result.append(row)
+            continue
+        today = {r['wallet_address']: r for r in current if not r['excluded']}
+        whales = {w for w,r in today.items() if number(r['value_usd']) >= threshold}
+        row['whale_count'] = len(whales)
+        if previous is not None and all(number(r.get('value_usd')) is not None for r in previous):
+            blocked = {r['wallet_address'] for r in current + previous if r['excluded']}
+            blocked.update(w for w,label in (labels or {}).items() if excluded(label))
+            before = {r['wallet_address']: r for r in previous if r['wallet_address'] not in blocked}
+            prior = {w for w,r in before.items() if number(r['value_usd']) >= threshold}
+            comparable = whales - blocked
+            row.update(new_whales=len(comparable-prior), exited_whales=len(prior-comparable),
+                       whale_net_accumulation_tokens=sum((number(today[w]['balance_tokens']) if w in today else Decimal(0))
+                           - number(before[w]['balance_tokens']) for w in prior))
+        result.append(row)
+    return result

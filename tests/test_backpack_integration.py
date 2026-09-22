@@ -107,3 +107,23 @@ def test_active_lease_blocks_second_worker(conn):
     with conn,conn.cursor() as cur:
         cur.execute("INSERT INTO backpack_job_leases VALUES('daily',%s,now()+interval '10 minutes')",(str(uuid.uuid4()),))
     assert run(conn,FakeProviders())['status']=='already_running'
+
+
+def test_label_evidence_is_immutable_and_whale_cohorts_are_persisted(conn):
+    with conn,conn.cursor() as cur:
+        cur.execute("""INSERT INTO backpack_wallet_labels VALUES
+            ('shared-wallet','Treasury','Verified issuer','high','https://example.test/treasury',now(),'Exact address evidence')""")
+    p=FakeProviders();p.env['BACKPACK_WHALE_THRESHOLDS_USD']='500000,1000000,2000000'
+    run(conn,p)
+    labels=fetch_all(conn,'SELECT label,label_entity,label_confidence,label_source,excluded FROM backpack_asset_holder_daily_snapshots')
+    assert labels==[dict(label='Treasury',label_entity='Verified issuer',label_confidence='high',label_source='https://example.test/treasury',excluded=True)]
+    cohorts=fetch_all(conn,'SELECT * FROM backpack_bp_whale_daily_snapshots ORDER BY threshold_usd')
+    assert [r['threshold_usd'] for r in cohorts]==[100000,500000,1000000,2000000]
+    assert all(r['whale_count']==0 and r['new_whales'] is None for r in cohorts)
+    with conn,conn.cursor() as cur:
+        cur.execute("UPDATE backpack_wallet_labels SET label='Unknown',confidence='low',source='https://example.test/revoked'")
+    run(conn,p)
+    assert fetch_all(conn,'SELECT label,label_entity,label_confidence,label_source,excluded FROM backpack_asset_holder_daily_snapshots')==labels
+    assert len(fetch_all(conn,'SELECT * FROM backpack_bp_whale_daily_snapshots'))==4
+    setup(conn) # additive migration rerun preserves historical evidence
+    assert fetch_all(conn,'SELECT label,label_entity,label_confidence,label_source,excluded FROM backpack_asset_holder_daily_snapshots')==labels
