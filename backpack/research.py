@@ -64,15 +64,28 @@ def capture_research(conn,day,env):
                 s.source,s.captured_at,'backpack-v1: reference supply x underlying price; asset holder counts must not be summed across assets'
             FROM backpack_asset_daily_snapshots s JOIN tokenized_security_assets a ON a.backpack_asset_id=s.asset_id
             WHERE s.date=%s ON CONFLICT DO NOTHING''',(day,))
-    history=fetch_all(conn,'SELECT * FROM backpack_ecosystem_daily_snapshots WHERE date BETWEEN %s AND %s',(day-timedelta(days=59),day))
-    captured=fetch_all(conn,"SELECT s.date,s.asset_id,s.underlying_price_timestamp,s.captured_at FROM backpack_asset_daily_snapshots s JOIN backpack_assets a ON a.id=s.asset_id WHERE s.date BETWEEN %s AND %s AND a.asset_type<>'bp'",(day-timedelta(days=59),day))
+    history=fetch_all(conn,'SELECT * FROM backpack_ecosystem_daily_snapshots WHERE date BETWEEN %s AND %s',(day-timedelta(days=180),day))
+    captured=fetch_all(conn,"SELECT s.date,s.asset_id,s.underlying_price_timestamp,s.captured_at,s.token_supply,s.underlying_price,s.reference_aum_usd FROM backpack_asset_daily_snapshots s JOIN backpack_assets a ON a.id=s.asset_id WHERE s.date BETWEEN %s AND %s AND a.asset_type<>'bp'",(day-timedelta(days=180),day))
     cohorts={}
     for r in captured:cohorts.setdefault(r['date'],set()).add(r['asset_id'])
     for r in history:
         r['cohort']=cohorts.get(r['date']) if len(cohorts.get(r['date'],()))==r['assets_expected'] else None
         components=[s for s in captured if s['date']==r['date']]
+        r['components']={s['asset_id']:s for s in components}
+        values=[s['reference_aum_usd'] for s in components]
+        threshold=Decimal(env.get('BACKPACK_SIGNIFICANT_AUM_USD','1000000'))
+        if not threshold.is_finite() or threshold<=0:raise ValueError('Invalid significance threshold')
+        r['significance_threshold_usd']=threshold
+        if values and all(v is not None for v in values) and sum(values)>0:
+            r['top_5_aum_pct']=sum(sorted(values,reverse=True)[:5])/sum(values)*100
+            r['significant_securities']=sum(v>=threshold for v in values)
         r['valuation_current']=bool(components) and all(s['underlying_price_timestamp'] is not None and timedelta(0)<=s['captured_at']-s['underlying_price_timestamp']<=timedelta(days=4) for s in components)
     if not any(r['date']==day for r in history):return
     settings=[Decimal(env.get(key,default)) for key,default in [('BACKPACK_ISSUANCE_GROWTH_PCT','1'),('BACKPACK_TRADING_GROWTH_PCT','20'),('BACKPACK_ADOPTION_GROWTH_PCT','1')]]
     records=[classify(history,day,p,*settings) for p in (7,30)]
     with conn,conn.cursor() as cur:insert_many(cur,'backpack_environment_daily',records)
+
+    from .growth import assess_growth
+    thresholds=[Decimal(env.get(key,default)) for key,default in [('BACKPACK_GROWTH_ISSUANCE_PCT','0.1'),('BACKPACK_GROWTH_HOLDERS_PCT','1'),('BACKPACK_GROWTH_SLOWDOWN_PP','0.25')]]
+    growth=[assess_growth(history,day,p,*thresholds) for p in (7,30,90)]
+    with conn,conn.cursor() as cur:insert_many(cur,'backpack_growth_daily',growth)

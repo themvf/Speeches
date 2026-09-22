@@ -324,3 +324,40 @@ charges; it does not forecast traffic or apply invented provider rates. Shared-a
 API-provider charges and infrastructure charges remain separate. No cost assertion is made without
 complete attribution. Cache-hit and payload-size values remain dated measurements, not unweighted
 averages of incompatible exports. New export formats require normalization to this contract.
+
+## Growth overview: adoption direction, independent of trading
+
+The lead overview answers whether the **tracked Backpack securities ecosystem** is growing,
+growing but slowing, declining, or mixed/flat. BP ownership remains a separate card. This is
+independent of the trading/adoption quadrant: missing market-wide DEX volume does not prevent
+an adoption assessment. Trading, BP price and FDV cannot promote the growth headline.
+
+`backpack_growth_daily` preserves dated 7/30/90-day assessments, inputs, thresholds and methodology.
+Direction needs 8/31/91 consecutive complete daily observations respectively; adjacent-window
+momentum needs 15/61/181. Both windows must contain the same asset identities. Complete meaningful
+holder metrics, daily supply deltas, positive starting AUM/holder baselines, and timestamped equity
+references within four days of capture are required. Unknowns stay unavailable, and a capture older
+than 48 hours displays Stale evidence in the UI. Original daily observations and assessments are
+never overwritten by a rerun or threshold change.
+
+Default direction thresholds: net issuance / starting AUM >0.1% and meaningful-holder growth >1%
+means Growing. Both below the corresponding negative thresholds means Declining over the selected
+window. Disagreement or smaller movements means Mixed / flat. Growing, but slowing requires both
+issuance/AUM and holder growth to weaken by >0.25 percentage points versus the previous equal-length
+window. When contraction becomes less severe, momentum says Contraction easing, not accelerating
+growth. Missing prior history explicitly leaves momentum insufficient even when direction is known.
+GitHub variables `BACKPACK_GROWTH_ISSUANCE_PCT`, `BACKPACK_GROWTH_HOLDERS_PCT` and
+`BACKPACK_GROWTH_SLOWDOWN_PP` configure future assessments; actual thresholds are stored per day.
+
+Three mechanical explanations expose issuance, meaningful-holder changes and adjacent-period
+momentum. The depth card compares top-five AUM share, multi-asset adoption and securities with at
+least `BACKPACK_SIGNIFICANT_AUM_USD` (default $1M) AUM. Historical endpoints are recomputed with the
+same threshold during that assessment. This is breadth, not evidence of liquidity or DeFi support.
+New/departing ecosystem wallets are not inferred by summing asset counts. BP's separate ownership
+card compares meaningful holders and top-20 economic concentration at exact dates; USD cohorts
+can move with token price and system-label revisions can change concentration.
+
+Endpoint AUM attribution uses `(S1-S0)*P0` for supply and `S1*(P1-P0)` for price for each security.
+These sum exactly to endpoint AUM change, assigning the cross-term to price. They intentionally
+differ from net issuance valued at each daily reference price; none are described as verified
+customer deposits. Network growth can diverge from BP price, and no buy/sell score is generated.

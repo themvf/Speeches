@@ -246,3 +246,46 @@ def test_billing_export_validation(tmp_path):
     for bad in (valid.replace(',0,',',NaN,'),valid.replace(',0,',',-1,'),valid.replace(',USD,',',bytes,'),valid.replace('/invoice','/invoice?token=secret'),valid+valid):
         p.write_text(header+bad)
         with pytest.raises(ValueError):parse_billing(p)
+
+
+def growth_history(period=7):
+    start=date(2026,1,1)
+    return [dict(date=start+timedelta(days=i),cohort={1},valuation_current=True,reference_aum_usd=D(1000),
+        meaningful_holders=100+i if i<=period else 100+period+(i-period)*3,
+        net_supply_change_usd=D(1 if i<=period else 5),daily_swap_volume_usd=None,
+        components={1:dict(token_supply=D(100),underlying_price=D(10))}) for i in range(2*period+1)]
+
+
+def test_growth_is_independent_of_trading_and_price_and_has_adjacent_windows():
+    from backpack.growth import assess_growth
+    for period in (7,30,90):
+        rows=growth_history(period);day=rows[-1]['date']
+        result=assess_growth(rows,day,period)
+        assert result['state']=='Growing' and result['momentum']=='Accelerating'
+        assert result['net_issuance_usd']==period*5 and result['previous_net_issuance_usd']==period
+        assert assess_growth([dict(r,daily_swap_volume_usd=D(999999)) for r in rows],day,period)==result
+        price_only=[dict(r,net_supply_change_usd=D(0),reference_aum_usd=D(1000+i*100)) for i,r in enumerate(rows)]
+        assert assess_growth(price_only,day,period)['state']=='Mixed / flat'
+        short=assess_growth(rows[-period-1:],day,period)
+        assert short['state']=='Growing' and short['momentum']=='Insufficient evidence'
+
+
+def test_growth_distinguishes_slowing_from_decline_and_rejects_bad_evidence():
+    from backpack.growth import assess_growth
+    rows=growth_history();day=rows[-1]['date']
+    slowing=[dict(r,net_supply_change_usd=D(5 if i<=7 else 1),meaningful_holders=100+i*3 if i<=7 else 121+i-7) for i,r in enumerate(rows)]
+    assert assess_growth(slowing,day,7)['state']=='Growing, but slowing'
+    declining=[dict(r,net_supply_change_usd=D(-5),meaningful_holders=150-i*2) for i,r in enumerate(rows)]
+    assert assess_growth(declining,day,7)['state']=='Declining'
+    for broken in (rows[:-1], [dict(r,valuation_current=False) for r in rows], [dict(r,meaningful_holders=None) for r in rows],
+                   [dict(r,cohort={2}) if i==10 else r for i,r in enumerate(rows)], [dict(r,net_supply_change_usd=None) if i==12 else r for i,r in enumerate(rows)]):
+        assert assess_growth(broken,day,7)['state']=='Insufficient evidence'
+    with pytest.raises(ValueError):assess_growth(rows,day,1)
+
+
+def test_aum_decomposition_adds_to_endpoint_change_without_becoming_deposits():
+    from backpack.growth import assess_growth
+    rows=growth_history();rows[-1]=dict(rows[-1],reference_aum_usd=D(1440),components={1:dict(token_supply=D(120),underlying_price=D(12))})
+    result=assess_growth(rows,rows[-1]['date'],7)
+    assert result['supply_effect_usd']==200 and result['price_effect_usd']==240
+    assert result['supply_effect_usd']+result['price_effect_usd']==rows[-1]['reference_aum_usd']-rows[-8]['reference_aum_usd']
