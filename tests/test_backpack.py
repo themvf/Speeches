@@ -155,3 +155,15 @@ def test_whales_unknown_history_and_zero_population():
     assert whale_cohorts([],[])[0]['new_whales']==0
     assert whale_cohorts([dict(wallet_address='a',balance_tokens=D(1),value_usd=None,excluded=False)])[0]['whale_count'] is None
     with pytest.raises(ValueError):whale_cohorts([],thresholds=['NaN'])
+
+
+def test_cli_database_failure_redacts_connection_secrets(monkeypatch,capsys):
+    import backpack_monitor
+    import psycopg2
+    monkeypatch.setenv('DATABASE_URL','postgresql://user:VERY_SECRET_PASSWORD@example.test/db')
+    monkeypatch.setattr('sys.argv',['backpack_monitor.py','--migrate'])
+    def fail(*a,**k):raise RuntimeError('VERY_SECRET_PASSWORD')
+    monkeypatch.setattr(psycopg2,'connect',fail)
+    assert backpack_monitor.main()==1
+    output=capsys.readouterr().out
+    assert 'VERY_SECRET_PASSWORD' not in output and 'RuntimeError' in output

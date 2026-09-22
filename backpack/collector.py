@@ -14,12 +14,17 @@ def setup(conn):
     with conn, conn.cursor() as cur:
         cur.execute("SELECT pg_advisory_xact_lock(98274031)")
         cur.execute(Path(__file__).resolve().parents[1].joinpath('sql/backpack.sql').read_text())
-        # User explicitly supplied this mint. Manual approval is not independent official verification.
+        # Exact mint verified against Backpack's primary-source article on 2026-09-22.
         cur.execute("""INSERT INTO backpack_assets(token_symbol,token_name,solana_mint,asset_type,issuer,
             official_source,source_verified_at,verification_status,approval_notes)
-            VALUES ('BP','Backpack',%s,'bp','Backpack','User-provided specification, 2026-09-22',now(),
-            'manual_approved','User-authorized mint; official announcement verification still required')
-            ON CONFLICT(solana_mint) DO NOTHING""", (BP_MINT,))
+            VALUES ('BP','Backpack',%s,'bp','Backpack',
+            'https://learn.backpack.exchange/articles/what-is-bp-backpack-token','2026-09-22T00:00:00Z',
+            'official','Exact Solana contract in official BP Token Details article; staking/circulating figures are not independently inferred')
+            ON CONFLICT(solana_mint) DO UPDATE SET official_source=excluded.official_source,
+            source_verified_at=excluded.source_verified_at,verification_status=excluded.verification_status,
+            approval_notes=excluded.approval_notes,updated_at=now()
+            WHERE backpack_assets.official_source='User-provided specification, 2026-09-22'
+              AND backpack_assets.asset_type='bp'""", (BP_MINT,))
 
 
 def calendar_for(day):
@@ -124,7 +129,7 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
                 f'Enumeration spans slots {first_slot}–{end_slot}; not an atomic historic snapshot. Only verified system labels excluded.')
         else:
             wallet_rows=[]
-            note('holders','Unavailable','Helius DAS vs RPC','Sum owner balances / finalized supply', 'Holder balances do not reconcile to supply within tolerance; withheld')
+            note('holders','Unavailable','Helius DAS vs RPC','Sum owner balances / finalized supply', f'Holder sum {observed_supply}; supply {supply}; fractional tolerance {tolerance}. Does not reconcile; analytics withheld')
     # Bounded observed-wallet tape. Never claim mint-wide coverage from mint-address history.
     swaps, cursors = {}, []
     if wallet_rows and p.env.get('HELIUS_API_KEY'):
@@ -169,13 +174,13 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
         independent_source=bool(p.env.get('HELIUS_API_KEY')) or bool(p.env.get('SOLANA_RPC_URL') and p.env.get('SOLANA_RPC_URL') != (p.env.get('SOLANA_VALIDATION_RPC_URL') or 'https://api.mainnet-beta.solana.com'))
         note('token_supply',('Verified' if independent_source else 'Estimated') if difference<=max(Decimal('0.000000001'),supply*Decimal('0.001')) else 'Partial',
              'Solana finalized RPC + independent RPC','Raw integer supply / 10^decimals',
-             'Comparison observed at different finalized slots; supply movement may explain divergence. Separate source: '+str(independent_source), now)
+             f'Primary supply {supply} at slot {slot}; validation supply {validation[0]} at slot {validation[2]}. Different slots may explain divergence. Separate source: {independent_source}', now)
     independent = optional('price_validation','DexScreener validation',lambda:p.validation_market(mint))
     if independent and token_price:
         difference=abs(number(independent['priceUsd'])/token_price-1)*100
         note('price_validation','Estimated' if difference<=Decimal(p.env.get('BACKPACK_PRICE_TOLERANCE_PCT','5')) else 'Partial',
              'DexScreener highest-liquidity exact-base pair','Absolute independent price difference / Jupiter price',
-             f'Deviation {difference:.2f}%; provider observation time only. Pair rolling volume cannot validate full UTC-day volume.')
+             f'Jupiter {token_price}; independent pair {number(independent["priceUsd"])}; deviation {difference:.2f}%; provider observation time only. Pair rolling volume cannot validate full UTC-day volume.')
     note('registry','Verified' if asset['verification_status']=='official' else 'Estimated',asset['official_source'],
          'Mint identity comes only from approved registry','Manual approval is not independent official-source verification' if asset['verification_status']!='official' else '',asset['source_verified_at'])
     # Per-field provenance, including future-phase columns which are explicitly unavailable.

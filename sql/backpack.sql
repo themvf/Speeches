@@ -160,3 +160,14 @@ CREATE TABLE IF NOT EXISTS backpack_bp_whale_daily_snapshots (
  PRIMARY KEY(asset_id,date,threshold_usd),
  FOREIGN KEY(asset_id,date) REFERENCES backpack_asset_daily_snapshots
 );
+
+CREATE TABLE IF NOT EXISTS backpack_readiness_checks (
+ run_id uuid NOT NULL, check_name text NOT NULL, status text NOT NULL,
+ detail text NOT NULL, checked_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(run_id,check_name)
+);
+CREATE INDEX IF NOT EXISTS backpack_readiness_recent ON backpack_readiness_checks(checked_at DESC);
+CREATE TABLE IF NOT EXISTS backpack_readiness_usage (
+ run_id uuid NOT NULL, provider text NOT NULL, requests int NOT NULL,
+ PRIMARY KEY(run_id,provider)
+);
