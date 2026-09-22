@@ -195,3 +195,64 @@ def test_dashboard_sql_templates_execute_on_empty_and_populated_schema(conn):
     a=asset(conn,'mint-a','A')
     run(conn,FakeProviders())
     execute(datetime.now(timezone.utc).date(),a)
+
+
+def test_current_holders_baseline_events_and_safe_retention(conn):
+    from backpack.storage import persist_holders, maintain, cost_report
+    a=asset(conn,'mint-state','STATE')
+    run(conn,FakeProviders())
+    today=datetime.now(timezone.utc).date()
+    assert not fetch_all(conn,'SELECT * FROM backpack_holder_events')  # baseline is not arrival history
+    assert fetch_all(conn,'SELECT balance_tokens FROM backpack_current_holders WHERE asset_id=%s',(a,))[0]['balance_tokens']==1000
+    assert fetch_all(conn,'SELECT aggregates_validated FROM backpack_holder_checkpoints WHERE asset_id=%s',(a,))[0]['aggregates_validated']
+    # A later complete enumeration replaces current state atomically and preserves changes.
+    tomorrow=today+timedelta(days=1)
+    from backpack.collector import insert
+    baseline=fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots WHERE asset_id=%s',(a,))[0]
+    with conn,conn.cursor() as cur:
+        insert(cur,'backpack_asset_daily_snapshots',dict(baseline,date=tomorrow))
+        persist_holders(cur,a,tomorrow,[dict(wallet_address='new-wallet',balance_tokens=D(1000),value_usd=D(20000),excluded=False,label='Unknown')],{})
+    assert [r['wallet_address'] for r in fetch_all(conn,'SELECT * FROM backpack_current_holders WHERE asset_id=%s',(a,))]==['new-wallet']
+    events=fetch_all(conn,'SELECT * FROM backpack_holder_events WHERE asset_id=%s',(a,))
+    assert {'NEW_HOLDER','EXITED_HOLDER'} <= {e['event_type'] for e in events}
+    with conn,conn.cursor() as cur:
+        # Unknown legacy/raw day has no attestation and must survive cleanup.
+        old=today-timedelta(days=60)
+        insert(cur,'backpack_asset_daily_snapshots',dict(baseline,date=old,holders_complete=False))
+        cur.execute("INSERT INTO backpack_asset_holder_daily_snapshots(asset_id,date,wallet_address,balance_tokens,excluded,source,label,slot) VALUES(%s,%s,'unvalidated',1,false,'fixture','Unknown',1)",(a,old))
+    maintain(conn,today+timedelta(days=40),{})
+    raw=fetch_all(conn,'SELECT * FROM backpack_asset_holder_daily_snapshots WHERE asset_id=%s',(a,))
+    assert len(raw)==1 and raw[0]['wallet_address']=='unvalidated'
+    assert len(fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots WHERE asset_id=%s',(a,)))==3
+    assert len(fetch_all(conn,'SELECT * FROM backpack_holder_events WHERE asset_id=%s',(a,)))==len(events)
+    assert cost_report(conn)['projected_monthly_cost_usd'] is None
+
+
+def test_raw_swap_retention_requires_attestation_and_preserves_pinned_evidence(conn):
+    from backpack.storage import maintain
+    a=asset(conn,'mint-retention','RET')
+    today=datetime.now(timezone.utc).date()
+    old=today-timedelta(days=60)
+    with conn,conn.cursor() as cur:
+        for signature in ('ordinary','anomaly','unvalidated'):
+            at=old if signature!='unvalidated' else old-timedelta(days=1)
+            cur.execute("INSERT INTO backpack_transactions(asset_id,signature,event_kind,timestamp,source,slot) VALUES(%s,%s,'swap',%s,'fixture',1)",(a,signature,datetime.combine(at,datetime.min.time(),timezone.utc)))
+        cur.execute("INSERT INTO backpack_transaction_retention_checks VALUES(%s,%s,true,'fixture validates permanent aggregate',now())",(a,old))
+        cur.execute("INSERT INTO backpack_transaction_evidence(asset_id,signature,event_kind,reason,source) VALUES(%s,'anomaly','swap','material event','review')",(a,))
+    maintain(conn,today,{})
+    assert {r['signature'] for r in fetch_all(conn,'SELECT signature FROM backpack_transactions')}=={'anomaly','unvalidated'}
+    maintain(conn,today,{})
+    assert len(fetch_all(conn,'SELECT * FROM backpack_transaction_evidence'))==1
+
+
+def test_precomputed_metrics_preserve_unknowns_and_reconcile_composition(conn):
+    a=asset(conn,'mint-analytics','ANALYTICS')
+    result=run(conn,FakeProviders())
+    assert result['status']=='completed'
+    rows=fetch_all(conn,'SELECT * FROM backpack_analytical_daily_metrics')
+    assert next(r['value'] for r in rows if r['scope_asset_id']==0 and r['metric']=='top_1_aum_pct')==100
+    assert all(r['value'] is None for r in rows if r['metric']=='net_issuance_usd')
+    assert next(r['value'] for r in rows if r['scope_asset_id']==0 and r['metric']=='long_tail_aum_usd')==0
+    count=len(rows)
+    run(conn,FakeProviders())
+    assert len(fetch_all(conn,'SELECT * FROM backpack_analytical_daily_metrics'))==count

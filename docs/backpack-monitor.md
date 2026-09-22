@@ -183,3 +183,71 @@ Run: https://github.com/themvf/Speeches/actions/runs/35680044903
   because both raw and formatted dates had the same output name. Date ordering now
   uses qualified table columns. Integration tests execute the actual web SQL
   templates against both empty and populated databases.
+
+## Cost controls (September 2026)
+
+The daily worker retains permanent thesis aggregates, registry evidence, ingestion runs,
+quality events, wallet-label revisions and analytical records. It now maintains one
+`backpack_current_holders` row per live asset/owner and permanent `backpack_holder_events`.
+The first complete enumeration establishes a baseline: it does not claim all wallets
+arrived that day. Subsequent complete enumerations record new/exited owners, token balance
+changes, bidirectional USD threshold crossings and system-label/confidence changes.
+Price-driven threshold crossings are not token accumulation. Gaps retain the previous
+observation date. Failed/incomplete enumerations never replace current state.
+
+Full holder snapshots default to 30 days (`BACKPACK_HOLDER_RETENTION_DAYS`, allowed 30–90).
+Deletion requires a permanent supply-reconciled holder checkpoint matching the persisted
+owner aggregate. Legacy/unvalidated snapshots are preserved. Deletes are bounded to
+10,000 rows per maintenance invocation; monitor backlog before raising throughput.
+Aggregate history, quality evidence and holder events are never expired. Exact daily wallet
+reconstruction outside retention is not promised, particularly for price-only changes.
+First-seen means first observed in the current continuous holding spell, not wallet creation.
+
+Raw swaps have the same configurable 30–90-day policy (`BACKPACK_SWAP_RETENTION_DAYS`).
+Deletion requires an explicit per-asset/activity-day aggregate validation attestation in
+`backpack_transaction_retention_checks`. The current sampled collector does **not** issue
+market-wide attestations, so its transactions are preserved pending review. Pin material
+signatures in `backpack_transaction_evidence` before attesting a day; their raw rows survive.
+Anomaly/whale/liquidity/investigation selection must be implemented with market-wide capture
+before enabling automated attestations. Ordinary transfers are still not swaps and routed
+swaps remain deduplicated by asset/signature before persistence.
+
+Public API cache headers are now `s-maxage=3600, stale-while-revalidate=86400`, with an
+additional tagged Next.js database-result cache lasting one hour. No polling or ingestion
+runs in public requests. A POST to `/api/market/crypto/backpack/revalidate` requires
+`Authorization: Bearer <BACKPACK_REVALIDATE_SECRET>`. Set the same dedicated secret in
+GitHub Actions and Vercel. Both scheduled and manually dispatched captures notify it after
+capture and audit steps succeed. This invalidates the Next.js data/page cache; previously
+cached CDN responses can remain through their HTTP cache lifetime. Missing/rejected hook
+credentials are reported safely and retain the TTL fallback. Immediate global CDN purging
+is not claimed. The response timestamp remains the actual observation date.
+
+Daily ingestion precomputes 7/30/90-day issuance and growth and reconciled top-1/3/5/10
+AUM composition. Missing periods stay unavailable; composition excludes BP. The asset table
+reads these stored values. Daily multi-asset adoption was already computed during capture.
+Competitor share and a churn classification remain unavailable until their source coverage
+is adequate. No bullish score has been introduced.
+
+Run `python backpack_monitor.py --maintenance --cost-report` after migration. The daily
+workflow persists per-table allocated/table/index bytes, individual index sizes, approximate row counts, total
+database bytes and a point-in-time connection count, then saves a sanitized cost JSONL
+artifact. PostgreSQL allocation includes reusable space: DELETE does not immediately reduce
+allocated bytes. Database bytes/connections include the shared database, not just Backpack.
+Provider request counts include retries; readiness requests are reported separately.
+API function logs contain response byte counts and overview/asset scope, never payloads or
+wallets. CDN-hit traffic does not invoke this logging and requires platform analytics.
+
+Configure `BACKPACK_DATABASE_ALLOWANCE_BYTES` to alert above 50% of actual plan storage.
+Additional persistent operational alerts cover >20% 30-day table growth, raw transaction
+rows (`BACKPACK_RAW_TRANSACTION_ROW_ALERT`, default 1M), full holder rows
+(`BACKPACK_HOLDER_ROW_ALERT`, default 2M), provider request budgets and maintenance failures.
+These are operational records, not investment alerts. Row estimates depend on PostgreSQL
+statistics; review actual allocation as well. No notification channel is connected.
+
+After seven and thirty observed days, inspect exact-date growth in `--cost-report`, largest
+tables/index totals and provider counts. Neon CU-hours/egress and Vercel invocations, CPU,
+bandwidth/cache-hit rates require authorized platform usage exports; these and projected
+monthly cost remain null until available. No claim of <$5/month is made without billing
+evidence. Billing import and automated cost projection remain
+follow-up work. The monitor still needs the production Helius, Jupiter and Alpaca credentials
+before its first reconciled capture. The cache hook additionally needs its shared secret.

@@ -9,7 +9,7 @@ from backpack.registry import seed_starter
 
 def main():
     parser=argparse.ArgumentParser()
-    for action in ('migrate','execute','preflight','audit','seed-starter'):
+    for action in ('migrate','execute','preflight','audit','seed-starter','maintenance','cost-report'):
         parser.add_argument('--'+action,action='store_true')
     args=parser.parse_args()
     if not any(vars(args).values()):
@@ -38,6 +38,14 @@ def main():
             result=run(conn)
             print(json.dumps(result,default=str))
             failed=failed or result['status'] in ('failed','partial')
+        if args.maintenance:
+            from backpack.storage import maintain
+            from datetime import datetime, timezone
+            maintain(conn, datetime.now(timezone.utc).date(), os.environ)
+            print(json.dumps({'maintenance':'completed'}))
+        if args.cost_report:
+            from backpack.storage import cost_report
+            print(json.dumps(cost_report(conn),default=str))
         if args.audit:print(json.dumps(audit(conn),default=str))
         return int(failed)
     except Exception as error:

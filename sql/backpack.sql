@@ -171,3 +171,56 @@ CREATE TABLE IF NOT EXISTS backpack_readiness_usage (
  run_id uuid NOT NULL, provider text NOT NULL, requests int NOT NULL,
  PRIMARY KEY(run_id,provider)
 );
+
+-- Bounded raw history; permanent state changes and reconciliation checkpoints.
+CREATE TABLE IF NOT EXISTS backpack_current_holders (
+ asset_id bigint REFERENCES backpack_assets, wallet_address text, balance_tokens numeric NOT NULL,
+ value_usd numeric, excluded boolean NOT NULL, label text, label_confidence text,
+ label_entity text, label_source text, label_verified_at timestamptz,
+ first_seen_at date NOT NULL, last_seen_at date NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(asset_id,wallet_address)
+);
+CREATE TABLE IF NOT EXISTS backpack_holder_events (
+ asset_id bigint REFERENCES backpack_assets, wallet_address text, date date, event_type text,
+ previous_balance numeric, new_balance numeric, previous_value_usd numeric, new_value_usd numeric,
+ change_tokens numeric, change_usd numeric, previous_label text, new_label text,
+ previous_confidence text, new_confidence text, previous_observation_date date,
+ source text NOT NULL, observed_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(asset_id,wallet_address,date,event_type)
+);
+CREATE INDEX IF NOT EXISTS backpack_holder_events_date ON backpack_holder_events(date);
+CREATE TABLE IF NOT EXISTS backpack_holder_checkpoints (
+ asset_id bigint, date date, owner_count bigint NOT NULL, balance_tokens numeric NOT NULL,
+ aggregates_validated boolean NOT NULL, methodology text NOT NULL,
+ PRIMARY KEY(asset_id,date), FOREIGN KEY(asset_id,date) REFERENCES backpack_asset_daily_snapshots
+);
+CREATE TABLE IF NOT EXISTS backpack_transaction_evidence (
+ asset_id bigint REFERENCES backpack_assets, signature text, event_kind text,
+ reason text NOT NULL, source text NOT NULL, recorded_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(asset_id,signature,event_kind)
+);
+-- Explicit attestation required before deleting a raw activity day. The current sampled
+-- collector does not attest complete market-wide trading aggregates.
+CREATE TABLE IF NOT EXISTS backpack_transaction_retention_checks (
+ asset_id bigint REFERENCES backpack_assets, activity_date date,
+ aggregates_validated boolean NOT NULL DEFAULT false, methodology text NOT NULL,
+ validated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(asset_id,activity_date)
+);
+CREATE TABLE IF NOT EXISTS backpack_storage_observations (
+ date date, relation_name text, table_bytes bigint, index_bytes bigint, total_bytes bigint,
+ estimated_rows bigint, database_bytes bigint, database_connections bigint,
+ measured_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(date,relation_name)
+);
+CREATE TABLE IF NOT EXISTS backpack_operational_alerts (
+ date date, metric text, detail text NOT NULL, observed_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(date,metric)
+);
+CREATE TABLE IF NOT EXISTS backpack_analytical_daily_metrics (
+ date date, scope_asset_id bigint NOT NULL, metric text, period_days int NOT NULL,
+ value numeric, status text NOT NULL, methodology text NOT NULL,
+ computed_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(date,scope_asset_id,metric,period_days)
+);
+CREATE TABLE IF NOT EXISTS backpack_index_observations (
+ date date, index_name text, table_name text NOT NULL, bytes bigint NOT NULL,
+ measured_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(date,index_name)
+);
