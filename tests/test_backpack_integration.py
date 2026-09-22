@@ -336,3 +336,13 @@ def test_operations_sql_executes_without_provider_calls(conn):
     for stage in range(2):
         for query in re.findall(r'sql`([^`]+)`',source):fetch_all(conn,query)
         if stage==0:run(conn,FakeProviders())
+
+
+def test_growth_assessments_persist_without_promoting_insufficient_history(conn):
+    asset(conn,'mint-growth','GROWTH')
+    run(conn,FakeProviders())
+    rows=fetch_all(conn,'SELECT * FROM backpack_growth_daily ORDER BY period_days')
+    assert [r['period_days'] for r in rows]==[7,30,90]
+    assert all(r['state']=='Insufficient evidence' and r['net_issuance_usd'] is None for r in rows)
+    run(conn,FakeProviders())
+    assert fetch_all(conn,'SELECT * FROM backpack_growth_daily ORDER BY period_days')==rows

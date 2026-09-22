@@ -272,3 +272,14 @@ CREATE TABLE IF NOT EXISTS backpack_billing_observations (
  value numeric NOT NULL CHECK(value>=0), unit text NOT NULL, source text NOT NULL,
  imported_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(date,provider,scope,metric)
 );
+CREATE TABLE IF NOT EXISTS backpack_growth_daily (
+ date date, period_days int CHECK(period_days IN (7,30,90)), state text NOT NULL, momentum text NOT NULL,
+ reason text NOT NULL, issuance_threshold_pct numeric NOT NULL, holder_threshold_pct numeric NOT NULL,
+ slowdown_threshold_pp numeric NOT NULL, net_issuance_usd numeric, previous_net_issuance_usd numeric,
+ issuance_aum_pct numeric, previous_issuance_aum_pct numeric, holder_growth_pct numeric, previous_holder_growth_pct numeric,
+ aum_growth_pct numeric, meaningful_holders bigint, previous_meaningful_holders bigint,
+ multi_asset_adoption_pct numeric, previous_multi_asset_adoption_pct numeric,
+ top_5_aum_pct numeric, previous_top_5_aum_pct numeric, significant_securities bigint, previous_significant_securities bigint,
+ significance_threshold_usd numeric, supply_effect_usd numeric, price_effect_usd numeric, methodology text NOT NULL,
+ PRIMARY KEY(date,period_days)
+);

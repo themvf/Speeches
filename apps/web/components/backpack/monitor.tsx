@@ -4,6 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {Area,AreaChart,Bar,BarChart,CartesianGrid,Line,LineChart,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 import {BP_MINT,dayOffset,mechanicalChanges,numeric,point,qualityFor,rollingIssuance,sortRows,windowChange,type MonitorData,type Row} from '@/lib/backpack';
 import s from './monitor.module.css';
+import {GrowthOverview} from './growth-overview';
 import {ResearchContext} from './research-context';
 const periods=['7D','30D','90D','180D','YTD','1Y','ALL'];
 const money=(v:unknown)=>numeric(v)===null?'N/A':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',notation:'compact',maximumFractionDigits:2}).format(Number(v));
@@ -48,6 +49,7 @@ export function BackpackMonitor({assetId}:{assetId?:string}){
  {!assetId&&table.length===0&&<div className={s.notice}><strong>No approved Backpack securities captured yet.</strong><p>Exchange-listed stocks are not automatically on-chain securities. Add each mint with source evidence through the registry. BP is tracked separately below.</p></div>}
  {day&&Date.now()-Date.parse(`${day}T00:00:00Z`)>48*3600*1000&&<div className={s.notice}>Stale: the latest stored capture is more than 48 hours old.</div>}
  {asset&&<div className={s.identity}><b>{String(asset.token_name)}</b><span>{String(asset.underlying_symbol??'BP utility token')} · {String(asset.underlying_exchange??'Solana')}</span><code>{String(asset.solana_mint)}</code><span>{String(asset.verification_status).replace('_',' ')}</span><a href={String(asset.official_source).startsWith('https://')?String(asset.official_source):undefined} target="_blank" rel="noreferrer">Registry evidence</a></div>}
+ {!assetId&&<GrowthOverview data={data}/>}
  <div className={s.kpis}>
  <KPI title={isBp?"BP total supply":"Reference AUM"} field={isBp?"token_supply":"reference_aum_usd"} format={isBp?count:money} rows={rows} day={day} data={data} assetId={assetId}/>
  <KPI title="Meaningful wallets" field={meaningful} rows={rows} day={day} data={data} format={count} assetId={assetId}/>
