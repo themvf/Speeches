@@ -9,8 +9,9 @@ from backpack.registry import seed_starter
 
 def main():
     parser=argparse.ArgumentParser()
-    for action in ('migrate','execute','preflight','audit','seed-starter','maintenance','cost-report'):
+    for action in ('migrate','execute','preflight','audit','seed-starter','maintenance','cost-report','research'):
         parser.add_argument('--'+action,action='store_true')
+    parser.add_argument('--import-billing',metavar='CSV')
     args=parser.parse_args()
     if not any(vars(args).values()):
         print('Use --migrate, --preflight, --execute or --audit. Live RPC cannot backfill history.')
@@ -43,6 +44,14 @@ def main():
             from datetime import datetime, timezone
             maintain(conn, datetime.now(timezone.utc).date(), os.environ)
             print(json.dumps({'maintenance':'completed'}))
+        if args.research:
+            from backpack.research import capture_research
+            from datetime import datetime, timezone
+            capture_research(conn,datetime.now(timezone.utc).date(),os.environ)
+            print(json.dumps({'stored_research':'processed'}))
+        if args.import_billing:
+            from backpack.cost_review import import_billing
+            print(json.dumps(import_billing(conn,args.import_billing)))
         if args.cost_report:
             from backpack.storage import cost_report
             print(json.dumps(cost_report(conn),default=str))

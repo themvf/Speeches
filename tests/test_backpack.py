@@ -193,3 +193,56 @@ def test_cache_notification_never_forwards_to_redirect_or_logs_secrets(monkeypat
     assert mock.call_args.kwargs['allow_redirects'] is False
     mock.side_effect=requests.ConnectionError('private-secret')
     assert 'private-secret' not in str(notify({'BACKPACK_REVALIDATE_SECRET':'private-secret'}))
+
+
+def research_history(period=7):
+    today=date(2026,9,22)
+    return [dict(date=today-timedelta(days=i),cohort={1,2},valuation_current=True,reference_aum_usd=D(110 if i<period else 100),
+        meaningful_holders=110 if i<period else 100,net_supply_change_usd=D(1),daily_swap_volume_usd=D(200 if i<period else 100))
+        for i in range(2*period)]
+
+
+def test_environment_quadrants_and_incomplete_evidence():
+    from backpack.research import classify
+    rows=research_history();day=rows[0]['date']
+    assert classify(rows,day)['state']=='Expansion'
+    quiet=[dict(r,daily_swap_volume_usd=D(100)) for r in rows]
+    assert classify(quiet,day)['state']=='Accumulation'
+    churn=[dict(r,net_supply_change_usd=D(0),reference_aum_usd=D(100),meaningful_holders=100) for r in rows]
+    assert classify(churn,day)['state']=='Churn'
+    assert classify([dict(r,daily_swap_volume_usd=D(100)) for r in churn],day)['state']=='Stagnant'
+    assert classify([dict(r,meaningful_holders=100) for r in rows],day)['state']=='Mixed'
+    assert classify(rows[:-1],day)['state']=='Unavailable'
+    assert classify([dict(r,daily_swap_volume_usd=None,observed_swap_volume_usd=500) for r in rows],day)['state']=='Unavailable'
+    assert classify([dict(r,valuation_current=False) for r in rows],day)['state']=='Unavailable'
+    rows[-1]['cohort']={1,3}
+    assert classify(rows,day)['state']=='Unavailable'
+    with pytest.raises(ValueError):classify(rows,day,1)
+
+
+def test_cost_windows_do_not_infer_zero_or_attribute_shared_billing():
+    from backpack.cost_review import review_window
+    end=date(2026,9,22)
+    storage=[dict(date=end-timedelta(days=i),total_bytes=1000-i*10) for i in range(8)]
+    result=review_window(storage,[],7)
+    assert result['storage_growth_bytes']==70 and result['projected_storage_bytes_30d']==1300
+    assert result['infrastructure_cost_usd'] is None
+    bills=[dict(date=end-timedelta(days=i),provider=p,metric='cost_usd',scope='shared',value=D('0.01')) for i in range(7) for p in ('Neon','Vercel')]
+    assert review_window(storage,bills,7)['projected_30d_infrastructure_cost_usd'] is None
+    attributed=[dict(b,scope='backpack') for b in bills]
+    assert review_window(storage,attributed,7)['projected_30d_infrastructure_cost_usd']==D('0.6')
+    assert review_window(storage,attributed[:-1],7)['infrastructure_cost_usd'] is None
+    assert review_window(storage[:-1],[],7)['storage_growth_bytes'] is None
+    assert review_window(storage,attributed,30)['infrastructure_cost_usd'] is None
+
+
+def test_billing_export_validation(tmp_path):
+    from backpack.cost_review import parse_billing
+    p=tmp_path/'billing.csv'
+    header='date,provider,scope,metric,value,unit,source\n'
+    valid='2026-01-01,Neon,backpack,cost_usd,0,USD,https://example.test/invoice\n'
+    p.write_text(header+valid)
+    assert parse_billing(p)[0]['value']==0
+    for bad in (valid.replace(',0,',',NaN,'),valid.replace(',0,',',-1,'),valid.replace(',USD,',',bytes,'),valid.replace('/invoice','/invoice?token=secret'),valid+valid):
+        p.write_text(header+bad)
+        with pytest.raises(ValueError):parse_billing(p)

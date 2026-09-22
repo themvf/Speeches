@@ -302,6 +302,8 @@ def run(conn,p=None,day=None):
         aggregate(conn,run_id,day,assets)
         from .analytics import precompute
         precompute(conn,day)
+        from .research import capture_research
+        capture_research(conn,day,p.env)
     except Exception as error:
         conn.rollback()
         errors.append('Run: '+type(error).__name__)
