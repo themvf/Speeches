@@ -301,7 +301,12 @@ def test_incomplete_enumeration_preserves_prior_current_state_and_withholds_anal
 
 def test_competitor_mirror_excludes_bp_pending_and_preserves_daily_records(conn):
     a=asset(conn,'mint-neutral','NEUTRAL');b=asset(conn,'mint-pending','PENDING')
-    with conn,conn.cursor() as cur:cur.execute("UPDATE backpack_assets SET verification_status='pending' WHERE id=%s",(b,))
+    import json
+    from pathlib import Path
+    canonical_issuer=json.loads(Path('backpack/starter_universe.json').read_text())['assets'][0]['issuer']
+    with conn,conn.cursor() as cur:
+        cur.execute("UPDATE backpack_assets SET verification_status='pending' WHERE id=%s",(b,))
+        cur.execute('UPDATE backpack_assets SET issuer=%s WHERE id=%s',(canonical_issuer,a))
     run(conn,FakeProviders())
     assert len(fetch_all(conn,'SELECT * FROM tokenized_security_assets'))==1
     rows=fetch_all(conn,'SELECT * FROM tokenized_security_daily_snapshots')

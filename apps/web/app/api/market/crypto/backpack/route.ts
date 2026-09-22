@@ -2,7 +2,7 @@ import {BACKPACK_CACHE_CONTROL} from '@/lib/backpack-cache';
 import {unstable_cache} from 'next/cache';
 import {NextResponse} from 'next/server';
 import {readBackpack} from '@/lib/server/backpack-store';
-const cachedRead=unstable_cache(readBackpack,['backpack-observations-v2'],{revalidate:3600,tags:['backpack-observations']});
+const cachedRead=unstable_cache(readBackpack,['backpack-observations-v3'],{revalidate:3600,tags:['backpack-observations']});
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export async function GET(req:Request){
