@@ -86,7 +86,7 @@ def test_saved_x_and_chain_rows_materialize_without_provider_calls():
         cur.execute("""INSERT INTO crypto_social_accounts(id,handle,name,observed_at)
           VALUES('fusion-test-actor','fusion_test','Fusion Test','2040-01-01T00:01:00Z') ON CONFLICT DO NOTHING""")
         cur.execute("""INSERT INTO crypto_social_posts(id,author_id,text,posted_at,kind,url,first_seen_at)
-          VALUES('fusion-test-post','fusion-test-actor','PONS graduated and its pool is live on PumpSwap',
+          VALUES('fusion-test-post','fusion-test-actor','$PONS graduated and its pool is live on PumpSwap',
           '2040-01-01T00:00:00Z','post','https://x.example/fusion-test','2040-01-01T00:01:00Z') ON CONFLICT DO NOTHING""")
         cur.execute("""INSERT INTO crypto_social_windows(coin,start_at,end_at,query,status)
           VALUES('PONS','2040-01-01T00:00:00Z','2040-01-02T00:00:00Z','fusion test','search_exhausted')
