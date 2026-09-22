@@ -307,6 +307,7 @@ def test_competitor_mirror_excludes_bp_pending_and_preserves_daily_records(conn)
     rows=fetch_all(conn,'SELECT * FROM tokenized_security_daily_snapshots')
     assert len(rows)==1 and rows[0]['reference_aum_usd']==20000 and rows[0]['daily_swap_volume_usd'] is None
     assert not fetch_all(conn,'SELECT * FROM tokenized_security_market_snapshots')
+    assert fetch_all(conn,"SELECT * FROM backpack_storage_observations WHERE relation_name='tokenized_security_assets'")
     assert {r['state'] for r in fetch_all(conn,'SELECT * FROM backpack_environment_daily')}=={'Unavailable'}
     run(conn,FakeProviders())
     assert fetch_all(conn,'SELECT * FROM tokenized_security_daily_snapshots')==rows
