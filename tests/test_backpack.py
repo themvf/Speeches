@@ -167,3 +167,29 @@ def test_cli_database_failure_redacts_connection_secrets(monkeypatch,capsys):
     assert backpack_monitor.main()==1
     output=capsys.readouterr().out
     assert 'VERY_SECRET_PASSWORD' not in output and 'RuntimeError' in output
+
+
+def test_holder_events_separate_price_changes_from_token_accumulation():
+    from backpack.storage import holder_changes, retention_days
+    old=dict(balance_tokens=D(10),value_usd=D(99),label='Unknown',label_confidence=None,excluded=False)
+    assert holder_changes(old,dict(old))==[]
+    assert holder_changes(old,dict(old,value_usd=D(101)))==['CROSSED_100']
+    assert 'BALANCE_INCREASE' in holder_changes(old,dict(old,balance_tokens=D(11)))
+    assert 'SYSTEM_LABEL_CHANGED' in holder_changes(old,dict(old,label='Custody',label_confidence='high',excluded=True))
+    assert holder_changes(old,dict(old,value_usd=None))==[]
+    assert 'EXITED_HOLDER' in holder_changes(old,None)
+    assert retention_days({},'retention')==30
+    with pytest.raises(ValueError):retention_days({'retention':'1'},'retention')
+
+
+def test_cache_notification_never_forwards_to_redirect_or_logs_secrets(monkeypatch):
+    import requests
+    from backpack.revalidation import notify
+    assert notify({})['cache_revalidation']=='Unavailable'
+    mock=Mock(return_value=Mock(status_code=302))
+    monkeypatch.setattr(requests,'post',mock)
+    result=notify({'BACKPACK_REVALIDATE_SECRET':'private-secret'})
+    assert result['cache_revalidation']=='Unavailable' and 'private-secret' not in str(result)
+    assert mock.call_args.kwargs['allow_redirects'] is False
+    mock.side_effect=requests.ConnectionError('private-secret')
+    assert 'private-secret' not in str(notify({'BACKPACK_REVALIDATE_SECRET':'private-secret'}))

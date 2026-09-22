@@ -71,14 +71,18 @@ def audit(conn,day=None):
     for r in rows:
         totals=fetch_all(conn,'''SELECT sum(balance_tokens) AS tokens,count(*) AS wallets FROM backpack_asset_holder_daily_snapshots
             WHERE asset_id=%s AND date=%s''',(r['asset_id'],day))[0]
+        checkpoint=fetch_all(conn,'SELECT * FROM backpack_holder_checkpoints WHERE asset_id=%s AND date=%s',(r['asset_id'],day))
+        raw_complete=totals['wallets']==r['unique_holders'] if r['holders_complete'] else False
+        preserved=checkpoint[0] if checkpoint and checkpoint[0]['aggregates_validated'] else None
+        holder_sum=(totals['tokens'] if totals['tokens'] is not None else 0) if raw_complete else preserved['balance_tokens'] if preserved else None
         quality=fetch_all(conn,'''SELECT metric,status,calculation,limitation FROM backpack_data_quality_events
             WHERE asset_id=%s AND date=%s ORDER BY id''',(r['asset_id'],day))
         expected=r['token_supply']*r['underlying_price'] if r['underlying_price'] is not None else None
         output.append(dict(asset_id=r['asset_id'],symbol=r['token_symbol'],mint=r['solana_mint'],registry_status=r['verification_status'],
             underlying_symbol=r['underlying_symbol'],underlying_exchange=r['underlying_exchange'],
             supply=r['token_supply'],supply_slot=r['slot'],supply_timestamp=r['block_timestamp'],
-            holders_complete=r['holders_complete'],holder_token_sum=totals['tokens'],
-            holder_supply_difference=totals['tokens']-r['token_supply'] if totals['tokens'] is not None else None,
+            holders_complete=r['holders_complete'],holder_token_sum=holder_sum,holder_evidence='retained raw rows' if raw_complete else 'permanent reconciliation checkpoint; raw rows expired or partially pruned' if preserved else 'Unavailable',
+            holder_supply_difference=holder_sum-r['token_supply'] if holder_sum is not None else None,
             holder_start_slot=r['holder_start_slot'],holder_end_slot=r['holder_end_slot'],
             underlying_price=r['underlying_price'],underlying_price_timestamp=r['underlying_price_timestamp'],
             onchain_price=r['onchain_price'],onchain_price_timestamp=r['onchain_price_timestamp'],

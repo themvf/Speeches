@@ -6,6 +6,7 @@ from pathlib import Path
 import uuid
 from .metrics import BP_MINT, ecosystem, holders, issuance, multiply, normalize_swap, number, parity, ratio, trading, whale_cohorts
 from .providers import Providers, SourceError
+from .storage import persist_holders, maintain
 
 UTC = timezone.utc
 
@@ -223,6 +224,8 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
     with conn,conn.cursor() as cur:
         if not insert(cur,'backpack_asset_daily_snapshots',snap): return 'skipped'
         insert_many(cur,'backpack_asset_holder_daily_snapshots',[dict(r,asset_id=asset_id,date=day,source='Helius DAS',slot=snap['holder_end_slot'],label_entity=labels.get(r['wallet_address'],{}).get('entity'),label_confidence=labels.get(r['wallet_address'],{}).get('confidence'),label_source=labels.get(r['wallet_address'],{}).get('source'),label_verified_at=labels.get(r['wallet_address'],{}).get('verified_at')) for r in wallet_rows])
+        if snap['holders_complete']:
+            persist_holders(cur, asset_id, day, wallet_rows, labels)
         for s in swaps.values():
             insert(cur,'backpack_transactions',dict(asset_id=asset_id,signature=s['signature'],event_kind='swap',slot=s['slot'],
                 timestamp=datetime.fromtimestamp(s['timestamp'],UTC),wallet_address=s['wallet_address'],side=s['side'],tokens=s['tokens'],
@@ -297,6 +300,8 @@ def run(conn,p=None,day=None):
                     insert(cur,'backpack_data_quality_events',dict(run_id=run_id,asset_id=asset['id'],date=day,metric='capture',
                         status='Unavailable',source='Daily collector',calculation='Daily capture',limitation=safe))
         aggregate(conn,run_id,day,assets)
+        from .analytics import precompute
+        precompute(conn,day)
     except Exception as error:
         conn.rollback()
         errors.append('Run: '+type(error).__name__)
@@ -312,4 +317,11 @@ def run(conn,p=None,day=None):
                 data_quality_warnings='See per-metric quality events. Completed means execution completed, not full metric coverage.' WHERE run_id=%s''',
                 (status,counts['attempted'],counts['succeeded'],counts['failed'],counts['skipped'],'; '.join(errors),run_id))
             cur.execute("DELETE FROM backpack_job_leases WHERE name='daily' AND owner=%s",(run_id,))
+    # Maintenance failure must not roll back successfully captured observations.
+    try:
+        maintain(conn, day, p.env)
+    except Exception as error:
+        conn.rollback()
+        with conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO backpack_operational_alerts(date,metric,detail) VALUES(%s,'maintenance',%s) ON CONFLICT DO NOTHING", (day, type(error).__name__))
     return dict(run_id=run_id,status=status,**counts)

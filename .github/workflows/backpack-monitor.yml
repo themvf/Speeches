@@ -22,6 +22,10 @@ jobs:
       ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
       ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
       SOLANA_VALIDATION_RPC_URL: ${{ secrets.SOLANA_VALIDATION_RPC_URL }}
+      BACKPACK_REVALIDATE_SECRET: ${{ secrets.BACKPACK_REVALIDATE_SECRET }}
+      BACKPACK_DATABASE_ALLOWANCE_BYTES: ${{ vars.BACKPACK_DATABASE_ALLOWANCE_BYTES }}
+      BACKPACK_HOLDER_RETENTION_DAYS: ${{ vars.BACKPACK_HOLDER_RETENTION_DAYS || '30' }}
+      BACKPACK_SWAP_RETENTION_DAYS: ${{ vars.BACKPACK_SWAP_RETENTION_DAYS || '30' }}
       BACKPACK_MAX_REQUESTS: '500'
       BACKPACK_MAX_ACTIVITY_WALLETS: '10'
       BACKPACK_ENABLE_QUOTES: '1'
@@ -50,12 +54,20 @@ jobs:
         shell: bash
         run: python backpack_monitor.py --preflight | tee backpack-readiness.jsonl
       - name: Capture current UTC date
+        id: capture
         if: github.event_name != 'push' || steps.readiness.outcome == 'success'
         run: python backpack_monitor.py --execute
       - name: Reconcile stored observations for human review
         if: always() && (github.event_name != 'push' || steps.readiness.outcome == 'success')
         shell: bash
         run: python backpack_monitor.py --audit | tee backpack-audit.jsonl
+      - name: Revalidate public data after capture and reconciliation
+        if: success() && steps.capture.outcome == 'success'
+        run: python -m backpack.revalidation
+      - name: Maintain bounded storage and record infrastructure observations
+        if: always() && steps.preflight.outcome != 'skipped'
+        shell: bash
+        run: python backpack_monitor.py --maintenance --cost-report | tee backpack-cost.jsonl
       - name: Preserve sanitized production evidence
         if: always()
         uses: actions/upload-artifact@v4

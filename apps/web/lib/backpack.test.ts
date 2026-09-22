@@ -37,3 +37,12 @@ test('admin origin validation preserves public Host across internal URL normaliz
  assert.equal(sameOrigin(request('http://127.0.0.1:3107')),true);
  for(const origin of ['https://other.test','null','http://127.0.0.1:3108','https://127.0.0.1:3107','http://127.0.0.1:3107/path'])assert.equal(sameOrigin(request(origin)),false);
 });
+
+import {validRevalidationToken,BACKPACK_CACHE_CONTROL} from './backpack-cache.ts';
+test('cache invalidation requires the exact configured bearer credential',()=>{
+ assert.equal(validRevalidationToken(null,undefined),false);
+ assert.equal(validRevalidationToken('Bearer undefined',undefined),false);
+ assert.equal(validRevalidationToken('Bearer wrong','test-secret'),false);
+ assert.equal(validRevalidationToken('Bearer test-secret','test-secret'),true);
+ assert.equal(BACKPACK_CACHE_CONTROL,'public, s-maxage=3600, stale-while-revalidate=86400');
+});
