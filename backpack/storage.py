@@ -141,7 +141,10 @@ def maintain(conn, day, env):
 
 def cost_report(conn):
     from .collector import fetch_all
-    return dict(status='Observed storage and request counts; billing unavailable',
+    from .cost_review import cost_review
+    reviews=cost_review(conn)
+    projections=[r['projected_30d_infrastructure_cost_usd'] for r in reversed(reviews['windows']) if r['projected_30d_infrastructure_cost_usd'] is not None]
+    return dict(status='Observed storage and request counts; consult attributed billing coverage',reviews=reviews,
         storage=fetch_all(conn,'SELECT * FROM backpack_storage_observations ORDER BY date DESC,total_bytes DESC LIMIT 1500'),
         indexes=fetch_all(conn,'SELECT * FROM backpack_index_observations WHERE date=(SELECT max(date) FROM backpack_index_observations) ORDER BY bytes DESC'),
         providers=fetch_all(conn,'''SELECT r.snapshot_date,u.provider,sum(u.requests) requests,
@@ -157,5 +160,5 @@ def cost_report(conn):
             FROM latest l LEFT JOIN daily d ON d.date IN (l.date-7,l.date-30)'''),
         alerts=fetch_all(conn,'SELECT * FROM backpack_operational_alerts ORDER BY date DESC LIMIT 100'),
         neon_cu_hours=None,neon_egress=None,vercel_invocations=None,vercel_active_cpu=None,
-        vercel_cache_hit_rate=None,vercel_bandwidth=None,vercel_api_requests=None,average_api_response_bytes=None,projected_monthly_cost_usd=None,
+        vercel_cache_hit_rate=None,vercel_bandwidth=None,vercel_api_requests=None,average_api_response_bytes=None,projected_monthly_cost_usd=projections[0] if projections else None,
         limitations='Storage is allocated bytes, not billed usage. Connection count is a point-in-time observation. Billing exports required for a cost projection. Raw deletion does not immediately shrink allocated PostgreSQL files.')

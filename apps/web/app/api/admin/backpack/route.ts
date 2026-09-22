@@ -4,6 +4,7 @@ import {NextResponse} from 'next/server';
 import {neon} from '@neondatabase/serverless';
 import {getGithubActionsConfig} from '@/lib/server/env';
 import {labelError,solanaAddress,sameOrigin} from '@/lib/backpack-admin';
+import {readBackpackOperations} from '@/lib/server/backpack-operations';
 import {BP_MINT} from '@/lib/backpack';
 export const runtime='nodejs';
 function reply(error:string,status:number){return NextResponse.json({error},{status});}
@@ -15,6 +16,10 @@ async function authorized(){
 }
 export async function GET(req:Request){
  if(!await authorized())return reply('Administrator access required',401);
+ if(new URL(req.url).searchParams.get('operations')==='1'){
+  try{return NextResponse.json(await readBackpackOperations(),{headers:{'Cache-Control':'no-store'}});}
+  catch{return reply('Stored operational evidence unavailable. Apply the Backpack migration first.',503);}
+ }
  if(new URL(req.url).searchParams.get('labels')==='1'){
   if(!process.env.DATABASE_URL)return reply('Database not configured',503);
   try{const sql=neon(process.env.DATABASE_URL);const labels=await sql`SELECT * FROM backpack_wallet_labels ORDER BY verified_at DESC LIMIT 1000`;

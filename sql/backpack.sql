@@ -224,3 +224,51 @@ CREATE TABLE IF NOT EXISTS backpack_index_observations (
  date date, index_name text, table_name text NOT NULL, bytes bigint NOT NULL,
  measured_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(date,index_name)
 );
+
+-- Issuer-neutral coverage foundation; a registry entry is not a market-share denominator.
+CREATE TABLE IF NOT EXISTS tokenized_security_issuers (
+ id text PRIMARY KEY, name text NOT NULL UNIQUE
+);
+INSERT INTO tokenized_security_issuers VALUES ('backpack','Backpack'),('xstocks','xStocks'),('ondo','Ondo') ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS tokenized_security_assets (
+ id bigserial PRIMARY KEY, issuer_id text NOT NULL REFERENCES tokenized_security_issuers,
+ network text NOT NULL, mint text NOT NULL, token_symbol text NOT NULL,
+ underlying_symbol text NOT NULL, underlying_exchange text NOT NULL, underlying_name text NOT NULL,
+ asset_type text NOT NULL CHECK(asset_type IN ('common_stock','etf','other_security')),
+ official_source text NOT NULL, verified_at timestamptz NOT NULL,
+ verification_status text NOT NULL CHECK(verification_status IN ('official','manual_approved')),
+ backpack_asset_id bigint UNIQUE REFERENCES backpack_assets,
+ active boolean NOT NULL DEFAULT true, UNIQUE(network,mint)
+);
+CREATE INDEX IF NOT EXISTS tokenized_security_assets_issuer ON tokenized_security_assets(issuer_id);
+CREATE TABLE IF NOT EXISTS tokenized_security_daily_snapshots (
+ asset_id bigint REFERENCES tokenized_security_assets, date date,
+ reference_aum_usd numeric, net_issuance_usd numeric, meaningful_holders bigint, daily_swap_volume_usd numeric,
+ source text NOT NULL, observed_at timestamptz NOT NULL, methodology text NOT NULL,
+ PRIMARY KEY(asset_id,date)
+);
+CREATE TABLE IF NOT EXISTS tokenized_security_market_snapshots (
+ date date, universe_id text, reference_aum_usd numeric, net_issuance_usd numeric,
+ meaningful_holders bigint, daily_swap_volume_usd numeric,
+ coverage_status text NOT NULL CHECK(coverage_status IN ('Verified','Estimated','Partial','Unavailable')),
+ methodology text NOT NULL, source text NOT NULL, observed_at timestamptz NOT NULL,
+ PRIMARY KEY(date,universe_id)
+);
+CREATE TABLE IF NOT EXISTS tokenized_security_market_members (
+ date date, universe_id text, asset_id bigint REFERENCES tokenized_security_assets,
+ PRIMARY KEY(date,universe_id,asset_id),
+ FOREIGN KEY(date,universe_id) REFERENCES tokenized_security_market_snapshots
+);
+CREATE TABLE IF NOT EXISTS backpack_environment_daily (
+ date date, period_days int CHECK(period_days IN (7,30)), state text NOT NULL,
+ reason text NOT NULL, issuance_aum_pct numeric, aum_growth_pct numeric,
+ holder_growth_pct numeric, trading_growth_pct numeric,
+ issuance_threshold_pct numeric NOT NULL, trading_threshold_pct numeric NOT NULL,
+ growth_threshold_pct numeric NOT NULL, methodology text NOT NULL,
+ PRIMARY KEY(date,period_days)
+);
+CREATE TABLE IF NOT EXISTS backpack_billing_observations (
+ date date, provider text, scope text CHECK(scope IN ('backpack','shared')), metric text,
+ value numeric NOT NULL CHECK(value>=0), unit text NOT NULL, source text NOT NULL,
+ imported_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(date,provider,scope,metric)
+);

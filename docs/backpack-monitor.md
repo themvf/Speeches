@@ -251,3 +251,76 @@ monthly cost remain null until available. No claim of <$5/month is made without 
 evidence. Billing import and automated cost projection remain
 follow-up work. The monitor still needs the production Helius, Jupiter and Alpaca credentials
 before its first reconciled capture. The cache hook additionally needs its shared secret.
+
+## Provider-free operating tools and research foundation
+
+`/admin/backpack` now presents the latest **stored worker** readiness checks, their timestamps,
+recent runs, per-asset holder/AUM reconciliation and storage alerts. It does not test credentials
+from the web runtime. Checks older than 48 hours display Stale. Administrator authentication is
+required and responses are not publicly cached. Reload reads stored evidence; it does not dispatch
+a capture. Capture completion does not confer human sign-off. The workflow audit artifact remains
+the first-capture review record.
+
+Issuer-neutral tables: `tokenized_security_issuers`, `tokenized_security_assets`,
+`tokenized_security_daily_snapshots`, `tokenized_security_market_snapshots` and relational
+`tokenized_security_market_members`. Backpack, xStocks and Ondo are issuer labels only. Only
+approved Backpack security identities are mirrored automatically; BP and pending entries are
+excluded. Run `python backpack_monitor.py --research` to process stored records without provider
+calls. Daily collection and maintenance also run this step. It preserves captured dates and
+sources and never manufactures observations for competitors. A category denominator requires
+an explicitly defined member universe and comparable verified observations; no denominator is
+populated automatically. Per-asset holder counts must not be summed into category unique users.
+Competitor adapters, approved competitor identities and deduplicated category wallets remain future work.
+
+The environment panel uses persisted, versioned 7D/30D observations with the actual inputs displayed.
+It compares issuance / starting AUM, AUM/meaningful-holder growth, and the current trading window
+against its preceding equal-length window. It requires 14 or 60 consecutive daily observations,
+the same asset identities throughout, complete DEX volume and a positive trading baseline.
+Every equity reference must be timestamped and no more than four days old at capture (closed-market
+references retain their limitations). Partial wallet-sampled volume is never substituted.
+Default thresholds: issuance >1% of starting AUM, AUM and holder growth >1%, trading growth >20%.
+GitHub repository variables `BACKPACK_ISSUANCE_GROWTH_PCT`, `BACKPACK_ADOPTION_GROWTH_PCT` and
+`BACKPACK_TRADING_GROWTH_PCT` configure future captures. Values and methodology are stored on
+historical records; changing configuration never rewrites a past classification. Expansion and
+Accumulation require all three adoption signals; Churn and Stagnant require all three below their
+thresholds. Conflicting adoption signals yield Mixed. Stagnant may include contraction. Missing
+inputs yield Unavailable; old observations display Stale. These are descriptive rules, not forecasts.
+
+The public evidence guide explains registry scope, source statuses, primary-source mint links,
+reference timestamps, price-driven AUM changes and wallet-versus-investor limits.
+
+### Billing import and 7/30-day review
+
+Use a local normalized CSV exported/prepared from authorized billing evidence (no provider APIs
+are called): `python backpack_monitor.py --import-billing billing.csv --cost-report`.
+Header: `date,provider,scope,metric,value,unit,source`.
+Dates represent **UTC daily totals or daily measurements**, not overlapping monthly invoice totals.
+Providers: Neon, Vercel, Helius, Jupiter, Alpaca. Scope is `backpack` only for documented attribution;
+otherwise use `shared`. Source is a credential-free HTTPS invoice/export reference, without query
+parameters. Daily keys are immutable. Identical re-imports are idempotent; conflicting values,
+units or provenance reject the whole import. An incorrect import requires a reviewed correction
+migration rather than silently rewriting evidence.
+
+Supported metric/unit pairs:
+
+| Metric | Unit |
+| --- | --- |
+| cost_usd | USD |
+| compute_cu_hours | CU-hours |
+| egress_bytes | bytes |
+| api_requests | requests |
+| function_invocations | invocations |
+| active_cpu_seconds | seconds |
+| cache_hit_pct | percent |
+| average_payload_bytes | bytes |
+| credits | credits |
+
+`--cost-report` includes the imported measurements with attribution/provenance, provider requests,
+largest tables/indexes, alerts and 7/30-day review windows. Storage-growth projections require
+all daily storage observations including the baseline date; allocated bytes are not billed bytes.
+A 30-day dollar scenario requires explicit Backpack-attributed Neon **and** Vercel cost rows for
+every day of the review window, including explicit zero-cost rows. It extrapolates observed daily
+charges; it does not forecast traffic or apply invented provider rates. Shared-account charges,
+API-provider charges and infrastructure charges remain separate. No cost assertion is made without
+complete attribution. Cache-hit and payload-size values remain dated measurements, not unweighted
+averages of incompatible exports. New export formats require normalization to this contract.

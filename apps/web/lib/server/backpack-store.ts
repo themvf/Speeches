@@ -4,11 +4,11 @@ export async function readBackpack(assetId?:number):Promise<MonitorData>{
  const empty:MonitorData={status:'not_configured',asOf:null,assets:[],history:[],ecosystem:[],bp:[],quality:[],quotes:[],holders:[],dex:[],runs:[],usage:[],whales:[]};
  if(!process.env.DATABASE_URL)return empty;
  const sql=neon(process.env.DATABASE_URL);
- const exists=await sql`SELECT to_regclass('public.backpack_assets') AS registry`;
+ const exists=await sql`SELECT to_regclass('public.backpack_assets') AS registry, to_regclass('public.backpack_environment_daily') AS environment, to_regclass('public.tokenized_security_daily_snapshots') AS competitors`;
  if(!exists[0]?.registry)return {...empty,status:'schema_pending'};
  const latest=await sql`SELECT max(date)::text AS date FROM backpack_asset_daily_snapshots`;
  const day=latest[0]?.date??null;
- const [assets,history,ecosystem,bp,quality,quotes,holders,dex,runs,usage,whales,analytics]=await Promise.all([
+ const [assets,history,ecosystem,bp,quality,quotes,holders,dex,runs,usage,whales,analytics,environment,competitors]=await Promise.all([
   sql`SELECT a.*, s.*, a.id, a.solana_mint, s.date::text AS date FROM backpack_assets a
        LEFT JOIN backpack_asset_daily_snapshots s ON s.asset_id=a.id AND s.date=${day}::date
        WHERE a.active AND (${assetId??null}::bigint IS NULL OR a.id=${assetId??null}) ORDER BY a.asset_type='bp',a.token_symbol`,
@@ -30,7 +30,12 @@ export async function readBackpack(assetId?:number):Promise<MonitorData>{
   sql`SELECT *,date::text AS date FROM backpack_bp_whale_daily_snapshots w
        WHERE w.date=${day}::date AND (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null}) ORDER BY w.date DESC,threshold_usd`,
   sql`SELECT * FROM backpack_analytical_daily_metrics WHERE date=${day}::date`,
+  exists[0]?.environment?sql`SELECT * FROM backpack_environment_daily WHERE date=${day}::date ORDER BY period_days`:Promise.resolve([]),
+  exists[0]?.competitors?sql`SELECT i.id,i.name,count(DISTINCT a.id)::int AS assets,max(s.date)::text AS latest_capture
+      FROM tokenized_security_issuers i LEFT JOIN tokenized_security_assets a ON a.issuer_id=i.id AND a.active
+      LEFT JOIN tokenized_security_daily_snapshots s ON s.asset_id=a.id
+      GROUP BY i.id,i.name ORDER BY i.name`:Promise.resolve([]),
  ]);
  return {status:day?'ready':'awaiting_capture',asOf:day,assets:assets as Row[],history:(history as Row[]).reverse(),
-  ecosystem:(ecosystem as Row[]).reverse(),bp:(bp as Row[]).reverse(),quality:quality as Quality[],quotes:quotes as Row[],holders:holders as Row[],dex:dex as Row[],runs:runs as Row[],usage:usage as Row[],whales:(whales as Row[]).reverse(),analytics:analytics as Row[]};
+  ecosystem:(ecosystem as Row[]).reverse(),bp:(bp as Row[]).reverse(),quality:quality as Quality[],quotes:quotes as Row[],holders:holders as Row[],dex:dex as Row[],runs:runs as Row[],usage:usage as Row[],whales:(whales as Row[]).reverse(),analytics:analytics as Row[],environment:environment as Row[],competitors:competitors as Row[]};
 }

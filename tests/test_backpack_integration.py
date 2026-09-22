@@ -261,3 +261,72 @@ def test_precomputed_metrics_preserve_unknowns_and_reconcile_composition(conn):
     count=len(rows)
     run(conn,FakeProviders())
     assert len(fetch_all(conn,'SELECT * FROM backpack_analytical_daily_metrics'))==count
+
+
+def test_interrupted_asset_transaction_rolls_back_and_retry_preserves_successes(conn,monkeypatch):
+    import backpack.collector as collector
+    a=asset(conn,'mint-interrupt','INTERRUPT')
+    original=collector.persist_holders
+    def interrupted(cur,asset_id,*args):
+        original(cur,asset_id,*args)
+        if asset_id==a:raise RuntimeError('Simulated interrupted commit')
+    monkeypatch.setattr(collector,'persist_holders',interrupted)
+    result=run(conn,FakeProviders())
+    assert result['failed']==1 and result['succeeded']==1
+    for table in ('backpack_asset_daily_snapshots','backpack_current_holders','backpack_holder_checkpoints','backpack_asset_holder_daily_snapshots'):
+        assert not fetch_all(conn,'SELECT * FROM '+table+' WHERE asset_id=%s',(a,))
+    monkeypatch.setattr(collector,'persist_holders',original)
+    retried=run(conn,FakeProviders())
+    assert retried['succeeded']==1 and retried['skipped']==1
+    assert len(fetch_all(conn,'SELECT * FROM backpack_current_holders WHERE asset_id=%s',(a,)))==1
+
+
+def test_incomplete_enumeration_preserves_prior_current_state_and_withholds_analytics(conn):
+    from backpack.collector import collect_asset,calendar_for
+    a=asset(conn,'mint-incomplete','INCOMPLETE')
+    today=datetime.now(timezone.utc).date();yesterday=today-timedelta(days=1)
+    old_run=str(uuid.uuid4())
+    with conn,conn.cursor() as cur:cur.execute('INSERT INTO backpack_ingestion_runs(run_id,snapshot_date) VALUES(%s,%s)',(old_run,yesterday))
+    registry=fetch_all(conn,'SELECT * FROM backpack_assets WHERE id=%s',(a,))[0]
+    collect_asset(conn,FakeProviders(),registry,old_run,yesterday,{},calendar_for(yesterday))
+    p=FakeProviders();original=p.holders
+    p.holders=lambda mint:([{'address':'incomplete','owner':'wrong-owner','amount':1}],100,101) if mint=='mint-incomplete' else original(mint)
+    run(conn,p)
+    state=fetch_all(conn,'SELECT * FROM backpack_current_holders WHERE asset_id=%s',(a,))
+    assert len(state)==1 and state[0]['wallet_address']=='shared-wallet' and state[0]['last_seen_at']==yesterday
+    snap=fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots WHERE asset_id=%s AND date=%s',(a,today))[0]
+    assert snap['holders_complete'] is False and snap['holders_over_100'] is None and snap['new_holders'] is None
+    assert not fetch_all(conn,'SELECT * FROM backpack_holder_events WHERE asset_id=%s',(a,))
+
+
+def test_competitor_mirror_excludes_bp_pending_and_preserves_daily_records(conn):
+    a=asset(conn,'mint-neutral','NEUTRAL');b=asset(conn,'mint-pending','PENDING')
+    with conn,conn.cursor() as cur:cur.execute("UPDATE backpack_assets SET verification_status='pending' WHERE id=%s",(b,))
+    run(conn,FakeProviders())
+    assert len(fetch_all(conn,'SELECT * FROM tokenized_security_assets'))==1
+    rows=fetch_all(conn,'SELECT * FROM tokenized_security_daily_snapshots')
+    assert len(rows)==1 and rows[0]['reference_aum_usd']==20000 and rows[0]['daily_swap_volume_usd'] is None
+    assert not fetch_all(conn,'SELECT * FROM tokenized_security_market_snapshots')
+    assert {r['state'] for r in fetch_all(conn,'SELECT * FROM backpack_environment_daily')}=={'Unavailable'}
+    run(conn,FakeProviders())
+    assert fetch_all(conn,'SELECT * FROM tokenized_security_daily_snapshots')==rows
+
+
+def test_billing_import_is_idempotent_and_conflict_rolls_back_whole_export(conn,tmp_path):
+    from backpack.cost_review import import_billing
+    p=tmp_path/'billing.csv';header='date,provider,scope,metric,value,unit,source\n'
+    first='2026-01-01,Neon,backpack,cost_usd,0.01,USD,https://example.test/invoice\n'
+    p.write_text(header+first);import_billing(conn,p);import_billing(conn,p)
+    p.write_text(header+first.replace('Neon','Vercel')+first.replace('0.01','0.02'))
+    with pytest.raises(ValueError):import_billing(conn,p)
+    rows=fetch_all(conn,'SELECT * FROM backpack_billing_observations')
+    assert len(rows)==1 and rows[0]['value']==D('0.01')
+
+
+def test_operations_sql_executes_without_provider_calls(conn):
+    from pathlib import Path
+    import re
+    source=Path('apps/web/lib/server/backpack-operations.ts').read_text()
+    for stage in range(2):
+        for query in re.findall(r'sql`([^`]+)`',source):fetch_all(conn,query)
+        if stage==0:run(conn,FakeProviders())
