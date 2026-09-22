@@ -1,0 +1,94 @@
+# Backpack on-chain thesis monitor
+
+Implementation branch: `feature/backpack-thesis-monitor`. Entry: `/market/crypto/backpack`.
+This is a Phase 1 implementation with explicit launch gaps, not a claim that all 33 sections of the specification are complete.
+
+## What is implemented
+
+- Dedicated research subpage and per-asset drill-downs. AUM leads; issuance and meaningful wallets sit beside it. Responsive layout, sortable/searchable asset table, 7/30/90/180-day, YTD, 1Y and ALL chart ranges, per-metric evidence and run diagnostics.
+- Postgres registry with manual administrator approval, exact Solana mint validation, evidence URL and approval notes. Securities are never discovered by matching symbols. Admin page `/admin/backpack` and API `/api/admin/backpack` use the existing admin cookie plus route-level authorization and same-origin mutation checks.
+- Daily 00:30 UTC GitHub Actions job, manual admin dispatch, bounded request budget, retry/backoff, per-asset isolation, transactional snapshot writes, primary-key deduplication, expiring database worker lease compatible with Neon transaction pooling. Captured snapshots are immutable on rerun; failed assets can retry.
+- Finalized token supply, paginated Helius token accounts reconciled against supply, owner-aggregated economic cohorts, $100/$1K/$10K/$100K thresholds, raw/economic concentration, exact-decimal supply deltas, reference AUM and on-chain market value.
+- Ecosystem unique meaningful wallets and multi-asset breadth. Each counted asset requires at least $100; aggregate wallet value across securities determines ecosystem meaningful-wallet membership. System exclusions require confirmed/high evidence. Wallet addresses are not counts of known individual investors.
+- Separately seeded BP mint exactly as supplied by the user. Its provenance is **manually approved**, not falsely independently verified. It is unrelated to the existing crypto-workbench `BACKPACK` entry. No staking or circulating-supply estimate is invented.
+- Jupiter Price V3 and optional buy/sell executable-route observations at $1K/$10K/$50K/$100K; failure is N/A. Response route legs are not mislabeled sequential hops: split routes make that equivalence unsafe. Price impact retains the API's percent units.
+- Alpaca SIP stock reference adapter. The existing Yahoo helper has no official exchange feed and drops price timestamps, so it is not used as a silently verified substitute. SIP entitlements are needed.
+- Real Helius outer-swap normalization with transaction/slot/time evidence, deduplication per signature/asset, independent of transfers. The initial activity collector is explicitly a **bounded current-wallet sample**, not complete token-wide transaction indexing.
+- Exchange calendar calculations cover US DST, holidays, weekends and early closes. Closed-market parity remains last-available reference, never an arbitrage alert.
+- Independent RPC supply comparison and highest-liquidity exact-base DexScreener pair price check. Independent pair rolling volume is not silently compared with a full UTC-day ecosystem volume.
+- Mechanically calculated daily changes with exact-date comparisons; no LLM or arbitrary bullish score.
+
+## Required setup
+
+GitHub Actions secrets:
+
+| Secret | Use |
+| --- | --- |
+| `DATABASE_URL` | Existing Neon Postgres database |
+| `HELIUS_API_KEY` | DAS holders and enhanced transaction history |
+| `JUPITER_API_KEY` | Price V3 and route quotes |
+| `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` | Licensed SIP equity snapshots |
+| `SOLANA_VALIDATION_RPC_URL` | Optional independent validation endpoint; public Solana RPC fallback |
+
+The browser never receives these keys. Vercel uses its existing `DATABASE_URL`, `ADMIN_SECRET`, `GITHUB_ACTIONS_TOKEN`, `GITHUB_REPO_OWNER`, `GITHUB_REPO_NAME`, and `GITHUB_DEFAULT_REF` for database reads/admin dispatch.
+
+Initialize with `python backpack_monitor.py --migrate`. Capture with `python backpack_monitor.py --execute`. The scheduled workflow does both. It is active only after the workflow is on the default branch. GitHub scheduling is best effort; timestamps show actual observation time. Exact 00:30 execution is not guaranteed.
+
+Add each security using `/admin/backpack`, with its official mint announcement and an explicit approval. Verify one-token/one-share backing; otherwise the current AUM formula is not valid and the asset must not be approved. Do not import exchange listings, similarly named memecoins, or xStocks as Backpack-issued without issuer evidence. No security mints were seeded without that evidence.
+
+## Observation semantics
+
+Snapshot `date` is the UTC **capture date**, with actual `captured_at`, finalized supply slot, and holder enumeration start/end slots. It is not a fabricated midnight historical state. Activity associated with a capture is the **previous UTC calendar day**. Equity and token price timestamps are retained independently.
+
+Reference AUM is supply times last available underlying reference price. AUM growth can come from underlying price appreciation. Daily net on-chain issuance uses exactly yesterday's supply and today's reference price. Rolling dollar issuance sums those daily dollar changes, requiring all dates; it does not price the whole interval at today's price. Missing previous days produce N/A.
+
+`holder_count` is nonzero token accounts. `unique_holders` combines accounts by owner. Meaningful wallets and economic concentration exclude only registry-labeled systems with confirmed/high confidence. Economic concentration uses the eligible owner balance total as its denominator; raw concentration uses all owner balances. Anonymous omnibus ownership remains unresolved.
+
+The holder enumeration is current paginated data, not an atomic historical snapshot. Totals are withheld when balances do not reconcile within `BACKPACK_SUPPLY_TOLERANCE` (default 0.1%). Its quality is Estimated even after reconciliation. Complete enumeration is necessary to compute new/lost owners and deduplicated ecosystem wallets.
+
+An ecosystem daily row is finalized only after every eligible security has a daily row. Each portfolio metric requires all its asset components; unknown asset AUM never reduces the sum silently. BP is excluded. Comparisons with a different number of covered assets are withheld. Issuer verification and survivorship/cohort changes still require analyst review.
+
+Price parity is a daily observation, not intraday median, p95 or duration. Jupiter's timestamp is obtained from its `blockId`; prices over one hour old carry Stale provenance. BP economic thresholds are withheld if its price is stale.
+
+## DEX coverage limitation: remaining Phase 1 gate
+
+Helius address history for a mint is **not** its entire holder transfer/swap history. Scanning a few current holders also misses sold-out wallets, closed accounts, unsampled wallets and some swap representations. Therefore this implementation stores an observed swap sample, exposes its value and count separately, and leaves **total DEX volume, total unique traders, turnover and total after-hours share NULL**. It does not promote a sample to complete coverage just because pagination finished.
+
+Only outer swaps with a fully USDC-denominated counterpart are given a dollar proxy ($1/USDC), labeled Estimated/Partial. Non-USDC swaps remain unpriced. Nested routing legs are not added again. A mint-wide transaction indexing source with auditable coverage, complete UTC windows and historical pricing is needed to finish the total-volume/unique-trader acceptance gate. Its integration must retain the present deduplication/unknown-value contracts.
+
+The first activity pass scans at most 10 highest-balance owner wallets per asset and at most 3 pages each. Fully processed wallet cursors are stored and used for the next consecutive window. Page gaps do not advance cursors. This is incremental sampled capture, not repeated complete history download.
+
+## Costs and operational limits
+
+Defaults: `BACKPACK_MAX_REQUESTS=500`, `BACKPACK_MAX_HOLDER_PAGES=100`, `BACKPACK_MAX_TX_PAGES_PER_WALLET=3`, `BACKPACK_MAX_ACTIVITY_WALLETS=10`, `BACKPACK_ENABLE_QUOTES=1` in the scheduled workflow. Provider request attempts, including retries, are persisted by run. Provider-specific credit usage and dollar estimates remain N/A until a billing schedule is configured; requests are not falsely equated to credits. The worker has a 20-minute internal deadline and a 30-minute lease; Actions caps the job at 25 minutes.
+
+All asset snapshot/holder/quote/evidence writes are in one transaction. An isolated asset failure rolls back that asset, records a failure, and continues. Already captured assets are skipped before paid requests. Rerunning an incomplete-metric but successfully captured snapshot preserves it, including its unknown fields; late corrections require an explicit future revision mechanism, not silent overwrites.
+
+## Remaining phase work
+
+- Phase 1 launch: official security-mint seeding, real provider credential/entitlement validation, full mint-wide swaps and unique traders, independent volume reconciliation. These are not marked complete.
+- Phase 2: observed protocol/vault attribution, economic wallet-label maintenance UI and audit history, DeFi balances/utilization, full transfers and BP inflow/outflow monitoring, configurable whales, new whales/accumulation, verified circulating supply and >1% alerts. Schema exists, but empty schema is not live functionality.
+- Phase 2 market quality: complete after-hours aggregates, intraday parity distribution/duration, venue distribution and depth, quote quality trend views. Quote observations and calendar/parity safeguards already exist.
+- Phase 3: validated announcement discovery queue, editable milestones/achievement history, anomaly alerts, competitor comparisons. The milestone table exists without a fabricated achievement panel.
+- Historical backfill: requires reproducible archive sources. Live RPC capture rejects prior dates. Nothing is mislabeled as reconstructed history. No trustworthy historical security supply/holder data was available in this implementation session.
+
+## Verification
+
+Run:
+
+```bash
+python -m pytest tests/test_backpack.py -q
+BACKPACK_TEST_DATABASE_URL=postgresql://... python -m pytest tests/test_backpack_integration.py -q
+cd apps/web
+npm run test:backpack
+npm run typecheck
+npm run build
+```
+
+Integration tests create and drop isolated schemas in an explicitly supplied **disposable** database, use deterministic providers, and exercise real SQL writes, transaction rollback, failure isolation, retry idempotency, AUM reconciliation, deduplicated portfolio holders, pending registry exclusion and lease exclusion. CI provisions PostgreSQL 16. Local integration verification used PGlite's PostgreSQL WASM engine over the PostgreSQL wire protocol; it does not replace a production Neon/provider smoke test.
+
+Acceptance tracking: registry/storage/calculation safeguards are implemented and fixture-tested; live checks of provider outputs, official mint evidence, total swap coverage and historical charts against production captures remain open. Do not mark the overall specification complete until those gates and the subsequent phases pass.
+
+Provider contracts: [Helius token accounts](https://www.helius.dev/docs/api-reference/das/gettokenaccounts), [Helius enhanced history](https://www.helius.dev/docs/api-reference/enhanced-transactions/gettransactionsbyaddress), [Jupiter Price](https://developers.jup.ag/docs/price), [Jupiter quote](https://developers.jup.ag/docs/api-reference/swap/v1/quote), [Alpaca SIP snapshots](https://docs.alpaca.markets/us/reference/stocksnapshots-1).
+
+Local verification on 2026-09-22: 20 Python methodology/provider tests, 5 database integration tests, 5 TypeScript methodology tests passed; Next.js production build and targeted ESLint/type checking passed. Browser smoke checks exercised unconfigured and populated fixture states, range selection, search, mobile page width, asset details, unavailable quotes, and unauthenticated admin rejection. UI fixture values were test-only and are not committed as production observations. No production collection or deployment was performed in this session.

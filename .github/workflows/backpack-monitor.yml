@@ -1,0 +1,34 @@
+name: Backpack on-chain thesis monitor
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 0 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: backpack-daily-capture
+  cancel-in-progress: false
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+      JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      SOLANA_VALIDATION_RPC_URL: ${{ secrets.SOLANA_VALIDATION_RPC_URL }}
+      BACKPACK_MAX_REQUESTS: '500'
+      BACKPACK_MAX_ACTIVITY_WALLETS: '10'
+      BACKPACK_ENABLE_QUOTES: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3' 'exchange-calendars>=4.5,<5' pytest
+      - name: Calculation and provider regression gate
+        run: python -m pytest tests/test_backpack.py -q
+      - name: Initialize additive schema and capture current UTC date
+        run: python backpack_monitor.py --migrate --execute
