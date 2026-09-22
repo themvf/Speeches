@@ -173,3 +173,25 @@ def test_starter_registry_revalidates_exact_mints_and_isolates_failures(conn):
     assert not fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots')
     assert seed_starter(conn,p)['failed']==1
     assert len(fetch_all(conn,"SELECT * FROM backpack_assets WHERE asset_type<>'bp'"))==13
+
+
+def test_dashboard_sql_templates_execute_on_empty_and_populated_schema(conn):
+    """Exercise the actual web reader SQL; duplicate date output aliases must not break sorting."""
+    import re
+    from pathlib import Path
+    source=Path('apps/web/lib/server/backpack-store.ts').read_text()
+    templates=re.findall(r'sql`([^`]+)`',source)
+    assert len(templates)>=10
+    def execute(day,asset_id):
+        values={'day':day,'assetId??null':asset_id,'assetId':asset_id}
+        for template in templates:
+            params=[]
+            def bind(match):
+                params.append(values[match.group(1)])
+                return '%s'
+            query=re.sub(r'\$\{([^}]+)\}',bind,template)
+            fetch_all(conn,query,tuple(params))
+    execute(None,None)
+    a=asset(conn,'mint-a','A')
+    run(conn,FakeProviders())
+    execute(datetime.now(timezone.utc).date(),a)

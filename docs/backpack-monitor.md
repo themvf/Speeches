@@ -163,3 +163,23 @@ net issuance shares are N/A when the category denominator is zero/negative or ab
 Only then add configurable 7D/30D adoption/churn states; unavailable complete volume
 means classification is unavailable, never Stagnant. Keep DeFi, extended parity and
 liquidity analytics behind the uninterrupted daily capture priority.
+
+### First production startup result — 2026-09-22 02:36 UTC
+
+Run: https://github.com/themvf/Speeches/actions/runs/35680044903
+
+- Production Postgres schema initialized; connection validated.
+- All 14 curated securities registered after exact official API checks and finalized
+  on-chain mint/decimal validation (slots 449245491–449245507).
+- Secondary public Solana RPC and exact-base BP DexScreener validation succeeded.
+- Helius, Jupiter and Alpaca SIP credentials were absent in the production Actions
+  environment. Required secret names: `HELIUS_API_KEY`, `JUPITER_API_KEY`,
+  `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` (SIP entitlement required).
+- Startup capture was skipped; no dataset was signed off and no missing price/holder
+  observations were replaced with zero. After secrets are configured, run the
+  Backpack workflow manually and review its reconciliation artifact before adding
+  analytical layers. Do not place secrets in source, chat, reports or workflow YAML.
+- Initialization exposed ambiguous `ORDER BY date` expressions in the web reader
+  because both raw and formatted dates had the same output name. Date ordering now
+  uses qualified table columns. Integration tests execute the actual web SQL
+  templates against both empty and populated databases.
