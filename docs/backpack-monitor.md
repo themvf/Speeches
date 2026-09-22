@@ -10,7 +10,7 @@ This is a Phase 1 implementation with explicit launch gaps, not a claim that all
 - Daily 00:30 UTC GitHub Actions job, manual admin dispatch, bounded request budget, retry/backoff, per-asset isolation, transactional snapshot writes, primary-key deduplication, expiring database worker lease compatible with Neon transaction pooling. Captured snapshots are immutable on rerun; failed assets can retry.
 - Finalized token supply, paginated Helius token accounts reconciled against supply, owner-aggregated economic cohorts, $100/$1K/$10K/$100K thresholds, raw/economic concentration, exact-decimal supply deltas, reference AUM and on-chain market value.
 - Ecosystem unique meaningful wallets and multi-asset breadth. Each counted asset requires at least $100; aggregate wallet value across securities determines ecosystem meaningful-wallet membership. System exclusions require confirmed/high evidence. Wallet addresses are not counts of known individual investors.
-- Separately seeded BP mint exactly as supplied by the user. Its provenance is **manually approved**, not falsely independently verified. It is unrelated to the existing crypto-workbench `BACKPACK` entry. No staking or circulating-supply estimate is invented.
+- Separately seeded BP mint exactly as supplied by the user. Its exact mint is now verified against the official Backpack Learn BP contract article (2026-09-22). It is unrelated to the existing crypto-workbench `BACKPACK` entry. No staking or circulating-supply estimate is invented.
 - Jupiter Price V3 and optional buy/sell executable-route observations at $1K/$10K/$50K/$100K; failure is N/A. Response route legs are not mislabeled sequential hops: split routes make that equivalence unsafe. Price impact retains the API's percent units.
 - Alpaca SIP stock reference adapter. The existing Yahoo helper has no official exchange feed and drops price timestamps, so it is not used as a silently verified substitute. SIP entitlements are needed.
 - Real Helius outer-swap normalization with transaction/slot/time evidence, deduplication per signature/asset, independent of transfers. The initial activity collector is explicitly a **bounded current-wallet sample**, not complete token-wide transaction indexing.
@@ -121,3 +121,45 @@ migration adds tables/columns without backfilling fabricated label evidence or
 rewriting old snapshots. This continuation passes 22 Python unit tests, 6 database
 integration tests and 7 TypeScript tests, including price-driven threshold crossings,
 system relabeling, empty vs unknown populations, immutable evidence and reruns.
+
+## Production startup priority (2026-09-22)
+
+The active priority is production evidence before additional analytics. The startup
+workflow runs on main changes to readiness, registry or schema code: initialize,
+probe providers, revalidate/register the curated starter universe, then probe again.
+A push captures only when all readiness checks pass. Scheduled/manual runs continue
+to isolate failed assets; a failing preflight never promotes partial metrics to complete.
+Readiness failures make the job red, even if optional snapshot fields were saved.
+Sanitized JSONL evidence is retained in Actions artifacts for 30 days and readiness
+checks/request counts are stored relationally. Connection/SDK exceptions are reduced
+to their class names; DSNs, headers and response bodies are never emitted.
+
+Commands: `python backpack_monitor.py --migrate --preflight`, `--seed-starter`,
+`--execute`, then `--audit`. The audit uses stored observations only and reports
+supply slots, holder reconciliation, reference/on-chain price timestamps, reproduced
+AUM and quality events. It never marks human sign-off complete. Review raw provider
+observations and official mint evidence before accepting the first production dataset.
+
+The curated starter manifest contains 14 exact identities: AAPL, MSFT, NVDA, AMZN,
+GOOGL, META, TSLA, AVGO, MU, AMD, MSTR, INTC, SNDK and QQQ. Sources:
+- https://api.backpack.exchange/api/v1/assets (exact Solana contract by asset ID)
+- https://api.backpack.exchange/api/v1/securities (explicit securities IDs and names)
+- https://docs.backpack.exchange/ (stock API interpretation)
+- https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt (exchange/type verification)
+- https://learn.backpack.exchange/articles/what-is-backpack-securities (issuer context)
+- https://learn.backpack.exchange/articles/top-stocks-on-solana-to-trade (1:1 redemption)
+- https://learn.backpack.exchange/articles/what-is-bp-backpack-token (exact BP mint)
+
+A runtime mismatch, missing mint or different decimals prevents registration of that
+asset; other assets continue. Existing registry entries are preserved, not silently
+re-approved. No launch dates are invented; disabled withdrawals are not interpreted
+as zero issuance or zero demand. Starter scope is intentionally not the entire market.
+
+After the first production audit: complete token-wide swaps, add AUM composition,
+then implement an issuer-neutral competitor layer for Backpack/xStocks/Ondo. Do not
+create issuer-specific parallel history tables. Category ratios require comparable
+scope, complete denominators, aligned timestamps and deduplicated wallets. Signed
+net issuance shares are N/A when the category denominator is zero/negative or absent.
+Only then add configurable 7D/30D adoption/churn states; unavailable complete volume
+means classification is unavailable, never Stagnant. Keep DeFi, extended parity and
+liquidity analytics behind the uninterrupted daily capture priority.

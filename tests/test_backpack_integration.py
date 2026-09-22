@@ -127,3 +127,49 @@ def test_label_evidence_is_immutable_and_whale_cohorts_are_persisted(conn):
     assert len(fetch_all(conn,'SELECT * FROM backpack_bp_whale_daily_snapshots'))==4
     setup(conn) # additive migration rerun preserves historical evidence
     assert fetch_all(conn,'SELECT label,label_entity,label_confidence,label_source,excluded FROM backpack_asset_holder_daily_snapshots')==labels
+
+
+def test_readiness_missing_credentials_persists_without_fake_capture(conn):
+    from backpack.readiness import preflight, audit
+    p=FakeProviders()
+    result=preflight(conn,p)
+    checks={r['check_name']:r for r in result['checks']}
+    assert not result['ready_for_security_capture']
+    assert checks['helius_das']['status']=='Unavailable'
+    assert checks['starter_universe']['status']=='Unavailable'
+    assert len(fetch_all(conn,'SELECT * FROM backpack_readiness_checks'))==8
+    assert not fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots')
+    assert audit(conn)['assets']==[]
+    assert fetch_all(conn,"SELECT verification_status FROM backpack_assets WHERE asset_type='bp'")[0]['verification_status']=='official'
+
+
+def test_audit_reproduces_aum_but_does_not_claim_signoff(conn):
+    from backpack.readiness import audit
+    asset(conn,'mint-a','A')
+    run(conn,FakeProviders())
+    result=audit(conn)
+    row=next(r for r in result['assets'] if r['symbol']=='A')
+    assert row['stored_reference_aum']==row['reproduced_reference_aum']==20000
+    assert row['holder_supply_difference']==0
+    assert row['total_swap_volume'] is None
+    assert result['manual_signoff'].startswith('Required')
+
+
+def test_starter_registry_revalidates_exact_mints_and_isolates_failures(conn):
+    import json
+    from pathlib import Path
+    from backpack.registry import seed_starter
+    manifest=json.loads(Path('backpack/starter_universe.json').read_text())['assets']
+    primary=[dict(symbol=r['token_symbol'],tokens=[dict(blockchain='Solana',contractAddress=r['solana_mint'])]) for r in manifest]
+    primary[0]['tokens'][0]['contractAddress']='WRONG_MINT'
+    securities=[dict(asset=r['token_symbol'],name=r['underlying_name'],cusip=r['cusip']) for r in manifest]
+    p=FakeProviders()
+    p.request=lambda provider,method,url: primary if url.endswith('/assets') else securities
+    result=seed_starter(conn,p)
+    assert result['failed']==1
+    registered=fetch_all(conn,"SELECT * FROM backpack_assets WHERE asset_type<>'bp'")
+    assert len(registered)==13
+    assert all(r['verification_status']=='official' and r['launch_date'] is None for r in registered)
+    assert not fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots')
+    assert seed_starter(conn,p)['failed']==1
+    assert len(fetch_all(conn,"SELECT * FROM backpack_assets WHERE asset_type<>'bp'"))==13
