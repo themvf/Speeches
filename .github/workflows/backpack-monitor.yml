@@ -21,6 +21,8 @@ jobs:
       JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
       ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
       ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      # Capture on-chain evidence without requiring licensed stock references.
+      BACKPACK_REQUIRE_EQUITY_REFERENCE: ${{ vars.BACKPACK_REQUIRE_EQUITY_REFERENCE || '0' }}
       SOLANA_VALIDATION_RPC_URL: ${{ secrets.SOLANA_VALIDATION_RPC_URL }}
       BACKPACK_REVALIDATE_SECRET: ${{ secrets.BACKPACK_REVALIDATE_SECRET }}
       BACKPACK_DATABASE_ALLOWANCE_BYTES: ${{ vars.BACKPACK_DATABASE_ALLOWANCE_BYTES }}

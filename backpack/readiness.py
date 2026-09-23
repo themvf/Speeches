@@ -52,10 +52,18 @@ def preflight(conn, provider=None):
     assets=fetch_all(conn,"SELECT id FROM backpack_assets WHERE active AND asset_type<>'bp' AND verification_status IN ('official','manual_approved') AND (launch_date IS NULL OR launch_date<=current_date)")
     checks.append(dict(check_name='starter_universe',status='Verified' if assets else 'Unavailable',
                        detail=str(len(assets))+' approved securities; provider probes do not establish mint identity'))
+    require_equity=p.env.get('BACKPACK_REQUIRE_EQUITY_REFERENCE','1')!='0'
+    if not require_equity:
+        equity_check=next(r for r in checks if r['check_name']=='alpaca_sip')
+        equity_check['detail']+='; optional for capture. Missing equity references leave stock-dependent metrics unavailable'
+    ready_for_capture=all(r['status']=='Verified' for r in checks
+                          if require_equity or r['check_name']!='alpaca_sip')
     with conn,conn.cursor() as cur:
         insert_many(cur,'backpack_readiness_checks',[dict(r,run_id=run_id) for r in checks])
         insert_many(cur,'backpack_readiness_usage',[dict(run_id=run_id,provider=k,requests=v) for k,v in p.usage.items()])
     return dict(run_id=run_id,checked_at=datetime.now(timezone.utc).isoformat(),
+                ready_for_capture=ready_for_capture,
+                equity_reference_required=require_equity,
                 ready_for_security_capture=all(r['status']=='Verified' for r in checks),checks=checks,
                 provider_requests=dict(p.usage),manual_signoff='Not performed')
 

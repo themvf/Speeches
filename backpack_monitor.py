@@ -34,7 +34,7 @@ def main():
         if args.preflight:
             result=preflight(conn)
             print(json.dumps(result,default=str))
-            failed=failed or not result['ready_for_security_capture']
+            failed=failed or not result['ready_for_capture']
         if args.execute:
             result=run(conn)
             print(json.dumps(result,default=str))

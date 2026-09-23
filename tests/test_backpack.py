@@ -7,6 +7,39 @@ from backpack.providers import Providers, SourceError
 from backpack.collector import calendar_for
 
 
+@pytest.mark.parametrize('mode,alpaca,helius,ready,full', [
+    ('0','missing',True,True,False),
+    ('0','failed',True,True,False),
+    ('0','working',True,True,True),
+    ('1','missing',True,False,False),
+    (None,'missing',True,False,False),
+    ('0','missing',False,False,False),
+])
+def test_readiness_optional_equity(monkeypatch,mode,alpaca,helius,ready,full):
+    from unittest.mock import MagicMock
+    from backpack import readiness
+    env={'JUPITER_API_KEY':'test'}
+    if mode is not None: env['BACKPACK_REQUIRE_EQUITY_REFERENCE']=mode
+    if helius: env['HELIUS_API_KEY']='test'
+    if alpaca!='missing': env.update(ALPACA_API_KEY='test',ALPACA_SECRET_KEY='test')
+    p=Mock(env=env,usage={})
+    p.rpc.side_effect=lambda method,*args: {'token_accounts':[], 'last_indexed_slot':1} if method=='getTokenAccounts' else 1
+    p.price.return_value=(D(1),datetime.now(timezone.utc))
+    p.validation_market.return_value={'priceUsd':'1'}
+    if alpaca=='failed': p.equity.side_effect=SourceError('No SIP entitlement')
+    else: p.equity.return_value=(D(100),datetime.now(timezone.utc),D(99))
+    monkeypatch.setattr(readiness,'fetch_all',lambda *args:[{'id':1}])
+    persisted=[]
+    monkeypatch.setattr(readiness,'insert_many',lambda cur,table,rows: persisted.extend(rows) if table=='backpack_readiness_checks' else None)
+    result=readiness.preflight(MagicMock(),p)
+    assert result['ready_for_capture'] is ready
+    assert result['ready_for_security_capture'] is full
+    equity=next(r for r in persisted if r['check_name']=='alpaca_sip')
+    assert equity['status']==('Verified' if alpaca=='working' else 'Unavailable')
+    if mode=='0': assert 'optional for capture' in equity['detail']
+    if alpaca=='missing': p.equity.assert_not_called()
+
+
 def test_unknown_never_zero():
     assert number(None) is None
     assert number('NaN') is None

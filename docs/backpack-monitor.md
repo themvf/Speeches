@@ -27,10 +27,23 @@ GitHub Actions secrets:
 | `DATABASE_URL` | Existing Neon Postgres database |
 | `HELIUS_API_KEY` | DAS holders and enhanced transaction history |
 | `JUPITER_API_KEY` | Price V3 and route quotes |
-| `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` | Licensed SIP equity snapshots |
+| `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` | Optional licensed SIP equity snapshots |
 | `SOLANA_VALIDATION_RPC_URL` | Optional independent validation endpoint; public Solana RPC fallback |
 
 The browser never receives these keys. Vercel uses its existing `DATABASE_URL`, `ADMIN_SECRET`, `GITHUB_ACTIONS_TOKEN`, `GITHUB_REPO_OWNER`, `GITHUB_REPO_NAME`, and `GITHUB_DEFAULT_REF` for database reads/admin dispatch.
+
+The scheduled workflow defaults `BACKPACK_REQUIRE_EQUITY_REFERENCE` to `0`, allowing
+on-chain capture with Helius and Jupiter when Alpaca is unavailable. Set that GitHub
+repository variable to `1` to require Alpaca again. Local preflight defaults to the
+strict mode; set the environment variable to `0` for the same limited-data mode.
+`ready_for_capture` controls the preflight exit status; `ready_for_security_capture`
+still reports full readiness including equity references. The Alpaca check remains
+Unavailable when missing or failing, with an explanation that it is optional for
+capture. All other readiness checks remain required. Stock-reference AUM, dollar
+issuance, securities dollar-based holder metrics, premium/discount and dependent
+growth assessments stay unavailable without a usable equity reference. On-chain
+supply, holder counts, token prices, quotes and sampled swaps can still be captured;
+BP metrics continue to use Jupiter prices. Missing metrics are never replaced by zero.
 
 Initialize with `python backpack_monitor.py --migrate`. Capture with `python backpack_monitor.py --execute`. The scheduled workflow does both. It is active only after the workflow is on the default branch. GitHub scheduling is best effort; timestamps show actual observation time. Exact 00:30 execution is not guaranteed.
 
