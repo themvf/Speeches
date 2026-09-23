@@ -80,3 +80,21 @@ def test_different_token_denominations_do_not_change_supply_growth():
     other=deepcopy(rows)
     for r in other:r['assets']['1']['supply']=str(D(r['assets']['1']['supply'])*1000000000)
     assert assess(other,date.fromisoformat(rows[-1]['date']),30)==before
+
+
+def test_unissued_assets_do_not_block_growth_but_new_issuance_needs_baseline():
+    rows=history(31);day=date.fromisoformat(rows[-1]['date'])
+    for r in rows:r['assets']['dormant']=dict(supply='0',holders=0)
+    result=assess(rows,day,30)
+    assert result['state']=='Growing slowly' and result['unissued_securities']==1
+    assert result['expanding_supply_pct']==100
+    rows[-1]['assets']['dormant']['supply']='10'
+    assert assess(rows,day,30)['state']=='Insufficient evidence'
+
+
+def test_full_redemption_is_decline_not_missing_evidence():
+    rows=history(31,-1,-1);day=date.fromisoformat(rows[-1]['date'])
+    for a in rows[-1]['assets'].values():a.update(supply='0',holders=0)
+    rows[-1].update(holders=0,whole_token_holders=0,multi_asset_holders=0)
+    result=assess(rows,day,30)
+    assert result['state']=='Declining' and result['median_supply_growth_pct']==-100
