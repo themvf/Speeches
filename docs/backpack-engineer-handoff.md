@@ -19,7 +19,8 @@ Read [backpack-monitor.md](backpack-monitor.md), especially the **Price-independ
 - Current baseline counts display before a growth window is available. The default comparison is 7 days; 30 and 90 are selectable. Momentum is separate from growth speed.
 - [Production derivation run](https://github.com/themvf/Speeches/actions/runs/35807982294) succeeded. It preserved all 15 existing snapshots (`15 skipped`, `0 failed`) and derived the new adoption records from their stored evidence. This was not a second collection or a backfill from current balances.
 - Vercel reported successful production deployment for the merge. Production audit records were verified; the deployed screen was not independently browser-inspected after that deployment. Local browser fixtures were checked.
-- This handoff's accompanying small correction handles registered securities with consistently zero supply: omit them from percentage-growth/breadth denominators, keep the registered cohort stable, and require a positive baseline when a security first issues. A full redemption to zero remains measurable as contraction. See the tests and commit history associated with this document for that follow-up.
+- [PR #135](https://github.com/themvf/Speeches/pull/135) merged to `main` as [`6aca5f9`](https://github.com/themvf/Speeches/commit/6aca5f97dc372be8e6bb8c6a4444cc00882e1f6c). It adds this handoff and handles registered securities with consistently zero supply: omit them from percentage-growth/breadth denominators, keep the registered cohort stable, and require a positive baseline when a security first issues. A full redemption to zero remains measurable as contraction.
+- The [follow-up production workflow](https://github.com/themvf/Speeches/actions/runs/35808509992) and Vercel production deployment both completed successfully after PR #135.
 
 ## Verified production baseline
 
@@ -130,7 +131,7 @@ Download the `backpack-readiness-<RUN_ID>` artifact and inspect its readiness, r
 ## Validation completed
 
 - PR #134: 70 Python tests including PostgreSQL 16 integration; 8 TypeScript tests; all final CI gates passed.
-- Follow-up zero-supply cases: 52 local Python unit tests passed (the prior 50 plus dormant-registration and full-redemption regressions).
+- PR #135: 72 Python unit/PostgreSQL integration tests and 8 TypeScript tests passed on its final commit; all PR checks and Vercel preview passed. This includes dormant-registration and full-redemption regressions.
 - Type checking, targeted ESLint, local production build and Vercel preview/production builds passed.
 - Local browser fixtures checked baseline counts, 7/30-day switching, rapid-but-slowing states, runtime errors and mobile overflow. Screenshots inspected; fixtures were never persisted to production.
 - Production run verified the real baseline above and immutable reuse of 15 snapshots.
@@ -157,7 +158,7 @@ Integration tests skip without the explicit disposable database variable. CI pro
 
 - Verify successive scheduled runs actually arrive; GitHub schedules are best effort.
 - Check no missing/incomplete day or provider budget failure interrupts the series.
-- Confirm the zero-supply follow-up passes final CI and is on `main`; test stable unissued assets, first issuance, full redemption and changing issued cohorts in production-like fixtures.
+- Watch the first real issuance of any currently unissued security: confirm comparison windows wait for a positive baseline and do not treat new coverage as comparable growth. The zero-supply handling and redemption regressions are already on `main`.
 - At the first eligible 7-day window, manually reconcile deduplicated holders, per-security supply changes, breadth and the classified state against retained observations.
 - Show insufficient evidence until requirements are satisfied. Do not manufacture earlier history from today's balances or stock-price history.
 
