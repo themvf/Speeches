@@ -346,3 +346,25 @@ def test_growth_assessments_persist_without_promoting_insufficient_history(conn)
     assert all(r['state']=='Insufficient evidence' and r['net_issuance_usd'] is None for r in rows)
     run(conn,FakeProviders())
     assert fetch_all(conn,'SELECT * FROM backpack_growth_daily ORDER BY period_days')==rows
+
+
+def test_price_independent_adoption_persists_and_survives_raw_retention(conn):
+    from backpack.adoption import capture_adoption
+    asset(conn,'mint-adopt-a','A');asset(conn,'mint-adopt-b','B')
+    p=FakeProviders()
+    def no_equity(symbol):raise SourceError('No equity credentials')
+    p.equity=no_equity
+    result=run(conn,p)
+    assert result['status']=='completed'
+    day=datetime.now(timezone.utc).date()
+    rows=fetch_all(conn,'SELECT data FROM backpack_adoption_daily')
+    assert len(rows)==1
+    assert rows[0]['data']['holders']==1 and rows[0]['data']['multi_asset_holders']==1
+    assert len(rows[0]['data']['assets'])==2  # BP excluded; shared owners deduplicated.
+    assert all(r['reference_aum_usd'] is None for r in fetch_all(conn,'SELECT reference_aum_usd FROM backpack_ecosystem_daily_snapshots'))
+    assessments=fetch_all(conn,'SELECT data FROM backpack_adoption_assessments ORDER BY period_days')
+    assert len(assessments)==3 and all(r['data']['state']=='Insufficient evidence' for r in assessments)
+    with conn,conn.cursor() as cur:cur.execute('DELETE FROM backpack_asset_holder_daily_snapshots')
+    capture_adoption(conn,day,{'BACKPACK_ADOPTION_RAPID_PCT_30D':'20'})
+    assert fetch_all(conn,'SELECT data FROM backpack_adoption_daily')==rows
+    assert fetch_all(conn,'SELECT data FROM backpack_adoption_assessments ORDER BY period_days')==assessments

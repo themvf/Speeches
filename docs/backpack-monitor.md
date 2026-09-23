@@ -5,6 +5,8 @@ This is a Phase 1 implementation with explicit launch gaps, not a claim that all
 
 ## What is implemented
 
+**Current lead assessment (2026-09-23):** the user's clarification prioritizes rapid/slow/status-quo/declining adoption independent of stock prices. The price-independent adoption overview below supersedes the price-required headline described in the older Growth overview section. Original financial metrics and stored `growth-v1` assessments remain unchanged as supporting evidence.
+
 - Dedicated research subpage and per-asset drill-downs. AUM leads; issuance and meaningful wallets sit beside it. Responsive layout, sortable/searchable asset table, 7/30/90/180-day, YTD, 1Y and ALL chart ranges, per-metric evidence and run diagnostics.
 - Postgres registry with manual administrator approval, exact Solana mint validation, evidence URL and approval notes. Securities are never discovered by matching symbols. Admin page `/admin/backpack` and API `/api/admin/backpack` use the existing admin cookie plus route-level authorization and same-origin mutation checks.
 - Daily 00:30 UTC GitHub Actions job, manual admin dispatch, bounded request budget, retry/backoff, per-asset isolation, transactional snapshot writes, primary-key deduplication, expiring database worker lease compatible with Neon transaction pooling. Captured snapshots are immutable on rerun; failed assets can retry.
@@ -340,6 +342,8 @@ averages of incompatible exports. New export formats require normalization to th
 
 ## Growth overview: adoption direction, independent of trading
 
+This section describes the retained financial `growth-v1` method, not the current lead headline. See the price-independent amendment below.
+
 The lead overview answers whether the **tracked Backpack securities ecosystem** is growing,
 growing but slowing, declining, or mixed/flat. BP ownership remains a separate card. This is
 independent of the trading/adoption quadrant: missing market-wide DEX volume does not prevent
@@ -374,3 +378,69 @@ Endpoint AUM attribution uses `(S1-S0)*P0` for supply and `S1*(P1-P0)` for price
 These sum exactly to endpoint AUM change, assigning the cross-term to price. They intentionally
 differ from net issuance valued at each daily reference price; none are described as verified
 customer deposits. Network growth can diverge from BP price, and no buy/sell score is generated.
+
+## Price-independent adoption amendment — 2026-09-23
+
+Review basis: this document and implementation/acceptance history in PRs #127–#133.
+The original foundation measures capital, ownership and financial use separately;
+the later overview explicitly excludes trading and BP price from the network headline.
+The user's subsequent clarification removes stock-price dependence from that headline.
+No original 33-section source specification is stored in this repository; this amendment
+does not claim to complete the remaining DEX, DeFi, circulation or competitor phases.
+
+The lead question is whether **tracked Backpack securities adoption** is growing rapidly,
+growing slowly, status quo or declining. It does not measure Backpack exchange customers,
+deposits, revenue or all Backpack products. BP ownership remains separate.
+
+`backpack_adoption_daily` stores permanent, small, price-independent daily summaries:
+deduplicated nonzero owners, wallets with at least two securities, wallets with at least
+one whole token in any security, and each security's supply and non-system owner count.
+Any wallet excluded as a verified system on any tracked security is excluded globally.
+An exclusion-set fingerprint prevents label changes from being interpreted as growth.
+Raw owner rows are not duplicated in the summary. All asset enumerations must have been
+marked complete and supply-reconciled, and retained owner counts must match snapshots.
+Partial/expired raw history cannot generate a summary. Existing summaries survive raw retention.
+
+`backpack_adoption_assessments` preserves 7/30/90-day results, actual inputs, thresholds,
+method version and explanations. Each window needs 8/31/91 consecutive complete daily
+summaries for exactly the same securities and exclusions. Adjacent-window momentum needs
+15/61/181. Missing days, zero supply/holder baselines and cohort changes remain insufficient
+evidence. Summaries and assessments are immutable; `--research` can derive them from retained
+historical observations without provider calls or changing original snapshots.
+
+Supply growth is calculated separately for each security and combined using the median;
+unlike token units are never summed. The median describes a typical security, not total
+capital. Holder and median supply changes are normalized linearly to a 30-day equivalent
+(observed percent × 30 / period); this is a comparison convention, not a forecast.
+
+Default rules (configurable GitHub variables, stored with each assessment):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `BACKPACK_ADOPTION_HOLDER_PCT_30D` | 1 | Positive/negative ownership noise band |
+| `BACKPACK_ADOPTION_SUPPLY_PCT_30D` | 0.1 | Positive/negative median supply noise band |
+| `BACKPACK_ADOPTION_RAPID_PCT_30D` | 10 | Rapid ownership growth threshold |
+| `BACKPACK_ADOPTION_BREADTH_PCT` | 60 | Minimum share of securities confirming growth/contraction |
+| `BACKPACK_ADOPTION_MOMENTUM_PP` | 0.25 | Minimum joint change in rates for momentum |
+
+- Growing slowly: holders and median supply exceed positive bands, and at least 60% of
+  securities gain holders and at least 60% expand supply above its band.
+- Growing rapidly: those conditions plus ownership growth at least 10% on the normalized basis.
+- Declining: both rates below negative bands and at least 60% confirm each contraction signal.
+- Status quo: both aggregate rates within the bands. Individual securities may offset;
+  breadth is always displayed.
+- Mixed: conflicting/insufficiently broad signals. If nonzero ownership grows while the
+  one-token holder comparison is available but flat/negative, growth is downgraded to Mixed.
+- Momentum: both normalized rates increase/decrease more than 0.25 points against the
+  previous equal-length window. Rapid growth can be Slowing; contraction can be easing.
+
+These are explicit research conventions, not validated universal definitions of rapid growth.
+Nonzero wallets are **not** renamed meaningful holders: existing $100/$1K cohorts retain their
+definitions and require price evidence. One-token sensitivity is not a dollar or economic cutoff.
+Dust, Sybil wallets, unlabeled custody and internal transfers can distort adoption. No retention
+rate or unique-person claim is inferred from aggregate owner counts.
+
+The UI shows real baseline counts before enough history exists, explains the observation
+requirement, defaults to 7 days, and leads its security table with supply/owners/token deltas.
+Original capital/trading/DeFi panels remain available in supporting evidence. Missing chart
+days are explicit gaps. New schema and worker derivation must run before the new reader is populated.

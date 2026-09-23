@@ -272,6 +272,13 @@ CREATE TABLE IF NOT EXISTS backpack_billing_observations (
  value numeric NOT NULL CHECK(value>=0), unit text NOT NULL, source text NOT NULL,
  imported_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(date,provider,scope,metric)
 );
+CREATE TABLE IF NOT EXISTS backpack_adoption_daily (
+ date date PRIMARY KEY, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS backpack_adoption_assessments (
+ date date, period_days int CHECK(period_days IN (7,30,90)), data jsonb NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(date,period_days)
+);
 CREATE TABLE IF NOT EXISTS backpack_growth_daily (
  date date, period_days int CHECK(period_days IN (7,30,90)), state text NOT NULL, momentum text NOT NULL,
  reason text NOT NULL, issuance_threshold_pct numeric NOT NULL, holder_threshold_pct numeric NOT NULL,
