@@ -168,11 +168,15 @@ def test_starter_registry_revalidates_exact_mints_and_isolates_failures(conn):
     result=seed_starter(conn,p)
     assert result['failed']==1
     registered=fetch_all(conn,"SELECT * FROM backpack_assets WHERE asset_type<>'bp'")
-    assert len(registered)==13
-    assert all(r['verification_status']=='official' and r['launch_date'] is None for r in registered)
+    assert len(registered)==len(manifest)-1
+    assert all(r['verification_status']=='official' for r in registered)
+    assert all(r['registry_status'] in ('registered','launched') for r in registered)
+    assert len(fetch_all(conn,'SELECT * FROM backpack_asset_registry_daily'))==len(manifest)-1
+    assert fetch_all(conn,'SELECT * FROM backpack_external_observations')
+    assert fetch_all(conn,'SELECT * FROM backpack_economy_events')
     assert not fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots')
     assert seed_starter(conn,p)['failed']==1
-    assert len(fetch_all(conn,"SELECT * FROM backpack_assets WHERE asset_type<>'bp'"))==13
+    assert len(fetch_all(conn,"SELECT * FROM backpack_assets WHERE asset_type<>'bp'"))==len(manifest)-1
 
 
 def test_dashboard_sql_templates_execute_on_empty_and_populated_schema(conn):

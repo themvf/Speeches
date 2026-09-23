@@ -1,0 +1,64 @@
+{
+  "events": [
+    {
+      "event_key": "backpack-spcx-launch-2026-06-13",
+      "event_at": "2026-06-13T00:00:00+00:00",
+      "event_type": "security_launch",
+      "title": "Backpack introduces tokenized SpaceX",
+      "description": "Backpack announced SPCX as a self-custodied tokenized security on Solana with 1:1 redemption through Backpack Securities.",
+      "asset_symbols": ["SPCX.US"],
+      "source_url": "https://learn.backpack.exchange/blog/tokenized-spacex-spcx",
+      "evidence_status": "Verified",
+      "campaign_end_at": null,
+      "limitation": "The announcement date is context, not proof that it caused subsequent trading or ownership changes."
+    },
+    {
+      "event_key": "backpack-mu-launch-2026-06-22",
+      "event_at": "2026-06-22T00:00:00+00:00",
+      "event_type": "security_launch",
+      "title": "Backpack introduces tokenized Micron",
+      "description": "Backpack announced MU as its second tokenized security under the redeemable securities framework.",
+      "asset_symbols": ["MU.US"],
+      "source_url": "https://learn.backpack.exchange/blog/tokenized-micron-mu",
+      "evidence_status": "Verified",
+      "campaign_end_at": null,
+      "limitation": "The announcement date is context, not proof that it caused subsequent trading or ownership changes."
+    },
+    {
+      "event_key": "backpack-24-7-equities-2026-07-10",
+      "event_at": "2026-07-10T10:00:00+00:00",
+      "event_type": "product_launch",
+      "title": "Backpack announces 24/7 market for selected equities",
+      "description": "Backpack announced continuous trading for selected equities and named SPCX, MU and SNDK among the first products.",
+      "asset_symbols": ["SPCX.US", "MU.US", "SNDK.US"],
+      "source_url": "https://www.globenewswire.com/news-release/2026/07/10/3325394/0/en/backpack-launches-first-24-7-market-for-real-u-s-equities.html",
+      "evidence_status": "Verified",
+      "campaign_end_at": null,
+      "limitation": "This is an issuer press release. Product availability does not establish user adoption."
+    }
+  ],
+  "external_observations": [
+    {
+      "evidence_key": "token-terminal-backpack-dex-volume-change-2026-09-18",
+      "metric": "dex_volume_change_usd",
+      "scope_type": "issuer",
+      "scope_id": "backpack",
+      "period_start": null,
+      "period_end": null,
+      "comparison_start": null,
+      "comparison_end": null,
+      "period_days": 7,
+      "value": "193300000",
+      "unit": "USD",
+      "observation_kind": "change",
+      "source_url": "https://x.com/tokenterminal/status/2101020661603041541",
+      "source_publisher": "Token Terminal",
+      "published_at": "2026-09-18T00:00:00+00:00",
+      "primary_source_url": "https://x.com/tokenterminal/status/2101020661603041541",
+      "methodology": "Reported change in DEX trading volume for Backpack-issued tokenized stocks versus the immediately preceding seven-day period.",
+      "coverage_status": "Partial",
+      "review_status": "approved",
+      "limitation": "This is a week-over-week change, not total seven-day volume. Exact window dates, underlying totals and reproducible query details were not published in the post."
+    }
+  ]
+}

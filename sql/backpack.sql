@@ -7,10 +7,27 @@ CREATE TABLE IF NOT EXISTS backpack_assets (
  source_verified_at timestamptz, verification_status text NOT NULL DEFAULT 'pending'
  CHECK(verification_status IN ('pending','official','manual_approved')),
  approval_notes text, active boolean NOT NULL DEFAULT true,
+ registry_status text NOT NULL DEFAULT 'registered'
+ CHECK(registry_status IN ('registered','launched','paused','redeemed','inactive')),
+ first_official_seen_at timestamptz, last_official_seen_at timestamptz,
+ launch_evidence_source text, redemption_evidence_source text,
+ deposit_enabled boolean, withdraw_enabled boolean, identity_fingerprint text,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
  CHECK(asset_type <> 'bp' OR solana_mint='BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy'),
  CHECK(verification_status='pending' OR source_verified_at IS NOT NULL)
 );
+ALTER TABLE backpack_assets ADD COLUMN IF NOT EXISTS registry_status text NOT NULL DEFAULT 'registered';
+ALTER TABLE backpack_assets ADD COLUMN IF NOT EXISTS first_official_seen_at timestamptz;
+ALTER TABLE backpack_assets ADD COLUMN IF NOT EXISTS last_official_seen_at timestamptz;
+ALTER TABLE backpack_assets ADD COLUMN IF NOT EXISTS launch_evidence_source text;
+ALTER TABLE backpack_assets ADD COLUMN IF NOT EXISTS redemption_evidence_source text;
+ALTER TABLE backpack_assets ADD COLUMN IF NOT EXISTS deposit_enabled boolean;
+ALTER TABLE backpack_assets ADD COLUMN IF NOT EXISTS withdraw_enabled boolean;
+ALTER TABLE backpack_assets ADD COLUMN IF NOT EXISTS identity_fingerprint text;
+DO $$ BEGIN
+ ALTER TABLE backpack_assets ADD CONSTRAINT backpack_assets_registry_status_check
+ CHECK(registry_status IN ('registered','launched','paused','redeemed','inactive'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS backpack_one_bp ON backpack_assets(asset_type) WHERE asset_type='bp';
 CREATE TABLE IF NOT EXISTS backpack_ingestion_runs (
  run_id uuid PRIMARY KEY, snapshot_date date NOT NULL, started_at timestamptz NOT NULL DEFAULT now(),
@@ -290,3 +307,53 @@ CREATE TABLE IF NOT EXISTS backpack_growth_daily (
  significance_threshold_usd numeric, supply_effect_usd numeric, price_effect_usd numeric, methodology text NOT NULL,
  PRIMARY KEY(date,period_days)
 );
+
+-- Phase A: immutable official-universe reconciliation and sourced context.
+CREATE TABLE IF NOT EXISTS backpack_asset_registry_daily (
+ asset_id bigint REFERENCES backpack_assets, date date,
+ official_present boolean NOT NULL, deposit_enabled boolean, withdraw_enabled boolean,
+ token_supply numeric, lifecycle_state text NOT NULL
+ CHECK(lifecycle_state IN ('registered','launched','paused','redeemed','inactive')),
+ source text NOT NULL, observed_at timestamptz NOT NULL,
+ methodology_version text NOT NULL, quality_status text NOT NULL
+ CHECK(quality_status IN ('Verified','Estimated','Partial','Stale','Unavailable')),
+ limitation text NOT NULL DEFAULT '', identity_fingerprint text NOT NULL,
+ PRIMARY KEY(asset_id,date)
+);
+CREATE INDEX IF NOT EXISTS backpack_registry_daily_date ON backpack_asset_registry_daily(date);
+
+CREATE TABLE IF NOT EXISTS backpack_registry_candidates_daily (
+ date date, token_symbol text, solana_mint text, token_name text NOT NULL,
+ decimals int, deposit_enabled boolean, withdraw_enabled boolean,
+ security_name text, cusip text, match_status text NOT NULL
+ CHECK(match_status IN ('approved','unresolved','conflict')),
+ matched_asset_id bigint REFERENCES backpack_assets, source text NOT NULL,
+ observed_at timestamptz NOT NULL, detail text NOT NULL,
+ PRIMARY KEY(date,token_symbol,solana_mint)
+);
+CREATE INDEX IF NOT EXISTS backpack_registry_candidates_status ON backpack_registry_candidates_daily(date,match_status);
+
+CREATE TABLE IF NOT EXISTS backpack_external_observations (
+ id bigserial PRIMARY KEY, evidence_key text NOT NULL UNIQUE, metric text NOT NULL,
+ scope_type text NOT NULL, scope_id text NOT NULL,
+ period_start date, period_end date, comparison_start date, comparison_end date,
+ period_days int, value numeric, unit text NOT NULL,
+ observation_kind text NOT NULL CHECK(observation_kind IN ('total','change','percentage','share','rank')),
+ source_url text NOT NULL, source_publisher text NOT NULL, published_at timestamptz NOT NULL,
+ primary_source_url text, methodology text NOT NULL,
+ coverage_status text NOT NULL CHECK(coverage_status IN ('Verified','Estimated','Partial','Unavailable')),
+ review_status text NOT NULL CHECK(review_status IN ('pending','approved','rejected','superseded')),
+ limitation text NOT NULL, recorded_at timestamptz NOT NULL DEFAULT now(),
+ recorded_by text NOT NULL DEFAULT 'committed_evidence'
+);
+CREATE INDEX IF NOT EXISTS backpack_external_observations_metric ON backpack_external_observations(metric,published_at DESC);
+
+CREATE TABLE IF NOT EXISTS backpack_economy_events (
+ event_key text PRIMARY KEY, event_at timestamptz NOT NULL, event_type text NOT NULL,
+ title text NOT NULL, description text NOT NULL, asset_symbols jsonb NOT NULL DEFAULT '[]'::jsonb,
+ source_url text NOT NULL, evidence_status text NOT NULL
+ CHECK(evidence_status IN ('Verified','Estimated','Partial','Unavailable')),
+ campaign_end_at timestamptz, limitation text NOT NULL DEFAULT '',
+ recorded_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS backpack_economy_events_at ON backpack_economy_events(event_at DESC);

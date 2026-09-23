@@ -1,14 +1,14 @@
 import {neon} from '@neondatabase/serverless';
 import type {MonitorData, Quality, Row} from '@/lib/backpack';
 export async function readBackpack(assetId?:number):Promise<MonitorData>{
- const empty:MonitorData={status:'not_configured',asOf:null,assets:[],history:[],ecosystem:[],bp:[],quality:[],quotes:[],holders:[],dex:[],runs:[],usage:[],whales:[]};
+ const empty:MonitorData={status:'not_configured',asOf:null,assets:[],history:[],ecosystem:[],bp:[],quality:[],quotes:[],holders:[],dex:[],runs:[],usage:[],whales:[],registryCandidates:[],externalObservations:[],economyEvents:[]};
  if(!process.env.DATABASE_URL)return empty;
  const sql=neon(process.env.DATABASE_URL);
- const exists=await sql`SELECT to_regclass('public.backpack_assets') AS registry, to_regclass('public.backpack_environment_daily') AS environment, to_regclass('public.tokenized_security_daily_snapshots') AS competitors, to_regclass('public.backpack_growth_daily') AS growth, to_regclass('public.backpack_adoption_daily') AS adoption, to_regclass('public.backpack_adoption_assessments') AS adoption_growth`;
+ const exists=await sql`SELECT to_regclass('public.backpack_assets') AS registry, to_regclass('public.backpack_environment_daily') AS environment, to_regclass('public.tokenized_security_daily_snapshots') AS competitors, to_regclass('public.backpack_growth_daily') AS growth, to_regclass('public.backpack_adoption_daily') AS adoption, to_regclass('public.backpack_adoption_assessments') AS adoption_growth, to_regclass('public.backpack_registry_candidates_daily') AS registry_candidates, to_regclass('public.backpack_external_observations') AS external_observations, to_regclass('public.backpack_economy_events') AS economy_events`;
  if(!exists[0]?.registry)return {...empty,status:'schema_pending'};
  const latest=await sql`SELECT max(date)::text AS date FROM backpack_asset_daily_snapshots`;
  const day=latest[0]?.date??null;
- const [assets,history,ecosystem,bp,quality,quotes,holders,dex,runs,usage,whales,analytics,environment,competitors,growth,adoption,adoptionGrowth]=await Promise.all([
+ const [assets,history,ecosystem,bp,quality,quotes,holders,dex,runs,usage,whales,analytics,environment,competitors,growth,adoption,adoptionGrowth,registryCandidates,externalObservations,economyEvents]=await Promise.all([
   sql`SELECT a.*, s.*, a.id, a.solana_mint, s.date::text AS date FROM backpack_assets a
        LEFT JOIN backpack_asset_daily_snapshots s ON s.asset_id=a.id AND s.date=${day}::date
        WHERE a.active AND (${assetId??null}::bigint IS NULL OR a.id=${assetId??null}) ORDER BY a.asset_type='bp',a.token_symbol`,
@@ -38,7 +38,13 @@ export async function readBackpack(assetId?:number):Promise<MonitorData>{
   exists[0]?.growth?sql`SELECT *,date::text AS date FROM backpack_growth_daily WHERE date=${day}::date ORDER BY period_days`:Promise.resolve([]),
   exists[0]?.adoption?sql`SELECT data FROM backpack_adoption_daily ORDER BY date DESC LIMIT 5000`:Promise.resolve([]),
   exists[0]?.adoption_growth?sql`SELECT data FROM backpack_adoption_assessments WHERE date=${day}::date ORDER BY period_days`:Promise.resolve([]),
+  exists[0]?.registry_candidates?sql`SELECT *,date::text AS date FROM backpack_registry_candidates_daily
+      WHERE date=(SELECT max(date) FROM backpack_registry_candidates_daily) ORDER BY match_status,token_symbol`:Promise.resolve([]),
+  exists[0]?.external_observations?sql`SELECT *,published_at::text AS published_at FROM backpack_external_observations
+      WHERE review_status='approved' ORDER BY published_at DESC LIMIT 100`:Promise.resolve([]),
+  exists[0]?.economy_events?sql`SELECT *,event_at::text AS event_at,campaign_end_at::text AS campaign_end_at
+      FROM backpack_economy_events ORDER BY event_at DESC LIMIT 100`:Promise.resolve([]),
  ]);
  return {status:day?'ready':'awaiting_capture',asOf:day,assets:assets as Row[],history:(history as Row[]).reverse(),
-  ecosystem:(ecosystem as Row[]).reverse(),bp:(bp as Row[]).reverse(),quality:quality as Quality[],quotes:quotes as Row[],holders:holders as Row[],dex:dex as Row[],runs:runs as Row[],usage:usage as Row[],whales:(whales as Row[]).reverse(),analytics:analytics as Row[],environment:environment as Row[],competitors:competitors as Row[],growth:growth as Row[],adoption:adoption.map(r=>r.data as Row).reverse(),adoptionGrowth:adoptionGrowth.map(r=>r.data as Row)};
+  ecosystem:(ecosystem as Row[]).reverse(),bp:(bp as Row[]).reverse(),quality:quality as Quality[],quotes:quotes as Row[],holders:holders as Row[],dex:dex as Row[],runs:runs as Row[],usage:usage as Row[],whales:(whales as Row[]).reverse(),analytics:analytics as Row[],environment:environment as Row[],competitors:competitors as Row[],growth:growth as Row[],adoption:adoption.map(r=>r.data as Row).reverse(),adoptionGrowth:adoptionGrowth.map(r=>r.data as Row),registryCandidates:registryCandidates as Row[],externalObservations:externalObservations as Row[],economyEvents:economyEvents as Row[]};
 }

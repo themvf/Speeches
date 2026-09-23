@@ -41,7 +41,7 @@ export function GrowthOverview({data}:{data:MonitorData}){
    <article className={s.primaryMetric}><span>Observable owners</span><strong>{count(current?.holders)}</strong><p>Nonzero, deduplicated wallets after verified system exclusions.</p><small>{pct(row?.holder_growth_pct)} over {period} days</small></article>
    <article><span>Whole-token sensitivity</span><strong>{count(current?.whole_token_holders)}</strong><p>{pct(wholeShare)} of observable owners hold at least one whole security token.</p><small>Dust check—not a person or dollar threshold.</small></article>
    <article><span>Multi-security owners</span><strong>{count(current?.multi_asset_holders)}</strong><p>Wallets holding positive balances in at least two registered securities.</p><small>Previous endpoint: {count(row?.previous_multi_asset_holders)}</small></article>
-   <article><span>Issued securities</span><strong>{issued} <em>/ {assets.length||'N/A'}</em></strong><p>Registered securities with positive captured supply.</p><small>Median supply change: {pct(row?.median_supply_growth_pct)}</small></article>
+   <article><span>Positive-supply securities</span><strong>{issued} <em>/ {assets.length||'N/A'}</em></strong><p>Registered securities with positive captured supply. This is not the product count.</p><small>Median supply change: {pct(row?.median_supply_growth_pct)}</small></article>
   </div>
 
   <div className={s.progressPanel}>

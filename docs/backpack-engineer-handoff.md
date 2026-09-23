@@ -154,6 +154,17 @@ Integration tests skip without the explicit disposable database variable. CI pro
 
 ## Remaining steps, in priority order
 
+The implementation contract for expanding this monitor into a broader Backpack economy view is in
+[`docs/backpack-economy-analytics-spec.md`](backpack-economy-analytics-spec.md). It preserves the current
+price-independent adoption work and specifies the new registry, market-wide activity, trader-retention,
+durability, evidence and competitor phases.
+
+Phase A is implemented in the current feature worktree: official registry reconciliation now records
+approved, unresolved and conflicting enabled Solana security identities; SPCX is in the curated starter
+universe; lifecycle observations and structured market/event evidence are stored; and the public UI
+separates registered products from positive-supply securities. Production migration and capture remain
+pending. Phase B (complete mint-wide activity) has not started.
+
 ### 1. Establish trustworthy daily adoption history
 
 - Verify successive scheduled runs actually arrive; GitHub schedules are best effort.

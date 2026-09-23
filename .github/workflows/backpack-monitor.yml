@@ -2,7 +2,7 @@ name: Backpack on-chain thesis monitor
 on:
   push:
     branches: [main]
-    paths: ['backpack/starter_universe.json', 'backpack/registry.py', 'backpack/readiness.py', 'backpack/adoption.py', 'backpack/research.py', 'backpack_monitor.py', 'sql/backpack.sql', '.github/workflows/backpack-monitor.yml']
+    paths: ['backpack/starter_universe.json', 'backpack/context_evidence.json', 'backpack/registry.py', 'backpack/readiness.py', 'backpack/adoption.py', 'backpack/research.py', 'backpack_monitor.py', 'sql/backpack.sql', '.github/workflows/backpack-monitor.yml']
   workflow_dispatch:
   schedule:
     - cron: '30 0 * * *'
