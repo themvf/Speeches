@@ -97,4 +97,8 @@ def audit(conn,day=None):
             stored_reference_aum=r['reference_aum_usd'],reproduced_reference_aum=expected,
             aum_reconciles=(r['reference_aum_usd']==expected) if expected is not None else None,
             observed_swap_volume=r['observed_swap_volume_usd'],total_swap_volume=r['daily_swap_volume_usd'],quality=quality))
-    return dict(date=str(day),assets=output,manual_signoff='Required: review registry sources, raw provider evidence and these reconciliations; execution success is not sign-off')
+    adoption=fetch_all(conn,'SELECT data FROM backpack_adoption_daily WHERE date=%s',(day,))
+    assessments=fetch_all(conn,'SELECT data FROM backpack_adoption_assessments WHERE date=%s ORDER BY period_days',(day,))
+    return dict(date=str(day),assets=output,adoption=adoption[0]['data'] if adoption else None,
+                adoption_assessments=[r['data'] for r in assessments],
+                manual_signoff='Required: review registry sources, raw provider evidence and these reconciliations; execution success is not sign-off')
