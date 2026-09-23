@@ -59,17 +59,22 @@ def assess(history, day, period, env=None):
         latest, first = rows[0], rows[-1]
         cohort = set(latest['assets'])
         if not cohort or any(set(r['assets']) != cohort or r['exclusion_fingerprint'] != latest['exclusion_fingerprint'] or r['methodology'] != METHOD for r in rows): return None
-        if first['holders'] <= 0 or any(number(a['supply']) is None or number(a['supply']) <= 0 for r in rows for a in r['assets'].values()): return None
-        rates = [(number(latest['assets'][a]['supply'])/number(first['assets'][a]['supply'])-1)*100 for a in cohort]
+        if first['holders'] <= 0 or any(number(a['supply']) is None or number(a['supply']) < 0 for r in rows for a in r['assets'].values()): return None
+        # Registered but never-issued securities are observed zeros, not missing evidence.
+        issued = {a for a in cohort if any(number(r['assets'][a]['supply']) > 0 for r in rows)}
+        if not issued: return None
+        if any(number(first['assets'][a]['supply']) == 0 for a in issued):
+            return None  # A new issuance needs a positive comparable baseline; never divide by zero.
+        rates = [(number(latest['assets'][a]['supply'])/number(first['assets'][a]['supply'])-1)*100 for a in issued]
         holder_rate = (Decimal(latest['holders'])/first['holders']-1)*100
-        return dict(cohort=sorted(cohort), fingerprint=latest['exclusion_fingerprint'],
+        return dict(cohort=sorted(cohort), issued_cohort=sorted(issued), unissued_securities=len(cohort-issued), fingerprint=latest['exclusion_fingerprint'],
                     holders=latest['holders'], previous_holders=first['holders'],
                     holder_growth_pct=holder_rate, holder_rate_30d=holder_rate*30/period,
                     median_supply_growth_pct=median(rates), supply_rate_30d=median(rates)*30/period,
                     expanding_supply_pct=Decimal(sum(r*30/period > settings['supply_threshold'] for r in rates))*100/len(rates),
                     contracting_supply_pct=Decimal(sum(r*30/period < -settings['supply_threshold'] for r in rates))*100/len(rates),
-                    growing_holder_breadth_pct=Decimal(sum(latest['assets'][a]['holders'] > first['assets'][a]['holders'] for a in cohort))*100/len(cohort),
-                    declining_holder_breadth_pct=Decimal(sum(latest['assets'][a]['holders'] < first['assets'][a]['holders'] for a in cohort))*100/len(cohort),
+                    growing_holder_breadth_pct=Decimal(sum(latest['assets'][a]['holders'] > first['assets'][a]['holders'] for a in issued))*100/len(issued),
+                    declining_holder_breadth_pct=Decimal(sum(latest['assets'][a]['holders'] < first['assets'][a]['holders'] for a in issued))*100/len(issued),
                     whole_token_growth_pct=(Decimal(latest['whole_token_holders'])/first['whole_token_holders']-1)*100 if first['whole_token_holders'] else None,
                     multi_asset_holders=latest['multi_asset_holders'], previous_multi_asset_holders=first['multi_asset_holders'])
     for i in range(period+1):
@@ -92,7 +97,7 @@ def assess(history, day, period, env=None):
     else:
         result.update(state='Mixed', reason='Ownership, issuance or breadth disagree; no single direction is forced.')
     previous = window(day-timedelta(days=period))
-    if previous and previous['cohort'] == current['cohort'] and previous['fingerprint'] == current['fingerprint']:
+    if previous and previous['cohort'] == current['cohort'] and previous['issued_cohort'] == current['issued_cohort'] and previous['fingerprint'] == current['fingerprint']:
         dh,ds = h-previous['holder_rate_30d'],s-previous['supply_rate_30d']
         threshold = settings['momentum_threshold']
         momentum = 'Accelerating' if dh > threshold and ds > threshold else 'Slowing' if dh < -threshold and ds < -threshold else 'Mixed / steady'

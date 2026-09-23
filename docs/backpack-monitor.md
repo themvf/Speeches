@@ -3,6 +3,8 @@
 Implementation branch: `feature/backpack-thesis-monitor`. Entry: `/market/crypto/backpack`.
 This is a Phase 1 implementation with explicit launch gaps, not a claim that all 33 sections of the specification are complete.
 
+For verified production status, code ownership, operating commands and prioritized remaining work, read [the engineering handoff](backpack-engineer-handoff.md).
+
 ## What is implemented
 
 **Current lead assessment (2026-09-23):** the user's clarification prioritizes rapid/slow/status-quo/declining adoption independent of stock prices. The price-independent adoption overview below supersedes the price-required headline described in the older Growth overview section. Original financial metrics and stored `growth-v1` assessments remain unchanged as supporting evidence.
@@ -404,7 +406,10 @@ Partial/expired raw history cannot generate a summary. Existing summaries surviv
 `backpack_adoption_assessments` preserves 7/30/90-day results, actual inputs, thresholds,
 method version and explanations. Each window needs 8/31/91 consecutive complete daily
 summaries for exactly the same securities and exclusions. Adjacent-window momentum needs
-15/61/181. Missing days, zero supply/holder baselines and cohort changes remain insufficient
+15/61/181. Consistently unissued (zero-supply) securities remain registered but are excluded
+from supply-growth and breadth denominators. First issuance needs a positive comparable
+baseline; full redemption to zero is measurable contraction. Missing days, invalid holder
+baselines and cohort changes remain insufficient
 evidence. Summaries and assessments are immutable; `--research` can derive them from retained
 historical observations without provider calls or changing original snapshots.
 
