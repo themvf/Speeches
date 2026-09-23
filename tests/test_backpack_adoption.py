@@ -74,6 +74,32 @@ def test_ownership_deduplicates_and_globally_excludes_systems():
     assert summarize(date(2026,1,1),snaps,holders,2) is None
 
 
+def test_ecosystem_cohorts_deduplicate_wallets_without_persisting_identities():
+    current_snaps=[dict(asset_id=a,unique_holders=2,holders_complete=True,token_supply=D(100)) for a in (1,2)]
+    current_holders=[dict(asset_id=1,wallet_address='retained',balance_tokens=D(1),excluded=False),
+                     dict(asset_id=1,wallet_address='entered',balance_tokens=D(1),excluded=False),
+                     dict(asset_id=2,wallet_address='retained',balance_tokens=D(1),excluded=False),
+                     dict(asset_id=2,wallet_address='entered',balance_tokens=D(1),excluded=False)]
+    previous_snaps=[dict(asset_id=a,unique_holders=2,holders_complete=True,token_supply=D(100)) for a in (1,2)]
+    previous_holders=[dict(asset_id=1,wallet_address='retained',balance_tokens=D(1),excluded=False),
+                      dict(asset_id=1,wallet_address='departed',balance_tokens=D(1),excluded=False),
+                      dict(asset_id=2,wallet_address='retained',balance_tokens=D(1),excluded=False),
+                      dict(asset_id=2,wallet_address='departed',balance_tokens=D(1),excluded=False)]
+    comparison={7:dict(day=date(2026,1,1),snapshots=previous_snaps,holders=previous_holders,expected=2)}
+    result=summarize(date(2026,1,8),current_snaps,current_holders,2,comparison)
+    assert result['cohorts']['7']==dict(window_days=7,baseline_holders=2,current_holders=2,
+        retained_holders=1,entered_holders=1,departed_holders=1,retention_pct='50')
+    assert 'wallet_address' not in str(result)  # Counts survive; wallet identities do not.
+
+
+def test_assessment_exposes_matching_endpoint_cohort():
+    rows=history(8)
+    rows[-1]['cohorts']={'7':dict(retained_holders=900,entered_holders=107,departed_holders=100,retention_pct='90')}
+    result=assess(rows,date.fromisoformat(rows[-1]['date']),7)
+    assert result['retained_holders']==900 and result['entered_holders']==107
+    assert result['departed_holders']==100 and result['retention_pct']==D(90)
+
+
 def test_different_token_denominations_do_not_change_supply_growth():
     rows=history(31)
     before=assess(rows,date.fromisoformat(rows[-1]['date']),30)
