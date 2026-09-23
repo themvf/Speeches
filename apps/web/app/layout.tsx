@@ -1,19 +1,27 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 import { AppNav } from "@/components/app-nav";
 import { isClerkConfigured, OptionalClerkProvider } from "@/components/optional-clerk-provider";
 import "./globals.css";
 
-const bodyFont = IBM_Plex_Sans({
+const bodyFont = localFont({
   variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"]
+  display: "swap",
+  src: [
+    {path: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2", weight: "400"},
+    {path: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2", weight: "500"},
+    {path: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2", weight: "600"}
+  ]
 });
 
-const displayFont = Space_Grotesk({
+const displayFont = localFont({
   variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"]
+  display: "swap",
+  src: [
+    {path: "../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2", weight: "500"},
+    {path: "../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-600-normal.woff2", weight: "600"},
+    {path: "../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2", weight: "700"}
+  ]
 });
 
 export const metadata: Metadata = {

@@ -49,6 +49,8 @@ def classify(history, day, period=7, issuance_threshold=Decimal('1'), trading_th
 
 def capture_research(conn,day,env):
     from .collector import fetch_all,insert_many
+    from .adoption import capture_adoption
+    capture_adoption(conn,day,env)
     # Mirror only explicitly approved securities; BP is excluded by asset type.
     with conn,conn.cursor() as cur:
         cur.execute('''INSERT INTO tokenized_security_assets(issuer_id,network,mint,token_symbol,underlying_symbol,
