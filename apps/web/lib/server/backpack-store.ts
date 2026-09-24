@@ -40,10 +40,10 @@ export async function readBackpack(assetId?:number):Promise<MonitorData>{
   exists[0]?.adoption_growth?sql`SELECT data FROM backpack_adoption_assessments WHERE date=${day}::date ORDER BY period_days`:Promise.resolve([]),
   exists[0]?.registry_candidates?sql`SELECT *,date::text AS date FROM backpack_registry_candidates_daily
       WHERE date=(SELECT max(date) FROM backpack_registry_candidates_daily) ORDER BY match_status,token_symbol`:Promise.resolve([]),
-  exists[0]?.external_observations?sql`SELECT *,published_at::text AS published_at FROM backpack_external_observations
-      WHERE review_status='approved' ORDER BY published_at DESC LIMIT 100`:Promise.resolve([]),
-  exists[0]?.economy_events?sql`SELECT *,event_at::text AS event_at,campaign_end_at::text AS campaign_end_at
-      FROM backpack_economy_events ORDER BY event_at DESC LIMIT 100`:Promise.resolve([]),
+  exists[0]?.external_observations?sql`SELECT e.*,e.published_at::text AS published_at FROM backpack_external_observations e
+      WHERE e.review_status='approved' ORDER BY e.published_at DESC LIMIT 100`:Promise.resolve([]),
+  exists[0]?.economy_events?sql`SELECT e.*,e.event_at::text AS event_at,e.campaign_end_at::text AS campaign_end_at
+      FROM backpack_economy_events e ORDER BY e.event_at DESC LIMIT 100`:Promise.resolve([]),
  ]);
  return {status:day?'ready':'awaiting_capture',asOf:day,assets:assets as Row[],history:(history as Row[]).reverse(),
   ecosystem:(ecosystem as Row[]).reverse(),bp:(bp as Row[]).reverse(),quality:quality as Quality[],quotes:quotes as Row[],holders:holders as Row[],dex:dex as Row[],runs:runs as Row[],usage:usage as Row[],whales:(whales as Row[]).reverse(),analytics:analytics as Row[],environment:environment as Row[],competitors:competitors as Row[],growth:growth as Row[],adoption:adoption.map(r=>r.data as Row).reverse(),adoptionGrowth:adoptionGrowth.map(r=>r.data as Row),registryCandidates:registryCandidates as Row[],externalObservations:externalObservations as Row[],economyEvents:economyEvents as Row[]};
