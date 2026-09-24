@@ -66,6 +66,39 @@ def insert_many(cur, table, records):
     execute_values(cur,query,[[r.get(c) for c in columns] for r in records],page_size=1000)
 
 
+def upsert_current_snapshot(cur, record):
+    """Insert once, except that today's incomplete holder evidence may be repaired."""
+    from psycopg2 import sql
+    columns = list(record)
+    mutable = [column for column in columns if column not in {'asset_id', 'date'}]
+    query = sql.SQL('''INSERT INTO backpack_asset_daily_snapshots ({columns}) VALUES ({values})
+        ON CONFLICT(asset_id,date) DO UPDATE SET {updates}
+        WHERE NOT backpack_asset_daily_snapshots.holders_complete AND excluded.holders_complete''').format(
+        columns=sql.SQL(',').join(map(sql.Identifier, columns)),
+        values=sql.SQL(',').join(sql.Placeholder() for _ in columns),
+        updates=sql.SQL(',').join(
+            sql.SQL('{}=excluded.{}').format(sql.Identifier(column), sql.Identifier(column))
+            for column in mutable))
+    cur.execute(query, [record[column] for column in columns])
+    return cur.rowcount
+
+
+def upsert_current_ecosystem(cur, record):
+    """Recompute only the live UTC day's aggregate after a retry completes evidence."""
+    from psycopg2 import sql
+    columns = list(record)
+    mutable = [column for column in columns if column != 'date']
+    query = sql.SQL('''INSERT INTO backpack_ecosystem_daily_snapshots ({columns}) VALUES ({values})
+        ON CONFLICT(date) DO UPDATE SET {updates}''').format(
+        columns=sql.SQL(',').join(map(sql.Identifier, columns)),
+        values=sql.SQL(',').join(sql.Placeholder() for _ in columns),
+        updates=sql.SQL(',').join(
+            sql.SQL('{}=excluded.{}').format(sql.Identifier(column), sql.Identifier(column))
+            for column in mutable))
+    cur.execute(query, [record[column] for column in columns])
+    return cur.rowcount
+
+
 def collect_asset(conn, p, asset, run_id, day, labels, calendar):
     from psycopg2.extras import Json
     now = datetime.now(UTC)
@@ -107,19 +140,49 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
         note('premium_discount_pct','Estimated','Jupiter + Alpaca SIP','(token price / reference price - 1) × 100',
              'Last-available equity reference while market closed; no arbitrage alert. Daily sample cannot measure deviation duration.')
     previous = fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots WHERE asset_id=%s AND date=%s',(asset_id,day-timedelta(days=1)))
-    delta, delta_usd = issuance(supply,previous[0] if previous else None,day,price)
-    snap.update(net_supply_change_tokens=delta, net_supply_change_usd=delta_usd)
-    holder_data = optional('holders','Helius DAS',lambda:p.holders(mint))
     wallet_rows = []
-    if holder_data:
+    holder_attempts = int(p.env.get('BACKPACK_HOLDER_RECONCILIATION_ATTEMPTS', '2'))
+    if holder_attempts < 1 or holder_attempts > 3:
+        raise ValueError('Invalid holder reconciliation attempts')
+    last_mismatch = None
+    for attempt in range(holder_attempts):
+        attempt_supply, attempt_decimals, attempt_slot = (supply, decimals, slot) if attempt == 0 else p.supply(mint)
+        holder_data = optional('holders','Helius DAS',lambda:p.holders(mint))
+        if not holder_data:
+            break
         accounts, first_slot, end_slot = holder_data
         hp = token_price if asset['asset_type']=='bp' and not token_stale else price
-        analytics = holders(accounts,decimals,hp,labels)
-        wallet_rows = analytics.pop('rows')
-        observed_supply = sum(r['balance_tokens'] for r in wallet_rows)
+        analytics = holders(accounts,attempt_decimals,hp,labels)
+        candidate_rows = analytics.pop('rows')
+        observed_supply = sum(r['balance_tokens'] for r in candidate_rows)
         tolerance = Decimal(p.env.get('BACKPACK_SUPPLY_TOLERANCE','0.001'))
-        reconciled = abs(observed_supply-supply) <= max(Decimal('0.000000001'),supply*tolerance)
-        snap.update(holder_start_slot=first_slot,holder_end_slot=end_slot)
+        if not tolerance.is_finite() or tolerance < 0:
+            raise ValueError('Invalid supply tolerance')
+        def matches(value):
+            return abs(observed_supply-value) <= max(Decimal('0.000000001'),value*tolerance)
+        chosen = (attempt_supply, attempt_decimals, attempt_slot) if matches(attempt_supply) else None
+        ending = optional('holder_supply_recheck','Solana RPC',lambda:p.supply(mint))
+        if chosen is None and ending and ending[1] == attempt_decimals and matches(ending[0]):
+            chosen = ending
+            note('holder_supply_alignment','Estimated','Helius DAS + finalized Solana RPC',
+                 'Holder sum reconciled to finalized supply read after enumeration',
+                 f'Initial supply {attempt_supply} at slot {attempt_slot}; aligned supply {ending[0]} at slot {ending[2]}.')
+        if chosen is not None:
+            supply, decimals, slot = chosen
+            if slot != snap['slot']:
+                aligned_time = optional('block_timestamp','Solana RPC',lambda:p.rpc('getBlockTime',[slot]))
+                snap.update(slot=slot,block_timestamp=datetime.fromtimestamp(aligned_time,UTC) if aligned_time else None,
+                            token_supply=supply,decimals=decimals,
+                            reference_aum_usd=multiply(supply,price),onchain_market_value_usd=multiply(supply,token_price))
+            wallet_rows = candidate_rows
+            snap.update(holder_start_slot=first_slot,holder_end_slot=end_slot)
+            reconciled = True
+        else:
+            reconciled = False
+            last_supply = ending[0] if ending and ending[1] == attempt_decimals else attempt_supply
+            last_slot = ending[2] if ending and ending[1] == attempt_decimals else attempt_slot
+            supply, decimals, slot = last_supply, attempt_decimals, last_slot
+            last_mismatch = (observed_supply, last_supply, first_slot, end_slot)
         if reconciled:
             snap.update(analytics,holders_complete=True)
             if previous and previous[0]['holders_complete']:
@@ -128,9 +191,17 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
                 snap.update(new_holders=len(after-before),lost_holders=len(before-after))
             note('holders','Estimated','Helius DAS','Paginated token accounts; grouped by owner for economic cohorts',
                 f'Enumeration spans slots {first_slot}–{end_slot}; not an atomic historic snapshot. Only verified system labels excluded.')
-        else:
-            wallet_rows=[]
-            note('holders','Unavailable','Helius DAS vs RPC','Sum owner balances / finalized supply', f'Holder sum {observed_supply}; supply {supply}; fractional tolerance {tolerance}. Does not reconcile; analytics withheld')
+            break
+    if not snap['holders_complete'] and last_mismatch:
+        observed_supply, compared_supply, first_slot, end_slot = last_mismatch
+        snap.update(token_supply=supply,decimals=decimals,slot=slot,holder_start_slot=first_slot,holder_end_slot=end_slot,
+                    reference_aum_usd=multiply(supply,price),onchain_market_value_usd=multiply(supply,token_price))
+        wallet_rows=[]
+        note('holders','Unavailable','Helius DAS vs RPC','Sum owner balances / finalized supply',
+             f'Holder sum {observed_supply}; finalized supply {compared_supply}; fractional tolerance {tolerance}; '
+             f'{holder_attempts} bounded attempt(s). Does not reconcile; analytics withheld and current-day retry remains eligible.')
+    delta, delta_usd = issuance(supply,previous[0] if previous else None,day,price)
+    snap.update(net_supply_change_tokens=delta, net_supply_change_usd=delta_usd)
     # Bounded observed-wallet tape. Never claim mint-wide coverage from mint-address history.
     swaps, cursors = {}, []
     if wallet_rows and p.env.get('HELIUS_API_KEY'):
@@ -222,7 +293,9 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
     snap['data_quality_score']=int(100*sum(snap.get(k) is not None for k in scored)/len(scored))
     # Quality score measures field coverage, never thesis strength.
     with conn,conn.cursor() as cur:
-        if not insert(cur,'backpack_asset_daily_snapshots',snap): return 'skipped'
+        written = upsert_current_snapshot(cur,snap)
+        if not written and snap['holders_complete']:
+            return 'skipped'
         insert_many(cur,'backpack_asset_holder_daily_snapshots',[dict(r,asset_id=asset_id,date=day,source='Helius DAS',slot=snap['holder_end_slot'],label_entity=labels.get(r['wallet_address'],{}).get('entity'),label_confidence=labels.get(r['wallet_address'],{}).get('confidence'),label_source=labels.get(r['wallet_address'],{}).get('source'),label_verified_at=labels.get(r['wallet_address'],{}).get('verified_at')) for r in wallet_rows])
         if snap['holders_complete']:
             persist_holders(cur, asset_id, day, wallet_rows, labels)
@@ -250,7 +323,7 @@ def collect_asset(conn, p, asset, run_id, day, labels, calendar):
             baseline=next(c for c in cohorts if c['threshold_usd']==100000)
             insert(cur,'backpack_bp_daily_snapshots',dict(date=day,asset_id=asset_id,fdv_usd=multiply(supply,token_price),
                 **{k:baseline[k] for k in ('whale_count','new_whales','whale_net_accumulation_tokens')}))
-    return 'succeeded'
+    return 'succeeded' if snap['holders_complete'] else 'incomplete'
 
 
 def aggregate(conn,run_id,day,assets):
@@ -264,7 +337,7 @@ def aggregate(conn,run_id,day,assets):
     for key in ('reference_aum_usd','onchain_market_value_usd','net_supply_change_usd','daily_swap_volume_usd','observed_swap_volume_usd'):
         record[key]=sum(r[key] for r in rows) if all(r[key] is not None for r in rows) else None
     if all(r['holders_complete'] and r['underlying_price'] is not None for r in rows): record.update(ecosystem(wallet_rows))
-    with conn,conn.cursor() as cur: insert(cur,'backpack_ecosystem_daily_snapshots',record)
+    with conn,conn.cursor() as cur: upsert_current_ecosystem(cur,record)
 
 
 def run(conn,p=None,day=None):
@@ -286,10 +359,17 @@ def run(conn,p=None,day=None):
         calendar=calendar_for(day)
         for asset in assets:
             counts['attempted']+=1
-            if fetch_all(conn,'SELECT 1 FROM backpack_asset_daily_snapshots WHERE asset_id=%s AND date=%s',(asset['id'],day)):
+            existing=fetch_all(conn,'SELECT holders_complete FROM backpack_asset_daily_snapshots WHERE asset_id=%s AND date=%s',(asset['id'],day))
+            if existing and existing[0]['holders_complete']:
                 counts['skipped']+=1
                 continue
-            try: counts[collect_asset(conn,p,asset,run_id,day,labels,calendar)]+=1
+            try:
+                outcome=collect_asset(conn,p,asset,run_id,day,labels,calendar)
+                if outcome=='incomplete':
+                    counts['failed']+=1
+                    errors.append(f"asset {asset['id']}: holder reconciliation incomplete; current-day retry required")
+                else:
+                    counts[outcome]+=1
             except Exception as error:
                 conn.rollback()
                 counts['failed']+=1
@@ -304,6 +384,12 @@ def run(conn,p=None,day=None):
         precompute(conn,day)
         from .research import capture_research
         capture_research(conn,day,p.env)
+        security_ids={a['id'] for a in assets if a['asset_type']!='bp'}
+        adoption=fetch_all(conn,'SELECT data FROM backpack_adoption_daily WHERE date=%s',(day,))
+        assessments=fetch_all(conn,'SELECT period_days FROM backpack_adoption_assessments WHERE date=%s',(day,))
+        observed_ids=set(map(int,adoption[0]['data'].get('assets',{}))) if adoption else set()
+        if observed_ids != security_ids or {r['period_days'] for r in assessments}!={7,30,90}:
+            errors.append('Current-day adoption evidence is incomplete; no classification was published')
     except Exception as error:
         conn.rollback()
         errors.append('Run: '+type(error).__name__)
