@@ -154,6 +154,17 @@ Integration tests skip without the explicit disposable database variable. CI pro
 
 ## Remaining steps, in priority order
 
+The implementation contract for expanding this monitor into a broader Backpack economy view is in
+[`docs/backpack-economy-analytics-spec.md`](backpack-economy-analytics-spec.md). It preserves the current
+price-independent adoption work and specifies the new registry, market-wide activity, trader-retention,
+durability, evidence and competitor phases.
+
+Phase A is implemented in the current feature worktree: official registry reconciliation now records
+approved, unresolved and conflicting enabled Solana security identities; SPCX is in the curated starter
+universe; lifecycle observations and structured market/event evidence are stored; and the public UI
+separates registered products from positive-supply securities. Production migration and capture remain
+pending. Phase B (complete mint-wide activity) has not started.
+
 ### 1. Establish trustworthy daily adoption history
 
 - Verify successive scheduled runs actually arrive; GitHub schedules are best effort.
@@ -167,7 +178,7 @@ Integration tests skip without the explicit disposable database variable. CI pro
 - Review why 14,251 nonzero owners reduce to 240 one-token holders. Investigate token distributions, dust, wallet splitting and custody structure.
 - Add source-backed treasury/custody/pool/vesting labels through the existing admin flow. Never infer a named owner from balance size alone.
 - Be explicit that changes in the exclusion set temporarily suppress comparable windows.
-- Consider a reviewed retention/new-lost ecosystem cohort measure using historical evidence; current aggregate counts alone cannot establish retention. Do not sum per-asset arrivals/exits to create ecosystem arrivals/exits.
+- New adoption summaries record identity-free 1/7/30-day endpoint cohorts: retained, entered and departed owners are deduplicated across the complete registered-security ecosystem. Counts persist, addresses do not. These endpoint transitions are wallet observations, not unique-person acquisition or first-ever customer events; never sum per-asset arrivals/exits into ecosystem cohorts.
 - Calibrate classification thresholds against observed periods and retain methodology versions. Do not silently change historical labels when tuning thresholds.
 
 ### 3. Improve provider robustness

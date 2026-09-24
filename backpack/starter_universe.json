@@ -1,5 +1,5 @@
 {
-  "reviewed_at": "2026-09-22T02:31:57.991263+00:00",
+  "reviewed_at": "2026-09-23T00:00:00+00:00",
   "issuer_source": "https://learn.backpack.exchange/articles/what-is-backpack-securities",
   "backing_source": "https://learn.backpack.exchange/articles/top-stocks-on-solana-to-trade",
   "method": "Curated identities from official asset contract addresses joined to explicit securities asset IDs, plus Nasdaq listing records. Runtime revalidation and on-chain mint check required before insertion. Transfer availability is not issuance or launch evidence.",
@@ -269,6 +269,25 @@
       "cusip": null,
       "deposit_enabled": false,
       "withdraw_enabled": false
+    },
+    {
+      "token_symbol": "SPCX.US",
+      "token_name": "SpaceX",
+      "solana_mint": "SPCXxcqXj6e5dJDVNovHN8744zkbhM2bYudU45BimGb",
+      "underlying_symbol": "SPCX",
+      "underlying_name": "SpaceX",
+      "underlying_exchange": "XNAS",
+      "asset_type": "common_stock",
+      "issuer": "Backpack Securities",
+      "launch_date": "2026-06-13",
+      "official_source": "https://learn.backpack.exchange/blog/tokenized-spacex-spcx",
+      "security_source": "https://api.backpack.exchange/api/v1/securities",
+      "exchange_source": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
+      "source_verified_at": "2026-09-23T00:00:00+00:00",
+      "decimals": 6,
+      "cusip": null,
+      "deposit_enabled": true,
+      "withdraw_enabled": true
     }
   ]
 }

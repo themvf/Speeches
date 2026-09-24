@@ -445,6 +445,14 @@ definitions and require price evidence. One-token sensitivity is not a dollar or
 Dust, Sybil wallets, unlabeled custody and internal transfers can distort adoption. No retention
 rate or unique-person claim is inferred from aggregate owner counts.
 
+Each new daily summary also records identity-free 1/7/30-day ecosystem endpoint cohorts while
+the required raw evidence remains inside retention. The calculation deduplicates owners across
+all registered securities before counting retained, entered and departed wallets, and it requires
+the same asset identities and exclusion fingerprint at both endpoints. Only the counts and
+retention percentage are persisted; wallet addresses are not copied into the summary. "Entered"
+means present now and absent at the earlier endpoint, not a newly created person or first-ever
+Backpack customer. Per-asset arrivals and exits are never summed into ecosystem cohorts.
+
 The UI shows real baseline counts before enough history exists, explains the observation
 requirement, defaults to 7 days, and leads its security table with supply/owners/token deltas.
 Original capital/trading/DeFi panels remain available in supporting evidence. Missing chart

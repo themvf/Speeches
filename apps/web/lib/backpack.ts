@@ -5,6 +5,7 @@ export type Quality = {metric:string;status:string;source:string;calculation:str
 export type MonitorData = {
  status:string; asOf:string|null; assets:Row[]; history:Row[]; ecosystem:Row[];
  bp:Row[]; quality:Quality[]; quotes:Row[]; holders:Row[]; dex:Row[]; runs:Row[]; usage:Row[];whales?:Row[]; analytics?:Row[]; environment?:Row[]; growth?:Row[]; competitors?:Row[]; adoption?:Row[]; adoptionGrowth?:Row[];
+ registryCandidates?:Row[]; externalObservations?:Row[]; economyEvents?:Row[];
 };
 export function numeric(v:unknown):number|null {
  if(v===null||v===undefined||v===''||typeof v==='boolean')return null;

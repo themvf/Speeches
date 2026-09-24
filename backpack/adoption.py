@@ -10,8 +10,8 @@ from .metrics import number
 METHOD = 'adoption-v1'
 
 
-def summarize(day, snapshots, holders, expected):
-    """Only complete, supply-reconciled stored enumerations qualify. BP is filtered by caller."""
+def _population(day, snapshots, holders, expected):
+    """Return an aggregate plus its transient wallet set; wallet identities are never persisted here."""
     if not snapshots or len(snapshots) != expected or any(not s['holders_complete'] for s in snapshots):
         return None
     by_asset = defaultdict(list)
@@ -31,11 +31,38 @@ def summarize(day, snapshots, holders, expected):
             wallets[h['wallet_address']].add(s['asset_id'])
             if h['balance_tokens'] >= 1:
                 whole.add(h['wallet_address'])
-    return dict(date=str(day), methodology=METHOD, assets=assets, holders=len(wallets),
+    summary = dict(date=str(day), methodology=METHOD, assets=assets, holders=len(wallets),
                 whole_token_holders=len(whole), multi_asset_holders=sum(len(a) >= 2 for a in wallets.values()),
                 exclusion_fingerprint=sha256('\n'.join(sorted(excluded)).encode()).hexdigest(),
                 status='Estimated', source='Stored finalized Solana supply and reconciled Helius ownership',
                 limitation='Nonzero non-system wallets, not individuals or $100 meaningful holders. Dust and unlabelled custody can distort counts. One-token holders are a sensitivity check, not an economic threshold.')
+    return summary, set(wallets)
+
+
+def summarize(day, snapshots, holders, expected, comparisons=None):
+    """Persist small adoption summaries and endpoint cohorts without retaining wallet identities."""
+    current = _population(day, snapshots, holders, expected)
+    if current is None:
+        return None
+    summary, wallets = current
+    cohorts = {}
+    for period, evidence in (comparisons or {}).items():
+        previous = _population(evidence['day'], evidence['snapshots'], evidence['holders'], evidence['expected'])
+        if previous is None:
+            continue
+        before, before_wallets = previous
+        if set(before['assets']) != set(summary['assets']) or before['exclusion_fingerprint'] != summary['exclusion_fingerprint']:
+            continue
+        retained = len(wallets & before_wallets)
+        cohorts[str(period)] = dict(
+            window_days=int(period), baseline_holders=len(before_wallets), current_holders=len(wallets),
+            retained_holders=retained, entered_holders=len(wallets-before_wallets),
+            departed_holders=len(before_wallets-wallets),
+            retention_pct=str(Decimal(retained)*100/len(before_wallets)) if before_wallets else None,
+        )
+    if cohorts:
+        summary['cohorts'] = cohorts
+    return summary
 
 
 def assess(history, day, period, env=None):
@@ -67,6 +94,7 @@ def assess(history, day, period, env=None):
             return None  # A new issuance needs a positive comparable baseline; never divide by zero.
         rates = [(number(latest['assets'][a]['supply'])/number(first['assets'][a]['supply'])-1)*100 for a in issued]
         holder_rate = (Decimal(latest['holders'])/first['holders']-1)*100
+        cohort_change=(latest.get('cohorts') or {}).get(str(period))
         return dict(cohort=sorted(cohort), issued_cohort=sorted(issued), unissued_securities=len(cohort-issued), fingerprint=latest['exclusion_fingerprint'],
                     holders=latest['holders'], previous_holders=first['holders'],
                     holder_growth_pct=holder_rate, holder_rate_30d=holder_rate*30/period,
@@ -76,7 +104,11 @@ def assess(history, day, period, env=None):
                     growing_holder_breadth_pct=Decimal(sum(latest['assets'][a]['holders'] > first['assets'][a]['holders'] for a in issued))*100/len(issued),
                     declining_holder_breadth_pct=Decimal(sum(latest['assets'][a]['holders'] < first['assets'][a]['holders'] for a in issued))*100/len(issued),
                     whole_token_growth_pct=(Decimal(latest['whole_token_holders'])/first['whole_token_holders']-1)*100 if first['whole_token_holders'] else None,
-                    multi_asset_holders=latest['multi_asset_holders'], previous_multi_asset_holders=first['multi_asset_holders'])
+                    multi_asset_holders=latest['multi_asset_holders'], previous_multi_asset_holders=first['multi_asset_holders'],
+                    retained_holders=cohort_change.get('retained_holders') if cohort_change else None,
+                    entered_holders=cohort_change.get('entered_holders') if cohort_change else None,
+                    departed_holders=cohort_change.get('departed_holders') if cohort_change else None,
+                    retention_pct=number(cohort_change.get('retention_pct')) if cohort_change else None)
     for i in range(period+1):
         if str(day-timedelta(days=i)) not in indexed: break
         result['observed_days'] += 1
@@ -114,12 +146,25 @@ def capture_adoption(conn, day, env):
     existing = fetch_all(conn,'SELECT date,data FROM backpack_adoption_daily WHERE date BETWEEN %s AND %s',(start,day))
     saved = {r['date'] for r in existing}
     days = fetch_all(conn,'SELECT date,assets_expected FROM backpack_ecosystem_daily_snapshots WHERE date BETWEEN %s AND %s ORDER BY date',(start,day))
+    day_index = {r['date']: r for r in days}
+    evidence_cache = {}
+    def evidence(target):
+        if target in evidence_cache:
+            return evidence_cache[target]
+        observed = day_index.get(target)
+        if observed is None:
+            evidence_cache[target] = None
+            return None
+        snapshots=fetch_all(conn,"SELECT s.* FROM backpack_asset_daily_snapshots s JOIN backpack_assets a ON a.id=s.asset_id WHERE s.date=%s AND a.asset_type<>'bp'",(target,))
+        ids=[r['asset_id'] for r in snapshots]
+        holders=fetch_all(conn,'SELECT asset_id,wallet_address,balance_tokens,excluded FROM backpack_asset_holder_daily_snapshots WHERE date=%s AND asset_id=ANY(%s)',(target,ids)) if ids else []
+        evidence_cache[target] = dict(day=target,snapshots=snapshots,holders=holders,expected=observed['assets_expected'])
+        return evidence_cache[target]
     for d in days:
         if d['date'] in saved: continue
-        snapshots=fetch_all(conn,"SELECT s.* FROM backpack_asset_daily_snapshots s JOIN backpack_assets a ON a.id=s.asset_id WHERE s.date=%s AND a.asset_type<>'bp'",(d['date'],))
-        ids=[r['asset_id'] for r in snapshots]
-        holders=fetch_all(conn,'SELECT asset_id,wallet_address,balance_tokens,excluded FROM backpack_asset_holder_daily_snapshots WHERE date=%s AND asset_id=ANY(%s)',(d['date'],ids))
-        summary=summarize(d['date'],snapshots,holders,d['assets_expected'])
+        current=evidence(d['date'])
+        comparisons={period:prior for period in (1,7,30) if (prior:=evidence(d['date']-timedelta(days=period))) is not None}
+        summary=summarize(d['date'],current['snapshots'],current['holders'],current['expected'],comparisons)
         if summary is None: continue
         with conn,conn.cursor() as cur:
             cur.execute('INSERT INTO backpack_adoption_daily(date,data) VALUES(%s,%s) ON CONFLICT DO NOTHING',(d['date'],Json(summary)))

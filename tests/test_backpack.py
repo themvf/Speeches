@@ -5,6 +5,7 @@ import pytest
 from backpack.metrics import *
 from backpack.providers import Providers, SourceError
 from backpack.collector import calendar_for
+from backpack.registry import _official_candidates, identity_fingerprint, lifecycle_state
 
 
 @pytest.mark.parametrize('mode,alpaca,helius,ready,full', [
@@ -47,6 +48,26 @@ def test_unknown_never_zero():
     assert multiply(None,12) is None
     assert ratio(1,0) is None
     assert multiply(0,12)==0
+
+
+def test_registry_lifecycle_distinguishes_products_from_positive_supply():
+    assert lifecycle_state(None,D(0),False,False)=='registered'
+    assert lifecycle_state(None,D(0),True,True)=='launched'
+    assert lifecycle_state(None,D(0),False,False,date(2026,6,13))=='launched'
+    assert lifecycle_state({'lifecycle_state':'launched','token_supply':D(10)},D(10),False,False)=='paused'
+    assert lifecycle_state({'lifecycle_state':'launched','token_supply':D(10)},D(0),False,False)=='redeemed'
+    assert lifecycle_state(None,D(10),True,True,active=False)=='inactive'
+
+
+def test_official_registry_candidates_require_security_and_enabled_or_approved_mint():
+    assets=[dict(symbol='SPCX.US',displayName='SpaceX',tokens=[dict(blockchain='Solana',contractAddress='spcx',nativeDecimals=6,depositEnabled=True,withdrawEnabled=True)]),
+            dict(symbol='DORMANT.US',displayName='Dormant',tokens=[dict(blockchain='Solana',contractAddress='dormant',nativeDecimals=6,depositEnabled=False,withdrawEnabled=False)]),
+            dict(symbol='NOT_SECURITY',tokens=[dict(blockchain='Solana',contractAddress='other',depositEnabled=True,withdrawEnabled=True)])]
+    securities=[dict(asset='SPCX.US',name='SpaceX',cusip=None),dict(asset='DORMANT.US',name='Dormant',cusip=None)]
+    assert [r['token_symbol'] for r in _official_candidates(assets,securities,set())]==['SPCX.US']
+    rows=_official_candidates(assets,securities,{'dormant'})
+    assert [r['token_symbol'] for r in rows]==['SPCX.US','DORMANT.US']
+    assert identity_fingerprint('SPCX.US','spcx',6)==identity_fingerprint('SPCX.US','spcx',6)
 
 
 def test_owner_aggregation_dust_and_system_confidence():
