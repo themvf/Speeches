@@ -295,12 +295,40 @@ def test_incomplete_enumeration_preserves_prior_current_state_and_withholds_anal
     collect_asset(conn,FakeProviders(),registry,old_run,yesterday,{},calendar_for(yesterday))
     p=FakeProviders();original=p.holders
     p.holders=lambda mint:([{'address':'incomplete','owner':'wrong-owner','amount':1}],100,101) if mint=='mint-incomplete' else original(mint)
-    run(conn,p)
+    result=run(conn,p)
+    assert result['status']=='partial' and result['failed']==1
     state=fetch_all(conn,'SELECT * FROM backpack_current_holders WHERE asset_id=%s',(a,))
     assert len(state)==1 and state[0]['wallet_address']=='shared-wallet' and state[0]['last_seen_at']==yesterday
     snap=fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots WHERE asset_id=%s AND date=%s',(a,today))[0]
     assert snap['holders_complete'] is False and snap['holders_over_100'] is None and snap['new_holders'] is None
     assert not fetch_all(conn,'SELECT * FROM backpack_holder_events WHERE asset_id=%s',(a,))
+    p.holders=original
+    repaired=run(conn,p)
+    assert repaired['status']=='completed' and repaired['succeeded']==1
+    snap=fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots WHERE asset_id=%s AND date=%s',(a,today))[0]
+    assert snap['holders_complete'] is True
+    assert fetch_all(conn,'SELECT data FROM backpack_adoption_daily WHERE date=%s',(today,))
+    assert {r['period_days'] for r in fetch_all(conn,'SELECT period_days FROM backpack_adoption_assessments WHERE date=%s',(today,))}=={7,30,90}
+
+
+def test_supply_movement_aligns_to_post_enumeration_finalized_supply(conn):
+    a=asset(conn,'mint-moving','MOVING')
+    class MovingSupply(FakeProviders):
+        def __init__(self):
+            super().__init__();self.calls=defaultdict(int)
+        def supply(self,mint,independent=False):
+            if mint!='mint-moving':return super().supply(mint,independent)
+            self.calls[mint]+=1
+            return (D(1000),6,100) if self.calls[mint]==1 else (D(1100),6,110)
+        def holders(self,mint):
+            if mint=='mint-moving':return [{'address':'moving-account','owner':'moving-wallet','amount':1100000000}],105,109
+            return super().holders(mint)
+    result=run(conn,MovingSupply())
+    assert result['status']=='completed' and result['failed']==0
+    snap=fetch_all(conn,'SELECT * FROM backpack_asset_daily_snapshots WHERE asset_id=%s',(a,))[0]
+    assert snap['holders_complete'] is True and snap['token_supply']==1100 and snap['slot']==110
+    event=fetch_all(conn,"SELECT * FROM backpack_data_quality_events WHERE asset_id=%s AND metric='holder_supply_alignment'",(a,))
+    assert len(event)==1 and event[0]['status']=='Estimated'
 
 
 def test_competitor_mirror_excludes_bp_pending_and_preserves_daily_records(conn):
