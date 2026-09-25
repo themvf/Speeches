@@ -16,7 +16,7 @@ import os
 from crypto_coins import SYMBOLS, archive_start, mentions as registry_mentions
 from crypto_market_history import setup
 
-VERSION='price-events-v1'
+VERSION='price-events-v2'
 HORIZON=timedelta(hours=24)
 COINS=SYMBOLS
 
@@ -34,13 +34,22 @@ def floor_hour(stamp):
 
 
 def window_sum(series,start,end):
-    """Sum hourly volume for hours in [start,end); returns (sum or None, hours present)."""
-    total=0.0;hours=0;hour=start
+    """Sum hourly volume for hours in [start,end); returns (sum or None, hours present).
+
+    The sum is None when any present hour has no measured volume. A source that reports a rolling
+    window rather than the hour's own trading stores NULL, and adding up only the hours that happen
+    to carry a number would read as a real total for the window. `hours` still counts every hour
+    with a price, because it describes price coverage, not volume coverage.
+    """
+    total=0.0;hours=0;measured=True;hour=start
     while hour<end:
         point=series.get(hour)
-        if point is not None:total+=point[1];hours+=1
+        if point is not None:
+            hours+=1
+            if point[1] is None:measured=False
+            else:total+=point[1]
         hour+=timedelta(hours=1)
-    return (total if hours else None),hours
+    return (total if hours and measured else None),hours
 
 
 def build_events(posts,series,now):

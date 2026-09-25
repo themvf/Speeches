@@ -36,6 +36,8 @@ jobs:
       - run: python -m pytest tests/test_crypto_social_pilot.py tests/test_crypto_social_history.py tests/test_crypto_social_tracking.py tests/test_crypto_social_rolling.py tests/test_crypto_social_watchers.py -q
         env:
           CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@localhost:5432/crypto_test
+          # Fail rather than skip: a dead service must not report a green suite.
+          REQUIRE_DB_TESTS: '1'
   capture:
     needs: safeguards
     runs-on: ubuntu-latest

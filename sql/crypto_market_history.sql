@@ -14,7 +14,10 @@ CREATE INDEX IF NOT EXISTS crypto_market_fetch_time ON crypto_market_fetches(sou
 CREATE TABLE IF NOT EXISTS crypto_market_observations (
  fetch_id bigint NOT NULL REFERENCES crypto_market_fetches(id), day date NOT NULL,
  sample_at timestamptz NOT NULL, close double precision NOT NULL CHECK(close>0),
- volume double precision NOT NULL CHECK(volume>=0),
+ -- NULL means the provider does not report this interval's own trading. CoinGecko's market_chart
+ -- returns a rolling 24h total, so a price_observation source stores no volume rather than a
+ -- number that reads as hourly volume but is not.
+ volume double precision CHECK(volume>=0),
  open double precision, high double precision, low double precision,
  complete boolean NOT NULL, kind text NOT NULL CHECK(kind IN ('ohlcv','price_observation')),
  PRIMARY KEY(fetch_id,day)
@@ -31,7 +34,7 @@ ALTER TABLE crypto_market_sources DROP CONSTRAINT IF EXISTS crypto_market_source
 CREATE TABLE IF NOT EXISTS crypto_market_hourly (
  fetch_id bigint NOT NULL REFERENCES crypto_market_fetches(id), hour timestamptz NOT NULL,
  sample_at timestamptz NOT NULL, close double precision NOT NULL CHECK(close>0),
- volume double precision NOT NULL CHECK(volume>=0),
+ volume double precision CHECK(volume>=0),
  open double precision, high double precision, low double precision,
  complete boolean NOT NULL, kind text NOT NULL CHECK(kind IN ('ohlcv','price_observation')),
  PRIMARY KEY(fetch_id,hour)
@@ -53,3 +56,25 @@ CREATE TABLE IF NOT EXISTS crypto_price_events (
  PRIMARY KEY(post_id,coin,version)
 );
 CREATE INDEX IF NOT EXISTS crypto_price_events_account ON crypto_price_events(coin,account_id,posted_at);
+
+-- Volume correction (2026-09): a price_observation source reports a rolling 24h total, not the
+-- interval's own trading, so its volume column is now NULL. Existing tables predate the nullable
+-- column; both statements are catalog-only no-ops once applied.
+ALTER TABLE crypto_market_observations ALTER COLUMN volume DROP NOT NULL;
+ALTER TABLE crypto_market_hourly ALTER COLUMN volume DROP NOT NULL;
+
+-- Clear rows written before that, then make the mistake unrepeatable. Guarding on the constraint's
+-- own absence keeps this one-shot: afterwards the check is a catalog lookup, so the sweep path
+-- never rescans the observation tables. The UPDATE must precede the constraint, because the rows
+-- it corrects are exactly the rows the constraint forbids.
+DO $$
+DECLARE t text;
+BEGIN
+ FOREACH t IN ARRAY ARRAY['crypto_market_observations','crypto_market_hourly'] LOOP
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname=t||'_observation_volume') THEN
+   EXECUTE format('UPDATE %I SET volume=NULL WHERE kind=''price_observation'' AND volume IS NOT NULL',t);
+   EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I CHECK (kind<>''price_observation'' OR volume IS NULL)',
+                  t,t||'_observation_volume');
+  END IF;
+ END LOOP;
+END $$;

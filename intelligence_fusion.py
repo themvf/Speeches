@@ -295,9 +295,11 @@ def _materialize_launchpad(cur, asset: AssetIdentity, run_id: str) -> tuple[int,
             source_record = f"{asset.network}:{asset.address}:{observed_at.isoformat()}"
             measurement_id = stable_id("mkt", OUTCOME_VERSION, source_record)
             cur.execute("""INSERT INTO intelligence_market_measurements
-              (id,entity_id,venue,pool,quote_currency,measured_at,price_usd,liquidity_usd,volume_usd,source,methodology_version,source_record_id,metadata)
-              VALUES(%s,%s,%s,%s,'USD',%s,%s,%s,%s,'launchpad_archive',%s,%s,%s) ON CONFLICT DO NOTHING""",
-              (measurement_id, asset.entity_id, None, None, observed_at, price, liquidity, volume, OUTCOME_VERSION,
+              (id,entity_id,venue,pool,quote_currency,measured_at,price_usd,liquidity_usd,volume_usd,volume_window,source,methodology_version,source_record_id,metadata)
+              VALUES(%s,%s,%s,%s,'USD',%s,%s,%s,%s,%s,'launchpad_archive',%s,%s,%s) ON CONFLICT DO NOTHING""",
+              (measurement_id, asset.entity_id, None, None, observed_at, price, liquidity, volume,
+               # The archive column is volume_h1, so the window is an hour. Never leave it implied.
+               'h1' if volume is not None else None, OUTCOME_VERSION,
                source_record, json.dumps({"phase": phase, "rung_minutes": rung})))
             measurements += 1
     trade_observations, trade_events = _materialize_opening_trades(cur, asset, run_id)

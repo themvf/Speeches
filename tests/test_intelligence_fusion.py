@@ -104,17 +104,110 @@ def test_saved_x_and_chain_rows_materialize_without_provider_calls():
 
     result = materialize(url, ["PONS"])
     assert result["telegram"] == "not_configured"
-    assert result["observations"] >= 2
-    assert result["claims"] >= 2
-    assert result["events"] >= 2
 
     conn = psycopg2.connect(url)
     with conn, conn.cursor() as cur:
+        # Which sources contributed, checked BEFORE the totals. A bare ">= 2" once passed while the
+        # X side contributed nothing at all: the fixture text said plain "PONS", which the registry
+        # deliberately does not match (bare "pons" is a Latin word, guarded against "pons asinorum"),
+        # so every post was skipped and the lone graduation observation was mistaken for success.
+        # Asserting the sources first means a dropped adapter names itself instead of failing as
+        # an anonymous off-by-one.
+        cur.execute("SELECT source,count(*) FROM intelligence_observations GROUP BY source ORDER BY source")
+        by_source = dict(cur.fetchall())
+        assert by_source.get("x", 0) >= 1, f"the saved X post was not materialized; sources seen: {by_source}"
+        assert by_source.get("onchain", 0) >= 1, f"the stored graduation was not materialized; sources seen: {by_source}"
+        assert by_source.get("telegram", 0) == 0, f"the placeholder adapter wrote rows: {by_source}"
+
+        assert result["observations"] >= 2, f"materialize counted {result['observations']}; sources seen: {by_source}"
+        assert result["claims"] >= 2
+        assert result["events"] >= 2
+
         cur.execute("""SELECT count(*) FROM intelligence_claim_event_assessments a
           JOIN intelligence_claims c ON c.id=a.claim_id WHERE c.claim_type IN ('graduation','pool_creation')""")
         assert cur.fetchone()[0] >= 2
-        cur.execute("SELECT count(*) FROM intelligence_observations WHERE source='telegram'")
-        assert cur.fetchone()[0] == 0
         cur.execute("SELECT count(*) FROM intelligence_claim_outcomes")
         assert cur.fetchone()[0] >= 1
+    conn.close()
+
+
+@pytest.mark.skipif(not os.environ.get("CRYPTO_SOCIAL_TEST_DATABASE_URL"), reason="test Postgres not configured")
+def test_a_volume_cannot_be_stored_without_the_window_it_covers():
+    """A flow is meaningless without its window, and this table is source-neutral.
+
+    The launchpad adapter reads launchpad_observations.volume_h1 — an hour — and used to write it
+    into a column named only volume_usd, so the window was lost the moment it crossed into the
+    fusion layer and nothing downstream could recover it. The window now travels with the value
+    and the database refuses the pairing that loses it.
+    """
+    import psycopg2
+    url = os.environ["CRYPTO_SOCIAL_TEST_DATABASE_URL"]
+    root = Path(__file__).parents[1]
+    conn = psycopg2.connect(url)
+    with conn, conn.cursor() as cur:
+        cur.execute(root.joinpath("sql", "intelligence_fusion.sql").read_text())
+        cur.execute("""INSERT INTO intelligence_entities(id,kind,label,metadata)
+                       VALUES('ent-window-test','asset','Window Test','{}') ON CONFLICT DO NOTHING""")
+
+    def measurement(cur, suffix, volume, window):
+        cur.execute("""INSERT INTO intelligence_market_measurements
+          (id,entity_id,quote_currency,measured_at,volume_usd,volume_window,source,methodology_version,source_record_id)
+          VALUES(%s,'ent-window-test','USD',now(),%s,%s,'test','v1',%s)""",
+          (f"mkt-window-{suffix}", volume, window, f"rec-{suffix}"))
+
+    with conn, conn.cursor() as cur:          # a volume with its window is fine
+        measurement(cur, "ok", 1234.5, "h1")
+    with conn, conn.cursor() as cur:          # no volume, no window is fine
+        measurement(cur, "empty", None, None)
+    for suffix, volume, window in (("naked", 1234.5, None), ("orphan", None, "h1")):
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            with conn, conn.cursor() as cur:
+                measurement(cur, suffix, volume, window)
+        conn.rollback()
+    with conn, conn.cursor() as cur:
+        cur.execute("SELECT volume_usd,volume_window FROM intelligence_market_measurements WHERE id='mkt-window-ok'")
+        assert cur.fetchone() == (1234.5, "h1")
+    conn.close()
+
+
+@pytest.mark.skipif(not os.environ.get("CRYPTO_SOCIAL_TEST_DATABASE_URL"), reason="test Postgres not configured")
+def test_history_written_before_the_window_column_is_left_exactly_as_recorded():
+    """This table is append-only, so the migration must not rewrite what was already stored.
+
+    Rows written before the column existed genuinely did not record a window. Backfilling them
+    would invent a measurement nobody took, and the append-only trigger refuses it. The constraint
+    is therefore NOT VALID: it binds every new row and leaves the historical record untouched, so
+    those rows read as "window not recorded" rather than as a window inferred after the fact.
+    """
+    import psycopg2
+    url = os.environ["CRYPTO_SOCIAL_TEST_DATABASE_URL"]
+    root = Path(__file__).parents[1]
+    conn = psycopg2.connect(url)
+    with conn, conn.cursor() as cur:
+        cur.execute(root.joinpath("sql", "intelligence_fusion.sql").read_text())
+        cur.execute("ALTER TABLE intelligence_market_measurements DROP CONSTRAINT IF EXISTS "
+                    "intelligence_market_measurements_volume_window")
+        cur.execute("ALTER TABLE intelligence_market_measurements DROP COLUMN IF EXISTS volume_window")
+        cur.execute("""INSERT INTO intelligence_entities(id,kind,label,metadata)
+                       VALUES('ent-legacy','asset','Legacy','{}') ON CONFLICT DO NOTHING""")
+        cur.execute("""INSERT INTO intelligence_market_measurements
+          (id,entity_id,quote_currency,measured_at,volume_usd,source,methodology_version,source_record_id)
+          VALUES('mkt-legacy','ent-legacy','USD',now(),999.0,'test','v1','rec-legacy')""")
+
+    with conn, conn.cursor() as cur:
+        cur.execute(root.joinpath("sql", "intelligence_fusion.sql").read_text())   # the migration
+
+    with conn, conn.cursor() as cur:
+        cur.execute("SELECT volume_usd,volume_window FROM intelligence_market_measurements WHERE id='mkt-legacy'")
+        assert cur.fetchone() == (999.0, None)   # untouched, and honest about what it does not know
+        cur.execute("""SELECT convalidated FROM pg_constraint
+                       WHERE conname='intelligence_market_measurements_volume_window'""")
+        assert cur.fetchone() == (False,)        # NOT VALID: history exempt, new rows bound
+    # A new row still cannot omit the window, even with unvalidated history present.
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        with conn, conn.cursor() as cur:
+            cur.execute("""INSERT INTO intelligence_market_measurements
+              (id,entity_id,quote_currency,measured_at,volume_usd,source,methodology_version,source_record_id)
+              VALUES('mkt-new','ent-legacy','USD',now(),5.0,'test','v1','rec-new')""")
+    conn.rollback()
     conn.close()

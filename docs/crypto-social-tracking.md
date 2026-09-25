@@ -148,8 +148,20 @@ provider calls) writes `crypto_price_events`: for each saved non-repost post men
 coin (same text rules as the dashboard's "Coin words in post" filter), the pinned pool's
 hourly close one hour before, at, and 1/6/24 hours after the post hour, plus 24-hour volume
 sums either side. A row is written only once the 24-hour candle is complete and both
-endpoints exist, and it is never rewritten (`version = price-events-v1`; a rule change is a
-new version, not an update). `episode` marks an author's first eligible post on a coin in
+endpoints exist, and it is never rewritten (`version = price-events-v2`; a rule change is a
+new version, not an update).
+
+**Volume is null where the provider does not measure the hour.** CoinGecko's `market_chart`
+reports `total_volumes` as a rolling 24-hour total, not the volume traded in that hour, so
+ZEC's archive now stores no volume rather than a number readers would take as hourly trading.
+A window containing any unmeasured hour yields no volume sum at all, rather than the sum of
+whichever hours happened to carry a figure, so `/api/market/crypto/impact` reports no volume
+ratio for ZEC instead of one pinned near 1.0. Contract coins carry real per-hour volume and
+are unaffected. The version moved to `v2` because the computation changed: `v1` rows summed
+24 overlapping rolling totals and implied roughly $29bn of daily Zcash volume against the
+~$1.2bn the same series reports. Archive rows written before the correction are cleared once
+with `python crypto_market_history.py --execute --repair-volume`, which is idempotent and
+deliberately off the sweep path. `episode` marks an author's first eligible post on a coin in
 24 hours so a burst during one move counts once. The weekly voice evaluation now also records
 each group's episode count and median 24h forward move.
 
