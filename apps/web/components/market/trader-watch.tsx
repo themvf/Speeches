@@ -40,6 +40,14 @@ export function TraderWatch() {
 
   const profile = data?.profile ?? TRADER_WATCH_PROFILES.find((item) => item.id === trader)!;
   const wallet = profile.wallet;
+  const seenMints = new Set<string>();
+  const recentIncreases = (data?.walletActivity.items ?? [])
+    .flatMap((activity) => activity.tokenChanges.filter((change) => change.delta.startsWith("+")).map((change) => ({ change, activity })))
+    .filter(({ change }) => {
+      if (seenMints.has(change.mint)) return false;
+      seenMints.add(change.mint);
+      return true;
+    });
 
   return (
     <section className="rounded-xl border border-[color:var(--line)] bg-[color:rgba(9,21,34,0.4)] p-4 sm:p-5" aria-labelledby="wallet-watch-heading">
@@ -100,19 +108,37 @@ export function TraderWatch() {
         <div className="min-w-0 rounded-lg border border-[color:var(--line)] p-3">
           <h3 className="text-sm font-semibold text-[color:var(--ink)]">Recent wallet transactions</h3>
           <p className="mt-1 text-xs text-[color:var(--ink-faint)]">Latest 8 returned signatures for this address. Token balance changes are not classified as buys, sells, or profit.</p>
+          {wallet && <div className="mt-3 rounded-lg border border-[color:var(--line)] p-3 text-sm text-[color:var(--ink)]">
+            <p className="font-semibold">Want coin names from a wider trade history?</p>
+            <a href={wallet.profileUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[color:var(--accent)] underline underline-offset-2">Open this wallet on Pump.fun → Activity, Open, or Closed ↗</a>
+            <p className="mt-1 text-xs text-[color:var(--ink-faint)]">That profile shows Pump.fun activity; trades through other venues may not appear there.</p>
+          </div>}
           {data?.walletActivity.note && <p className="mt-3 text-sm text-amber-300">{data.walletActivity.note}</p>}
+          {recentIncreases.length > 0 && <div className="mt-3 rounded-lg border border-[color:var(--line)] p-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink)]">Recent token increases</h4>
+            <p className="mt-1 text-xs text-[color:var(--ink-faint)]">These may be purchases, transfers, or other receipts. Open the transaction to check.</p>
+            <ul className="mt-2 space-y-2">
+              {recentIncreases.map(({ change, activity }) => <li key={change.mint} className="text-sm text-[color:var(--ink)]">
+                <span className="font-semibold">{change.name ?? change.symbol ?? "Unlabeled token"}</span>
+                {change.symbol && change.name && <span className="ml-1 text-xs text-[color:var(--ink-faint)]">({change.symbol})</span>}
+                <span className="ml-2 text-xs text-[color:var(--ink-faint)]">{change.delta}</span>
+                <a href={activity.url} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-[color:var(--accent)] underline underline-offset-2">transaction ↗</a>
+              </li>)}
+            </ul>
+          </div>}
+          {data && data.walletActivity.status !== "unavailable" && recentIncreases.length === 0 && <p className="mt-3 text-xs text-[color:var(--ink-faint)]">No token balance increases appear in these latest {data.walletActivity.items.length} transactions. This does not rule out earlier purchases.</p>}
           {data?.walletActivity.items.length ? <ol className="mt-3 divide-y divide-[color:var(--line)]">
             {data.walletActivity.items.map((activity) => <li key={activity.signature} className="py-3 first:pt-0">
               <p className="text-xs text-[color:var(--ink-faint)]">{timeLabel(activity.timestamp)} · {activity.status === "confirmed" ? "Confirmed" : activity.status === "failed" ? "Failed transaction" : "Details unavailable"}</p>
               {activity.tokenChanges.length ? <ul className="mt-1 space-y-1">
-                {activity.tokenChanges.map((change) => <li key={change.mint} className="break-all text-xs text-[color:var(--ink)]"><span className="font-semibold">{change.delta}</span> tokens · mint {change.mint}</li>)}
+                {activity.tokenChanges.map((change) => <li key={change.mint} className="break-all text-xs text-[color:var(--ink)]"><span className="font-semibold">{change.delta} {change.symbol ?? "tokens"}</span>{change.name && <span className="ml-1 text-[color:var(--ink-faint)]">· {change.name}</span>} · <a href={`https://explorer.solana.com/address/${change.mint}`} target="_blank" rel="noopener noreferrer" className="text-[color:var(--accent)] underline underline-offset-2">mint {change.mint} ↗</a></li>)}
               </ul> : <p className="mt-1 text-xs text-[color:var(--ink-faint)]">No owner-attributed SPL token balance change in the available transaction metadata.</p>}
               <a href={activity.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-[color:var(--accent)] underline underline-offset-2">View transaction {activity.signature.slice(0, 8)}… ↗</a>
             </li>)}
           </ol> : null}
         </div>
       </div>
-      <p className="mt-4 text-xs text-[color:var(--ink-faint)]">A single wallet may omit other holdings or off-chain trades. Transfers and deposits can change balances without a trade. Compare source timestamps with the price available when a post became public.</p>
+      <p className="mt-4 text-xs text-[color:var(--ink-faint)]">A single wallet may omit other holdings or off-chain trades. Transfers and deposits can change balances without a purchase or sale.</p>
     </section>
   );
 }

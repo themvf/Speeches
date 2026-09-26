@@ -7,7 +7,8 @@ Profiles are configured in `apps/web/lib/trader-watch.ts`. Add another address t
 ## Data
 
 - Current balances use `getTokenAccountsByOwner` for SPL Token and Token-2022 plus `getBalance` for native SOL. Positive balances are combined by mint. DEX Screener supplies a name and symbol when it has a pair for a mint; the mint address remains visible because market labels are not identity verification.
-- Recent activity uses `getSignaturesForAddress` and `getTransaction` for the latest eight returned signatures. Token balance changes are observations, not automatic buy, sell, or profit labels.
+- Recent activity uses `getSignaturesForAddress` and `getTransaction` for the latest eight returned signatures. Token mints are labeled using the holdings list or DEX Screener when available. A short list highlights distinct recent token increases by name, but a positive balance change may be a purchase, transfer, or other receipt; it is not an automatic buy, sell, or profit label.
+- The wallet's Pump.fun profile is linked beside recent transactions as a simpler way to inspect named trades in its Open, Closed, and Activity views. That view may omit trades made through other venues.
 - The RPC endpoint is `SOLANA_RPC_URL` when configured, otherwise Solana's public mainnet RPC. A failed balance read produces a partial or unavailable state rather than implying that a token is absent.
 - The holdings list is a near-current snapshot for one address. It does not reconstruct closed positions, historical holdings, exchange balances, stake accounts, or other wallets.
 

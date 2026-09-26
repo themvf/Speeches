@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readWalletActivity, readWalletHoldings } from "@/lib/server/trader-watch";
+import { labelWalletActivity, readWalletActivity, readWalletHoldings } from "@/lib/server/trader-watch";
 import { traderWatchProfile, type TraderWatchData } from "@/lib/trader-watch";
 
 export const runtime = "nodejs";
@@ -14,10 +14,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     readWalletActivity(profile),
     readWalletHoldings(profile),
   ]);
+  const activity = walletResult.status === "fulfilled"
+    ? await labelWalletActivity(walletResult.value, holdingsResult.status === "fulfilled" ? holdingsResult.value.items : [])
+    : [];
   const data: TraderWatchData = {
     profile,
     walletActivity: walletResult.status === "fulfilled"
-      ? { status: "available", items: walletResult.value, note: walletResult.value.some((item) => item.status === "details_unavailable")
+      ? { status: "available", items: activity, note: activity.some((item) => item.status === "details_unavailable")
         ? "Some transaction details could not be read from the RPC. Open the explorer links for those signatures."
         : walletResult.value.length ? null : "No recent transactions returned by the RPC." }
       : { status: "unavailable", items: [], note: "Solana activity is currently unavailable. Try again later or configure SOLANA_RPC_URL." },

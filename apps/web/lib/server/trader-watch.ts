@@ -5,6 +5,7 @@ import {
   type WalletObservation,
   type ParsedTokenAccount,
   formatTokenAmount,
+  labelWalletObservations,
   walletHoldingsFromAccounts,
   walletTokenChanges,
 } from "@/lib/trader-watch";
@@ -126,6 +127,17 @@ async function tokenLabels(mints: string[]): Promise<Map<string, { symbol: strin
   }
   for (const [mint, label] of best) labels.set(mint, { symbol: label.symbol, name: label.name });
   return labels;
+}
+
+export async function labelWalletActivity(
+  observations: WalletObservation[],
+  holdings: WalletHolding[],
+): Promise<WalletObservation[]> {
+  const known = new Map(holdings.filter((item) => item.symbol && item.name).map((item) => [item.mint, { symbol: item.symbol!, name: item.name! }]));
+  const missing = [...new Set(observations.flatMap((item) => item.tokenChanges.map((change) => change.mint)))].filter((mint) => !known.has(mint));
+  const fetched = await tokenLabels(missing).catch(() => new Map<string, { symbol: string; name: string }>());
+  for (const [mint, label] of fetched) known.set(mint, label);
+  return labelWalletObservations(observations, known);
 }
 
 export async function readWalletHoldings(profile: TraderWatchProfile): Promise<WalletHoldings> {

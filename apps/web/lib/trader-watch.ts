@@ -32,6 +32,9 @@ export type WalletTokenChange = {
   mint: string;
   delta: string;
   decimals: number;
+  symbol: string | null;
+  name: string | null;
+  labelSource: "dexscreener" | null;
 };
 
 export type WalletObservation = {
@@ -41,6 +44,19 @@ export type WalletObservation = {
   tokenChanges: WalletTokenChange[];
   url: string;
 };
+
+export function labelWalletObservations(
+  observations: WalletObservation[],
+  labels: Map<string, { symbol: string; name: string }>,
+): WalletObservation[] {
+  return observations.map((observation) => ({
+    ...observation,
+    tokenChanges: observation.tokenChanges.map((change) => {
+      const label = labels.get(change.mint);
+      return label ? { ...change, ...label, labelSource: "dexscreener" as const } : change;
+    }),
+  }));
+}
 
 export type WalletHolding = {
   mint: string;
@@ -122,7 +138,7 @@ export function walletTokenChanges(
     }
   }
   return [...balances.entries()]
-    .map(([mint, balance]) => ({ mint, delta: formatTokenDelta(balance.after - balance.before, balance.decimals), decimals: balance.decimals }))
+    .map(([mint, balance]) => ({ mint, delta: formatTokenDelta(balance.after - balance.before, balance.decimals), decimals: balance.decimals, symbol: null, name: null, labelSource: null }))
     .filter((change) => change.delta !== "0")
     .sort((a, b) => a.mint.localeCompare(b.mint));
 }
