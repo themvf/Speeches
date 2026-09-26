@@ -5,8 +5,8 @@ import {MIN_LINKED_POSTS,postingStyles,dayOneCoins,type Leader} from './crypto-l
 import {ringToken,RING_LABEL,type Ring,type RingResult,type CircleEntry} from './crypto-rings.ts';
 import type {CryptoBriefWindow} from './crypto-brief-types.ts';
 export const BASE='/market/crypto';
-export type Tab='brief'|'people'|'posts'|'timeline'|'connections'|'data';
-export const TABS:{id:Tab;label:string}[]=[{id:'brief',label:'Quick brief'},{id:'people',label:'People'},{id:'posts',label:'X posts'},{id:'timeline',label:'Timeline'},{id:'connections',label:'Connections'},{id:'data',label:'Data'}];
+export type Tab='brief'|'people'|'posts'|'timeline'|'connections'|'traders'|'data';
+export const TABS:{id:Tab;label:string}[]=[{id:'brief',label:'Quick brief'},{id:'people',label:'People'},{id:'posts',label:'X posts'},{id:'timeline',label:'Timeline'},{id:'connections',label:'Connections'},{id:'traders',label:'Trader Watch'},{id:'data',label:'Data'}];
 export type Query={coin:string|null;handle:string|null;early:boolean;day:number|null;hit:number|null;posts:number|null;watcher:boolean;contract:string|null;ring:Ring|null;coins:number|null;day1:boolean;circle:boolean;unknown:string[]};
 const CONTRACT=/^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
 export function coinForContract(address:string){const a=address.toLowerCase();return COINS.find(c=>c.address&&c.address.toLowerCase()===a)?.symbol??null;}
