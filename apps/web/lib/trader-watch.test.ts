@@ -4,10 +4,9 @@ import { TRADER_WATCH_PROFILES, walletHoldingsFromAccounts, walletTokenChanges }
 
 const address = "64w4qRu9VGio7U1Asc6B68QDpS8L1McmSn2yyExC6Fii";
 
-test("candidate wallet remains explicitly unverified", () => {
+test("wallet watch identifies the address and its Pump.fun profile", () => {
   assert.equal(TRADER_WATCH_PROFILES[0].wallet?.address, address);
-  assert.equal(TRADER_WATCH_PROFILES[0].wallet?.attribution, "unverified");
-  assert.equal(TRADER_WATCH_PROFILES[0].wallet?.evidenceUrl, null);
+  assert.equal(TRADER_WATCH_PROFILES[0].wallet?.profileUrl, `https://pump.fun/profile/${address}`);
 });
 
 test("token changes use only balances owned by the watched address", () => {

@@ -1,7 +1,4 @@
-import { getRecentArticles } from "@/lib/server/neon";
-import { xTimelineFeedKey } from "@/lib/server/x-syndication";
 import {
-  type TraderPost,
   type TraderWatchProfile,
   type WalletHolding,
   type WalletHoldings,
@@ -57,18 +54,6 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   if (payload.error) throw new Error(payload.error.message || "Solana RPC error");
   if (payload.result === undefined) throw new Error("Solana RPC result missing");
   return payload.result;
-}
-
-export async function readTraderPosts(profile: TraderWatchProfile): Promise<TraderPost[]> {
-  if (!process.env.DATABASE_URL) throw new Error("Post archive database is not configured");
-  const rows = await getRecentArticles({ feedKey: xTimelineFeedKey(profile.xHandle), limit: 20 });
-  return rows.map((row) => ({
-    id: row.guid,
-    text: row.description || row.title,
-    url: row.url,
-    publishedAt: row.published_at ? new Date(row.published_at).toISOString() : null,
-    observedAt: new Date(row.fetched_at).toISOString(),
-  }));
 }
 
 export async function readWalletActivity(profile: TraderWatchProfile): Promise<WalletObservation[]> {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readTraderPosts, readWalletActivity, readWalletHoldings } from "@/lib/server/trader-watch";
+import { readWalletActivity, readWalletHoldings } from "@/lib/server/trader-watch";
 import { traderWatchProfile, type TraderWatchData } from "@/lib/trader-watch";
 
 export const runtime = "nodejs";
@@ -8,18 +8,14 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const id = request.nextUrl.searchParams.get("trader") ?? "lbexplorer";
   const profile = traderWatchProfile(id);
-  if (!profile) return NextResponse.json({ ok: false, error: "Unknown trader" }, { status: 400 });
+  if (!profile) return NextResponse.json({ ok: false, error: "Unknown wallet profile" }, { status: 400 });
 
-  const [postResult, walletResult, holdingsResult] = await Promise.allSettled([
-    readTraderPosts(profile),
+  const [walletResult, holdingsResult] = await Promise.allSettled([
     readWalletActivity(profile),
     readWalletHoldings(profile),
   ]);
   const data: TraderWatchData = {
     profile,
-    posts: postResult.status === "fulfilled"
-      ? { status: "available", items: postResult.value, note: postResult.value.length ? null : "No saved posts for this account yet. Add it to the X account collector in Admin." }
-      : { status: "unavailable", items: [], note: "Saved X posts are currently unavailable." },
     walletActivity: walletResult.status === "fulfilled"
       ? { status: "available", items: walletResult.value, note: walletResult.value.some((item) => item.status === "details_unavailable")
         ? "Some transaction details could not be read from the RPC. Open the explorer links for those signatures."

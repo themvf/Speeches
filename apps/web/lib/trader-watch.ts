@@ -1,29 +1,25 @@
 export type TraderWatchProfile = {
   id: string;
   name: string;
-  xHandle: string;
   description: string;
   wallet: {
     chain: "solana";
     address: string;
-    attribution: "verified" | "unverified";
-    evidenceUrl: string | null;
+    profileUrl: string;
   } | null;
 };
 
-// Attribution is deliberately separate from the address. A matching profile
-// name does not establish that the X account controls this wallet.
+// This registry follows wallet addresses. Display names identify the source
+// profile; they do not assert who controls an address.
 export const TRADER_WATCH_PROFILES: readonly TraderWatchProfile[] = [
   {
     id: "lbexplorer",
-    name: "LB",
-    xHandle: "lbexplorer",
-    description: "$50K to $1M public trading challenge",
+    name: "lbexplorer",
+    description: "Pump.fun wallet profile",
     wallet: {
       chain: "solana",
       address: "64w4qRu9VGio7U1Asc6B68QDpS8L1McmSn2yyExC6Fii",
-      attribution: "unverified",
-      evidenceUrl: null,
+      profileUrl: "https://pump.fun/profile/64w4qRu9VGio7U1Asc6B68QDpS8L1McmSn2yyExC6Fii",
     },
   },
 ];
@@ -31,14 +27,6 @@ export const TRADER_WATCH_PROFILES: readonly TraderWatchProfile[] = [
 export function traderWatchProfile(id: string): TraderWatchProfile | undefined {
   return TRADER_WATCH_PROFILES.find((profile) => profile.id === id);
 }
-
-export type TraderPost = {
-  id: string;
-  text: string;
-  url: string;
-  publishedAt: string | null;
-  observedAt: string;
-};
 
 export type WalletTokenChange = {
   mint: string;
@@ -73,7 +61,6 @@ export type WalletHoldings = {
 
 export type TraderWatchData = {
   profile: TraderWatchProfile;
-  posts: { status: "available" | "unavailable"; items: TraderPost[]; note: string | null };
   walletActivity: { status: "available" | "unavailable"; items: WalletObservation[]; note: string | null };
   walletHoldings: WalletHoldings;
   generatedAt: string;
