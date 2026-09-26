@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TRADER_WATCH_PROFILES, walletTokenChanges } from "./trader-watch.ts";
+import { TRADER_WATCH_PROFILES, walletHoldingsFromAccounts, walletTokenChanges } from "./trader-watch.ts";
 
 const address = "64w4qRu9VGio7U1Asc6B68QDpS8L1McmSn2yyExC6Fii";
 
@@ -43,4 +43,16 @@ test("a decrease is reported as a balance change, including for a closed token a
     [],
   );
   assert.deepEqual(changes, [{ mint: "mint-c", delta: "-1", decimals: 3 }]);
+});
+
+test("current holdings combine token accounts by mint and keep exact decimal quantities", () => {
+  const account = (owner: string, mint: string, amount: string, decimals: number) => ({
+    account: { data: { parsed: { info: { owner, mint, tokenAmount: { amount, decimals } } } } },
+  });
+  assert.deepEqual(walletHoldingsFromAccounts(address, [
+    account(address, "mint-a", "1000001", 6),
+    account(address, "mint-a", "2", 6),
+    account(address, "mint-b", "0", 9),
+    account("someone-else", "mint-c", "9999", 0),
+  ]), [{ mint: "mint-a", amount: "1.000003", decimals: 6, symbol: null, name: null, labelSource: null }]);
 });

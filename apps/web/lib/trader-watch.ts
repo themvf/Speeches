@@ -54,12 +54,62 @@ export type WalletObservation = {
   url: string;
 };
 
+export type WalletHolding = {
+  mint: string;
+  amount: string;
+  decimals: number;
+  symbol: string | null;
+  name: string | null;
+  labelSource: "dexscreener" | null;
+};
+
+export type WalletHoldings = {
+  status: "available" | "partial" | "unavailable";
+  items: WalletHolding[];
+  sol: string | null;
+  observedAt: string | null;
+  note: string | null;
+};
+
 export type TraderWatchData = {
   profile: TraderWatchProfile;
   posts: { status: "available" | "unavailable"; items: TraderPost[]; note: string | null };
   walletActivity: { status: "available" | "unavailable"; items: WalletObservation[]; note: string | null };
+  walletHoldings: WalletHoldings;
   generatedAt: string;
 };
+
+export type ParsedTokenAccount = {
+  account?: { data?: { parsed?: { info?: {
+    owner?: string;
+    mint?: string;
+    tokenAmount?: { amount?: string; decimals?: number };
+  } } } };
+};
+
+export function walletHoldingsFromAccounts(address: string, accounts: ParsedTokenAccount[]): WalletHolding[] {
+  const byMint = new Map<string, { amount: bigint; decimals: number }>();
+  for (const account of accounts) {
+    const info = account.account?.data?.parsed?.info;
+    const raw = info?.tokenAmount?.amount;
+    const decimals = info?.tokenAmount?.decimals;
+    if (info?.owner !== address || !info.mint || !/^\d+$/.test(raw ?? "") || !Number.isInteger(decimals) || decimals! < 0 || decimals! > 18) continue;
+    const current = byMint.get(info.mint);
+    if (current && current.decimals !== decimals) continue;
+    byMint.set(info.mint, { amount: (current?.amount ?? 0n) + BigInt(raw!), decimals: decimals! });
+  }
+  return [...byMint.entries()]
+    .filter(([, value]) => value.amount > 0n)
+    .map(([mint, value]) => ({
+      mint,
+      amount: formatTokenAmount(value.amount, value.decimals),
+      decimals: value.decimals,
+      symbol: null,
+      name: null,
+      labelSource: null,
+    }))
+    .sort((a, b) => a.mint.localeCompare(b.mint));
+}
 
 type TokenBalance = {
   mint?: string;
@@ -94,8 +144,12 @@ function formatTokenDelta(value: bigint, decimals: number): string {
   if (value === 0n) return "0";
   const sign = value < 0n ? "-" : "+";
   const absolute = value < 0n ? -value : value;
+  return `${sign}${formatTokenAmount(absolute, decimals)}`;
+}
+
+export function formatTokenAmount(absolute: bigint, decimals: number): string {
   const divisor = 10n ** BigInt(decimals);
   const whole = absolute / divisor;
   const fractional = decimals ? (absolute % divisor).toString().padStart(decimals, "0").replace(/0+$/, "") : "";
-  return `${sign}${whole}${fractional ? `.${fractional}` : ""}`;
+  return `${whole}${fractional ? `.${fractional}` : ""}`;
 }

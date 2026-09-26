@@ -45,7 +45,7 @@ export function TraderWatch() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="trader-watch-heading" className="text-base font-semibold text-[color:var(--ink)]">Trader Watch</h2>
-          <p className="mt-1 text-sm text-[color:var(--ink-faint)]">Public posts and observable wallet activity, with separate source records.</p>
+          <p className="mt-1 text-sm text-[color:var(--ink-faint)]">Public posts, current wallet holdings, and recent transactions, with separate source records.</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading} className="min-h-11 rounded-lg border border-[color:var(--line-strong)] px-3 text-sm text-[color:var(--ink)] disabled:opacity-50">
           {loading ? "Reloading…" : "Reload data"}
@@ -81,6 +81,23 @@ export function TraderWatch() {
       </p>
 
       <div className="mt-4 grid gap-4">
+        <div className="min-w-0 rounded-lg border border-[color:var(--line)] p-3">
+          <h3 className="text-sm font-semibold text-[color:var(--ink)]">Current holdings in candidate wallet</h3>
+          <p className="mt-1 text-xs text-[color:var(--ink-faint)]">Positive balances in this address’s SPL Token and Token-2022 accounts, plus native SOL. Snapshot checked {timeLabel(data?.walletHoldings.observedAt ?? null)}. These holdings do not establish {profile.name}&rsquo;s complete portfolio.</p>
+          {data?.walletHoldings.note && <p className="mt-3 text-sm text-amber-300">{data.walletHoldings.note}</p>}
+          {data && data.walletHoldings.status !== "unavailable" && <>
+            <p className="mt-3 text-xs text-[color:var(--ink-faint)]">{data?.walletHoldings.items.length ?? 0} token mints with a positive balance{data?.walletHoldings.status === "partial" ? " · partial RPC result" : ""}</p>
+            {data?.walletHoldings.sol !== null && data?.walletHoldings.sol !== undefined && <p className="mt-2 text-sm text-[color:var(--ink)]"><span className="font-semibold">{data.walletHoldings.sol} SOL</span> · native balance</p>}
+            {data?.walletHoldings.items.length ? <ul className="mt-2 max-h-[420px] divide-y divide-[color:var(--line)] overflow-y-auto">
+              {data.walletHoldings.items.map((holding) => <li key={holding.mint} className="py-2 text-sm text-[color:var(--ink)]">
+                <span className="font-semibold">{holding.amount} {holding.symbol ?? "tokens"}</span>
+                <span className="ml-2 text-xs text-[color:var(--ink-faint)]">{holding.name ?? "Unlabeled mint"}{holding.labelSource ? " · DEX Screener label" : ""}</span>
+                <a href={`https://explorer.solana.com/address/${holding.mint}`} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all font-mono text-xs text-[color:var(--accent)] underline underline-offset-2">{holding.mint} ↗</a>
+              </li>)}
+            </ul> : <p className="mt-2 text-xs text-[color:var(--ink-faint)]">No positive SPL token balances were returned.</p>}
+          </>}
+          <p className="mt-2 text-xs text-[color:var(--ink-faint)]">A token label comes from a trading pair and is not identity verification. Zero-balance accounts, other wallets, exchange balances, and off-chain positions are outside this view.</p>
+        </div>
         <div className="min-w-0 rounded-lg border border-[color:var(--line)] p-3">
           <h3 className="text-sm font-semibold text-[color:var(--ink)]">Public X posts</h3>
           <p className="mt-1 text-xs text-[color:var(--ink-faint)]">Saved posts from the tracked account. Statements are the author’s claims.</p>
