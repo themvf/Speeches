@@ -120,6 +120,7 @@ class FakeIntel:
         rows = sorted((t for t in self.history if address in keys_of(t)), key=lambda t: -t['slot'])
         if kwargs['params'].get('before'): return []
         return [dict(signature=t['transaction']['signatures'][0], timestamp=t['blockTime']) for t in rows]
+    def rpc_paced(self, method, params): return self.rpc(method, params)
     def rpc(self, method, params, independent=False):
         if method == 'getSlot': return self.slot + 100  # price blocks (800) sit a few hundred slots behind the tip
         if method == 'getBlockTime': return int(self.now.timestamp())
@@ -382,3 +383,29 @@ def test_wallet_without_history_keeps_being_polled(conn):
     after = fetch_all(conn, "SELECT * FROM bp_history_coverage WHERE wallet_address='w1'")[0]
     assert after['newest_slot'] == 5000 and after['transactions'] == 1
     assert [e['kind'] for e in fetch_all(conn, "SELECT kind FROM bp_economic_events WHERE signature='later'")] == ['transfer_in']
+
+
+def test_metadata_is_marked_checked_only_after_a_successful_lookup(conn):
+    from backpack.providers import SourceError
+    bp_capture(conn, NOW.date(), dict(w1=5, w2=4, w3=3))
+    cohorts.refresh_cohort(conn, ENV)
+    wallets = cohorts.tracked_wallets(conn)
+    class Partial(FakeIntel):  # DAS knows every mint except UNPRICED; records what it is asked for
+        asked = []
+        def assets(self, mints):
+            Partial.asked.append(sorted(mints))
+            return {m: a for m, a in FakeIntel.assets(self, mints).items() if m != UNPRICED}
+    class Down(FakeIntel):
+        def assets(self, mints): raise SourceError('Helius DAS: HTTP 429')
+    def read(provider, when):
+        run_id = str(uuid.uuid4())
+        with conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO backpack_ingestion_runs(run_id,snapshot_date,started_at,job) VALUES(%s,%s,%s,'bp_intel')", (run_id, when.date(), when))
+        return intel.collect_portfolios(conn, provider, ENV, run_id, wallets, when)
+    read(Down(holdings()), NOW - timedelta(hours=3))  # a failed lookup marks nothing as checked
+    assert all(r['metadata_at'] is None for r in fetch_all(conn, "SELECT metadata_at FROM bp_tracked_assets WHERE mint<>'native'"))
+    read(Partial(holdings()), NOW - timedelta(hours=2))
+    unknown = fetch_all(conn, 'SELECT * FROM bp_tracked_assets WHERE mint=%s', (UNPRICED,))[0]
+    assert unknown['metadata_at'] is not None and 'no asset returned' in unknown['metadata_source']
+    read(Partial(holdings()), NOW - timedelta(hours=1))
+    assert len(Partial.asked) == 1  # nothing is stale an hour later, so DAS is not asked again
