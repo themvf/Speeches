@@ -14,12 +14,17 @@ class SourceError(Exception): pass
 
 
 class Providers:
-    def __init__(self, env=None, http=None):
+    def __init__(self, env=None, http=None, budget_key='BACKPACK_MAX_REQUESTS', default_budget='500', deadline_seconds=1200):
         self.env = os.environ if env is None else env
         self.http = http or requests.Session()
         self.usage = defaultdict(int)
-        self.maximum = int(self.env.get('BACKPACK_MAX_REQUESTS', '500'))
-        self.deadline = time.monotonic() + 1200
+        # JSON-RPC calls carried inside batched HTTP requests: a credit proxy, never reported as credits.
+        self.calls = defaultdict(int)
+        self.maximum = int(self.env.get(budget_key, default_budget))
+        self.deadline = time.monotonic() + deadline_seconds
+
+    def remaining_seconds(self):
+        return self.deadline - time.monotonic()
 
     def request(self, provider, method, url, **kwargs):
         for attempt in range(3):
@@ -129,6 +134,95 @@ class Providers:
             if before in seen: raise SourceError('Repeated history cursor')
             seen.add(before)
         return rows, newest, False
+
+    def _helius_url(self):
+        key = self.env.get('HELIUS_API_KEY')
+        if not key: raise SourceError('HELIUS_API_KEY not configured')
+        return f'https://mainnet.helius-rpc.com/?api-key={key}'
+
+    def rpc_many(self, calls):
+        """[(method, params)] -> [(result, error)] aligned with calls. One HTTP request per batch of 100;
+        falls back to single calls when batching is disabled or the endpoint rejects a JSON-RPC batch."""
+        out = []
+        for start in range(0, len(calls), 100):
+            chunk = calls[start:start + 100]
+            if self.env.get('BP_RPC_BATCH', '1') == '1':
+                body = [{'jsonrpc': '2.0', 'id': i, 'method': m, 'params': p} for i, (m, p) in enumerate(chunk)]
+                response = self.request('Helius RPC', 'POST', self._helius_url(), json=body)
+                if isinstance(response, list):
+                    self.calls['Helius RPC'] += len(chunk)
+                    by_id = {r.get('id'): r for r in response if isinstance(r, dict)}
+                    for i in range(len(chunk)):
+                        r = by_id.get(i)
+                        out.append((r['result'], None) if r and 'result' in r and 'error' not in r else (None, 'rpc_error'))
+                    continue
+            for method, params in chunk:
+                try:
+                    self.calls['Helius RPC'] += 1
+                    out.append((self.rpc(method, params), None))
+                except SourceError as error:
+                    if 'budget exhausted' in str(error): raise
+                    out.append((None, 'rpc_error'))
+        return out
+
+    def prices(self, mints):
+        """Jupiter Price V3, 50 mints per request. Absent mints are unpriced, never zero."""
+        key = self.env.get('JUPITER_API_KEY')
+        if not key: raise SourceError('JUPITER_API_KEY not configured')
+        found = {}
+        mints = sorted(set(mints))
+        for start in range(0, len(mints), 50):
+            batch = mints[start:start + 50]
+            result = self.request('Jupiter', 'GET', 'https://api.jup.ag/price/v3', params={'ids': ','.join(batch)}, headers={'x-api-key': key})
+            if not isinstance(result, dict): raise SourceError('Jupiter: malformed price response')
+            for mint in batch:
+                row = result.get(mint)
+                if isinstance(row, dict) and number(row.get('usdPrice')) is not None and number(row['usdPrice']) > 0:
+                    found[mint] = row
+        return found
+
+    def block_times(self, slots):
+        slots = sorted({int(s) for s in slots if s is not None})
+        results = self.rpc_many([('getBlockTime', [s]) for s in slots])
+        return {s: datetime.fromtimestamp(r, UTC) for s, (r, e) in zip(slots, results) if e is None and isinstance(r, int)}
+
+    def assets(self, mints):
+        """DAS getAssetBatch metadata incl. Token-2022 mint extensions; unknown ids come back null."""
+        found = {}
+        mints = sorted(set(mints))
+        for start in range(0, len(mints), 1000):
+            batch = mints[start:start + 1000]
+            rows = self.rpc('getAssetBatch', {'ids': batch, 'options': {'showFungible': True}})
+            if not isinstance(rows, list): raise SourceError('Helius DAS: malformed asset batch')
+            for row in rows:
+                if isinstance(row, dict) and row.get('id'): found[row['id']] = row
+        return found
+
+    def transactions_for_address(self, address, filters, token=None, limit=100, details='full'):
+        """Helius getTransactionsForAddress, newest first. Raw RPC shape (meta.pre/postTokenBalances)."""
+        options = {'transactionDetails': details, 'sortOrder': 'desc', 'limit': limit, 'commitment': 'finalized',
+                   'filters': filters}
+        if details == 'full':
+            options.update(encoding='jsonParsed', maxSupportedTransactionVersion=int(self.env.get('BP_MAX_TX_VERSION', '0')))
+        if token: options['paginationToken'] = token
+        result = self.rpc('getTransactionsForAddress', [address, options])
+        if not isinstance(result, dict) or not isinstance(result.get('data'), list):
+            raise SourceError('Helius getTransactionsForAddress: malformed page')
+        return result['data'], result.get('paginationToken')
+
+    def enhanced_parse(self, signatures):
+        """Helius Enhanced parse for up to 100 signatures: type, source and events.swap."""
+        key = self.env.get('HELIUS_API_KEY')
+        if not key: raise SourceError('HELIUS_API_KEY not configured')
+        parsed = {}
+        for start in range(0, len(signatures), 100):
+            batch = signatures[start:start + 100]
+            rows = self.request('Helius Enhanced', 'POST', 'https://api-mainnet.helius-rpc.com/v0/transactions',
+                                params={'api-key': key}, json={'transactions': batch})
+            if not isinstance(rows, list): raise SourceError('Helius Enhanced: malformed parse response')
+            for row in rows:
+                if isinstance(row, dict) and row.get('signature'): parsed[row['signature']] = row
+        return parsed
 
     def validation_market(self, mint):
         data = self.request('DexScreener validation', 'GET', f'https://api.dexscreener.com/token-pairs/v1/solana/{mint}')

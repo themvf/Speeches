@@ -6,6 +6,7 @@ import {getGithubActionsConfig} from '@/lib/server/env';
 import {labelError,solanaAddress,sameOrigin} from '@/lib/backpack-admin';
 import {readBackpackOperations} from '@/lib/server/backpack-operations';
 import {BP_MINT} from '@/lib/backpack';
+import {approveOriginalCohort,readCohortAdmin} from '@/lib/server/bp-intel-admin';
 export const runtime='nodejs';
 function reply(error:string,status:number){return NextResponse.json({error},{status});}
 async function authorized(){
@@ -19,6 +20,11 @@ export async function GET(req:Request){
  if(new URL(req.url).searchParams.get('operations')==='1'){
   try{return NextResponse.json(await readBackpackOperations(),{headers:{'Cache-Control':'no-store'}});}
   catch{return reply('Stored operational evidence unavailable. Apply the Backpack migration first.',503);}
+ }
+ if(new URL(req.url).searchParams.get('cohorts')==='1'){
+  if(!process.env.DATABASE_URL)return reply('Database not configured',503);
+  try{return NextResponse.json(await readCohortAdmin(),{headers:{'Cache-Control':'no-store'}});}
+  catch{return reply('Cohort versions unavailable. Apply the Backpack migration first.',503);}
  }
  if(new URL(req.url).searchParams.get('labels')==='1'){
   if(!process.env.DATABASE_URL)return reply('Database not configured',503);
@@ -43,6 +49,18 @@ export async function POST(req:Request){
     body:JSON.stringify({ref:c.ref}),signal:AbortSignal.timeout(10000)});
    return res.status===204?NextResponse.json({ok:true,message:'Daily capture queued. Existing snapshots are preserved; failed assets can retry.'}):reply('Could not queue collector',502);
   }catch{return reply('Collector dispatch unavailable',503);}
+ }
+ if(body.action==='approve_original_cohort'){
+  const version=Number(body.version_id),notes=typeof body.notes==='string'?body.notes.trim():'';
+  if(!Number.isSafeInteger(version)||version<1)return reply('A cohort version is required',400);
+  if(!notes||notes.length>2000)return reply('Approval notes are required (maximum 2,000 characters)',400);
+  if(body.approved!==true)return reply('Explicit review of the ranking, labels and exclusions is required',400);
+  if(!process.env.DATABASE_URL)return reply('Database not configured',503);
+  try{
+   const rows=await approveOriginalCohort(version,notes);
+   if(!rows.length)return reply('Not approved: an original cohort already exists, or that version is not a current cohort version',409);
+   return NextResponse.json({ok:true,message:`Original cohort frozen from version ${version} (${rows[0].members} wallets). It cannot be replaced.`});
+  }catch{return reply('The original cohort already exists or the approval could not be saved',409);}
  }
  if(body.action==='label_wallet'){
   const error=labelError(body);if(error)return reply(error,400);

@@ -25,8 +25,8 @@ export async function readBackpack(assetId?:number):Promise<MonitorData>{
        ORDER BY h.balance_tokens DESC LIMIT 100`:Promise.resolve([]),
   sql`SELECT * FROM backpack_asset_dex_daily_snapshots WHERE date=${day}::date
        AND (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null})`,
-  sql`SELECT * FROM backpack_ingestion_runs ORDER BY started_at DESC LIMIT 10`,
-  sql`SELECT u.* FROM backpack_provider_usage u JOIN backpack_ingestion_runs r USING(run_id) ORDER BY r.started_at DESC LIMIT 30`,
+  sql`SELECT * FROM backpack_ingestion_runs r WHERE COALESCE(to_jsonb(r)->>'job','daily')='daily' ORDER BY r.started_at DESC LIMIT 10`,
+  sql`SELECT u.* FROM backpack_provider_usage u JOIN backpack_ingestion_runs r USING(run_id) WHERE COALESCE(to_jsonb(r)->>'job','daily')='daily' ORDER BY r.started_at DESC LIMIT 30`,
   sql`SELECT *,date::text AS date FROM backpack_bp_whale_daily_snapshots w
        WHERE w.date=${day}::date AND (${assetId??null}::bigint IS NULL OR asset_id=${assetId??null}) ORDER BY w.date DESC,threshold_usd`,
   sql`SELECT * FROM backpack_analytical_daily_metrics WHERE date=${day}::date`,
