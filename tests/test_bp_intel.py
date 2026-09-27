@@ -354,6 +354,34 @@ def test_ranking_uses_exact_raw_units_and_deterministic_ties():
     assert cohorts.exclusion_fingerprint(rows) == cohorts.exclusion_fingerprint(list(reversed(rows)))
 
 
+def test_market_makers_leave_the_cohort_but_other_labels_follow_the_capture():
+    mm = dict(wallet_address='mm', excluded=False, label='Market Maker', label_confidence='high')
+    cfg = cohorts.config({})
+    assert cfg['exclude_market_makers'] and cohorts.cohort_excluded(mm, cfg)
+    assert not cohorts.cohort_excluded(dict(mm, label_confidence='medium'), cfg)  # unconfirmed evidence never removes a wallet
+    assert not cohorts.cohort_excluded(dict(mm, label='Unknown'), cfg)
+    assert cohorts.cohort_excluded(dict(mm, label='Treasury', excluded=True), cfg)
+    assert not cohorts.cohort_excluded(mm, cohorts.config(dict(BP_COHORT_EXCLUDE_MARKET_MAKERS='0')))
+
+
+def test_committed_wallet_labels_are_valid_evidence(tmp_path):
+    from backpack.registry import wallet_label_evidence
+    rows = wallet_label_evidence()
+    assert rows and len({r['wallet_address'] for r in rows}) == len(rows)
+    assert all(r['source'].startswith('https://') and r['confidence'] in ('confirmed', 'high') for r in rows)
+    # Every committed label removes the wallet from the investor cohort; none is a guess.
+    cfg = cohorts.config({})
+    from backpack.metrics import excluded
+    assert all(excluded(r) or cohorts.cohort_excluded(dict(r, excluded=False, label_confidence=r['confidence']), cfg) for r in rows)
+    bad = tmp_path / 'labels.json'
+    bad.write_text('{"reviewed_at":"2026-09-27T00:00:00Z","labels":[{"wallet_address":"not-base58!","label":"Treasury",'
+                   '"entity":"x","confidence":"high","source":"https://example.test","notes":"x"}]}')
+    with pytest.raises(ValueError): wallet_label_evidence(bad)
+    bad.write_text('{"reviewed_at":"2026-09-27T00:00:00Z","labels":[{"wallet_address":"GySFHFS5ZiN4Z5YnyPZcjjxpYcGvD7qHZYVjE9QzMHVH",'
+                   '"label":"Whale","entity":"x","confidence":"high","source":"https://example.test","notes":"x"}]}')
+    with pytest.raises(ValueError): wallet_label_evidence(bad)
+
+
 def test_bootstrap_hysteresis_and_immediate_exclusion():
     rows, flags = cohorts.next_membership(ranking('a', 'b', 'c', 'd', 'e'), set(), None, CFG, T0)
     assert flags['bootstrap'] and [r['wallet_address'] for r in rows if r['member']] == ['a', 'b', 'c']

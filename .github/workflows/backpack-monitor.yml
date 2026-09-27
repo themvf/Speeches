@@ -2,7 +2,7 @@ name: Backpack on-chain thesis monitor
 on:
   push:
     branches: [main]
-    paths: ['backpack/starter_universe.json', 'backpack/context_evidence.json', 'backpack/collector.py', 'backpack/cohorts.py', 'backpack/registry.py', 'backpack/readiness.py', 'backpack/adoption.py', 'backpack/research.py', 'backpack_monitor.py', 'sql/backpack.sql', '.github/workflows/backpack-monitor.yml']
+    paths: ['backpack/starter_universe.json', 'backpack/context_evidence.json', 'backpack/wallet_labels.json', 'backpack/collector.py', 'backpack/cohorts.py', 'backpack/registry.py', 'backpack/readiness.py', 'backpack/adoption.py', 'backpack/research.py', 'backpack_monitor.py', 'sql/backpack.sql', '.github/workflows/backpack-monitor.yml']
   workflow_dispatch:
   schedule:
     - cron: '30 0 * * *'
@@ -62,6 +62,12 @@ jobs:
         continue-on-error: true
         shell: bash
         run: python backpack_monitor.py --seed-starter | tee backpack-registry.jsonl
+      - name: Load reviewed wallet labels (only for wallets without an admin label)
+        # backpack/wallet_labels.json; must run before capture so the day's holder rows carry the labels.
+        id: labels
+        continue-on-error: true
+        shell: bash
+        run: python backpack_monitor.py --seed-labels | tee backpack-labels.jsonl
       - name: Validate capture readiness after registry setup
         id: readiness
         continue-on-error: true

@@ -121,7 +121,10 @@ Administrators can add or revise evidence-backed wallet labels at `/admin/backpa
 Each save atomically updates the current label and appends an immutable revision.
 Assigning Unknown revokes attribution for future captures. Confirmed/high system
 labels exclude addresses from economic metrics; Market Maker and Unknown remain
-included. Historical holder snapshots now copy entity, confidence, source and
+included (the BP holder-intelligence cohort alone also drops confirmed/high Market
+Makers). Reviewed labels can also be committed in `backpack/wallet_labels.json`;
+`--seed-labels` inserts them only for wallets with no label, so admin edits win
+(docs/bp-holder-intelligence.md, Committed wallet labels). Historical holder snapshots now copy entity, confidence, source and
 verification time. Earlier snapshots lacking those fields say evidence was not
 captured instead of borrowing current attribution.
 

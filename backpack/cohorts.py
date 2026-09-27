@@ -12,7 +12,7 @@ from .metrics import BP_MINT, number
 UTC = timezone.utc
 METHODOLOGY = ('cohort-v1: owner-aggregated raw BP balances from one complete, supply-reconciled capture; '
                'ties broken by owner address. Filtered ranking excludes confirmed/high system labels recorded '
-               'with that capture. Enter at filtered rank <= size; leave after exit_runs consecutive versions '
+               'with that capture and, unless disabled, confirmed/high Market Maker labels. Enter at filtered rank <= size; leave after exit_runs consecutive versions '
                'ranked below exit_rank or absent; labelled exclusions leave immediately. Entrants beyond the '
                'cap are queued, oldest first. An observation window, not a point-in-time state.')
 
@@ -25,7 +25,15 @@ def config(env):
     if values['size'] < 1 or values['exit_rank'] < values['size'] or values['exit_runs'] < 1 \
             or values['entrant_cap'] < 1 or not 1 <= values['history_days'] <= 90:
         raise ValueError('Invalid cohort configuration')
+    # Market makers stay in the securities adoption metrics; they are not investors, so the cohort drops them.
+    values['exclude_market_makers'] = env.get('BP_COHORT_EXCLUDE_MARKET_MAKERS', '1').strip().lower() not in ('0', 'false', 'no')
     return values
+
+
+def cohort_excluded(row, cfg):
+    """System labels excluded at capture, plus confirmed/high Market Maker labels recorded with the same capture."""
+    return bool(row['excluded'] or (cfg.get('exclude_market_makers') and row.get('label') == 'Market Maker'
+                                    and row.get('label_confidence') in ('confirmed', 'high')))
 
 
 def raw_units(balance_tokens, decimals):
@@ -135,6 +143,7 @@ def refresh_cohort(conn, env, day=None):
     if len(holders) != snap['unique_holders']:
         return dict(status='unavailable', detail=f"Retained holder rows ({len(holders)}) do not match capture owners "
                     f"({snap['unique_holders']}); ranking withheld rather than published from a partial list")
+    holders = [dict(r, excluded=cohort_excluded(r, cfg)) for r in holders]
     raw_ranking, filtered = rank_owners(holders, snap['decimals'])
     excluded_wallets = {r['wallet_address'] for r in holders if r['excluded']}
     now = snap['captured_at']

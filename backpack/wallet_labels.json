@@ -1,0 +1,102 @@
+{
+  "_note": "Reviewed, evidence-backed wallet labels for the BP holder cohort (docs/bp-holder-intelligence.md, 'Committed wallet labels'). Loaded by python backpack_monitor.py --seed-labels before each daily capture. A label is only inserted when the wallet has no label yet: labels set in /admin/backpack always win. Evidence was observed 2026-09-27; confirmed/high labels exclude a wallet from economic metrics and the BP cohort. Change a label through the admin page, not by editing this file.",
+  "reviewed_at": "2026-09-27T16:00:00Z",
+  "labels": [
+    {
+      "wallet_address": "GySFHFS5ZiN4Z5YnyPZcjjxpYcGvD7qHZYVjE9QzMHVH",
+      "label": "Treasury",
+      "entity": "Backpack: BP Token multisig (locked Pre-IPO and Post-IPO tranches)",
+      "confidence": "high",
+      "source": "https://solscan.io/account/GySFHFS5ZiN4Z5YnyPZcjjxpYcGvD7qHZYVjE9QzMHVH",
+      "notes": "Solscan public name: Squad Vault \"BP Token\" (Squads multisig, program-derived address). Holds exactly 750,000,000 BP, which equals the two locked allocations in Backpack's official BP token details (375M Pre-IPO milestone tranche + 375M Post-IPO corporate treasury; https://learn.backpack.exchange/articles/what-is-bp-backpack-token). Rank 1 BP owner at the 2026-09-27 capture."
+    },
+    {
+      "wallet_address": "EyzzXxQcR7NicVhMvHZy5DAeoCrxpCoY11pRneuysJiS",
+      "label": "Treasury",
+      "entity": "Backpack: BP distribution multisig",
+      "confidence": "high",
+      "source": "https://solscan.io/account/EyzzXxQcR7NicVhMvHZy5DAeoCrxpCoY11pRneuysJiS",
+      "notes": "Solscan public name: Squad Vault \"BP\" (Squads multisig, program-derived address). Held 209.27M BP at the 2026-09-27 capture and 199.26M hours later after multisig-executed transfers (vaultTransactionExecute): a distribution treasury, not a trading investor. Operator attribution is inferred from the vault name and holding size; not published by Backpack."
+    },
+    {
+      "wallet_address": "6qz7THwQvcjF3HyDGLuKaLBUk6EyJKeZXZMWLAeiwfjd",
+      "label": "Liquidity Pool",
+      "entity": "Meteora DLMM BP-USDC pool",
+      "confidence": "confirmed",
+      "source": "https://solscan.io/account/6qz7THwQvcjF3HyDGLuKaLBUk6EyJKeZXZMWLAeiwfjd",
+      "notes": "On-chain account owner is the Meteora DLMM program (LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo), 904-byte pool state; Solscan public name: Meteora (BP-USDC) Market. Pool reserves, not an investor position."
+    },
+    {
+      "wallet_address": "ASTyfSima4LLAdDgoFGkgqoKowG1LZFDr9fAQrg7iaJZ",
+      "label": "Known Exchange",
+      "entity": "MEXC",
+      "confidence": "high",
+      "source": "https://solscan.io/account/ASTyfSima4LLAdDgoFGkgqoKowG1LZFDr9fAQrg7iaJZ",
+      "notes": "Solscan public name MEXC; tags Mexc Exchange, Exchange Wallet. 6,330 token accounts observed 2026-09-27. Omnibus exchange balance, not one investor."
+    },
+    {
+      "wallet_address": "43DbAvKxhXh1oSxkJSqGosNw3HpBnmsWiak6tB5wpecN",
+      "label": "Known Exchange",
+      "entity": "Backpack Exchange",
+      "confidence": "high",
+      "source": "https://solscan.io/account/43DbAvKxhXh1oSxkJSqGosNw3HpBnmsWiak6tB5wpecN",
+      "notes": "Solscan public name Backpack Exchange; tags Backpack Exchange, Exchange Wallet. Omnibus exchange balance, not one investor."
+    },
+    {
+      "wallet_address": "D7BgNqhms7aovcSz6m3wi1XxPHDJxx7UuzCwpjyNQdwu",
+      "label": "Known Exchange",
+      "entity": "JTX.com (deposit address)",
+      "confidence": "high",
+      "source": "https://solscan.io/account/D7BgNqhms7aovcSz6m3wi1XxPHDJxx7UuzCwpjyNQdwu",
+      "notes": "Solscan tag: JTX.com Deposit Address. Exchange deposit account."
+    },
+    {
+      "wallet_address": "FCnqszXgG6LE2hif1thj5GNdu6sMh3rTrHxT5QuBcjzP",
+      "label": "Known Exchange",
+      "entity": "JTX.com (deposit address)",
+      "confidence": "high",
+      "source": "https://solscan.io/account/FCnqszXgG6LE2hif1thj5GNdu6sMh3rTrHxT5QuBcjzP",
+      "notes": "Solscan tag: JTX.com Deposit Address. Exchange deposit account."
+    },
+    {
+      "wallet_address": "5a2HBBRW9Z4ZgSra3vnSDRx5wACY21fSYFrFLRw11vgk",
+      "label": "Known Exchange",
+      "entity": "JTX.com (deposit address)",
+      "confidence": "high",
+      "source": "https://solscan.io/account/5a2HBBRW9Z4ZgSra3vnSDRx5wACY21fSYFrFLRw11vgk",
+      "notes": "Solscan tag: JTX.com Deposit Address. Exchange deposit account."
+    },
+    {
+      "wallet_address": "9xMB7VAQjrscbEHyQZu1Fw7z4LAS91zbZepNVKQqxmFs",
+      "label": "Known Exchange",
+      "entity": "Backpack Exchange (deposit address)",
+      "confidence": "high",
+      "source": "https://solscan.io/account/9xMB7VAQjrscbEHyQZu1Fw7z4LAS91zbZepNVKQqxmFs",
+      "notes": "Solscan tag: Backpack Exchange Deposit Address. Exchange deposit account."
+    },
+    {
+      "wallet_address": "GpMZbSM2GgvTKHJirzeGfMFoaZ8UR2X7F4v8vHTvxFbL",
+      "label": "Liquidity Pool",
+      "entity": "Raydium Vault Authority #2",
+      "confidence": "high",
+      "source": "https://solscan.io/account/GpMZbSM2GgvTKHJirzeGfMFoaZ8UR2X7F4v8vHTvxFbL",
+      "notes": "Solscan public name Raydium Vault Authority #2; tag Raydium Vault Owner. Program-derived address owning 473,602 token accounts (pool vaults) observed 2026-09-27."
+    },
+    {
+      "wallet_address": "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",
+      "label": "DEX",
+      "entity": "Raydium Launchpad Authority",
+      "confidence": "high",
+      "source": "https://solscan.io/account/WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",
+      "notes": "Solscan public name Raydium Launchpad Authority; tags Raydium Launchpad, Dex Wallet. Program-derived address owning 199,106 token accounts observed 2026-09-27."
+    },
+    {
+      "wallet_address": "BM9CcyErJcu2mjrFvUsRRrD3snGeHDDVirJLvL6EjvMN",
+      "label": "Market Maker",
+      "entity": "Unidentified automated trading operator",
+      "confidence": "high",
+      "source": "https://solscan.io/account/BM9CcyErJcu2mjrFvUsRRrD3snGeHDDVirJLvL6EjvMN",
+      "notes": "No public tag. On-chain facts observed 2026-09-27: program-derived address (no private key), 177,118 token accounts, funded 1,023 other accounts, and dozens of disposals across many tokens within hours (31 of 49 major-sale alerts in the first production run). Classified as automated trading infrastructure, not a discretionary investor; the operator is not identified. Excluded from the BP holder cohort only; market makers stay included in securities adoption metrics."
+    }
+  ]
+}

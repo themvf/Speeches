@@ -52,7 +52,7 @@ DeepSeek returns `402 Payment Required` (balance exhausted) and OpenAI returns i
 
 See `docs/backpack-monitor.md` for routes, setup, methodology, tests and launch gaps. The user explicitly requested `/market/crypto/backpack`; this is an authorized exception to the older single-screen crypto rule below. It has a dedicated approved securities registry and separate BP identity; do not reuse the unverified `BACKPACK` social-tracking token. Wallet-sampled swaps are **not complete DEX volume**. Missing totals remain NULL. Snapshots are immutable, current-time observations, not invented historical states. Production provider credentials, official security mints and full mint-wide swap coverage remain launch gates.
 
-## BP holder intelligence (2026-09-26) — MILESTONES 2-3 BUILT, NOT YET RUN IN PRODUCTION
+## BP holder intelligence (2026-09-26) — MILESTONES 2-3 LIVE (DAILY HOLDINGS)
 
 Contract: [`docs/bp-holder-intelligence-spec.md`](docs/bp-holder-intelligence-spec.md); status, deviations and the
 Milestone 1 runbook: [`docs/bp-holder-intelligence.md`](docs/bp-holder-intelligence.md). An extension of the Backpack
@@ -66,7 +66,9 @@ variable `BP_INTEL_SCHEDULE=1`, pending the monthly API budget (the existing dai
 the free plan's 1M credits/month via the 100-credit Enhanced API). Coverage lives in
 `bp_history_coverage`, not `backpack_transaction_cursors` (that table's rows belong to the daily BP swap sampler).
 `backpack_ingestion_runs.job` separates `daily` from `bp_intel`; daily readers must filter it. Never convert
-failed reads, stale prices or unknown decimals to zero.
+failed reads, stale prices or unknown decimals to zero. Non-investor wallets (treasury vaults, exchanges, pools, one
+automated market maker) are labelled in `backpack/wallet_labels.json`, loaded by `--seed-labels` only where admin has
+no label; the cohort also drops confirmed/high Market Makers. Never exclude a wallet for its balance size alone.
 
 ## Crypto research: price linkage / event study (2026-09-17) — SHIPPED
 
