@@ -504,3 +504,21 @@ def test_rate_limited_price_batches_are_skipped_not_fatal(monkeypatch):
     assert set(found) == {f'b{i:03d}' for i in range(10)} and p.price_failed_batches == 1
     p.deadline = 0  # out of time: nothing more is requested and nothing is invented
     assert p.prices(mints) == {} and p.price_failed_batches == 3
+
+
+def test_block_time_chunks_fail_independently_in_small_batches(monkeypatch):
+    from backpack import providers
+    monkeypatch.setattr(providers.time, 'sleep', lambda s: None)
+    sizes = []
+    class Reply:
+        def __init__(self, status, body=None): self.status_code, self.ok, self.body = status, status == 200, body
+        def json(self): return self.body
+    class Http:  # any batch containing slot 7 is rate-limited
+        def request(self, method, url, timeout, json=None, **kwargs):
+            sizes.append(len(json))
+            if any(call['params'] == [7] for call in json): return Reply(429)
+            return Reply(200, [{'jsonrpc': '2.0', 'id': c['id'], 'result': 1_700_000_000 + c['params'][0]} for c in json])
+    p = providers.Providers({'HELIUS_API_KEY': 'k', 'BP_RPC_CALLS_PER_SECOND': '0'}, Http())
+    found = p.block_times(range(60))
+    assert max(sizes) <= 8  # never more than 8 calls in one HTTP request
+    assert p.block_time_failures == 50 and set(found) == set(range(50, 60))

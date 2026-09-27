@@ -83,10 +83,12 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
     known = {r['mint']: r for r in fetch_all(conn, 'SELECT * FROM bp_tracked_assets WHERE mint=ANY(%s)', (mints,))} if mints else {}
     refresh_before = observed - timedelta(days=int(env.get('BP_METADATA_REFRESH_DAYS', '7')))
     stale = [m for m in mints if m not in known or not known[m]['metadata_at'] or known[m]['metadata_at'] < refresh_before]
-    notes, das = [], {}
+    notes, das, das_failed = [], {}, False
     if stale:
         try: das = p.assets(stale)
-        except SourceError as error: notes.append('metadata: ' + _safe(error))
+        except SourceError as error:
+            das_failed = True  # nothing is marked as checked, so every stale mint is retried next run
+            notes.append('metadata: ' + _safe(error))
     sample = {m: h for r in reads for m, h in r['holdings'].items()}
     assets = {m: pf.classify_asset(m, das.get(m), sample[m]['program'], sample[m]['decimals']) if m in stale else known[m] for m in mints}
     assets[pf.NATIVE] = pf.classify_asset(pf.NATIVE)
@@ -101,8 +103,8 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
         times, estimated = {}, set()
         if env.get('BP_PRICE_TIME_MODE', 'estimate') == 'estimate':
             try:
-                ref_slot = p.rpc('getSlot', [{'commitment': 'finalized'}])
-                ref_time = datetime.fromtimestamp(p.rpc('getBlockTime', [ref_slot]), UTC)
+                ref_slot = p.rpc_paced('getSlot', [{'commitment': 'finalized'}])
+                ref_time = datetime.fromtimestamp(p.rpc_paced('getBlockTime', [ref_slot]), UTC)
                 times, exact = pf.price_block_ages(blocks, int(ref_slot), ref_time)
                 sol_block = (quotes.get(pf.WSOL) or {}).get('blockId')
                 if sol_block is not None and int(sol_block) in times:  # stored SOL prices value swaps: keep exact
@@ -113,6 +115,8 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
             except (SourceError, TypeError, ValueError):
                 notes.append('slot reference unavailable; exact block times used')
         times.update(p.block_times(blocks))
+        if getattr(p, 'block_time_failures', 0):
+            notes.append(f'prices: {p.block_time_failures} exact block time(s) unavailable; those prices are withheld as stale')
         for mint, q in quotes.items():
             block = int(q['blockId']) if q.get('blockId') is not None else None
             prices[mint] = dict(price=Decimal(str(q['usdPrice'])), price_at=times.get(block),
@@ -128,25 +132,29 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
         wallet_rows.append((run_id, read['wallet_address'], read['status'], read['sol_status'], read['spl_status'], read['token2022_status'],
                             read['token_accounts'], read['slot_min'], read['slot_max'], observed, total, unpriced, read.get('detail') or ''))
     with conn, conn.cursor() as cur:
-        for m in stale:
-            a = assets[m]
-            cur.execute('''INSERT INTO bp_tracked_assets(mint,asset_class,token_program,decimals,symbol,name,metadata_source,
+        if stale:
+            # One batched upsert. A mint DAS does not know is still marked as checked (metadata_at), so it is
+            # retried at the weekly refresh rather than on every run.
+            execute_values(cur, '''INSERT INTO bp_tracked_assets(mint,asset_class,token_program,decimals,symbol,name,metadata_source,
                 extension_flags,extensions,is_sol,is_stable,is_bp,spam_class,spam_reason,class_reason,metadata_at)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(network,mint) DO UPDATE SET
+                VALUES %s ON CONFLICT(network,mint) DO UPDATE SET
                 asset_class=excluded.asset_class,token_program=excluded.token_program,decimals=excluded.decimals,symbol=excluded.symbol,
                 name=excluded.name,metadata_source=excluded.metadata_source,extension_flags=excluded.extension_flags,
                 extensions=excluded.extensions,spam_class=excluded.spam_class,spam_reason=excluded.spam_reason,
                 class_reason=excluded.class_reason,metadata_at=excluded.metadata_at,updated_at=now()''',
-                (m, a['asset_class'], a['token_program'], a['decimals'], a['symbol'], a['name'], a['metadata_source'], a['extension_flags'],
-                 Json(a['extensions']), a['is_sol'], a['is_stable'], a['is_bp'], a['spam_class'], a['spam_reason'], a['class_reason'],
-                 observed if a['metadata_source'] else None))
+                [(m, a['asset_class'], a['token_program'], a['decimals'], a['symbol'], a['name'],
+                  a['metadata_source'] or (None if das_failed else 'Helius DAS getAssetBatch: no asset returned'),
+                  a['extension_flags'], Json(a['extensions']), a['is_sol'], a['is_stable'], a['is_bp'], a['spam_class'],
+                  a['spam_reason'], a['class_reason'], observed if a['metadata_source'] or not das_failed else None)
+                 for m, a in ((m, assets[m]) for m in stale)], page_size=1000)
         cur.execute('''INSERT INTO bp_tracked_assets(mint,asset_class,decimals,symbol,name,metadata_source,is_sol,metadata_at)
             VALUES('native','native',9,'SOL','Solana (native)','protocol',true,now()) ON CONFLICT DO NOTHING''')
-        for mint, q in quotes.items():
-            created = q.get('createdAt')
-            cur.execute('''UPDATE bp_tracked_assets SET liquidity_usd=%s,market_created_at=COALESCE(%s::timestamptz,market_created_at),
-                market_observed_at=%s WHERE network='solana-mainnet' AND mint=%s''',
-                (Decimal(str(q['liquidity'])) if q.get('liquidity') is not None else None, created, observed, mint))
+        if quotes:
+            execute_values(cur, '''UPDATE bp_tracked_assets a SET liquidity_usd=v.liquidity,
+                market_created_at=COALESCE(v.created,a.market_created_at),market_observed_at=v.observed
+                FROM (VALUES %s) AS v(mint,liquidity,created,observed) WHERE a.network='solana-mainnet' AND a.mint=v.mint''',
+                [(mint, Decimal(str(q['liquidity'])) if q.get('liquidity') is not None else None, q.get('createdAt'), observed)
+                 for mint, q in quotes.items()], template='(%s,%s::numeric,%s::timestamptz,%s::timestamptz)', page_size=1000)
         if pf.WSOL in prices and prices[pf.WSOL]['price_at'] and 'estimated' not in prices[pf.WSOL]['source']:
             s = prices[pf.WSOL]
             cur.execute('''INSERT INTO bp_price_observations(mint,price_at,source,price,block_id) VALUES(%s,%s,%s,%s,%s)

@@ -24,6 +24,7 @@ class Providers:
         self.deadline = time.monotonic() + deadline_seconds
         self._ready_at = defaultdict(float)
         self.price_failed_batches = 0
+        self.block_time_failures = 0
 
     def _pace(self, calls, rate_key='BP_RPC_CALLS_PER_SECOND', default='8'):
         """Hold JSON-RPC calls under a per-second rate (Helius free plan: 10 RPC and 2 DAS requests/second),
@@ -155,8 +156,10 @@ class Providers:
         """[(method, params)] -> [(result, error)] aligned with calls. One HTTP request per batch of 100;
         falls back to single calls when batching is disabled or the endpoint rejects a JSON-RPC batch."""
         out = []
-        for start in range(0, len(calls), 100):
-            chunk = calls[start:start + 100]
+        # Small batches: the Helius free plan allows 10 RPC calls/second and may count each call in a batch.
+        size = max(1, min(100, int(self.env.get('BP_RPC_BATCH_SIZE', '8'))))
+        for start in range(0, len(calls), size):
+            chunk = calls[start:start + size]
             if self.env.get('BP_RPC_BATCH', '1') == '1':
                 body = [{'jsonrpc': '2.0', 'id': i, 'method': m, 'params': p} for i, (m, p) in enumerate(chunk)]
                 self._pace(len(chunk))
@@ -211,10 +214,24 @@ class Providers:
                     found[mint] = row
         return found
 
+    def rpc_paced(self, method, params):
+        self._pace(1)
+        return self.rpc(method, params)
+
     def block_times(self, slots):
+        """Exact block times. A chunk that still fails (e.g. rate-limited) is counted in block_time_failures and
+        skipped: those prices get no timestamp and are withheld as stale, never valued without one."""
         slots = sorted({int(s) for s in slots if s is not None})
-        results = self.rpc_many([('getBlockTime', [s]) for s in slots])
-        return {s: datetime.fromtimestamp(r, UTC) for s, (r, e) in zip(slots, results) if e is None and isinstance(r, int)}
+        found = {}
+        for start in range(0, len(slots), 50):
+            chunk = slots[start:start + 50]
+            try: results = self.rpc_many([('getBlockTime', [s]) for s in chunk])
+            except SourceError as error:
+                if 'budget exhausted' in str(error): raise
+                self.block_time_failures += len(chunk)
+                continue
+            found.update({s: datetime.fromtimestamp(r, UTC) for s, (r, e) in zip(chunk, results) if e is None and isinstance(r, int)})
+        return found
 
     def assets(self, mints):
         """DAS getAssetBatch metadata incl. Token-2022 mint extensions; unknown ids come back null."""
