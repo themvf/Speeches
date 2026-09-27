@@ -41,7 +41,7 @@ def conn(database):
         with database, database.cursor() as cur: cur.execute('DROP SCHEMA ' + schema + ' CASCADE')
 
 
-def bp_capture(conn, day, balances, excluded=(), captured_at=None, retained=None):
+def bp_capture(conn, day, balances, excluded=(), captured_at=None, retained=None, labels=None):
     """A complete, checkpointed BP holder capture as the daily collector stores it."""
     asset = fetch_all(conn, "SELECT id FROM backpack_assets WHERE asset_type='bp'")[0]['id']
     run_id = str(uuid.uuid4())
@@ -53,7 +53,7 @@ def bp_capture(conn, day, balances, excluded=(), captured_at=None, retained=None
             VALUES(%s,%s,%s,%s,100,'fixture',%s,9,true,%s,90,110,60,'Estimated')''',
             (asset, day, run_id, captured_at or NOW - timedelta(hours=2), sum(b for _, b in rows), len(rows)))
         for w, b in rows[:retained]:
-            label = ('Treasury', 'confirmed') if w in excluded else ('Unknown', None)
+            label = ('Treasury', 'confirmed') if w in excluded else (labels or {}).get(w, ('Unknown', None))
             cur.execute('''INSERT INTO backpack_asset_holder_daily_snapshots(asset_id,date,wallet_address,balance_tokens,excluded,label,
                 label_confidence,source,slot) VALUES(%s,%s,%s,%s,%s,%s,%s,'fixture',110)''', (asset, day, w, b, w in excluded, *label))
         cur.execute('''INSERT INTO backpack_holder_checkpoints(asset_id,date,owner_count,balance_tokens,aggregates_validated,methodology)
@@ -185,6 +185,41 @@ def test_cohort_versions_are_reproducible_and_hysteresis_persists(conn):
     assert state['w3']['member'] and state['w3']['below_exit_runs'] == 1 and state['n2']['event'] == 'queued'
     tracked = {r['wallet_address'] for r in fetch_all(conn, 'SELECT * FROM bp_tracked_wallets WHERE active')}
     assert tracked == {'w1', 'w2', 'w3', 'n1'}
+
+
+def test_labelled_market_maker_leaves_the_cohort_at_the_next_capture(conn):
+    day = NOW.date()
+    bp_capture(conn, day - timedelta(days=1), dict(w1=5000, mm=4500, w2=4000, w3=3000))
+    assert cohorts.refresh_cohort(conn, ENV)['size'] == 3
+    bp_capture(conn, day, dict(w1=5000, mm=4500, w2=4000, w3=3000), labels=dict(mm=('Market Maker', 'high')))
+    second = cohorts.refresh_cohort(conn, ENV)
+    state = {r['wallet_address']: r for r in fetch_all(conn, 'SELECT * FROM bp_cohort_members WHERE version_id=%s', (second['version_id'],))}
+    assert state['mm']['exit_reason'] == 'excluded_by_label' and state['w3']['event'] == 'entered'
+    ranked = {(r['ranking'], r['wallet_address']): r for r in fetch_all(conn, 'SELECT * FROM bp_holder_rankings WHERE source_date=%s', (day,))}
+    assert ranked[('raw', 'mm')]['excluded'] and ranked[('raw', 'mm')]['label'] == 'Market Maker' and ('filtered', 'mm') not in ranked
+    versions = fetch_all(conn, "SELECT excluded_count,exclusion_fingerprint FROM bp_cohorts WHERE kind='current' ORDER BY source_date")
+    assert [v['excluded_count'] for v in versions] == [0, 1] and versions[0]['exclusion_fingerprint'] != versions[1]['exclusion_fingerprint']
+
+
+def test_committed_labels_never_overwrite_an_admin_label(conn, tmp_path):
+    from backpack.registry import seed_wallet_labels
+    evidence = tmp_path / 'labels.json'
+    evidence.write_text("""{"reviewed_at":"2026-09-27T16:00:00Z","labels":[
+      {"wallet_address":"GySFHFS5ZiN4Z5YnyPZcjjxpYcGvD7qHZYVjE9QzMHVH","label":"Treasury","entity":"BP vault","confidence":"high",
+       "source":"https://solscan.io/account/GySFHFS5ZiN4Z5YnyPZcjjxpYcGvD7qHZYVjE9QzMHVH","notes":"Squads vault"},
+      {"wallet_address":"BM9CcyErJcu2mjrFvUsRRrD3snGeHDDVirJLvL6EjvMN","label":"Market Maker","entity":"Operator","confidence":"high",
+       "source":"https://solscan.io/account/BM9CcyErJcu2mjrFvUsRRrD3snGeHDDVirJLvL6EjvMN","notes":"Automated trading"}]}""")
+    with conn, conn.cursor() as cur:
+        cur.execute("""INSERT INTO backpack_wallet_labels VALUES('BM9CcyErJcu2mjrFvUsRRrD3snGeHDDVirJLvL6EjvMN','Unknown','Reviewed by admin',
+            'low','https://example.test/admin',now(),'admin decision')""")
+    first = seed_wallet_labels(conn, evidence)
+    assert (first['labels_seeded'], first['already_labelled']) == (1, 1)
+    assert seed_wallet_labels(conn, evidence)['labels_seeded'] == 0  # replays change nothing
+    labels = {r['wallet_address']: r for r in fetch_all(conn, 'SELECT * FROM backpack_wallet_labels')}
+    assert labels['BM9CcyErJcu2mjrFvUsRRrD3snGeHDDVirJLvL6EjvMN']['label'] == 'Unknown'
+    assert labels['GySFHFS5ZiN4Z5YnyPZcjjxpYcGvD7qHZYVjE9QzMHVH']['verified_at'] == datetime(2026, 9, 27, 16, tzinfo=UTC)
+    revisions = fetch_all(conn, 'SELECT wallet_address,actor FROM backpack_wallet_label_revisions')
+    assert revisions == [dict(wallet_address='GySFHFS5ZiN4Z5YnyPZcjjxpYcGvD7qHZYVjE9QzMHVH', actor='committed_evidence')]
 
 
 def test_partial_holder_rows_withhold_the_ranking(conn):

@@ -64,6 +64,7 @@ python backpack_monitor.py --bp-intel           # portfolio, history, flags, ale
 python backpack_monitor.py --bp-intel --bp-steps portfolio,alerts
 python backpack_monitor.py --bp-feasibility     # Milestone 1 probe, read-only
 python backpack_monitor.py --bp-approve-original 12 --bp-notes "reviewed labels and exclusions"
+python backpack_monitor.py --seed-labels        # committed wallet labels; daily workflow already does this
 ```
 
 **Cadence.** Cohort: daily, inside `backpack-monitor.yml` after its capture (GitHub-scheduled for 00:30 UTC;
@@ -91,7 +92,7 @@ the Vercel dispatcher (`lib/server/github-dispatch.ts`). Both are deliberate: th
 decision (spec section 15).
 
 Configuration (environment or repository variables): `BP_COHORT_SIZE` 200, `BP_COHORT_EXIT_RANK` 220,
-`BP_COHORT_EXIT_RUNS` 2, `BP_COHORT_ENTRANT_CAP` 20, `BP_HISTORY_DAYS` 30, `BP_HISTORY_POLL_PAGES` 5 (workflow 3),
+`BP_COHORT_EXIT_RUNS` 2, `BP_COHORT_ENTRANT_CAP` 20, `BP_COHORT_EXCLUDE_MARKET_MAKERS` 1, `BP_HISTORY_DAYS` 30, `BP_HISTORY_POLL_PAGES` 5 (workflow 3),
 `BP_HISTORY_BACKFILL_PAGES_PER_RUN` 5 (workflow 3), `BP_HISTORY_MAX_BACKFILL_PAGES` 30, `BP_HISTORY_PAGE_SIZE` 100,
 `BP_INTEL_MAX_REQUESTS` 2500, `BP_MAX_TOKEN_ACCOUNTS` 10000, `BP_DUST_USD` 1, `BP_INCIDENTAL_LAMPORTS` 3000000,
 `BP_RAW_TX_RETENTION_DAYS` 45, `BP_PORTFOLIO_RETENTION_DAYS` 90, `BP_ALERT_LOOKBACK_HOURS` 48,
@@ -99,6 +100,50 @@ Configuration (environment or repository variables): `BP_COHORT_SIZE` 200, `BP_C
 
 The worker never runs DDL; on an unmigrated database it returns `schema_pending`. The web reader returns
 `schema_pending` too, so deploy order does not matter. Worker exclusion uses the `bp_intel` lease row.
+
+## Committed wallet labels (2026-09-27)
+
+The cohort is meant to be investors. Labels decide who is not one, and labels normally come from `/admin/backpack`.
+The first review was done without an admin login, so its results are committed as evidence in
+`backpack/wallet_labels.json` and loaded by `python backpack_monitor.py --seed-labels`, a step in
+`backpack-monitor.yml` that runs before the capture. The loader inserts a label **only when the wallet has none**
+and records a revision with actor `committed_evidence`. It never overwrites or revives anything set in admin: to
+undo a committed label, relabel the wallet in admin (for example `Unknown`, low). Invalid evidence (bad address,
+unknown label, non-HTTPS source, duplicate) fails the whole file.
+
+Labels are recorded with each day's holder rows, so a new label takes effect at the **next capture**, not
+retroactively; earlier cohort versions keep the labels of their own capture. Two exclusion paths:
+
+- System labels (Treasury, Known Exchange, Liquidity Pool, DEX and the rest of `metrics.SYSTEM_LABELS`) at
+  confirmed or high confidence are excluded everywhere, as before, including the securities adoption metrics.
+  Adding one changes those metrics' exclusion fingerprint when the wallet holds a tracked security, and adoption
+  windows that span the change are skipped until they fill again.
+- **Market Maker** at confirmed or high confidence is excluded from the BP cohort only
+  (`BP_COHORT_EXCLUDE_MARKET_MAKERS`, default on; `0` keeps them). Adoption metrics are unchanged.
+
+Members removed this way leave with `exit_reason='excluded_by_label'`, and the next wallets by filtered rank enter
+(within the entrant cap).
+
+Reviewed 2026-09-27 against Solscan public tags, on-chain account owners and Backpack's published token
+allocation. The file records each wallet's evidence.
+
+| Rank (raw, 2026-09-27) | Wallet | Label | Evidence |
+|---|---|---|---|
+| 1 | `GySFHF...MHVH` | Treasury | Squads vault "BP Token"; exactly 750M BP, the two locked 375M allocations Backpack publishes |
+| 2 | `EyzzXx...sJiS` | Treasury | Squads vault "BP"; multisig-executed distributions |
+| 5 | `6qz7TH...wfjd` | Liquidity Pool | Account owned by the Meteora DLMM program (BP-USDC pool) |
+| 6 | `ASTyfS...iaJZ` | Known Exchange | Solscan: MEXC exchange wallet |
+| 7 | `43DbAv...pecN` | Known Exchange | Solscan: Backpack Exchange wallet |
+| 16, 37, 85 | `D7BgNq...Qdwu`, `FCnqsz...cjzP`, `5a2HBB...1vgk` | Known Exchange | Solscan: JTX.com deposit addresses |
+| 30 | `GpMZbS...xFbL` | Liquidity Pool | Solscan: Raydium Vault Authority #2 |
+| 78 | `BM9Ccy...jvMN` | Market Maker | Program-derived, 177k token accounts, funded 1,023 accounts, most of the first major-sale alerts; operator unknown |
+| 106 | `9xMB7V...xmFs` | Known Exchange | Solscan: Backpack Exchange deposit address |
+| 109 | `WLHv2U...JVVh` | DEX | Solscan: Raydium Launchpad Authority |
+
+Deliberately **kept** as investors: vaults of the Definitive program and a Fuse Squads vault (each is one user's
+smart wallet), Pump.fun traders, `.sol`-named wallets and token creators. A large balance alone is never a reason
+to exclude. **Not reviewed**: raw ranks 152 to 200 (Solscan's bot check stopped the review; it was not bypassed),
+including rank 175 `7Yydv4GF2NyRb6x17c2odQBKStRwRg2p6MY9A3ZrF6Qf`, a program-derived address worth checking first.
 
 ## Milestone 1 results (probe run 36317286207, 2026-09-27)
 
@@ -157,6 +202,8 @@ Jupiter requests.
 - **Monthly API budget** (gates the hourly schedule). The probe's `usage_estimate` is the input.
 - **Manual validation of a live sample** of parsed and inferred swaps before relying on alerts (section 13).
 - **Original cohort approval**: an admin must review the first version's labels and exclusions and approve it.
+  Approve a version created after the committed labels took effect (source date 2026-09-28 or later), not version 1.
+- **Label review of raw ranks 152 to 200** (see Committed wallet labels).
 - **Milestone 4**: live ingestion decision and the seven-day pilot (gaps, classification accuracy,
   reconciliation, latency, actual cost). Nothing live is built.
 - **Milestone 5**: alert enablement decision, monitoring, and the support runbook appended to

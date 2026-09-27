@@ -69,6 +69,47 @@ def seed_context(conn):
     return dict(events=len(evidence['events']), external_observations=len(evidence['external_observations']))
 
 
+WALLET_LABELS = ('Backpack', 'Treasury', 'Custody', 'Market Maker', 'DEX', 'Liquidity Pool', 'Lending Protocol', 'Bridge',
+                 'Known Exchange', 'Protocol', 'Vesting', 'Burn', 'Unknown')
+BASE58 = set('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz')
+SEED_LABEL = """WITH saved AS (
+    INSERT INTO backpack_wallet_labels(wallet_address,label,entity,confidence,source,verified_at,notes)
+    VALUES(%(wallet_address)s,%(label)s,%(entity)s,%(confidence)s,%(source)s,%(verified_at)s,%(notes)s)
+    ON CONFLICT(wallet_address) DO NOTHING RETURNING *
+) INSERT INTO backpack_wallet_label_revisions(wallet_address,label,entity,confidence,source,verified_at,notes,actor)
+  SELECT wallet_address,label,entity,confidence,source,verified_at,notes,'committed_evidence' FROM saved RETURNING wallet_address"""
+
+
+def wallet_label_evidence(path=None):
+    """Reviewed labels committed with the code. Invalid evidence fails the whole file, never half of it."""
+    evidence = json.loads(Path(path or Path(__file__).with_name('wallet_labels.json')).read_text(encoding='utf-8'))
+    verified_at = datetime.fromisoformat(evidence['reviewed_at'].replace('Z', '+00:00'))
+    rows, seen = [], set()
+    for row in evidence['labels']:
+        wallet = row['wallet_address']
+        if not 32 <= len(wallet) <= 44 or set(wallet) - BASE58 or wallet in seen:
+            raise ValueError(f'Invalid or duplicate wallet address in label evidence: {wallet}')
+        if row['label'] not in WALLET_LABELS or row['confidence'] not in ('confirmed', 'high', 'medium', 'low'):
+            raise ValueError(f'Invalid label or confidence for {wallet}')
+        if not row['source'].startswith('https://') or not row['entity'].strip() or not row['notes'].strip():
+            raise ValueError(f'Label evidence for {wallet} needs an HTTPS source, an entity and notes')
+        seen.add(wallet)
+        rows.append(dict(wallet_address=wallet, label=row['label'], entity=row['entity'].strip(), confidence=row['confidence'],
+                         source=row['source'], verified_at=verified_at, notes=row['notes'].strip()))
+    return rows
+
+
+def seed_wallet_labels(conn, path=None):
+    """Insert committed labels only for wallets that have none. Labels set in /admin/backpack always win."""
+    rows = wallet_label_evidence(path)
+    seeded = []
+    with conn, conn.cursor() as cur:
+        for row in rows:
+            cur.execute(SEED_LABEL, row)
+            seeded += [r[0] for r in cur.fetchall()]
+    return dict(labels_seeded=len(seeded), already_labelled=len(rows) - len(seeded), seeded=seeded)
+
+
 def seed_starter(conn, provider=None, observed_at=None):
     p = provider or Providers()
     now = observed_at or datetime.now(timezone.utc)

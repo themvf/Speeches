@@ -9,7 +9,7 @@ from backpack.registry import seed_starter
 
 def main():
     parser=argparse.ArgumentParser()
-    for action in ('migrate','execute','preflight','audit','seed-starter','maintenance','cost-report','research'):
+    for action in ('migrate','execute','preflight','audit','seed-starter','seed-labels','maintenance','cost-report','research'):
         parser.add_argument('--'+action,action='store_true')
     parser.add_argument('--import-billing',metavar='CSV')
     # BP holder intelligence (docs/bp-holder-intelligence-spec.md).
@@ -34,6 +34,9 @@ def main():
             setup(conn)
             print(json.dumps({'schema':'initialized'}))
         failed=False
+        if args.seed_labels:
+            from backpack.registry import seed_wallet_labels
+            print(json.dumps({'wallet_labels':seed_wallet_labels(conn)}))
         if args.seed_starter:
             result=seed_starter(conn)
             print(json.dumps(result,default=str))
