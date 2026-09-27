@@ -136,7 +136,7 @@ def maintain(conn, day, env):
         cur.execute("""INSERT INTO backpack_operational_alerts(date,metric,detail)
             SELECT %s,'provider_request_budget','Capture request count reached configured daily threshold'
             WHERE (SELECT sum(u.requests) FROM backpack_provider_usage u JOIN backpack_ingestion_runs r USING(run_id)
-                   WHERE r.snapshot_date=%s)>=%s ON CONFLICT DO NOTHING""",(day,day,int(env.get('BACKPACK_MAX_REQUESTS','500'))))
+                   WHERE r.snapshot_date=%s AND COALESCE(to_jsonb(r)->>'job','daily')='daily')>=%s ON CONFLICT DO NOTHING""",(day,day,int(env.get('BACKPACK_MAX_REQUESTS','500'))))
 
 
 def cost_report(conn):
@@ -147,9 +147,9 @@ def cost_report(conn):
     return dict(status='Observed storage and request counts; consult attributed billing coverage',reviews=reviews,
         storage=fetch_all(conn,'SELECT * FROM backpack_storage_observations ORDER BY date DESC,total_bytes DESC LIMIT 1500'),
         indexes=fetch_all(conn,'SELECT * FROM backpack_index_observations WHERE date=(SELECT max(date) FROM backpack_index_observations) ORDER BY bytes DESC'),
-        providers=fetch_all(conn,'''SELECT r.snapshot_date,u.provider,sum(u.requests) requests,
+        providers=fetch_all(conn,'''SELECT r.snapshot_date,COALESCE(to_jsonb(r)->>'job','daily') AS job,u.provider,sum(u.requests) requests,
             sum(u.credits) credits,sum(u.estimated_cost_usd) estimated_cost_usd FROM backpack_provider_usage u
-            JOIN backpack_ingestion_runs r USING(run_id) GROUP BY r.snapshot_date,u.provider ORDER BY r.snapshot_date DESC LIMIT 1000'''),
+            JOIN backpack_ingestion_runs r USING(run_id) GROUP BY 1,2,3 ORDER BY r.snapshot_date DESC LIMIT 1000'''),
         readiness_requests=fetch_all(conn,'''SELECT c.checked_at::date date,u.provider,sum(u.requests) requests
             FROM backpack_readiness_usage u JOIN (SELECT run_id,min(checked_at) checked_at FROM backpack_readiness_checks GROUP BY run_id) c USING(run_id)
             GROUP BY c.checked_at::date,u.provider ORDER BY date DESC LIMIT 1000'''),

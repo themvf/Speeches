@@ -1,0 +1,74 @@
+name: BP holder intelligence
+# docs/bp-holder-intelligence.md. The daily backpack-monitor.yml run owns the schema (--migrate) and
+# creates the day's cohort version; this job never runs DDL and returns schema_pending until migrated.
+# Cadence: the Vercel cron dispatcher (apps/web/lib/server/github-dispatch.ts) presses workflow_dispatch once a
+# day with no inputs, i.e. mode=holdings (about 1k Helius credits). The hourly schedule below stays opt-in.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'holdings = cohort + one portfolio read (no transaction history); hourly = holdings, history poll and alerts; feasibility = Milestone 1 read-only provider probe'
+        type: choice
+        options: [holdings, hourly, feasibility]
+        default: holdings
+  schedule:
+    - cron: '20 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: bp-holder-intel
+  cancel-in-progress: false
+jobs:
+  intel:
+    # Scheduled runs are opt-in until the monthly API budget is agreed: set repository variable BP_INTEL_SCHEDULE=1.
+    # GitHub drops many schedule fires; stored observations carry their actual times.
+    if: github.event_name == 'workflow_dispatch' || vars.BP_INTEL_SCHEDULE == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+      JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
+      BACKPACK_REVALIDATE_SECRET: ${{ secrets.BACKPACK_REVALIDATE_SECRET }}
+      BP_INTEL_MAX_REQUESTS: ${{ vars.BP_INTEL_MAX_REQUESTS || '2500' }}
+      BP_INTEL_DEADLINE_SECONDS: '1500'
+      BP_COHORT_SIZE: ${{ vars.BP_COHORT_SIZE || '200' }}
+      BP_COHORT_EXIT_RANK: ${{ vars.BP_COHORT_EXIT_RANK || '220' }}
+      BP_COHORT_EXIT_RUNS: ${{ vars.BP_COHORT_EXIT_RUNS || '2' }}
+      BP_COHORT_ENTRANT_CAP: ${{ vars.BP_COHORT_ENTRANT_CAP || '20' }}
+      BP_HISTORY_DAYS: ${{ vars.BP_HISTORY_DAYS || '30' }}
+      BP_HISTORY_POLL_PAGES: ${{ vars.BP_HISTORY_POLL_PAGES || '3' }}
+      BP_HISTORY_BACKFILL_PAGES_PER_RUN: ${{ vars.BP_HISTORY_BACKFILL_PAGES_PER_RUN || '3' }}
+      BP_HISTORY_MAX_BACKFILL_PAGES: ${{ vars.BP_HISTORY_MAX_BACKFILL_PAGES || '30' }}
+      BP_FEASIBILITY_MAX_REQUESTS: ${{ vars.BP_FEASIBILITY_MAX_REQUESTS || '400' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3' pytest
+      - name: Classifier, cohort and alert regression gate
+        run: python -m pytest tests/test_bp_intel.py -q
+      - name: Cohort and portfolio read only (top-holder overlap without transaction history)
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'holdings'
+        shell: bash
+        run: python backpack_monitor.py --bp-intel --bp-steps portfolio,maintenance | tee bp-intel.jsonl
+      - name: Portfolio read, history poll, flags, alerts, reconciliation and retention
+        if: github.event_name == 'schedule' || inputs.mode == 'hourly'
+        shell: bash
+        run: python backpack_monitor.py --bp-intel | tee bp-intel.jsonl
+      - name: Milestone 1 feasibility probe (read-only; no database writes)
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'feasibility'
+        shell: bash
+        run: python backpack_monitor.py --bp-feasibility | tee bp-feasibility.jsonl
+      - name: Revalidate public data after a successful read
+        if: success() && (github.event_name == 'schedule' || inputs.mode != 'feasibility')
+        run: python -m backpack.revalidation
+      - name: Preserve sanitized run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bp-holder-intel-${{ github.run_id }}
+          path: bp-*.jsonl
+          if-no-files-found: ignore
+          retention-days: 30

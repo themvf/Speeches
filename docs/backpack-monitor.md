@@ -5,6 +5,9 @@ This is a Phase 1 implementation with explicit launch gaps, not a claim that all
 
 For verified production status, code ownership, operating commands and prioritized remaining work, read [the engineering handoff](backpack-engineer-handoff.md).
 
+BP holder intelligence (largest BP holders' other holdings, purchases and alerts) extends this monitor: see
+[bp-holder-intelligence.md](bp-holder-intelligence.md) and its [contract](bp-holder-intelligence-spec.md).
+
 ## What is implemented
 
 **Current lead assessment (2026-09-23):** the user's clarification prioritizes rapid/slow/status-quo/declining adoption independent of stock prices. The price-independent adoption overview below supersedes the price-required headline described in the older Growth overview section. Original financial metrics and stored `growth-v1` assessments remain unchanged as supporting evidence.

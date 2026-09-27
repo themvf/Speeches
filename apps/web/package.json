@@ -34,7 +34,7 @@
     "test:app-endpoints": "node --experimental-strip-types scripts/check-app-endpoints.ts",
     "test:gdelt-evidence-live": "node --experimental-strip-types scripts/check-gdelt-evidence-live.ts",
     "typecheck": "tsc --noEmit",
-    "test:backpack": "node --experimental-strip-types --test lib/backpack.test.ts"
+    "test:backpack": "node --experimental-strip-types --test lib/backpack.test.ts lib/bp-intel.test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.12",

@@ -1,4 +1,4 @@
-export const walletLabels=['Backpack','Treasury','Custody','Market Maker','DEX','Liquidity Pool','Lending Protocol','Bridge','Known Exchange','Protocol','Unknown'];
+export const walletLabels=['Backpack','Treasury','Custody','Market Maker','DEX','Liquidity Pool','Lending Protocol','Bridge','Known Exchange','Protocol','Vesting','Burn','Unknown'];
 export const confidences=['confirmed','high','medium','low'];
 export function solanaAddress(value:unknown):value is string{
  if(typeof value!=='string'||!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value))return false;

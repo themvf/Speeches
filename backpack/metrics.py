@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 BP_MINT = 'BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy'
 USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-SYSTEM_LABELS = {'Backpack', 'Treasury', 'Custody', 'DEX', 'Liquidity Pool', 'Lending Protocol', 'Bridge', 'Known Exchange', 'Protocol'}
+SYSTEM_LABELS = {'Backpack', 'Treasury', 'Custody', 'DEX', 'Liquidity Pool', 'Lending Protocol', 'Bridge', 'Known Exchange', 'Protocol', 'Vesting', 'Burn'}
 THRESHOLDS = (100, 1000, 10000, 100000)
 
 

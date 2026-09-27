@@ -9,7 +9,7 @@ export async function readBackpackOperations(){
   sql`SELECT check_name,status,detail,checked_at FROM backpack_readiness_checks
       WHERE run_id=(SELECT run_id FROM backpack_readiness_checks ORDER BY checked_at DESC LIMIT 1) ORDER BY check_name`,
   sql`SELECT snapshot_date,status,started_at,completed_at,assets_attempted,assets_succeeded,assets_failed,assets_skipped
-      FROM backpack_ingestion_runs ORDER BY started_at DESC LIMIT 5`,
+      FROM backpack_ingestion_runs r WHERE COALESCE(to_jsonb(r)->>'job','daily')='daily' ORDER BY r.started_at DESC LIMIT 5`,
   sql`SELECT count(*) FILTER(WHERE asset_type<>'bp' AND active AND verification_status<>'pending') AS approved,
       (SELECT max(date)::text FROM backpack_asset_daily_snapshots) AS latest_capture FROM backpack_assets`,
   sql`SELECT a.token_symbol,s.date::text,s.holders_complete,s.token_supply,c.balance_tokens,

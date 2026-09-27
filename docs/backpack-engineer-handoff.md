@@ -202,6 +202,13 @@ pending. Phase B (complete mint-wide activity) has not started.
 - Maintain raw-data retention and permanent summaries; do not retain duplicate daily wallet lists just to draw charts.
 - Use billing exports before making cost claims. Provider request counts are not billed credits.
 
+## BP holder intelligence (2026-09-26)
+
+Built on this monitor; not yet run in production. Status, deviations, Milestone 1 runbook and open decisions:
+[bp-holder-intelligence.md](bp-holder-intelligence.md). Its daily cohort step runs after capture in
+`backpack-monitor.yml`; its worker (`bp-holder-intel.yml`) is manual-dispatch only until `BP_INTEL_SCHEDULE=1`.
+The Milestone 5 support runbook belongs in this file once alerts are enabled.
+
 ## Guardrails for the next engineer
 
 Keep BP and securities separate. Keep observed zero distinct from unavailable. Keep system labels evidence-backed. Keep wallet counts distinct from investors. Keep financial metrics optional for the headline. Preserve exact asset identities, decimal supply arithmetic, immutable observations, historical label provenance and same-cohort comparisons. Acknowledge remaining phases rather than presenting all original thesis requirements as complete.
