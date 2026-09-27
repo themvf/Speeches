@@ -22,16 +22,17 @@ class Providers:
         self.calls = defaultdict(int)
         self.maximum = int(self.env.get(budget_key, default_budget))
         self.deadline = time.monotonic() + deadline_seconds
-        self._rpc_ready_at = 0.0
+        self._ready_at = defaultdict(float)
+        self.price_failed_batches = 0
 
     def _pace(self, calls, rate_key='BP_RPC_CALLS_PER_SECOND', default='8'):
         """Hold JSON-RPC calls under a per-second rate (Helius free plan: 10 RPC and 2 DAS requests/second),
         counting every call inside a batch in case the provider meters batches per call."""
         rate = float(self.env.get(rate_key, default))
         if rate <= 0: return
-        wait = self._rpc_ready_at - time.monotonic()
+        wait = self._ready_at[rate_key] - time.monotonic()
         if wait > 0: time.sleep(wait)
-        self._rpc_ready_at = time.monotonic() + calls / rate
+        self._ready_at[rate_key] = time.monotonic() + calls / rate
 
     def remaining_seconds(self):
         return self.deadline - time.monotonic()
@@ -178,14 +179,31 @@ class Providers:
         return out
 
     def prices(self, mints):
-        """Jupiter Price V3, 50 mints per request. Absent mints are unpriced, never zero."""
+        """Jupiter Price V3, 50 mints per request, paced (BP_JUPITER_REQUESTS_PER_SECOND). A batch that stays
+        rate-limited after backing off is counted in price_failed_batches and skipped: its mints are unpriced,
+        never zero, and the other batches still price."""
         key = self.env.get('JUPITER_API_KEY')
         if not key: raise SourceError('JUPITER_API_KEY not configured')
         found = {}
         mints = sorted(set(mints))
+        backoff = float(self.env.get('BP_JUPITER_BACKOFF_SECONDS', '15'))
         for start in range(0, len(mints), 50):
             batch = mints[start:start + 50]
-            result = self.request('Jupiter', 'GET', 'https://api.jup.ag/price/v3', params={'ids': ','.join(batch)}, headers={'x-api-key': key})
+            if self.remaining_seconds() < 120:  # keep what is priced; the rest stay unpriced, never zero
+                self.price_failed_batches += (len(mints) - start + 49) // 50
+                break
+            result = None
+            for attempt in range(3):
+                self._pace(1, 'BP_JUPITER_REQUESTS_PER_SECOND', '1')
+                try:
+                    result = self.request('Jupiter', 'GET', 'https://api.jup.ag/price/v3', params={'ids': ','.join(batch)}, headers={'x-api-key': key})
+                    break
+                except SourceError as error:
+                    if 'budget exhausted' in str(error): raise
+                    if attempt < 2: time.sleep(backoff * (attempt + 1))
+            if result is None:
+                self.price_failed_batches += 1
+                continue
             if not isinstance(result, dict): raise SourceError('Jupiter: malformed price response')
             for mint in batch:
                 row = result.get(mint)

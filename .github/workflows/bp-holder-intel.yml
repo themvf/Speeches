@@ -24,14 +24,16 @@ jobs:
     # GitHub drops many schedule fires; stored observations carry their actual times.
     if: github.event_name == 'workflow_dispatch' || vars.BP_INTEL_SCHEDULE == '1'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 55
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
       JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
       BACKPACK_REVALIDATE_SECRET: ${{ secrets.BACKPACK_REVALIDATE_SECRET }}
       BP_INTEL_MAX_REQUESTS: ${{ vars.BP_INTEL_MAX_REQUESTS || '2500' }}
-      BP_INTEL_DEADLINE_SECONDS: '1500'
+      # A daily read of ~200 wallets measured 17 minutes before pricing; paced pricing adds ~5 minutes.
+      BP_INTEL_DEADLINE_SECONDS: '2700'
+      BP_INTEL_LEASE_MINUTES: '55'
       BP_COHORT_SIZE: ${{ vars.BP_COHORT_SIZE || '200' }}
       BP_COHORT_EXIT_RANK: ${{ vars.BP_COHORT_EXIT_RANK || '220' }}
       BP_COHORT_EXIT_RUNS: ${{ vars.BP_COHORT_EXIT_RUNS || '2' }}
