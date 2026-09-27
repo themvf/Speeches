@@ -53,8 +53,14 @@ def _safe(error):
 
 def collect_portfolios(conn, p, env, run_id, wallets, now=None):
     from psycopg2.extras import Json, execute_values
+    import time as clock
     observed = now or datetime.now(UTC)
     max_accounts = int(env.get('BP_MAX_TOKEN_ACCOUNTS', '10000'))
+    timings, mark = {}, clock.monotonic()
+    def lap(name):
+        nonlocal mark
+        timings[name] = round(clock.monotonic() - mark, 1)
+        mark = clock.monotonic()
     reads, skipped = [], 0
     for w in wallets:
         owner = w['wallet_address']
@@ -72,6 +78,7 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
                 max_accounts))
         except SourceError as error:
             reads.append(dict(blank, status='unavailable', detail=_safe(error)))
+    lap('wallet_reads_seconds')
     mints = sorted({m for r in reads for m in r['holdings'] if m != pf.NATIVE})
     known = {r['mint']: r for r in fetch_all(conn, 'SELECT * FROM bp_tracked_assets WHERE mint=ANY(%s)', (mints,))} if mints else {}
     refresh_before = observed - timedelta(days=int(env.get('BP_METADATA_REFRESH_DAYS', '7')))
@@ -83,9 +90,13 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
     sample = {m: h for r in reads for m, h in r['holdings'].items()}
     assets = {m: pf.classify_asset(m, das.get(m), sample[m]['program'], sample[m]['decimals']) if m in stale else known[m] for m in mints}
     assets[pf.NATIVE] = pf.classify_asset(pf.NATIVE)
+    lap('metadata_seconds')
     quotes, prices = {}, {}
+    priceable = [m for m in mints if assets[m]['asset_class'] != 'nft']  # NFTs are excluded from totals anyway
     try:
-        quotes = p.prices(mints + [pf.WSOL])
+        quotes = p.prices(priceable + [pf.WSOL])
+        if getattr(p, 'price_failed_batches', 0):
+            notes.append(f'prices: {p.price_failed_batches} Jupiter batch(es) stayed rate-limited; those tokens are unpriced')
         blocks = [q.get('blockId') for q in quotes.values()]
         times, estimated = {}, set()
         if env.get('BP_PRICE_TIME_MODE', 'estimate') == 'estimate':
@@ -109,6 +120,7 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
                                 block_id=q.get('blockId'))
     except SourceError as error:
         notes.append('prices: ' + _safe(error))
+    lap('pricing_seconds')
     wallet_rows, balance_rows = [], []
     for read in reads:
         rows, total, unpriced = pf.balance_rows(read, assets, prices, observed, Decimal(env.get('BP_DUST_USD', '1')))
@@ -149,9 +161,11 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
                   r['observed_at'], r['price'], r['price_at'], r['price_source'], r['pricing_status'], r['value_usd'], r['frozen'],
                   r['balance_visibility'], r['holding_class'], r['spam_class'], r['dust'], r['classification_reason']) for r in balance_rows],
                 page_size=1000)
+    lap('write_seconds')
     counts = {s: sum(r['status'] == s for r in reads) for s in ('complete', 'partial', 'unavailable', 'oversized')}
-    return dict(wallets=len(reads), deadline_skipped=skipped, mints=len(mints), priced_mints=len([m for m in mints if m in prices]),
-                balances=len(balance_rows), notes=notes, **counts)
+    return dict(wallets=len(reads), deadline_skipped=skipped, mints=len(mints), priceable_mints=len(priceable),
+                priced_mints=len([m for m in mints if m in prices]), balances=len(balance_rows), notes=notes,
+                timings=timings, **counts)
 
 
 # History --------------------------------------------------------------------------------------------------------

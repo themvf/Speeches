@@ -485,3 +485,22 @@ def test_rpc_pacing_counts_every_call_in_a_batch(monkeypatch):
     p._pace(3)
     p._pace(1)
     assert slept == [pytest.approx(0.3)]  # the second request waits for the first batch's three calls
+
+
+def test_rate_limited_price_batches_are_skipped_not_fatal(monkeypatch):
+    from backpack import providers
+    monkeypatch.setattr(providers.time, 'sleep', lambda s: None)
+    class Reply:
+        def __init__(self, status, body=None): self.status_code, self.ok, self.body = status, status == 200, body
+        def json(self): return self.body
+    class Http:  # the first batch is always rate-limited; the second prices normally
+        def request(self, method, url, timeout, params=None, **kwargs):
+            ids = params['ids'].split(',')
+            if ids[0] == 'a000': return Reply(429)
+            return Reply(200, {m: {'usdPrice': 2, 'blockId': 5} for m in ids})
+    p = providers.Providers({'JUPITER_API_KEY': 'k', 'BP_JUPITER_REQUESTS_PER_SECOND': '0'}, Http())
+    mints = [f'a{i:03d}' for i in range(50)] + [f'b{i:03d}' for i in range(10)]
+    found = p.prices(mints)
+    assert set(found) == {f'b{i:03d}' for i in range(10)} and p.price_failed_batches == 1
+    p.deadline = 0  # out of time: nothing more is requested and nothing is invented
+    assert p.prices(mints) == {} and p.price_failed_batches == 3
