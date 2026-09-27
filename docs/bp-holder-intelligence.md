@@ -100,7 +100,39 @@ Configuration (environment or repository variables): `BP_COHORT_SIZE` 200, `BP_C
 The worker never runs DDL; on an unmigrated database it returns `schema_pending`. The web reader returns
 `schema_pending` too, so deploy order does not matter. Worker exclusion uses the `bp_intel` lease row.
 
-## Milestone 1 runbook (not yet run)
+## Milestone 1 results (probe run 36317286207, 2026-09-27)
+
+Top 20 filtered holders from cohort version 1; 3 sampled for history. Read-only; 64 Helius RPC, 6 Enhanced and 131
+Jupiter requests.
+
+- **History endpoint: confirmed.** One sampled wallet had 250 transactions under `getTransactionsForAddress` with
+  `tokenAccounts='balanceChanged'` versus 200 without it: 50 token-account-only transactions whose account keys do not
+  include the owner (incoming SPL transfers). The Enhanced address endpoint returned none of those 50 and nothing the
+  token-account query missed. For 3 token accounts the owner had since closed, their earlier activity was still returned
+  when querying the owner (5 of 5 transactions). The other two wallets had no token-account-only activity in the window.
+- **Enhanced API** still responds (200 transactions per sampled wallet), so the `parsed_swap` tier works for now; Helius
+  lists it as in maintenance mode.
+- **Transaction volume:** 80, 63 and 675 transactions in 30 days for the three sampled wallets (complete in two pages).
+  The 30-day backfill is cheap for this cohort.
+- **Portfolio sizes:** the largest of the top 20 had 6,330 token accounts (3.7 MB, 0.8 s); most had under 30. The
+  production holdings run found 3 of 200 wallets over the 10,000-account limit.
+- **Metadata:** DAS returned all 6,521 distinct mints of 10 portfolios (6,301 FungibleToken, 121 FungibleAsset, 93 NFTs).
+  806 are Token-2022 mints; extensions seen: metadata 737, transfer fee 111, permanent delegate 30, transfer hook 21,
+  confidential transfer 19, pausable 19, default account state 19, scaled UI amount 18, interest bearing 3.
+- **Prices:** Jupiter priced 2,745 of 6,521 mints. The block-time sample failed with HTTP 429 because it sent 100 calls
+  in one batch; fixed in PR #140 (batches of at most 8).
+- **Swap programs:** swap-shaped transactions of the sample used Jupiter v6 (15), Meteora DLMM (15) and Raydium CLMM (3),
+  plus programs not in `dex_programs.json`: `goonuddtQRrWqqn5nFyczVKaie28f3kDkHWkHtURSLE` (6),
+  `HpNfyc2Saw7RKkQd8nEL4khUcuPhQ7WwY1B2qjx8jxFq` (3), `ZERor4xhbUycZ6gb9ntrhqscUcZmAbQDjEAtCf4hbZY` (2),
+  `BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi`, `TessVdML9pBGgG9yGks7o4HewRaXVAMuoVj4x83GLQH` and
+  `61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH` (1 each). Direct swaps through these, without Jupiter or a Helius
+  swap parse, land in `unclassified` until each is identified from a primary source and added.
+- **Usage estimate caveat:** the probe's `block_time_calls_month` (4.7M) assumes one exact lookup per priced token per
+  hourly run; it predates slot-based price ages and overstates that line. The hourly history poll alone
+  (`history_poll_credits_month` 1.44M) exceeds the free plan, as documented above.
+- **Webhooks:** not probed (would require registering one).
+
+## Milestone 1 runbook
 
 1. Merge, let `backpack-monitor.yml` migrate and create the first cohort version (or dispatch it).
 2. Dispatch `bp-holder-intel.yml` with `mode=feasibility`. It reads the top filtered holders, spends at most
