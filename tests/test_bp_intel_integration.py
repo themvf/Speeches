@@ -96,7 +96,7 @@ class FakeIntel:
                 for m in mints}
     def prices(self, mints):
         self.usage['Jupiter'] += 1
-        return {m: dict(usdPrice=self.price_table[m], blockId=800, liquidity=12345.5, createdAt='2026-09-24T00:00:00Z')
+        return {m: dict(usdPrice=self.price_table[m], blockId=801 if m == pf.WSOL else 800, liquidity=12345.5, createdAt='2026-09-24T00:00:00Z')
                 for m in mints if m in self.price_table}
     def block_times(self, slots): return {int(s): self.now - timedelta(minutes=3) for s in slots}
     def transactions_for_address(self, address, filters, token=None, limit=100, details='full'):
@@ -121,6 +121,8 @@ class FakeIntel:
         if kwargs['params'].get('before'): return []
         return [dict(signature=t['transaction']['signatures'][0], timestamp=t['blockTime']) for t in rows]
     def rpc(self, method, params, independent=False):
+        if method == 'getSlot': return self.slot + 100  # price blocks (800) sit a few hundred slots behind the tip
+        if method == 'getBlockTime': return int(self.now.timestamp())
         return next(t for t in self.history if t['transaction']['signatures'][0] == params[0])
     def enhanced_parse(self, signatures):
         self.usage['Helius Enhanced'] += 1
@@ -232,6 +234,10 @@ def test_worker_end_to_end_is_idempotent(conn):
     assert balances[('w1', TOKEN)]['value_usd'] == D(10**18 + 7) / D(10**6) * 2
     assert balances[('w3', UNPRICED)]['value_usd'] is None and balances[('w3', UNPRICED)]['pricing_status'] == 'unpriced'
     assert balances[('w1', pf.NATIVE)]['value_usd'] == D(300)
+    # Token price times are estimated from slots; SOL's stays exact because stored SOL prices value swaps.
+    assert 'estimated from slot' in balances[('w1', TOKEN)]['price_source']
+    assert 'estimated' not in balances[('w1', pf.NATIVE)]['price_source']
+    assert len(fetch_all(conn, 'SELECT * FROM bp_price_observations WHERE mint=%s', (pf.WSOL,))) == 1
     events = {(r['signature'], r['wallet_address']): r for r in fetch_all(conn, 'SELECT * FROM bp_economic_events')}
     assert events[('buy-w1', 'w1')]['tier'] == 'parsed_swap' and events[('buy-w2', 'w2')]['tier'] == 'inferred_swap'
     assert events[('buy-w1', 'w1')]['usd_value'] == D(300) and events[('buy-w1', 'w1')]['first_observed_purchase']

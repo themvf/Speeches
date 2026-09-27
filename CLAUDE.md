@@ -60,8 +60,10 @@ monitor, not a new service: cohorts (`backpack/cohorts.py`, created by the daily
 supply-reconciled BP capture), stored portfolios, 30-day history via Helius `getTransactionsForAddress`
 (`tokenAccounts=balanceChanged`), a tiered classifier (`backpack/events.py`: parsed_swap / inferred_swap / unclassified;
 transfers are never purchases), alerts, daily reconciliation, and sections on `/market/crypto/backpack`
-(`?section=...&format=csv`). The worker (`bp-holder-intel.yml`, `--bp-intel`) never runs DDL. Its hourly schedule is
-**off** until repository variable `BP_INTEL_SCHEDULE=1`, pending the monthly API budget. Coverage lives in
+(`?section=...&format=csv`). The worker (`bp-holder-intel.yml`, `--bp-intel`) never runs DDL. The Vercel dispatcher runs it
+daily in holdings-only mode (~1k Helius credits); its hourly history/alerts schedule is **off** until repository
+variable `BP_INTEL_SCHEDULE=1`, pending the monthly API budget (the existing daily Backpack job already uses ~530k of
+the free plan's 1M credits/month via the 100-credit Enhanced API). Coverage lives in
 `bp_history_coverage`, not `backpack_transaction_cursors` (that table's rows belong to the daily BP swap sampler).
 `backpack_ingestion_runs.job` separates `daily` from `bp_intel`; daily readers must filter it. Never convert
 failed reads, stale prices or unknown decimals to zero.

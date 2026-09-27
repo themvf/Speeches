@@ -20,6 +20,23 @@ FUNGIBLE_INTERFACES = {'FungibleToken', 'FungibleAsset'}
 POSITION_PATTERN = re.compile(r'(\bLP\b|\bLP[ -]?token|liquidity|pool token|receipt token|\bvault share)', re.I)
 SPAM_PATTERN = re.compile(r'(https?://|www\.|\.(com|io|xyz|net|org|app|fun)\b|t\.me/|\bclaim|\bairdrop|\bvisit\b|\bfree\b)', re.I)
 PRICE_MAX_AGE = timedelta(hours=1)
+# Slot-based price age. Slots are leader-schedule ticks of roughly 0.4s; bounds use 0.35-0.5s so a block is only
+# called fresh or stale without an exact lookup when that holds at either extreme.
+SLOT_SECONDS, FAST_SLOT, SLOW_SLOT = 0.4, 0.35, 0.5
+
+
+def price_block_ages(blocks, ref_slot, ref_time, max_age=PRICE_MAX_AGE):
+    """Split price blocks into slot-estimated times (clearly fresh or clearly stale) and blocks that need an exact
+    getBlockTime because they sit near the one-hour boundary. Saves one credit per priced token on most reads."""
+    estimated, exact_needed = {}, []
+    limit = max_age.total_seconds()
+    for block in sorted({int(b) for b in blocks if b is not None}):
+        slots = max(ref_slot - block, 0)
+        if slots * SLOW_SLOT <= limit or slots * FAST_SLOT > limit:
+            estimated[block] = ref_time - timedelta(seconds=round(slots * SLOT_SECONDS))
+        else:
+            exact_needed.append(block)
+    return estimated, exact_needed
 
 
 def _camel_to_snake(name):

@@ -86,10 +86,27 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
     quotes, prices = {}, {}
     try:
         quotes = p.prices(mints + [pf.WSOL])
-        times = p.block_times([q.get('blockId') for q in quotes.values()])
+        blocks = [q.get('blockId') for q in quotes.values()]
+        times, estimated = {}, set()
+        if env.get('BP_PRICE_TIME_MODE', 'estimate') == 'estimate':
+            try:
+                ref_slot = p.rpc('getSlot', [{'commitment': 'finalized'}])
+                ref_time = datetime.fromtimestamp(p.rpc('getBlockTime', [ref_slot]), UTC)
+                times, exact = pf.price_block_ages(blocks, int(ref_slot), ref_time)
+                sol_block = (quotes.get(pf.WSOL) or {}).get('blockId')
+                if sol_block is not None and int(sol_block) in times:  # stored SOL prices value swaps: keep exact
+                    times.pop(int(sol_block))
+                    exact.append(int(sol_block))
+                estimated = set(times)
+                blocks = exact
+            except (SourceError, TypeError, ValueError):
+                notes.append('slot reference unavailable; exact block times used')
+        times.update(p.block_times(blocks))
         for mint, q in quotes.items():
-            prices[mint] = dict(price=Decimal(str(q['usdPrice'])), price_at=times.get(int(q['blockId'])) if q.get('blockId') is not None else None,
-                                source='Jupiter Price V3', block_id=q.get('blockId'))
+            block = int(q['blockId']) if q.get('blockId') is not None else None
+            prices[mint] = dict(price=Decimal(str(q['usdPrice'])), price_at=times.get(block),
+                                source='Jupiter Price V3' + (' (price time estimated from slot)' if block in estimated else ''),
+                                block_id=q.get('blockId'))
     except SourceError as error:
         notes.append('prices: ' + _safe(error))
     wallet_rows, balance_rows = [], []
@@ -118,7 +135,7 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
             cur.execute('''UPDATE bp_tracked_assets SET liquidity_usd=%s,market_created_at=COALESCE(%s::timestamptz,market_created_at),
                 market_observed_at=%s WHERE network='solana-mainnet' AND mint=%s''',
                 (Decimal(str(q['liquidity'])) if q.get('liquidity') is not None else None, created, observed, mint))
-        if pf.WSOL in prices and prices[pf.WSOL]['price_at']:
+        if pf.WSOL in prices and prices[pf.WSOL]['price_at'] and 'estimated' not in prices[pf.WSOL]['source']:
             s = prices[pf.WSOL]
             cur.execute('''INSERT INTO bp_price_observations(mint,price_at,source,price,block_id) VALUES(%s,%s,%s,%s,%s)
                 ON CONFLICT DO NOTHING''', (pf.WSOL, s['price_at'], s['source'], s['price'], s['block_id']))

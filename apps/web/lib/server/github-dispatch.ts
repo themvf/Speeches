@@ -40,6 +40,13 @@ export const DISPATCH_TARGETS: DispatchTarget[] = [
       "Solana's feed is 5.8 minutes deep at 25 new pools/minute, and opening-trade capture is perishable: 300 trades spanned 33 seconds on a busy graduate",
   },
   {
+    // A dispatch carries no inputs, so the workflow runs its default holdings-only mode (no transaction history).
+    workflow: "bp-holder-intel.yml",
+    everyMinutes: 24 * 60,
+    reason:
+      "the top-200 BP holders' common-holdings view has no other refresh; GitHub delays the daily Backpack job by hours and drops fires",
+  },
+  {
     workflow: "solana-enrich.yml",
     everyMinutes: 10,
     reason:

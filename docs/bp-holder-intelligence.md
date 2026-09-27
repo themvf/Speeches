@@ -66,6 +66,22 @@ python backpack_monitor.py --bp-feasibility     # Milestone 1 probe, read-only
 python backpack_monitor.py --bp-approve-original 12 --bp-notes "reviewed labels and exclusions"
 ```
 
+**Cadence.** Cohort: daily, inside `backpack-monitor.yml` after its capture (GitHub-scheduled for 00:30 UTC;
+observed starting around 05:15). Holdings (the common-holdings view): **daily**, dispatched by the Vercel cron
+dispatcher (`github-dispatch.ts`, every 24 hours, no inputs, so `mode=holdings`). History and alerts: hourly only
+once `BP_INTEL_SCHEDULE=1`.
+
+**Helius credits (published costs, 2026-09-27: standard RPC 1, each DAS request 10, Enhanced 100 per request,
+`getTransactionsForAddress` 10 per 100 transactions).** A holdings run is about 600 credits for 200 wallets (three
+calls each), about 10 per 1,000 new or stale mints of metadata, 2 for the slot reference, and one per exact price
+time: token price times are estimated from slot distance and looked up exactly only within the band where the
+one-hour staleness call could go either way (SOL's is always exact because stored SOL prices value swaps). Roughly
+1k credits a day, about 30k a month. For comparison, the existing daily Backpack job recorded about 178 Enhanced
+requests a day in 2026-09-24/26 runs, about 530k credits a month on its own, so both fit the free plan's 1M with
+the hourly history schedule off. Requests are paced to 8 RPC calls/s and 1.5 DAS calls/s (`BP_RPC_CALLS_PER_SECOND`,
+`BP_DAS_CALLS_PER_SECOND`) to stay under the free plan's 10 and 2 per second. `BP_PRICE_TIME_MODE=exact` restores
+one lookup per priced token.
+
 Workflows: the daily `backpack-monitor.yml` refreshes the cohort after a successful capture.
 `bp-holder-intel.yml` on manual dispatch runs `mode=holdings` (default: cohort plus one portfolio read, no
 transaction history, enough for the top-200 common-holdings view), `mode=hourly` (holdings, history, alerts) or
@@ -119,7 +135,7 @@ The worker never runs DDL; on an unmigrated database it returns `schema_pending`
 
 ## Verification (2026-09-26, local)
 
-- `tests/test_bp_intel.py`: 35 fixture tests (every classifier case in section 13, portfolio parsing, cohort
+- `tests/test_bp_intel.py`: 37 fixture tests (every classifier case in section 13, portfolio parsing, cohort
   hysteresis/cap, alert rules including "no transfer-only fixture raises a buy alert", third-party rent).
 - `tests/test_bp_intel_integration.py`: 12 PostgreSQL tests (cohort versions from stored captures, partial
   capture withheld, original approval via both the Python and the web SQL, full worker run replayed with no
@@ -130,6 +146,6 @@ The worker never runs DDL; on an unmigrated database it returns `schema_pending`
   fixed with tests: rent a sender paid counted as the wallet's SOL, then netted against an unrelated swap; roster
   amounts assuming 9 decimals; detail-panel request races and stale scope; explicit out-of-window cohort/run IDs
   silently becoming empty (now 404); a double-counted JSON-RPC call metric; NULL block times in flag refresh.
-- Existing Backpack suites unchanged and passing (124 Python tests in total). TypeScript: `npm run test:backpack`
+- Existing Backpack suites unchanged and passing (126 Python tests in total). TypeScript: `npm run test:backpack`
   (13), `tsc`, targeted ESLint and `next build`.
 - Local PostgreSQL was PGlite 0.5.8 (PostgreSQL 18, WASM); CI runs PostgreSQL 16.

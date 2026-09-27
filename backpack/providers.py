@@ -22,6 +22,16 @@ class Providers:
         self.calls = defaultdict(int)
         self.maximum = int(self.env.get(budget_key, default_budget))
         self.deadline = time.monotonic() + deadline_seconds
+        self._rpc_ready_at = 0.0
+
+    def _pace(self, calls, rate_key='BP_RPC_CALLS_PER_SECOND', default='8'):
+        """Hold JSON-RPC calls under a per-second rate (Helius free plan: 10 RPC and 2 DAS requests/second),
+        counting every call inside a batch in case the provider meters batches per call."""
+        rate = float(self.env.get(rate_key, default))
+        if rate <= 0: return
+        wait = self._rpc_ready_at - time.monotonic()
+        if wait > 0: time.sleep(wait)
+        self._rpc_ready_at = time.monotonic() + calls / rate
 
     def remaining_seconds(self):
         return self.deadline - time.monotonic()
@@ -148,6 +158,7 @@ class Providers:
             chunk = calls[start:start + 100]
             if self.env.get('BP_RPC_BATCH', '1') == '1':
                 body = [{'jsonrpc': '2.0', 'id': i, 'method': m, 'params': p} for i, (m, p) in enumerate(chunk)]
+                self._pace(len(chunk))
                 response = self.request('Helius RPC', 'POST', self._helius_url(), json=body)
                 if isinstance(response, list):
                     self.calls['Helius RPC'] += len(chunk)
@@ -158,6 +169,7 @@ class Providers:
                     continue
             for method, params in chunk:
                 try:
+                    self._pace(1)
                     self.calls['Helius RPC'] += 1
                     out.append((self.rpc(method, params), None))
                 except SourceError as error:
@@ -192,6 +204,7 @@ class Providers:
         mints = sorted(set(mints))
         for start in range(0, len(mints), 1000):
             batch = mints[start:start + 1000]
+            self._pace(1, 'BP_DAS_CALLS_PER_SECOND', '1.5')
             rows = self.rpc('getAssetBatch', {'ids': batch, 'options': {'showFungible': True}})
             if not isinstance(rows, list): raise SourceError('Helius DAS: malformed asset batch')
             for row in rows:

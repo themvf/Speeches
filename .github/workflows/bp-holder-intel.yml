@@ -1,6 +1,8 @@
 name: BP holder intelligence
 # docs/bp-holder-intelligence.md. The daily backpack-monitor.yml run owns the schema (--migrate) and
 # creates the day's cohort version; this job never runs DDL and returns schema_pending until migrated.
+# Cadence: the Vercel cron dispatcher (apps/web/lib/server/github-dispatch.ts) presses workflow_dispatch once a
+# day with no inputs, i.e. mode=holdings (about 1k Helius credits). The hourly schedule below stays opt-in.
 on:
   workflow_dispatch:
     inputs:

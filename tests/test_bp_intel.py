@@ -464,3 +464,24 @@ def test_rpc_batch_fallback_counts_each_call_once():
     p = Providers({'HELIUS_API_KEY': 'k'}, Http())
     assert p.rpc_many([('getSlot', []), ('getSlot', [])]) == [(7, None), (7, None)]
     assert p.calls['Helius RPC'] == 2 and p.usage['Helius RPC'] == 3  # one rejected batch + two single calls
+
+
+def test_price_block_ages_only_look_up_blocks_near_the_hour_boundary():
+    ref = T0
+    estimated, exact = pf.price_block_ages([1_000_000, 1_000_000 - 7_000, 1_000_000 - 9_000, 1_000_000 - 20_000, 1_000_050, None],
+                                           1_000_000, ref)
+    assert exact == [991_000]  # ~60 minutes: could be either side, so it gets an exact getBlockTime
+    assert estimated[1_000_000] == ref and estimated[1_000_050] == ref  # at or past the reference slot
+    assert estimated[993_000] == ref - timedelta(seconds=2800)  # fresh at even the slowest slot time
+    assert ref - estimated[980_000] > timedelta(hours=1)  # stale at even the fastest slot time
+
+
+def test_rpc_pacing_counts_every_call_in_a_batch(monkeypatch):
+    from backpack import providers
+    clock, slept = [100.0], []
+    monkeypatch.setattr(providers.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(providers.time, 'sleep', lambda s: (slept.append(s), clock.__setitem__(0, clock[0] + s)))
+    p = providers.Providers({'BP_RPC_CALLS_PER_SECOND': '10'})
+    p._pace(3)
+    p._pace(1)
+    assert slept == [pytest.approx(0.3)]  # the second request waits for the first batch's three calls
