@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { labelWalletActivity, readWalletActivity, readWalletHoldings } from "@/lib/server/trader-watch";
-import { traderWatchProfile, type TraderWatchData } from "@/lib/trader-watch";
+import { readPumpActivity, unavailablePumpActivity } from "@/lib/server/pump-activity";
+import { PUMP_ACTIONS, traderWatchProfile, type PumpAction, type PumpActivity, type TraderWatchData } from "@/lib/trader-watch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,10 +11,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const profile = traderWatchProfile(id);
   if (!profile) return NextResponse.json({ ok: false, error: "Unknown wallet profile" }, { status: 400 });
 
-  const [walletResult, holdingsResult] = await Promise.allSettled([
+  const [walletResult, holdingsResult, ...pumpResults] = await Promise.allSettled([
     readWalletActivity(profile),
     readWalletHoldings(profile),
+    ...PUMP_ACTIONS.map((action) => readPumpActivity(profile, action)),
   ]);
+  const pumpActivity = Object.fromEntries(PUMP_ACTIONS.map((action: PumpAction, index) => [
+    action,
+    pumpResults[index].status === "fulfilled" ? pumpResults[index].value : unavailablePumpActivity(),
+  ])) as PumpActivity;
   const activity = walletResult.status === "fulfilled"
     ? await labelWalletActivity(walletResult.value, holdingsResult.status === "fulfilled" ? holdingsResult.value.items : [])
     : [];
@@ -27,6 +33,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     walletHoldings: holdingsResult.status === "fulfilled"
       ? holdingsResult.value
       : { status: "unavailable", items: [], sol: null, observedAt: null, note: "Current holdings could not be read from Solana RPC." },
+    pumpActivity,
     generatedAt: new Date().toISOString(),
   };
   return NextResponse.json({ ok: true, data }, {

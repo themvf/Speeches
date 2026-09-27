@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TRADER_WATCH_PROFILES, labelWalletObservations, walletHoldingsFromAccounts, walletTokenChanges } from "./trader-watch.ts";
+import { TRADER_WATCH_PROFILES, labelWalletObservations, parsePumpActivityItem, walletHoldingsFromAccounts, walletTokenChanges } from "./trader-watch.ts";
 
 const address = "64w4qRu9VGio7U1Asc6B68QDpS8L1McmSn2yyExC6Fii";
 
@@ -65,4 +65,18 @@ test("recent activity gets a readable token name without losing its mint or dire
   assert.deepEqual(labeled[0].tokenChanges[0], { ...change, symbol: "COIN", name: "Example Coin", labelSource: "dexscreener" });
   assert.equal(labeled[0].tokenChanges[0].delta, "+3");
   assert.equal(labeled[0].tokenChanges[0].mint, "mint-a");
+});
+
+test("Pump.fun receipts stay separate from purchases and retain the token name", () => {
+  const row = {
+    tx_hash: "LGHXSeaak1Xy9coGMjG6sP93y8J2yeZWcbfayU8BPLGTMiacv22ikrbhLe5CviDkXgM7v3wWssGZw1NtjoWyFyL",
+    block_time: 1790317551,
+    transaction_type: "RECEIVE",
+    token_transferred: { mint: "D1YZZg9dBZ7AbfknZVbaeVLto36eySwoFYEVhZrD4F4n", amount: "575976.031191", metadata: { name: "Example coin", symbol: "EX" } },
+  };
+  const receipt = parsePumpActivityItem(row, "RECEIVE");
+  assert.equal(receipt?.action, "RECEIVE");
+  assert.equal(receipt?.name, "Example coin");
+  assert.equal(receipt?.amount, "575976.031191");
+  assert.equal(parsePumpActivityItem(row, "BUY"), null);
 });

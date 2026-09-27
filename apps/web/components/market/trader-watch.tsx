@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { TRADER_WATCH_PROFILES, type TraderWatchData } from "@/lib/trader-watch";
+import { PUMP_ACTIONS, TRADER_WATCH_PROFILES, type PumpAction, type PumpActivity, type PumpActivityPage, type TraderWatchData } from "@/lib/trader-watch";
+
+const PUMP_ACTION_LABELS: Record<PumpAction, string> = { BUY: "Buys", RECEIVE: "Receipts", SELL: "Sells", SEND: "Sends" };
 
 function timeLabel(value: string | null): string {
   if (!value) return "Time unavailable";
@@ -14,6 +16,10 @@ export function TraderWatch() {
   const [data, setData] = useState<TraderWatchData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pumpAction, setPumpAction] = useState<PumpAction>("RECEIVE");
+  const [pumpPages, setPumpPages] = useState<PumpActivity | null>(null);
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -22,7 +28,9 @@ export function TraderWatch() {
       const response = await fetch(`/api/market/crypto/trader-watch?trader=${encodeURIComponent(trader)}`, { signal });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Trader watch failed to load");
-      setData(result.data as TraderWatchData);
+      const next = result.data as TraderWatchData;
+      setData(next);
+      setPumpPages(next.pumpActivity);
     } catch (cause) {
       if (signal?.aborted) return;
       setError(cause instanceof Error ? cause.message : "Trader watch failed to load");
@@ -38,8 +46,33 @@ export function TraderWatch() {
     return () => { clearInterval(timer); controller.abort(); };
   }, [load]);
 
+  const loadOlder = useCallback(async () => {
+    const cursor = pumpPages?.[pumpAction].nextCursor;
+    if (!cursor || olderLoading) return;
+    setOlderLoading(true);
+    setOlderError(null);
+    try {
+      const query = new URLSearchParams({ trader, action: pumpAction, cursor });
+      const response = await fetch(`/api/market/crypto/trader-watch/pump-activity?${query}`);
+      const result = await response.json();
+      if (!response.ok || !result.ok || result.page?.status !== "available") throw new Error("Older activity could not be loaded");
+      const page = result.page as PumpActivityPage;
+      setPumpPages((current) => {
+        if (!current || current[pumpAction].nextCursor !== cursor) return current;
+        const seen = new Set(current[pumpAction].items.map((item) => item.signature));
+        return { ...current, [pumpAction]: {
+          ...page,
+          items: [...current[pumpAction].items, ...page.items.filter((item) => !seen.has(item.signature))],
+        } };
+      });
+    } catch (cause) {
+      setOlderError(cause instanceof Error ? cause.message : "Older activity could not be loaded");
+    } finally { setOlderLoading(false); }
+  }, [pumpPages, pumpAction, olderLoading, trader]);
+
   const profile = data?.profile ?? TRADER_WATCH_PROFILES.find((item) => item.id === trader)!;
   const wallet = profile.wallet;
+  const selectedPumpPage = pumpPages?.[pumpAction];
   const seenMints = new Set<string>();
   const recentIncreases = (data?.walletActivity.items ?? [])
     .flatMap((activity) => activity.tokenChanges.filter((change) => change.delta.startsWith("+")).map((change) => ({ change, activity })))
@@ -64,7 +97,7 @@ export function TraderWatch() {
       {TRADER_WATCH_PROFILES.length > 1 && (
         <label className="mt-4 block text-xs text-[color:var(--ink-faint)]">
           Wallet profile
-          <select value={trader} onChange={(event) => { setTrader(event.target.value); setData(null); }} className="ml-2 min-h-11 rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] px-3 text-base text-[color:var(--ink)]">
+          <select value={trader} onChange={(event) => { setTrader(event.target.value); setData(null); setPumpPages(null); }} className="ml-2 min-h-11 rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] px-3 text-base text-[color:var(--ink)]">
             {TRADER_WATCH_PROFILES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
@@ -104,6 +137,31 @@ export function TraderWatch() {
             </ul> : <p className="mt-2 text-xs text-[color:var(--ink-faint)]">No positive SPL token balances were returned.</p>}
           </>}
           <p className="mt-2 text-xs text-[color:var(--ink-faint)]">A token label comes from a trading pair and is not identity verification. Zero-balance accounts, other wallets, exchange balances, and off-chain positions are outside this view.</p>
+        </div>
+        <div className="min-w-0 rounded-lg border border-[color:var(--line)] p-3">
+          <h3 className="text-sm font-semibold text-[color:var(--ink)]">Named wallet activity from Pump.fun</h3>
+          <p className="mt-1 text-xs text-[color:var(--ink-faint)]">Pump.fun groups this address’s history into buys, receipts, sells, and sends. A receipt is a transfer into the wallet, not proof of a purchase. Missing token names are filled from DEX Screener when available.</p>
+          {pumpPages?.BUY.status === "available" && pumpPages.BUY.items.length === 0 && <p className="mt-2 text-xs text-amber-300">Pump.fun currently reports no Buy records for this address. Check Receipts for tokens transferred in.</p>}
+          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Pump.fun activity category">
+            {PUMP_ACTIONS.map((action) => <button key={action} type="button" onClick={() => { setPumpAction(action); setOlderError(null); }} aria-pressed={pumpAction === action} className={`min-h-11 rounded-lg border px-3 text-sm ${pumpAction === action ? "border-[color:var(--accent)] text-[color:var(--ink)]" : "border-[color:var(--line)] text-[color:var(--ink-faint)]"}`}>
+              {PUMP_ACTION_LABELS[action]}{pumpPages?.[action].status === "available" ? ` (${pumpPages[action].items.length}${pumpPages[action].nextCursor ? "+" : ""})` : ""}
+            </button>)}
+          </div>
+          {selectedPumpPage?.status === "unavailable" && <p className="mt-3 text-sm text-amber-300">{selectedPumpPage.note}</p>}
+          {selectedPumpPage?.status === "available" && selectedPumpPage.items.length === 0 && <p className="mt-3 text-sm text-[color:var(--ink-faint)]">{pumpAction === "BUY" ? "Pump.fun currently returns no Buy records for this address. Tokens may still have arrived by transfer; see Receipts." : `No ${PUMP_ACTION_LABELS[pumpAction].toLowerCase()} returned by Pump.fun.`}</p>}
+          {selectedPumpPage?.status === "available" && selectedPumpPage.items.length > 0 && <ul className="mt-3 max-h-[420px] divide-y divide-[color:var(--line)] overflow-y-auto">
+            {selectedPumpPage.items.map((item) => <li key={item.signature} className="py-2 text-sm text-[color:var(--ink)]">
+              <span className="font-semibold">{item.name ?? item.symbol ?? "Unlabeled token"}</span>
+              {item.name && item.symbol && <span className="ml-1 text-xs text-[color:var(--ink-faint)]">({item.symbol})</span>}
+              {item.labelSource === "dexscreener" && <span className="ml-1 text-xs text-[color:var(--ink-faint)]">· DEX Screener label</span>}
+              <span className="ml-2 text-xs text-[color:var(--ink-faint)]">{item.amount} · {timeLabel(item.timestamp)}</span>
+              <a href={item.url} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-[color:var(--accent)] underline underline-offset-2">transaction ↗</a>
+              <a href={`https://explorer.solana.com/address/${item.mint}`} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all font-mono text-xs text-[color:var(--accent)] underline underline-offset-2">{item.mint} ↗</a>
+            </li>)}
+          </ul>}
+          {selectedPumpPage?.nextCursor && <button type="button" onClick={() => void loadOlder()} disabled={olderLoading} className="mt-3 min-h-11 rounded-lg border border-[color:var(--line-strong)] px-3 text-sm text-[color:var(--ink)] disabled:opacity-50">{olderLoading ? "Loading older activity…" : `Load older ${PUMP_ACTION_LABELS[pumpAction].toLowerCase()}`}</button>}
+          {olderError && <p className="mt-2 text-xs text-amber-300" role="status">{olderError}</p>}
+          {wallet && <p className="mt-3 text-xs text-[color:var(--ink-faint)]">This is Pump.fun’s indexed history, which may be incomplete or differ from raw chain data. <a href={wallet.profileUrl} target="_blank" rel="noopener noreferrer" className="text-[color:var(--accent)] underline underline-offset-2">Open source profile ↗</a></p>}
         </div>
         <div className="min-w-0 rounded-lg border border-[color:var(--line)] p-3">
           <h3 className="text-sm font-semibold text-[color:var(--ink)]">Recent wallet transactions</h3>

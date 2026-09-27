@@ -75,10 +75,63 @@ export type WalletHoldings = {
   note: string | null;
 };
 
+export const PUMP_ACTIONS = ["BUY", "RECEIVE", "SELL", "SEND"] as const;
+export type PumpAction = (typeof PUMP_ACTIONS)[number];
+export type PumpActivityItem = {
+  signature: string;
+  timestamp: string;
+  action: PumpAction;
+  mint: string;
+  amount: string;
+  name: string | null;
+  symbol: string | null;
+  labelSource: "pumpfun" | "dexscreener" | null;
+  url: string;
+};
+export type PumpActivityPage = {
+  status: "available" | "unavailable";
+  items: PumpActivityItem[];
+  nextCursor: string | null;
+  note: string | null;
+};
+export type PumpActivity = Record<PumpAction, PumpActivityPage>;
+
+type PumpToken = { mint?: unknown; amount?: unknown; metadata?: { name?: unknown; symbol?: unknown } };
+type PumpTransaction = {
+  tx_hash?: unknown;
+  block_time?: unknown;
+  transaction_type?: unknown;
+  token_in?: PumpToken | null;
+  token_out?: PumpToken | null;
+  token_transferred?: PumpToken | null;
+};
+
+export function parsePumpActivityItem(row: PumpTransaction, action: PumpAction): PumpActivityItem | null {
+  if (row.transaction_type !== action || typeof row.tx_hash !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(row.tx_hash)) return null;
+  const token = action === "BUY" ? row.token_in : action === "SELL" ? row.token_out : row.token_transferred;
+  if (!token || typeof token.mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(token.mint)) return null;
+  if (typeof token.amount !== "string" || !/^\d+(?:\.\d+)?$/.test(token.amount)) return null;
+  if (typeof row.block_time !== "number" || !Number.isSafeInteger(row.block_time) || row.block_time <= 0) return null;
+  const name = typeof token.metadata?.name === "string" ? token.metadata.name.trim().slice(0, 80) || null : null;
+  const symbol = typeof token.metadata?.symbol === "string" ? token.metadata.symbol.trim().slice(0, 32) || null : null;
+  return {
+    signature: row.tx_hash,
+    timestamp: new Date(row.block_time * 1000).toISOString(),
+    action,
+    mint: token.mint,
+    amount: token.amount,
+    name,
+    symbol,
+    labelSource: name || symbol ? "pumpfun" : null,
+    url: `https://explorer.solana.com/tx/${row.tx_hash}`,
+  };
+}
+
 export type TraderWatchData = {
   profile: TraderWatchProfile;
   walletActivity: { status: "available" | "unavailable"; items: WalletObservation[]; note: string | null };
   walletHoldings: WalletHoldings;
+  pumpActivity: PumpActivity;
   generatedAt: string;
 };
 

@@ -95,7 +95,7 @@ export async function readWalletActivity(profile: TraderWatchProfile): Promise<W
   return observations;
 }
 
-async function tokenLabels(mints: string[]): Promise<Map<string, { symbol: string; name: string }>> {
+export async function tokenLabels(mints: string[]): Promise<Map<string, { symbol: string; name: string }>> {
   const labels = new Map<string, { symbol: string; name: string }>();
   const batches: string[][] = [];
   for (let index = 0; index < mints.length; index += 30) batches.push(mints.slice(index, index + 30));
