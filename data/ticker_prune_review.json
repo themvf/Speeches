@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-09-21T17:07:11Z",
+ "generatedAt": "2026-09-28T18:38:17Z",
  "checkedCount": 888,
  "flaggedCount": 2,
  "candidates": [
@@ -11,7 +11,7 @@
    "confidence": "high",
    "evidence": "CIK's own submissions now list ['VRMK'] instead of EQR",
    "suggestedNewTicker": "VRMK",
-   "yahooQuoteAlive": true
+   "yahooQuoteAlive": false
   },
   {
    "ticker": "LNW",
