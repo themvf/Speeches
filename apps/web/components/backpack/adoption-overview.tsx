@@ -7,6 +7,25 @@ import s from './monitor.module.css';
 const count=(v:unknown)=>numeric(v)===null?'N/A':new Intl.NumberFormat('en-US').format(Number(v));
 const pct=(v:unknown)=>numeric(v)===null?'N/A':`${Number(v).toFixed(2)}%`;
 
+const BREAKS:Record<string,string>={exclusions_changed:'the system-wallet exclusion list changed',securities_changed:'the set of tracked securities changed',methodology_changed:'the methodology changed',missing_day:'a daily capture is missing'};
+
+// Mirrors backpack/adoption.py _comparability so rows saved before that field existed still explain themselves.
+function comparability(rows:Row[],day:string,period:number){
+ const by=new Map(rows.map(r=>[String(r.date),r])),latest=by.get(day);
+ if(!latest)return null;
+ const ids=Object.keys((latest.assets??{}) as Row).sort().join(),fp=String(latest.exclusion_fingerprint??'');
+ let since=day,days=0,cursor=day,why:string|null=null;
+ for(;;){
+  const r=by.get(cursor);
+  if(!r){why=days?'missing_day':null;break;}
+  if(Object.keys((r.assets??{}) as Row).sort().join()!==ids){why='securities_changed';break;}
+  if(String(r.exclusion_fingerprint??'')!==fp){why='exclusions_changed';break;}
+  since=cursor;days++;cursor=dayOffset(cursor,-1);
+ }
+ if(!by.has(cursor))why=null;
+ return {since,days,why,readyOn:days<period+1?dayOffset(since,period):null};
+}
+
 export function GrowthOverview({data}:{data:MonitorData}){
  const [period,setPeriod]=useState(7),day=data.asOf??'';
  const current=point(data.adoption??[],day),row=data.adoptionGrowth?.find(r=>Number(r.period_days)===period);
@@ -24,6 +43,7 @@ export function GrowthOverview({data}:{data:MonitorData}){
  const entered=row?.entered_holders??cohort?.entered_holders;
  const departed=row?.departed_holders??cohort?.departed_holders;
  const retention=row?.retention_pct??cohort?.retention_pct;
+ const comp=row?.comparable_since?{since:String(row.comparable_since),days:numeric(row.comparable_days)??0,why:(row.comparable_break as string|null)??null,readyOn:(row.comparable_ready_on as string|null)??null}:comparability(data.adoption??[],day,period);
  const state=stale?'Stale evidence':String(row?.state??'Insufficient evidence');
  return <section className={s.adoptionCore} aria-label="Backpack securities adoption analytics">
   <div className={s.adoptionHero}>
@@ -47,6 +67,7 @@ export function GrowthOverview({data}:{data:MonitorData}){
   <div className={s.progressPanel}>
    <div><b>{count(observed)} of {required} observations</b><span> needed for the {period}-day direction</span></div>
    <div className={s.progressTrack} aria-label={`${observed} of ${required} observations`}><i style={{width:`${Math.min(100,100*observed/required)}%`}}/></div>
+   {comp&&<p className={s.comparableNote}>Comparable since <b>{comp.since}</b> ({comp.days} {comp.days===1?'day':'days'}){comp.why?` — restarted because ${BREAKS[comp.why]??'the comparison set changed'}`:''}.{comp.readyOn?` The ${period}-day direction can resolve on ${comp.readyOn} if nothing else changes.`:''}</p>}
    <small>Momentum needs {period*2+1} observations. Missing days, changed assets, or changed system exclusions pause comparability.</small>
   </div>
 
