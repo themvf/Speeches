@@ -8,7 +8,7 @@ export type IntelMeta={
  coverage:IntelRow|null;meaningfulUsd:number;live:{enabled:boolean;detail:string};
 };
 export type IntelPayload={status:'ready'|'schema_pending'|'not_configured'|'no_cohort'|'not_found';section:IntelSection;meta:IntelMeta|null;rows:IntelRow[];extra:Record<string,IntelRow[]>};
-export const LIVE_STATUS={enabled:false,detail:'Live ingestion is not enabled (a Milestone 4 decision). Freshness comes from the hourly portfolio refresh and history polling; incoming transfers into newly created token accounts are found by polling, never by a webhook.'};
+export const LIVE_STATUS={enabled:false,detail:'Live ingestion is not enabled (a Milestone 4 decision). Holdings refresh once a day; transaction history and alerts are polled only when the hourly schedule is on. Incoming transfers into newly created token accounts are found by polling, never by a webhook.'};
 
 const address=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
