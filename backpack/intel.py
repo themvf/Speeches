@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import json
 import os
+import traceback
 import uuid
 from . import alerts, cohorts, events as ev, portfolio as pf
 from .collector import fetch_all
@@ -46,7 +47,12 @@ def _release(conn, run_id):
 
 
 def _safe(error):
-    return str(error) if isinstance(error, SourceError) else type(error).__name__
+    """Provider errors are already sanitized. Anything else reports its type and where it was raised, never its
+    message (it could carry provider data); AttributeError messages name types only, so they are kept."""
+    if isinstance(error, SourceError): return str(error)
+    frames = [f for f in traceback.extract_tb(error.__traceback__) if os.path.basename(os.path.dirname(f.filename)) == 'backpack']
+    where = f' at {os.path.basename(frames[-1].filename)}:{frames[-1].lineno} in {frames[-1].name}' if frames else ''
+    return type(error).__name__ + (f' ({error})' if isinstance(error, AttributeError) else '') + where
 
 
 # Portfolio ------------------------------------------------------------------------------------------------------
@@ -78,6 +84,9 @@ def collect_portfolios(conn, p, env, run_id, wallets, now=None):
                 max_accounts))
         except SourceError as error:
             reads.append(dict(blank, status='unavailable', detail=_safe(error)))
+        except (AttributeError, KeyError, TypeError, ValueError) as error:
+            # One wallet's malformed response is that wallet's read, unavailable and explained; never the whole run.
+            reads.append(dict(blank, status='unavailable', detail='unreadable provider response: ' + _safe(error)))
     lap('wallet_reads_seconds')
     mints = sorted({m for r in reads for m in r['holdings'] if m != pf.NATIVE})
     known = {r['mint']: r for r in fetch_all(conn, 'SELECT * FROM bp_tracked_assets WHERE mint=ANY(%s)', (mints,))} if mints else {}
@@ -433,18 +442,25 @@ def maintain(conn, env, now=None):
         cur.execute('''DELETE FROM bp_raw_transactions WHERE ctid IN (SELECT ctid FROM bp_raw_transactions
             WHERE block_time<%s LIMIT 10000)''', (now - timedelta(days=raw_days),))
         raw = cur.rowcount
-        # Hourly reads older than 48h thin to the first read of each UTC day; beyond retention, reads are dropped.
-        cur.execute('''WITH runs AS (SELECT run_id,started_at,row_number() OVER (PARTITION BY (started_at AT TIME ZONE 'UTC')::date
-                ORDER BY started_at) AS n FROM backpack_ingestion_runs WHERE job='bp_intel'),
-            doomed AS (SELECT run_id FROM runs WHERE (started_at<%s AND n>1) OR started_at<%s)
-            DELETE FROM bp_portfolio_balances WHERE ctid IN (SELECT b.ctid FROM bp_portfolio_balances b JOIN doomed USING(run_id) LIMIT 50000)''',
+        # Reads older than 48h thin to one per UTC day: the day's most complete read, latest on ties (the first read
+        # of a day can be the worst; on 2026-09-27 it was the one that lost its prices to rate limits). Beyond
+        # retention reads are dropped. The newest stored read is what the page shows, so it is never deleted.
+        cur.execute('''WITH reads AS (SELECT r.run_id,r.started_at,
+                row_number() OVER (PARTITION BY (r.started_at AT TIME ZONE 'UTC')::date
+                    ORDER BY r.assets_succeeded DESC NULLS LAST,r.started_at DESC) AS n,
+                row_number() OVER (ORDER BY r.started_at DESC) AS newest
+                FROM backpack_ingestion_runs r WHERE r.job='bp_intel'
+                AND EXISTS(SELECT 1 FROM bp_portfolio_wallets w WHERE w.run_id=r.run_id))
+            SELECT run_id::text FROM reads WHERE newest>1 AND ((started_at<%s AND n>1) OR started_at<%s)''',
             (now - timedelta(hours=48), now - timedelta(days=keep_days)))
-        balances = cur.rowcount
-        cur.execute('''DELETE FROM bp_portfolio_wallets w WHERE NOT EXISTS(SELECT 1 FROM bp_portfolio_balances b
-            WHERE b.run_id=w.run_id AND b.wallet_address=w.wallet_address) AND w.run_id IN (
-            SELECT run_id FROM (SELECT run_id,started_at,row_number() OVER (PARTITION BY (started_at AT TIME ZONE 'UTC')::date
-                ORDER BY started_at) AS n FROM backpack_ingestion_runs WHERE job='bp_intel') r
-            WHERE (started_at<%s AND n>1) OR started_at<%s)''', (now - timedelta(hours=48), now - timedelta(days=keep_days)))
+        doomed = [r[0] for r in cur.fetchall()]
+        balances = 0
+        if doomed:
+            cur.execute('''DELETE FROM bp_portfolio_balances WHERE ctid IN (SELECT ctid FROM bp_portfolio_balances
+                WHERE run_id=ANY(%s::uuid[]) LIMIT 50000)''', (doomed,))
+            balances = cur.rowcount
+            cur.execute('''DELETE FROM bp_portfolio_wallets w WHERE w.run_id=ANY(%s::uuid[]) AND NOT EXISTS(
+                SELECT 1 FROM bp_portfolio_balances b WHERE b.run_id=w.run_id AND b.wallet_address=w.wallet_address)''', (doomed,))
         cur.execute('DELETE FROM bp_price_observations WHERE price_at<%s', (now - timedelta(days=keep_days),))
     return dict(raw_transactions_deleted=raw, balances_deleted=balances)
 
@@ -473,7 +489,7 @@ def run(conn, p=None, env=None, steps=('portfolio', 'history', 'alerts', 'reconc
                                ('history', lambda: poll_history(conn, p, env, wallets, now))):
             if step in steps and wallets:
                 try: result[step] = function()
-                except (SourceError, KeyError, TypeError, ValueError) as error:
+                except (SourceError, AttributeError, KeyError, TypeError, ValueError) as error:
                     conn.rollback()
                     errors.append(f'{step}: {_safe(error)}')
         if 'history' in steps: refresh_flags(conn, env)

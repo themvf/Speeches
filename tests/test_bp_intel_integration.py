@@ -372,8 +372,59 @@ def test_retention_thins_hourly_reads_but_keeps_one_per_day(conn):
     intel.maintain(conn, {}, NOW)
     kept = fetch_all(conn, '''SELECT DISTINCT r.started_at FROM bp_portfolio_balances b JOIN backpack_ingestion_runs r USING(run_id)
         ORDER BY 1''')
-    assert [k['started_at'] for k in kept] == [stamps[0], stamps[2], stamps[3]]
+    # Equally complete reads: the latest of the old day survives, and both recent reads are untouched.
+    assert [k['started_at'] for k in kept] == [stamps[1], stamps[2], stamps[3]]
     with pytest.raises(ValueError): intel.maintain(conn, {'BP_RAW_TX_RETENTION_DAYS': '7'}, NOW)
+
+
+def read_at(conn, wallets, when, succeeded, provider=None):
+    run_id = str(uuid.uuid4())
+    with conn, conn.cursor() as cur:
+        cur.execute('''INSERT INTO backpack_ingestion_runs(run_id,snapshot_date,started_at,job,assets_succeeded)
+            VALUES(%s,%s,%s,'bp_intel',%s)''', (run_id, when.date(), when, succeeded))
+    intel.collect_portfolios(conn, provider or FakeIntel(holdings()), ENV, run_id, wallets, when)
+    return run_id
+
+
+def test_retention_keeps_the_most_complete_read_and_never_the_page_s_last_read(conn):
+    bp_capture(conn, NOW.date(), dict(w1=5, w2=4, w3=3))
+    cohorts.refresh_cohort(conn, ENV)
+    wallets = cohorts.tracked_wallets(conn)
+    day = datetime.combine(NOW.date() - timedelta(days=5), datetime.min.time(), UTC)
+    # 2026-09-27 in production: the day's first read was the poor one. Then refreshes stopped for five days.
+    poor = read_at(conn, wallets, day + timedelta(hours=1), 1)
+    best = read_at(conn, wallets, day + timedelta(hours=2), 3)
+    last = read_at(conn, wallets, day + timedelta(hours=3), 2)
+    intel.maintain(conn, {}, NOW)
+    kept = {r['run_id'] for r in fetch_all(conn, 'SELECT DISTINCT run_id::text FROM bp_portfolio_balances')}
+    assert kept == {best, last}, 'the most complete read of the day plus the newest read, which the page shows'
+    assert {r['run_id'] for r in fetch_all(conn, 'SELECT DISTINCT run_id::text FROM bp_portfolio_wallets')} == {best, last}
+    intel.maintain(conn, {'BP_PORTFOLIO_RETENTION_DAYS': '30'}, NOW + timedelta(days=60))
+    kept = {r['run_id'] for r in fetch_all(conn, 'SELECT DISTINCT run_id::text FROM bp_portfolio_balances')}
+    assert kept == {last}, 'beyond retention only the newest read survives, so a stalled refresh never empties the page'
+    assert poor
+
+
+class MalformedFor(FakeIntel):
+    """Answers one wallet's token-account read with a list where the RPC returns an object."""
+    def __init__(self, bad, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bad = bad
+    def rpc_many(self, calls):
+        out = super().rpc_many(calls)
+        return [(['unexpected'], None) if params[0] == self.bad and method == 'getTokenAccountsByOwner' else row
+                for (method, params), row in zip(calls, out)]
+
+
+def test_one_malformed_wallet_response_is_that_wallet_s_read_not_the_run(conn):
+    bp_capture(conn, NOW.date(), dict(w1=5, w2=4, w3=3))
+    cohorts.refresh_cohort(conn, ENV)
+    wallets = cohorts.tracked_wallets(conn)
+    run_id = read_at(conn, wallets, NOW, 0, MalformedFor('w2', holdings()))
+    reads = {r['wallet_address']: r for r in fetch_all(conn, 'SELECT * FROM bp_portfolio_wallets WHERE run_id=%s', (run_id,))}
+    assert reads['w2']['status'] == 'unavailable'
+    assert reads['w2']['detail'].startswith("unreadable provider response: AttributeError ('list' object has no attribute 'get') at portfolio.py:")
+    assert reads['w1']['status'] == 'complete' and reads['w3']['status'] == 'complete'
 
 
 def test_worker_never_runs_ddl_on_an_unmigrated_database(database):
