@@ -60,7 +60,12 @@ class Providers:
             f'https://mainnet.helius-rpc.com/?api-key={key}' if key else self.env.get('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com'))
         name = 'Solana validation RPC' if independent else 'Helius RPC' if key else 'Solana RPC'
         body = self.request(name, 'POST', url, json={'jsonrpc':'2.0','id':'backpack','method':method,'params':params})
-        if 'error' in body or 'result' not in body: raise SourceError(f'{name}: {method} failed')
+        if 'error' in body or 'result' not in body:
+            # Keep the provider's JSON-RPC error code and message (never the URL, which carries the key) so a failure
+            # can be told apart: 51 of 222 history reads on 2026-10-03 said only "failed".
+            err = body.get('error') if isinstance(body, dict) else None
+            detail = f" ({err.get('code')}: {str(err.get('message', ''))[:160]})" if isinstance(err, dict) else ''
+            raise SourceError(f'{name}: {method} failed{detail}')
         return body['result']
 
     def supply(self, mint, independent=False):

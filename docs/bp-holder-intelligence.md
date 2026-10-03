@@ -171,6 +171,7 @@ allocation. The file records each wallet's evidence.
 | 78 | `BM9Ccy...jvMN` | Market Maker | Program-derived, 177k token accounts, funded 1,023 accounts, most of the first major-sale alerts; operator unknown |
 | 106 | `9xMB7V...xmFs` | Known Exchange | Solscan: Backpack Exchange deposit address |
 | 109 | `WLHv2U...JVVh` | DEX | Solscan: Raydium Launchpad Authority |
+| 225 (2026-10-03) | `APMCZR...YLQj` | Liquidity Pool | Added 2026-10-03: account owned by the Meteora DLMM program; the pool GeckoTerminal lists for BP |
 
 Deliberately **kept** as investors: vaults of the Definitive program and a Fuse Squads vault (each is one user's
 smart wallet), Pump.fun traders, `.sol`-named wallets and token creators. A large balance alone is never a reason
