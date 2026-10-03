@@ -493,3 +493,15 @@ live windows with the new query, and `creditCeiling` 450000 keeps it collecting 
 ends (it would otherwise hit 30,000 credits around 2026-10-07; at 100,000 credits per dollar the
 daily limit bounds the extra spend to well under $1). Other coins still quote their cashtags; `$AD`
 is likely just as noisy.
+
+### Copycat cashtags (2026-10-03, later the same day)
+
+The first `$BP` search pages showed `$BACKPACK` used by unrelated memecoins: a "Moonshot" listing-vote
+campaign, a "$32K to $4M market cap" post and a post giving another contract (BP is about $300M).
+`$BACKPACK` on its own no longer counts; the plain word needs token context (`token|coin|solana|sol`,
+or `$BP`), never the cashtag; `$BP` still needs Backpack/Solana context; and a post naming any other
+Solana address is excluded unless it also has BP's mint (checked first). BP's GeckoTerminal-pinned
+pool and the Meteora BP-USDC pool are not treated as other tokens. On the 20 newest posts this moved
+the count from 16 (several copycats) to 10, one of them cashtag stuffing (`$BP #Solana` appended to
+another token's promotion), which is accepted rather than overfitted. The X query still includes
+`$BACKPACK`; changing it would re-buy the re-queried windows, and the matcher drops those posts.

@@ -109,8 +109,9 @@ The worker never runs DDL; on an unmigrated database it returns `schema_pending`
 `apps/web/lib/bp-social.ts`, SQL in `bp-intel-store.ts`, tests in `lib/bp-social.test.ts` and
 `tests/test_bp_intel_integration.py`.
 
-- **What counts as a Backpack post**: posts matching the BACKPACK registry entry (contract, `$BACKPACK`, or `$BP` with
-  Backpack/Solana context). Saved search results that only contain the word "backpack" are excluded.
+- **What counts as a Backpack post**: posts matching the BACKPACK registry entry: the contract, `$BP` with Backpack/Solana
+  context, or the word "backpack" with token context. Saved search results that only contain the word "backpack", the
+  copycat `$BACKPACK` cashtag on its own, and posts naming another token's address are excluded.
 - **Coverage, never zero by default**: each day shows whether its X search windows with the current query were searched to
   the end or partly; "earlier search only" when only the contract-only origin search or the pre-2026-10-03 query reached
   it (counts are lower bounds: $BP was not searched); otherwise "not searched", and posts read "not searched", not zero.

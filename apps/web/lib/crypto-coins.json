@@ -143,27 +143,27 @@
       "networkLabel": "Solana",
       "address": "BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy",
       "archiveStart": "2026-06-01",
-      "words": [
-        "[$#]backpack(?![a-z0-9_])"
-      ],
+      "words": [],
       "contextWords": [
         [
-          "\\bbackpack\\b",
-          "\\b(?:token|coin|solana|sol|pump|ca)\\b"
+          "(?<![$#])\\bbackpack\\b",
+          "\\b(?:token|coin|solana|sol)\\b|\\$bp(?![a-z0-9_])"
         ],
         [
           "\\$bp(?![a-z0-9_])",
           "\\b(?:backpack|solana|sol|madlads|mad lads)\\b"
         ]
       ],
-      "exclude": [],
+      "exclude": [
+        "(?<![1-9a-z])(?!APMCZRS9hatjUyiuPCt2kfTf1ZW6pmVdxQtaTSfqYLQj|6qz7THwQvcjF3HyDGLuKaLBUk6EyJKeZXZMWLAeiwfjd)[1-9a-z]{32,44}(?![1-9a-z])"
+      ],
       "discoveryName": "\\bbackpack\\s+(?:token|coin)\\b",
       "profileTerms": [
         "$backpack"
       ],
       "official": [],
       "searchQuery": "(\"BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy\" OR $BACKPACK OR ($BP (backpack OR solana OR sol OR madlads)))",
-      "identityNote": "Address verified 2026-09-22 against Backpack's official BP token page; the same mint as the Backpack monitor (docs/backpack-monitor.md). The token trades as $BP, which is also BP plc's ticker, so $BP needs Backpack/Solana context; bare 'backpack' needs token context",
+      "identityNote": "Address verified 2026-09-22 against Backpack's official BP token page; the same mint as the Backpack monitor (docs/backpack-monitor.md). The token trades as $BP, which is also BP plc's ticker, so $BP needs Backpack/Solana context; bare 'backpack' needs token context. $BACKPACK on its own is a copycat-memecoin cashtag and does not count; a post naming another Solana address is about another token",
       "originFrom": "2026-06-01",
       "requerySince": "2026-09-14T00:00:00Z",
       "creditCeiling": 450000
