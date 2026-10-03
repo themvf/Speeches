@@ -292,7 +292,8 @@ def test_unexpected_errors_say_where_they_were_raised_without_their_data():
     assert detail.startswith("AttributeError ('list' object has no attribute 'get') at portfolio.py:") and 'in wallet_read' in detail
     try: cohorts.config(dict(BP_COHORT_SIZE='secret-looking value'))
     except ValueError as error: detail = intel._safe(error)
-    assert detail.startswith('ValueError at cohorts.py:') and detail.endswith(' in config') and 'secret' not in detail
+    # The innermost frame is config, or its comprehension on Python versions that keep comprehension frames.
+    assert detail.startswith('ValueError at cohorts.py:') and 'secret' not in detail
     assert intel._safe(SourceError('Helius RPC: HTTP 429')) == 'Helius RPC: HTTP 429'
 
 
