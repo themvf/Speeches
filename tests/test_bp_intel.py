@@ -270,18 +270,33 @@ def account(address, mint, owner, amount, decimals=6, state='initialized', exten
 def test_owner_accounts_aggregate_exactly_and_anomalies_are_reported():
     rows = [account('a1', TOKEN, OWNER, 10**18 + 1, 9), account('a2', TOKEN, OWNER, 2, 9), account('x', TOKEN, OTHER, 5, 9),
             account('z', TOKA, OWNER, 0), account('bad', TOKB, OWNER, 3, 6), account('bad2', TOKB, OWNER, 3, 9)]
-    holdings, notes = pf.parse_accounts(OWNER, rows, pf.TOKEN_PROGRAM)
+    holdings, notes, unread = pf.parse_accounts(OWNER, rows, pf.TOKEN_PROGRAM)
     assert holdings[TOKEN]['raw'] == 10**18 + 3 and len(holdings[TOKEN]['accounts']) == 2
     assert TOKA not in holdings  # zero public balance with no confidential extension
     assert any('differs from requested owner' in n for n in notes) and any('disagree on decimals' in n for n in notes)
+    assert unread == 0, "another owner's account is skipped, not an unknown balance"
 
 
 def test_token2022_confidential_and_interest_bearing_balances():
     rows = [account('c', TOKEN, OWNER, 0, extensions=['confidentialTransferAccount']),
             account('i', TOKA, OWNER, 1_000000, ui='1.05')]
-    holdings, _ = pf.parse_accounts(OWNER, rows, pf.TOKEN_2022)
+    holdings, _, _ = pf.parse_accounts(OWNER, rows, pf.TOKEN_2022)
     assert holdings[TOKEN]['visibility'] == 'partial' and holdings[TOKEN]['raw'] == 0  # never reported as a zero holding
     assert holdings[TOKA]['raw'] == 1_000000 and holdings[TOKA]['ui'] == D('1.05')  # display amount kept separately
+
+
+def test_unparsed_accounts_make_the_read_partial_and_keep_the_other_holdings():
+    unparsed = dict(pubkey='raw', account=dict(data=['AQID', 'base64'], owner=pf.TOKEN_2022))
+    bad_amount = account('amt', TOKB, OWNER, 1)
+    bad_amount['account']['data']['parsed']['info']['tokenAmount'] = 'not an object'
+    holdings, notes, unread = pf.parse_accounts(OWNER, [unparsed, bad_amount, account('ok', TOKA, OWNER, 7), 'junk'], pf.TOKEN_2022)
+    assert unread == 3 and set(holdings) == {TOKA}
+    assert any(n.startswith('raw: account returned unparsed') for n in notes)
+    sol = (dict(context=dict(slot=10), value=5 * 10**9), None)
+    read = pf.wallet_read(OWNER, sol, (dict(context=dict(slot=11), value=[account('a', TOKEN, OWNER, 5)]), None),
+                          (dict(context=dict(slot=11), value=[unparsed, account('ok', TOKA, OWNER, 7)]), None))
+    assert (read['status'], read['spl_status'], read['token2022_status']) == ('partial', 'ok', 'partial')
+    assert set(read['holdings']) == {TOKEN, TOKA, pf.NATIVE} and 'unparsed' in read['detail']
 
 
 def test_unexpected_errors_say_where_they_were_raised_without_their_data():
