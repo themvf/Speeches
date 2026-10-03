@@ -10,7 +10,7 @@ from .metrics import number
 METHOD = 'adoption-v1'
 
 
-def _population(day, snapshots, holders, expected):
+def _population(day, snapshots, holders, expected, excluded_override=None):
     """Return an aggregate plus its transient wallet set; wallet identities are never persisted here."""
     if not snapshots or len(snapshots) != expected or any(not s['holders_complete'] for s in snapshots):
         return None
@@ -21,7 +21,7 @@ def _population(day, snapshots, holders, expected):
         rows = by_asset[s['asset_id']]
         if len(rows) != s['unique_holders'] or number(s['token_supply']) is None:
             return None  # Raw history may have expired; never invent an old ownership distribution.
-    excluded = {h['wallet_address'] for h in holders if h['excluded']}
+    excluded = set(excluded_override) if excluded_override is not None else {h['wallet_address'] for h in holders if h['excluded']}
     wallets, whole = defaultdict(set), set()
     assets = {}
     for s in snapshots:
@@ -39,15 +39,17 @@ def _population(day, snapshots, holders, expected):
     return summary, set(wallets)
 
 
-def summarize(day, snapshots, holders, expected, comparisons=None):
-    """Persist small adoption summaries and endpoint cohorts without retaining wallet identities."""
-    current = _population(day, snapshots, holders, expected)
+def summarize(day, snapshots, holders, expected, comparisons=None, excluded_override=None):
+    """Persist small adoption summaries and endpoint cohorts without retaining wallet identities.
+
+    excluded_override replaces the per-snapshot exclusion flags with one wallet set, for retroactive recomputation."""
+    current = _population(day, snapshots, holders, expected, excluded_override)
     if current is None:
         return None
     summary, wallets = current
     cohorts = {}
     for period, evidence in (comparisons or {}).items():
-        previous = _population(evidence['day'], evidence['snapshots'], evidence['holders'], evidence['expected'])
+        previous = _population(evidence['day'], evidence['snapshots'], evidence['holders'], evidence['expected'], excluded_override)
         if previous is None:
             continue
         before, before_wallets = previous
@@ -170,6 +172,24 @@ def assess(history, day, period, env=None):
     return result
 
 
+def _evidence_loader(conn, day_index):
+    from .collector import fetch_all
+    cache = {}
+    def evidence(target):
+        if target in cache:
+            return cache[target]
+        observed = day_index.get(target)
+        if observed is None:
+            cache[target] = None
+            return None
+        snapshots=fetch_all(conn,"SELECT s.* FROM backpack_asset_daily_snapshots s JOIN backpack_assets a ON a.id=s.asset_id WHERE s.date=%s AND a.asset_type<>'bp'",(target,))
+        ids=[r['asset_id'] for r in snapshots]
+        holders=fetch_all(conn,'SELECT asset_id,wallet_address,balance_tokens,excluded FROM backpack_asset_holder_daily_snapshots WHERE date=%s AND asset_id=ANY(%s)',(target,ids)) if ids else []
+        cache[target] = dict(day=target,snapshots=snapshots,holders=holders,expected=observed['assets_expected'])
+        return cache[target]
+    return evidence
+
+
 def capture_adoption(conn, day, env):
     """Derive missing summaries from retained historical evidence, never rewrite snapshots."""
     from .collector import fetch_all
@@ -179,19 +199,7 @@ def capture_adoption(conn, day, env):
     saved = {r['date'] for r in existing}
     days = fetch_all(conn,'SELECT date,assets_expected FROM backpack_ecosystem_daily_snapshots WHERE date BETWEEN %s AND %s ORDER BY date',(start,day))
     day_index = {r['date']: r for r in days}
-    evidence_cache = {}
-    def evidence(target):
-        if target in evidence_cache:
-            return evidence_cache[target]
-        observed = day_index.get(target)
-        if observed is None:
-            evidence_cache[target] = None
-            return None
-        snapshots=fetch_all(conn,"SELECT s.* FROM backpack_asset_daily_snapshots s JOIN backpack_assets a ON a.id=s.asset_id WHERE s.date=%s AND a.asset_type<>'bp'",(target,))
-        ids=[r['asset_id'] for r in snapshots]
-        holders=fetch_all(conn,'SELECT asset_id,wallet_address,balance_tokens,excluded FROM backpack_asset_holder_daily_snapshots WHERE date=%s AND asset_id=ANY(%s)',(target,ids)) if ids else []
-        evidence_cache[target] = dict(day=target,snapshots=snapshots,holders=holders,expected=observed['assets_expected'])
-        return evidence_cache[target]
+    evidence = _evidence_loader(conn, day_index)
     for d in days:
         if d['date'] in saved: continue
         current=evidence(d['date'])
@@ -208,3 +216,60 @@ def capture_adoption(conn, day, env):
             result=assess(history,day,period,env)
             cur.execute('INSERT INTO backpack_adoption_assessments(date,period_days,data) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING',
                         (day,period,Json(result,dumps=lambda v:json.dumps(v,default=str))))
+
+
+def recompute_history(conn, day, env=None, apply=False):
+    """Re-derive retained daily summaries under the exclusion set in force on `day`.
+
+    A changed exclusion list otherwise restarts the comparison window, because earlier counts describe a different
+    population. Here the current set is applied retroactively to every day whose raw holder evidence is still
+    retained. Days whose evidence has expired or is incomplete are left untouched, so the comparable-since
+    marker still reports them honestly. Dry run unless apply=True; the original fingerprint is kept on each row.
+    """
+    from .collector import fetch_all
+    from datetime import datetime, timezone
+    from psycopg2.extras import Json
+    start = day-timedelta(days=180)
+    days = fetch_all(conn,'SELECT date,assets_expected FROM backpack_ecosystem_daily_snapshots WHERE date BETWEEN %s AND %s ORDER BY date',(start,day))
+    day_index = {r['date']: r for r in days}
+    evidence = _evidence_loader(conn, day_index)
+    latest = evidence(day)
+    if latest is None or not latest['holders']:
+        return dict(status='Unavailable', reason='No retained holder evidence for the anchor day.', day=str(day))
+    target = {h['wallet_address'] for h in latest['holders'] if h['excluded']}
+    fingerprint = sha256('\n'.join(sorted(target)).encode()).hexdigest()
+    stored = {r['date']: r['data'] for r in fetch_all(conn,'SELECT date,data FROM backpack_adoption_daily WHERE date BETWEEN %s AND %s',(start,day))}
+    changed, unchanged, skipped = [], [], []
+    for d in days:
+        current = evidence(d['date'])
+        comparisons = {p: prior for p in (1,7,30) if (prior := evidence(d['date']-timedelta(days=p))) is not None}
+        summary = summarize(d['date'], current['snapshots'], current['holders'], current['expected'], comparisons, excluded_override=target)
+        if summary is None:
+            skipped.append(str(d['date']))
+            continue
+        before = stored.get(d['date'])
+        if before is not None and before.get('exclusion_fingerprint') == fingerprint:
+            unchanged.append(str(d['date']))
+            continue
+        summary['recomputed'] = dict(basis='current exclusion set applied retroactively', anchor_day=str(day),
+            original_fingerprint=before.get('exclusion_fingerprint') if before else None,
+            original_holders=before.get('holders') if before else None, at=datetime.now(timezone.utc).isoformat())
+        changed.append((d['date'], summary))
+    report = dict(status='Applied' if apply else 'Dry run', anchor_day=str(day), exclusion_fingerprint=fingerprint,
+                  excluded_wallets=len(target), recomputed=[str(d) for d, _ in changed], already_current=unchanged,
+                  skipped_incomplete_evidence=skipped,
+                  holder_changes={str(d): dict(before=(stored.get(d) or {}).get('holders'), after=sm['holders']) for d, sm in changed})
+    if not apply or not changed:
+        return report
+    with conn, conn.cursor() as cur:
+        for d, summary in changed:
+            cur.execute('INSERT INTO backpack_adoption_daily(date,data) VALUES(%s,%s) ON CONFLICT(date) DO UPDATE SET data=EXCLUDED.data',
+                        (d, Json(summary, dumps=lambda v: json.dumps(v, default=str))))
+        # Saved verdicts were computed on the old history; replace the anchor day's so the panel reflects the new one.
+        cur.execute('DELETE FROM backpack_adoption_assessments WHERE date=%s', (day,))
+    history = [r['data'] for r in fetch_all(conn,'SELECT data FROM backpack_adoption_daily WHERE date BETWEEN %s AND %s ORDER BY date',(start,day))]
+    with conn, conn.cursor() as cur:
+        for period in (7,30,90):
+            cur.execute('INSERT INTO backpack_adoption_assessments(date,period_days,data) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING',
+                        (day, period, Json(assess(history, day, period, env), dumps=lambda v: json.dumps(v, default=str))))
+    return report

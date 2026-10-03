@@ -143,3 +143,58 @@ def test_comparable_since_reports_restart_after_exclusion_change():
 def test_comparable_since_without_a_change_has_no_break():
     rows=history(3);r=assess(rows,date.fromisoformat(rows[-1]['date']),7)
     assert r['comparable_since']==rows[0]['date'] and r['comparable_break'] is None
+
+
+class _FakeDb:
+    """Dispatches fetch_all by table and records writes; enough to exercise recompute_history."""
+    def __init__(self, days, stored, flagged_from):
+        self.days, self.stored, self.flagged_from = days, stored, flagged_from
+        self.writes = []
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def cursor(self): return self
+    def execute(self, sql, params=()): self.writes.append((' '.join(sql.split())[:40], params))
+    def fetch(self, query, params=()):
+        if 'ecosystem_daily_snapshots' in query:
+            return [dict(date=d, assets_expected=2) for d in self.days]
+        if 'backpack_adoption_daily' in query:
+            return [dict(date=d, data=v) for d, v in self.stored.items()]
+        if 'asset_daily_snapshots' in query:
+            return [dict(asset_id=a, unique_holders=3, holders_complete=True, token_supply=D(100)) for a in (1, 2)]
+        if 'holder_daily_snapshots' in query:
+            flagged = params[0] >= self.flagged_from
+            return [dict(asset_id=a, wallet_address=w, balance_tokens=D(5), excluded=(w == 'sys' and flagged))
+                    for a in (1, 2) for w in ('a', 'b', 'sys')]
+        raise AssertionError(query)
+
+
+def _recompute(monkeypatch, apply):
+    from backpack import adoption, collector
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(10)]
+    flagged_from = days[5]
+    stored = {}
+    for d in days:  # what the daily job saved at the time: exclusion known only from day 5 on
+        excluded = {'sys'} if d >= flagged_from else set()
+        stored[d] = dict(adoption.summarize(d, [dict(asset_id=a, unique_holders=3, holders_complete=True, token_supply=D(100)) for a in (1, 2)],
+            [dict(asset_id=a, wallet_address=w, balance_tokens=D(5), excluded=w in excluded) for a in (1, 2) for w in ('a', 'b', 'sys')], 2))
+    db = _FakeDb(days, stored, flagged_from)
+    monkeypatch.setattr(collector, 'fetch_all', lambda conn, q, p=(): db.fetch(q, p))
+    return db, days, adoption.recompute_history(db, days[-1], apply=apply)
+
+
+def test_recompute_dry_run_reports_without_writing(monkeypatch):
+    db, days, report = _recompute(monkeypatch, False)
+    assert report['status'] == 'Dry run' and db.writes == []
+    assert report['recomputed'] == [str(d) for d in days[:5]]
+    assert len(report['already_current']) == 5 and report['excluded_wallets'] == 1
+    # The shared wallet is removed from every earlier day: 3 owners -> 2.
+    assert all(v == dict(before=3, after=2) for v in report['holder_changes'].values())
+
+
+def test_recompute_apply_rewrites_old_days_and_replaces_anchor_assessments(monkeypatch):
+    db, days, report = _recompute(monkeypatch, True)
+    assert report['status'] == 'Applied'
+    kinds = [w[0] for w in db.writes]
+    assert kinds.count('INSERT INTO backpack_adoption_daily(date') == 5
+    assert 'DELETE FROM backpack_adoption_assessment' in kinds
+    assert kinds.count('INSERT INTO backpack_adoption_assessment') == 3

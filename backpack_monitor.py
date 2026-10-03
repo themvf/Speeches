@@ -12,6 +12,8 @@ def main():
     for action in ('migrate','execute','preflight','audit','seed-starter','seed-labels','maintenance','cost-report','research'):
         parser.add_argument('--'+action,action='store_true')
     parser.add_argument('--import-billing',metavar='CSV')
+    parser.add_argument('--adoption-recompute',action='store_true',help='Re-derive retained adoption history under the current exclusion set (dry run unless --apply)')
+    parser.add_argument('--apply',action='store_true')
     # BP holder intelligence (docs/bp-holder-intelligence-spec.md).
     for action in ('bp-cohort','bp-intel','bp-feasibility'):
         parser.add_argument('--'+action,action='store_true')
@@ -20,7 +22,7 @@ def main():
     parser.add_argument('--bp-approve-original',metavar='VERSION',type=int)
     parser.add_argument('--bp-notes',default='')
     args=parser.parse_args()
-    if not any(v for k,v in vars(args).items() if k not in ('bp_steps','bp_notes')):
+    if not any(v for k,v in vars(args).items() if k not in ('bp_steps','bp_notes','apply')):
         print('Use --migrate, --preflight, --execute or --audit. Live RPC cannot backfill history.')
         return 0
     if not os.environ.get('DATABASE_URL'):
@@ -65,6 +67,10 @@ def main():
         if args.cost_report:
             from backpack.storage import cost_report
             print(json.dumps(cost_report(conn),default=str))
+        if args.adoption_recompute:
+            from backpack.adoption import recompute_history
+            from datetime import datetime, timezone
+            print(json.dumps(recompute_history(conn,datetime.now(timezone.utc).date(),os.environ,apply=args.apply),default=str))
         if args.audit:print(json.dumps(audit(conn),default=str))
         if args.bp_cohort:
             from backpack.cohorts import refresh_cohort
