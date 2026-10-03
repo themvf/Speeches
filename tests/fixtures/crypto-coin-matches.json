@@ -159,7 +159,7 @@
     "$BACKPACK is live",
     "BACKPACK",
     "words",
-    true
+    false
   ],
   [
     "packed my backpack for school",
@@ -459,6 +459,54 @@
     "$BP on solana",
     "BACKPACK",
     "contract",
+    false
+  ],
+  [
+    "Bought $BACKPACK at $32K MC, now at $4M MC",
+    "BACKPACK",
+    "words",
+    false
+  ],
+  [
+    "New listing! Vote for $BACKPACK on our launchpad, CA G6autZruJLEzYKRh84qTsbVhrTvLQkKXGnqMcszvR3kz",
+    "BACKPACK",
+    "words",
+    false
+  ],
+  [
+    "$BP at $2M MC on solana 3B1ijcocM5EDga6XxQ7JLW7weocQPWWjuhBYG8Vepump",
+    "BACKPACK",
+    "words",
+    false
+  ],
+  [
+    "$BACKPACK and $BP both green today",
+    "BACKPACK",
+    "words",
+    true
+  ],
+  [
+    "#backpack $BP holders eating",
+    "BACKPACK",
+    "words",
+    true
+  ],
+  [
+    "Backpack $BP pool https://dexscreener.com/solana/APMCZRS9hatjUyiuPCt2kfTf1ZW6pmVdxQtaTSfqYLQj",
+    "BACKPACK",
+    "words",
+    true
+  ],
+  [
+    "My $BP entry, BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy, next is 3B1ijcocM5EDga6XxQ7JLW7weocQPWWjuhBYG8Vepump",
+    "BACKPACK",
+    "words",
+    true
+  ],
+  [
+    "backpack pump incoming, ca soon",
+    "BACKPACK",
+    "words",
     false
   ]
 ]
