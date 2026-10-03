@@ -12,7 +12,9 @@ export type DayInput={
  holders:{day:string;unique_holders:unknown;holders_over_100:unknown;holders_complete:unknown}[];
  cohorts:{day:string;version_id:unknown;entered:unknown;left_count:unknown}[];
  trades:{day:string;bp_buyers:unknown;bp_sellers:unknown}[];
- tradesThrough:string|Date|null;
+ /** Cohort members whose stored transaction history covers each day (from its earliest read to its last poll). */
+ tradeCoverage:{day:string;wallets:unknown}[];
+ members:number|null;
 };
 
 const iso=(v:string|Date)=>new Date(v).toISOString();
@@ -52,7 +54,7 @@ export function socialDays(input:DayInput){
  for(const p of genuine){const d=dayOf(p.posted_at);byDay.set(d,[...(byDay.get(d)??[]),p]);}
  const windows=new Map(input.windows.map(w=>[w.day,w])),holders=new Map(input.holders.map(h=>[h.day,h]));
  const earlier=new Set((input.earlier??[]).map(e=>e.day));
- const trades=new Map(input.trades.map(t=>[t.day,t])),through=input.tradesThrough?dayOf(input.tradesThrough):null;
+ const trades=new Map(input.trades.map(t=>[t.day,t])),covered=new Map(input.tradeCoverage.map(c=>[c.day,num(c.wallets)??0]));
  const rows=[];
  for(let i=0;i<input.days;i++){
   const day=dayOf(new Date(input.now.getTime()-i*86_400_000)),w=windows.get(day),posts=byDay.get(day)??[];
@@ -63,7 +65,9 @@ export function socialDays(input:DayInput){
   const h=holders.get(day),prior=holders.get(dayOf(new Date(new Date(day).getTime()-86_400_000)));
   const complete=(x?:{holders_complete:unknown})=>x?.holders_complete===true||x?.holders_complete==='true';
   const unique=complete(h)?num(h?.unique_holders):null,before=complete(prior)?num(prior?.unique_holders):null;
-  const versions=input.cohorts.filter(c=>c.day===day),t=trades.get(day),observed=through!==null&&day<=through;
+  // Trades are counted from the wallets whose history covers the day, and that number is reported with them: a day
+  // no wallet covers is not observed, and a partly covered day is a lower bound, never presented as the whole cohort.
+  const versions=input.cohorts.filter(c=>c.day===day),t=trades.get(day),wallets=covered.get(day)??0,observed=wallets>0;
   rows.push({day,
    posts:posts.length||coverage!=='not_searched'?posts.length:null,
    authors:posts.length||coverage!=='not_searched'?new Set(posts.map(p=>p.author_id)).size:null,
@@ -74,7 +78,8 @@ export function socialDays(input:DayInput){
    cohort_version:versions.length?versions.map(c=>String(c.version_id)).join(','):null,
    cohort_entered:versions.length?versions.reduce((a,c)=>a+(num(c.entered)??0),0):null,
    cohort_left:versions.length?versions.reduce((a,c)=>a+(num(c.left_count)??0),0):null,
-   bp_buyers:observed?num(t?.bp_buyers)??0:null,bp_sellers:observed?num(t?.bp_sellers)??0:null});
+   bp_buyers:observed?num(t?.bp_buyers)??0:null,bp_sellers:observed?num(t?.bp_sellers)??0:null,
+   trade_wallets:wallets,cohort_members:input.members});
  }
  return rows;
 }

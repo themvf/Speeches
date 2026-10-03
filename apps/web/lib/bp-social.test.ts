@@ -31,7 +31,7 @@ test('daily rows separate not searched from observed and none', () => {
    {day:'2026-09-11',unique_holders:'30400',holders_over_100:'5000',holders_complete:true},
    {day:'2026-09-10',unique_holders:'30000',holders_over_100:null,holders_complete:false}],
   cohorts:[{day:'2026-09-12',version_id:3,entered:5,left_count:2}],
-  trades:[{day:'2026-09-11',bp_buyers:4,bp_sellers:1}],tradesThrough:'2026-09-11T23:00:00Z'});
+  trades:[{day:'2026-09-11',bp_buyers:4,bp_sellers:1}],tradeCoverage:[{day:'2026-09-11',wallets:171},{day:'2026-09-10',wallets:149}],members:222});
  const [today,yesterday,before]=rows;
  assert.deepEqual([today.day,yesterday.day,before.day],['2026-09-12','2026-09-11','2026-09-10']);
  assert.equal(today.x_coverage,'complete');assert.equal(today.posts,0,'searched to the end and none found');
@@ -40,8 +40,9 @@ test('daily rows separate not searched from observed and none', () => {
  assert.equal(today.holders_change,100);assert.equal(yesterday.holders_change,null,'no change against an incomplete capture');
  assert.equal(before.holders,null);
  assert.equal(today.cohort_entered,5);assert.equal(yesterday.cohort_entered,null);
- assert.equal(today.bp_buyers,null,'after transaction history ends, trades are not observed');
- assert.equal(yesterday.bp_buyers,4);assert.equal(before.bp_sellers,0,'covered by history: observed and none');
+ assert.equal(today.bp_buyers,null,'no wallet history covers the day: not observed');
+ assert.equal(yesterday.bp_buyers,4);assert.equal(yesterday.trade_wallets,171);assert.equal(yesterday.cohort_members,222);
+ assert.equal(before.bp_sellers,0,'covered by some wallets: observed and none among them');assert.equal(before.trade_wallets,149);
 });
 
 test('activity on other coins counts only posts that match each coin', () => {
@@ -51,6 +52,6 @@ test('activity on other coins counts only posts that match each coin', () => {
 });
 
 test('a day reached only by an earlier query is searched, not unsearched', () => {
- const rows=socialDays({days:2,now:new Date('2026-09-12T15:00:00Z'),posts:[],windows:[],earlier:[{day:'2026-09-11'}],holders:[],cohorts:[],trades:[],tradesThrough:null});
+ const rows=socialDays({days:2,now:new Date('2026-09-12T15:00:00Z'),posts:[],windows:[],earlier:[{day:'2026-09-11'}],holders:[],cohorts:[],trades:[],tradeCoverage:[],members:null});
  assert.deepEqual(rows.map(r=>[r.day,r.x_coverage,r.posts]),[['2026-09-12','not_searched',null],['2026-09-11','earlier_query',0]]);
 });
