@@ -69,6 +69,8 @@ the free plan's 1M credits/month via the 100-credit Enhanced API). Coverage live
 failed reads, stale prices or unknown decimals to zero. Non-investor wallets (treasury vaults, exchanges, pools, one
 automated market maker) are labelled in `backpack/wallet_labels.json`, loaded by `--seed-labels` only where admin has
 no label; the cohort also drops confirmed/high Market Makers. Never exclude a wallet for its balance size alone.
+The "On X" tab (`?section=social`, `lib/bp-social.ts`) joins BACKPACK posts from the X tracker with holder counts, top-200
+changes and trades; it counts only registry-matched posts and shows unsearched days as "not searched", never zero.
 
 ## Crypto research: price linkage / event study (2026-09-17) — SHIPPED
 

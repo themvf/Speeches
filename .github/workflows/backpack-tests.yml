@@ -4,7 +4,7 @@ on:
     paths: ['backpack/**', 'backpack_monitor.py', 'sql/backpack.sql', 'tests/test_backpack*', 'tests/test_bp_intel*', 'apps/web/**', '.github/workflows/backpack-*.yml', '.github/workflows/bp-holder-intel.yml']
   push:
     branches: [main]
-    paths: ['backpack/**', 'backpack_monitor.py', 'sql/backpack.sql', 'tests/test_backpack*', 'tests/test_bp_intel*', 'apps/web/lib/backpack*', 'apps/web/lib/bp-intel*', 'apps/web/lib/server/bp-intel*', 'apps/web/lib/server/github-dispatch*']
+    paths: ['backpack/**', 'backpack_monitor.py', 'sql/backpack.sql', 'tests/test_backpack*', 'tests/test_bp_intel*', 'apps/web/lib/backpack*', 'apps/web/lib/bp-intel*', 'apps/web/lib/bp-social*', 'apps/web/lib/crypto-coins*', 'apps/web/lib/server/bp-intel*', 'apps/web/lib/server/github-dispatch*']
 permissions:
   contents: read
 jobs:
@@ -32,4 +32,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --experimental-strip-types --test apps/web/lib/backpack.test.ts apps/web/lib/bp-intel.test.ts apps/web/lib/server/github-dispatch.test.ts
+      - run: node --experimental-strip-types --test apps/web/lib/backpack.test.ts apps/web/lib/bp-intel.test.ts apps/web/lib/bp-social.test.ts apps/web/lib/server/github-dispatch.test.ts

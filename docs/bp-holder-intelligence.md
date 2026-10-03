@@ -103,6 +103,26 @@ Configuration (environment or repository variables): `BP_COHORT_SIZE` 200, `BP_C
 The worker never runs DDL; on an unmigrated database it returns `schema_pending`. The web reader returns
 `schema_pending` too, so deploy order does not matter. Worker exclusion uses the `bp_intel` lease row.
 
+## On X tab: Backpack posts next to the holder data (2026-10-03)
+
+`?section=social` (tab "On X", CSV) joins the X tracker's saved posts with the holder data. Pure logic in
+`apps/web/lib/bp-social.ts`, SQL in `bp-intel-store.ts`, tests in `lib/bp-social.test.ts` and
+`tests/test_bp_intel_integration.py`.
+
+- **What counts as a Backpack post**: posts matching the BACKPACK registry entry (contract, `$BACKPACK`, or `$BP` with
+  Backpack/Solana context). Saved search results that only contain the word "backpack" are excluded.
+- **Coverage, never zero by default**: each day shows whether its X search windows (current query only) were searched to
+  the end, partly, or not at all. An unsearched day with no saved posts reads "not searched".
+- **Daily row**: posts, accounts, copy-paste posts, search coverage, BP holders (all owners and $100+ economic holders
+  from the daily capture, null when the capture is incomplete), day-on-day change, top-200 entered/left (current
+  versions created that day), and top-200 BP buyers/sellers from classified swaps. Trades after the earliest
+  `last_poll_at` among members with complete history read "not observed".
+- **Copy-paste campaigns**: near-identical posts (first twelve words after removing links, mentions, numbers and
+  addresses) from three or more accounts. The page states that who coordinated them is unknown.
+- **Coins the top holders share, on X**: coins in the selected portfolio read that the tracker follows, linked by
+  contract on Solana, or by ticker for a coin the tracker follows on another chain (labelled; not the same asset). Posts
+  in the last 7 days count only where they match that coin, with the windows still unsearched.
+
 ## Committed wallet labels (2026-09-27)
 
 The cohort is meant to be investors. Labels decide who is not one, and labels normally come from `/admin/backpack`.

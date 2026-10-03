@@ -2,6 +2,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal as D
+import json
 import os
 from pathlib import Path
 import re
@@ -142,8 +143,24 @@ def run_template(conn, template, values):
     return fetch_all(conn, re.sub(r'\$\{([^}]+)\}', bind, template.replace('%', '%%')), tuple(params))
 
 
+QUERY = json.loads(Path('apps/web/lib/crypto-coins.json').read_text(encoding='utf-8'))['coins']
+BACKPACK_QUERY = next(c['searchQuery'] for c in QUERY if c['symbol'] == 'BACKPACK')
+
+
 def values(version=None, run=None, mint=None, wallet=None):
-    return dict(v=version, r=run, mint=mint, wallet=wallet, days=7, threshold=100, cohortId=version, runId=run)
+    return {'v': version, 'r': run, 'mint': mint, 'wallet': wallet, 'days': 7, 'threshold': 100, 'cohortId': version, 'runId': run,
+            'prefix': BACKPACK_QUERY + ' ', 'BP_MINT': BP_MINT, 'solana.map(c=>c.address)': [], 'elsewhere.map(c=>c.symbol)': [], 'coins': []}
+
+
+def social_tables(conn):
+    """The X tracker's tables, as its collectors create them (the holder page only reads them)."""
+    import crypto_social_rolling as rolling
+    with conn, conn.cursor() as cur:
+        cur.execute(Path('sql/crypto_social.sql').read_text(encoding='utf-8'))
+        cur.execute(rolling.SCHEMA)
+        cur.execute("INSERT INTO crypto_rolling_campaign VALUES (%s,%s,%s) ON CONFLICT DO NOTHING", (rolling.CAMPAIGN, NOW - timedelta(days=20), NOW + timedelta(days=10)))
+        cur.execute("INSERT INTO crypto_social_coins VALUES ('BACKPACK','Backpack',%s,%s,'verified') ON CONFLICT DO NOTHING", (BACKPACK_QUERY, BP_MINT))
+    return rolling.CAMPAIGN
 
 
 BUYS = [('w1', 90), ('w2', 80), ('w3', 70)]
@@ -297,10 +314,11 @@ def test_worker_end_to_end_is_idempotent(conn):
     # Web templates execute against the populated schema, and overlap traces to balances.
     version = fetch_all(conn, "SELECT version_id FROM bp_cohorts WHERE kind='current'")[0]['version_id']
     run = fetch_all(conn, "SELECT run_id FROM backpack_ingestion_runs WHERE job='bp_intel' ORDER BY started_at DESC LIMIT 1")[0]['run_id']
+    social_tables(conn)
     for template in web_templates():
         for scope in (values(version, run), values(version, run, TOKEN, 'w1')):
             run_template(conn, template, scope)
-    [overlap] = [t for t in web_templates() if 'WITH members AS' in t]
+    [overlap] = [t for t in web_templates() if 'WITH members AS' in t and 'agg AS' in t]
     rows = {r['mint']: r for r in run_template(conn, overlap, values(version, run))}
     assert rows[TOKEN]['holders'] == 2 and rows[TOKEN]['meaningful_holders'] == 2 and rows[TOKEN]['cohort_size'] == 3
     assert rows[TOKEN]['new_buyers_24h'] == 3 and rows[TOKEN]['buyers_7d'] == 3 and rows[TOKEN]['inferred_purchases_7d'] == 2
@@ -309,6 +327,7 @@ def test_worker_end_to_end_is_idempotent(conn):
 
 
 def test_web_templates_execute_on_an_empty_schema(conn):
+    social_tables(conn)
     for template in web_templates():
         run_template(conn, template, values())
     # Explicit ids outside the listed window are looked up directly; unknown ids find nothing (-> 404 not_found).
@@ -508,3 +527,31 @@ def test_roster_reports_each_member_s_holdings_read(conn):
     assert rows['w2']['read_status'] == 'unavailable' and rows['w2']['read_detail'].startswith('unreadable provider response')
     # A member the run never read says so; it is never shown as a read that found nothing.
     assert rows['w3']['read_status'] == 'not_read' and rows['w3']['read_at'] is None
+
+
+def test_social_templates_count_only_current_query_windows_and_backpack_posts(conn):
+    campaign = social_tables(conn)
+    day = (NOW - timedelta(days=1)).replace(hour=6, minute=0, second=0)
+    def window(query, start, status, pages):
+        with conn, conn.cursor() as cur:
+            cur.execute("""INSERT INTO crypto_social_windows(coin,start_at,end_at,query,status,pages) VALUES ('BACKPACK',%s,%s,%s,%s,%s)
+                RETURNING id""", (start, start + timedelta(hours=7), query, status, pages))
+            wid = cur.fetchone()[0]
+            cur.execute('INSERT INTO crypto_rolling_windows VALUES (%s,%s)', (campaign, wid))
+        return wid
+    current = window(BACKPACK_QUERY + ' since_time:1', day, 'search_exhausted', 1)
+    window(BACKPACK_QUERY + ' since_time:2', day + timedelta(hours=6), 'pending', 0)
+    old = window('("$BACKPACK" OR "x") since_time:3', day - timedelta(minutes=1), 'search_exhausted', 3)
+    window('("$BACKPACK" OR "x") since_time:4', day + timedelta(hours=6, minutes=-1), 'retired_query', 0)
+    with conn, conn.cursor() as cur:
+        cur.execute("INSERT INTO crypto_social_accounts(id,handle) VALUES ('a1','one'),('a2','two')")
+        for pid, author, wid in (('p1', 'a1', current), ('p2', 'a2', old), ('p1', 'a1', old)):
+            cur.execute("INSERT INTO crypto_social_posts(id,author_id,text,posted_at,kind,url) VALUES (%s,%s,'Backpack $BP',%s,'original','https://x.com/p') ON CONFLICT DO NOTHING",
+                        (pid, author, day + timedelta(hours=1)))
+            cur.execute('INSERT INTO crypto_social_matches VALUES (%s,%s)', (pid, wid))
+    [posts, windows] = [t for t in web_templates() if "w.coin='BACKPACK'" in t]
+    found = run_template(conn, posts, values())
+    assert sorted(r['id'] for r in found) == ['p1', 'p2'], 'one row per post, from any of its windows'
+    [row] = run_template(conn, windows, values())
+    # Only windows searched with today's query count as coverage; old-query and retired windows do not.
+    assert (row['day'], row['windows'], row['done'], row['searched']) == (str(day.date()), 2, 1, 1)

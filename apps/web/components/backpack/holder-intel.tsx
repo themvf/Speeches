@@ -14,26 +14,31 @@ const signed=(raw:unknown,decimals:unknown)=>{const text=amount(raw,decimals);re
 const TIER:Record<string,string>={parsed_swap:'Parsed swap',inferred_swap:'Inferred swap',unclassified:'Unclassified',not_applicable:'—'};
 const RULE:Record<string,string>={new_position:'New position',multiple_buyers:'Multiple buyers',accumulation:'Accumulation',major_sale:'Major sale'};
 const tokenName=(r:IntelRow,side?:'input'|'output')=>{const mint=String(side?r[`${side}_mint`]??'':r.mint??'');const symbol=side?r[`${side}_symbol`]:r.symbol;return mint==='native'?'SOL':String(symbol??short(mint));};
-type Tab='holdings'|'purchases'|'roster'|'alerts';
+type Tab='holdings'|'purchases'|'roster'|'alerts'|'social';
+const COVERAGE:Record<string,string>={complete:'Searched',partial:'Partly searched',not_searched:'Not searched'};
 const intelUrl=(scope:string,section:string,extra:Record<string,string>={})=>{const p=new URLSearchParams(scope);p.set('section',section);for(const [k,v] of Object.entries(extra))p.set(k,v);return `/api/market/crypto/backpack?${p}`;};
 type Detail={kind:'token'|'wallet';key:string;data?:IntelPayload;error?:string};
 
 export function HolderIntel(){
  const [cohort,setCohort]=useState(''),[run,setRun]=useState(''),[tab,setTab]=useState<Tab>('holdings');
  const [data,setData]=useState<IntelPayload|null>(null),[roster,setRoster]=useState<IntelPayload|null>(null),[error,setError]=useState('');
+ const [social,setSocial]=useState<IntelPayload|null>(null);
  const [detail,setDetail]=useState<Detail|null>(null),[show,setShow]=useState({sol:false,stable:false,spam:false,bp:false});
  // Latest detail request wins; a scope change or Close invalidates anything still in flight.
  const detailRequest=useRef(0);
  const [activityAll,setActivityAll]=useState(false),[holdingFilter,setHoldingFilter]=useState('all');
  const scope=useMemo(()=>{const p=new URLSearchParams();if(cohort)p.set('cohort',cohort);if(run)p.set('run',run);return p.toString();},[cohort,run]);
  const url=(section:string,extra:Record<string,string>={})=>intelUrl(scope,section,extra);
- useEffect(()=>{let live=true;setData(null);setRoster(null);setError('');detailRequest.current++;setDetail(null);
+ useEffect(()=>{let live=true;setData(null);setRoster(null);setSocial(null);setError('');detailRequest.current++;setDetail(null);
   fetch(intelUrl(scope,'overview')).then(async r=>{if(!r.ok)throw new Error((await r.json()).error??'Unavailable');return r.json();}).then(d=>{if(live)setData(d);}).catch(e=>{if(live)setError(e.message);});
   return()=>{live=false;};
  },[scope]);
  useEffect(()=>{if(tab!=='roster'||roster||!data?.meta?.version)return;let live=true;
   fetch(intelUrl(scope,'roster')).then(r=>r.json()).then(d=>{if(live)setRoster(d);}).catch(()=>{if(live)setError('Roster unavailable');});return()=>{live=false;};
  },[tab,roster,data,scope]);
+ useEffect(()=>{if(tab!=='social'||social||!data?.meta?.version)return;let live=true;
+  fetch(intelUrl(scope,'social',{days:'30'})).then(r=>r.json()).then(d=>{if(live)setSocial(d);}).catch(()=>{if(live)setError('Posts on X unavailable');});return()=>{live=false;};
+ },[tab,social,data,scope]);
  async function open(kind:'token'|'wallet',key:string){
   const request=++detailRequest.current;
   setDetail({kind,key});
@@ -75,7 +80,7 @@ export function HolderIntel(){
     <span title={meta.live.detail}>Live monitoring: {meta.live.enabled?'on':'off (hourly polling)'}</span>
    </div>
    {warnings.length>0&&<div className={s.notice} role="status"><strong>Collection is incomplete or stale</strong><ul>{warnings.map(w=><li key={w}>{w}</li>)}</ul></div>}
-   <div className={s.ranges} role="tablist" aria-label="Holder intelligence views">{([['holdings','Common holdings'],['purchases','Recent purchases'],['roster','Holder roster'],['alerts',`Alerts (${data.extra.alerts?.length??0})`]] as const).map(([key,label])=><button key={key} role="tab" aria-selected={tab===key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</div>
+   <div className={s.ranges} role="tablist" aria-label="Holder intelligence views">{([['holdings','Common holdings'],['purchases','Recent purchases'],['roster','Holder roster'],['alerts',`Alerts (${data.extra.alerts?.length??0})`],['social','On X']] as const).map(([key,label])=><button key={key} role="tab" aria-selected={tab===key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</div>
 
    {tab==='holdings'&&<div><div className={s.intelBar}><p>Holders counted from the selected portfolio read. Meaningful means at least {money(meta.meaningfulUsd)} at a fresh price. Weight is the share of each holder&apos;s priced, in-scope portfolio. Common ownership is not evidence of buying; flows below come from classified swaps after each wallet joined tracking.</p>
     <div className={s.toggles}>{([['bp','BP'],['sol','SOL'],['stable','Stablecoins'],['spam','Suspected spam']] as const).map(([k,label])=><label key={k}><input type="checkbox" checked={show[k]} onChange={e=>setShow({...show,[k]:e.target.checked})}/>{label}</label>)}{csv('overlap')}</div></div>
@@ -110,6 +115,33 @@ export function HolderIntel(){
      <td>{count(a.wallet_count)}{numeric(a.inferred_wallets)?<span className={s.muted}> · {count(a.inferred_wallets)} inferred</span>:null}</td><td>{amount(a.quantity_raw,a.decimals)}</td><td>{a.valuation_status==='unpriced'?'Unpriced':`${money(a.usd_value)}${a.valuation_status==='partially_priced'?' (partial)':''}`}</td>
      <td>{TIER[String(a.lowest_tier)]}</td><td>{String(a.finality)} · through {stamp(a.data_through)}</td><td><details><summary>{Array.isArray(a.signatures)?a.signatures.length:0} signatures</summary>{(Array.isArray(a.signatures)?a.signatures:[]).map(sig=><div key={String(sig)}><Tx sig={sig}/></div>)}<p>{String(a.detail)}</p></details></td></tr>)}</tbody></table>
     {!(data.extra.alerts??[]).length&&<p className={s.tableEmpty}>No alerts for this cohort version.</p>}</div></div>}
+
+   {tab==='social'&&<div><div className={s.intelBar}><p>Posts on X that match Backpack&apos;s token: the contract address, $BACKPACK, or $BP alongside Backpack or Solana. Search results that only contain the word &ldquo;backpack&rdquo; are left out. A day the search has not reached reads &ldquo;not searched&rdquo;, never zero. Holder counts come from each day&apos;s capture; top-200 BP buyers and sellers only from wallets with transaction history{social?.extra.history?.[0]?.through?`, observed through ${stamp(social.extra.history[0].through)}`:''}.</p>
+    <div className={s.toggles}>{csv('social',{days:'30'})}</div></div>
+    {!social&&<p className={s.muted}>Loading posts on X…</p>}
+    {social?.extra.social_status&&<p className={s.tableEmpty}>The X tracker has not been set up in this database.</p>}
+    {social&&!social.extra.social_status&&<>
+     <div className={s.tableWrap}><table><thead><tr><th>Day (UTC)</th><th>Backpack posts</th><th>Accounts</th><th>Copy-paste</th><th>X search</th><th>BP holders</th><th>$100+ holders</th><th>Change</th><th>Top 200 in / out</th><th>Top-200 BP buyers / sellers</th></tr></thead>
+     <tbody>{social.rows.map(r=><tr key={String(r.day)}><td>{String(r.day)}</td>
+      <td>{r.posts==null?<span className={s.muted}>not searched</span>:count(r.posts)}{r.x_coverage==='partial'&&r.posts!=null?<span className={s.muted}> so far</span>:null}</td>
+      <td>{r.authors==null?'—':count(r.authors)}</td><td>{numeric(r.copy_paste_posts)?<span className={s.badgeWarn}>{count(r.copy_paste_posts)}</span>:r.copy_paste_posts==null?'—':'0'}</td>
+      <td title={`${count(r.x_windows_done)} of ${count(r.x_windows)} search windows searched to the end`}>{COVERAGE[String(r.x_coverage)]}</td>
+      <td>{r.holders==null?'—':count(r.holders)}</td><td>{r.holders_over_100==null?'—':count(r.holders_over_100)}</td>
+      <td>{r.holders_change==null?'—':`${Number(r.holders_change)>0?'+':''}${count(r.holders_change)}`}</td>
+      <td>{r.cohort_entered==null?'—':`+${count(r.cohort_entered)} / −${count(r.cohort_left)}`}</td>
+      <td>{r.bp_buyers==null?<span className={s.muted}>not observed</span>:`${count(r.bp_buyers)} / ${count(r.bp_sellers)}`}</td></tr>)}</tbody></table></div>
+     <h3>Copy-paste campaigns</h3>
+     <p className={s.muted}>Near-identical posts from three or more accounts. Who paid for or coordinated them is not known from the posts.</p>
+     {(social.extra.campaigns??[]).length?<div className={s.tableWrap}><table><thead><tr><th>First · last</th><th>Accounts</th><th>Posts</th><th>Template</th></tr></thead><tbody>{(social.extra.campaigns??[]).map(g=><tr key={String(g.key)}>
+      <td>{stamp(g.first)}<br/><span className={s.muted}>{stamp(g.last)}</span></td><td>{count(g.accounts)}</td><td>{count(g.posts)}</td>
+      <td>{String(g.sample)}{g.url?<> <a href={String(g.url)} target="_blank" rel="noreferrer">first post ↗</a></>:null}<br/><span className={s.muted}>{(Array.isArray(g.handles)?g.handles:[]).map(h=>`@${h}`).join(' · ')}</span></td></tr>)}</tbody></table></div>:<p className={s.tableEmpty}>No copy-paste campaign in this window.</p>}
+     <h3>Coins the top holders share, on X</h3>
+     <p className={s.muted}>Coins in this portfolio read that the X tracker also follows. Posts count only where they match that coin. A ticker match means the tracker follows that coin on another chain, which is not the same asset as the Solana token.</p>
+     {(social.extra.shared??[]).length?<div className={s.tableWrap}><table><thead><tr><th>Coin</th><th>Linked by</th><th>Top-200 holders ($100+)</th><th>Posts on X · 7 days</th><th>Accounts</th><th>Searched through</th></tr></thead><tbody>{(social.extra.shared??[]).map(c=><tr key={String(c.mint)}>
+      <td><a href={`/market/crypto?coin=${encodeURIComponent(String(c.coin))}`}>{String(c.coin_label??c.coin)}</a></td><td>{String(c.linked_by)}</td>
+      <td>{count(c.holders)} <span className={s.muted}>({count(c.meaningful_holders)})</span></td><td>{count(c.posts_7d)}{numeric(c.unsearched_windows_7d)?<span className={s.muted}> · {count(c.unsearched_windows_7d)} windows not yet searched</span>:null}</td>
+      <td>{count(c.accounts_7d)}</td><td>{stamp(c.searched_through)}</td></tr>)}</tbody></table></div>:<p className={s.tableEmpty}>None of the coins in this read are followed by the X tracker.</p>}
+    </>}</div>}
 
    {detail&&<div className={s.intelDetail} role="region" aria-label={`${detail.kind} detail`}><div className={s.sectionHead}><h3>{detail.kind==='token'?`Token ${detail.key==='native'?'SOL':short(detail.key)}`:`Wallet ${short(detail.key)}`}</h3><div className={s.toggles}>{csv(detail.kind,detail.kind==='token'?{mint:detail.key}:{wallet:detail.key})}<button onClick={()=>{detailRequest.current++;setDetail(null);}}>Close</button></div></div>
     {detail.error&&<p role="alert">{detail.error}</p>}{!detail.data&&!detail.error&&<p className={s.muted}>Loading…</p>}
