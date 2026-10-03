@@ -25,3 +25,10 @@ def test_live_campaign_queries_are_pinned_to_saved_window_text():
     assert TRACKED['DPONS'][1]==f'(DPONS OR "DiamondPons" OR "Diamond Pons" OR "{DPONS_ADDRESS}")'
     assert TRACKED['STANDARD'][1]=='("The Standard Reserve" OR from:standard_rsv OR to:standard_rsv OR "0x88ad8ddf1e3898412146a534538d418c6f8a9062")'
     assert PILOT['ZCAT'][1]==COINS['ZCAT']['searchQuery'] and PILOT['ZEC'][1]==COINS['ZEC']['searchQuery']
+
+
+def test_requery_and_ceiling_fields_are_valid():
+    from datetime import datetime
+    for c in COINS.values():
+        if 'requerySince' in c:datetime.fromisoformat(c['requerySince'].replace('Z','+00:00'))
+        assert c.get('creditCeiling',30000) in (30000,450000)  # the only ceilings the rolling ledger accepts

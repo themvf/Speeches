@@ -22,7 +22,10 @@ def cadence(coin):
     return 1 if REGISTRY.get(coin,{}).get('cadenceHours')==1 else 6
 
 
-def ceiling(coin):return HOURLY_LIMIT if cadence(coin)==1 else COIN_LIMIT
+def ceiling(coin):
+    """Campaign credit ceiling: the larger one for hourly coins or a registry creditCeiling of 450000 (the daily limit
+    still applies, so a raised ceiling lets a six-hour coin keep collecting rather than spend faster)."""
+    return HOURLY_LIMIT if cadence(coin)==1 or REGISTRY.get(coin,{}).get('creditCeiling')==HOURLY_LIMIT else COIN_LIMIT
 def daily_limit(coin):return DAILY_LIMIT*3 if cadence(coin)==1 else DAILY_LIMIT
 BASE='https://api.twitterapi.io'
 SCHEMA='''
@@ -79,6 +82,7 @@ def setup(conn,now):
             last=cur.fetchone()[0]
             end=last+step if last else anchor-timedelta(hours=42)
             setup_origin(cur,coin,anchor-timedelta(hours=42))
+            setup_requery(cur,coin,query)
             while end<=anchor:
                 start=end-step-timedelta(hours=1)  # one-hour overlap catches delayed indexing
                 q=f'{query} since_time:{int(start.timestamp())} until_time:{int(end.timestamp())}'
@@ -113,6 +117,31 @@ def setup_origin(cur,coin,until):
     if not row:return
     cur.execute('INSERT INTO crypto_rolling_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,row[0]))
     cur.execute('INSERT INTO crypto_origin_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(row[0],coin))
+
+
+def setup_requery(cur,coin,query):
+    """Search a coin's live windows again after its query changed, from the registry's requerySince.
+
+    A saved window keeps the query it was searched with, and windows are unique per coin and time range, so each
+    replacement starts one minute earlier (one more minute of overlap) with the current query. Unfinished windows
+    under the old query are retired; finished ones keep their evidence. Origin and focus windows are contract-only
+    and are left alone. Opt-in and dated, so changing a query never silently re-buys a coin's whole history."""
+    since=REGISTRY.get(coin,{}).get('requerySince')
+    if not since:return
+    since=datetime.fromisoformat(since.replace('Z','+00:00'))
+    cur.execute('''SELECT w.id,w.start_at,w.end_at FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id
+        WHERE r.campaign_id=%s AND w.coin=%s AND w.end_at>%s AND left(w.query,length(%s))<>%s
+        AND NOT EXISTS(SELECT 1 FROM crypto_voice_focus f WHERE f.window_id=w.id)
+        AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id)''',(CAMPAIGN,coin,since,query+' ',query+' '))
+    for wid,start,end in cur.fetchall():
+        cur.execute("UPDATE crypto_social_windows SET status='retired_query' WHERE id=%s AND status IN ('pending','partial')",(wid,))
+        start-=timedelta(minutes=1)
+        q=f'{query} since_time:{int(start.timestamp())} until_time:{int(end.timestamp())}'
+        cur.execute('INSERT INTO crypto_social_windows(coin,start_at,end_at,query) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING',(coin,start,end,q))
+        cur.execute('SELECT id FROM crypto_social_windows WHERE coin=%s AND start_at=%s AND end_at=%s AND query=%s',(coin,start,end,q))
+        row=cur.fetchone()
+        if not row:raise ValueError('Conflicting re-query window; preserve existing evidence')
+        cur.execute('INSERT INTO crypto_rolling_windows VALUES (%s,%s) ON CONFLICT DO NOTHING',(CAMPAIGN,row[0]))
 
 
 def setup_focus(conn,coin,now):

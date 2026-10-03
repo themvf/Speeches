@@ -418,5 +418,47 @@
     "ASKR",
     "contract",
     false
+  ],
+  [
+    "Backpack $BP looks undervalued here",
+    "BACKPACK",
+    "words",
+    true
+  ],
+  [
+    "$bp pumping on solana today",
+    "BACKPACK",
+    "words",
+    true
+  ],
+  [
+    "$BP earnings beat, oil majors rally",
+    "BACKPACK",
+    "words",
+    false
+  ],
+  [
+    "$BPCAT is the next solana gem",
+    "BACKPACK",
+    "words",
+    false
+  ],
+  [
+    "@MadLads @Backpack GM mate",
+    "BACKPACK",
+    "words",
+    false
+  ],
+  [
+    "F Gear 34L School Backpack at a discount",
+    "BACKPACK",
+    "words",
+    false
+  ],
+  [
+    "$BP on solana",
+    "BACKPACK",
+    "contract",
+    false
   ]
 ]
