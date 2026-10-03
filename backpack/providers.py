@@ -256,7 +256,9 @@ class Providers:
         options = {'transactionDetails': details, 'sortOrder': 'desc', 'limit': limit, 'commitment': 'finalized',
                    'filters': filters}
         if details == 'full':
-            options.update(encoding='jsonParsed', maxSupportedTransactionVersion=int(self.env.get('BP_MAX_TX_VERSION', '0')))
+            # Version 1 transactions exist on mainnet; asking for at most version 0 made Helius refuse a wallet's whole
+            # history (-32015) once it had one, which failed 51 of 222 cohort history reads on 2026-10-03.
+            options.update(encoding='jsonParsed', maxSupportedTransactionVersion=int(self.env.get('BP_MAX_TX_VERSION', '1')))
         if token: options['paginationToken'] = token
         result = self.rpc('getTransactionsForAddress', [address, options])
         if not isinstance(result, dict) or not isinstance(result.get('data'), list):

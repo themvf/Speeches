@@ -536,6 +536,27 @@ def test_rpc_errors_keep_the_provider_code_and_message_but_never_the_url():
     assert 'secret-key' not in str(failure.value)
 
 
+def test_version_1_transactions_are_requested_and_classified():
+    import json
+    from pathlib import Path
+    from backpack.providers import Providers
+    sent = {}
+    class Reply:
+        status_code, ok = 200, True
+        def json(self): return {'jsonrpc': '2.0', 'id': 'backpack', 'result': {'data': [], 'paginationToken': None}}
+    class Http:
+        def request(self, method, url, timeout, json=None, **kwargs):
+            sent.update(json['params'][1]); return Reply()
+    Providers({'HELIUS_API_KEY': 'k'}, Http()).transactions_for_address('addr', {'tokenAccounts': 'balanceChanged'})
+    assert sent['maxSupportedTransactionVersion'] == 1  # version 0 made Helius refuse whole histories (-32015)
+    # A real mainnet version-1 transaction (2026-10-03): no lookup tables, a transactionConfig field, same balance layout.
+    tx = json.loads(Path(__file__).with_name('fixtures').joinpath('solana-v1-bp-swap.json').read_text())
+    assert tx['version'] == 1 and 'transactionConfig' in tx['transaction']['message']
+    [swap] = ev.classify(tx, {'2LrLvL84yLCEZmZMH7pcbAXMSFaHpJpWEEUK58xUTu1v'})
+    assert (swap['kind'], swap['tier'], swap['input_mint'], swap['output_mint']) == ('swap', 'inferred_swap', USDC, BP_MINT)
+    assert (swap['input_raw'], swap['output_raw']) == (58_782_813_272, 52_790_700_995_717)
+
+
 def test_price_block_ages_only_look_up_blocks_near_the_hour_boundary():
     ref = T0
     estimated, exact = pf.price_block_ages([1_000_000, 1_000_000 - 7_000, 1_000_000 - 9_000, 1_000_000 - 20_000, 1_000_050, None],
