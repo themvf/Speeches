@@ -124,8 +124,11 @@ The worker never runs DDL; on an unmigrated database it returns `schema_pending`
   it (counts are lower bounds: $BP was not searched); otherwise "not searched", and posts read "not searched", not zero.
 - **Daily row**: posts, accounts, copy-paste posts, search coverage, BP holders (all owners and $100+ economic holders
   from the daily capture, null when the capture is incomplete), day-on-day change, top-200 entered/left (current
-  versions created that day), and top-200 BP buyers/sellers from classified swaps. Trades after the earliest
-  `last_poll_at` among members with complete history read "not observed".
+  versions created that day), and top-200 BP buyers/sellers from classified swaps, counted from the members whose stored
+  history covers the day (complete backfill: from the requested start; otherwise from the earliest read; through the
+  last poll) and shown as "from N of M wallets". A day no member's history covers reads "not observed". (Until
+  2026-10-03 the whole column stopped at the earliest last poll, so eight wallets whose reads failed held it at
+  2026-09-27.)
 - **Copy-paste campaigns**: near-identical posts (first twelve words after removing links, mentions, numbers and
   addresses) from three or more accounts. The page states that who coordinated them is unknown.
 - **Coins the top holders share, on X**: coins in the selected portfolio read that the tracker follows, linked by

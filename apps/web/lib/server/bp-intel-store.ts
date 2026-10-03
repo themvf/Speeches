@@ -189,8 +189,12 @@ export async function readBpIntel(q:IntelQuery):Promise<IntelPayload>{
        FROM bp_economic_events e JOIN bp_cohort_members m ON m.wallet_address=e.wallet_address AND m.version_id=${v} AND m.member
        WHERE e.kind='swap' AND e.tier IN ('parsed_swap','inferred_swap') AND (e.output_mint=${BP_MINT} OR e.input_mint=${BP_MINT})
        AND e.block_time>=date_trunc('day',now())-make_interval(days=>${days}::int-1) GROUP BY 1`,
-   sql`SELECT count(*) FILTER(WHERE c.backfill_status='complete')::int AS wallets,min(c.last_poll_at) FILTER(WHERE c.backfill_status='complete') AS through
-       FROM bp_cohort_members m JOIN bp_history_coverage c USING(wallet_address) WHERE m.version_id=${v} AND m.member`,
+   sql`SELECT d::date::text AS day,count(*)::int AS wallets
+       FROM bp_cohort_members m JOIN bp_history_coverage c USING(wallet_address),
+       generate_series(GREATEST((CASE WHEN c.backfill_status='complete' THEN c.requested_start ELSE c.earliest_retrieved END) AT TIME ZONE 'UTC',
+         date_trunc('day',now() AT TIME ZONE 'UTC')-make_interval(days=>${days}::int-1))::date,
+         (c.last_poll_at AT TIME ZONE 'UTC')::date,interval '1 day') d
+       WHERE m.version_id=${v} AND m.member AND c.last_poll_at IS NOT NULL GROUP BY 1`,
    sql`WITH members AS (SELECT wallet_address FROM bp_cohort_members WHERE version_id=${v} AND member)
        SELECT b.mint,max(t.symbol) AS symbol,count(*) FILTER(WHERE b.raw_amount>0)::int AS holders,
        count(*) FILTER(WHERE b.value_usd>=${threshold})::int AS meaningful_holders
@@ -201,9 +205,8 @@ export async function readBpIntel(q:IntelQuery):Promise<IntelPayload>{
   ]);
   const genuine=genuinePosts(posts as never);
   rows=socialDays({days,now:new Date(),posts:genuine,windows:windows as never,earlier:earlier as never,holders:holders as never,cohorts:cohorts as never,
-   trades:trades as never,tradesThrough:(history[0]?.through as string|null)??null});
+   trades:trades as never,tradeCoverage:history as never,members:Number(coverage[0]?.members??0)||null});
   extra.campaigns=copyPasteGroups(genuine) as never;
-  extra.history=history;
   // Coins the top holders share that the social tracker follows: by contract on Solana, or by ticker for a coin the
   // tracker follows on another chain (labelled, since a Solana token with that ticker is not the same asset).
   // Many Solana tokens copy a ticker, so a ticker link keeps only the most-held token with that ticker, and only when

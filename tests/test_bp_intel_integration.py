@@ -576,3 +576,22 @@ def test_one_malformed_history_response_fails_that_wallet_not_the_poll(conn, mon
     summary = intel.poll_history(conn, FakeIntel(holdings(), history()), dict(ENV, BP_ENHANCED_PARSE='0'), wallets, NOW)
     assert (summary['polled'], summary['failed']) == (2, 1)
     assert summary['errors'][0].startswith('w2…: unreadable provider response: KeyError at intel.py:')
+
+
+def test_trade_coverage_counts_the_wallets_whose_history_covers_each_day(conn):
+    bp_capture(conn, NOW.date(), dict(w1=5, w2=4, w3=3))
+    version = cohorts.refresh_cohort(conn, ENV)['version_id']
+    today = datetime.combine(NOW.date(), datetime.min.time(), UTC)
+    with conn, conn.cursor() as cur:
+        # w1: complete 30-day history, polled today. w2: backfill reached 2 days ago, last polled yesterday. w3: never read.
+        cur.execute("""INSERT INTO bp_history_coverage(wallet_address,source,requested_start,earliest_retrieved,backfill_status,last_poll_at)
+            VALUES ('w1','fixture',%s,%s,'complete',%s),('w2','fixture',%s,%s,'incomplete',%s),('w3','fixture',%s,NULL,'pending',NULL)""",
+            (today - timedelta(days=30), today - timedelta(days=20), today + timedelta(hours=1),
+             today - timedelta(days=30), today - timedelta(days=2) + timedelta(hours=5), today - timedelta(hours=3),
+             today - timedelta(days=30)))
+    [coverage] = [t for t in web_templates() if 'generate_series(GREATEST' in t]
+    days = {r['day']: r['wallets'] for r in run_template(conn, coverage, values(version))}
+    d = lambda n: str((today - timedelta(days=n)).date())
+    assert days[d(0)] == 1, 'today: only w1 has been polled today'
+    assert days[d(1)] == 2 and days[d(2)] == 2, 'w2 covers from its earliest read to its last poll'
+    assert days[d(3)] == 1 and days[d(6)] == 1 and d(7) not in days, 'w1 only before that, within the 7-day window'
