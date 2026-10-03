@@ -1,5 +1,9 @@
 """Archive public market history for every tracked coin. No X calls; default is a no-network plan.
 
+setup() carries the volume correction: a price_observation source reports a rolling 24h total
+rather than the interval's own trading, so its volume is NULL and a CHECK constraint keeps it
+that way. Rows written before that are cleared by the same one-shot migration.
+
 Daily candles are archived for up to five pools per contract coin; hourly candles for the
 pinned default pool only, because the post-to-price event study reads one source per coin.
 """
@@ -57,12 +61,20 @@ def _rows(data,kind):
     else:
         prices=data.get('prices');volumes=data.get('total_volumes')
         if not isinstance(prices,list) or not isinstance(volumes,list):raise ValueError('Missing observations')
-        vol={v[0]:v[1] for v in volumes if isinstance(v,list) and len(v)>=2 and finite(v[0]) and finite(v[1])}
-        rows=[[p[0]/1000,None,None,None,p[1],vol.get(p[0])] for p in prices
+        # total_volumes is a ROLLING 24-HOUR total, not the volume traded in this interval: the
+        # series drifts a couple of percent an hour where a real hourly series swings by tens.
+        # Storing it would put a smoothed window into a column every reader treats as per-interval
+        # trading, so no volume is recorded. Its presence is still required, because a payload
+        # missing it is not the shape the provider documents.
+        rows=[[p[0]/1000,None,None,None,p[1],None] for p in prices
               if isinstance(p,list) and len(p)>=2 and finite(p[0])]
     for row in rows:
-        if not isinstance(row,list) or len(row)<6 or not all(finite(row[i]) for i in [0,4,5]):continue
-        if row[4]<=0 or row[5]<0:continue
+        if not isinstance(row,list) or len(row)<6 or not all(finite(row[i]) for i in [0,4]):continue
+        if row[4]<=0:continue
+        # Volume is absent only where the provider does not measure the interval; a source that
+        # does report it must report it validly.
+        if kind=='ohlcv' and (not finite(row[5]) or row[5]<0):continue
+        if kind!='ohlcv' and row[5] is not None:continue
         if kind=='ohlcv' and (not all(finite(row[i]) and row[i]>0 for i in [1,2,3]) or row[2]<max(row[1],row[3],row[4]) or row[3]>min(row[1],row[2],row[4])):continue
         try:stamp=datetime.fromtimestamp(row[0],timezone.utc)
         except (ValueError,OverflowError,OSError):continue

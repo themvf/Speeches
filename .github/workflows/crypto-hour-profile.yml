@@ -1,0 +1,64 @@
+name: Crypto time-of-day profile
+
+# Recomputes "do these coins move at particular hours?" from the archive and commits the answer,
+# so the question does not have to be asked again and a change in the answer shows up as a diff.
+# Reads the archive only: no provider calls, no credits, no rate limits.
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Window length in days'
+        default: '14'
+  schedule:
+    # Mondays, after the 02:23 archive run has landed Sunday's candles.
+    - cron: '41 6 * * 1'
+permissions:
+  contents: write
+concurrency:
+  group: crypto-hour-profile
+  cancel-in-progress: false
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - name: Recompute the profile from the archive
+        run: |
+          python crypto_hour_profile.py \
+            --days "${{ github.event.inputs.days || '14' }}" \
+            --out apps/web/lib/server/crypto-hour-profile.json --summary 2> verdict.txt
+          cat verdict.txt
+      - name: Report the verdict
+        if: always()
+        run: |
+          {
+            echo '## Time-of-day profile'
+            echo
+            if [ -s verdict.txt ]; then sed 's/^/- /' verdict.txt; else echo '- The run produced no verdict.'; fi
+            echo
+            echo 'Every p-value is a global permutation test across all 24 hours under the strictest'
+            echo 'null, which gives each coin one vote. A per-hour t-statistic is never a finding.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit the snapshot when it changed
+        run: |
+          if git diff --quiet -- apps/web/lib/server/crypto-hour-profile.json; then
+            echo 'Profile unchanged; nothing to commit.'
+            exit 0
+          fi
+          git config user.name 'crypto-hour-profile[bot]'
+          git config user.email 'crypto-hour-profile[bot]@users.noreply.github.com'
+          git add apps/web/lib/server/crypto-hour-profile.json
+          { echo 'chore(crypto): refresh time-of-day profile'; echo; sed 's/^/  /' verdict.txt; } > commit-msg.txt
+          git commit -F commit-msg.txt
+          for attempt in 1 2 3; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((attempt * 5))
+          done
+          exit 1

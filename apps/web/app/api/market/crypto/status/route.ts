@@ -3,12 +3,17 @@ import {ok,fail} from '@/lib/server/api-utils';
 import {COINS} from '@/lib/crypto-coins';
 import {withCdnCache} from '@/lib/server/crypto-ranking-cache';
 import watcherAccounts from '@/lib/crypto-watcher-accounts.json';
+// Recomputed weekly by crypto-hour-profile.yml from the archive, then committed. Served from the
+// server so the 19KB report never reaches the client bundle; the page needs only a few fields.
+import hourProfileSnapshot from '@/lib/server/crypto-hour-profile.json' with {type:'json'};
+import type {HourProfile} from '@/lib/crypto-hour-profile';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 // Data page payload: coverage per coin, credit ledgers and the registry, in one read-only call.
 export async function GET(){
  const registry=COINS.map(c=>({symbol:c.symbol,name:c.name,network:c.networkLabel,address:c.address,archiveStart:c.archiveStart,originFrom:c.originFrom??null,official:c.official,matches:[c.address?'contract':null,...c.words.map(()=>'name or cashtag pattern'),...c.contextWords.map(()=>'word with token context'),...c.exclude.map(()=>'exclusion')].filter(Boolean)}));
- const empty={status:'not_configured',coverage:[],ledgers:[],registry,watchers:watcherAccounts,lastCollection:null};
+ const hourProfile=hourProfileSnapshot as unknown as HourProfile;
+ const empty={status:'not_configured',coverage:[],ledgers:[],registry,watchers:watcherAccounts,lastCollection:null,hourProfile};
  if(!process.env.DATABASE_URL)return ok(empty);
  const sql=neon(process.env.DATABASE_URL);
  try{
@@ -27,6 +32,6 @@ export async function GET(){
   const coverage=COINS.map(c=>{const d=days.find(r=>r.coin===c.symbol),o=origin.find(r=>r.coin===c.symbol),h=hourly.find(r=>r.coin===c.symbol);
    return {symbol:c.symbol,days_total:d?.days_total??0,days_searched:d?.days_searched??0,unfinished:d?.unfinished??0,first_window:d?.first_window??null,searched_through:d?.searched_through??null,origin:o?{pages:Number(o.pages),status:String(o.status),start_at:o.start_at,end_at:o.end_at}:c.originFrom?{pages:0,status:'pending',start_at:c.originFrom,end_at:null}:null,hourly_hours:h?.hours??0,hourly_latest:h?.latest??null,source_id:h?.source_id??null};});
   const ledgers=[...rolling.map(r=>({name:`Rolling · ${r.coin}`,used:Number(r.used_credits),ceiling:Number(r.credit_limit),ends:r.end_at})),...watchers.map(w=>({name:'Watchers · 10 accounts',used:Number(w.used_credits),ceiling:Number(w.credit_limit),ends:w.end_at})),...pilot.map(p=>({name:'Profiles & bios',used:Number(p.reserved_credits),ceiling:Number(p.credit_limit),ends:null})),...history.map(h=>({name:`History · ${String(h.id).replace('-july-2026','').toUpperCase()}`,used:Number(h.reserved_credits),ceiling:Number(h.credit_limit),ends:h.end_at}))];
-  return withCdnCache(ok({status:'ready',coverage,ledgers,registry,watchers:watcherAccounts,lastCollection:last[0]?.last_saved??null,outstanding:last[0]?.outstanding??0,asOf:new Date().toISOString()}));
+  return withCdnCache(ok({status:'ready',coverage,ledgers,registry,watchers:watcherAccounts,hourProfile,lastCollection:last[0]?.last_saved??null,outstanding:last[0]?.outstanding??0,asOf:new Date().toISOString()}));
  }catch{return fail('Status could not be loaded','STATUS_READ_FAILED',503);}
 }

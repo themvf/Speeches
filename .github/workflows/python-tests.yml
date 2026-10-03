@@ -39,13 +39,15 @@ jobs:
           --health-timeout 5s --health-retries 10
     env:
       CRYPTO_SOCIAL_TEST_DATABASE_URL: postgresql://postgres:archive-test@localhost:5432/archive_test
+      # Fail rather than skip: a dead service must not report a green suite.
+      REQUIRE_DB_TESTS: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install pytest 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3' pyyaml
-      - run: python -m pytest tests/test_launchpad_archive.py tests/test_launchpad_chains.py tests/test_launchpad_recovery.py -v --tb=short
+      - run: python -m pytest tests/test_launchpad_archive.py tests/test_launchpad_chains.py tests/test_launchpad_recovery.py tests/test_db_test_guard.py -v --tb=short
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10

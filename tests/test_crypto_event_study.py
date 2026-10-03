@@ -3,7 +3,7 @@ import pytest
 from test_crypto_social_pilot import db
 from test_crypto_market_history import candles,catalog,POOL
 from crypto_market_history import normalize_hourly,save,setup,refresh,MARKETS
-from crypto_event_study import mentions,build_events,compute,VERSION
+from crypto_event_study import mentions,build_events,compute,window_sum,VERSION
 
 NOW=datetime(2026,9,16,12,tzinfo=timezone.utc)
 T0=datetime(2026,9,10,tzinfo=timezone.utc)
@@ -139,3 +139,28 @@ def test_db_repeated_rate_limits_retry_within_bound_then_fail_softly(db):
     assert len(result['saved'])==1  # the daily candles arrived; hourly and the other catalogs were rate-limited four times each
     assert calls.count([u for u in calls if '/ohlcv/hour' in u][0])==4
     assert any('429' in e for e in result['errors'])
+
+
+def test_an_unmeasured_hour_voids_the_volume_sum_without_hiding_price_coverage():
+    """A price_observation source stores NULL volume, so no window over it has a real total.
+
+    Adding up only the hours that happen to carry a number would read as the window's volume.
+    `hours` keeps counting every hour with a price, because it describes price coverage.
+    """
+    end=T0+timedelta(hours=24)
+    assert window_sum(series(24,volume=lambda i:100.0),T0,end)==(2400.0,24)
+    assert window_sum(series(24,volume=lambda i:None),T0,end)==(None,24)
+    mixed=series(24,volume=lambda i:None if i==5 else 100.0)
+    assert window_sum(mixed,T0,end)==(None,24)   # one unmeasured hour is enough
+    assert window_sum({},T0,end)==(None,0)
+
+def test_events_report_unmeasured_volume_as_none_while_keeping_every_price():
+    s=series(80,volume=lambda i:None)
+    row=build_events([post('1','a',T0+timedelta(hours=30))],s,T0+timedelta(hours=100))[0]
+    assert row['volume_before_24h'] is None and row['volume_after_24h'] is None
+    assert row['hours_before_24h']==24 and row['hours_after_24h']==24
+    assert row['price_0']==pytest.approx(1.30) and row['price_after_24h']==pytest.approx(1.54)
+
+def test_the_version_changed_because_the_volume_computation_changed():
+    # Rows written under v1 summed a rolling 24h total; they are not comparable with these.
+    assert VERSION=='price-events-v2'
