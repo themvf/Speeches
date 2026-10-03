@@ -8,6 +8,7 @@ export type CopyPasteGroup={key:string;accounts:number;posts:number;first:string
 export type DayInput={
  days:number;now:Date;posts:SocialPost[];
  windows:{day:string;windows:number;done:number;searched:number}[];
+ earlier?:{day:string}[];
  holders:{day:string;unique_holders:unknown;holders_over_100:unknown;holders_complete:unknown}[];
  cohorts:{day:string;version_id:unknown;entered:unknown;left_count:unknown}[];
  trades:{day:string;bp_buyers:unknown;bp_sellers:unknown}[];
@@ -50,11 +51,15 @@ export function socialDays(input:DayInput){
  const byDay=new Map<string,SocialPost[]>();
  for(const p of genuine){const d=dayOf(p.posted_at);byDay.set(d,[...(byDay.get(d)??[]),p]);}
  const windows=new Map(input.windows.map(w=>[w.day,w])),holders=new Map(input.holders.map(h=>[h.day,h]));
+ const earlier=new Set((input.earlier??[]).map(e=>e.day));
  const trades=new Map(input.trades.map(t=>[t.day,t])),through=input.tradesThrough?dayOf(input.tradesThrough):null;
  const rows=[];
  for(let i=0;i<input.days;i++){
   const day=dayOf(new Date(input.now.getTime()-i*86_400_000)),w=windows.get(day),posts=byDay.get(day)??[];
-  const coverage=!w||w.windows===0?'not_searched':w.done>=w.windows?'complete':(w.searched>0||w.done>0)?'partial':'not_searched';
+  // The current query's own windows decide coverage. A day reached only by an earlier query (the contract-only origin
+  // search, or the pre-2026-10-03 query) was searched, but not for $BP: its counts are observed lower bounds.
+  const current=!w||w.windows===0?'none':w.done>=w.windows?'complete':(w.searched>0||w.done>0)?'partial':'none';
+  const coverage=current!=='none'?current:earlier.has(day)?'earlier_query':'not_searched';
   const h=holders.get(day),prior=holders.get(dayOf(new Date(new Date(day).getTime()-86_400_000)));
   const complete=(x?:{holders_complete:unknown})=>x?.holders_complete===true||x?.holders_complete==='true';
   const unique=complete(h)?num(h?.unique_holders):null,before=complete(prior)?num(prior?.unique_holders):null;
