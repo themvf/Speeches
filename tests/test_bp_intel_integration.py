@@ -560,3 +560,17 @@ def test_social_templates_count_only_current_query_windows_and_backpack_posts(co
     assert (row['day'], row['windows'], row['done'], row['searched']) == (str(day.date()), 2, 1, 1)
     # The earlier query searched that day too (the retired, never-searched window does not count).
     assert [r['day'] for r in run_template(conn, earlier, values())] == [str(day.date())]
+
+
+def test_one_malformed_history_response_fails_that_wallet_not_the_poll(conn, monkeypatch):
+    bp_capture(conn, NOW.date(), dict(w1=5, w2=4, w3=3))
+    cohorts.refresh_cohort(conn, ENV)
+    wallets = cohorts.tracked_wallets(conn)
+    real = intel.poll_wallet
+    def flaky(conn_, p, env, w, *args):
+        if w['wallet_address'] == 'w2': return {}['transactions']  # a KeyError raised inside the worker
+        return real(conn_, p, env, w, *args)
+    monkeypatch.setattr(intel, 'poll_wallet', flaky)
+    summary = intel.poll_history(conn, FakeIntel(holdings(), history()), dict(ENV, BP_ENHANCED_PARSE='0'), wallets, NOW)
+    assert (summary['polled'], summary['failed']) == (2, 1)
+    assert summary['errors'][0].startswith('w2…: unreadable provider response: KeyError at intel.py:')

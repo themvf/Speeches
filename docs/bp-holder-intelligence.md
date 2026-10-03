@@ -68,8 +68,10 @@ python backpack_monitor.py --seed-labels        # committed wallet labels; daily
 ```
 
 **Cadence.** Cohort: daily, inside `backpack-monitor.yml` after its capture (GitHub-scheduled for 00:30 UTC;
-observed starting around 05:15). Holdings (the common-holdings view): **daily**, dispatched by the Vercel cron
-dispatcher (`github-dispatch.ts`, every 24 hours, no inputs, so `mode=holdings`). The dispatcher ignores runs
+observed starting around 05:15). Holdings and transaction history: **daily** (since 2026-10-03), dispatched by the
+Vercel cron dispatcher (`github-dispatch.ts`, every 24 hours, no inputs, so `mode=daily`): holdings, history poll,
+flags, alerts, reconciliation and retention, with the 100-credit Enhanced parse off (`BP_ENHANCED_PARSE=0`; swaps are
+`inferred_swap` from balance changes through known DEX programs). `mode=holdings` remains for a holdings-only read. The dispatcher ignores runs
 GitHub created only to skip: the gated hourly schedule creates one every few hours, and until 2026-10-02 they made
 the job look fresh, so no holdings refresh ran from 2026-09-27 to 2026-10-02. History and alerts: hourly only
 once `BP_INTEL_SCHEDULE=1`.
@@ -84,6 +86,11 @@ requests a day in 2026-09-24/26 runs, about 530k credits a month on its own, so 
 the hourly history schedule off. Requests are paced to 8 RPC calls/s and 1.5 DAS calls/s (`BP_RPC_CALLS_PER_SECOND`,
 `BP_DAS_CALLS_PER_SECOND`) to stay under the free plan's 10 and 2 per second. `BP_PRICE_TIME_MODE=exact` restores
 one lookup per priced token.
+
+Daily history estimate (published `getTransactionsForAddress` cost, 10 credits per call of up to 100 transactions):
+about 222 wallets x 1-3 poll pages plus up to 3 backfill pages for wallets still backfilling, roughly 2k-10k credits a
+day, about 100k-200k a month with holdings; with the daily Backpack job's ~530k that stays under the free plan's 1M.
+Measured per run in `backpack_provider_usage` (calls carried in batches are recorded alongside HTTP requests).
 
 Workflows: the daily `backpack-monitor.yml` refreshes the cohort after a successful capture.
 `bp-holder-intel.yml` on manual dispatch runs `mode=holdings` (default: cohort plus one portfolio read, no

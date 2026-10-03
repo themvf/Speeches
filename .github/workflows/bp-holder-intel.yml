@@ -2,15 +2,17 @@ name: BP holder intelligence
 # docs/bp-holder-intelligence.md. The daily backpack-monitor.yml run owns the schema (--migrate) and
 # creates the day's cohort version; this job never runs DDL and returns schema_pending until migrated.
 # Cadence: the Vercel cron dispatcher (apps/web/lib/server/github-dispatch.ts) presses workflow_dispatch once a
-# day with no inputs, i.e. mode=holdings (about 1k Helius credits). The hourly schedule below stays opt-in.
+# day with no inputs, i.e. mode=daily: holdings plus transaction history, flags, alerts and reconciliation, with the
+# 100-credit Enhanced parse off (swaps are inferred from balance changes through known DEX programs). The hourly
+# schedule below stays opt-in.
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'holdings = cohort + one portfolio read (no transaction history); hourly = holdings, history poll and alerts; feasibility = Milestone 1 read-only provider probe'
+        description: 'daily = holdings, transaction history, alerts (Enhanced parse off); holdings = cohort + one portfolio read only; hourly = as daily with Enhanced parse per BP_ENHANCED_PARSE; feasibility = Milestone 1 read-only probe'
         type: choice
-        options: [holdings, hourly, feasibility]
-        default: holdings
+        options: [daily, holdings, hourly, feasibility]
+        default: daily
   schedule:
     - cron: '20 * * * *'
 permissions:
@@ -43,6 +45,8 @@ jobs:
       BP_HISTORY_BACKFILL_PAGES_PER_RUN: ${{ vars.BP_HISTORY_BACKFILL_PAGES_PER_RUN || '3' }}
       BP_HISTORY_MAX_BACKFILL_PAGES: ${{ vars.BP_HISTORY_MAX_BACKFILL_PAGES || '30' }}
       BP_FEASIBILITY_MAX_REQUESTS: ${{ vars.BP_FEASIBILITY_MAX_REQUESTS || '400' }}
+      # Enhanced parse costs 100 credits a request; off unless the repository variable turns it on (hourly mode only).
+      BP_ENHANCED_PARSE: ${{ (github.event_name == 'schedule' || inputs.mode == 'hourly') && vars.BP_ENHANCED_PARSE || '0' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,7 +60,7 @@ jobs:
         shell: bash
         run: python backpack_monitor.py --bp-intel --bp-steps portfolio,maintenance | tee bp-intel.jsonl
       - name: Portfolio read, history poll, flags, alerts, reconciliation and retention
-        if: github.event_name == 'schedule' || inputs.mode == 'hourly'
+        if: github.event_name == 'schedule' || inputs.mode == 'hourly' || inputs.mode == 'daily'
         shell: bash
         run: python backpack_monitor.py --bp-intel | tee bp-intel.jsonl
       - name: Milestone 1 feasibility probe (read-only; no database writes)

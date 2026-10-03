@@ -347,6 +347,11 @@ def poll_history(conn, p, env, wallets, now=None):
             summary['failed'] += 1
             summary['errors'].append(f"{w['wallet_address'][:6]}…: {_safe(error)}")
             if 'budget exhausted' in str(error): break
+        except (AttributeError, KeyError, TypeError, ValueError) as error:
+            # One wallet's malformed history is that wallet's failure, recorded with where it happened; the rest are polled.
+            conn.rollback()
+            summary['failed'] += 1
+            summary['errors'].append(f"{w['wallet_address'][:6]}…: unreadable provider response: {_safe(error)}")
     summary['errors'] = summary['errors'][:20]
     return summary
 
