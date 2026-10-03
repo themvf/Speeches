@@ -1,5 +1,8 @@
 import {neon} from '@neondatabase/serverless';
 import {LIVE_STATUS,withAmounts,type IntelPayload,type IntelQuery,type IntelRow} from '@/lib/bp-intel';
+import {BP_MINT} from '@/lib/backpack';
+import {COINS,coinConfig} from '@/lib/crypto-coins';
+import {coinActivity,copyPasteGroups,genuinePosts,socialDays} from '@/lib/bp-social';
 
 /** Read-only BP holder intelligence. Never runs DDL; returns schema_pending until the collector migrates.
  *  Every template below is also executed by tests/test_bp_intel_integration.py against PostgreSQL. */
@@ -153,6 +156,69 @@ export async function readBpIntel(q:IntelQuery):Promise<IntelPayload>{
    sql`SELECT * FROM bp_tracked_assets WHERE network='solana-mainnet' AND mint=${mint}::text`,
   ]);
   rows=withAmounts('token',holders);extra.asset=asset;
+ }
+ if(q.section==='social'){
+  const tables=await sql`SELECT to_regclass('public.crypto_social_posts') AS posts,to_regclass('public.crypto_rolling_windows') AS rolling`;
+  if(!tables[0]?.posts||!tables[0]?.rolling){extra.social_status=[{status:'not_started'}];return {status:'ready',section:q.section,meta,rows,extra};}
+  // Windows searched with today's BACKPACK query; earlier queries matched the plain word and are not coverage of it.
+  const prefix=coinConfig('BACKPACK').searchQuery+' ';
+  const solana=COINS.filter(c=>c.symbol!=='BACKPACK'&&c.network==='solana'&&c.address);
+  const elsewhere=COINS.filter(c=>c.network!=='solana');
+  const [posts,windows,holders,cohorts,trades,history,shared]=await Promise.all([
+   sql`SELECT DISTINCT p.id,p.text,p.url,p.posted_at,p.author_id,a.handle,a.followers FROM crypto_social_posts p
+       JOIN crypto_social_matches m ON m.post_id=p.id JOIN crypto_social_windows w ON w.id=m.window_id
+       JOIN crypto_social_accounts a ON a.id=p.author_id
+       WHERE w.coin='BACKPACK' AND p.posted_at>=date_trunc('day',now())-make_interval(days=>${days}::int-1)`,
+   sql`SELECT (w.start_at AT TIME ZONE 'UTC')::date::text AS day,count(*)::int AS windows,
+       count(*) FILTER(WHERE w.status='search_exhausted')::int AS done,count(*) FILTER(WHERE w.pages>0)::int AS searched
+       FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id
+       WHERE w.coin='BACKPACK' AND left(w.query,length(${prefix}))=${prefix} AND w.end_at<=now()
+       AND w.start_at>=date_trunc('day',now())-make_interval(days=>${days}::int) GROUP BY 1`,
+   sql`SELECT s.date::text AS day,s.unique_holders,s.holders_over_100,s.holders_complete
+       FROM backpack_asset_daily_snapshots s JOIN backpack_assets a ON a.id=s.asset_id
+       WHERE a.asset_type='bp' AND s.date>=current_date-${days}::int`,
+   sql`SELECT source_date::text AS day,version_id,entered,left_count FROM bp_cohorts
+       WHERE kind='current' AND source_date>=current_date-${days}::int`,
+   sql`SELECT (e.block_time AT TIME ZONE 'UTC')::date::text AS day,
+       count(DISTINCT e.wallet_address) FILTER(WHERE e.output_mint=${BP_MINT})::int AS bp_buyers,
+       count(DISTINCT e.wallet_address) FILTER(WHERE e.input_mint=${BP_MINT})::int AS bp_sellers
+       FROM bp_economic_events e JOIN bp_cohort_members m ON m.wallet_address=e.wallet_address AND m.version_id=${v} AND m.member
+       WHERE e.kind='swap' AND e.tier IN ('parsed_swap','inferred_swap') AND (e.output_mint=${BP_MINT} OR e.input_mint=${BP_MINT})
+       AND e.block_time>=date_trunc('day',now())-make_interval(days=>${days}::int-1) GROUP BY 1`,
+   sql`SELECT count(*) FILTER(WHERE c.backfill_status='complete')::int AS wallets,min(c.last_poll_at) FILTER(WHERE c.backfill_status='complete') AS through
+       FROM bp_cohort_members m JOIN bp_history_coverage c USING(wallet_address) WHERE m.version_id=${v} AND m.member`,
+   sql`WITH members AS (SELECT wallet_address FROM bp_cohort_members WHERE version_id=${v} AND member)
+       SELECT b.mint,max(t.symbol) AS symbol,count(*) FILTER(WHERE b.raw_amount>0)::int AS holders,
+       count(*) FILTER(WHERE b.value_usd>=${threshold})::int AS meaningful_holders
+       FROM bp_portfolio_balances b JOIN members USING(wallet_address)
+       LEFT JOIN bp_tracked_assets t ON t.network='solana-mainnet' AND t.mint=b.mint
+       WHERE b.run_id=${r}::uuid AND (b.mint=ANY(${solana.map(c=>c.address)}::text[]) OR upper(t.symbol)=ANY(${elsewhere.map(c=>c.symbol)}::text[]))
+       GROUP BY b.mint`,
+  ]);
+  const genuine=genuinePosts(posts as never);
+  rows=socialDays({days,now:new Date(),posts:genuine,windows:windows as never,holders:holders as never,cohorts:cohorts as never,
+   trades:trades as never,tradesThrough:(history[0]?.through as string|null)??null});
+  extra.campaigns=copyPasteGroups(genuine) as never;
+  extra.history=history;
+  // Coins the top holders share that the social tracker follows: by contract on Solana, or by ticker for a coin the
+  // tracker follows on another chain (labelled, since a Solana token with that ticker is not the same asset).
+  const linked=shared.map(h=>{const coin=solana.find(c=>c.address===h.mint)??elsewhere.find(c=>c.symbol===String(h.symbol??'').toUpperCase());
+   return coin?{...h,coin:coin.symbol,coin_label:coin.label,linked_by:coin.network==='solana'?'contract':`ticker (tracker follows ${coin.networkLabel})`}:null;}).filter(Boolean) as IntelRow[];
+  const coins=[...new Set(linked.map(l=>String(l.coin)))];
+  if(coins.length){
+   const [recent,coverage]=await Promise.all([
+    sql`SELECT DISTINCT w.coin,p.id,p.text,p.author_id,p.posted_at FROM crypto_social_posts p
+        JOIN crypto_social_matches m ON m.post_id=p.id JOIN crypto_social_windows w ON w.id=m.window_id
+        WHERE w.coin=ANY(${coins}::text[]) AND p.posted_at>=now()-interval '7 days'`,
+    sql`SELECT w.coin,max(w.end_at) FILTER(WHERE w.status='search_exhausted') AS searched_through,
+        count(*) FILTER(WHERE w.status IN ('pending','partial') AND w.end_at>=now()-interval '7 days' AND w.end_at<=now())::int AS unsearched_windows_7d
+        FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE w.coin=ANY(${coins}::text[]) GROUP BY w.coin`,
+   ]);
+   const activity=coinActivity(recent as never),cov=new Map(coverage.map(c=>[String(c.coin),c]));
+   extra.shared=linked.map((l):IntelRow=>({...l,posts_7d:activity.get(String(l.coin))?.posts??0,accounts_7d:activity.get(String(l.coin))?.accounts??0,
+    searched_through:cov.get(String(l.coin))?.searched_through??null,unsearched_windows_7d:cov.get(String(l.coin))?.unsearched_windows_7d??null}))
+    .sort((a,b)=>Number(b.meaningful_holders)-Number(a.meaningful_holders));
+  }else extra.shared=[];
  }
  return {status:'ready',section:q.section,meta,rows,extra};
 }
