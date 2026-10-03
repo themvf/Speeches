@@ -34,6 +34,7 @@ test('CSV escapes quotes, separators and spreadsheet formulas but keeps signed n
  const csv=toCsv([{a:'x,"y"',b:'=HYPERLINK("http://evil")',c:'-12.5',d:null,e:{k:1}}],[['a','A'],['b','B'],['c','C'],['d','D'],['e','E']]);
  assert.equal(csv,'A,B,C,D,E\r\n"x,""y""","\'=HYPERLINK(""http://evil"")",-12.5,,"{""k"":1}"\r\n');
  assert.ok(toCsv([],CSV_COLUMNS.overlap).startsWith('Mint,Symbol,Name'));
+ assert.ok(toCsv([],CSV_COLUMNS.roster).trimEnd().endsWith('Exit reason,Holdings read,Holdings read at,Holdings read detail'));
 });
 
 test('display amounts are added without replacing stored raw strings',()=>{
