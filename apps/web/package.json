@@ -12,6 +12,7 @@
     "test:company-news": "node --experimental-strip-types --test lib/server/market-company-news.test.ts lib/market-news-signals.test.ts",
     "test:rss-sources": "node --experimental-strip-types --test lib/rss-source-catalog.test.ts",
     "test:rss-sources:live": "node --experimental-strip-types scripts/check-promoted-rss-sources.ts",
+    "test:github-dispatch": "node --experimental-strip-types --test lib/server/github-dispatch.test.ts",
     "test:fred-macro": "node --experimental-strip-types --test lib/server/fred-macro.test.ts",
     "test:macro-signals": "node --experimental-strip-types --test lib/macro-signals.test.ts",
     "test:macro-context": "node --experimental-strip-types --test lib/macro-context.test.ts",

@@ -69,7 +69,9 @@ python backpack_monitor.py --seed-labels        # committed wallet labels; daily
 
 **Cadence.** Cohort: daily, inside `backpack-monitor.yml` after its capture (GitHub-scheduled for 00:30 UTC;
 observed starting around 05:15). Holdings (the common-holdings view): **daily**, dispatched by the Vercel cron
-dispatcher (`github-dispatch.ts`, every 24 hours, no inputs, so `mode=holdings`). History and alerts: hourly only
+dispatcher (`github-dispatch.ts`, every 24 hours, no inputs, so `mode=holdings`). The dispatcher ignores runs
+GitHub created only to skip: the gated hourly schedule creates one every few hours, and until 2026-10-02 they made
+the job look fresh, so no holdings refresh ran from 2026-09-27 to 2026-10-02. History and alerts: hourly only
 once `BP_INTEL_SCHEDULE=1`.
 
 **Helius credits (published costs, 2026-09-27: standard RPC 1, each DAS request 10, Enhanced 100 per request,

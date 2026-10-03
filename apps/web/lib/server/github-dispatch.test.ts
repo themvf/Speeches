@@ -10,12 +10,17 @@ const NOW = new Date("2026-09-18T12:00:00Z");
 const runsBody = (createdAt: string | null) =>
   new Response(JSON.stringify({ workflow_runs: createdAt ? [{ created_at: createdAt }] : [] }), { status: 200 });
 
+type Run = { created_at: string; conclusion: string | null };
+// Serves the newest `per_page` runs, as the GitHub API does; a fresh Response per call.
+const history = (runs: Run[]) => (url: string) =>
+  new Response(JSON.stringify({ workflow_runs: runs.slice(0, Number(new URL(url).searchParams.get("per_page"))) }), { status: 200 });
+
 // Records every call so a test can assert a dispatch did or did not happen.
-function stub(handlers: { runs?: Response; dispatch?: Response }) {
+function stub(handlers: { runs?: Response | ((url: string) => Response); dispatch?: Response }) {
   const calls: string[] = [];
   const fetchImpl: FetchLike = async (url, init) => {
     calls.push(`${init?.method ?? "GET"} ${url.includes("/runs") ? "runs" : "dispatch"}`);
-    if (url.includes("/runs")) return handlers.runs ?? runsBody(null);
+    if (url.includes("/runs")) return typeof handlers.runs === "function" ? handlers.runs(url) : handlers.runs ?? runsBody(null);
     return handlers.dispatch ?? new Response(null, { status: 204 });
   };
   return { calls, fetchImpl };
@@ -43,6 +48,37 @@ test("a stale run is dispatched and 204 is the success signal", async () => {
   assert.equal(out.status, "dispatched");
   assert.equal(out.detail, "ref main");
   assert.deepEqual(calls, ["GET runs", "POST dispatch"]);
+});
+
+// bp-holder-intel.yml's hourly schedule is gated off, so GitHub creates a skipped run every few hours.
+const skipped = (at: string): Run => ({ created_at: at, conclusion: "skipped" });
+
+test("skipped schedule fires do not count as runs", async () => {
+  const daily: DispatchTarget = { workflow: "w.yml", everyMinutes: 24 * 60, reason: "test" };
+  const runs = [skipped("2026-09-18T11:20:00Z"), skipped("2026-09-18T08:20:00Z"), { created_at: "2026-09-17T06:00:00Z", conclusion: "success" }];
+  const { calls, fetchImpl } = stub({ runs: history(runs) });
+  const out = await dispatchIfDue(daily, { ...CREDS, now: NOW, fetchImpl });
+  assert.equal(out.status, "dispatched", "the last real run is 30 hours old");
+  assert.equal(out.lastRunAt, "2026-09-17T06:00:00.000Z");
+  assert.deepEqual(calls, ["GET runs", "GET runs", "POST dispatch"]);
+});
+
+test("a recent real run behind skipped fires still holds the dispatch back", async () => {
+  const daily: DispatchTarget = { workflow: "w.yml", everyMinutes: 24 * 60, reason: "test" };
+  const runs = [skipped("2026-09-18T11:20:00Z"), { created_at: "2026-09-18T06:00:00Z", conclusion: "failure" }];
+  const out = await dispatchIfDue(daily, { ...CREDS, now: NOW, fetchImpl: stub({ runs: history(runs) }).fetchImpl });
+  assert.equal(out.status, "skipped");
+  assert.equal(out.lastRunAt, "2026-09-18T06:00:00.000Z");
+});
+
+test("a window of only skipped fires is due, and a run in progress is never doubled", async () => {
+  const daily: DispatchTarget = { workflow: "w.yml", everyMinutes: 24 * 60, reason: "test" };
+  const allSkipped = Array.from({ length: 40 }, (_, i) => skipped(new Date(NOW.getTime() - (i + 1) * 3_600_000).toISOString()));
+  assert.equal((await dispatchIfDue(daily, { ...CREDS, now: NOW, fetchImpl: stub({ runs: history(allSkipped) }).fetchImpl })).status, "dispatched");
+  const running = [{ created_at: "2026-09-18T11:59:00Z", conclusion: null }, ...allSkipped];
+  const { calls, fetchImpl } = stub({ runs: history(running) });
+  assert.equal((await dispatchIfDue(daily, { ...CREDS, now: NOW, fetchImpl })).status, "skipped");
+  assert.deepEqual(calls, ["GET runs"], "an unfinished newest run is read once and counts");
 });
 
 test("a rejected dispatch reports the status rather than throwing", async () => {

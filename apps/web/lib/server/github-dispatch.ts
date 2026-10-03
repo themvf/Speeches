@@ -86,24 +86,46 @@ function githubHeaders(token: string): Record<string, string> {
   };
 }
 
+// How many recent runs to search when the newest one was skipped. A daily target behind an hourly
+// gated schedule sees at most 24 skipped fires per period, so 30 always reaches past the period.
+const SKIPPED_LOOKBACK = 30;
+
+type RunSummary = { created_at?: string; conclusion?: string | null };
+
+async function recentRuns(workflow: string, creds: Creds, fetchImpl: FetchLike, perPage: number): Promise<RunSummary[]> {
+  const url = `https://api.github.com/repos/${creds.owner}/${creds.repo}/actions/workflows/${workflow}/runs?per_page=${perPage}&exclude_pull_requests=true`;
+  const response = await fetchImpl(url, { headers: githubHeaders(creds.token) });
+  if (!response.ok) throw new Error(`run history unavailable (HTTP ${response.status})`);
+  const body = (await response.json()) as { workflow_runs?: RunSummary[] };
+  return body.workflow_runs ?? [];
+}
+
+function startedAt(run: RunSummary | undefined): Date | null {
+  if (!run?.created_at) return null;
+  const parsed = new Date(run.created_at);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 /**
  * When the workflow last started, from GitHub itself rather than from stored state. Using the real
  * run history means a fire from GitHub's own `schedule` trigger counts, so the two schedulers can
  * coexist without doubling up. Returns null when there is no run history to read.
+ *
+ * A run GitHub created only to skip (a `schedule` fire whose job-level `if` is off, such as
+ * bp-holder-intel.yml's opt-in hourly trigger) did no work, so it does not count. Counting it made a
+ * daily target look fresh forever: from 2026-09-27 to 2026-10-02 the BP holdings refresh never ran.
+ * Queued and in-progress runs have no conclusion yet and do count, so a running job is never doubled.
  */
 export async function lastRunAt(
   workflow: string,
   creds: Creds,
   fetchImpl: FetchLike = fetch as FetchLike,
 ): Promise<Date | null> {
-  const url = `https://api.github.com/repos/${creds.owner}/${creds.repo}/actions/workflows/${workflow}/runs?per_page=1`;
-  const response = await fetchImpl(url, { headers: githubHeaders(creds.token) });
-  if (!response.ok) throw new Error(`run history unavailable (HTTP ${response.status})`);
-  const body = (await response.json()) as { workflow_runs?: { created_at?: string }[] };
-  const created = body.workflow_runs?.[0]?.created_at;
-  if (!created) return null;
-  const parsed = new Date(created);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  const [latest] = await recentRuns(workflow, creds, fetchImpl, 1);
+  if (latest?.conclusion !== "skipped") return startedAt(latest);
+  const real = (await recentRuns(workflow, creds, fetchImpl, SKIPPED_LOOKBACK)).find((r) => r.conclusion !== "skipped");
+  // Every run in the window was skipped: the last real run is older than all of them, so treat it as due.
+  return startedAt(real);
 }
 
 /** True when the last run is old enough that this target is due. A null `last` always fires. */
