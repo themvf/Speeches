@@ -549,9 +549,14 @@ def test_social_templates_count_only_current_query_windows_and_backpack_posts(co
             cur.execute("INSERT INTO crypto_social_posts(id,author_id,text,posted_at,kind,url) VALUES (%s,%s,'Backpack $BP',%s,'original','https://x.com/p') ON CONFLICT DO NOTHING",
                         (pid, author, day + timedelta(hours=1)))
             cur.execute('INSERT INTO crypto_social_matches VALUES (%s,%s)', (pid, wid))
-    [posts, windows] = [t for t in web_templates() if "w.coin='BACKPACK'" in t]
+    backpack = [t for t in web_templates() if "w.coin='BACKPACK'" in t]
+    [posts] = [t for t in backpack if 'DISTINCT p.id' in t]
+    [windows] = [t for t in backpack if 'AS windows' in t]
+    [earlier] = [t for t in backpack if 'generate_series' in t]
     found = run_template(conn, posts, values())
     assert sorted(r['id'] for r in found) == ['p1', 'p2'], 'one row per post, from any of its windows'
     [row] = run_template(conn, windows, values())
     # Only windows searched with today's query count as coverage; old-query and retired windows do not.
     assert (row['day'], row['windows'], row['done'], row['searched']) == (str(day.date()), 2, 1, 1)
+    # The earlier query searched that day too (the retired, never-searched window does not count).
+    assert [r['day'] for r in run_template(conn, earlier, values())] == [str(day.date())]

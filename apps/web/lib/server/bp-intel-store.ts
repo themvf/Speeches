@@ -164,7 +164,7 @@ export async function readBpIntel(q:IntelQuery):Promise<IntelPayload>{
   const prefix=coinConfig('BACKPACK').searchQuery+' ';
   const solana=COINS.filter(c=>c.symbol!=='BACKPACK'&&c.network==='solana'&&c.address);
   const elsewhere=COINS.filter(c=>c.network!=='solana');
-  const [posts,windows,holders,cohorts,trades,history,shared]=await Promise.all([
+  const [posts,windows,earlier,holders,cohorts,trades,history,shared]=await Promise.all([
    sql`SELECT DISTINCT p.id,p.text,p.url,p.posted_at,p.author_id,a.handle,a.followers FROM crypto_social_posts p
        JOIN crypto_social_matches m ON m.post_id=p.id JOIN crypto_social_windows w ON w.id=m.window_id
        JOIN crypto_social_accounts a ON a.id=p.author_id
@@ -174,6 +174,10 @@ export async function readBpIntel(q:IntelQuery):Promise<IntelPayload>{
        FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id
        WHERE w.coin='BACKPACK' AND left(w.query,length(${prefix}))=${prefix} AND w.end_at<=now()
        AND w.start_at>=date_trunc('day',now())-make_interval(days=>${days}::int) GROUP BY 1`,
+   sql`SELECT DISTINCT d::date::text AS day FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id,
+       generate_series(date_trunc('day',w.start_at),w.end_at-interval '1 second',interval '1 day') d
+       WHERE w.coin='BACKPACK' AND left(w.query,length(${prefix}))<>${prefix} AND (w.pages>0 OR w.status='search_exhausted')
+       AND w.end_at>=date_trunc('day',now())-make_interval(days=>${days}::int)`,
    sql`SELECT s.date::text AS day,s.unique_holders,s.holders_over_100,s.holders_complete
        FROM backpack_asset_daily_snapshots s JOIN backpack_assets a ON a.id=s.asset_id
        WHERE a.asset_type='bp' AND s.date>=current_date-${days}::int`,
@@ -196,14 +200,21 @@ export async function readBpIntel(q:IntelQuery):Promise<IntelPayload>{
        GROUP BY b.mint`,
   ]);
   const genuine=genuinePosts(posts as never);
-  rows=socialDays({days,now:new Date(),posts:genuine,windows:windows as never,holders:holders as never,cohorts:cohorts as never,
+  rows=socialDays({days,now:new Date(),posts:genuine,windows:windows as never,earlier:earlier as never,holders:holders as never,cohorts:cohorts as never,
    trades:trades as never,tradesThrough:(history[0]?.through as string|null)??null});
   extra.campaigns=copyPasteGroups(genuine) as never;
   extra.history=history;
   // Coins the top holders share that the social tracker follows: by contract on Solana, or by ticker for a coin the
   // tracker follows on another chain (labelled, since a Solana token with that ticker is not the same asset).
-  const linked=shared.map(h=>{const coin=solana.find(c=>c.address===h.mint)??elsewhere.find(c=>c.symbol===String(h.symbol??'').toUpperCase());
-   return coin?{...h,coin:coin.symbol,coin_label:coin.label,linked_by:coin.network==='solana'?'contract':`ticker (tracker follows ${coin.networkLabel})`}:null;}).filter(Boolean) as IntelRow[];
+  // Many Solana tokens copy a ticker, so a ticker link keeps only the most-held token with that ticker, and only when
+  // at least three top holders hold $100+ of it. Contract links are exact and always kept.
+  const tickerBest=new Map<string,IntelRow>();
+  for(const h of shared){const sym=String(h.symbol??'').toUpperCase();if(!elsewhere.some(c=>c.symbol===sym)||solana.some(c=>c.address===h.mint))continue;
+   const best=tickerBest.get(sym);if(Number(h.meaningful_holders)>=3&&(!best||Number(h.meaningful_holders)>Number(best.meaningful_holders)))tickerBest.set(sym,h);}
+  const linked=shared.map(h=>{const byContract=solana.find(c=>c.address===h.mint);
+   const byTicker=byContract?undefined:elsewhere.find(c=>c.symbol===String(h.symbol??'').toUpperCase()&&tickerBest.get(c.symbol)?.mint===h.mint);
+   const coin=byContract??byTicker;
+   return coin?{...h,coin:coin.symbol,coin_label:coin.label,linked_by:byContract?'contract':`ticker (tracker follows ${coin.networkLabel})`}:null;}).filter(Boolean) as IntelRow[];
   const coins=[...new Set(linked.map(l=>String(l.coin)))];
   if(coins.length){
    const [recent,coverage]=await Promise.all([

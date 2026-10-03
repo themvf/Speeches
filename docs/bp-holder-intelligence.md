@@ -111,8 +111,9 @@ The worker never runs DDL; on an unmigrated database it returns `schema_pending`
 
 - **What counts as a Backpack post**: posts matching the BACKPACK registry entry (contract, `$BACKPACK`, or `$BP` with
   Backpack/Solana context). Saved search results that only contain the word "backpack" are excluded.
-- **Coverage, never zero by default**: each day shows whether its X search windows (current query only) were searched to
-  the end, partly, or not at all. An unsearched day with no saved posts reads "not searched".
+- **Coverage, never zero by default**: each day shows whether its X search windows with the current query were searched to
+  the end or partly; "earlier search only" when only the contract-only origin search or the pre-2026-10-03 query reached
+  it (counts are lower bounds: $BP was not searched); otherwise "not searched", and posts read "not searched", not zero.
 - **Daily row**: posts, accounts, copy-paste posts, search coverage, BP holders (all owners and $100+ economic holders
   from the daily capture, null when the capture is incomplete), day-on-day change, top-200 entered/left (current
   versions created that day), and top-200 BP buyers/sellers from classified swaps. Trades after the earliest
@@ -120,7 +121,8 @@ The worker never runs DDL; on an unmigrated database it returns `schema_pending`
 - **Copy-paste campaigns**: near-identical posts (first twelve words after removing links, mentions, numbers and
   addresses) from three or more accounts. The page states that who coordinated them is unknown.
 - **Coins the top holders share, on X**: coins in the selected portfolio read that the tracker follows, linked by
-  contract on Solana, or by ticker for a coin the tracker follows on another chain (labelled; not the same asset). Posts
+  contract on Solana, or by ticker for a coin the tracker follows on another chain (labelled; not the same asset; only the
+  most-held token with that ticker, and only with 3+ holders at $100+, because copycat tokens share tickers). Posts
   in the last 7 days count only where they match that coin, with the windows still unsearched.
 
 ## Committed wallet labels (2026-09-27)

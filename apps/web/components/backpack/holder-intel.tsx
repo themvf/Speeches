@@ -15,7 +15,7 @@ const TIER:Record<string,string>={parsed_swap:'Parsed swap',inferred_swap:'Infer
 const RULE:Record<string,string>={new_position:'New position',multiple_buyers:'Multiple buyers',accumulation:'Accumulation',major_sale:'Major sale'};
 const tokenName=(r:IntelRow,side?:'input'|'output')=>{const mint=String(side?r[`${side}_mint`]??'':r.mint??'');const symbol=side?r[`${side}_symbol`]:r.symbol;return mint==='native'?'SOL':String(symbol??short(mint));};
 type Tab='holdings'|'purchases'|'roster'|'alerts'|'social';
-const COVERAGE:Record<string,string>={complete:'Searched',partial:'Partly searched',not_searched:'Not searched'};
+const COVERAGE:Record<string,string>={complete:'Searched',partial:'Partly searched',earlier_query:'Earlier search only',not_searched:'Not searched'};
 const intelUrl=(scope:string,section:string,extra:Record<string,string>={})=>{const p=new URLSearchParams(scope);p.set('section',section);for(const [k,v] of Object.entries(extra))p.set(k,v);return `/api/market/crypto/backpack?${p}`;};
 type Detail={kind:'token'|'wallet';key:string;data?:IntelPayload;error?:string};
 
@@ -116,7 +116,7 @@ export function HolderIntel(){
      <td>{TIER[String(a.lowest_tier)]}</td><td>{String(a.finality)} · through {stamp(a.data_through)}</td><td><details><summary>{Array.isArray(a.signatures)?a.signatures.length:0} signatures</summary>{(Array.isArray(a.signatures)?a.signatures:[]).map(sig=><div key={String(sig)}><Tx sig={sig}/></div>)}<p>{String(a.detail)}</p></details></td></tr>)}</tbody></table>
     {!(data.extra.alerts??[]).length&&<p className={s.tableEmpty}>No alerts for this cohort version.</p>}</div></div>}
 
-   {tab==='social'&&<div><div className={s.intelBar}><p>Posts on X that match Backpack&apos;s token: the contract address, $BACKPACK, or $BP alongside Backpack or Solana. Search results that only contain the word &ldquo;backpack&rdquo; are left out. A day the search has not reached reads &ldquo;not searched&rdquo;, never zero. Holder counts come from each day&apos;s capture; top-200 BP buyers and sellers only from wallets with transaction history{social?.extra.history?.[0]?.through?`, observed through ${stamp(social.extra.history[0].through)}`:''}.</p>
+   {tab==='social'&&<div><div className={s.intelBar}><p>Posts on X that match Backpack&apos;s token: the contract address, $BACKPACK, or $BP alongside Backpack or Solana. Search results that only contain the word &ldquo;backpack&rdquo; are left out. A day the search has not reached reads &ldquo;not searched&rdquo;, never zero; &ldquo;earlier search only&rdquo; means it was searched before $BP was added (from 3 October), so its counts are lower bounds. Holder counts come from each day&apos;s capture; top-200 BP buyers and sellers only from wallets with transaction history{social?.extra.history?.[0]?.through?`, observed through ${stamp(social.extra.history[0].through)}`:''}.</p>
     <div className={s.toggles}>{csv('social',{days:'30'})}</div></div>
     {!social&&<p className={s.muted}>Loading posts on X…</p>}
     {social?.extra.social_status&&<p className={s.tableEmpty}>The X tracker has not been set up in this database.</p>}

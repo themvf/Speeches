@@ -49,3 +49,8 @@ test('activity on other coins counts only posts that match each coin', () => {
   {...post('2','stonks only go up','2026-09-11T02:00:00Z'),coin:'STONK'}]);
  assert.deepEqual(out.get('STONK'),{posts:1,accounts:1});
 });
+
+test('a day reached only by an earlier query is searched, not unsearched', () => {
+ const rows=socialDays({days:2,now:new Date('2026-09-12T15:00:00Z'),posts:[],windows:[],earlier:[{day:'2026-09-11'}],holders:[],cohorts:[],trades:[],tradesThrough:null});
+ assert.deepEqual(rows.map(r=>[r.day,r.x_coverage,r.posts]),[['2026-09-12','not_searched',null],['2026-09-11','earlier_query',0]]);
+});
