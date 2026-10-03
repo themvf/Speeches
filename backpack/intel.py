@@ -524,4 +524,6 @@ def run(conn, p=None, env=None, steps=('portfolio', 'history', 'alerts', 'reconc
         except Exception as error:
             conn.rollback()
             result['maintenance'] = 'failed: ' + _safe(error)
-    return dict(result, status=status, errors=errors)
+    # HTTP requests and the JSON-RPC calls they carried, per provider: the per-run credit measurement in the log.
+    usage = {k: dict(requests=v, calls=p.calls.get(k, 0)) for k, v in p.usage.items()}
+    return dict(result, status=status, errors=errors, usage=usage)

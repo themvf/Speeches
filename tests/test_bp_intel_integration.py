@@ -282,6 +282,8 @@ def test_worker_end_to_end_is_idempotent(conn):
     result = intel.run(conn, p, ENV, now=NOW)
     assert result['status'] == 'completed', result
     assert result['portfolio']['complete'] == 3 and result['history']['polled'] == 3
+    assert {'Helius RPC', 'Jupiter'} <= set(result['usage']) and result['usage']['Helius RPC']['requests'] > 0
+    assert all(set(u) == {'requests', 'calls'} for u in result['usage'].values())
     balances = {(r['wallet_address'], r['mint']): r for r in fetch_all(conn, 'SELECT * FROM bp_portfolio_balances')}
     assert balances[('w1', TOKEN)]['raw_amount'] == 10**18 + 7  # exact, never a float
     assert balances[('w1', TOKEN)]['value_usd'] == D(10**18 + 7) / D(10**6) * 2
