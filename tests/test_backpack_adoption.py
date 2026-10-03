@@ -124,3 +124,22 @@ def test_full_redemption_is_decline_not_missing_evidence():
     rows[-1].update(holders=0,whole_token_holders=0,multi_asset_holders=0)
     result=assess(rows,day,30)
     assert result['state']=='Declining' and result['median_supply_growth_pct']==-100
+
+
+def test_comparable_since_reports_restart_after_exclusion_change():
+    rows=history(10)
+    for r in rows[3:]:r['exclusion_fingerprint']='changed'
+    day=date.fromisoformat(rows[-1]['date'])
+    r=assess(rows,day,7)
+    assert r['state']=='Insufficient evidence' and r['observed_days']==8
+    assert r['comparable_since']==rows[3]['date'] and r['comparable_days']==7
+    assert r['comparable_break']=='exclusions_changed'
+    assert r['comparable_ready_on']==str(date.fromisoformat(rows[3]['date'])+timedelta(days=7))
+    rows[2]['exclusion_fingerprint']='changed'
+    clean=assess(rows,day,7)
+    assert clean['comparable_days']==8 and clean['comparable_ready_on'] is None and clean['state']!='Insufficient evidence'
+
+
+def test_comparable_since_without_a_change_has_no_break():
+    rows=history(3);r=assess(rows,date.fromisoformat(rows[-1]['date']),7)
+    assert r['comparable_since']==rows[0]['date'] and r['comparable_break'] is None

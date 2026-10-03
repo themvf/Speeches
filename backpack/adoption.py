@@ -65,6 +65,37 @@ def summarize(day, snapshots, holders, expected, comparisons=None):
     return summary
 
 
+def _comparability(indexed, day, period):
+    """How far back the newest observation is comparable: same securities, exclusions and method, no missing days.
+
+    A changed exclusion list or security set restarts the clock because earlier counts describe a different
+    population. Reporting the restart date keeps that visible instead of a bare "Insufficient evidence".
+    """
+    latest = indexed.get(str(day))
+    if latest is None:
+        return {}
+    since, days, cursor, break_reason = day, 0, day, None
+    while True:
+        row = indexed.get(str(cursor))
+        if row is None:
+            break_reason = 'missing_day' if days else None
+            break
+        if set(row['assets']) != set(latest['assets']):
+            break_reason = 'securities_changed'
+            break
+        if row['exclusion_fingerprint'] != latest['exclusion_fingerprint']:
+            break_reason = 'exclusions_changed'
+            break
+        if row['methodology'] != METHOD:
+            break_reason = 'methodology_changed'
+            break
+        since, days, cursor = cursor, days + 1, cursor - timedelta(days=1)
+    if not any(str(cursor) == k for k in indexed):
+        break_reason = None  # History simply begins here; nothing earlier was excluded.
+    return dict(comparable_since=str(since), comparable_days=days, comparable_break=break_reason,
+                comparable_ready_on=str(since + timedelta(days=period)) if days < period + 1 else None)
+
+
 def assess(history, day, period, env=None):
     env = env or {}
     settings = {name: Decimal(env.get(key, default)) for name, key, default in (
@@ -112,6 +143,7 @@ def assess(history, day, period, env=None):
     for i in range(period+1):
         if str(day-timedelta(days=i)) not in indexed: break
         result['observed_days'] += 1
+    result.update(_comparability(indexed, day, period))
     current = window(day)
     if current is None: return result
     result.update(current)
