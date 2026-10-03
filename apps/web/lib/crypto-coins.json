@@ -150,6 +150,10 @@
         [
           "\\bbackpack\\b",
           "\\b(?:token|coin|solana|sol|pump|ca)\\b"
+        ],
+        [
+          "\\$bp(?![a-z0-9_])",
+          "\\b(?:backpack|solana|sol|madlads|mad lads)\\b"
         ]
       ],
       "exclude": [],
@@ -158,9 +162,11 @@
         "$backpack"
       ],
       "official": [],
-      "searchQuery": "(\"$BACKPACK\" OR \"BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy\")",
-      "identityNote": "user-supplied address; not independently verified. Common word: bare 'backpack' needs token context",
-      "originFrom": "2026-06-01"
+      "searchQuery": "(\"BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy\" OR $BACKPACK OR ($BP (backpack OR solana OR sol OR madlads)))",
+      "identityNote": "Address verified 2026-09-22 against Backpack's official BP token page; the same mint as the Backpack monitor (docs/backpack-monitor.md). The token trades as $BP, which is also BP plc's ticker, so $BP needs Backpack/Solana context; bare 'backpack' needs token context",
+      "originFrom": "2026-06-01",
+      "requerySince": "2026-09-14T00:00:00Z",
+      "creditCeiling": 450000
     },
     {
       "symbol": "PERSPAD",

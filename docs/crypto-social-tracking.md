@@ -175,7 +175,12 @@ pinned pool appearing on GeckoTerminal; the SQL coin CHECK was dropped for that 
 
 Do not edit `searchQuery` for a coin with saved windows: window rows store the query text
 verbatim and pagination cursors belong to it (`tests/test_crypto_coins.py` pins the live
-ones). The dated, bounded campaign scripts (`crypto_social_pilot/history/catchup/dpons`)
+ones). The one supported way to change it is to set `requerySince` (an ISO time) in the same
+registry edit: `setup_requery` then retires the coin's unfinished old-query windows ending after
+that time, keeps finished ones as evidence, and adds a replacement window per old window with the
+new query, starting one minute earlier because windows are unique per coin and time range. Origin
+and focus windows are contract-only and untouched. A registry `creditCeiling` of 450000 gives a
+six-hour coin the larger campaign ceiling; its daily limit is unchanged. The dated, bounded campaign scripts (`crypto_social_pilot/history/catchup/dpons`)
 keep their own literals on purpose; they describe finished or fixed-scope collections.
 
 ## Collection-time ranking snapshots (2026-09-17)
@@ -474,3 +479,17 @@ Yggdrasil or "Askr and Embla" are excluded outright.
 `archiveStart` and `originFrom` are 2026-09-15, three days before graduation, so the first rolling
 run reaches back over the pre-launch chatter rather than starting at the pool. Cadence is the
 six-hour default; set `cadenceHours: 1` if it earns hourly collection like ZCAT/ZEC/KNOTS.
+
+## BACKPACK search tightened to $BP with context (2026-10-03)
+
+The BACKPACK mint is verified (Backpack's official BP token page, 2026-09-22) and is the same mint
+the Backpack monitor tracks. Its original query, `("$BACKPACK" OR "<mint>")`, matched the plain word:
+inside quotes X drops the `$`, so 2026-09-17..19 filled with school bags and politics (106 of 560
+saved posts matched the coin). Holders write `$BP`, which is also BP plc's ticker. The query is now
+`("<mint>" OR $BACKPACK OR ($BP (backpack OR solana OR sol OR madlads)))` with unquoted cashtags,
+the matcher accepts `$BP` only with Backpack/Solana context in the same post (fixtures pin `$BP`
+oil-major posts and `$BPCAT` as non-matches), `requerySince` 2026-09-14 re-searches the campaign's
+live windows with the new query, and `creditCeiling` 450000 keeps it collecting until the campaign
+ends (it would otherwise hit 30,000 credits around 2026-10-07; at 100,000 credits per dollar the
+daily limit bounds the extra spend to well under $1). Other coins still quote their cashtags; `$AD`
+is likely just as noisy.

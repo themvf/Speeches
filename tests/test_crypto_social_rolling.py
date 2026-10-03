@@ -191,3 +191,46 @@ def test_db_hourly_coins_get_hourly_windows_two_pages_and_the_larger_ceiling(db)
     setup(db,NOW)
     with db,db.cursor() as c:
         c.execute('SELECT credit_limit,used_credits FROM crypto_rolling_coins WHERE coin=%s',(coin,));assert c.fetchone()==(450000,20000)
+
+
+def test_registry_credit_ceiling_raises_a_six_hour_coin(db):
+    assert cadence('BACKPACK')==6 and ceiling('BACKPACK')==450000 and ceiling('PERSPAD')==30000
+    setup(db,NOW)
+    with db,db.cursor() as c:
+        c.execute("SELECT coin,credit_limit FROM crypto_rolling_coins WHERE coin IN ('BACKPACK','PERSPAD') ORDER BY coin")
+        assert c.fetchall()==[('BACKPACK',450000),('PERSPAD',30000)]
+
+
+def test_db_changed_query_requeries_live_windows_since_the_registry_date(db,monkeypatch):
+    import crypto_social_rolling as rolling
+    coin='BACKPACK';name,query,address,note=rolling.TRACKED[coin]
+    old='("$BACKPACK" OR "'+address+'")'
+    monkeypatch.setitem(rolling.TRACKED,coin,(name,old,address,note))
+    assert setup(db,NOW)
+    live="""SELECT w.id,w.start_at,w.end_at,w.query,w.status FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id
+        WHERE w.coin=%s AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id) ORDER BY w.end_at,w.start_at"""
+    with db,db.cursor() as c:
+        c.execute(live,(coin,));before=c.fetchall()
+        c.execute("UPDATE crypto_social_windows SET status='search_exhausted',pages=1 WHERE id=%s",(before[-1][0],))
+        c.execute('SELECT count(*) FROM crypto_origin_windows');origins=c.fetchone()[0]
+    assert before and all(w[3].startswith(old+' ') for w in before)
+    since=slot(NOW)-timedelta(hours=30)
+    monkeypatch.setitem(rolling.TRACKED,coin,(name,query,address,note))
+    monkeypatch.setitem(REGISTRY[coin],'requerySince',since.isoformat())
+    setup(db,NOW);setup(db,NOW)  # a replay adds nothing
+    with db,db.cursor() as c:
+        c.execute(live,(coin,));after=c.fetchall()
+        c.execute('SELECT count(*) FROM crypto_origin_windows');assert c.fetchone()[0]==origins
+    by_id={w[0]:w for w in after}
+    replaced=[w for w in before if w[2]>since]
+    assert replaced and len(replaced)<len(before)
+    for wid,start,end,_,_ in before:
+        status=by_id[wid][4]
+        if end<=since:assert status=='pending'  # before requerySince: untouched
+        elif wid==before[-1][0]:assert status=='search_exhausted'  # finished evidence is kept
+        else:assert status=='retired_query'
+    new=[w for w in after if w[3].startswith(query+' ')]
+    assert sorted((w[1],w[2]) for w in new)==sorted((s-timedelta(minutes=1),e) for _,s,e,_,_ in replaced)
+    assert all(w[4]=='pending' for w in new)
+    _,window,_,_=reserve(db,coin,NOW)
+    assert window[3].startswith(query+' ')  # collection now uses the current query
