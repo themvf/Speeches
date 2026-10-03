@@ -2,10 +2,15 @@ from datetime import datetime,timedelta,timezone
 import pytest
 from test_crypto_social_pilot import db
 from crypto_social_rolling import setup,reserve,collect_one,slot,cadence,ceiling,PAGES_PER_RUN,CAMPAIGN,TRACKED,REGISTRY
-ORIGINS=sum(1 for c in REGISTRY.values() if c.get('originFrom'))
 def windows(hours):return sum(hours//cadence(c)+1 for c in TRACKED)  # windows from anchor-hours to the anchor inclusive
 
 NOW=datetime(2026,9,15,12,17,tzinfo=timezone.utc)
+# setup_origin searches from originFrom to the first live window, so a coin whose originFrom is later (ASKR,
+# 2026-09-15) gets none at this fixed clock. Counting it anyway failed this gate from 2026-09-19 and kept the
+# rolling collector from running for two weeks.
+FIRST_LIVE=slot(NOW)-timedelta(hours=42)
+ORIGINS=sum(1 for c in REGISTRY.values()
+            if c.get('originFrom') and datetime.fromisoformat(c['originFrom']).replace(tzinfo=timezone.utc)<FIRST_LIVE)
 
 class Response:
     status_code=200
@@ -160,7 +165,7 @@ def test_db_origin_window_is_one_bounded_contract_search_per_new_coin(db):
     assert len(rows)==ORIGINS and all(r[0] in REGISTRY and REGISTRY[r[0]].get('originFrom') for r in rows)
     for coin,start,end,query in rows:
         assert start==datetime.fromisoformat(REGISTRY[coin]['originFrom']).replace(tzinfo=timezone.utc)
-        assert end==slot(NOW)-timedelta(hours=42) and query.startswith('"'+REGISTRY[coin]['address']+'"') and '$' not in query
+        assert end==FIRST_LIVE and query.startswith('"'+REGISTRY[coin]['address']+'"') and '$' not in query
     # Fresh live windows keep filling forward from the live start, never from the origin window's end.
     with db,db.cursor() as c:
         c.execute("SELECT count(*) FROM crypto_social_windows w JOIN crypto_rolling_windows r ON r.window_id=w.id WHERE w.coin=%s AND w.end_at>=%s AND NOT EXISTS(SELECT 1 FROM crypto_origin_windows o WHERE o.window_id=w.id)",(rows[0][0],slot(NOW)-timedelta(hours=42)))
