@@ -59,10 +59,12 @@ export async function readBpIntel(q:IntelQuery):Promise<IntelPayload>{
  if(q.section==='roster'){
   const [members,raw]=await Promise.all([
    sql`SELECT m.wallet_address,m.member,m.rank,m.raw_balance::text AS raw_balance,m.previous_rank,m.event,m.below_exit_runs,m.queued_since,
-       m.exit_reason,r.decimals,r.label,r.label_confidence,r.label_entity,r.label_source,l.label AS current_label,l.confidence AS current_confidence
+       m.exit_reason,r.decimals,r.label,r.label_confidence,r.label_entity,r.label_source,l.label AS current_label,l.confidence AS current_confidence,
+       COALESCE(w.status,CASE WHEN m.member THEN 'not_read' END) AS read_status,w.observed_at AS read_at,NULLIF(w.detail,'') AS read_detail
        FROM bp_cohort_members m JOIN bp_cohorts c USING(version_id)
        LEFT JOIN bp_holder_rankings r ON r.source_date=c.source_date AND r.ranking='filtered' AND r.wallet_address=m.wallet_address
        LEFT JOIN backpack_wallet_labels l ON l.wallet_address=m.wallet_address
+       LEFT JOIN bp_portfolio_wallets w ON w.wallet_address=m.wallet_address AND w.run_id=${r}::uuid
        WHERE m.version_id=${v} ORDER BY m.member DESC,m.rank NULLS LAST,m.wallet_address`,
    sql`SELECT rank,wallet_address,raw_balance::text AS raw_balance,decimals,label,label_confidence,label_entity,label_source,excluded
        FROM bp_holder_rankings WHERE ranking='raw' AND rank<=200

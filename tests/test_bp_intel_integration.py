@@ -495,3 +495,16 @@ def test_metadata_is_marked_checked_only_after_a_successful_lookup(conn):
     assert unknown['metadata_at'] is not None and 'no asset returned' in unknown['metadata_source']
     read(Partial(holdings()), NOW - timedelta(hours=1))
     assert len(Partial.asked) == 1  # nothing is stale an hour later, so DAS is not asked again
+
+
+def test_roster_reports_each_member_s_holdings_read(conn):
+    bp_capture(conn, NOW.date(), dict(w1=5, w2=4, w3=3))
+    version = cohorts.refresh_cohort(conn, ENV)['version_id']
+    wallets = [w for w in cohorts.tracked_wallets(conn) if w['wallet_address'] != 'w3']
+    run_id = read_at(conn, wallets, NOW, 0, MalformedFor('w2', holdings()))
+    [roster] = [t for t in web_templates() if 'read_status' in t]
+    rows = {r['wallet_address']: r for r in run_template(conn, roster, values(version, run_id))}
+    assert rows['w1']['read_status'] == 'complete' and rows['w1']['read_detail'] is None and rows['w1']['read_at'] == NOW
+    assert rows['w2']['read_status'] == 'unavailable' and rows['w2']['read_detail'].startswith('unreadable provider response')
+    # A member the run never read says so; it is never shown as a read that found nothing.
+    assert rows['w3']['read_status'] == 'not_read' and rows['w3']['read_at'] is None
