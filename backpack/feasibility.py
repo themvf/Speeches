@@ -61,7 +61,7 @@ def compare_history(p, address, now):
     token_only = sorted(set(changed) - set(direct))
     evidence = []
     for sig in token_only[:5]:
-        tx = p.rpc('getTransaction', [sig, {'encoding': 'jsonParsed', 'maxSupportedTransactionVersion': 0, 'commitment': 'finalized'}])
+        tx = p.rpc('getTransaction', [sig, {'encoding': 'jsonParsed', 'maxSupportedTransactionVersion': 1, 'commitment': 'finalized'}])
         keys, _ = ev.account_keys(tx or {})
         evidence.append(dict(signature=sig, owner_in_account_keys=address in keys, in_enhanced_history=sig in enhanced))
     closed = closed_account_check(p, address, window)

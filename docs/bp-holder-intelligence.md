@@ -105,7 +105,9 @@ Configuration (environment or repository variables): `BP_COHORT_SIZE` 200, `BP_C
 `BP_HISTORY_BACKFILL_PAGES_PER_RUN` 5 (workflow 3), `BP_HISTORY_MAX_BACKFILL_PAGES` 30, `BP_HISTORY_PAGE_SIZE` 100,
 `BP_INTEL_MAX_REQUESTS` 2500, `BP_MAX_TOKEN_ACCOUNTS` 10000, `BP_DUST_USD` 1, `BP_INCIDENTAL_LAMPORTS` 3000000,
 `BP_RAW_TX_RETENTION_DAYS` 45, `BP_PORTFOLIO_RETENTION_DAYS` 90, `BP_ALERT_LOOKBACK_HOURS` 48,
-`BP_RECENT_LAUNCH_DAYS` 14, `BP_ENHANCED_PARSE` 1, `BP_RPC_BATCH` 1. Web: `BP_MEANINGFUL_USD` 100.
+`BP_RECENT_LAUNCH_DAYS` 14, `BP_ENHANCED_PARSE` 1 (the workflow sets 0 outside hourly mode), `BP_RPC_BATCH` 1,
+`BP_MAX_TX_VERSION` 1 (was 0 until 2026-10-03: mainnet now has version-1 transactions, and Helius refused the whole
+history of any wallet that had one, error -32015, failing 51 of 222 cohort history reads). Web: `BP_MEANINGFUL_USD` 100.
 
 The worker never runs DDL; on an unmigrated database it returns `schema_pending`. The web reader returns
 `schema_pending` too, so deploy order does not matter. Worker exclusion uses the `bp_intel` lease row.
