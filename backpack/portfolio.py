@@ -43,20 +43,36 @@ def _camel_to_snake(name):
     return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
 
 
+def _parsed_info(account):
+    """The jsonParsed token-account info, or None when the provider returned the account unparsed. Helius returned
+    raw ['<base64>', 'base64'] data for one cohort wallet's account on 2026-10-03 that the public RPC parses."""
+    data = account.get('account', {}).get('data') if isinstance(account, dict) and isinstance(account.get('account'), dict) else None
+    parsed = data.get('parsed') if isinstance(data, dict) else None
+    info = parsed.get('info') if isinstance(parsed, dict) else None
+    return info if isinstance(info, dict) else None
+
+
 def parse_accounts(owner, accounts, program):
-    """jsonParsed getTokenAccountsByOwner rows -> {mint: holding}. Nonzero balances plus confidential
-    accounts, whose encrypted balance cannot be read (visibility 'partial', never zero)."""
-    holdings, anomalies = {}, []
+    """jsonParsed getTokenAccountsByOwner rows -> ({mint: holding}, anomalies, unread). Nonzero balances plus
+    confidential accounts, whose encrypted balance cannot be read (visibility 'partial', never zero). `unread` counts
+    accounts whose balance could not be read at all; the caller marks the read partial, never complete."""
+    holdings, anomalies, unread = {}, [], 0
     for account in accounts:
-        info = (((account.get('account') or {}).get('data') or {}).get('parsed') or {}).get('info') or {}
-        amount = (info.get('tokenAmount') or {}).get('amount')
-        decimals = (info.get('tokenAmount') or {}).get('decimals')
+        pubkey = account.get('pubkey') if isinstance(account, dict) else None
+        info = _parsed_info(account)
+        if info is None:
+            unread += 1
+            anomalies.append(f'{pubkey}: account returned unparsed; its balance is unknown')
+            continue
+        token_amount = info.get('tokenAmount') if isinstance(info.get('tokenAmount'), dict) else {}
+        amount, decimals = token_amount.get('amount'), token_amount.get('decimals')
         mint = info.get('mint')
         if info.get('owner') != owner:
-            anomalies.append(f"{account.get('pubkey')}: parsed owner differs from requested owner")
+            anomalies.append(f"{pubkey}: parsed owner differs from requested owner")
             continue
         if not mint or not isinstance(amount, str) or not amount.isdigit() or type(decimals) is not int or not 0 <= decimals <= 18:
-            anomalies.append(f"{account.get('pubkey')}: unparseable token amount")
+            unread += 1
+            anomalies.append(f"{pubkey}: unparseable token amount; its balance is unknown")
             continue
         extensions = sorted(_camel_to_snake(str(e.get('extension'))) for e in info.get('extensions') or [] if isinstance(e, dict))
         confidential = 'confidential_transfer_account' in extensions
@@ -68,14 +84,14 @@ def parse_accounts(owner, accounts, program):
             anomalies.append(f'{mint}: token accounts disagree on decimals; later account ignored')
             continue
         holding['raw'] += raw
-        ui = number((info.get('tokenAmount') or {}).get('uiAmountString'))
+        ui = number(token_amount.get('uiAmountString'))
         if ui is None: holding['ui_complete'] = False
         else: holding['ui'] += ui
         holding['frozen'] = holding['frozen'] or info.get('state') == 'frozen'
         if confidential: holding['visibility'] = 'partial'
-        holding['accounts'].append(dict(address=account.get('pubkey'), amount=amount, state=info.get('state'),
+        holding['accounts'].append(dict(address=pubkey, amount=amount, state=info.get('state'),
                                         extensions=extensions))
-    return holdings, anomalies
+    return holdings, anomalies, unread
 
 
 def wallet_read(owner, sol, legacy, token2022, max_accounts=10000):
@@ -87,10 +103,10 @@ def wallet_read(owner, sol, legacy, token2022, max_accounts=10000):
         if not isinstance(rows, list):
             statuses[key] = 'failed'
             continue
-        statuses[key] = 'ok'
         accounts += len(rows)
         slots.append(((result or {}).get('context') or {}).get('slot'))
-        parsed, notes = parse_accounts(owner, rows, program)
+        parsed, notes, unread = parse_accounts(owner, rows, program)
+        statuses[key] = 'partial' if unread else 'ok'  # an unreadable account is an unknown balance, never an absent one
         anomalies += notes
         for mint, holding in parsed.items():
             if mint in holdings:  # One mint belongs to one program; a repeat is a provider anomaly.
@@ -109,7 +125,7 @@ def wallet_read(owner, sol, legacy, token2022, max_accounts=10000):
         status, holdings = 'oversized', {}
         anomalies.append(f'{accounts} token accounts exceed the {max_accounts} limit; balances not stored (exchange-like wallet)')
     elif token_reads == ['failed', 'failed']: status = 'unavailable'
-    elif 'failed' in token_reads or statuses['sol_status'] == 'failed': status = 'partial'
+    elif any(s != 'ok' for s in token_reads) or statuses['sol_status'] == 'failed': status = 'partial'
     else: status = 'complete'
     known = [s for s in slots if isinstance(s, int)]
     return dict(wallet_address=owner, status=status, holdings=holdings, token_accounts=accounts,
