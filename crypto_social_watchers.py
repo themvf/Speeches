@@ -99,14 +99,50 @@ def collect_one(conn,key,account,now,fetch=None):
             cur.execute("UPDATE crypto_social_requests SET status='saved',estimated_credits=%s,returned_count=%s,accepted_count=%s WHERE id=%s",(estimated,returned,accepted,rid))
             cur.execute('UPDATE crypto_watcher_campaign SET used_credits=used_credits-%s WHERE id=%s',(300-estimated,CAMPAIGN))
         print(json.dumps({'account':account,'saved':accepted,'estimated_credits':estimated}),flush=True)
-    except Exception:
-        with conn,conn.cursor() as cur:cur.execute("UPDATE crypto_social_requests SET status='uncertain',error='watcher_search_failed' WHERE id=%s",(rid,))
-        raise RuntimeError(f'Watcher request {rid} uncertain; reservation retained; inspect ledger before continuing.') from None
+    except Exception as exc:
+        # Record what failed so an operator can tell a one-off from a failure that will recur. The API key travels in a
+        # header, never the URL; request exceptions still report only their type, as the rolling collector does.
+        detail=type(exc).__name__ if isinstance(exc,requests.RequestException) else f'{type(exc).__name__}: {str(exc)[:300]}'
+        with conn,conn.cursor() as cur:cur.execute("UPDATE crypto_social_requests SET status='uncertain',error=%s WHERE id=%s",('watcher_search_failed: '+detail,rid))
+        raise RuntimeError(f'Watcher request {rid} uncertain ({detail}); reservation retained; inspect ledger before continuing.') from None
     return True
 
 
+def account_failed_request(conn,rid):
+    """Operator-reviewed recovery for one uncertain watcher search, so the shared ledger stops blocking every collector.
+
+    The provider may have charged and the response was never stored, so the whole reservation stays spent (no refund)
+    and nothing is marked saved. The window is left as it was, so a later run searches it again."""
+    with conn,conn.cursor() as cur:
+        cur.execute('SELECT id FROM crypto_social_pilot WHERE id=%s FOR UPDATE',(PILOT,))
+        cur.execute('''SELECT r.status,r.endpoint,r.reserved_credits,r.parameters,r.error,r.requested_at FROM crypto_social_requests r
+            JOIN crypto_watcher_calls c ON c.request_id=r.id WHERE r.id=%s FOR UPDATE OF r''',(rid,))
+        row=cur.fetchone()
+        if not row or row[1]!='watcher_search':raise ValueError('Not a watcher search request')
+        status,_,reserved,parameters,error,requested_at=row
+        review=dict(request=rid,account=(parameters or {}).get('account'),query=(parameters or {}).get('query'),
+                    requested_at=requested_at,recorded_error=error)
+        if status=='failed_charged':
+            print(json.dumps(dict(review,already_reconciled=True),default=str),flush=True);return
+        if status!='uncertain':raise ValueError('Only an uncertain watcher search can be reconciled')
+        cur.execute('SELECT count(*) FROM crypto_social_snapshots WHERE request_id=%s',(rid,))
+        if cur.fetchone()[0]:raise ValueError('Saved post evidence exists for this request; needs separate review')
+        cur.execute("""UPDATE crypto_social_requests SET status='failed_charged',estimated_credits=reserved_credits,
+            error=coalesce(error,'')||' | Operator reviewed: full reservation charged conservatively; no saved data; actual provider charge unknown'
+            WHERE id=%s""",(rid,))
+        print(json.dumps(dict(review,conservative_credits_retained=reserved,refund=0,data_saved=False),default=str),flush=True)
+
+
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--execute',action='store_true');args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--execute',action='store_true')
+    p.add_argument('--account-failed-request',type=int,help='Reconcile one reviewed uncertain watcher search, then stop (no collection)')
+    args=p.parse_args()
+    if args.account_failed_request:
+        import psycopg2
+        conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)
+        try:account_failed_request(conn,args.account_failed_request)
+        finally:conn.close()
+        return
     if not args.execute:print(json.dumps({'accounts':ACCOUNTS,'every_hours':2,'ceiling':LIMIT,'days':30,'max_pages_per_account_per_run':2,'paid_calls':0}));return
     import psycopg2
     conn=psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=15)

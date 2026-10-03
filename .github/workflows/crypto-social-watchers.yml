@@ -6,6 +6,11 @@ on:
   schedule:
     - cron: '37 */2 * * *'
   workflow_dispatch:
+    inputs:
+      account_failed_request:
+        description: 'Operator recovery: reconcile this reviewed uncertain watcher request id (full reservation kept, no refund), then stop without collecting'
+        required: false
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -55,7 +60,13 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install 'psycopg2-binary>=2.9,<3' 'requests>=2.31,<3'
+      - name: Reconcile a reviewed uncertain watcher request (operator input; no provider calls)
+        if: github.event_name == 'workflow_dispatch' && inputs.account_failed_request != ''
+        env:
+          REQUEST_ID: ${{ inputs.account_failed_request }}
+        run: python crypto_social_watchers.py --account-failed-request "$REQUEST_ID"
       - name: Collect ten watcher accounts within their separate 150000-credit pilot
+        if: github.event_name != 'workflow_dispatch' || inputs.account_failed_request == ''
         run: python crypto_social_watchers.py --execute
       - name: Snapshot watcher rankings from every saved row (no provider calls)
         if: always()
