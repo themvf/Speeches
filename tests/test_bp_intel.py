@@ -284,6 +284,19 @@ def test_token2022_confidential_and_interest_bearing_balances():
     assert holdings[TOKA]['raw'] == 1_000000 and holdings[TOKA]['ui'] == D('1.05')  # display amount kept separately
 
 
+def test_unexpected_errors_say_where_they_were_raised_without_their_data():
+    from backpack import intel
+    from backpack.providers import SourceError
+    try: pf.wallet_read(OWNER, (None, None), (['unexpected'], None), (None, 'rpc_error'))
+    except AttributeError as error: detail = intel._safe(error)
+    assert detail.startswith("AttributeError ('list' object has no attribute 'get') at portfolio.py:") and 'in wallet_read' in detail
+    try: cohorts.config(dict(BP_COHORT_SIZE='secret-looking value'))
+    except ValueError as error: detail = intel._safe(error)
+    # The innermost frame is config, or its comprehension on Python versions that keep comprehension frames.
+    assert detail.startswith('ValueError at cohorts.py:') and 'secret' not in detail
+    assert intel._safe(SourceError('Helius RPC: HTTP 429')) == 'Helius RPC: HTTP 429'
+
+
 def test_wallet_read_status_never_treats_failed_reads_as_absent():
     sol = (dict(context=dict(slot=10), value=5 * 10**9), None)
     ok = lambda rows: (dict(context=dict(slot=11), value=rows), None)
