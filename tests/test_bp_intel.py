@@ -522,6 +522,20 @@ def test_rpc_batch_fallback_counts_each_call_once():
     assert p.calls['Helius RPC'] == 2 and p.usage['Helius RPC'] == 3  # one rejected batch + two single calls
 
 
+def test_rpc_errors_keep_the_provider_code_and_message_but_never_the_url():
+    from backpack.providers import Providers, SourceError
+    class Reply:
+        def __init__(self, body): self.body, self.status_code, self.ok = body, 200, True
+        def json(self): return self.body
+    class Http:
+        def request(self, method, url, timeout, json=None, **kwargs):
+            return Reply({'jsonrpc': '2.0', 'id': 'backpack', 'error': {'code': -32603, 'message': 'Too many token accounts for address filter'}})
+    p = Providers({'HELIUS_API_KEY': 'secret-key'}, Http())
+    with pytest.raises(SourceError) as failure: p.rpc('getTransactionsForAddress', ['addr', {}])
+    assert str(failure.value) == 'Helius RPC: getTransactionsForAddress failed (-32603: Too many token accounts for address filter)'
+    assert 'secret-key' not in str(failure.value)
+
+
 def test_price_block_ages_only_look_up_blocks_near_the_hour_boundary():
     ref = T0
     estimated, exact = pf.price_block_ages([1_000_000, 1_000_000 - 7_000, 1_000_000 - 9_000, 1_000_000 - 20_000, 1_000_050, None],

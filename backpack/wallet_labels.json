@@ -97,6 +97,14 @@
       "confidence": "high",
       "source": "https://solscan.io/account/BM9CcyErJcu2mjrFvUsRRrD3snGeHDDVirJLvL6EjvMN",
       "notes": "No public tag. On-chain facts observed 2026-09-27: program-derived address (no private key), 177,118 token accounts, funded 1,023 other accounts, and dozens of disposals across many tokens within hours (31 of 49 major-sale alerts in the first production run). Classified as automated trading infrastructure, not a discretionary investor; the operator is not identified. Excluded from the BP holder cohort only; market makers stay included in securities adoption metrics."
+    },
+    {
+      "wallet_address": "APMCZRS9hatjUyiuPCt2kfTf1ZW6pmVdxQtaTSfqYLQj",
+      "label": "Liquidity Pool",
+      "entity": "Meteora DLMM BP pool (GeckoTerminal's pinned BP pool)",
+      "confidence": "confirmed",
+      "source": "https://solscan.io/account/APMCZRS9hatjUyiuPCt2kfTf1ZW6pmVdxQtaTSfqYLQj",
+      "notes": "On-chain account owner is the Meteora DLMM program (LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo), 904-byte pool state, holding 26,685 BP in vault HeLDzXecZNWX29Ctcd9MGzxUcnTyRYVKMMBvznNDjR81 (observed 2026-10-03). It is the pool GeckoTerminal lists for BP and the social tracker's market archive pins. Pool reserves, not an investor position; it was cohort rank 225 at the 2026-10-03 capture."
     }
   ]
 }
