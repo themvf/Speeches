@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   isDue,
   dueBoundary,
@@ -163,8 +164,8 @@ test("every target has exactly one cadence, a lane, and slot hours in range", ()
   }
 });
 
-// Paths are relative to apps/web, where the test script runs.
-const workflowsDir = path.join(process.cwd(), "..", "..", ".github", "workflows");
+// Resolved from this file, since CI runs it from the repo root and npm runs it from apps/web.
+const workflowsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", ".github", "workflows");
 const readWorkflow = (name: string) => fs.readFileSync(path.join(workflowsDir, name), "utf-8");
 
 test("each target's lane is the workflow's own concurrency group", () => {
