@@ -1,14 +1,13 @@
 name: Filing Catalyst Sync
 
 # SEC-50: 8-K + Form 4 catalyst chips for the tracked industry universe.
-# Every 2 hours during EDGAR acceptance hours (EDT-pinned, weekdays; the +1h
-# winter drift is harmless - the daily reconcile pass reads the complete
-# form.idx). Minute :35 dodges the :05 reddit sweep and :10 KPI watch.
+# Every 2 hours during EDGAR acceptance hours (weekdays 10-22 UTC plus a 00/02 UTC
+# evening wrap), and a reconcile at 09:00 UTC on weekdays that reads the complete
+# form.idx. Dispatched by the Vercel dispatcher at the top of the hour, with
+# mode passed explicitly since there is no cron string to infer it from.
 on:
-  schedule:
-    - cron: "35 10-23/2 * * 1-5"   # intraday detect (atom feed)
-    - cron: "35 0-2/2 * * 2-6"     # evening wrap (next-day UTC)
-    - cron: "50 9 * * 1-5"         # daily reconcile (yesterday's form.idx)
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
     inputs:
       mode:

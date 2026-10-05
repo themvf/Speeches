@@ -4,8 +4,8 @@ on:
     branches: [main]
     paths: ['crypto_market_pons.py', '.github/workflows/crypto-social-pons.yml']
   workflow_dispatch:
-  schedule:
-    - cron: '13 9 * * *'
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
 permissions:
   contents: read
 concurrency:

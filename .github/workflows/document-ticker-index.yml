@@ -8,8 +8,8 @@ name: Document Ticker Index
 # eyeball the resolved samples for false positives before anything is written.
 
 on:
-  schedule:
-    - cron: "45 5 * * *"   # after the 05:40 ET KPI reconcile, before the day's traffic
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
     inputs:
       backfill:

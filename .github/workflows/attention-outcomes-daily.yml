@@ -2,7 +2,7 @@ name: Attention Outcomes (Daily)
 
 # Scores Reddit attention against forward returns (enhancement 2).
 #
-# Runs after stock-attention-daily.yml's 00:15 UTC rollup, so the day's
+# Dispatched at 02:00 UTC, after stock-attention-daily.yml's 01:00 UTC rollup, so the day's
 # daily_stock_attention rows exist to seed outcomes from.
 #
 # Not behind ENABLE_GCS_SNAPSHOT_SCHEDULES: that gate exists for jobs whose
@@ -14,10 +14,15 @@ name: Attention Outcomes (Daily)
 # seeded well inside that window or the "who said it" half is lost for good.
 
 on:
-  schedule:
-    - cron: "10 1 * * *"
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
     inputs:
+      scheduled:
+        description: "Set by the Vercel dispatcher; treated like a schedule event by the enable switch"
+        required: false
+        type: string
+        default: "false"
       date:
         description: "Seed only this attention date (YYYY-MM-DD). Blank = rolling window."
         required: false
@@ -36,7 +41,7 @@ concurrency:
 
 jobs:
   score:
-    if: github.event_name != 'schedule' || vars.ENABLE_ATTENTION_OUTCOMES != 'false'
+    if: (github.event_name != 'schedule' && inputs.scheduled != 'true') || vars.ENABLE_ATTENTION_OUTCOMES != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 

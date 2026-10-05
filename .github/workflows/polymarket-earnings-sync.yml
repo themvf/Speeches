@@ -1,14 +1,12 @@
 name: Polymarket Earnings Sync
 
 # Three pulls daily (SEC-26 cadence, user-specified 2026-07-15):
-# 9:00am / 4:25pm / 9:00pm ET, pinned to EDT because GitHub cron is UTC-only
-# (winter runs drift 1h later in ET - harmless: ingestion is cursor-based, so
+# 13:00, 21:00 and 01:00 UTC (9am, 5pm after the close, and 9pm ET in summer;
+# an hour earlier in ET in winter - harmless: ingestion is cursor-based, so
 # cadence affects display freshness only, never data completeness).
 on:
-  schedule:
-    - cron: "0 13 * * *"    # 9:00am ET (EDT)
-    - cron: "25 20 * * *"   # 4:25pm ET (EDT) - just-after-close earnings prints
-    - cron: "0 1 * * *"     # 9:00pm ET (EDT, previous day) - after-hours flow
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
     inputs:
       backfill:
