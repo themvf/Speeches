@@ -1,8 +1,8 @@
 name: Reddit Attention Sweep (Hourly)
 
 on:
-  schedule:
-    - cron: "5 * * * *"   # offset from bloomberg-public-hourly's :00 to avoid pileup
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
     inputs:
       dry_run:

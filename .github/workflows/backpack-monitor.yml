@@ -4,8 +4,8 @@ on:
     branches: [main]
     paths: ['backpack/starter_universe.json', 'backpack/context_evidence.json', 'backpack/wallet_labels.json', 'backpack/collector.py', 'backpack/cohorts.py', 'backpack/registry.py', 'backpack/readiness.py', 'backpack/adoption.py', 'backpack/research.py', 'backpack_monitor.py', 'sql/backpack.sql', '.github/workflows/backpack-monitor.yml']
   workflow_dispatch:
-  schedule:
-    - cron: '30 0 * * *'
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
 permissions:
   contents: read
 concurrency:

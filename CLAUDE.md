@@ -36,6 +36,16 @@ The read-only workflow's optional `cohort_since` ISO timestamp reports fresh
 graduations separately from historical rolling metrics, including empty captures
 and actual opening lag. A successful capture is not proof of complete opening history.
 
+## Neon sleep window: all scheduled database jobs start at the top of the hour (2026-10-05)
+
+RegIntel's Neon compute suspends only after ~5 idle minutes, and jobs firing at scattered minutes kept it awake most of the day. Every scheduled workflow that touches the database is now started by the Vercel dispatcher (`apps/web/lib/server/github-dispatch.ts`, `/api/cron/dispatch-workflows`) **only during minutes 0-15 of each UTC hour**; outside that window the route makes no GitHub calls. Rules that are easy to break:
+
+- **Do not add a `schedule:` trigger to a database workflow.** Add a `DISPATCH_TARGETS` entry instead (`everyMinutes` or pinned UTC `slots`). A test fails if a dispatched workflow regains a schedule. The one deliberate exception is `macro-sync-watchdog.yml`: a watchdog started by the dispatcher could not notice the dispatcher stopping.
+- **`lane` must equal the workflow's `concurrency.group`** (tested). GitHub keeps only one pending run per group and cancels the rest, so the dispatcher starts at most one run per lane per tick and never while a lane-mate is running.
+- **Dispatched runs get input defaults that scheduled runs did not**, so targets pass `inputs` (`document-ticker-index` dry_run=false, `crypto-social-history` execute=true, `filing-catalyst-sync` mode, `financial-news-daily` ingest_limit="").
+- **Variable-gated workflows keep their off switch** via `inputs.scheduled == 'true'`, which their job `if` treats like a schedule event (tested). Workflows whose scheduled runs are switched off by a repo variable (agency sites, cyber, RSS full ingestion, Senate, Substack, SEC speech, CRS, connector gap, policy extraction, securities sources, daily health check) were deliberately left on their GitHub schedules: their fires skip without touching Neon, and moving them would bypass the switch.
+- The RSS refresh cron is hourly at minute 0 (the 03:00 UTC maintenance tick needs minute 0), with the FINRA firm rotation at 60-minute slots x 32 firms (~100h cycle, inside the 7-day news window). Tests pin both.
+
 ## Rates & Credit Intelligence
 
 The implementation strategy for the Market → Macro rates and credit workspace lives in [`docs/rates-credit-intelligence-strategy.md`](docs/rates-credit-intelligence-strategy.md). Follow its phased architecture, source hierarchy, interpretability requirements, and data-quality rules when extending rates, corporate credit, ratings, mortgages, or CDS coverage.

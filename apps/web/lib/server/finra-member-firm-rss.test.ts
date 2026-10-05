@@ -32,9 +32,11 @@ function cronIntervalMs(): number {
   const cron = (config.crons || []).find((entry) => entry.path === "/api/intel/rss-refresh");
   assert.ok(cron, "vercel.json must schedule /api/intel/rss-refresh");
 
-  const minuteField = cron.schedule.trim().split(/\s+/)[0];
+  const [minuteField, hourField] = cron.schedule.trim().split(/\s+/);
+  // Hourly at a fixed minute ("0 * * * *") is a 60-minute interval.
+  if (/^\d+$/.test(minuteField) && hourField === "*") return 60 * 60_000;
   const match = /^\*\/(\d+)$/.exec(minuteField);
-  assert.ok(match, `expected a */N minute field, got "${minuteField}"`);
+  assert.ok(match, `expected "*/N" or a fixed minute with an hourly hour field, got "${cron.schedule}"`);
   return Number(match[1]) * 60_000;
 }
 
@@ -53,7 +55,9 @@ test("a full rotation still fits inside the 7-day Google News window", () => {
   ) as { firms: Array<{ name?: string; rssUrl?: string }> };
 
   const firms = registry.firms.filter((firm) => firm.name && firm.rssUrl).length;
-  const batchSize = 16; // DEFAULT_BATCH_SIZE
+  const source = fs.readFileSync(path.join(process.cwd(), "lib/server/finra-member-firm-rss.ts"), "utf-8");
+  const batchSize = Number(/DEFAULT_BATCH_SIZE\s*=\s*(\d+)/.exec(source)?.[1]);
+  assert.ok(batchSize > 0, "DEFAULT_BATCH_SIZE must be declared as a number");
   const cycleMs = Math.ceil(firms / batchSize) * batchSlotMs();
   const sevenDaysMs = 7 * 24 * 60 * 60_000;
 
@@ -62,4 +66,13 @@ test("a full rotation still fits inside the 7-day Google News window", () => {
     `full rotation takes ${(cycleMs / 3_600_000).toFixed(1)}h, which must stay under the ` +
       `168h "when:7d" query window or firm news is missed outright`
   );
+});
+
+test("the rss-refresh cron stays on minute 0, where the 03:00 UTC maintenance tick can fire", () => {
+  const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "vercel.json"), "utf-8")) as {
+    crons?: Array<{ path: string; schedule: string }>;
+  };
+  const cron = (config.crons || []).find((entry) => entry.path === "/api/intel/rss-refresh");
+  assert.ok(cron);
+  assert.equal(cron.schedule.trim().split(/\s+/)[0], "0", "route.ts checks getUTCMinutes() === 0 at 03:00 UTC");
 });

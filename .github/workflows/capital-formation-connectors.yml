@@ -16,16 +16,21 @@ name: Capital Formation Connectors (6 Hour)
 #    job, so that would re-couple this to the ENABLE_GCS_SNAPSHOT_SCHEDULES
 #    gate it exists to escape - the exact bug, reintroduced.
 #
-# Own concurrency group plus a cron offset from connector-gap's "0 */6" keeps
-# the two apart. Default-ON: the variable is unset and unset != 'false', so
+# Own concurrency group keeps it apart from connector-gap. Dispatched every six
+# hours (00/06/12/18 UTC) by the Vercel dispatcher. Default-ON: the variable is unset and unset != 'false', so
 # this runs on merge; set ENABLE_CAPITAL_FORMATION_CONNECTORS=false to stop it
 # without touching the shared SEC-20 gate.
 
 on:
-  schedule:
-    # Offset from connector-gap-6hour.yml's "0 */6 * * *".
-    - cron: "20 */6 * * *"
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: "Set by the Vercel dispatcher; treated like a schedule event by the enable switch"
+        required: false
+        type: string
+        default: "false"
 
 permissions:
   contents: read
@@ -36,7 +41,7 @@ concurrency:
 
 jobs:
   extract:
-    if: github.event_name != 'schedule' || vars.ENABLE_CAPITAL_FORMATION_CONNECTORS != 'false'
+    if: (github.event_name != 'schedule' && inputs.scheduled != 'true') || vars.ENABLE_CAPITAL_FORMATION_CONNECTORS != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:

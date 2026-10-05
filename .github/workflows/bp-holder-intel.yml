@@ -3,8 +3,9 @@ name: BP holder intelligence
 # creates the day's cohort version; this job never runs DDL and returns schema_pending until migrated.
 # Cadence: the Vercel cron dispatcher (apps/web/lib/server/github-dispatch.ts) presses workflow_dispatch once a
 # day with no inputs, i.e. mode=daily: holdings plus transaction history, flags, alerts and reconciliation, with the
-# 100-credit Enhanced parse off (swaps are inferred from balance changes through known DEX programs). The hourly
-# schedule below stays opt-in.
+# 100-credit Enhanced parse off (swaps are inferred from balance changes through known DEX programs). The opt-in
+# hourly GitHub schedule was removed 2026-10-05 so nothing wakes Neon outside the dispatcher's top-of-hour window;
+# hourly cadence now means changing this target's everyMinutes in github-dispatch.ts.
 on:
   workflow_dispatch:
     inputs:
@@ -13,8 +14,8 @@ on:
         type: choice
         options: [daily, holdings, hourly, feasibility]
         default: daily
-  schedule:
-    - cron: '20 * * * *'
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
 permissions:
   contents: read
 concurrency:

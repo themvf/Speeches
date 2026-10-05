@@ -25,7 +25,7 @@
   "crons": [
     {
       "path": "/api/intel/rss-refresh",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/briefings/scheduled/run",

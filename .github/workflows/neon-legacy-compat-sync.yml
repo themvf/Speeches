@@ -1,11 +1,15 @@
 name: Daily Neon to Legacy Compatibility Sync
 
 on:
-  schedule:
-    # One bounded compatibility refresh per day while legacy readers migrate.
-    - cron: "43 9 * * *"
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
     inputs:
+      scheduled:
+        description: "Set by the Vercel dispatcher; treated like a schedule event by the enable switch"
+        required: false
+        type: string
+        default: "false"
       dry_run:
         description: "Report snapshot changes without uploading them"
         required: false
@@ -21,7 +25,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.event_name != 'schedule' || vars.ENABLE_NEON_LEGACY_COMPAT_SYNC == 'true'
+    if: (github.event_name != 'schedule' && inputs.scheduled != 'true') || vars.ENABLE_NEON_LEGACY_COMPAT_SYNC == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
