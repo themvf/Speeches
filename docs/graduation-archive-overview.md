@@ -1,5 +1,12 @@
 # Graduation Archive — program overview
 
+> **Status: PAUSED 2026-10-04 (owner decision).** Collection is on hold to let the RegIntel Neon
+> compute sleep: the 2-minute Solana sweep, 5-minute Robinhood sweep and 10-minute enrichment kept
+> the database awake around the clock. All three workflows keep only a manual Run button and are
+> out of the Vercel dispatcher. Data already collected is untouched. Launches during the pause are
+> lost for good (the feed reaches back only minutes), so the archive will have a gap. To resume,
+> restore the triggers and `DISPATCH_TARGETS` entries from the pausing commit's parent.
+
 Read this first if you are picking up any work on the launchpad archive. It explains what the
 program is for and the rules it is built on. The implementation details live in
 [`docs/graduation-archive-spec.md`](graduation-archive-spec.md) (Robinhood Chain) and
