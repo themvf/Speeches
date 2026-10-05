@@ -1,14 +1,12 @@
 name: Graduation Archive enrichment (Solana)
+# PAUSED 2026-10-04 (owner decision): the launch archive is on hold to let the RegIntel Neon
+# compute sleep. Its 2-minute Solana sweep kept the database awake around the clock. Automatic
+# triggers (push, schedule, and the Vercel dispatcher entry) are removed; Run workflow still
+# works by hand. To resume: restore the push/schedule block from git history and re-add the
+# DISPATCH_TARGETS entry in apps/web/lib/server/github-dispatch.ts.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'launchpad_archive.py'
-      - 'launchpad_chains.py'
-      - '.github/workflows/solana-enrich.yml'
   workflow_dispatch:
-  schedule:
-    - cron: '*/10 * * * *'
+
 permissions:
   contents: read
 # A separate workflow rather than another mode inside the 2-minute sweep, so it has its own

@@ -1,19 +1,12 @@
 name: Graduation Archive sweep (Solana)
+# PAUSED 2026-10-04 (owner decision): the launch archive is on hold to let the RegIntel Neon
+# compute sleep. Its 2-minute Solana sweep kept the database awake around the clock. Automatic
+# triggers (push, schedule, and the Vercel dispatcher entry) are removed; Run workflow still
+# works by hand. To resume: restore the push/schedule block from git history and re-add the
+# DISPATCH_TARGETS entry in apps/web/lib/server/github-dispatch.ts.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'launchpad_archive.py'
-      - 'launchpad_chains.py'
-      - 'sql/launchpad_archive.sql'
-      - '.github/workflows/solana-archive.yml'
   workflow_dispatch:
-  # Solana's feed is 5.8 minutes deep across all ten pages at 25 new pools/minute, so the sweep runs
-  # every two minutes and is driven by the Vercel cron pressing workflow_dispatch (see
-  # apps/web/lib/server/github-dispatch.ts). This cron is a fallback for dispatch failing, not a
-  # second scheduler - at the sweep cadence the two would compete and queue duplicate runs.
-  schedule:
-    - cron: '*/30 * * * *'
+
 permissions:
   contents: read
 # Separate group from the Robinhood archive on purpose: a Solana failure must never be able to stop
