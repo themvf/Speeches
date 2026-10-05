@@ -1,0 +1,85 @@
+name: Neon Preview Branch Cleanup
+
+# Every Vercel preview deployment gets its own Neon branch and nothing removed them: 79 branches
+# on 2026-10-04, two with an open PR, each past the plan's included ten billing $1.50/month. Keep
+# rules live in scripts/cleanup_neon_preview_branches.py.
+#
+# Automatic runs (PR close, daily sweep) only report until repository variable
+# NEON_PREVIEW_CLEANUP is set to `execute`. A manual dispatch with dry_run=false deletes regardless,
+# which is how the backlog is cleared after reviewing a dry run.
+on:
+  # pull_request_target runs main's copy of this file with secrets, and never checks out PR code,
+  # so it fires for every closed PR rather than only ones branched after this file existed.
+  pull_request_target:
+    types: [closed]
+  schedule:
+    # Catches preview branches whose git branch never had a PR. Drift is harmless here.
+    - cron: '40 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report only. Set to false to delete."
+        required: false
+        default: "true"
+      included_branches:
+        description: "Plan's included branches (10 Launch, 25 Scale), for the fee estimate"
+        required: false
+        default: "10"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  # Neon runs one operation per project at a time; overlapping runs would only collide on 423s.
+  group: neon-preview-branch-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Fork PRs never get a preview branch here, and their head names are not ours to act on.
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Deliberately no pip install: the script is stdlib-only.
+      - name: Clean up preview branches
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          INCLUDED: ${{ github.event.inputs.included_branches || '10' }}
+          AUTO_MODE: ${{ vars.NEON_PREVIEW_CLEANUP }}
+        run: |
+          set -euo pipefail
+          args=(--summary-path neon_branch_cleanup.json --included-branches "$INCLUDED")
+          if [ "$EVENT_NAME" = "pull_request_target" ]; then
+            [ -n "$HEAD_REF" ] || { echo "No head ref on this event"; exit 1; }
+            args+=(--branch "$HEAD_REF")
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$DRY_RUN" = "false" ]; then args+=(--execute); fi
+          elif [ "$AUTO_MODE" = "execute" ]; then
+            args+=(--execute)
+          fi
+          python scripts/cleanup_neon_preview_branches.py "${args[@]}"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-branch-cleanup-${{ github.run_id }}
+          path: neon_branch_cleanup.json
+          if-no-files-found: ignore
