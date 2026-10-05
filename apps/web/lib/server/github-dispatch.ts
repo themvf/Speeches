@@ -21,6 +21,10 @@ export type DispatchTarget = {
 
 // Only workflows whose value genuinely depends on cadence belong here. Everything else can ride
 // GitHub's own scheduler, where a few hours of drift costs nothing.
+// The Graduation Archive (launchpad-archive.yml every 5 min, solana-archive.yml every 2, solana-enrich.yml
+// every 10) is paused as of 2026-10-04: it kept Neon awake around the clock, about $31 of a $39 monthly
+// compute bill. Its workflows are disabled in GitHub as well. To resume, `gh workflow enable` all three and
+// restore their entries here from git history; launches during the pause are not recoverable.
 export const DISPATCH_TARGETS: DispatchTarget[] = [
   {
     workflow: "crypto-social-rolling.yml",
@@ -28,29 +32,11 @@ export const DISPATCH_TARGETS: DispatchTarget[] = [
     reason: "ZCAT/ZEC/KNOTS open one search window an hour; missed fires leave windows pending",
   },
   {
-    workflow: "launchpad-archive.yml",
-    everyMinutes: 5,
-    reason:
-      "GeckoTerminal's new_pools feed reached back only 11 minutes at the launch rate measured 2026-09-19, so a missed sweep loses launches permanently",
-  },
-  {
-    workflow: "solana-archive.yml",
-    everyMinutes: 2,
-    reason:
-      "Solana's feed is 5.8 minutes deep at 25 new pools/minute, and opening-trade capture is perishable: 300 trades spanned 33 seconds on a busy graduate",
-  },
-  {
     // A dispatch carries no inputs, so the workflow runs its default daily mode: holdings plus transaction history.
     workflow: "bp-holder-intel.yml",
     everyMinutes: 24 * 60,
     reason:
       "the top-200 BP holders' holdings and trades have no other refresh; GitHub delays the daily Backpack job by hours and drops fires",
-  },
-  {
-    workflow: "solana-enrich.yml",
-    everyMinutes: 10,
-    reason:
-      "graduations arrive at ~3.4/minute on Solana, so enrichment needs its own schedule to keep service rate above arrival rate",
   },
 ];
 

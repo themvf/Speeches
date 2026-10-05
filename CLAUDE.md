@@ -2,6 +2,12 @@
 
 ## Graduation Archive (cross-chain launchpad research) — START HERE for launchpad work
 
+**PAUSED 2026-10-04 to cut Neon cost.** The three collectors (`launchpad-archive.yml`, `solana-archive.yml`,
+`solana-enrich.yml`) are disabled in GitHub and removed from `DISPATCH_TARGETS` in
+`apps/web/lib/server/github-dispatch.ts`; together they kept the database awake 24/7 (~$31/month of compute).
+A gap in `launchpad_sweeps` from that date is the pause, not a failure, and launches during it are not recoverable.
+To resume: `gh workflow enable` all three and restore their dispatch targets from git history.
+
 The program overview lives in [`docs/graduation-archive-overview.md`](docs/graduation-archive-overview.md):
 what the cross-chain graduation archive is for, the question it exists to answer, and the rules it is
 built on. Read it before touching `launchpad_archive.py`, `launchpad_chains.py`,
@@ -35,6 +41,23 @@ before renewable state reads; state-only graduations retain a final capture rese
 The read-only workflow's optional `cohort_since` ISO timestamp reports fresh
 graduations separately from historical rolling metrics, including empty captures
 and actual opening lag. A successful capture is not proof of complete opening history.
+
+## Neon cost drivers (2026-10-04)
+
+Two things set the Neon bill (Launch plan); check both before tuning queries. **Preview branches**:
+the Vercel/Neon integration creates `preview/<git-branch>` for every preview deployment and nothing
+removed them. 77 had piled up (~$102/month) before they were deleted on 2026-10-04. Each branch past
+the plan's 10 included bills $1.50/month. `neon-preview-branch-cleanup.yml`
+(`scripts/cleanup_neon_preview_branches.py`) keeps it that way; its automatic runs only report until
+repository variable `NEON_PREVIEW_CLEANUP=execute`.
+**Always-on compute** (~$39/month until the archive was paused on 2026-10-04): from 2026-09-19 the Solana archive (2 min), Robinhood archive
+(5 min) and Solana enrichment (10 min) keep production awake 24/7 at a flat ~0.5 CU, double the 0.25
+floor. Neon's autoscaler sizes for the cache working set as well as CPU, so full-table scans on an
+always-on compute cost money every hour; check `neon inspect db seq-scans` before adding a query on a
+large archive table. Removing other wake-ups saved nothing while the archive ran; without it,
+`intelligence-fusion.yml` (15 min) and the rss-refresh cron (30 min) would keep it awake about half
+the time. Real billed numbers need the account-scoped Neon CLI (`neon api /consumption_history/v2/projects`);
+the repo's project-scoped `NEON_API_KEY` cannot read them.
 
 ## Rates & Credit Intelligence
 
