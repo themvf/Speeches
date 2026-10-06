@@ -1,8 +1,8 @@
 name: Rates And Credit Daily Snapshot
 
 on:
-  schedule:
-    - cron: "30 1 * * 2-6"
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
 
 permissions:

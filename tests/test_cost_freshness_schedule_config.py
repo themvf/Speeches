@@ -36,9 +36,13 @@ def test_finra_firm_rotation_matches_the_dispatcher_cadence() -> None:
     ]
     assert schedules, "vercel.json must schedule /api/intel/rss-refresh"
 
-    cron_match = re.match(r"^\*/(\d+)\s", schedules[0])
-    assert cron_match, f"expected a */N minute field, got {schedules[0]!r}"
-    cron_minutes = int(cron_match.group(1))
+    fields = schedules[0].split()
+    if re.fullmatch(r"\d+", fields[0]) and fields[1] == "*":
+        cron_minutes = 60  # hourly at a fixed minute, e.g. "0 * * * *"
+    else:
+        cron_match = re.match(r"^\*/(\d+)$", fields[0])
+        assert cron_match, f"expected */N or a fixed-minute hourly schedule, got {schedules[0]!r}"
+        cron_minutes = int(cron_match.group(1))
 
     assert slot_minutes == cron_minutes, (
         f"BATCH_SLOT_MS is {slot_minutes}m but the dispatcher runs every "

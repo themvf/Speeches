@@ -3,10 +3,11 @@
 ## Graduation Archive (cross-chain launchpad research) — START HERE for launchpad work
 
 **PAUSED 2026-10-04 to cut Neon cost.** The three collectors (`launchpad-archive.yml`, `solana-archive.yml`,
-`solana-enrich.yml`) are disabled in GitHub and removed from `DISPATCH_TARGETS` in
-`apps/web/lib/server/github-dispatch.ts`; together they kept the database awake 24/7 (~$31/month of compute).
-A gap in `launchpad_sweeps` from that date is the pause, not a failure, and launches during it are not recoverable.
-To resume: `gh workflow enable` all three and restore their dispatch targets from git history.
+`solana-enrich.yml`) are disabled in GitHub, have no schedule or push triggers, and are out of `DISPATCH_TARGETS`
+(#160); together they kept the database awake 24/7 (~$31/month of compute). A gap in `launchpad_sweeps` from that
+date is the pause, not a failure, and launches during it are not recoverable. To resume: `gh workflow enable` all
+three, then add them back as `DISPATCH_TARGETS` entries (not `schedule:` triggers; see the sleep-window section).
+Their 2-, 5- and 10-minute cadences would keep the database awake again; see `docs/graduation-archive-overview.md`.
 
 The program overview lives in [`docs/graduation-archive-overview.md`](docs/graduation-archive-overview.md):
 what the cross-chain graduation archive is for, the question it exists to answer, and the rules it is
@@ -54,10 +55,19 @@ repository variable `NEON_PREVIEW_CLEANUP=execute`.
 (5 min) and Solana enrichment (10 min) keep production awake 24/7 at a flat ~0.5 CU, double the 0.25
 floor. Neon's autoscaler sizes for the cache working set as well as CPU, so full-table scans on an
 always-on compute cost money every hour; check `neon inspect db seq-scans` before adding a query on a
-large archive table. Removing other wake-ups saved nothing while the archive ran; without it,
-`intelligence-fusion.yml` (15 min) and the rss-refresh cron (30 min) would keep it awake about half
-the time. Real billed numbers need the account-scoped Neon CLI (`neon api /consumption_history/v2/projects`);
+large archive table. Removing other wake-ups saved nothing while the archive ran; with it paused, the sleep window below
+is what lets the compute suspend. Real billed numbers need the account-scoped Neon CLI (`neon api /consumption_history/v2/projects`);
 the repo's project-scoped `NEON_API_KEY` cannot read them.
+
+## Neon sleep window: all scheduled database jobs start at the top of the hour (2026-10-05)
+
+RegIntel's Neon compute suspends only after ~5 idle minutes, and jobs firing at scattered minutes kept it awake most of the day. Every scheduled workflow that touches the database is now started by the Vercel dispatcher (`apps/web/lib/server/github-dispatch.ts`, `/api/cron/dispatch-workflows`) **only during minutes 0-15 of each UTC hour**; outside that window the route makes no GitHub calls. Rules that are easy to break:
+
+- **Do not add a `schedule:` trigger to a database workflow.** Add a `DISPATCH_TARGETS` entry instead (`everyMinutes` or pinned UTC `slots`). A test fails if a dispatched workflow regains a schedule. The one deliberate exception is `macro-sync-watchdog.yml`: a watchdog started by the dispatcher could not notice the dispatcher stopping.
+- **`lane` must equal the workflow's `concurrency.group`** (tested). GitHub keeps only one pending run per group and cancels the rest, so the dispatcher starts at most one run per lane per tick and never while a lane-mate is running.
+- **Dispatched runs get input defaults that scheduled runs did not**, so targets pass `inputs` (`document-ticker-index` dry_run=false, `crypto-social-history` execute=true, `filing-catalyst-sync` mode, `financial-news-daily` ingest_limit="").
+- **Variable-gated workflows keep their off switch** via `inputs.scheduled == 'true'`, which their job `if` treats like a schedule event (tested). Workflows whose scheduled runs are switched off by a repo variable (agency sites, cyber, RSS full ingestion, Senate, Substack, SEC speech, CRS, connector gap, policy extraction, securities sources, daily health check) were deliberately left on their GitHub schedules: their fires skip without touching Neon, and moving them would bypass the switch.
+- The RSS refresh cron is hourly at minute 0 (the 03:00 UTC maintenance tick needs minute 0), with the FINRA firm rotation at 60-minute slots x 32 firms (~100h cycle, inside the 7-day news window). Tests pin both.
 
 ## Rates & Credit Intelligence
 

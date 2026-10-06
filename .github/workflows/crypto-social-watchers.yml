@@ -3,8 +3,8 @@ on:
   push:
     branches: [agent/watchers-two-hour]
     paths: ['crypto_social_watchers.py', '.github/workflows/crypto-social-watchers.yml']
-  schedule:
-    - cron: '37 */2 * * *'
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
   workflow_dispatch:
     inputs:
       account_failed_request:

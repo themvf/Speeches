@@ -2,8 +2,8 @@ name: Intelligence fusion materializer
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "7,22,37,52 * * * *"
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
 
 concurrency:
   group: intelligence-fusion-materializer

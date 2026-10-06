@@ -8,8 +8,8 @@ on:
       - 'sql/crypto_market_history.sql'
       - '.github/workflows/crypto-market-history.yml'
   workflow_dispatch:
-  schedule:
-    - cron: '23 2,8,14,20 * * *'
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
 permissions:
   contents: read
 concurrency:

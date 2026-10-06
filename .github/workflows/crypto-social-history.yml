@@ -11,8 +11,8 @@ on:
         description: 'Collect ZCAT history within the separate 150,000-credit allowance'
         type: boolean
         default: false
-  schedule:
-    - cron: '43 8 * * *'
+  # No schedule: the Vercel dispatcher starts this in the top-of-hour window
+  # (apps/web/lib/server/github-dispatch.ts) so it cannot wake Neon off-window.
 permissions:
   contents: read
 concurrency:
