@@ -249,7 +249,9 @@ def _event(cur, asset: AssetIdentity, observation: ObservationInput, event_type:
 def _materialize_opening_trades(cur, asset: AssetIdentity, run_id: str) -> tuple[int, int]:
     if not asset.address or not all(_table_exists(cur, table) for table in ("launchpad_trade_captures", "launchpad_trades")):
         return 0, 0
-    comparator = "lower(c.token_address)=lower(%s)" if asset.address.startswith("0x") else "c.token_address=%s"
+    # EVM addresses are stored lowercase (launchpad_chains lowercase_addresses), so lowercase the
+    # registry value rather than the column: lower(column) defeats the index and read every row.
+    comparator = "c.token_address=lower(%s)" if asset.address.startswith("0x") else "c.token_address=%s"
     cur.execute(f"""SELECT c.id,t.sequence,c.pool,t.wallet,t.traded_at,t.kind,t.token_amount,t.usd,t.tx_hash,t.block_number
       FROM launchpad_trade_captures c JOIN launchpad_trades t ON t.capture_id=c.id
       WHERE c.network=%s AND {comparator} AND t.tx_hash IS NOT NULL ORDER BY t.traded_at,c.id,t.sequence""",
@@ -270,7 +272,8 @@ def _materialize_opening_trades(cur, asset: AssetIdentity, run_id: str) -> tuple
 def _materialize_launchpad(cur, asset: AssetIdentity, run_id: str) -> tuple[int, int, int]:
     if not asset.address or not _table_exists(cur, "launchpad_tokens"):
         return 0, 0, 0
-    comparator = "lower(token_address)=lower(%s)" if asset.address.startswith("0x") else "token_address=%s"
+    # Lowercase the registry value, not the column, so the (network,token_address) indexes apply.
+    comparator = "token_address=lower(%s)" if asset.address.startswith("0x") else "token_address=%s"
     cur.execute(f"""SELECT network,token_address,symbol,name,graduated,graduated_at,graduated_detected_at,
       graduation_pool,measure_pool,dex,first_seen_at FROM launchpad_tokens WHERE network=%s AND {comparator}""",
       (asset.network, asset.address))

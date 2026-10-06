@@ -214,3 +214,11 @@ COMMENT ON COLUMN launchpad_tokens.measure_pool_timing IS
  'Whether the measurement pool was chosen at graduation or later. A late choice may name a '
  'different market than the one that mattered, since a token can fall to near-zero liquidity '
  'within the hour, so the two must stay separable in analysis.';
+
+-- Enrichment's pending queue and its health counts run every ten minutes. Without these indexes
+-- they walked every graduate, and the "served in the last hour" count read the whole table: a
+-- parallel scan of 580k rows (250 MB, +36k rows a day) measured 2026-10-04, which keeps the table
+-- hot in Neon's cache on an always-on compute. Partial, so each holds only the rows asked for.
+CREATE INDEX IF NOT EXISTS launchpad_tokens_enrich_pending ON launchpad_tokens(network,graduated_at,token_address)
+ WHERE graduated AND (enriched_at IS NULL OR (cohort_sampled AND measure_pool_reason IS NULL));
+CREATE INDEX IF NOT EXISTS launchpad_tokens_enriched ON launchpad_tokens(network,enriched_at) WHERE enriched_at IS NOT NULL;

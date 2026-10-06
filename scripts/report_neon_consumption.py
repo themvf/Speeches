@@ -106,8 +106,50 @@ def main() -> int:
         summary["total_logical_size_mb"] = round(
             sum(float(branch.get("logical_size") or 0) for branch in branches) / 1_048_576, 1
         )
+        # Each extra branch past the plan's allowance (10 Launch, 25 Scale) bills $1.50/month, so
+        # the count matters as much as the size. 79 branches on 2026-10-04 were mostly forgotten
+        # Vercel preview branches; scripts/cleanup_neon_preview_branches.py removes them.
+        summary["branch_count"] = len(branches)
+        summary["preview_branch_count"] = sum(1 for b in branches if str(b.get("name", "")).startswith("preview/"))
     except Exception as exc:  # noqa: BLE001
         summary["branches_error"] = str(exc)
+        branches = []
+
+    # Compute size is the other half of the compute bill: with something writing every two minutes
+    # the database never suspends, so the minimum CU is billed around the clock.
+    try:
+        endpoints = _get(f"/projects/{project_id}/endpoints", api_key).get("endpoints", [])
+        names = {b.get("id"): b.get("name", "") for b in branches}
+        week_ago = now - timedelta(days=7)
+
+        def active_since(endpoint, when):
+            last = endpoint.get("last_active") or ""
+            try:
+                return datetime.fromisoformat(last.replace("Z", "+00:00")) >= when
+            except ValueError:
+                return False
+
+        summary["computes"] = [
+            {
+                "branch": names.get(e.get("branch_id"), e.get("branch_id", "")),
+                "type": e.get("type", ""),
+                "min_cu": e.get("autoscaling_limit_min_cu"),
+                "max_cu": e.get("autoscaling_limit_max_cu"),
+                "suspend_timeout_seconds": e.get("suspend_timeout_seconds"),
+                "state": e.get("current_state", ""),
+                "last_active": e.get("last_active", ""),
+            }
+            for e in endpoints
+            if not str(names.get(e.get("branch_id"), "")).startswith("preview/")
+        ]
+        previews = [e for e in endpoints if str(names.get(e.get("branch_id"), "")).startswith("preview/")]
+        summary["preview_computes"] = {
+            "count": len(previews),
+            "active_now": sum(1 for e in previews if e.get("current_state") == "active"),
+            "active_in_last_7_days": sum(1 for e in previews if active_since(e, week_ago)),
+        }
+    except Exception as exc:  # noqa: BLE001
+        summary["computes_error"] = str(exc)
 
     try:
         granularity = "daily"
