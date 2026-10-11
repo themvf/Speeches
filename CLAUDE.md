@@ -67,6 +67,12 @@ RegIntel's Neon compute suspends only after ~5 idle minutes, and jobs firing at 
 - **`lane` must equal the workflow's `concurrency.group`** (tested). GitHub keeps only one pending run per group and cancels the rest, so the dispatcher starts at most one run per lane per tick and never while a lane-mate is running.
 - **Dispatched runs get input defaults that scheduled runs did not**, so targets pass `inputs` (`document-ticker-index` dry_run=false, `crypto-social-history` execute=true, `filing-catalyst-sync` mode, `financial-news-daily` ingest_limit="").
 - **Variable-gated workflows keep their off switch** via `inputs.scheduled == 'true'`, which their job `if` treats like a schedule event (tested). Workflows whose scheduled runs are switched off by a repo variable (agency sites, cyber, RSS full ingestion, Senate, Substack, SEC speech, CRS, connector gap, policy extraction, securities sources, daily health check) were deliberately left on their GitHub schedules: their fires skip without touching Neon, and moving them would bypass the switch.
+- **Browser tabs count as wake-ups too** (2026-10-11). An open dashboard tab polled `/api/intel/feed` hourly
+  around the clock, drifting a few seconds later each hour, which woke the compute at about :51-:56 every
+  hour (roughly a quarter of RegIntel's awake time). `intelbeta-dashboard.tsx` now pauses its polls while the tab is hidden
+  (`scheduleVisiblePoll`). To find an unexplained wake: list `start_compute` operations
+  (`neon api /projects/<id>/operations`), then `vercel logs --since <wake> --until <wake+1m>`. RegIntel has no
+  `pg_stat_statements`.
 - The RSS refresh cron is hourly at minute 0 (the 03:00 UTC maintenance tick needs minute 0), with the FINRA firm rotation at 60-minute slots x 32 firms (~100h cycle, inside the 7-day news window). Tests pin both.
 
 ## Rates & Credit Intelligence
