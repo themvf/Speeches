@@ -1,7 +1,7 @@
 {
  "generatedAt": "2026-10-19T16:48:23Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
- "tickerCount": 888,
+ "tickerCount": 887,
  "industries": [
   {
    "sic": "7372",
@@ -1442,18 +1442,6 @@
      "periodEnd": "2026-03-31",
      "filed": "2026-05-07",
      "subIndustry": "Analog, Power & Mixed-Signal"
-    },
-    {
-     "ticker": "QRVO",
-     "name": "Qorvo, Inc.",
-     "cik": "1604778",
-     "revenue": 992959000.0,
-     "profit": 164062000.0,
-     "expenses": 828897000.0,
-     "sharesOutstanding": 88013673.0,
-     "periodEnd": "2025-12-27",
-     "filed": "2026-01-28",
-     "subIndustry": "RF & Wireless Chips"
     },
     {
      "ticker": "RMBS",

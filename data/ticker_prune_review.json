@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-12T20:20:14Z",
+ "generatedAt": "2026-10-19T17:34:41Z",
  "checkedCount": 888,
  "flaggedCount": 2,
  "candidates": [
@@ -21,7 +21,7 @@
    "confidence": "high",
    "evidence": "CIK's own submissions now list ['LAWIL', 'LNWO'] instead of LNW",
    "suggestedNewTicker": "LAWIL",
-   "yahooQuoteAlive": false
+   "yahooQuoteAlive": true
   }
  ]
 }

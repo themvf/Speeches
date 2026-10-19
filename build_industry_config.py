@@ -63,7 +63,7 @@ PROFIT_CONCEPTS = ["NetIncomeLoss", "ProfitLoss"]
 UNIVERSE: List[str] = [
     # ── Semiconductors & equipment ──
     "NVDA", "AMD", "INTC", "AVGO", "QCOM", "MU", "TXN", "AMAT", "LRCX", "KLAC",
-    "ADI", "NXPI", "MCHP", "ON", "MPWR", "SWKS", "QRVO", "TER", "ENTG", "TSM",
+    "ADI", "NXPI", "MCHP", "ON", "MPWR", "SWKS", "TER", "ENTG", "TSM",
     "ASML", "ARM", "MRVL", "SMCI", "WOLF", "AMKR", "GFS",
     "ONTO", "COHR", "LSCC", "ALAB", "CRDO", "RMBS", "SLAB", "SITM", "FORM",
     "OLED", "IPGP", "ACLS", "VSH", "DIOD", "MTSI", "POWI", "CRUS", "SYNA",
@@ -234,7 +234,7 @@ SUB_INDUSTRY_GROUPS: Dict[str, List[str]] = {
     # SIC 3674 - Semiconductors & Related Devices (38)
     "Compute & Logic Leaders": ["NVDA", "AMD", "INTC", "AVGO", "TXN", "MRVL", "NXPI", "ARM"],
     "Analog, Power & Mixed-Signal": ["ADI", "MCHP", "MPWR", "ON", "POWI", "DIOD", "CRUS", "SLAB", "SYNA", "WOLF"],
-    "RF & Wireless Chips": ["SWKS", "QRVO", "MTSI"],
+    "RF & Wireless Chips": ["SWKS", "MTSI"],
     "Memory": ["MU"],
     "Foundry & Packaging": ["TSM", "GFS", "AMKR"],
     "Connectivity & High-Speed Interconnect": ["CRDO", "ALAB", "RMBS", "SITM", "LSCC", "IPGP"],
