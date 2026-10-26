@@ -1,7 +1,7 @@
 {
  "generatedAt": "2026-10-23T22:32:13Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
- "tickerCount": 887,
+ "tickerCount": 886,
  "industries": [
   {
    "sic": "7372",
@@ -5626,17 +5626,6 @@
      "expenses": 1163179000.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-05-01"
-    },
-    {
-     "ticker": "WBD",
-     "name": "Warner Bros. Discovery, Inc.",
-     "cik": "1437107",
-     "revenue": 8893000000.0,
-     "profit": -2916000000.0,
-     "expenses": 11809000000.0,
-     "sharesOutstanding": 2507136702.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
     }
    ]
   },

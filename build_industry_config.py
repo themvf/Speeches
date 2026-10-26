@@ -77,7 +77,7 @@ UNIVERSE: List[str] = [
     # ── Financial data & analytics ──
     "SPGI", "MCO", "MSCI", "FICO", "FDS", "MORN", "TRU", "VRSK", "EFX",
     # ── Internet & media ──
-    "GOOGL", "META", "AMZN", "NFLX", "DIS", "CMCSA", "WBD", "PARA", "SPOT",
+    "GOOGL", "META", "AMZN", "NFLX", "DIS", "CMCSA", "PARA", "SPOT",
     "PINS", "SNAP", "MTCH", "BMBL", "YELP", "TRIP", "EXPE", "BKNG", "ABNB",
     "UBER", "LYFT", "DASH", "ETSY", "EBAY", "SHOP", "SE", "BABA", "JD", "PDD",
     "RDDT", "TTD", "ROKU", "LYV", "NYT", "FOXA", "NWSA", "OMC", "TKO",
