@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-23T22:32:13Z",
+ "generatedAt": "2026-10-26T21:44:39Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -5574,62 +5574,6 @@
    ]
   },
   {
-   "sic": "4841",
-   "label": "Cable & Other Pay Television Services",
-   "tickers": [
-    {
-     "ticker": "CABO",
-     "name": "Cable One, Inc.",
-     "cik": "1632127",
-     "profit": 35774000.0,
-     "sharesOutstanding": 5672853.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-30"
-    },
-    {
-     "ticker": "CHTR",
-     "name": "Charter Communications, Inc. /Mo/",
-     "cik": "1091667",
-     "revenue": 13597000000.0,
-     "profit": 1163000000.0,
-     "expenses": 12434000000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-24"
-    },
-    {
-     "ticker": "CMCSA",
-     "name": "Comcast Corp",
-     "cik": "1166691",
-     "revenue": 31457000000.0,
-     "profit": 2174000000.0,
-     "expenses": 29283000000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-04-23"
-    },
-    {
-     "ticker": "OPTU",
-     "name": "Optimum Communications, Inc.",
-     "cik": "1702780",
-     "revenue": 2065368000.0,
-     "profit": -2884071000.0,
-     "expenses": 4949439000.0,
-     "sharesOutstanding": 476472207.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
-    },
-    {
-     "ticker": "ROKU",
-     "name": "Roku, Inc",
-     "cik": "1428439",
-     "revenue": 1248879000.0,
-     "profit": 85700000.0,
-     "expenses": 1163179000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
-    }
-   ]
-  },
-  {
    "sic": "6311",
    "label": "Life Insurance",
    "tickers": [
@@ -5961,6 +5905,62 @@
      "expenses": 1718400000.0,
      "periodEnd": "2026-02-28",
      "filed": "2026-04-22"
+    }
+   ]
+  },
+  {
+   "sic": "4841",
+   "label": "Cable & Other Pay Television Services",
+   "tickers": [
+    {
+     "ticker": "CABO",
+     "name": "Cable One, Inc.",
+     "cik": "1632127",
+     "profit": 35774000.0,
+     "sharesOutstanding": 5672853.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-30"
+    },
+    {
+     "ticker": "CHTR",
+     "name": "Charter Communications, Inc. /Mo/",
+     "cik": "1091667",
+     "revenue": 13597000000.0,
+     "profit": 1163000000.0,
+     "expenses": 12434000000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-24"
+    },
+    {
+     "ticker": "CMCSA",
+     "name": "Comcast Corp",
+     "cik": "1166691",
+     "revenue": 31457000000.0,
+     "profit": 2174000000.0,
+     "expenses": 29283000000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-23"
+    },
+    {
+     "ticker": "OPTU",
+     "name": "Optimum Communications, Inc.",
+     "cik": "1702780",
+     "revenue": 2065368000.0,
+     "profit": -2884071000.0,
+     "expenses": 4949439000.0,
+     "sharesOutstanding": 476472207.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-07"
+    },
+    {
+     "ticker": "ROKU",
+     "name": "Roku, Inc",
+     "cik": "1428439",
+     "revenue": 1248879000.0,
+     "profit": 85700000.0,
+     "expenses": 1163179000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-01"
     }
    ]
   },
