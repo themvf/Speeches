@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-28T00:37:20Z",
+ "generatedAt": "2026-10-28T16:27:18Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -2767,7 +2767,7 @@
      "profit": 233672000.0,
      "sharesOutstanding": 386373000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-29",
+     "filed": "2026-10-28",
      "subIndustry": "Regional & Community Banks"
     },
     {
