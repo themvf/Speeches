@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-28T21:48:39Z",
+ "generatedAt": "2026-10-29T16:37:31Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -1593,7 +1593,7 @@
      "profit": 205991000.0,
      "sharesOutstanding": 132623144.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-10-30",
+     "filed": "2026-10-29",
      "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
@@ -2311,7 +2311,7 @@
      "expenses": 401987000.0,
      "sharesOutstanding": 54899034.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-10-30",
+     "filed": "2026-10-29",
      "subIndustry": "Regulated Utilities (Diversified)"
     },
     {
