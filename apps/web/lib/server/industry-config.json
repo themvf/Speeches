@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-30T16:46:14Z",
+ "generatedAt": "2026-10-30T21:39:00Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -4766,7 +4766,7 @@
      "profit": 136300000.0,
      "sharesOutstanding": 18470685.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-08-06"
+     "filed": "2026-10-30"
     },
     {
      "ticker": "PAG",
@@ -4858,7 +4858,7 @@
      "profit": 101692000.0,
      "sharesOutstanding": 39660281.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-24"
+     "filed": "2026-10-30"
     },
     {
      "ticker": "UAL",
@@ -5020,7 +5020,7 @@
      "profit": 55309000.0,
      "sharesOutstanding": 66702433.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-31"
+     "filed": "2026-10-30"
     },
     {
      "ticker": "NVR",
