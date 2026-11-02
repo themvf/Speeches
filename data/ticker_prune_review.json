@@ -1,7 +1,7 @@
 {
- "generatedAt": "2026-10-26T17:27:15Z",
- "checkedCount": 887,
- "flaggedCount": 2,
+ "generatedAt": "2026-11-02T20:49:10Z",
+ "checkedCount": 886,
+ "flaggedCount": 3,
  "candidates": [
   {
    "ticker": "EQR",
@@ -12,6 +12,15 @@
    "evidence": "CIK's own submissions now list ['VRMK'] instead of EQR",
    "suggestedNewTicker": "VRMK",
    "yahooQuoteAlive": false
+  },
+  {
+   "ticker": "XOM",
+   "name": "Exxon Mobil Corp",
+   "cik": "0000034088",
+   "reason": "no_active_ticker",
+   "confidence": "medium",
+   "evidence": "CIK is active in EDGAR but currently lists no ticker symbols",
+   "yahooQuoteAlive": true
   },
   {
    "ticker": "LNW",
