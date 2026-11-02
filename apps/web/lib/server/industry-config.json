@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-30T21:39:00Z",
+ "generatedAt": "2026-11-02T20:00:23Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -5135,8 +5135,14 @@
     },
     {
      "ticker": "XOM",
-     "name": "Exxonmobil Holdings Corp",
-     "cik": "2115436"
+     "name": "Exxon Mobil Corp",
+     "cik": "34088",
+     "revenue": 85138000000.0,
+     "profit": 4183000000.0,
+     "expenses": 80955000000.0,
+     "sharesOutstanding": 4144947162.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-04"
     }
    ]
   },
