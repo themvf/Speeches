@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-30T21:28:37Z",
+ "generatedAt": "2026-11-03T17:18:19Z",
  "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
  "companies": {
   "AAPL": {
@@ -9,11 +9,6 @@
      "label": "Diluted EPS",
      "unit": "usd_per_share",
      "series": [
-      {
-       "end": "2024-09-28",
-       "value": 0.97,
-       "derived": true
-      },
       {
        "end": "2024-12-28",
        "value": 2.4,
@@ -48,6 +43,11 @@
        "end": "2026-06-27",
        "value": 2.02,
        "derived": false
+      },
+      {
+       "end": "2026-09-26",
+       "value": 2.11,
+       "derived": true
       }
      ]
     },
@@ -55,11 +55,6 @@
      "label": "Total net sales",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-09-28",
-       "value": 158612000000.0,
-       "derived": true
-      },
       {
        "end": "2024-12-28",
        "value": 10291000000.0,
@@ -94,6 +89,11 @@
        "end": "2026-06-27",
        "value": 8871000000.0,
        "derived": false
+      },
+      {
+       "end": "2026-09-26",
+       "value": 198559000000.0,
+       "derived": true
       }
      ]
     }
@@ -2155,11 +2155,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-09-30",
-       "value": 0.06,
-       "derived": false
-      },
-      {
        "end": "2024-12-31",
        "value": 0.03,
        "derived": true
@@ -2193,6 +2188,11 @@
        "end": "2026-06-30",
        "value": 0.41,
        "derived": false
+      },
+      {
+       "end": "2026-09-30",
+       "value": 0.44,
+       "derived": false
       }
      ]
     },
@@ -2200,11 +2200,6 @@
      "label": "Revenue",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-09-30",
-       "value": 725516000.0,
-       "derived": false
-      },
       {
        "end": "2024-12-31",
        "value": 827519000.0,
@@ -2239,6 +2234,11 @@
        "end": "2026-06-30",
        "value": 1935464000.0,
        "derived": false
+      },
+      {
+       "end": "2026-09-30",
+       "value": 2313411000.0,
+       "derived": false
       }
      ]
     },
@@ -2246,11 +2246,6 @@
      "label": "Net income",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-09-30",
-       "value": 143525000.0,
-       "derived": false
-      },
       {
        "end": "2024-12-31",
        "value": 79009000.0,
@@ -2284,6 +2279,11 @@
       {
        "end": "2026-06-30",
        "value": 1061890000.0,
+       "derived": false
+      },
+      {
+       "end": "2026-09-30",
+       "value": 1128012000.0,
        "derived": false
       }
      ]
