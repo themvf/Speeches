@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-03T17:18:19Z",
+ "generatedAt": "2026-11-03T23:16:50Z",
  "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
  "companies": {
   "AAPL": {
@@ -1251,11 +1251,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-09-30",
-       "value": 4.37,
-       "derived": false
-      },
-      {
        "end": "2024-12-31",
        "value": 4.82,
        "derived": true
@@ -1289,6 +1284,11 @@
        "end": "2026-06-30",
        "value": 7.7,
        "derived": false
+      },
+      {
+       "end": "2026-09-30",
+       "value": 5.57,
+       "derived": false
       }
      ]
     },
@@ -1296,11 +1296,6 @@
      "label": "Revenue",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-09-30",
-       "value": 42654000000.0,
-       "derived": false
-      },
       {
        "end": "2024-12-31",
        "value": 42768000000.0,
@@ -1335,6 +1330,11 @@
        "end": "2026-06-30",
        "value": 57347000000.0,
        "derived": false
+      },
+      {
+       "end": "2026-09-30",
+       "value": 50172000000.0,
+       "derived": false
       }
      ]
     },
@@ -1342,11 +1342,6 @@
      "label": "Net income",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-09-30",
-       "value": 0.0,
-       "derived": false
-      },
       {
        "end": "2024-12-31",
        "value": 58471000000.0,
@@ -1381,6 +1376,11 @@
        "end": "2026-06-30",
        "value": 0.0,
        "derived": false
+      },
+      {
+       "end": "2026-09-30",
+       "value": 0.0,
+       "derived": false
       }
      ]
     },
@@ -1388,11 +1388,6 @@
      "label": "Provision for credit losses",
      "unit": "usd",
      "series": [
-      {
-       "end": "2024-09-30",
-       "value": -0.0,
-       "derived": false
-      },
       {
        "end": "2024-12-31",
        "value": -0.0,
@@ -1425,6 +1420,11 @@
       },
       {
        "end": "2026-06-30",
+       "value": -0.0,
+       "derived": false
+      },
+      {
+       "end": "2026-09-30",
        "value": -0.0,
        "derived": false
       }
