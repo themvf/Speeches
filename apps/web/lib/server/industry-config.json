@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-03T23:32:45Z",
+ "generatedAt": "2026-11-04T17:45:02Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -903,7 +903,7 @@
      "expenses": 133320000.0,
      "sharesOutstanding": 189939441.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-11-04",
+     "filed": "2026-11-04",
      "subIndustry": "Net Lease REITs"
     },
     {
@@ -3114,7 +3114,7 @@
      "profit": 209000000.0,
      "sharesOutstanding": 173972199.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-08-05",
+     "filed": "2026-11-04",
      "subIndustry": "Mobile Ad-Tech & Gaming Platforms"
     },
     {
