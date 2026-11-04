@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T18:09:00Z",
+ "generatedAt": "2026-11-04T23:51:20Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -1841,7 +1841,7 @@
      "profit": -189424000.0,
      "sharesOutstanding": 776162645.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-23",
+     "filed": "2026-11-04",
      "subIndustry": "Rare Disease & Genetic Medicine Biotech"
     },
     {
@@ -4663,9 +4663,10 @@
      "ticker": "RVMD",
      "name": "Revolution Medicines, Inc.",
      "cik": "1628171",
+     "revenue": 0.0,
      "profit": -453816000.0,
      "sharesOutstanding": 212596462.0,
-     "periodEnd": "2026-03-31",
+     "periodEnd": "2025-09-30",
      "filed": "2026-08-05"
     },
     {
