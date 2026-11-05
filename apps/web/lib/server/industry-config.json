@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T07:07:47Z",
+ "generatedAt": "2026-11-05T17:53:03Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -621,7 +621,7 @@
      "profit": -36854000.0,
      "sharesOutstanding": 114814150.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-29",
+     "filed": "2026-11-04",
      "subIndustry": "Cybersecurity"
     },
     {
@@ -4667,7 +4667,7 @@
      "profit": -453816000.0,
      "sharesOutstanding": 212596462.0,
      "periodEnd": "2025-09-30",
-     "filed": "2026-08-05"
+     "filed": "2026-11-04"
     },
     {
      "ticker": "TECH",
@@ -8821,33 +8821,6 @@
    ]
   },
   {
-   "sic": "3690",
-   "label": "Miscellaneous Electrical Machinery, Equipment & Supplies",
-   "tickers": [
-    {
-     "ticker": "FLNC",
-     "name": "Fluence Energy, Inc.",
-     "cik": "1868941",
-     "revenue": 464891000.0,
-     "profit": -20927000.0,
-     "expenses": 485818000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
-    },
-    {
-     "ticker": "RUN",
-     "name": "Sunrun Inc.",
-     "cik": "1469367",
-     "revenue": 722231000.0,
-     "profit": 167644000.0,
-     "expenses": 554587000.0,
-     "sharesOutstanding": 238549287.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-06"
-    }
-   ]
-  },
-  {
    "sic": "2090",
    "label": "Miscellaneous Food Preparations & Kindred Products",
    "tickers": [
@@ -9600,6 +9573,23 @@
    ]
   },
   {
+   "sic": "1700",
+   "label": "Construction - Special Trade Contractors",
+   "tickers": [
+    {
+     "ticker": "RUN",
+     "name": "Sunrun Inc.",
+     "cik": "1469367",
+     "revenue": 722231000.0,
+     "profit": 167644000.0,
+     "expenses": 554587000.0,
+     "sharesOutstanding": 238549287.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06"
+    }
+   ]
+  },
+  {
    "sic": "3531",
    "label": "Construction Machinery & Equip",
    "tickers": [
@@ -9943,7 +9933,7 @@
      "profit": -2927600000.0,
      "expenses": 6411900000.0,
      "periodEnd": "2025-09-30",
-     "filed": "2025-11-04"
+     "filed": "2026-11-05"
     }
    ]
   },
@@ -9975,6 +9965,22 @@
      "sharesOutstanding": 84866602.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-05-07"
+    }
+   ]
+  },
+  {
+   "sic": "3690",
+   "label": "Miscellaneous Electrical Machinery, Equipment & Supplies",
+   "tickers": [
+    {
+     "ticker": "FLNC",
+     "name": "Fluence Energy, Inc.",
+     "cik": "1868941",
+     "revenue": 464891000.0,
+     "profit": -20927000.0,
+     "expenses": 485818000.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-05-06"
     }
    ]
   },
