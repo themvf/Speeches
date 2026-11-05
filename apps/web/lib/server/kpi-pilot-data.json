@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T17:28:32Z",
+ "generatedAt": "2026-11-05T23:35:51Z",
  "source": "SEC XBRL via edgartools (SEC-8: all public companies; Tier A + segment revenues)",
  "companies": {
   "AAPL": {
@@ -679,11 +679,6 @@
      "unit": "usd_per_share",
      "series": [
       {
-       "end": "2024-09-30",
-       "value": 1.51,
-       "derived": false
-      },
-      {
        "end": "2024-12-31",
        "value": 1.33,
        "derived": true
@@ -716,6 +711,11 @@
       {
        "end": "2026-06-30",
        "value": 3.15,
+       "derived": false
+      },
+      {
+       "end": "2026-09-30",
+       "value": 2.85,
        "derived": false
       }
      ]
@@ -771,13 +771,8 @@
      "unit": "usd",
      "series": [
       {
-       "end": "2024-09-30",
-       "value": 35000000.0,
-       "derived": false
-      },
-      {
        "end": "2024-12-31",
-       "value": 12664000000.0,
+       "value": 12565000000.0,
        "derived": true
       },
       {
@@ -808,6 +803,11 @@
       {
        "end": "2026-06-30",
        "value": 193000000.0,
+       "derived": false
+      },
+      {
+       "end": "2026-09-30",
+       "value": 175000000.0,
        "derived": false
       }
      ]
