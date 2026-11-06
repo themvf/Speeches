@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T23:45:51Z",
+ "generatedAt": "2026-11-06T17:09:33Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -659,7 +659,7 @@
      "cik": "1562401",
      "profit": 148844000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-31",
+     "filed": "2026-11-05",
      "subIndustry": "Residential REITs"
     },
     {
@@ -2362,10 +2362,11 @@
      "ticker": "OKLO",
      "name": "Oklo Inc.",
      "cik": "1849056",
+     "revenue": 0.0,
      "profit": -33065000.0,
      "sharesOutstanding": 173568788.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-08-07",
+     "periodEnd": "2025-09-30",
+     "filed": "2026-11-06",
      "subIndustry": "Emerging Nuclear & SMR"
     },
     {
@@ -2989,7 +2990,7 @@
      "cik": "1596967",
      "profit": 42295000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-07-30",
+     "filed": "2026-11-06",
      "subIndustry": "Advisory & Boutique Investment Banks"
     },
     {
@@ -3913,7 +3914,7 @@
      "profit": 124200000.0,
      "sharesOutstanding": 137798590.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-08-07"
+     "filed": "2026-11-06"
     },
     {
      "ticker": "WAL",
@@ -5953,11 +5954,11 @@
      "name": "Optimum Communications, Inc.",
      "cik": "1702780",
      "revenue": 2065368000.0,
-     "profit": -2884071000.0,
-     "expenses": 4949439000.0,
+     "profit": -2161170000.0,
+     "expenses": 4226538000.0,
      "sharesOutstanding": 476472207.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-11-06"
     },
     {
      "ticker": "ROKU",
