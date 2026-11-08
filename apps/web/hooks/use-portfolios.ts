@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { normalizePortfoliosPayload } from "@/lib/portfolio-calculations";
 import type { Portfolio, PortfolioHolding, PortfoliosPayload } from "@/lib/portfolio-types";
 
-const STORAGE_KEY = "policy_hub_portfolios_v1";
+const LEGACY_STORAGE_KEY = "policy_hub_portfolios_v1";
+const SYNC_TOKEN_KEY = "policy_hub_portfolio_sync_token_v1";
+const STORAGE_PREFIX = "policy_hub_portfolios_v2";
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 function id(prefix: string): string {
   return `${prefix}:${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
@@ -15,28 +18,51 @@ function starterPayload(): PortfoliosPayload {
   return { portfolios: [{ id: id("portfolio"), name: "My Portfolio", holdings: [], createdAt: now, updatedAt: now }], updatedAt: now };
 }
 
-function readLocal(): PortfoliosPayload | null {
+function generateSyncToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function resolveSyncIdentity(): { token: string; allowLegacy: boolean } {
+  const stored = localStorage.getItem(SYNC_TOKEN_KEY);
+  const storedToken = stored && TOKEN_PATTERN.test(stored) ? stored : null;
+  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const candidate = fragment.get("portfolio-sync");
+  const incomingToken = candidate && TOKEN_PATTERN.test(candidate) ? candidate : null;
+  const token = incomingToken ?? storedToken ?? generateSyncToken();
+  const changedWorkspace = Boolean(incomingToken && incomingToken !== storedToken);
+  localStorage.setItem(SYNC_TOKEN_KEY, token);
+  if (candidate) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  return { token, allowLegacy: !changedWorkspace };
+}
+
+function storageKey(token: string): string {
+  return `${STORAGE_PREFIX}:${token}`;
+}
+
+function readLocal(token: string, allowLegacy: boolean): PortfoliosPayload | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(token)) ?? (allowLegacy ? localStorage.getItem(LEGACY_STORAGE_KEY) : null);
     return raw ? normalizePortfoliosPayload(JSON.parse(raw)) : null;
   } catch { return null; }
 }
 
-function writeLocal(payload: PortfoliosPayload): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+function writeLocal(token: string, payload: PortfoliosPayload): void {
+  localStorage.setItem(storageKey(token), JSON.stringify(payload));
 }
 
-async function readRemote(): Promise<PortfoliosPayload | null> {
-  const response = await fetch("/api/portfolios", { cache: "no-store" });
-  if (response.status === 401 || response.status === 503) return null;
+async function readRemote(token: string): Promise<PortfoliosPayload | null> {
+  const response = await fetch("/api/portfolios", { cache: "no-store", headers: { "x-portfolio-sync-token": token } });
+  if (response.status === 401 || response.status === 429 || response.status === 503) return null;
   if (!response.ok) throw new Error("Portfolio sync failed.");
   const body = await response.json() as { ok?: boolean; data?: unknown };
   return body.ok ? normalizePortfoliosPayload(body.data) : null;
 }
 
-async function writeRemote(payload: PortfoliosPayload): Promise<boolean> {
+async function writeRemote(token: string, payload: PortfoliosPayload): Promise<boolean> {
   const response = await fetch("/api/portfolios", {
-    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    method: "PUT", headers: { "Content-Type": "application/json", "x-portfolio-sync-token": token }, body: JSON.stringify(payload),
   });
   return response.ok;
 }
@@ -48,50 +74,54 @@ export function usePortfolios() {
   const [syncEnabled, setSyncEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [pendingSync, setPendingSync] = useState(0);
+  const [syncToken, setSyncToken] = useState<string | null>(null);
 
   useEffect(() => {
-    const local = readLocal();
+    const identity = resolveSyncIdentity();
+    setSyncToken(identity.token);
+    const local = readLocal(identity.token, identity.allowLegacy);
     const initial = local ?? starterPayload();
     setPayload(initial);
-    writeLocal(initial);
+    writeLocal(identity.token, initial);
     setLoaded(true);
-    readRemote().then((remote) => {
+    readRemote(identity.token).then((remote) => {
       if (!remote) return;
       setSyncEnabled(true);
-      const localIsNewer = Date.parse(initial.updatedAt) > Date.parse(remote.updatedAt);
-      const chosen = localIsNewer ? initial : remote;
+      const remoteHasData = remote.portfolios.length > 0;
+      const localIsNewer = Boolean(local) && Date.parse(initial.updatedAt) > Date.parse(remote.updatedAt);
+      const chosen = !local && remoteHasData ? remote : localIsNewer || !remoteHasData ? initial : remote;
       const ready = chosen.portfolios.length ? chosen : starterPayload();
       setPayload(ready);
-      writeLocal(ready);
-      if (localIsNewer) setPendingSync(1);
+      writeLocal(identity.token, ready);
+      if (localIsNewer || !remoteHasData) setPendingSync(1);
     }).catch(() => setSyncEnabled(false)).finally(() => setRemoteChecked(true));
   }, []);
 
   useEffect(() => {
-    if (!loaded || !remoteChecked || !syncEnabled || pendingSync === 0) return;
-    const syncToken = pendingSync;
+    if (!loaded || !remoteChecked || !syncEnabled || !syncToken || pendingSync === 0) return;
+    const syncVersion = pendingSync;
     const timer = window.setTimeout(() => {
       setSyncing(true);
-      void writeRemote(payload).then((ok) => {
+      void writeRemote(syncToken, payload).then((ok) => {
         if (!ok) {
           setSyncEnabled(false);
           return;
         }
-        setPendingSync((current) => current === syncToken ? 0 : current);
+        setPendingSync((current) => current === syncVersion ? 0 : current);
       }).catch(() => setSyncEnabled(false)).finally(() => setSyncing(false));
     }, 2_000);
     return () => window.clearTimeout(timer);
-  }, [loaded, payload, pendingSync, remoteChecked, syncEnabled]);
+  }, [loaded, payload, pendingSync, remoteChecked, syncEnabled, syncToken]);
 
   const commit = useCallback((update: (current: Portfolio[]) => Portfolio[]) => {
     setPendingSync((current) => current + 1);
     setPayload((current) => {
       const updatedAt = new Date().toISOString();
       const next = { portfolios: update(current.portfolios), updatedAt };
-      writeLocal(next);
+      if (syncToken) writeLocal(syncToken, next);
       return next;
     });
-  }, []);
+  }, [syncToken]);
 
   const createPortfolio = useCallback((name: string): string | null => {
     const clean = name.replace(/\s+/g, " ").trim().slice(0, 80);
@@ -159,6 +189,7 @@ export function usePortfolios() {
     syncEnabled,
     syncing,
     syncPending: syncEnabled && pendingSync > 0,
+    syncLink: syncToken && typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}#portfolio-sync=${syncToken}` : null,
     createPortfolio,
     renamePortfolio,
     deletePortfolio,

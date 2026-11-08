@@ -6,7 +6,7 @@ Date: 2026-11-08
 
 ## 1. Outcome
 
-The portfolio workspace lets a signed-in or local-only user create multiple investment portfolios, record positions and transactions, and return later to review value, performance, concentration, and changes since entry.
+The portfolio workspace lets its single owner create multiple hypothetical investment portfolios, record positions and transactions, and return later to review value, performance, concentration, and changes since entry. Cross-device access uses a private device-pairing link rather than an account or sign-in flow.
 
 The experience must answer these questions without implying brokerage-grade precision when the required data is missing:
 
@@ -38,12 +38,12 @@ This is a review and research tool, not a brokerage account, tax-lot system, ord
 | Edit shares and trade price inline | Implemented | Replace balance rewriting with ledger-safe adjustment flows |
 | Remove a ticker | Implemented | Add undo; transaction mode records an exit or deletes only an erroneous draft |
 | Local browser autosave | Implemented | Preserve; expose pending/offline state |
-| Clerk identity and Neon sync | Implemented | Remove redundant initial write and request-time schema creation |
+| Passwordless private-link Neon sync | Implemented | Add link rotation, recovery/export, and version-aware conflict handling |
 | Latest Yahoo quote lookup | Implemented | Place behind a provider interface; confirm production licensing and service limits |
 | Cost basis, market value, unrealized gain/loss, daily change | Implemented for simple holdings | Add fees, sales, realized return, dividends, splits, and completeness metadata |
 | Portfolio treemap | Implemented | Add allocation modes and accessible tabular equivalent |
 | Multiple purchase lots | Partially supported as duplicate ticker rows | Make lots explicit and reconcile them through transactions |
-| Automatic price refresh | Not implemented | Add visibility-aware, market-aware five-minute refresh as an opt-in/default policy |
+| Automatic price refresh | Implemented | Preserve visibility-aware, market-aware five-minute refresh and measure provider usage |
 | Historical performance | Not implemented | Add daily snapshots or reconstruct from transactions and historical prices |
 | Import/export | Not implemented | Add CSV import, validation preview, error report, and CSV/JSON export |
 | Alerts and targets | Not implemented | Add after core accounting is reliable |
@@ -377,13 +377,13 @@ Alert evaluation must run in a scheduled server job, not in an open browser tab.
 - The UI displays `Saved locally`, `Syncing`, `Synced`, `Offline`, or `Sync error`.
 - A remote error must not discard local changes.
 - Cross-tab changes use a broadcast or storage event and avoid overwrite loops.
-- On first sign-in, union local and remote records by stable UUID, never by name or client timestamp. Equal content deduplicates; divergent content with the same UUID creates a visible conflict. Tombstones participate in the merge.
-- An unresolved local portfolio is retained as a clearly labeled recovered copy rather than discarded. First-sign-in import is transactional and idempotent.
+- On first device pairing, load the remote workspace before creating starter data. A new device must never overwrite an existing workspace with an empty starter portfolio. Future ledger migration unions records by stable UUID, never by name or client timestamp. Equal content deduplicates; divergent content with the same UUID creates a visible conflict. Tombstones participate in the merge.
+- An unresolved local portfolio is retained as a clearly labeled recovered copy rather than discarded. First-pairing import is transactional and idempotent.
 - On a `409`, pause only the affected portfolio's outbox. Pull server state and automatically rebase non-overlapping appended transactions; require user resolution for overlapping metadata edits or competing corrections of the same transaction.
 
 ### 11.2 Remote persistence
 
-Keep Clerk as the existing identity provider. Use Next.js server route handlers with the Neon serverless driver; do not expose database credentials or a generic database API to the browser.
+This personal deployment does not require an identity provider. The browser creates a 256-bit random workspace token and stores it locally. `Connect another device` shares that token in a URL fragment, which is not included in the page request; the receiving browser stores it and removes the fragment from the visible URL. API requests send the token in a custom header over HTTPS. The server validates the token, stores only its SHA-256-derived workspace identifier, and uses that identifier as the owner key. Anyone holding the private link can access and replace the workspace, so the link must be treated like a password. There is no server-side recovery if every paired device and every saved link is lost. Use Next.js server route handlers with the Neon serverless driver; do not expose database credentials or a generic database API to the browser.
 
 Target normalized schema:
 
@@ -507,7 +507,7 @@ CREATE TABLE portfolio_daily_snapshots (
 );
 ```
 
-Add ownership checks to every query: a user may only read or mutate portfolios whose `user_id` matches the authenticated Clerk user ID. Child-row access must join through the owned portfolio.
+Add ownership checks to every query: a request may only read or mutate portfolios whose owner key matches the SHA-256-derived identifier of its presented workspace token. Child-row access must join through the owned portfolio. Rate-limit sync requests by client IP and never log the raw token.
 
 The server validates transaction rows as a discriminated union by `type`: it rejects irrelevant or missing specialized fields, unsupported status transitions, non-USD Phase 1 data, and sale quantities exceeding available lots. `details` is for bounded provider/import metadata, not accounting values. Superseding and inserting a manual valuation occur in one transaction so the partial unique index cannot leave two current rows.
 
@@ -518,7 +518,7 @@ A mutation receipt and its portfolio/ledger changes commit in the same database 
 The current `user_portfolios` JSON row remains readable during migration.
 
 1. Add schema migrations outside request handlers.
-2. On first signed-in access, read the existing JSON payload.
+2. On first paired access, read the existing JSON payload. The original browser migrates its legacy local payload into the new token-scoped workspace; a newly paired device prefers non-empty remote data.
 3. Convert each holding into a synthetic opening buy transaction using its shares, trade price, and trade date or original creation date. No cash balance is created or inferred.
 4. Show a migration preview when a date or identity is ambiguous.
 5. Write normalized rows in one transaction.
@@ -646,7 +646,7 @@ Before enabling auto-refresh for all users:
 - Protect CSV parsing against formula injection on export and malicious oversized files on import.
 - Escape user text such as portfolio names and notes.
 - Record audit metadata for imports, destructive changes, and automated corporate actions.
-- Define retention behavior for Clerk account deletion and user-requested data export/deletion.
+- Define retention behavior for workspace deletion and user-requested data export/deletion.
 - Backups and restore procedures must be tested, not only configured.
 - Degraded mode keeps local data usable when remote sync is unavailable.
 
@@ -699,7 +699,7 @@ Product metrics should avoid sending holdings, symbols, quantities, prices, or p
 
 ### 17.2 Integration tests
 
-- Clerk user A cannot access user B's portfolio or child rows.
+- A request with a missing, malformed, or different workspace token cannot access the private workspace.
 - Create, reopen, edit, archive, restore, and delete.
 - Offline local save followed by remote synchronization.
 - Concurrent edits return a conflict instead of silently overwriting.
@@ -707,7 +707,7 @@ Product metrics should avoid sending holdings, symbols, quantities, prices, or p
 - Migration produces positions equal to the JSON baseline.
 - CSV preview does not mutate data; commit is idempotent.
 - Daily snapshot job writes at most one row per portfolio/date/version.
-- Same-UUID sign-in conflicts never overwrite either side silently.
+- Same-UUID device-pairing conflicts never overwrite either side silently.
 - Tombstone merge, restore, and 30-day purge preserve the declared lifecycle.
 - Incomplete snapshots are excluded from performance chaining, and backdated corrections rebuild the affected range.
 
@@ -753,7 +753,7 @@ Product metrics should avoid sending holdings, symbols, quantities, prices, or p
 - Derive positions and realized/unrealized performance from transactions.
 - Add activity view and transaction editing rules.
 - Add the IndexedDB replica, mutation outbox, optimistic concurrency, and idempotent retry IDs.
-- Add UUID-based anonymous sign-in merge, tombstones, recovered copies, and visible conflict resolution.
+- Add UUID-based paired-device merge, tombstones, recovered copies, visible conflict resolution, and workspace-token rotation.
 
 ### Phase 2: history and portfolio analysis
 
@@ -776,7 +776,7 @@ Product metrics should avoid sending holdings, symbols, quantities, prices, or p
 
 The expanded workspace is ready for general use when:
 
-1. A user can create multiple portfolios, record a transaction, reload, and see the same derived position locally and, when signed in, on another device.
+1. The owner can create multiple portfolios, record a transaction, reload, and see the same derived position on a paired device without signing in.
 2. A partial sale produces the verified remaining quantity, realized estimate, remaining basis, and audit trail.
 3. Removing an item offers Undo; permanent deletion follows the retention policy.
 4. Quotes display provider and as-of time, refresh no more frequently than policy allows, and never trigger Neon writes.
@@ -784,7 +784,7 @@ The expanded workspace is ready for general use when:
 6. Price refresh stops in hidden tabs and respects market-closed behavior.
 7. CSV import previews changes, reports invalid rows, and commits idempotently only after confirmation.
 8. History distinguishes open exposure, realized P/L, unrealized P/L, dividends, and fees without presenting a brokerage cash balance.
-9. Ownership tests prove cross-user portfolio and transaction access is denied.
+9. Ownership tests prove requests without the exact private workspace token cannot access portfolio or transaction data.
 10. Cost tests prove unchanged loads perform no database writes and demonstrate bounded Vercel invocations.
 11. Mobile, keyboard, and screen-reader flows pass the accessibility requirements.
 12. Market-data licensing, retention, and user deletion policies are documented and approved.
@@ -799,7 +799,7 @@ These decisions can materially change implementation and must be resolved before
 - Definition and validation standard for any future unitized portfolio-level strategy return.
 - Whether short positions, options, crypto, bonds, and private assets are in scope.
 - Market-hours calendar source for international instruments.
-- Clerk account-deletion and financial-data retention workflow.
+- Private-link rotation, lost-link recovery policy, and financial-data deletion workflow.
 - Commercial versus personal deployment, which affects the appropriate Vercel plan.
 - Expected daily active users, visible-tab duration, and concurrency; current cost examples are scenarios, not forecasts.
 - Whether alerts require email, SMS, push, or only in-app delivery.

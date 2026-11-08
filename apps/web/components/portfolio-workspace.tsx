@@ -99,6 +99,7 @@ export function PortfolioWorkspace() {
   const [quoteError, setQuoteError] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [undo, setUndo] = useState<{ message: string; restore: () => void } | null>(null);
+  const [syncNotice, setSyncNotice] = useState("");
   const active = store.portfolios.find((portfolio) => portfolio.id === activeId) ?? store.portfolios[0];
 
   useEffect(() => { if (active && !activeId) setActiveId(active.id); }, [active, activeId]);
@@ -140,6 +141,11 @@ export function PortfolioWorkspace() {
     const timer = window.setTimeout(() => setUndo(null), 8_000);
     return () => window.clearTimeout(timer);
   }, [undo]);
+  useEffect(() => {
+    if (!syncNotice) return;
+    const timer = window.setTimeout(() => setSyncNotice(""), 6_000);
+    return () => window.clearTimeout(timer);
+  }, [syncNotice]);
   const metrics = useMemo(() => active ? portfolioMetrics(active, quotes) : null, [active, quotes]);
   const tiles = useMemo(() => active ? treemap(active.holdings, quotes) : [], [active, quotes]);
 
@@ -170,6 +176,22 @@ export function PortfolioWorkspace() {
     setUndo({ message: `Removed ${holding.symbol}.`, restore: () => store.restoreHolding(portfolioId, holding, index) });
   }
 
+  async function connectAnotherDevice() {
+    if (!store.syncLink) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "My portfolio workspace", text: "Open this private link once to sync this portfolio workspace.", url: store.syncLink });
+        setSyncNotice("Private sync link shared.");
+      } else {
+        await navigator.clipboard.writeText(store.syncLink);
+        setSyncNotice("Private sync link copied. Open it once on your other device.");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      window.prompt("Copy this private sync link and open it once on your other device:", store.syncLink);
+    }
+  }
+
   return <div className="grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
     <aside className="panel h-fit overflow-hidden lg:sticky lg:top-24">
       <div className="border-b border-[color:var(--line)] p-4"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[color:var(--ink-faint)]">Portfolios</p></div>
@@ -183,8 +205,8 @@ export function PortfolioWorkspace() {
       {active ? <>
         <div className="panel overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line)] p-5">
-            <div><div className="flex items-center gap-2"><h2 className="text-xl font-semibold">{active.name}</h2><span className="rounded-full border border-[color:var(--line)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--ink-faint)]">{store.syncing ? "Syncing" : store.syncPending ? "Pending sync" : store.syncEnabled ? "Synced" : "Saved locally"}</span></div><p className="mt-1 text-xs text-[color:var(--ink-faint)]">A hypothetical strategy workspace. Cost basis uses your entered trade price; estimates use the latest available quote.</p></div>
-            <div className="flex flex-wrap gap-2"><button onClick={() => setShowAdd(true)} className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950">+ Add position</button><button onClick={() => void refreshQuotes()} disabled={quoteLoading} className="rounded-lg border border-[color:var(--line)] px-3 py-2 text-sm disabled:opacity-50">{quoteLoading ? "Refreshing…" : "Refresh prices"}</button><button onClick={() => setAutoRefresh((enabled) => !enabled)} aria-pressed={autoRefresh} className={`rounded-lg border px-3 py-2 text-sm ${autoRefresh ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-[color:var(--line)]"}`}>Live {autoRefresh ? "on" : "off"}</button><button onClick={() => { const name = window.prompt("Rename portfolio", active.name); if (name) store.renamePortfolio(active.id, name); }} className="rounded-lg border border-[color:var(--line)] px-3 py-2 text-sm">Rename</button>{store.portfolios.length > 1 ? <button onClick={removePortfolio} className="rounded-lg border border-rose-400/25 px-3 py-2 text-sm text-rose-300">Delete</button> : null}</div>
+            <div><div className="flex items-center gap-2"><h2 className="text-xl font-semibold">{active.name}</h2><span className="rounded-full border border-[color:var(--line)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--ink-faint)]">{store.syncing ? "Syncing" : store.syncPending ? "Pending sync" : store.syncEnabled ? "Synced privately" : "Saved locally"}</span></div><p className="mt-1 text-xs text-[color:var(--ink-faint)]">A hypothetical strategy workspace. Cost basis uses your entered trade price; estimates use the latest available quote.</p>{syncNotice ? <p role="status" className="mt-2 text-xs text-emerald-300">{syncNotice}</p> : null}</div>
+            <div className="flex flex-wrap gap-2"><button onClick={() => setShowAdd(true)} className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950">+ Add position</button><button onClick={() => void connectAnotherDevice()} disabled={!store.syncLink} className="rounded-lg border border-cyan-400/25 px-3 py-2 text-sm text-cyan-200 disabled:opacity-50">Connect another device</button><button onClick={() => void refreshQuotes()} disabled={quoteLoading} className="rounded-lg border border-[color:var(--line)] px-3 py-2 text-sm disabled:opacity-50">{quoteLoading ? "Refreshing…" : "Refresh prices"}</button><button onClick={() => setAutoRefresh((enabled) => !enabled)} aria-pressed={autoRefresh} className={`rounded-lg border px-3 py-2 text-sm ${autoRefresh ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-[color:var(--line)]"}`}>Live {autoRefresh ? "on" : "off"}</button><button onClick={() => { const name = window.prompt("Rename portfolio", active.name); if (name) store.renamePortfolio(active.id, name); }} className="rounded-lg border border-[color:var(--line)] px-3 py-2 text-sm">Rename</button>{store.portfolios.length > 1 ? <button onClick={removePortfolio} className="rounded-lg border border-rose-400/25 px-3 py-2 text-sm text-rose-300">Delete</button> : null}</div>
           </div>
           <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard label="Amount invested" value={fmtMoney(metrics?.cost ?? 0)} detail={`${active.holdings.length} saved ${active.holdings.length === 1 ? "position" : "positions"}`} />
@@ -206,7 +228,7 @@ export function PortfolioWorkspace() {
         </div>
 
         {active.holdings.length ? <div className="panel overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--line)] px-5 py-4"><div><h3 className="font-semibold">Portfolio map</h3><p className="mt-0.5 text-xs text-[color:var(--ink-faint)]">Tile size = market value; color = gain or loss since your trade.</p></div><div className="flex items-center gap-3 text-[10px] uppercase tracking-wider text-[color:var(--ink-faint)]"><span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-sm bg-rose-500" /> Loss</span><span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-sm bg-slate-500" /> No quote</span><span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Gain</span></div></div><div className="p-3"><div className="relative h-[420px] overflow-hidden rounded-lg border border-[color:var(--line)] bg-[#07111d]">{tiles.map((tile) => { const result = holdingMetrics(tile.holding, tile.quote); return <div key={tile.holding.id} className="absolute flex items-center justify-center overflow-hidden border border-[#07111d] p-2 text-center transition-opacity hover:opacity-90" style={{ left: `${tile.x}%`, top: `${tile.y}%`, width: `${tile.width}%`, height: `${tile.height}%`, background: tileColor(result.gainPct) }} title={`${tile.holding.symbol}: ${fmtMoney(result.marketValue ?? result.cost)}, ${fmtPct(result.gainPct)}`}><div><p className="font-semibold text-white" style={{ fontSize: tile.width > 25 && tile.height > 25 ? "1.5rem" : ".85rem" }}>{tile.holding.symbol}</p>{tile.width > 12 && tile.height > 12 ? <p className="text-xs tabular-nums text-white/85">{fmtPct(result.gainPct)}</p> : null}</div></div>; })}</div></div></div> : null}
-        <p className="px-1 text-[11px] leading-relaxed text-[color:var(--ink-faint)]">Quotes are delayed or latest-available observations from Yahoo Finance and may not reflect executable prices. Live mode refreshes visible, open-market portfolios every five minutes and pauses when the tab is hidden or all quotes report a closed market. Gains are hypothetical unrealized estimates before fees, taxes, dividends, splits, and currency effects.</p>
+        <p className="px-1 text-[11px] leading-relaxed text-[color:var(--ink-faint)]">Your private sync link is the key to this workspace: anyone with it can access the portfolios, and it cannot be recovered if every paired device and saved copy is lost. Quotes are delayed or latest-available observations from Yahoo Finance and may not reflect executable prices. Live mode refreshes visible, open-market portfolios every five minutes and pauses when the tab is hidden or all quotes report a closed market. Gains are hypothetical unrealized estimates before fees, taxes, dividends, splits, and currency effects.</p>
       </> : <div className="panel p-10 text-center"><p>Create a portfolio to begin.</p><button onClick={() => setShowCreate(true)} className="mt-3 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950">New portfolio</button></div>}
     </section>
     {undo ? <div role="status" aria-live="polite" className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-xl border border-[color:var(--line-strong)] bg-[#0b1a2a] px-4 py-3 text-sm shadow-2xl"><span>{undo.message}</span><button onClick={() => { undo.restore(); setUndo(null); }} className="font-semibold text-cyan-300">Undo</button><button onClick={() => setUndo(null)} aria-label="Dismiss" className="text-[color:var(--ink-faint)]">×</button></div> : null}
