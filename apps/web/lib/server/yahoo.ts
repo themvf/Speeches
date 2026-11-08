@@ -4,6 +4,8 @@ export type { MarketStatus };
 
 export type YahooQuote = {
   price: number;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
   change: number;
   pct: number;
   name: string;
@@ -42,8 +44,12 @@ export async function fetchYahooQuote(symbol: string, revalidate = 300): Promise
     const change = (meta.regularMarketChange ?? (price - prev)) as number;
     const pct = (meta.regularMarketChangePercent ?? (prev ? ((price - prev) / prev) * 100 : 0)) as number;
     const marketTime = Number(meta.regularMarketTime);
+    const fiftyTwoWeekLow = Number(meta.fiftyTwoWeekLow);
+    const fiftyTwoWeekHigh = Number(meta.fiftyTwoWeekHigh);
     return {
       price,
+      fiftyTwoWeekLow: Number.isFinite(fiftyTwoWeekLow) && fiftyTwoWeekLow > 0 ? fiftyTwoWeekLow : null,
+      fiftyTwoWeekHigh: Number.isFinite(fiftyTwoWeekHigh) && fiftyTwoWeekHigh > 0 ? fiftyTwoWeekHigh : null,
       change,
       pct,
       name: String(meta.longName ?? meta.shortName ?? symbol),

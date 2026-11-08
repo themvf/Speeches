@@ -12,6 +12,7 @@ const portfolio: Portfolio = {
 };
 const quote: PortfolioQuote = {
   symbol: "AAPL", name: "Apple", price: 120, change: 2, pct: 1.69, status: "OPEN",
+  fiftyTwoWeekLow: 80, fiftyTwoWeekHigh: 140,
   asOf: "2026-01-02T21:00:00.000Z", currency: "USD", provider: "Yahoo Finance",
 };
 

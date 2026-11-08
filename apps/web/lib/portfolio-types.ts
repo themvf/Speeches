@@ -24,6 +24,8 @@ export interface PortfolioQuote {
   symbol: string;
   name: string;
   price: number;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
   change: number;
   pct: number;
   status: "OPEN" | "PRE" | "AFTER" | "CLOSED";
