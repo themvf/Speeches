@@ -29,6 +29,7 @@ let searchLimiter: Ratelimit | null | undefined;
 let feedLimiter: Ratelimit | null | undefined;
 let generateIpLimiter: Ratelimit | null | undefined;
 let generateGlobalLimiter: Ratelimit | null | undefined;
+let portfolioQuoteLimiter: Ratelimit | null | undefined;
 
 export function getSearchLimiter() {
   if (searchLimiter === undefined) searchLimiter = makeLimiter("rl:search", 20, "1 m");
@@ -48,6 +49,11 @@ export function getGenerateIpLimiter() {
 export function getGenerateGlobalLimiter() {
   if (generateGlobalLimiter === undefined) generateGlobalLimiter = makeLimiter("rl:generate:global", 60, "1 m");
   return generateGlobalLimiter;
+}
+
+export function getPortfolioQuoteLimiter() {
+  if (portfolioQuoteLimiter === undefined) portfolioQuoteLimiter = makeLimiter("rl:portfolio-quotes", 30, "1 m");
+  return portfolioQuoteLimiter;
 }
 
 export function getClientIp(headers: Headers): string {

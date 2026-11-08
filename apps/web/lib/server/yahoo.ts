@@ -8,6 +8,9 @@ export type YahooQuote = {
   pct: number;
   name: string;
   status: MarketStatus;
+  asOf: string;
+  currency: string;
+  provider: "Yahoo Finance";
 };
 
 export type YahooCandle = { t: number[]; c: number[] };
@@ -38,12 +41,18 @@ export async function fetchYahooQuote(symbol: string, revalidate = 300): Promise
     const prev = (meta.chartPreviousClose ?? meta.previousClose ?? price) as number;
     const change = (meta.regularMarketChange ?? (price - prev)) as number;
     const pct = (meta.regularMarketChangePercent ?? (prev ? ((price - prev) / prev) * 100 : 0)) as number;
+    const marketTime = Number(meta.regularMarketTime);
     return {
       price,
       change,
       pct,
       name: String(meta.longName ?? meta.shortName ?? symbol),
       status: mapMarketState(meta.marketState as string),
+      asOf: Number.isFinite(marketTime) && marketTime > 0
+        ? new Date(marketTime * 1000).toISOString()
+        : new Date().toISOString(),
+      currency: String(meta.currency ?? "USD"),
+      provider: "Yahoo Finance",
     };
   } catch { return null; } finally { clearTimeout(timer); }
 }
