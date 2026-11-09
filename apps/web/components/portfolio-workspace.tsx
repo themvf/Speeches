@@ -5,6 +5,7 @@ import { usePortfolios } from "@/hooks/use-portfolios";
 import { holdingMetrics, normalizeSymbol, portfolioMetrics } from "@/lib/portfolio-calculations";
 import type { PortfolioHolding, PortfolioQuote } from "@/lib/portfolio-types";
 import { PortfolioTickerChart } from "@/components/portfolio-ticker-chart";
+import { PortfolioComparison } from "@/components/portfolio-comparison";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -101,6 +102,7 @@ export function PortfolioWorkspace() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [undo, setUndo] = useState<{ message: string; restore: () => void } | null>(null);
   const [syncNotice, setSyncNotice] = useState("");
+  const [showComparison, setShowComparison] = useState(false);
   const active = store.portfolios.find((portfolio) => portfolio.id === activeId) ?? store.portfolios[0];
 
   useEffect(() => { if (active && !activeId) setActiveId(active.id); }, [active, activeId]);
@@ -155,7 +157,7 @@ export function PortfolioWorkspace() {
   function create(event: FormEvent) {
     event.preventDefault();
     const created = store.createPortfolio(newName);
-    if (created) { setActiveId(created); setNewName(""); setShowCreate(false); setShowAdd(false); }
+    if (created) { setActiveId(created); setNewName(""); setShowCreate(false); setShowAdd(false); setShowComparison(false); }
   }
 
   function removePortfolio() {
@@ -196,14 +198,14 @@ export function PortfolioWorkspace() {
   return <div className="grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
     <aside className="panel h-fit overflow-hidden lg:sticky lg:top-24">
       <div className="border-b border-[color:var(--line)] p-4"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[color:var(--ink-faint)]">Portfolios</p></div>
-      <div className="space-y-1 p-2">{store.portfolios.map((portfolio) => <button key={portfolio.id} onClick={() => { setActiveId(portfolio.id); setShowAdd(false); }} className={`w-full rounded-lg px-3 py-3 text-left transition ${active?.id === portfolio.id ? "border border-cyan-400/30 bg-cyan-400/10 text-cyan-200" : "border border-transparent text-[color:var(--ink-soft)] hover:bg-white/5"}`}>
+      <div className="space-y-1 p-2">{store.portfolios.map((portfolio) => <button key={portfolio.id} onClick={() => { setActiveId(portfolio.id); setShowAdd(false); setShowComparison(false); }} className={`w-full rounded-lg px-3 py-3 text-left transition ${!showComparison && active?.id === portfolio.id ? "border border-cyan-400/30 bg-cyan-400/10 text-cyan-200" : "border border-transparent text-[color:var(--ink-soft)] hover:bg-white/5"}`}>
         <span className="block truncate text-sm font-semibold">{portfolio.name}</span><span className="mt-0.5 block text-[11px] opacity-65">{portfolio.holdings.length} {portfolio.holdings.length === 1 ? "position" : "positions"}</span>
       </button>)}</div>
-      <div className="border-t border-[color:var(--line)] p-3">{showCreate ? <form onSubmit={create} className="space-y-2"><input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Portfolio name" className="form-control w-full px-3 py-2 text-sm" /><div className="flex gap-2"><button className="flex-1 rounded-lg bg-cyan-400 px-2 py-2 text-xs font-semibold text-slate-950">Create</button><button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-[color:var(--line)] px-2 py-2 text-xs">Cancel</button></div></form> : <button onClick={() => setShowCreate(true)} className="w-full rounded-lg border border-dashed border-[color:var(--line-strong)] px-3 py-2 text-sm font-semibold text-cyan-300 hover:bg-cyan-400/5">+ New portfolio</button>}</div>
+      <div className="space-y-2 border-t border-[color:var(--line)] p-3">{showCreate ? <form onSubmit={create} className="space-y-2"><input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Portfolio name" className="form-control w-full px-3 py-2 text-sm" /><div className="flex gap-2"><button className="flex-1 rounded-lg bg-cyan-400 px-2 py-2 text-xs font-semibold text-slate-950">Create</button><button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-[color:var(--line)] px-2 py-2 text-xs">Cancel</button></div></form> : <button onClick={() => setShowCreate(true)} className="w-full rounded-lg border border-dashed border-[color:var(--line-strong)] px-3 py-2 text-sm font-semibold text-cyan-300 hover:bg-cyan-400/5">+ New portfolio</button>}<button type="button" onClick={() => { setShowComparison(true); setShowAdd(false); }} className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold ${showComparison ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200" : "border-[color:var(--line)] text-[color:var(--ink-soft)] hover:bg-white/5"}`}>Compare portfolios</button></div>
     </aside>
 
     <section className="min-w-0 space-y-5">
-      {active ? <>
+      {showComparison ? <PortfolioComparison portfolios={store.portfolios} onOpenPortfolio={(portfolioId) => { setActiveId(portfolioId); setShowComparison(false); }} /> : active ? <>
         <div className="panel overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line)] p-5">
             <div><div className="flex items-center gap-2"><h2 className="text-xl font-semibold">{active.name}</h2><span className="rounded-full border border-[color:var(--line)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--ink-faint)]">{store.syncing ? "Syncing" : store.syncPending ? "Pending sync" : store.syncEnabled ? "Synced privately" : "Saved locally"}</span></div><p className="mt-1 text-xs text-[color:var(--ink-faint)]">A hypothetical strategy workspace. Cost basis uses your entered trade price; estimates use the latest available quote.</p>{syncNotice ? <p role="status" className="mt-2 text-xs text-emerald-300">{syncNotice}</p> : null}</div>
