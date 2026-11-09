@@ -33,3 +33,12 @@ export interface PortfolioQuote {
   currency: string;
   provider: "Yahoo Finance";
 }
+
+export interface PortfolioCandle {
+  t: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number | null;
+}

@@ -31,6 +31,7 @@ let generateIpLimiter: Ratelimit | null | undefined;
 let generateGlobalLimiter: Ratelimit | null | undefined;
 let portfolioQuoteLimiter: Ratelimit | null | undefined;
 let portfolioSyncLimiter: Ratelimit | null | undefined;
+let portfolioChartLimiter: Ratelimit | null | undefined;
 
 export function getSearchLimiter() {
   if (searchLimiter === undefined) searchLimiter = makeLimiter("rl:search", 20, "1 m");
@@ -60,6 +61,11 @@ export function getPortfolioQuoteLimiter() {
 export function getPortfolioSyncLimiter() {
   if (portfolioSyncLimiter === undefined) portfolioSyncLimiter = makeLimiter("rl:portfolio-sync", 60, "1 m");
   return portfolioSyncLimiter;
+}
+
+export function getPortfolioChartLimiter() {
+  if (portfolioChartLimiter === undefined) portfolioChartLimiter = makeLimiter("rl:portfolio-chart", 30, "1 m");
+  return portfolioChartLimiter;
 }
 
 export function getClientIp(headers: Headers): string {
