@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-09T20:25:52Z",
+ "generatedAt": "2026-11-10T03:41:53Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -794,8 +794,12 @@
     },
     {
      "ticker": "EQR",
-     "name": "Erp Operating Ltd Partnership",
-     "cik": "931182",
+     "name": "Vivmark Residential",
+     "cik": "906107",
+     "profit": 90079000.0,
+     "sharesOutstanding": 374671735.0,
+     "periodEnd": "2026-03-31",
+     "filed": "2026-04-30",
      "subIndustry": "Residential REITs"
     },
     {
@@ -2892,7 +2896,7 @@
     },
     {
      "ticker": "BEN",
-     "name": "Franklin Resources Inc",
+     "name": "Franklin Templeton Inc",
      "cik": "38777",
      "revenue": 2294900000.0,
      "profit": 268200000.0,
@@ -6544,11 +6548,11 @@
      "name": "Emerson Electric Co",
      "cik": "32604",
      "revenue": 4562000000.0,
-     "profit": 618000000.0,
-     "expenses": 3944000000.0,
+     "profit": 620000000.0,
+     "expenses": 3942000000.0,
      "sharesOutstanding": 560100000.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-05"
+     "filed": "2026-11-09"
     },
     {
      "ticker": "GE",
