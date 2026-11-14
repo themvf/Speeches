@@ -42,6 +42,28 @@ const LIVE_FEED_REFRESH_LIMIT = 500;
 const LIVE_FEED_POLL_INTERVAL_MS = 60 * 60_000;
 const FEED_ANALYSIS_VERSION = 2;
 
+// Runs `run` after `delayMs`, but never while the tab is hidden: a due poll waits for the tab to
+// become visible again. Each feed poll queries Neon, and a dashboard left open in a background tab
+// used to wake the RegIntel compute every hour outside the scheduled-job window (2026-10-11).
+// Returns a cancel function.
+function scheduleVisiblePoll(run: () => void, delayMs: number): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const onVisible = () => {
+    if (document.visibilityState !== "visible") return;
+    document.removeEventListener("visibilitychange", onVisible);
+    run();
+  };
+  timer = setTimeout(() => {
+    timer = null;
+    if (document.visibilityState === "hidden") document.addEventListener("visibilitychange", onVisible);
+    else run();
+  }, delayMs);
+  return () => {
+    if (timer) clearTimeout(timer);
+    document.removeEventListener("visibilitychange", onVisible);
+  };
+}
+
 type FeedMeta = {
   label: string;
   code: string;
@@ -2178,7 +2200,7 @@ export function IntelBetaDashboard({
   }, [feedItems]);
 
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let cancelNext: (() => void) | null = null;
     let errStreak = 0;
     let mounted = true;
 
@@ -2242,17 +2264,17 @@ export function IntelBetaDashboard({
         const delay = errStreak > 0
           ? Math.min(15_000 * (2 ** (errStreak - 1)), 120_000)
           : LIVE_FEED_POLL_INTERVAL_MS;
-        timeoutId = setTimeout(() => { void poll(); }, delay);
+        cancelNext = scheduleVisiblePoll(() => { void poll(); }, delay);
       }
     };
 
     void poll();
-    return () => { mounted = false; if (timeoutId) clearTimeout(timeoutId); };
+    return () => { mounted = false; cancelNext?.(); };
   }, [selectedArticleId]);
 
   useEffect(() => {
     let mounted = true;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let cancelNext: (() => void) | null = null;
 
     const loadDocuments = async () => {
       try {
@@ -2279,7 +2301,7 @@ export function IntelBetaDashboard({
       } finally {
         if (mounted) {
           setDocumentsLoaded(true);
-          timeoutId = setTimeout(() => { void loadDocuments(); }, LIVE_FEED_POLL_INTERVAL_MS);
+          cancelNext = scheduleVisiblePoll(() => { void loadDocuments(); }, LIVE_FEED_POLL_INTERVAL_MS);
         }
       }
     };
@@ -2287,7 +2309,7 @@ export function IntelBetaDashboard({
     void loadDocuments();
     return () => {
       mounted = false;
-      if (timeoutId) clearTimeout(timeoutId);
+      cancelNext?.();
     };
   }, []);
 
