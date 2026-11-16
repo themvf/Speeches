@@ -1,16 +1,16 @@
 {
- "generatedAt": "2026-11-09T21:29:33Z",
+ "generatedAt": "2026-11-16T21:06:07Z",
  "checkedCount": 886,
  "flaggedCount": 3,
  "candidates": [
   {
    "ticker": "EQR",
-   "name": "Erp Operating Ltd Partnership",
-   "cik": "0000931182",
+   "name": "Vivmark Residential",
+   "cik": "0000906107",
    "reason": "renamed",
    "confidence": "high",
-   "evidence": "CIK's own submissions now list ['VRMK'] instead of EQR",
-   "suggestedNewTicker": "VRMK",
+   "evidence": "CIK's own submissions now list ['VMRK'] instead of EQR",
+   "suggestedNewTicker": "VMRK",
    "yahooQuoteAlive": false
   },
   {
