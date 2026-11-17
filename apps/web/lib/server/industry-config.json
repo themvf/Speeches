@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-17T04:03:46Z",
+ "generatedAt": "2026-11-17T18:57:44Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -386,7 +386,7 @@
     },
     {
      "ticker": "PARA",
-     "name": "Banzai International, Inc.",
+     "name": "Parabolic Technologies, Inc.",
      "cik": "1826011",
      "revenue": 2696000.0,
      "profit": -8417000.0,
