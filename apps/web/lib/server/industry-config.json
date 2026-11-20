@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-19T18:51:21Z",
+ "generatedAt": "2026-11-20T01:22:20Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
  "tickerCount": 886,
  "industries": [
@@ -6681,11 +6681,11 @@
      "name": "Post Holdings, Inc.",
      "cik": "1530950",
      "revenue": 2042900000.0,
-     "profit": 81900000.0,
-     "expenses": 1961000000.0,
+     "profit": 85000000.0,
+     "expenses": 1957900000.0,
      "sharesOutstanding": 45322586.0,
      "periodEnd": "2026-03-31",
-     "filed": "2026-05-07"
+     "filed": "2026-11-19"
     }
    ]
   },
