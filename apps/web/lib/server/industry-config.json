@@ -1,7 +1,7 @@
 {
  "generatedAt": "2026-11-23T21:57:49Z",
  "source": "SEC EDGAR: SIC from submissions API, financials from XBRL frames API",
- "tickerCount": 886,
+ "tickerCount": 885,
  "industries": [
   {
    "sic": "7372",
@@ -5963,16 +5963,6 @@
      "sharesOutstanding": 476472207.0,
      "periodEnd": "2026-03-31",
      "filed": "2026-11-06"
-    },
-    {
-     "ticker": "ROKU",
-     "name": "Roku, Inc",
-     "cik": "1428439",
-     "revenue": 1248879000.0,
-     "profit": 85700000.0,
-     "expenses": 1163179000.0,
-     "periodEnd": "2026-03-31",
-     "filed": "2026-05-01"
     }
    ]
   },

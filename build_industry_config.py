@@ -80,7 +80,7 @@ UNIVERSE: List[str] = [
     "GOOGL", "META", "AMZN", "NFLX", "DIS", "CMCSA", "PARA", "SPOT",
     "PINS", "SNAP", "MTCH", "BMBL", "YELP", "TRIP", "EXPE", "BKNG", "ABNB",
     "UBER", "LYFT", "DASH", "ETSY", "EBAY", "SHOP", "SE", "BABA", "JD", "PDD",
-    "RDDT", "TTD", "ROKU", "LYV", "NYT", "FOXA", "NWSA", "OMC", "TKO",
+    "RDDT", "TTD", "LYV", "NYT", "FOXA", "NWSA", "OMC", "TKO",
     "BIDU", "NTES", "TME", "BILI", "FUTU",
     # ── Hardware & devices ──
     "AAPL", "DELL", "HPQ", "HPE", "IBM", "CSCO", "ANET", "NTAP", "STX",
